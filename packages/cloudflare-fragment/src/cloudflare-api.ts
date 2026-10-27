@@ -1,12 +1,14 @@
-import Cloudflare, {
-  NotFoundError,
-  toFile,
-  type ClientOptions as CloudflareClientOptions,
-} from "cloudflare";
-import type {
-  ScriptUpdateParams,
-  ScriptUpdateResponse,
+import type { ClientOptions as CloudflareClientOptions } from "cloudflare/client";
+import { APIError, NotFoundError } from "cloudflare/core/error";
+import { toFile } from "cloudflare/core/uploads";
+import { BrowserRendering } from "cloudflare/resources/browser-rendering/browser-rendering";
+import {
+  BaseScripts,
+  type ScriptUpdateParams,
+  type ScriptUpdateResponse,
 } from "cloudflare/resources/workers-for-platforms/dispatch/namespaces/scripts/scripts";
+import { Tags } from "cloudflare/resources/workers-for-platforms/dispatch/namespaces/scripts/tags";
+import { createClient } from "cloudflare/tree-shakable";
 
 import {
   buildCloudflareAppTag,
@@ -33,7 +35,7 @@ type CloudflareApiClientConfig = {
   maxRetries?: number;
 };
 
-export type CloudflareApiClient = Cloudflare;
+export type CloudflareApiClient = ReturnType<typeof createCloudflareApiClient>;
 export type CloudflareScriptUpdateParams = ScriptUpdateParams;
 export type CloudflareScriptUpdateResponse = ScriptUpdateResponse;
 
@@ -151,11 +153,11 @@ export const buildCloudflareScriptTags = (
   );
 };
 
-export const createCloudflareApiClient = ({
+export function createCloudflareApiClient({
   apiToken,
   fetchImplementation,
   maxRetries = 0,
-}: CloudflareApiClientConfig): CloudflareApiClient => {
+}: CloudflareApiClientConfig) {
   const cloudflareFetch: CloudflareClientOptions["fetch"] | undefined = fetchImplementation
     ? async (input, init) => {
         if (String(input).startsWith("data:")) {
@@ -166,12 +168,14 @@ export const createCloudflareApiClient = ({
       }
     : undefined;
 
-  return new Cloudflare({
+  // The full client retains every Cloudflare API resource in consumers' bundles.
+  return createClient({
     apiToken,
     fetch: cloudflareFetch,
     maxRetries,
+    resources: [BaseScripts, Tags, BrowserRendering],
   });
-};
+}
 
 export const listCloudflareScriptTags = async (
   client: CloudflareApiClient,
@@ -361,7 +365,7 @@ export const reconcileCloudflareWorkerDeployment = async (
 };
 
 export const getCloudflareApiError = (error: unknown) => {
-  if (!(error instanceof Cloudflare.APIError)) {
+  if (!(error instanceof APIError)) {
     return null;
   }
 
