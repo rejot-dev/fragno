@@ -117,8 +117,9 @@ export function createTrackingReader(connection: LofiSqliteSyncConnection): {
 /**
  * Maintains views computed by read functions: each view runs its read again after every batch that
  * wrote a table its last run read, with the database locked, so the read's queries see one state.
- * The view reports its data only when it changed, and a read that throws as its view's error. A
- * query that would write is refused, since writes would bypass the replica.
+ * The view reports its data only when it changed, and a read that throws as its view's error; one
+ * that throws before it ever succeeded runs again after every batch. A query that would write is
+ * refused, since writes would bypass the replica.
  */
 export function readViewEngine(options: {
   kind: string;
@@ -129,17 +130,33 @@ export function readViewEngine(options: {
     open({ connection }) {
       const { reader, track } = createTrackingReader(connection);
 
-      const views = new Map<
-        string,
-        {
-          run: () => { data: unknown; tables: ReadonlySet<string> };
-          data: unknown;
-          tables: ReadonlySet<string>;
-          failed: boolean;
-          listener: (data: unknown) => void;
-          fail: (error: unknown) => void;
+      type ReadView = {
+        run: () => { data: unknown; tables: ReadonlySet<string> };
+        data: unknown;
+        /** What its last successful run read; null until one succeeds. */
+        tables: ReadonlySet<string> | null;
+        failed: boolean;
+        listener: (data: unknown) => void;
+        fail: (error: unknown) => void;
+      };
+      const views = new Map<string, ReadView>();
+      const update = (view: ReadView) => {
+        let run: { data: unknown; tables: ReadonlySet<string> };
+        try {
+          run = view.run();
+        } catch (error) {
+          view.failed = true;
+          view.fail(error);
+          return;
         }
-      >();
+        view.tables = run.tables;
+        if (view.failed || !sameData(run.data, view.data)) {
+          view.failed = false;
+          view.data = run.data;
+          view.listener(run.data);
+        }
+      };
+
       return {
         materialize(id, query, listener, fail) {
           const { read, args } = query as LofiSqliteReadViewQuery;
@@ -147,13 +164,20 @@ export function readViewEngine(options: {
           if (!readFunction) {
             throw new Error(`No read named "${read}" in read views of kind "${options.kind}".`);
           }
-          const run = () => {
-            const { result, tables } = track(() => readFunction(reader, args as never));
-            return { data: result, tables };
+          const view: ReadView = {
+            run: () => {
+              const { result, tables } = track(() => readFunction(reader, args as never));
+              return { data: result, tables };
+            },
+            data: undefined,
+            tables: null,
+            // Reports its first data, like a recovery.
+            failed: true,
+            listener,
+            fail,
           };
-          const { data, tables } = run();
-          views.set(id, { run, data, tables, failed: false, listener, fail });
-          listener(data);
+          views.set(id, view);
+          update(view);
         },
         destroy(id) {
           views.delete(id);
@@ -161,23 +185,10 @@ export function readViewEngine(options: {
         refresh(changed) {
           for (const view of views.values()) {
             // A read reads only what its last run read until one of those tables changes. A failed
-            // read runs again when a table its last successful run read changes.
-            if (!readsChangedTable(view.tables, changed)) {
-              continue;
-            }
-            let run: { data: unknown; tables: ReadonlySet<string> };
-            try {
-              run = view.run();
-            } catch (error) {
-              view.failed = true;
-              view.fail(error);
-              continue;
-            }
-            view.tables = run.tables;
-            if (view.failed || !sameData(run.data, view.data)) {
-              view.failed = false;
-              view.data = run.data;
-              view.listener(run.data);
+            // read runs again when a table its last successful run read changes, and after every
+            // batch if none succeeded yet.
+            if (view.tables === null || readsChangedTable(view.tables, changed)) {
+              update(view);
             }
           }
         },

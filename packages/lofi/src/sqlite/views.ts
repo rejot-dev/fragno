@@ -19,9 +19,10 @@ export type LofiSqliteViewEngine = {
 
 export type LofiSqliteViews = {
   /**
-   * Builds the view of `query` and reports its data now and whenever it changes. A view that fails
-   * to build throws; one that fails to refresh reports it to `fail`, and reports its data again once
-   * a refresh succeeds, even if the data is what it was before.
+   * Builds the view of `query` and reports its data now and whenever it changes. A query that can
+   * never run, such as SQL that does not parse, throws. A run that fails, when the view is built or
+   * refreshed, reports it to `fail`, and the view runs again after later batches and reports its
+   * data once a run succeeds, even if the data is what it was before.
    */
   materialize(
     id: string,
@@ -69,17 +70,31 @@ export type LofiSqliteRawRow = Record<string, SqliteValue>;
 export const sqlViewEngine: LofiSqliteViewEngine = {
   kind: "sql",
   open({ connection }) {
-    const views = new Map<
-      string,
-      {
-        read: () => LofiSqliteRawRow[];
-        tables: ReadonlySet<string>;
-        rows: LofiSqliteRawRow[];
-        failed: boolean;
-        listener: (data: unknown) => void;
-        fail: (error: unknown) => void;
+    type SqlView = {
+      read: () => LofiSqliteRawRow[];
+      tables: ReadonlySet<string>;
+      rows: LofiSqliteRawRow[];
+      failed: boolean;
+      listener: (data: unknown) => void;
+      fail: (error: unknown) => void;
+    };
+    const views = new Map<string, SqlView>();
+    const update = (view: SqlView) => {
+      let rows: LofiSqliteRawRow[];
+      try {
+        rows = view.read();
+      } catch (error) {
+        view.failed = true;
+        view.fail(error);
+        return;
       }
-    >();
+      if (view.failed || !sameRows(rows, view.rows)) {
+        view.failed = false;
+        view.rows = rows;
+        view.listener(rows);
+      }
+    };
+
     return {
       materialize(id, query, listener, fail) {
         const { sql, params } = query as LofiSqliteSqlViewQuery;
@@ -87,34 +102,28 @@ export const sqlViewEngine: LofiSqliteViewEngine = {
         if (!statement.isReadOnly) {
           throw new Error(`A SQL view must not write: ${sql}`);
         }
-        const read = () =>
-          Array.from(statement.rows(params), (values) =>
-            Object.fromEntries(statement.columnNames.map((name, index) => [name, values[index]])),
-          );
-        const rows = read();
-        views.set(id, { read, tables: statement.tables, rows, failed: false, listener, fail });
-        listener(rows);
+        const view: SqlView = {
+          read: () =>
+            Array.from(statement.rows(params), (values) =>
+              Object.fromEntries(statement.columnNames.map((name, index) => [name, values[index]])),
+            ),
+          tables: statement.tables,
+          rows: [],
+          // Reports its first rows, like a recovery.
+          failed: true,
+          listener,
+          fail,
+        };
+        views.set(id, view);
+        update(view);
       },
       destroy(id) {
         views.delete(id);
       },
       refresh(changed) {
         for (const view of views.values()) {
-          if (!readsChangedTable(view.tables, changed)) {
-            continue;
-          }
-          let rows: LofiSqliteRawRow[];
-          try {
-            rows = view.read();
-          } catch (error) {
-            view.failed = true;
-            view.fail(error);
-            continue;
-          }
-          if (view.failed || !sameRows(rows, view.rows)) {
-            view.failed = false;
-            view.rows = rows;
-            view.listener(rows);
+          if (readsChangedTable(view.tables, changed)) {
+            update(view);
           }
         }
       },
