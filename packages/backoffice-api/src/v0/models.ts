@@ -49,14 +49,17 @@ const workspaceFilePathSchema = z
   .trim()
   .refine(
     (path) =>
-      path.startsWith("/workspace/") &&
+      (path.startsWith("/workspace/") || path.startsWith("/shared/")) &&
       !path.includes("\\") &&
       !path.includes("\0") &&
       path
         .slice(1)
         .split("/")
         .every((part) => part !== "" && part !== "." && part !== ".."),
-    { message: "Files use absolute file paths under /workspace without traversal segments." },
+    {
+      message:
+        "Files use absolute file paths under /workspace or /shared without traversal segments.",
+    },
   );
 
 const modelsClassifyInputSchema = z.lazy(() =>

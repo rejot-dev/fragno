@@ -6,6 +6,7 @@ import type {
   MarketplaceIngestionRequestInput,
   PackagesImportLegacyInput,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject } from "cloudflare:workers";
 
 import type {
@@ -171,6 +172,43 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async getPackageInstallationRecord(input: { listingId: string }) {
     return await this.#object.getPackageInstallationRecord(input);
+  }
+
+  async createFileShare(input: { shareId: string; path: string; target: BackofficeRoutableScope }) {
+    return await this.#object.createFileShare(input);
+  }
+
+  async getFileShare(input: { shareId: string }) {
+    return await this.#object.getFileShare(input);
+  }
+
+  async listFileShares() {
+    return await this.#object.listFileShares();
+  }
+
+  async deleteFileShare(input: { shareId: string }) {
+    return await this.#object.deleteFileShare(input);
+  }
+
+  async acceptFileShare(input: {
+    shareId: string;
+    name: string;
+    source: BackofficeRoutableScope;
+    path: string;
+  }) {
+    return await this.#object.acceptFileShare(input);
+  }
+
+  async getAcceptedFileShareByName(input: { name: string }) {
+    return await this.#object.getAcceptedFileShareByName(input);
+  }
+
+  async listAcceptedFileShares() {
+    return await this.#object.listAcceptedFileShares();
+  }
+
+  async deleteAcceptedFileShare(input: { shareId: string }) {
+    return await this.#object.deleteAcceptedFileShare(input);
   }
 
   async applyPackageInstallation(input: PackageInstallationInput) {

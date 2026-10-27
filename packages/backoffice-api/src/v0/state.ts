@@ -5,6 +5,7 @@ import { base64BytesSchema } from "./shared/bytes";
 import { isoDateTimeOutputSchema } from "./shared/datetime";
 import { jsonValueSchema } from "./shared/json";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
+import { backofficeRoutableScopeSchema } from "./shared/scope";
 
 /**
  * The most bytes one workspace file holds. Backoffice stores each file in one Durable Object SQLite
@@ -87,6 +88,7 @@ export const fileSearchOptionsByMountSchema = z.lazy(() =>
   z.strictObject({
     upload: mountFileSearchOptionsSchema.optional(),
     static: mountFileSearchOptionsSchema.optional(),
+    shared: mountFileSearchOptionsSchema.optional(),
   }),
 );
 
@@ -173,6 +175,47 @@ const fileLinkSchema = z.lazy(() =>
 
 export type FileLinkInput = z.output<typeof fileLinkInputSchema>;
 export type FileLink = z.output<typeof fileLinkSchema>;
+
+/** Where another scope reads the folders this scope shared with it, once it accepts them. */
+export const SHARED_MOUNT_POINT = "/shared";
+
+const fileShareSchema = z.lazy(() =>
+  z.strictObject({
+    shareId: z.string(),
+    path: z.string().describe("The shared /workspace folder, ending in /."),
+    with: backofficeRoutableScopeSchema.describe("The scope that may accept and read the folder."),
+    sharedAt: isoDateTimeOutputSchema,
+  }),
+);
+
+/** A segment of /shared, like a project slug: lowercase letters and digits joined by dashes. */
+const shareNameSchema = z.lazy(() =>
+  z
+    .string()
+    .max(64)
+    .regex(
+      /^[a-z0-9]+(?:-[a-z0-9]+)*$/u,
+      "Share names are lowercase letters and digits joined by dashes, such as client1-invoices.",
+    ),
+);
+
+const acceptedFileShareSchema = z.lazy(() =>
+  z.strictObject({
+    shareId: z.string(),
+    name: z.string().describe("The name this scope mounts the share under."),
+    from: backofficeRoutableScopeSchema.describe("The scope that shared the folder."),
+    path: z
+      .string()
+      .describe(
+        `Where this scope reads the folder, read-only: ${SHARED_MOUNT_POINT}/<name>/. Search and glob enter it only when the pattern starts with this path.`,
+      ),
+    sourcePath: z.string().describe("The folder in the sharing scope's /workspace."),
+    acceptedAt: isoDateTimeOutputSchema,
+  }),
+);
+
+export type FileShare = z.output<typeof fileShareSchema>;
+export type AcceptedFileShare = z.output<typeof acceptedFileShareSchema>;
 
 export const stateOperations = {
   "state.readFileBytes": {
@@ -388,6 +431,9 @@ export const stateOperations = {
       z.strictObject({
         upload: fileSearchPageSchema,
         static: fileSearchPageSchema,
+        shared: fileSearchPageSchema
+          .optional()
+          .describe(`Present when the pattern names a share: ${SHARED_MOUNT_POINT}/<name>/...`),
       }),
     ),
   },
@@ -414,5 +460,55 @@ export const stateOperations = {
     permissions: [BACKOFFICE_PERMISSION.upload.modify],
     input: fileLinkInputSchema,
     output: fileLinkSchema,
+  },
+  "state.share": {
+    description: `Share a /workspace folder with another scope, read-only and without copying. The other scope reads it in ${SHARED_MOUNT_POINT} once it accepts the share with state.acceptShare, until either scope revokes it.`,
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
+    input: z.lazy(() =>
+      z.strictObject({
+        path: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("The /workspace folder to share, such as /workspace/reports/2026/."),
+        with: backofficeRoutableScopeSchema.describe("The scope to share the folder with."),
+      }),
+    ),
+    output: fileShareSchema,
+  },
+  "state.acceptShare": {
+    description: `Accept a folder another scope shared with this one, so this scope reads it at ${SHARED_MOUNT_POINT}/<name>/. Accepting a share again returns it under the name it has.`,
+    permissions: [BACKOFFICE_PERMISSION.upload.modify],
+    input: z.lazy(() =>
+      z.strictObject({
+        from: backofficeRoutableScopeSchema.describe("The scope that shared the folder."),
+        shareId: z.string().trim().min(1),
+        name: shareNameSchema
+          .optional()
+          .describe(
+            "The name to mount the share under, unique in this scope. Defaults to the share's ID.",
+          ),
+      }),
+    ),
+    output: acceptedFileShareSchema,
+  },
+  "state.listShares": {
+    description:
+      "List the folders this scope shared with other scopes and the shares it accepted from them.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
+    input: z.lazy(() => z.strictObject({})),
+    output: z.lazy(() =>
+      z.strictObject({
+        shared: z.array(fileShareSchema),
+        accepted: z.array(acceptedFileShareSchema),
+      }),
+    ),
+  },
+  "state.revokeShare": {
+    description:
+      "End a share: revoking one this scope shared stops the other scope reading it, and revoking one this scope accepted removes it from /shared.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
+    input: z.lazy(() => z.strictObject({ shareId: z.string().trim().min(1) })),
+    output: z.void(),
   },
 } satisfies Record<string, BackofficeApiOperation>;

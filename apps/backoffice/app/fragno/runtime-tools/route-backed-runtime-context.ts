@@ -82,6 +82,7 @@ import { createReson8Runtime } from "@/fragno/runtime-tools/families/reson8-runt
 import { createSandboxRuntime } from "@/fragno/runtime-tools/families/sandbox-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
 import { createFileLinkRuntime } from "@/fragno/runtime-tools/file-links-runtime";
+import { createFileShareRuntime } from "@/fragno/runtime-tools/file-shares-runtime";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { buildJavaScriptModuleFile } from "./families/javascript-build";
@@ -302,6 +303,20 @@ const createRuntimeContext = ({
                       sandbox: runtime.config.sandboxBackofficeBaseUrl,
                     }
                   : null,
+            }),
+          }
+        : null,
+    fileShares:
+      runtime.config.bindings.upload &&
+      runtime.config.bindings.auth &&
+      isBackofficeRoutableScope(execution.scope)
+        ? {
+            runtime: createFileShareRuntime({
+              scope: execution.scope,
+              automationsFor: (scope) =>
+                kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations).commands,
+              resolveRootOwner: async (owner) =>
+                await runtime.objects.auth.singleton().commands.findRootOwnerScope(owner),
             }),
           }
         : null,

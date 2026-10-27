@@ -73,6 +73,7 @@ import { createAutomationEventSourceServices } from "./event-sources-storage-run
 import { createAutomationEventServices } from "./events-storage-runtime";
 import { buildExternalIdentityBindingId, canLinkExternalIdentity } from "./external-identities";
 import { createExternalIdentityBindingServices } from "./external-identity-bindings-storage-runtime";
+import { createFileShareServices } from "./file-shares-storage-runtime";
 import type {
   AutomationEventIngestionPayload,
   AutomationHookUnitOfWork,
@@ -664,6 +665,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     const externalIdentityBindingServices = createExternalIdentityBindingServices(defineService);
     const routeDispatchServices = createAutomationRouteDispatchServices(defineService);
     const packageInstallationServices = createPackageInstallationServices(defineService);
+    const fileShareServices = createFileShareServices(defineService);
 
     return defineService({
       ...storeServices,
@@ -675,6 +677,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...externalIdentityBindingServices,
       ...routeDispatchServices,
       ...packageInstallationServices,
+      ...fileShareServices,
       seedStarterAutomationRoutes: function () {
         return this.serviceTx(automationFragmentSchema)
           .retrieve((uow) =>

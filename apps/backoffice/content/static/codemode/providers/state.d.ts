@@ -125,6 +125,26 @@ type StateCodemodeProvider = {
    */
   createUploadLink(input: StateCreateUploadLinkInput): Promise<StateCreateUploadLinkOutput>;
   /**
+   * Share a /workspace folder with another scope, read-only and without copying. The other scope reads it in /shared once it accepts the share with state.acceptShare, until either scope revokes it.
+   * Requires `upload.read`.
+   */
+  share(input: StateShareInput): Promise<StateShareOutput>;
+  /**
+   * Accept a folder another scope shared with this one, so this scope reads it at /shared/<name>/. Accepting a share again returns it under the name it has.
+   * Requires `upload.modify`.
+   */
+  acceptShare(input: StateAcceptShareInput): Promise<StateAcceptShareOutput>;
+  /**
+   * List the folders this scope shared with other scopes and the shares it accepted from them.
+   * Requires `upload.read`.
+   */
+  listShares(input: StateListSharesInput): Promise<StateListSharesOutput>;
+  /**
+   * End a share: revoking one this scope shared stops the other scope reading it, and revoking one this scope accepted removes it from /shared.
+   * Requires `upload.read`.
+   */
+  revokeShare(input: StateRevokeShareInput): Promise<void>;
+  /**
    * Look at a PNG, JPEG, or WebP image in state yourself: it follows the program's output in your tool result. Only agents can view images, each at most 2000×2000 pixels; one program views at most 8 images of 1125000 bytes together.
    * Requires `upload.read`.
    */
@@ -309,6 +329,14 @@ type StateSearchFilesInput = {
       maxMatches?: number;
       cursor?: string;
     };
+    shared?: {
+      caseSensitive?: boolean;
+      wholeWord?: boolean;
+      contextBefore?: number;
+      contextAfter?: number;
+      maxMatches?: number;
+      cursor?: string;
+    };
   };
 };
 type StateSearchFilesOutput = {
@@ -328,6 +356,22 @@ type StateSearchFilesOutput = {
     hasMore: boolean;
   };
   static: {
+    results: {
+      path: string;
+      matches: {
+        line: number;
+        column: number;
+        match: string;
+        lineText: string;
+        beforeLines?: string[];
+        afterLines?: string[];
+      }[];
+    }[];
+    cursor?: string;
+    hasMore: boolean;
+  };
+  /** Present when the pattern names a share: /shared/<name>/... */
+  shared?: {
     results: {
       path: string;
       matches: {
@@ -413,6 +457,399 @@ type StateCreateUploadLinkOutput =
       /** ISO 8601 datetime string. */
       expiresAt: string;
     };
+type StateShareInput = {
+  /** The /workspace folder to share, such as /workspace/reports/2026/. */
+  path: string;
+  /** The scope to share the folder with. */
+  with:
+    | {
+        kind: "org";
+        orgId: string;
+        jurisdiction?: "eu" | "us" | null;
+      }
+    | {
+        kind: "user";
+        userId: string;
+        jurisdiction?: "eu" | "us" | null;
+      }
+    | {
+        kind: "app";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+              jurisdiction?: "eu" | "us" | null;
+            }
+          | {
+              kind: "user";
+              userId: string;
+              jurisdiction?: "eu" | "us" | null;
+            };
+        appId: string;
+      }
+    | {
+        kind: "project";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+              jurisdiction?: "eu" | "us" | null;
+            }
+          | {
+              kind: "user";
+              userId: string;
+              jurisdiction?: "eu" | "us" | null;
+            }
+          | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                    jurisdiction?: "eu" | "us" | null;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                    jurisdiction?: "eu" | "us" | null;
+                  };
+              appId: string;
+            };
+        projectId: string;
+      };
+};
+type StateShareOutput = {
+  shareId: string;
+  /** The shared /workspace folder, ending in /. */
+  path: string;
+  /** The scope that may accept and read the folder. */
+  with:
+    | {
+        kind: "org";
+        orgId: string;
+        jurisdiction: "eu" | "us" | null;
+      }
+    | {
+        kind: "user";
+        userId: string;
+        jurisdiction: "eu" | "us" | null;
+      }
+    | {
+        kind: "app";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+              jurisdiction: "eu" | "us" | null;
+            }
+          | {
+              kind: "user";
+              userId: string;
+              jurisdiction: "eu" | "us" | null;
+            };
+        appId: string;
+      }
+    | {
+        kind: "project";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+              jurisdiction: "eu" | "us" | null;
+            }
+          | {
+              kind: "user";
+              userId: string;
+              jurisdiction: "eu" | "us" | null;
+            }
+          | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                    jurisdiction: "eu" | "us" | null;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                    jurisdiction: "eu" | "us" | null;
+                  };
+              appId: string;
+            };
+        projectId: string;
+      };
+  /** ISO 8601 datetime string. */
+  sharedAt: string;
+};
+type StateAcceptShareInput = {
+  /** The scope that shared the folder. */
+  from:
+    | {
+        kind: "org";
+        orgId: string;
+        jurisdiction?: "eu" | "us" | null;
+      }
+    | {
+        kind: "user";
+        userId: string;
+        jurisdiction?: "eu" | "us" | null;
+      }
+    | {
+        kind: "app";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+              jurisdiction?: "eu" | "us" | null;
+            }
+          | {
+              kind: "user";
+              userId: string;
+              jurisdiction?: "eu" | "us" | null;
+            };
+        appId: string;
+      }
+    | {
+        kind: "project";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+              jurisdiction?: "eu" | "us" | null;
+            }
+          | {
+              kind: "user";
+              userId: string;
+              jurisdiction?: "eu" | "us" | null;
+            }
+          | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                    jurisdiction?: "eu" | "us" | null;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                    jurisdiction?: "eu" | "us" | null;
+                  };
+              appId: string;
+            };
+        projectId: string;
+      };
+  shareId: string;
+  /** The name to mount the share under, unique in this scope. Defaults to the share's ID. */
+  name?: string;
+};
+type StateAcceptShareOutput = {
+  shareId: string;
+  /** The name this scope mounts the share under. */
+  name: string;
+  /** The scope that shared the folder. */
+  from:
+    | {
+        kind: "org";
+        orgId: string;
+        jurisdiction: "eu" | "us" | null;
+      }
+    | {
+        kind: "user";
+        userId: string;
+        jurisdiction: "eu" | "us" | null;
+      }
+    | {
+        kind: "app";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+              jurisdiction: "eu" | "us" | null;
+            }
+          | {
+              kind: "user";
+              userId: string;
+              jurisdiction: "eu" | "us" | null;
+            };
+        appId: string;
+      }
+    | {
+        kind: "project";
+        owner:
+          | {
+              kind: "org";
+              orgId: string;
+              jurisdiction: "eu" | "us" | null;
+            }
+          | {
+              kind: "user";
+              userId: string;
+              jurisdiction: "eu" | "us" | null;
+            }
+          | {
+              kind: "app";
+              owner:
+                | {
+                    kind: "org";
+                    orgId: string;
+                    jurisdiction: "eu" | "us" | null;
+                  }
+                | {
+                    kind: "user";
+                    userId: string;
+                    jurisdiction: "eu" | "us" | null;
+                  };
+              appId: string;
+            };
+        projectId: string;
+      };
+  /** Where this scope reads the folder, read-only: /shared/<name>/. Search and glob enter it only when the pattern starts with this path. */
+  path: string;
+  /** The folder in the sharing scope's /workspace. */
+  sourcePath: string;
+  /** ISO 8601 datetime string. */
+  acceptedAt: string;
+};
+type StateListSharesInput = Record<string, unknown>;
+type StateListSharesOutput = {
+  shared: {
+    shareId: string;
+    /** The shared /workspace folder, ending in /. */
+    path: string;
+    /** The scope that may accept and read the folder. */
+    with:
+      | {
+          kind: "org";
+          orgId: string;
+          jurisdiction: "eu" | "us" | null;
+        }
+      | {
+          kind: "user";
+          userId: string;
+          jurisdiction: "eu" | "us" | null;
+        }
+      | {
+          kind: "app";
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+                jurisdiction: "eu" | "us" | null;
+              }
+            | {
+                kind: "user";
+                userId: string;
+                jurisdiction: "eu" | "us" | null;
+              };
+          appId: string;
+        }
+      | {
+          kind: "project";
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+                jurisdiction: "eu" | "us" | null;
+              }
+            | {
+                kind: "user";
+                userId: string;
+                jurisdiction: "eu" | "us" | null;
+              }
+            | {
+                kind: "app";
+                owner:
+                  | {
+                      kind: "org";
+                      orgId: string;
+                      jurisdiction: "eu" | "us" | null;
+                    }
+                  | {
+                      kind: "user";
+                      userId: string;
+                      jurisdiction: "eu" | "us" | null;
+                    };
+                appId: string;
+              };
+          projectId: string;
+        };
+    /** ISO 8601 datetime string. */
+    sharedAt: string;
+  }[];
+  accepted: {
+    shareId: string;
+    /** The name this scope mounts the share under. */
+    name: string;
+    /** The scope that shared the folder. */
+    from:
+      | {
+          kind: "org";
+          orgId: string;
+          jurisdiction: "eu" | "us" | null;
+        }
+      | {
+          kind: "user";
+          userId: string;
+          jurisdiction: "eu" | "us" | null;
+        }
+      | {
+          kind: "app";
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+                jurisdiction: "eu" | "us" | null;
+              }
+            | {
+                kind: "user";
+                userId: string;
+                jurisdiction: "eu" | "us" | null;
+              };
+          appId: string;
+        }
+      | {
+          kind: "project";
+          owner:
+            | {
+                kind: "org";
+                orgId: string;
+                jurisdiction: "eu" | "us" | null;
+              }
+            | {
+                kind: "user";
+                userId: string;
+                jurisdiction: "eu" | "us" | null;
+              }
+            | {
+                kind: "app";
+                owner:
+                  | {
+                      kind: "org";
+                      orgId: string;
+                      jurisdiction: "eu" | "us" | null;
+                    }
+                  | {
+                      kind: "user";
+                      userId: string;
+                      jurisdiction: "eu" | "us" | null;
+                    };
+                appId: string;
+              };
+          projectId: string;
+        };
+    /** Where this scope reads the folder, read-only: /shared/<name>/. Search and glob enter it only when the pattern starts with this path. */
+    path: string;
+    /** The folder in the sharing scope's /workspace. */
+    sourcePath: string;
+    /** ISO 8601 datetime string. */
+    acceptedAt: string;
+  }[];
+};
+type StateRevokeShareInput = {
+  shareId: string;
+};
 type StateViewImageInput = {
   path: string;
 };
