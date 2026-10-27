@@ -136,9 +136,6 @@ import type {
 } from "@/fragno/durable-hooks";
 import { nextNumberedSlug } from "@/lib/numbered-slug";
 import { BACKOFFICE_LOGIN_PATH } from "@/routes/backoffice/auth-navigation";
-import { buildAppSignInCodeEmail } from "@/transactional-emails/app-sign-in-code";
-import { buildUserEmailVerificationEmail } from "@/transactional-emails/user-email-verification";
-import { buildUserPasswordResetEmail } from "@/transactional-emails/user-password-reset";
 
 import {
   authenticateInstalledAppClient,
@@ -991,6 +988,8 @@ export class AuthObject implements AuthCommands {
         return app?.trust.kind === "first-party" ? app.trust.branding : null;
       },
       sendSignInCode: async (input) => {
+        // Keep email rendering and formatting dependencies out of ordinary Auth operations.
+        const { buildAppSignInCodeEmail } = await import("@/transactional-emails/app-sign-in-code");
         await runtime.objects.resend
           .singleton()
           .commands.queueEmail(await buildAppSignInCodeEmail(input), {
@@ -1255,6 +1254,8 @@ export class AuthObject implements AuthCommands {
       }
       const resetUrl = new URL("/backoffice/reset-password", publicBaseUrl);
       resetUrl.searchParams.set("token", verification.identifier.slice("reset-password:".length));
+      const { buildUserPasswordResetEmail } =
+        await import("@/transactional-emails/user-password-reset");
       await this.#runtime.objects.resend.singleton().commands.queueEmail(
         await buildUserPasswordResetEmail({
           email: user.email,
@@ -1282,6 +1283,8 @@ export class AuthObject implements AuthCommands {
       if (!verification.deliverable) {
         return;
       }
+      const { buildUserEmailVerificationEmail } =
+        await import("@/transactional-emails/user-email-verification");
       await this.#runtime.objects.resend.singleton().commands.queueEmail(
         await buildUserEmailVerificationEmail({
           email: payload.user.email,
