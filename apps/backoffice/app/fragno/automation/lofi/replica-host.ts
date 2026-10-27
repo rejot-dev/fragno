@@ -20,11 +20,7 @@ import {
   readStartedCodemodeRuns,
   readWorkflowRuns,
 } from "./reads";
-import {
-  AUTOMATION_READ_VIEWS,
-  AUTOMATION_REPLICA_EPHEMERAL_TABLES,
-  AUTOMATION_REPLICA_SCHEMAS,
-} from "./replica-schemas";
+import { AUTOMATION_READ_VIEWS, AUTOMATION_REPLICA_SCHEMAS } from "./replica-schemas";
 import { automationViews, readIntegrationConnections } from "./views";
 
 /**
@@ -56,7 +52,7 @@ export const automationReplicaHost = {
   schemas: AUTOMATION_REPLICA_SCHEMAS,
   localSchemas: automationViews.localSchemas,
   projections: automationViews.projections,
-  ephemeralTables: AUTOMATION_REPLICA_EPHEMERAL_TABLES,
+  ephemeralTables: [],
   engines: [
     readViewEngine({ kind: AUTOMATION_READ_VIEWS, reads: automationReads }),
     automationPageViewEngine,
