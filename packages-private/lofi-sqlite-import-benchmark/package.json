@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "replay": "vite",
     "build": "vite build",
     "measure:remote": "node run-remote.ts",
     "types:check": "tsc --noEmit",
