@@ -12,7 +12,7 @@ import {
   loadDurableHookQueue,
   type DurableHookQueueOptions,
 } from "@/fragno/durable-hooks";
-import { uploadStorageKeyPrefix } from "@/fragno/upload";
+import { scopeStorageKeyPrefix } from "@/fragno/upload";
 import { createUploadServer, type UploadFragment } from "@/fragno/upload-server";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
@@ -44,7 +44,7 @@ export class UploadObject implements UploadCommands {
       name: "Upload",
       createRuntime: () =>
         createUploadServer({
-          storageKeyPrefix: uploadStorageKeyPrefix(scope, objectName),
+          storageKeyPrefix: scopeStorageKeyPrefix(scope, objectName),
           runtime: implementation.fragmentDatabase,
           // The object name identifies the file namespace, so links only open files of the object
           // that signed them.

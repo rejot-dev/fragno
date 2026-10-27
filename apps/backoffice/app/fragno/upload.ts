@@ -8,16 +8,17 @@ function storagePrefixSegment(value: string): string {
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "");
   if (!segment || segment === "." || segment === "..") {
-    throw new Error(`'${value}' cannot be converted into an Upload storage key prefix.`);
+    throw new Error(`'${value}' cannot be converted into a storage key prefix.`);
   }
   return segment;
 }
 
 /**
- * Prefixes every storage key an Upload object writes. Organizations keep the `org/` prefix their
- * files were stored under; every other scope is named by its encoded object name.
+ * Prefixes every storage key a scope's Upload or Blobs object writes, so scopes sharing storage
+ * never address each other's objects. Organizations keep the `org/` prefix their files were stored
+ * under; every other scope is named by its encoded object name.
  */
-export function uploadStorageKeyPrefix(
+export function scopeStorageKeyPrefix(
   scope: Exclude<BackofficeObjectScope, { kind: "singleton" }>,
   objectName: string,
 ): string {
