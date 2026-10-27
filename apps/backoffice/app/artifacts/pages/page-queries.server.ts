@@ -4,7 +4,6 @@ import type { PageDefinition } from "@fragno-private/backoffice-ui/pages/definit
 import { pageQueryParams } from "@fragno-private/backoffice-ui/pages/rows";
 
 import {
-  AUTOMATION_PAGE_FUNCTIONS,
   AUTOMATION_PAGE_RELATIONS,
   automationPageViewEngine,
 } from "@/fragno/automation/lofi/page-relations";
@@ -13,20 +12,17 @@ import { automationViews } from "@/fragno/automation/lofi/views";
 
 /**
  * Names what page queries are checked against, so a cached build is checked again when the
- * relations or functions pages read change.
+ * relations pages read change.
  */
-export const PAGE_QUERY_CATALOG = JSON.stringify({
-  relations: AUTOMATION_PAGE_RELATIONS,
-  functions: AUTOMATION_PAGE_FUNCTIONS,
-});
+export const PAGE_QUERY_CATALOG = JSON.stringify({ relations: AUTOMATION_PAGE_RELATIONS });
 
 let checking: Promise<LofiSqliteViews> | undefined;
 
 /**
  * Why one of the page's queries cannot run, named by the query, or null. Each query runs as the
- * replica worker runs it, with the same relations, functions, and guard, on an empty in-memory
- * database of the replica's tables, so the build reports SQL that does not parse, reads what pages
- * cannot, binds the wrong number of values, or does not select a declared column.
+ * replica worker runs it, with the same relations and guard, on an empty in-memory database of
+ * the replica's tables, so the build reports SQL that does not parse, does what pages cannot, binds
+ * the wrong number of values, or does not select a declared column.
  */
 export async function pageQueriesError(definition: PageDefinition): Promise<string | null> {
   checking ??= openCheckingViews().catch((error: unknown) => {

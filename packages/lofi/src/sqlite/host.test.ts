@@ -94,7 +94,7 @@ const appReads = {
 const appReadViews = lofiSqliteReadViews<typeof appReads>("app-reads");
 let postTitleRuns = 0;
 
-// Pages read people only through `people` and `active_people`, two at a time.
+// Pages read people through `people` and `active_people`, two at a time.
 let activePeopleComputed = 0;
 const guardedEngine = guardedSqlViewEngine({
   kind: "guarded",
@@ -116,7 +116,6 @@ const guardedEngine = guardedSqlViewEngine({
       },
     },
   },
-  functions: ["count", "upper"],
   limits: { rows: 2, bytes: 200, operations: 100, length: 1_000 },
 });
 // An engine with no views, which records the tables of each refresh and fails while `failures`
@@ -492,7 +491,7 @@ describe("Lofi SQLite host", () => {
     expect(ctx.errors).toEqual([]);
   });
 
-  it("maintains guarded views, which read only their relations within limits", async () => {
+  it("maintains guarded views, which only read, within limits", async () => {
     let computedBefore = 0;
     const ready = (columns: string[], rows: unknown[][], truncated = false) => ({
       status: "ready",
@@ -542,16 +541,14 @@ describe("Lofi SQLite host", () => {
         assert.equal(activePeopleComputed, computedBefore);
       }),
 
-      watch("a", "table", guardedView(`SELECT "email" FROM ${table("users")}`)),
+      watch("a", "misspelt", guardedView(`SELECT "email" FROM "person"`)),
       waitForView(
         "a",
-        "table",
-        failed(
-          `"users_app" is not a relation queries can read. Read one of: people, active_people.`,
-        ),
+        "misspelt",
+        failed(`no such table: person. Read one of: people, active_people.`),
       ),
       watch("a", "function", guardedView(`SELECT hex(randomblob(4)) FROM "people"`)),
-      waitForView("a", "function", failed("Queries cannot call hex().")),
+      waitForView("a", "function", failed("Queries cannot call randomblob().")),
       watch("a", "write", guardedView(`DELETE FROM "active_people"`)),
       waitForView("a", "write", failed("Queries only read")),
       watch("a", "two", guardedView(`SELECT 1; SELECT 2`)),

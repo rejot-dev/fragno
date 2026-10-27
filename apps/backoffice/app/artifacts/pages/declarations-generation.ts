@@ -4,7 +4,6 @@ import {
 } from "@fragno-private/backoffice-ui/pages/definition";
 
 import {
-  AUTOMATION_PAGE_FUNCTIONS,
   AUTOMATION_PAGE_RELATIONS,
   type PageRelationColumnType,
 } from "@/fragno/automation/lofi/page-relations";
@@ -20,8 +19,8 @@ const COLUMN_TYPES: Record<PageRelationColumnType, string> = {
 };
 
 /**
- * Declares what page.d.ts reads from the host: the relations page queries read, the functions they
- * call, the limits a page stays within, and the version page.define writes.
+ * Declares what page.d.ts reads from the host: the relations page queries read, the limits a page
+ * stays within, and the version page.define writes.
  */
 export function generatePageSchemaDeclarations(): string {
   const relations = AUTOMATION_PAGE_RELATIONS.map(({ name, description, columns }) => {
@@ -32,7 +31,6 @@ export function generatePageSchemaDeclarations(): string {
     return [`  /** ${description} */`, `  ${name}: {`, ...fields, "  };"].join("\n");
   });
   const limits = Object.entries(PAGE_LIMITS).map(([name, limit]) => `  ${name}: ${limit};`);
-  const functions = wrap(AUTOMATION_PAGE_FUNCTIONS.join(", "), " * ");
   return `// Generated from the page relations and the page limits; page.d.ts declares the page
 // builder whose queries read them.
 
@@ -57,28 +55,12 @@ type PageSqlJson = string;
 /**
  * The relations page queries read, by name, with their columns as SQL reads them. A synchronized
  * table's position grows in the order its rows were created: rows created together, such as a run's
- * steps, share their createdAt, so order them by createdAt, position. Queries read nothing else;
- * their SQL calls only these functions:
-${functions}
+ * steps, share their createdAt, so order them by createdAt, position. Queries call SQLite's
+ * functions, except random(), randomblob(), and those reporting on the connection. Read the time
+ * from the builder's now, not date('now'): a query runs again only when what it reads changes.
  */
 type PageRelations = {
 ${relations.join("\n")}
 };
 `;
-}
-
-/** Wraps a list at 100 columns, each line starting with `prefix`. */
-function wrap(text: string, prefix: string): string {
-  const lines: string[] = [];
-  let line = "";
-  for (const word of text.split(" ")) {
-    if (line && prefix.length + line.length + 1 + word.length > 100) {
-      lines.push(prefix + line);
-      line = word;
-    } else {
-      line = line ? `${line} ${word}` : word;
-    }
-  }
-  lines.push(prefix + line);
-  return lines.join("\n");
 }

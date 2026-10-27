@@ -548,11 +548,11 @@ describe("workspace pages", () => {
             assert.include(diagnostics.join("\n"), "Property 'statsu' does not exist");
           }),
           then.assert(
-            "queries read only the page relations, without writing, within limits",
+            "queries only read, and a misspelt relation names the relations",
             async (ctx) => {
               const failures: Record<string, string | null> = {};
               for (const [label, sql] of Object.entries({
-                table: "SELECT instanceId FROM workflow_instance_workflows",
+                misspelt: "SELECT instanceId FROM run",
                 write: "DELETE FROM agents",
                 twoStatements: "SELECT instanceId FROM runs; SELECT 1",
                 random: "SELECT hex(randomblob(4)) AS instanceId",
@@ -561,8 +561,8 @@ describe("workspace pages", () => {
                 failures[label] = (await writePage(ctx, queryPage(sql))).verifyError;
               }
               assert.deepEqual(failures, {
-                table:
-                  'queries.q0: "workflow_instance_workflows" is not a relation queries can read. Read one of: runs, steps, workflow_events, events, event_sources, event_definitions, routes, route_schedules, route_dispatches, projects, kv_store, connections, agent_turns, agents, workflow_waits.',
+                misspelt:
+                  "queries.q0: no such table: run. Read one of: runs, steps, workflow_events, events, event_sources, event_definitions, routes, route_schedules, route_dispatches, projects, kv_store, connections, agent_turns, agents, workflow_waits.",
                 write:
                   "queries.q0: Queries only read: they cannot write, attach databases, or change settings.",
                 twoStatements:

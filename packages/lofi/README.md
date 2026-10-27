@@ -933,8 +933,8 @@ removes them before returning.
 ### Guarded SQL views
 
 `guardedSqlViewEngine` maintains views of SQL that people or agents write, such as the queries of a
-page, which the replica must survive. It gives queries relations of their own and keeps them from
-everything else:
+page, which the replica must survive. It gives queries relations of their own, and keeps them from
+writing or stalling the leader:
 
 ```ts
 guardedSqlViewEngine({
@@ -948,7 +948,6 @@ guardedSqlViewEngine({
       compute: (reader) => [[countActive(reader)]],
     },
   },
-  functions: ["count", "upper", "json_extract"],
   limits: { rows: 500, bytes: 4_000_000, operations: 25_000, length: 16_000_000 },
 });
 ```
@@ -957,9 +956,11 @@ A view's query is `{ sql, params }`, one SELECT with its parameters bound as val
 `{ status: "ready", columns, rows, truncated }` or `{ status: "error", message }`: queries that
 cannot run, and runs that fail, report why to the page that asked rather than to the worker.
 
-- **Reads.** A query reads the `views` and `derived` relations, through which it reads the replica's
-  tables, and table-valued JSON functions. It cannot read the replica's tables by name, write,
-  attach, or run pragmas, and calls only `functions`; an error names what it may read instead.
+- **Reads.** A query reads the `views` and `derived` relations, and the replica's tables too: the
+  relations give shorter names and rows the app computes, not a boundary, since the replica holds
+  only what the backend already sent the page. A query that names a missing table is told the
+  relations. It cannot write, attach, or run pragmas, or call functions whose result changes on its
+  own, such as `random()`; `date('now')` is the exception, so pass the time as a parameter.
 - **Limits.** A view holds `limits.rows` rows and says when it dropped more. A run that takes more
   than `limits.operations` thousand operations, or rows holding more than `limits.bytes` bytes of
   text, in UTF-8, and blobs, fails. 25 million operations take about 200 ms in Node. A query given
@@ -1055,16 +1056,14 @@ only to the tab that shows it.
   current schema, so a renamed column is NULL in rows written before the rename, and a column added
   later with a `now()` default is NULL where the backend has its migration's time. Replaying those
   needs the schema history, or a snapshot of the backend's current rows to start from.
-- **A view that fails to build stays failed.** Only refreshes recover; a read that throws when its
-  view is first built, for example because the replica has not caught up yet, fails until the page
-  asks for the view again.
 - **Views refresh by table.** A view refreshes after any batch that wrote a table it reads, even
   when the batch touched none of its rows, and a read's whole result is compared with the last one
   sent.
-- **The guard has two gaps.** SQLite reports reads inside a CTE as made through the CTE, so a CTE
-  named like a guarded view can read the replica's tables directly, and it reports `count(*)` of a
-  table as a read of no column, so a query can count a table it may not read. Both need the
-  replica's table names, which queries are not given; neither writes.
+- **A view that fails to build stays failed.** Only refreshes recover; a read that throws when its
+  view is first built, for example because the replica has not caught up yet, fails until the page
+  asks for the view again.
+- **Queries can depend on the layout.** A query that reads the replica's tables by name, not through
+  the relations, breaks when the layout or a schema changes.
 - **Derived relations hold all their rows.** A derived relation's rows are recomputed in full, and
   rewritten when any changed, so it suits relations of tens or hundreds of rows, such as agents.
 - **Derived relations compute while any view is open.** Every stale derived relation is computed
