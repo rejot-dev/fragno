@@ -17,6 +17,13 @@ export type FileHookPayload = {
   contentType: string;
 };
 
+/** What storage may hold for an upload that will never complete: its object, or its parts. */
+export type UnfinishedUploadPayload = {
+  objectKey: string;
+  /** The upload's multipart session, or null for a direct upload. */
+  storageUploadId: string | null;
+};
+
 export type UploadTimeoutPayload = {
   uploadId: string;
   provider: string;
