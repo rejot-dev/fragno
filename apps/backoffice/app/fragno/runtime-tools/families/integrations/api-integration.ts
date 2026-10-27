@@ -32,6 +32,7 @@ import { apiPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
 import { resolveRuntimePublicScopePathSegment } from "../../runtime-public-scope";
+import { INTEGRATION_CATEGORY } from "./integration-categories";
 import { connectionStateOfInspection } from "./integration-events";
 import {
   authMethodOfFragmentAuthMode,
@@ -563,6 +564,8 @@ export function createApiIntegration({
           label: "Custom HTTP API",
           description:
             "Outbound HTTP connections to APIs without a native integration. Choose an address api#<slug>; the slug becomes the connection's identity.",
+          iconUrl: null,
+          categories: [INTEGRATION_CATEGORY.developerTools],
           connectionCardinality: "multiple",
           availability: !runtime.config.bindings.api
             ? { status: "unavailable", reason: "The API object binding is unavailable." }

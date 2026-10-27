@@ -320,6 +320,15 @@ export const integrationOverviewSchema = z
       id: integrationIdSchema,
       label: z.string(),
       description: z.string(),
+      iconUrl: z
+        .url()
+        .nullable()
+        .describe("The service's logo; null when it has none and clients draw a generic mark."),
+      categories: z
+        .array(z.strictObject({ id: z.string().min(1), label: z.string() }))
+        .describe(
+          "Broad application categories shared across services, most specific first. Clients group a service under its first category.",
+        ),
       connectionCardinality: z
         .enum(["singleton", "multiple"])
         .describe(
