@@ -150,11 +150,18 @@ export type SharedFolders = {
 export type SharedFolder = {
   name: string;
   /** The shared folder, or null when the sharing scope revoked the share. */
-  open(): Promise<FileCollection | null>;
+  open(): Promise<OpenSharedFolder | null>;
 };
 
-/** A standing share, whose tree is listed only when a call needs more than one file. */
-type OpenedShare = { collection: FileCollection; tree(): Promise<FileTree> };
+/** A shared folder that stood when it was opened. */
+export type OpenSharedFolder = {
+  collection: FileCollection;
+  /** Whether the share still stands, asked of the sharing scope, which may revoke it at any time. */
+  standing(): Promise<boolean>;
+};
+
+/** An open share, whose tree is listed only when a call needs more than one file. */
+type OpenedShare = OpenSharedFolder & { tree(): Promise<FileTree> };
 
 type StateBackendMounts = {
   upload: UploadStateMount;
@@ -561,7 +568,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
   readonly #static: StateMount;
   readonly #shared: SharedFolders | null;
   #uploadTreePromise: Promise<FileTree> | undefined;
-  // Each share is checked with its sharing scope once per execution, and its tree read once.
+  // Each share is opened, and its tree read, once per execution; whether it stands is asked anew.
   readonly #openedShares = new Map<string, Promise<OpenedShare | null>>();
 
   constructor(options: StateBackendMounts) {
@@ -683,8 +690,8 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
     }
     const resolved = this.#resolvePath(path);
     if (resolved.kind === "shared" && resolved.name === null) {
-      return (await this.#standingShareNames())
-        .map((name) => ({ name, type: "directory" as const }))
+      return (await this.#standingShares())
+        .map(({ name }) => ({ name, type: "directory" as const }))
         .sort((left, right) => left.name.localeCompare(right.name));
     }
     const tree = await (resolved.kind === "shared"
@@ -1320,7 +1327,23 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
   }
 
   #openShare(name: string): Promise<OpenedShare | null> {
-    return this.#openFolder(name, async () => (await this.#shared?.find(name)) ?? null);
+    return this.#standingShare(name, async () => (await this.#shared?.find(name)) ?? null);
+  }
+
+  /**
+   * The share accepted as `name`, while it stands. Opening it asked the sharing scope; every later
+   * use in the execution asks again, so a revocation stops reads already under way.
+   */
+  async #standingShare(
+    name: string,
+    folder: () => Promise<SharedFolder | null>,
+  ): Promise<OpenedShare | null> {
+    const alreadyOpen = this.#openedShares.has(name);
+    const opened = await this.#openFolder(name, folder);
+    if (!opened || !alreadyOpen) {
+      return opened;
+    }
+    return (await opened.standing()) ? opened : null;
   }
 
   /** Opens each share once per execution; `folder` finds it unless it is already open. */
@@ -1331,12 +1354,12 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
     let opened = this.#openedShares.get(name);
     if (!opened) {
       opened = (async () => {
-        const collection = await (await folder())?.open();
-        if (!collection) {
+        const open = await (await folder())?.open();
+        if (!open) {
           return null;
         }
         let tree: Promise<FileTree> | undefined;
-        return { collection, tree: () => (tree ??= collection.getTree()) };
+        return { ...open, tree: () => (tree ??= open.collection.getTree()) };
       })();
       this.#openedShares.set(name, opened);
     }
@@ -1352,14 +1375,15 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
   }
 
   /** Accepted shares the sharing scope has not revoked. */
-  async #standingShareNames(): Promise<string[]> {
+  async #standingShares(): Promise<{ name: string; share: OpenedShare }[]> {
     const folders = (await this.#shared?.list()) ?? [];
     const standing = await Promise.all(
-      folders.map(async (folder) =>
-        (await this.#openFolder(folder.name, async () => folder)) ? folder.name : null,
-      ),
+      folders.map(async (folder) => {
+        const share = await this.#standingShare(folder.name, async () => folder);
+        return share && { name: folder.name, share };
+      }),
     );
-    return standing.filter((name) => name !== null);
+    return standing.filter((entry) => entry !== null);
   }
 
   /**
@@ -1372,19 +1396,21 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
     }
     // A wildcard in the share's segment, as in /shared/*/report.pdf, may match any share.
     const named = namedShare(absolutePattern);
-    const names = named === null ? await this.#standingShareNames() : [named];
+    const shares =
+      named === null
+        ? await this.#standingShares()
+        : [{ name: named, share: await this.#openShare(named) }];
     const paths = await Promise.all(
-      names.map(async (name) => {
-        const share = await this.#openShare(name);
-        return share
+      shares.map(async ({ name, share }) =>
+        share
           ? [
               sharedMountPath(name),
               ...(await share.tree()).entries.map((entry) =>
                 joinMountPath(sharedMountPath(name), entry.path),
               ),
             ]
-          : [];
-      }),
+          : [],
+      ),
     );
     return paths.flat();
   }
