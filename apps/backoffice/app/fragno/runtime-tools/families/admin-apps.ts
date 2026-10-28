@@ -36,7 +36,7 @@ const trustOption = {
   valueRequired: true,
   valueName: "json",
   description:
-    'Trust: {"kind":"third-party"}, or {"kind":"first-party","provisioningPermissions":["organizations.provision","organizations.provisionForInvitee","projects.provision","invitations.create","invitations.send","invitations.accept"],"branding":{"displayName","logoUrl","accentColor":"#rrggbb","homeUrl","supportUrl"}} for an app Backoffice operates',
+    'Trust: {"kind":"third-party"}, or {"kind":"first-party","provisioningPermissions":["organizations.provision","organizations.provisionForInvitee","organizations.provisionManaged","organizations.listManaged","projects.provision","invitations.create","invitations.send","invitations.accept"],"branding":{"displayName","logoUrl","accentColor":"#rrggbb","homeUrl","supportUrl"}} for an app Backoffice operates',
 };
 
 const createAppTool = defineBackofficeRuntimeTool({

@@ -7,6 +7,7 @@ import type {
   OrganizationMembershipRecord,
   OrganizationRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
+import type { ManagedOrganizationPage } from "@fragno-dev/backoffice-api/v0/provisioning";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import type { BackofficeJurisdiction } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { AuthContext } from "better-auth";
@@ -231,6 +232,53 @@ export async function readOrganizationPage(
     organizations: rows.map(toOrganizationRecord),
     nextCursor,
     hasNextPage: nextCursor !== null,
+  };
+}
+
+/**
+ * Whether the organization has an owner. Roles are stored as comma-separated sets of owner, admin,
+ * and member, so "owner" appears only in an owner's. One row answers, so no listing limit applies.
+ */
+export async function organizationHasOwner(
+  adapter: Pick<AuthAdapter, "findOne">,
+  organizationId: string,
+): Promise<boolean> {
+  const owner = await adapter.findOne<{ id: string }>({
+    model: "member",
+    select: ["id"],
+    where: [
+      { field: "organizationId", value: organizationId },
+      { field: "role", operator: "contains", value: "owner" },
+    ],
+  });
+  return owner !== null;
+}
+
+/** A page of the organizations one organization manages, by ID, each with whether it has an owner. */
+export async function readManagedOrganizationPage(
+  adapter: AuthAdapter,
+  input: { managingOrganizationId: string; page: DirectoryPageInput },
+): Promise<Omit<ManagedOrganizationPage, "hasNextPage">> {
+  const { rows, nextCursor } = await readIdCursorPage(adapter, {
+    model: "organization",
+    where: [{ field: "managingOrganizationId", value: input.managingOrganizationId }],
+    listing: {
+      indexName: "organization.managingOrganizationId",
+      partition: { managingOrganizationId: input.managingOrganizationId },
+    },
+    page: input.page,
+  });
+  return {
+    organizations: await Promise.all(
+      rows.map(async ({ id, name, slug, jurisdiction }) => ({
+        organizationId: id,
+        name,
+        slug,
+        jurisdiction,
+        hasOwner: await organizationHasOwner(adapter, id),
+      })),
+    ),
+    nextCursor,
   };
 }
 

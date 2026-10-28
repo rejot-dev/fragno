@@ -6,11 +6,17 @@ import type {
 import type {
   AcceptInvitationInput,
   CreateInvitationInput,
+  ListManagedOrganizationsInput,
+  ManagedOrganizationPage,
+  ProvisionManagedOrganizationInput,
+  ProvisionManagedOrganizationResult,
   ProvisionOrganizationForInviteeInput,
   ProvisionOrganizationForInviteeResult,
   ProvisionOrganizationInput,
   ProvisionOrganizationResult,
 } from "@fragno-dev/backoffice-api/v0/provisioning";
+
+import type { OrganizationAccess } from "./contracts";
 
 /** Failures cross Durable Object RPC as values, coded as the provisioning API reports them. */
 export type AppProvisioningResult<T> =
@@ -48,12 +54,22 @@ export type AuthAppProvisioningCommands = {
   provisionAppOrganizationForInvitee(
     input: ProvisioningApp & ProvisionOrganizationForInviteeInput,
   ): Promise<AppProvisioningResult<ProvisionOrganizationForInviteeResult>>;
-  /** Whether the user authorized the app and is a member of the organization. */
-  confirmAppOrganizationMember(input: {
+  provisionAppManagedOrganization(
+    input: ProvisioningApp & ProvisionManagedOrganizationInput,
+  ): Promise<AppProvisioningResult<ProvisionManagedOrganizationResult>>;
+  /** Every organization it manages, a page at a time, whether or not the app is installed there. */
+  listManagedOrganizations(
+    input: ListManagedOrganizationsInput,
+  ): Promise<Omit<ManagedOrganizationPage, "hasNextPage">>;
+  /**
+   * How the user acts in the organization, when they authorized the app: as a member, or through
+   * the organization managing it.
+   */
+  confirmAppOrganizationActor(input: {
     oauthClientId: string;
     organizationId: string;
     userId: string;
-  }): Promise<AppProvisioningResult<null>>;
+  }): Promise<AppProvisioningResult<OrganizationAccess>>;
   createAppInvitation(
     input: Pick<ProvisioningApp, "oauthClientId"> & CreateInvitationInput,
   ): Promise<AppProvisioningResult<OrganizationInvitationRecord>>;

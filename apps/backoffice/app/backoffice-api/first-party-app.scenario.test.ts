@@ -11,7 +11,10 @@ import {
   createBackofficeProvisioningClient,
 } from "@fragno-dev/backoffice-api/v0/client";
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
-import type { CreateInvitationInput } from "@fragno-dev/backoffice-api/v0/provisioning";
+import type {
+  CreateInvitationInput,
+  ManagedOrganizationPage,
+} from "@fragno-dev/backoffice-api/v0/provisioning";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
@@ -73,6 +76,8 @@ const branding = {
 const everyProvisioningPermission = [
   "organizations.provision",
   "organizations.provisionForInvitee",
+  "organizations.provisionManaged",
+  "organizations.listManaged",
   "projects.provision",
   "invitations.create",
   "invitations.send",
@@ -93,6 +98,7 @@ type Vars = {
   colleagueId: string;
   orgId: string;
   projectId: string;
+  clientOrgId: string;
 };
 type Ctx = BackofficeScenarioContext<Vars>;
 
@@ -190,14 +196,20 @@ async function sessionUserId(ctx: Ctx, cookie: string) {
 
 /** Runs a Bash command as Backoffice's global administrator, in System context. */
 async function execAsAdministrator(ctx: Ctx, command: string): Promise<string> {
+  return await execAs(ctx, { scope: { kind: "system" }, userId: "platform-admin" }, command);
+}
+
+/** Runs a Bash command as a user in a scope, as Backoffice's chat does. */
+async function execAs(
+  ctx: Ctx,
+  execution: Parameters<typeof createBackofficeUserExecution>[0],
+  command: string,
+): Promise<string> {
   const context = createRouteBackedRuntimeContext({
     emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
-    execution: createBackofficeUserExecution({
-      scope: { kind: "system" },
-      userId: "platform-admin",
-    }),
+    execution: createBackofficeUserExecution(execution),
   });
   assert(context.stateBackend);
   const { bash } = await createInteractiveBashHost({
@@ -292,6 +304,7 @@ async function runFirstPartyScenario(
           colleagueId: "",
           orgId: "",
           projectId: "",
+          clientOrgId: "",
         }),
         setup: ({ given }) => [given.auth.user({ id: "platform-admin", role: "admin" })],
         steps: ({ when, then }) => [
@@ -1036,5 +1049,412 @@ test("Bookkeeping provisions an organization for an owner who never signed in, w
       expect(second).toMatchObject({ organizationId: first.organizationId, created: false });
       expect(second.ownerInvitation?.invitationId).not.toBe(first.ownerInvitation?.invitationId);
     }),
+  ]);
+});
+
+test("Bookkeeping provisions a client managed by a firm, whose people work in it through the firm", async () => {
+  /** Someone signs up, authorizes Bookkeeping, and has a verified address. */
+  async function bookkeepingUser(ctx: Ctx, email: string, name: string) {
+    const user = await signUpWithPassword(ctx, email, name);
+    await authorizeBookkeeping(ctx, user.cookie);
+    await ctx.runtime.objects.auth.singleton().commands.verifyAdminUserEmail({ email });
+    return user;
+  }
+  async function memberRoles(ctx: Ctx, organizationId: string, userId: string) {
+    return await ctx.runtime.objects.auth
+      .singleton()
+      .commands.getScenarioMemberRoles({ organizationId, userId });
+  }
+  const users = { ada: "", joan: "" };
+
+  await runFirstPartyScenario("first-party managed provisioning", (then) => [
+    then(
+      "a firm's owner has Bookkeeping create a client managed by the firm, with no members and no owner",
+      async (ctx) => {
+        const client = provisioning(ctx);
+        users.ada = (await bookkeepingUser(ctx, "ada@firm.test", "Ada")).userId;
+        const firm = await client.call("organizations.provision", {
+          externalOrganizationId: "firm:lovelace",
+          name: "Lovelace & Co",
+          ownerUserId: users.ada,
+        });
+        ctx.vars.orgId = firm.organizationId;
+        // Joan joins the firm as a member.
+        users.joan = (await bookkeepingUser(ctx, "joan@firm.test", "Joan")).userId;
+        const { invitationId } = await client.call("invitations.create", {
+          organizationId: ctx.vars.orgId,
+          inviterUserId: users.ada,
+          email: "joan@firm.test",
+          roles: ["member"],
+        });
+        await client.call("invitations.accept", { invitationId, userId: users.joan });
+
+        const input = {
+          externalOrganizationId: "client:analytical-engines",
+          name: "Analytical Engines",
+          managingOrganizationId: ctx.vars.orgId,
+          byUserId: users.ada,
+          owner: { kind: "none" },
+        } as const;
+        const provisioned = await client.call("organizations.provisionManaged", input);
+        expect(provisioned).toEqual({
+          organizationId: expect.any(String),
+          slug: "analytical-engines",
+          jurisdiction: null,
+          created: true,
+          ownerInvitation: null,
+        });
+        ctx.vars.clientOrgId = provisioned.organizationId;
+        expect(await client.call("organizations.provisionManaged", input)).toEqual({
+          ...provisioned,
+          created: false,
+        });
+        // Ada created it, but is not a member: she reaches it through the firm.
+        expect(await memberRoles(ctx, ctx.vars.clientOrgId, users.ada)).toBeNull();
+        expect(
+          await ctx.runtime.objects.appInstallations
+            .for({ kind: "org", orgId: ctx.vars.clientOrgId, jurisdiction: null })
+            .commands.getInstallation({ appId: ctx.vars.appId }),
+        ).toMatchObject({
+          status: "active",
+          externalAccount: { id: "client:analytical-engines", label: "Analytical Engines" },
+        });
+        expect(
+          (await listSystemEvents(ctx)).filter(
+            (event) => event.eventType === "organization.provisionedManaged",
+          ),
+        ).toHaveLength(2);
+
+        // Only the firm's own owners and admins create its clients.
+        await expectApiError(
+          client.call("organizations.provisionManaged", {
+            ...input,
+            externalOrganizationId: "client:other",
+            byUserId: users.joan,
+          }),
+          "forbidden",
+        );
+        // The firm must have Bookkeeping installed.
+        await expectApiError(
+          client.call("organizations.provisionManaged", {
+            ...input,
+            externalOrganizationId: "client:other",
+            managingOrganizationId: ctx.vars.existingOrgId,
+            byUserId: ctx.vars.existingUserId,
+          }),
+          "not_found",
+        );
+        // An organization already provisioned stays under the organization managing it, or none.
+        const otherFirm = await client.call("organizations.provision", {
+          externalOrganizationId: "firm:hopper",
+          name: "Hopper Books",
+          ownerUserId: users.ada,
+        });
+        await expectApiError(
+          client.call("organizations.provisionManaged", {
+            ...input,
+            managingOrganizationId: otherFirm.organizationId,
+          }),
+          "conflict",
+        );
+        await expectApiError(
+          client.call("organizations.provisionManaged", {
+            ...input,
+            externalOrganizationId: "firm:hopper",
+          }),
+          "conflict",
+        );
+      },
+    ),
+    then("the firm's people act in the client with their role in the firm", async (ctx) => {
+      const scope = { kind: "org", orgId: ctx.vars.clientOrgId, jurisdiction: null } as const;
+      expect(
+        JSON.parse(await execAs(ctx, { scope, userId: users.ada }, "org.get --format json")),
+      ).toMatchObject({
+        organization: { organizationId: ctx.vars.clientOrgId, slug: "analytical-engines" },
+        // Owners act as admins, so only a client's own owners own it.
+        roles: ["admin"],
+        managingOrganization: { organizationId: ctx.vars.orgId, slug: "lovelace-co" },
+        through: "managing-organization",
+      });
+      expect(
+        JSON.parse(await execAs(ctx, { scope, userId: users.joan }, "org.get --format json")),
+      ).toMatchObject({ roles: ["member"], through: "managing-organization" });
+
+      // Anyone acting there creates projects, such as administrations.
+      const client = provisioning(ctx);
+      const project = {
+        organizationId: ctx.vars.clientOrgId,
+        externalProjectId: "administration:1",
+        name: "Engines Ltd",
+        createdByUserId: users.joan,
+      };
+      expect(await client.call("projects.provision", project)).toMatchObject({ created: true });
+      await expectApiError(
+        client.call("projects.provision", {
+          ...project,
+          externalProjectId: "administration:2",
+          createdByUserId: ctx.vars.existingUserId,
+        }),
+        "forbidden",
+      );
+    }),
+    then(
+      "the firm's admins invite the client's owner while it has none, who then owns it",
+      async (ctx) => {
+        const client = provisioning(ctx);
+        const ownerInvite = {
+          organizationId: ctx.vars.clientOrgId,
+          inviterUserId: users.ada,
+          email: "existing@backoffice.test",
+          roles: ["owner"],
+        } satisfies CreateInvitationInput;
+        // A member of the firm does not invite.
+        await expectApiError(
+          client.call("invitations.create", { ...ownerInvite, inviterUserId: users.joan }),
+          "forbidden",
+        );
+        const invitation = await client.call("invitations.create", ownerInvite);
+        expect(invitation).toMatchObject({ email: "existing@backoffice.test", roles: ["owner"] });
+        expect(await client.call("invitations.create", ownerInvite)).toEqual(invitation);
+        await expectApiError(
+          client.call("invitations.create", { ...ownerInvite, roles: ["admin"] }),
+          "conflict",
+        );
+
+        // The client's owner already uses Backoffice, and signs in to Bookkeeping to accept.
+        await authorizeBookkeeping(ctx, ctx.vars.existingCookie);
+        await ctx.runtime.objects.auth
+          .singleton()
+          .commands.verifyAdminUserEmail({ email: "existing@backoffice.test" });
+        expect(
+          await client.call("invitations.accept", {
+            invitationId: invitation.invitationId,
+            userId: ctx.vars.existingUserId,
+          }),
+        ).toMatchObject({ roles: ["owner"] });
+        // Once the client has an owner, only its own owners invite owners.
+        await expectApiError(
+          client.call("invitations.create", { ...ownerInvite, email: "someone@client.test" }),
+          "forbidden",
+        );
+        expect(
+          await client.call("invitations.create", {
+            ...ownerInvite,
+            email: "colleague@client.test",
+            roles: ["admin"],
+          }),
+        ).toMatchObject({ roles: ["admin"] });
+        await expectApiError(
+          client.call("invitations.create", {
+            ...ownerInvite,
+            email: "existing@backoffice.test",
+            roles: ["member"],
+          }),
+          "conflict",
+        );
+      },
+    ),
+    then(
+      "a client provisioned for an invited owner, and the firm's clients a page at a time",
+      async (ctx) => {
+        const client = provisioning(ctx);
+        const provisioned = await client.call("organizations.provisionManaged", {
+          externalOrganizationId: "client:difference-engines",
+          name: "Difference Engines",
+          managingOrganizationId: ctx.vars.orgId,
+          byUserId: users.ada,
+          owner: { kind: "invitee", email: "Charles@Client.test" },
+        });
+        expect(provisioned.ownerInvitation).toEqual({
+          invitationId: expect.any(String),
+          expiresAt: expect.any(String),
+        });
+        // A client the firm created in Backoffice itself, without Bookkeeping, is not listed.
+        await ctx.runtime.objects.auth.singleton().commands.createManagedOrganization({
+          id: "backoffice-client",
+          userId: users.ada,
+          managingOrganizationId: ctx.vars.orgId,
+          name: "Babbage Workshop",
+        });
+
+        const listed = [];
+        let cursor: string | null = null;
+        do {
+          const page: ManagedOrganizationPage = await client.call("organizations.listManaged", {
+            managingOrganizationId: ctx.vars.orgId,
+            pageSize: 1,
+            cursor,
+          });
+          expect(page.organizations.length).toBeLessThanOrEqual(1);
+          listed.push(...page.organizations);
+          cursor = page.nextCursor;
+        } while (cursor !== null);
+        expect(listed.sort((a, b) => a.name.localeCompare(b.name))).toEqual([
+          {
+            organizationId: ctx.vars.clientOrgId,
+            name: "Analytical Engines",
+            slug: "analytical-engines",
+            jurisdiction: null,
+            hasOwner: true,
+          },
+          {
+            organizationId: provisioned.organizationId,
+            name: "Difference Engines",
+            slug: "difference-engines",
+            jurisdiction: null,
+            hasOwner: false,
+          },
+        ]);
+        await expectApiError(
+          client.call("organizations.listManaged", {
+            managingOrganizationId: ctx.vars.existingOrgId,
+          }),
+          "not_found",
+        );
+      },
+    ),
+    then(
+      "a client with over a hundred members still has its owner found, so the firm invites no second one",
+      async (ctx) => {
+        const client = provisioning(ctx);
+        const input = {
+          externalOrganizationId: "client:crowded",
+          name: "Crowded Engines",
+          managingOrganizationId: ctx.vars.orgId,
+          byUserId: users.ada,
+          owner: { kind: "none" },
+        } as const;
+        const crowded = await client.call("organizations.provisionManaged", input);
+        const auth = ctx.runtime.objects.auth.singleton().commands;
+        const staff = Array.from({ length: 100 }, (_, index) => ({
+          id: `crowded-staff-${index}`,
+          email: `staff-${index}@crowded.test`,
+          role: "user" as const,
+          status: "active" as const,
+        }));
+        await auth.applyScenarioFixture({
+          users: [
+            ...staff,
+            { id: "crowded-owner", email: "owner@crowded.test", role: "user", status: "active" },
+          ],
+          members: staff.map(({ id }) => ({
+            organizationId: crowded.organizationId,
+            userId: id,
+            roles: ["member"],
+          })),
+        });
+        // The owner joins after the first hundred members.
+        await auth.applyScenarioFixture({
+          members: [
+            { organizationId: crowded.organizationId, userId: "crowded-owner", roles: ["owner"] },
+          ],
+        });
+
+        const page = await client.call("organizations.listManaged", {
+          managingOrganizationId: ctx.vars.orgId,
+        });
+        expect(
+          page.organizations.find(
+            ({ organizationId }) => organizationId === crowded.organizationId,
+          ),
+        ).toMatchObject({ hasOwner: true });
+        await expectApiError(
+          client.call("invitations.create", {
+            organizationId: crowded.organizationId,
+            inviterUserId: users.ada,
+            email: "second-owner@crowded.test",
+            roles: ["owner"],
+          }),
+          "forbidden",
+        );
+        expect(
+          await client.call("organizations.provisionManaged", {
+            ...input,
+            owner: { kind: "invitee", email: "second-owner@crowded.test" },
+          }),
+        ).toMatchObject({ created: false, ownerInvitation: null });
+      },
+    ),
+    then("a firm has at most a hundred invitations pending in a client", async (ctx) => {
+      const client = provisioning(ctx);
+      const busy = await client.call("organizations.provisionManaged", {
+        externalOrganizationId: "client:busy",
+        name: "Busy Engines",
+        managingOrganizationId: ctx.vars.orgId,
+        byUserId: users.ada,
+        owner: { kind: "none" },
+      });
+      const invite = (index: number) => ({
+        organizationId: busy.organizationId,
+        inviterUserId: users.ada,
+        email: `guest-${index}@busy.test`,
+        roles: ["member" as const],
+      });
+      for (let index = 0; index < 100; index++) {
+        await client.call("invitations.create", invite(index));
+      }
+      await expectApiError(client.call("invitations.create", invite(100)), "forbidden");
+      // An address already invited still gets its invitation back.
+      expect(await client.call("invitations.create", invite(0))).toMatchObject({
+        email: "guest-0@busy.test",
+      });
+    }),
+    then(
+      "provisioning a client again answers where it was made, after it moved under a manager elsewhere",
+      async (ctx) => {
+        const client = provisioning(ctx);
+        // An organization Bookkeeping made unmanaged, so kept without a jurisdiction.
+        const moved = await client.call("organizations.provision", {
+          externalOrganizationId: "client:moved",
+          name: "Moved Engines",
+          ownerUserId: users.ada,
+        });
+        expect(moved.jurisdiction).toBeNull();
+        // Ada's organization in the EU, with Bookkeeping installed, takes it over.
+        const auth = ctx.runtime.objects.auth.singleton().commands;
+        await auth.chooseUserJurisdiction({ userId: users.ada, jurisdiction: "eu" });
+        const euFirm = await auth.createUserOrganization({
+          id: "eu-firm",
+          userId: users.ada,
+          name: "Lovelace Europe",
+        });
+        const app = await ctx.runtime.objects.apps
+          .singleton()
+          .commands.getApp({ appId: ctx.vars.appId });
+        assert(app);
+        assert(
+          (
+            await ctx.runtime.objects.appInstallations
+              .for({ kind: "org", orgId: euFirm.id, jurisdiction: "eu" })
+              .commands.installApp({
+                appId: ctx.vars.appId,
+                grantedPermissions: [emit],
+                resourceScope: { kind: "owner" },
+                installedByUserId: users.ada,
+                actionsRevision: app.actionsRevision,
+              })
+          ).ok,
+        );
+        await execAsAdministrator(
+          ctx,
+          `admin.org.manager.set --org ${moved.slug} --manager ${euFirm.slug}`,
+        );
+
+        expect(
+          await client.call("organizations.provisionManaged", {
+            externalOrganizationId: "client:moved",
+            name: "Moved Engines",
+            managingOrganizationId: euFirm.id,
+            byUserId: users.ada,
+            owner: { kind: "none" },
+          }),
+        ).toMatchObject({
+          organizationId: moved.organizationId,
+          created: false,
+          jurisdiction: null,
+        });
+      },
+    ),
   ]);
 });

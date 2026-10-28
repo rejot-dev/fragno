@@ -33,6 +33,38 @@ export const organizationMembershipRecordSchema = z
   .meta({ id: "OrganizationMembershipRecord" });
 export type OrganizationMembershipRecord = z.output<typeof organizationMembershipRecordSchema>;
 
+/**
+ * How the calling user acts in the current organization: as one of its members, or through the
+ * organization managing it, whose members act in it with their role there, owners as admins,
+ * without becoming its members.
+ */
+export const organizationAccessRecordSchema = z
+  .lazy(() =>
+    organizationMembershipRecordSchema._zod.innerType
+      .extend({
+        managingOrganization: z
+          .strictObject({
+            organizationId: z.string().min(1),
+            name: z.string().min(1),
+            slug: z.string().min(1),
+          })
+          .nullable()
+          .describe("The organization managing this one, or null when none does."),
+        through: z
+          .enum(["membership", "managing-organization"])
+          .describe(
+            "Whether you act here as a member, or as a member of the managing organization. A member of both acts as a member.",
+          ),
+      })
+      .refine(
+        ({ managingOrganization, through }) =>
+          through === "membership" || managingOrganization !== null,
+        "Only a managed organization is reached through its managing organization.",
+      ),
+  )
+  .meta({ id: "OrganizationAccessRecord" });
+export type OrganizationAccessRecord = z.output<typeof organizationAccessRecordSchema>;
+
 const organizationMemberRecordSchema = z
   .lazy(() =>
     z.strictObject({
@@ -92,10 +124,10 @@ export type OrganizationInvitationLinkPage = z.output<typeof organizationInvitat
 export const organizationOperations = {
   "org.get": {
     description:
-      "Read the current organization and your roles in it. List every organization you belong to with account.orgs.list.",
+      "Read the current organization, your roles in it, and whether you act here as a member or through the organization managing it. List every organization you belong to with account.orgs.list.",
     permissions: [BACKOFFICE_PERMISSION.org.read],
     input: z.void(),
-    output: organizationMembershipRecordSchema,
+    output: organizationAccessRecordSchema,
   },
   "org.update": {
     description: "Rename the current organization. Requires the owner or admin role.",

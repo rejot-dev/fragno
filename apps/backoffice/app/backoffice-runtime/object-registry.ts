@@ -30,6 +30,7 @@ import type {
   OrganizationRole,
   OrganizationInvitationRecord,
   OrganizationMemberPage,
+  OrganizationAccessRecord,
   OrganizationMembershipRecord,
   OrganizationRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
@@ -486,6 +487,10 @@ export type AuthCommands = DurableHookCommands &
       organizationId: string;
       userId: string;
     }): Promise<OrganizationMembershipRecord | null>;
+    getOrganizationAccess(input: {
+      organizationId: string;
+      userId: string;
+    }): Promise<OrganizationAccessRecord | null>;
     updateOrganization(input: {
       organizationId: string;
       name: string;

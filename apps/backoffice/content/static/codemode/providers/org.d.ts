@@ -1,7 +1,7 @@
 // Current organization: name, members, invitations. Read to rename it, list members, or invite someone.
 type OrgCodemodeProvider = {
   /**
-   * Read the current organization and your roles in it. List every organization you belong to with account.orgs.list.
+   * Read the current organization, your roles in it, and whether you act here as a member or through the organization managing it. List every organization you belong to with account.orgs.list.
    * Requires `org.read`.
    */
   get(): Promise<OrgGetOutput>;
@@ -28,9 +28,17 @@ type OrgCodemodeProvider = {
 };
 declare const org: OrgCodemodeProvider;
 
-type OrganizationMembershipRecord = {
+type OrganizationAccessRecord = {
   organization: OrganizationRecord;
   roles: string[];
+  /** The organization managing this one, or null when none does. */
+  managingOrganization: {
+    organizationId: string;
+    name: string;
+    slug: string;
+  } | null;
+  /** Whether you act here as a member, or as a member of the managing organization. A member of both acts as a member. */
+  through: "membership" | "managing-organization";
 };
 type OrganizationRecord = {
   organizationId: string;
@@ -73,7 +81,7 @@ type OrganizationInvitationLink = {
   createdAt: string;
   url: string;
 };
-type OrgGetOutput = OrganizationMembershipRecord;
+type OrgGetOutput = OrganizationAccessRecord;
 type OrgUpdateInput = {
   name: string;
 };

@@ -297,6 +297,8 @@ type AppTrust =
       provisioningPermissions: (
         | "organizations.provision"
         | "organizations.provisionForInvitee"
+        | "organizations.provisionManaged"
+        | "organizations.listManaged"
         | "projects.provision"
         | "invitations.create"
         | "invitations.send"

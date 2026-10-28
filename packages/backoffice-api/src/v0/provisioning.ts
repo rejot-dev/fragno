@@ -5,6 +5,7 @@ import {
   organizationMembershipRecordSchema,
   organizationRoleSchema,
 } from "./organization";
+import { directoryPageInputSchema } from "./shared/pagination";
 import { backofficeJurisdictionSchema } from "./shared/scope";
 
 /**
@@ -15,6 +16,8 @@ export const backofficeProvisioningPermissionSchema = z.lazy(() =>
   z.enum([
     "organizations.provision",
     "organizations.provisionForInvitee",
+    "organizations.provisionManaged",
+    "organizations.listManaged",
     "projects.provision",
     "invitations.create",
     "invitations.send",
@@ -98,6 +101,86 @@ export type ProvisionOrganizationForInviteeResult = z.output<
   typeof provisionOrganizationForInviteeResultSchema
 >;
 
+const ownerEmailSchema = z.lazy(() => z.string().trim().toLowerCase().pipe(z.email()));
+
+export const provisionManagedOrganizationInputSchema = z
+  .lazy(() =>
+    z.strictObject({
+      externalOrganizationId: externalIdSchema,
+      name: z.string().trim().min(1).max(191),
+      managingOrganizationId: z
+        .string()
+        .trim()
+        .min(1)
+        .describe(
+          "An organization where the app is installed. Its members act in the new organization with their role there, owners as admins, without becoming its members.",
+        ),
+      byUserId: userIdSchema.describe(
+        "An owner or admin of the managing organization who authorized the app. Recorded as the creator, and invites the owner; they do not become a member.",
+      ),
+      owner: z
+        .discriminatedUnion("kind", [
+          z.strictObject({ kind: z.literal("invitee"), email: ownerEmailSchema }),
+          z.strictObject({ kind: z.literal("none") }),
+        ])
+        .describe(
+          "Who is invited to own it, or none: a managed organization may have no owner, and the managing organization's owners and admins may invite one later with invitations.create.",
+        ),
+    }),
+  )
+  .meta({ id: "ProvisionManagedOrganizationInput" });
+export type ProvisionManagedOrganizationInput = z.output<
+  typeof provisionManagedOrganizationInputSchema
+>;
+
+export const provisionManagedOrganizationResultSchema = z
+  .lazy(() =>
+    provisionOrganizationForInviteeResultSchema._zod.innerType.extend({
+      ownerInvitation: z
+        .strictObject({ invitationId: z.string().min(1), expiresAt: z.iso.datetime() })
+        .nullable()
+        .describe(
+          "The pending owner invitation to send and accept; null once the organization has an owner, or when none was asked for.",
+        ),
+    }),
+  )
+  .meta({ id: "ProvisionManagedOrganizationResult" });
+export type ProvisionManagedOrganizationResult = z.output<
+  typeof provisionManagedOrganizationResultSchema
+>;
+
+export const listManagedOrganizationsInputSchema = z
+  .lazy(() =>
+    directoryPageInputSchema._zod.innerType.extend({
+      managingOrganizationId: z
+        .string()
+        .trim()
+        .min(1)
+        .describe("An organization where the app is installed."),
+    }),
+  )
+  .meta({ id: "ListManagedOrganizationsInput" });
+export type ListManagedOrganizationsInput = z.output<typeof listManagedOrganizationsInputSchema>;
+
+export const managedOrganizationPageSchema = z
+  .lazy(() =>
+    z.strictObject({
+      organizations: z.array(
+        z.strictObject({
+          organizationId: z.string().min(1),
+          name: z.string().min(1),
+          slug: z.string().min(1),
+          jurisdiction: backofficeJurisdictionSchema.nullable(),
+          hasOwner: z.boolean(),
+        }),
+      ),
+      nextCursor: z.string().nullable(),
+      hasNextPage: z.boolean(),
+    }),
+  )
+  .meta({ id: "ManagedOrganizationPage" });
+export type ManagedOrganizationPage = z.output<typeof managedOrganizationPageSchema>;
+
 export const provisionProjectInputSchema = z
   .lazy(() =>
     z.strictObject({
@@ -109,7 +192,7 @@ export const provisionProjectInputSchema = z
       externalProjectId: externalIdSchema,
       name: z.string().trim().min(1).max(160),
       createdByUserId: userIdSchema.describe(
-        "A member of the organization who authorized the app; the project is created as theirs.",
+        "A user who authorized the app and acts in the organization: one of its members, or a member of the organization managing it. The project is created as theirs.",
       ),
     }),
   )
@@ -137,7 +220,7 @@ export const createInvitationInputSchema = z
         .min(1)
         .describe("An organization where the app is installed; the invitation is to it."),
       inviterUserId: userIdSchema.describe(
-        "A member of the organization who authorized the app; the invitation is theirs, and their current role decides whom they may invite.",
+        "A user who authorized the app and acts in the organization, as one of its members or a member of the organization managing it; the invitation is theirs, and their current role there decides whom they may invite.",
       ),
       email: z.string().trim().toLowerCase().pipe(z.email()),
       roles: z.array(organizationRoleSchema).min(1),
@@ -216,16 +299,30 @@ export const backofficeProvisioningOperations = {
     input: provisionOrganizationForInviteeInputSchema,
     output: provisionOrganizationForInviteeResultSchema,
   },
+  "organizations.provisionManaged": {
+    description:
+      "Create a Backoffice organization for one of the app's organizations, managed by another organization where the app is installed, and install the app there as organizations.provision does. Its owner is invited as organizations.provisionForInvitee invites, or it has none. Provisioning it again returns it, with its pending owner invitation; under another managing organization it is a conflict.",
+    permission: "organizations.provisionManaged",
+    input: provisionManagedOrganizationInputSchema,
+    output: provisionManagedOrganizationResultSchema,
+  },
+  "organizations.listManaged": {
+    description:
+      "List the organizations an organization manages where the app is installed, by ID, a page at a time. A page may hold fewer organizations than asked for, or none, while more follow.",
+    permission: "organizations.listManaged",
+    input: listManagedOrganizationsInputSchema,
+    output: managedOrganizationPageSchema,
+  },
   "projects.provision": {
     description:
-      "Create a project in an organization where the app is installed, on behalf of a member who authorized the app.",
+      "Create a project in an organization where the app is installed, on behalf of someone acting there who authorized the app: a member, or a member of the organization managing it.",
     permission: "projects.provision",
     input: provisionProjectInputSchema,
     output: provisionProjectResultSchema,
   },
   "invitations.create": {
     description:
-      "Invite an email address to an organization where the app is installed, as a member who authorized the app. Owners and admins invite; only owners invite owners. Inviting the same address with the same roles again returns the pending invitation.",
+      "Invite an email address to an organization where the app is installed, as someone acting there who authorized the app. Owners and admins invite; only owners invite owners, except that while a managed organization has no owner, the owners and admins of the organization managing it invite one. Inviting the same address with the same roles again returns the pending invitation.",
     permission: "invitations.create",
     input: createInvitationInputSchema,
     output: organizationInvitationRecordSchema,

@@ -190,6 +190,14 @@ const { organizationId } = await provisioning.call("organizations.provision", {
 yet: the organization has no members and a pending owner invitation, which the app sends with
 `invitations.send` and accepts with `invitations.accept` once the owner signs in.
 
+`organizations.provisionManaged` creates one managed by another organization where the app is
+installed, such as a firm's client: the managing organization's members act in it with their role
+there, owners as admins, without becoming its members. It is for an invited owner or none, and the
+managing organization's owners and admins invite one later with `invitations.create`.
+`organizations.listManaged` lists a managing organization's organizations where the app is
+installed. In a managed organization, `org.get` answers `managingOrganization` and whether the
+caller acts `through` membership or the managing organization.
+
 Errors reject like `createBackofficeApiClient`'s.
 
 ## OpenAPI
