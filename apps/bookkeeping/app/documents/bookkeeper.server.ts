@@ -109,10 +109,12 @@ export async function askBookkeeper(
         throw error;
       }
     }
+    // Each document is a subagent of its own: documents are read side by side, and no document
+    // sees another's text.
     await backoffice.call(scope, "pi.prompt.submit", {
       agentName: BOOKKEEPER.agentName,
       requestId,
-      whenBusy: "followUp",
+      subagent: true,
       content: `Propose the entry for document ${document.id} (${document.filename}).`,
     });
   } catch (error) {

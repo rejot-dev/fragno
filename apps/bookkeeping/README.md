@@ -328,8 +328,9 @@ for any automation, whatever a document tells the agent. Bookkeeping defines the
 the project has none, granting it `upload.read`, `models.extract`, `integrations.read` (to read the
 actions' input schemas), and `integrations.execute`; a definition members changed in Backoffice is
 left as it is. So is one Bookkeeping defined before its definition changed: members update or delete
-it to get the new one. It then submits the prompt with `pi.prompt.submit`, and Backoffice bills the
-turn to the client.
+it to get the new one. It then submits the prompt with `pi.prompt.submit` as a `subagent`: each
+document runs in a new conversation of the agent, beside the others, so documents uploaded together
+are read side by side and no document sees another's text. Backoffice bills the turn to the client.
 
 The agent reads the document with `documents.get` and `models.extract`, the books with
 `books.describe` and `entries.list`, and answers with `documents.propose`, an entry as
