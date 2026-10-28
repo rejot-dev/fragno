@@ -16,8 +16,6 @@ export const PAGE_LIMITS = {
   columns: 64,
   /** How deep nested rows declared with `{ rows }` may nest. */
   nestedRows: 3,
-  /** Rows a query shows; it drops the rest. */
-  rowsPerQuery: 500,
   buckets: INTERVAL_LIMITS.count,
   minimumBucketMs: INTERVAL_LIMITS.minimumMs,
   listItems: 100,

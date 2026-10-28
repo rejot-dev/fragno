@@ -18,8 +18,8 @@ browser keeps it, and re-renders as the data changes.
 ## Steps
 
 1. **Ground.** Read `/static/codemode/page.d.ts` for the builder,
-   `/static/codemode/page-schema.d.ts` for the relations, their columns, the functions queries call,
-   and the limits, and `/static/codemode/ui-catalog.d.ts` for the components. For a dashboard, read
+   `/static/codemode/page-schema.d.ts` for the relations, their columns, and the limits, and
+   `/static/codemode/ui-catalog.d.ts` for the components. For a dashboard, read
    `/static/skills/building-pages/examples/home.page.js`, which rebuilds the scope's home page.
    Complete when every column you plan to read belongs to its relation in `PageRelations`.
 2. **Write the source.** Save the module with `state.writeFile`, following the example below.
@@ -139,8 +139,7 @@ The title heads the page. Return the root element from the callback; `page.defin
 
 - `` sql`...` `` holds one SQLite `SELECT`, which may start with `WITH`, over the relations in
   `PageRelations`: `runs`, `steps`, `events`, `routes`, `connections`, `agents`, and the rest. They
-  are the only tables a query reads, and `page-schema.d.ts` lists the only functions it calls, such
-  as `count`, `coalesce`, `row_number`, `json_group_array`, and `strftime`. Queries cannot write.
+  are the only tables a query reads.
 - `${...}` binds a value as a parameter, never writing it into the SQL: a string, number, boolean,
   or null; a list for `IN (${["errored", "terminated"]})`; or a time such as
   `${now.minus("7 days")}`. It includes SQL: another query or `` sql`...` ``, such as a shared CTE
@@ -162,8 +161,9 @@ The title heads the page. Return the root element from the callback; `page.defin
   so intervals without rows show.
 - JSON columns read with `->>`, such as `route.trigger ->> '$.kind'` or
   `event.payload ->> '$.action'`; nest a JSON column in other JSON with `json(...)`.
-- A query shows at most `PageLimits["rowsPerQuery"]` rows and drops the rest, so order and `LIMIT`
-  lists. Queries that take too long or return too much fail with a message saying so.
+- Components show a bounded number of rows, such as a table's 64, so order and `LIMIT` lists.
+- Keep each query under about a second over the scope's data. The build runs queries on an empty
+  database, so a slow query builds and then fails on the page.
 - Booleans are 0 or 1, so `WHERE route.enabled = 1`, and `sum(status = 'errored')` counts rows.
 
 ## Binding results

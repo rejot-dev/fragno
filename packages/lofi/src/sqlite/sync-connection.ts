@@ -44,8 +44,6 @@ export type LofiSqliteGuard = {
    * thousands; a run that takes more throws.
    */
   maxOperations: number;
-  /** The longest string or blob, in bytes, a statement may produce. */
-  maxLength: number;
 };
 
 export type LofiSqliteSyncStatement = {
@@ -145,7 +143,6 @@ export function wrapWaSqliteDatabase(options: {
 
 const SQLITE_READ = 20;
 const SQLITE_DENY = 1;
-const SQLITE_LIMIT_LENGTH = 0;
 // How many operations SQLite runs between calls of the progress handler.
 const OPERATIONS_PER_PROGRESS = 1000;
 
@@ -172,7 +169,6 @@ function createStatements(module: WaSqliteModule, sqlite3: SQLiteAPI, db: number
     columnBytes: module.cwrap("sqlite3_column_bytes", n, [n, n]),
     stmtReadonly: module.cwrap("sqlite3_stmt_readonly", n, [n]),
     parameterCount: module.cwrap("sqlite3_bind_parameter_count", n, [n]),
-    limit: module.cwrap("sqlite3_limit", n, [n, n, n]),
     errmsg: module.cwrap("sqlite3_errmsg", "string", [n]),
   };
   const sqliteFree = module._getSqliteFree();
@@ -379,7 +375,6 @@ function createStatements(module: WaSqliteModule, sqlite3: SQLiteAPI, db: number
     }
     const state = { guard, operations: 0, refused: null as LofiSqliteAccess | null };
     active = state;
-    const length = c.limit(db, SQLITE_LIMIT_LENGTH, guard.maxLength) as number;
     sqlite3.progress_handler(
       db,
       OPERATIONS_PER_PROGRESS,
@@ -399,7 +394,6 @@ function createStatements(module: WaSqliteModule, sqlite3: SQLiteAPI, db: number
       throw error;
     } finally {
       module.progress_handler(db, 0, null, 0);
-      c.limit(db, SQLITE_LIMIT_LENGTH, length);
       active = null;
     }
   };

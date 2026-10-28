@@ -10,7 +10,6 @@ type PageLimits = {
   params: 100;
   columns: 64;
   nestedRows: 3;
-  rowsPerQuery: 500;
   buckets: 60;
   minimumBucketMs: 60000;
   listItems: 100;
@@ -32,9 +31,8 @@ type PageSqlJson = string;
 /**
  * The relations page queries read, by name, with their columns as SQL reads them. A synchronized
  * table's position grows in the order its rows were created: rows created together, such as a run's
- * steps, share their createdAt, so order them by createdAt, position. Queries call SQLite's
- * functions, except random(), randomblob(), and those reporting on the connection. Read the time
- * from the builder's now, not date('now'): a query runs again only when what it reads changes.
+ * steps, share their createdAt, so order them by createdAt, position. A query runs again only when
+ * what it reads changes, so read the time from the builder's now rather than date('now').
  */
 type PageRelations = {
   /** Workflow runs. workflowName is the runner's internal name, and remoteWorkflowName the workflow's own name, or null. */

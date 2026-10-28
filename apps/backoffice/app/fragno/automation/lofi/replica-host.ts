@@ -1,5 +1,4 @@
 import { guardedSqlViewEngine, readViewEngine } from "@fragno-dev/lofi/sqlite/worker";
-import { PAGE_LIMITS } from "@fragno-private/backoffice-ui/pages/definition";
 
 import { readPiAgentDirectory } from "@/routes/backoffice/agents/agents-replica";
 import {
@@ -57,14 +56,10 @@ const automationPageViewEngine = guardedSqlViewEngine({
   kind: AUTOMATION_PAGE_VIEWS,
   views: AUTOMATION_PAGE_VIEWS_SQL,
   derived: AUTOMATION_PAGE_DERIVED_RELATIONS,
-  // 25 million operations take about 200 ms; the home page's eleven queries take under one
-  // million together over a scope with 12,000 events.
-  limits: {
-    rows: PAGE_LIMITS.rowsPerQuery,
-    bytes: 4_000_000,
-    operations: 25_000,
-    length: 16_000_000,
-  },
+  // About a second, as the build's check allows each query: 25 million operations take about
+  // 200 ms. The home page's eleven queries take under one million together over a scope with
+  // 12,000 events.
+  operations: 125_000,
 });
 
 /**

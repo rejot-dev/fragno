@@ -33,58 +33,40 @@ export type LofiSqliteGuardedViewsOptions = {
   views: Readonly<Record<string, string>>;
   /** Relations computed from the replica, by name. */
   derived: Readonly<Record<string, LofiSqliteDerivedRelation>>;
-  limits: LofiSqliteGuardedLimits;
-};
-
-export type LofiSqliteGuardedLimits = {
-  /** The rows a view holds. It drops the rest, and says so. */
-  rows: number;
-  /** The bytes of text and blobs a view's rows may hold; a view that would hold more fails. */
-  bytes: number;
-  /** The operations, in thousands, one run of a query may take; a run that takes more fails. */
+  /**
+   * The operations, in thousands, one run of a query may take; a run that takes more fails, so a
+   * query that never ends cannot stall the leader.
+   */
   operations: number;
-  /** The longest string or blob, in bytes, a query may produce. */
-  length: number;
 };
 
-/** A guarded view's query: one SELECT over the engine's relations, and its parameters. */
+/** A guarded view's query: one statement over the engine's relations, and its parameters. */
 export type LofiSqliteGuardedQuery = { sql: string; params: readonly SqliteValue[] };
 
 /** A guarded view's data: its rows, or why the query cannot run. */
 export type LofiSqliteGuardedResult =
-  | {
-      status: "ready";
-      columns: string[];
-      rows: SqliteValue[][];
-      /** Whether the query had more rows than the view holds. */
-      truncated: boolean;
-    }
+  | { status: "ready"; columns: string[]; rows: SqliteValue[][] }
   | { status: "error"; message: string };
 
-const SQLITE_READ = 20;
-const SQLITE_SELECT = 21;
-const SQLITE_FUNCTION = 31;
-const SQLITE_RECURSIVE = 33;
-// A view runs again only after a batch wrote a table it reads, so a function whose result the
-// replica's rows do not determine would leave it stale. date('now') reads the clock too, but
-// through date(), which queries need; they take the time as a parameter instead.
-const UNREPEATABLE_FUNCTIONS = new Set([
-  "random",
-  "randomblob",
-  "changes",
-  "total_changes",
-  "last_insert_rowid",
-]);
+const SQLITE_PRAGMA = 19;
+const SQLITE_TRANSACTION = 22;
+const SQLITE_ATTACH = 24;
+const SQLITE_DETACH = 25;
+const SQLITE_SAVEPOINT = 32;
 
 /**
- * Maintains views of queries that people or agents write, such as a page's, which the replica must
- * survive: a query cannot write or change settings, calls no function whose result changes on its
- * own, and stops when it takes too much work or returns too much data. Each runs again after a
- * batch that wrote a table it reads, and reports its rows only when they changed.
+ * Maintains views of queries that people or agents write, such as a page's. A query reads: it
+ * cannot write, end or open transactions, attach databases, or set a pragma, and stops when it
+ * takes too much work. Each runs again after a batch that wrote a table it reads, and reports its
+ * rows only when they changed.
+ *
+ * Queries run inside the leader's read transaction, which SQLite rolls back whole when a write fails
+ * with `OR ROLLBACK` or is interrupted, so a savepoint could not undo a query's writes: the engine
+ * refuses them instead.
  *
  * The relations are temporary views and tables on the leader's connection, which give queries
  * shorter names and app-computed rows. Queries can read the replica's own tables too: the replica
- * holds only what its backend already sent the page, so the guard protects the leader, not data.
+ * holds only what its backend already sent the page, so the engine protects the leader, not data.
  */
 export function guardedSqlViewEngine(options: LofiSqliteGuardedViewsOptions): LofiSqliteViewEngine {
   const relations = [...Object.keys(options.views), ...Object.keys(options.derived)];
@@ -92,20 +74,21 @@ export function guardedSqlViewEngine(options: LofiSqliteGuardedViewsOptions): Lo
     throw new Error("A guarded view and a derived relation share a name.");
   }
   const guard: LofiSqliteGuard = {
-    authorize: (access) => {
-      switch (access.action) {
-        case SQLITE_SELECT:
-        case SQLITE_READ:
-        case SQLITE_RECURSIVE:
-          return true;
-        case SQLITE_FUNCTION:
-          return !UNREPEATABLE_FUNCTIONS.has(access.details[1]?.toLowerCase() ?? "");
-        default:
+    authorize: ({ action, details }) => {
+      switch (action) {
+        case SQLITE_TRANSACTION:
+        case SQLITE_SAVEPOINT:
+        case SQLITE_ATTACH:
+        case SQLITE_DETACH:
           return false;
+        case SQLITE_PRAGMA:
+          // A pragma given a value sets it; one without reads it.
+          return details[1] === null;
+        default:
+          return true;
       }
     },
-    maxOperations: options.limits.operations,
-    maxLength: options.limits.length,
+    maxOperations: options.operations,
   };
   const describe = (error: unknown) => describeError(error, relations);
 
@@ -147,7 +130,11 @@ export function guardedSqlViewEngine(options: LofiSqliteGuardedViewsOptions): Lo
           return { status: "error", message: failed };
         }
         try {
-          return connection.guarded(guard, () => readRows(statement, params, options.limits));
+          return connection.guarded(guard, () => ({
+            status: "ready",
+            columns: [...statement.columnNames],
+            rows: Array.from(statement.rows(params)),
+          }));
         } catch (error) {
           return { status: "error", message: describe(error) };
         }
@@ -161,11 +148,14 @@ export function guardedSqlViewEngine(options: LofiSqliteGuardedViewsOptions): Lo
           let result: LofiSqliteGuardedResult;
           try {
             const prepared = connection.guarded(guard, () => connection.prepare(sql));
-            if (prepared.parameterCount === params.length) {
+            // A view's query and parameters never change, so one that fails here keeps no statement
+            // to refresh.
+            if (!prepared.isReadOnly) {
+              result = { status: "error", message: "Queries only read: they cannot write." };
+            } else if (prepared.parameterCount === params.length) {
               statement = prepared;
               result = read(statement, params);
             } else {
-              // A view's query and parameters never change, so it keeps no statement to refresh.
               result = {
                 status: "error",
                 message: `The query takes ${prepared.parameterCount} parameters, and was given ${params.length}.`,
@@ -202,60 +192,6 @@ export function guardedSqlViewEngine(options: LofiSqliteGuardedViewsOptions): Lo
       };
     },
   };
-}
-
-/** Steps through the statement's rows within the limits. */
-function readRows(
-  statement: LofiSqliteSyncStatement,
-  params: readonly SqliteValue[],
-  limits: LofiSqliteGuardedLimits,
-): LofiSqliteGuardedResult {
-  const rows: SqliteValue[][] = [];
-  let bytes = 0;
-  let truncated = false;
-  for (const row of statement.rows(params)) {
-    if (rows.length === limits.rows) {
-      // Returning from the loop ends the run.
-      truncated = true;
-      break;
-    }
-    for (const value of row) {
-      bytes +=
-        typeof value === "string"
-          ? utf8Length(value)
-          : value instanceof Uint8Array
-            ? value.byteLength
-            : 8;
-    }
-    if (bytes > limits.bytes) {
-      return {
-        status: "error",
-        message: `The query's rows hold more than ${limits.bytes} bytes; select fewer rows or columns.`,
-      };
-    }
-    rows.push(row);
-  }
-  return { status: "ready", columns: [...statement.columnNames], rows, truncated };
-}
-
-/** The bytes of a string in UTF-8, as SQLite stores it, without encoding it. */
-function utf8Length(value: string): number {
-  let bytes = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    const unit = value.charCodeAt(index);
-    if (unit < 0x80) {
-      bytes += 1;
-    } else if (unit < 0x800) {
-      bytes += 2;
-    } else if (unit >= 0xd800 && unit < 0xdc00 && index + 1 < value.length) {
-      // A surrogate pair, which UTF-8 encodes in four bytes.
-      bytes += 4;
-      index += 1;
-    } else {
-      bytes += 3;
-    }
-  }
-  return bytes;
 }
 
 /**
@@ -344,11 +280,14 @@ function describeError(error: unknown, relations: readonly string[]): string {
     : message;
 }
 
-function describeAccess({ action, details }: LofiSqliteAccess) {
+function describeAccess({ action }: LofiSqliteAccess) {
   switch (action) {
-    case SQLITE_FUNCTION:
-      return `Queries cannot call ${details[1]}().`;
+    case SQLITE_PRAGMA:
+      return "Queries can read a pragma, but not set it.";
+    case SQLITE_ATTACH:
+    case SQLITE_DETACH:
+      return "Queries cannot attach or detach databases.";
     default:
-      return "Queries only read: they cannot write, attach databases, or change settings.";
+      return "Queries cannot begin or end transactions.";
   }
 }

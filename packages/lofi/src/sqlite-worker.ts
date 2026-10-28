@@ -4,7 +4,6 @@ export { readViewEngine } from "./sqlite/read-views";
 export {
   guardedSqlViewEngine,
   type LofiSqliteDerivedRelation,
-  type LofiSqliteGuardedLimits,
   type LofiSqliteGuardedViewsOptions,
 } from "./sqlite/guarded-views";
 export {

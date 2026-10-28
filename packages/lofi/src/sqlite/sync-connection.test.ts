@@ -38,7 +38,6 @@ const pageGuard = (overrides: Partial<LofiSqliteGuard> = {}): LofiSqliteGuard =>
       (access.source === "visible" || ["visible", "derived"].includes(access.details[0]!))) ||
     (access.action === SQLITE_FUNCTION && ["count", "upper"].includes(access.details[1]!)),
   maxOperations: 1_000,
-  maxLength: 1_000_000,
   ...overrides,
 });
 
@@ -95,10 +94,8 @@ describe("synchronous wa-sqlite statements", () => {
       SELECT count(*) FROM "n"`;
     const counting = pageGuard({ authorize: () => true });
     expect(() => guarded(recursive, counting)).toThrow("more than 1000000 operations");
-    expect(() => guarded(`SELECT length(zeroblob(2000000))`, counting)).toThrow("too big");
 
     // Outside a guarded run, statements may do anything again.
     expect(rows(database, `SELECT "secret" FROM "runs" ORDER BY "id"`)).toEqual([["x"], ["y"]]);
-    expect(rows(database, `SELECT length(zeroblob(2000000))`)).toEqual([[2_000_000]]);
   });
 });
