@@ -3,7 +3,7 @@ import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { ToolProvider } from "@fragno-dev/codemode/runtime-api";
 import type { Command } from "just-bash";
-import type { z } from "zod";
+import { z } from "zod";
 
 import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
@@ -189,6 +189,11 @@ export function backofficeApiOperationToolFields<TId extends keyof BackofficeApi
     outputSchema: output,
   };
 }
+
+/** Bytes, which Codemode passes as `Uint8Array`s where the HTTP API passes base64. */
+export const codemodeBytesSchema = z
+  .custom<Uint8Array>((value) => value instanceof Uint8Array, "Expected Uint8Array")
+  .meta({ codemodeType: "Uint8Array" });
 
 export function defineBackofficeRuntimeTool<
   TInputSchema extends z.ZodType,

@@ -10,6 +10,7 @@ import { backofficeApiOperationToolFields } from "@/fragno/runtime-tools/runtime
 import type { FileLinkRuntime } from "./file-links-runtime";
 import type { FileShareRuntime } from "./file-shares-runtime";
 import {
+  codemodeBytesSchema,
   createBackofficeCodemodeProviders,
   createTrustedSystemBackofficeToolContext,
   defineBackofficeRuntimeTool,
@@ -70,9 +71,6 @@ const fileLinkHelpOptions = [
   },
 ];
 
-const bytesSchema = z
-  .custom<Uint8Array>((value) => value instanceof Uint8Array, "Expected Uint8Array")
-  .meta({ codemodeType: "Uint8Array" });
 export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateToolContext>({
   namespace: "state",
   isAvailable: (context) => Boolean(context.runtimes.state),
@@ -91,7 +89,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       description: "Read a file from codemode state as bytes.",
       requiredPermissions: [BACKOFFICE_PERMISSION.upload.read],
       inputSchema: pathInputSchema,
-      outputSchema: bytesSchema,
+      outputSchema: codemodeBytesSchema,
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).readFileBytes(path),
     }),
@@ -111,7 +109,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       requiredPermissions: [BACKOFFICE_PERMISSION.upload.modify],
       inputSchema: z.strictObject({
         path: z.string(),
-        content: bytesSchema,
+        content: codemodeBytesSchema,
       }),
       outputSchema: z.void(),
       execute: async ({ path, content }, context: StateToolContext) => {
@@ -126,7 +124,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       requiredPermissions: [BACKOFFICE_PERMISSION.upload.modify],
       inputSchema: z.strictObject({
         path: z.string(),
-        content: z.union([z.string(), bytesSchema]),
+        content: z.union([z.string(), codemodeBytesSchema]),
       }),
       outputSchema: z.void(),
       execute: async ({ path, content }, context: StateToolContext) => {
