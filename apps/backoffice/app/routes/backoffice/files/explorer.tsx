@@ -15,6 +15,7 @@ import {
 } from "@/components/backoffice/files-explorer";
 import type { WorkflowFileRouting } from "@/components/backoffice/files-explorer/content-renderers";
 import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
+import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { createUploadFileTree } from "@/file-collection/create-upload-file-tree";
 import { resolveSynchronizedFileTree } from "@/file-collection/resolve-synchronized-file-tree";
 import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
@@ -57,15 +58,17 @@ export default function BackofficeFilesExplorer() {
   );
 
   return (
-    <ClientOnly fallback={initialView}>
-      <Suspense fallback={initialView}>
-        <LocalFirstFilesExplorer
-          {...loaderData}
-          selectedScope={selectedScope}
-          automationReplicaSource={automationReplicaSource}
-        />
-      </Suspense>
-    </ClientOnly>
+    <div className={`${backofficePageBodyClassName} flex min-h-0 flex-1 flex-col`}>
+      <ClientOnly fallback={initialView}>
+        <Suspense fallback={initialView}>
+          <LocalFirstFilesExplorer
+            {...loaderData}
+            selectedScope={selectedScope}
+            automationReplicaSource={automationReplicaSource}
+          />
+        </Suspense>
+      </ClientOnly>
+    </div>
   );
 }
 
