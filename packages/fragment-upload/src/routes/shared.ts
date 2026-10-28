@@ -19,8 +19,6 @@ type FileMutationResultSource = Pick<
   | "metadata"
   | "status"
   | "provider"
-  | "errorCode"
-  | "errorMessage"
 >;
 
 const checksumValueSchema = z.object({
@@ -72,8 +70,6 @@ export const fileMetadataSchema = z.object({
   updatedAt: z.string(),
   completedAt: z.string().nullable(),
   deletedAt: z.string().nullable(),
-  errorCode: z.string().nullable(),
-  errorMessage: z.string().nullable(),
 });
 
 export const fileMutationResultSchema = fileMetadataSchema.omit({
@@ -124,8 +120,6 @@ export const toFileMutationResult = (file: FileMutationResultSource): FileMutati
   metadata: file.metadata,
   status: file.status as FileMutationResult["status"],
   provider: file.provider,
-  errorCode: file.errorCode,
-  errorMessage: file.errorMessage,
 });
 
 export const toFileMetadata = (file: FileMetadataSource): FileMetadata => {
@@ -147,7 +141,5 @@ export const toFileMetadata = (file: FileMetadataSource): FileMetadata => {
     updatedAt: file.updatedAt.toISOString(),
     completedAt: toIsoString(file.completedAt),
     deletedAt: toIsoString(file.deletedAt),
-    errorCode: file.errorCode,
-    errorMessage: file.errorMessage,
   };
 };

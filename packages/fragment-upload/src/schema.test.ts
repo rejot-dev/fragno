@@ -20,7 +20,7 @@ describe("uploadSchema", async () => {
     await testContext.resetDatabase();
   });
 
-  it("stores file, upload, and upload_part rows", async () => {
+  it("stores file and upload rows", async () => {
     const result = await fragment.inContext(function () {
       return this.handlerTx()
         .mutate(({ forSchema }) => {
@@ -47,8 +47,6 @@ describe("uploadSchema", async () => {
             updatedAt: timestamp,
             completedAt: null,
             deletedAt: null,
-            errorCode: null,
-            errorMessage: null,
           });
 
           const uploadId = uow.create("upload", {
@@ -64,14 +62,8 @@ describe("uploadSchema", async () => {
             metadata: { purpose: "test" },
             status: "created",
             publicationMode: "immediate",
-            strategy: "proxy",
             objectKey,
-            storageUploadId: null,
-            uploadUrl: null,
-            uploadHeaders: null,
             bytesUploaded: 0n,
-            partsUploaded: 0,
-            partSizeBytes: null,
             expiresAt: new Date(Date.now() + 60_000),
             createdAt: timestamp,
             updatedAt: timestamp,
@@ -80,18 +72,9 @@ describe("uploadSchema", async () => {
             errorMessage: null,
           });
 
-          const partId = uow.create("upload_part", {
-            uploadId,
-            partNumber: 1,
-            etag: "etag-1",
-            sizeBytes: 512n,
-            createdAt: timestamp,
-          });
-
           return {
             fileId: fileId.valueOf(),
             uploadId: uploadId.valueOf(),
-            partId: partId.valueOf(),
           };
         })
         .execute();
@@ -100,7 +83,6 @@ describe("uploadSchema", async () => {
     expect(result).toEqual({
       fileId: expect.any(String),
       uploadId: expect.any(String),
-      partId: expect.any(String),
     });
   });
 });

@@ -30,8 +30,6 @@ export async function seedReadyUploadFiles(
       updatedAt: now,
       completedAt: now,
       deletedAt: null,
-      errorCode: null,
-      errorMessage: null,
     });
   }
   const { success } = await uow.executeMutations();

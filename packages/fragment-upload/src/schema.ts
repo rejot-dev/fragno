@@ -5,25 +5,128 @@ import type { UploadChecksum } from "./types";
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
 export const uploadSchema = schema("upload", (s) => {
-  return s
-    .addTable("file", (t) => {
-      return (
-        t
+  return (
+    s
+      .addTable("file", (t) => {
+        return (
+          t
+            .addColumn("id", idColumn())
+            .addColumn("key", column("string"))
+            .addColumn("provider", column("string"))
+            .addColumn("uploaderId", column("string").nullable())
+            .addColumn("filename", column("string"))
+            .addColumn("sizeBytes", column("bigint"))
+            .addColumn("contentType", column("string"))
+            .addColumn("checksum", jsonColumn<UploadChecksum>().nullable())
+            // "private" | "public" | "unlisted"
+            .addColumn("visibility", column("string"))
+            .addColumn("tags", jsonColumn<string[]>().nullable())
+            .addColumn("metadata", jsonColumn<Record<string, unknown>>().nullable())
+            // "ready" | "deleted"
+            .addColumn("status", column("string"))
+            .addColumn("objectKey", column("string"))
+            .addColumn(
+              "createdAt",
+              column("timestamp").defaultTo((b) => b.now()),
+            )
+            .addColumn(
+              "updatedAt",
+              column("timestamp").defaultTo((b) => b.now()),
+            )
+            .addColumn("completedAt", column("timestamp").nullable())
+            .addColumn("deletedAt", column("timestamp").nullable())
+            .addColumn("errorCode", column("string").nullable())
+            .addColumn("errorMessage", column("string").nullable())
+            .createIndex("idx_file_provider_key", ["provider", "key"], {
+              unique: true,
+            })
+            .createIndex("idx_file_provider_key_status", ["provider", "key", "status"])
+            .createIndex("idx_file_provider_key_uploaderId", ["provider", "key", "uploaderId"])
+            .createIndex("idx_file_provider_key_status_uploaderId", [
+              "provider",
+              "key",
+              "status",
+              "uploaderId",
+            ])
+            .createIndex("idx_file_uploaderId", ["uploaderId"])
+            .createIndex("idx_file_createdAt", ["createdAt"])
+            .createIndex("idx_file_status_createdAt", ["status", "createdAt"])
+        );
+      })
+      .addTable("upload", (t) => {
+        return (
+          t
+            .addColumn("id", idColumn())
+            .addColumn("key", column("string"))
+            .addColumn("provider", column("string"))
+            .addColumn("uploaderId", column("string").nullable())
+            .addColumn("filename", column("string"))
+            .addColumn("expectedSizeBytes", column("bigint"))
+            .addColumn("contentType", column("string"))
+            .addColumn("checksum", jsonColumn<UploadChecksum>().nullable())
+            // "private" | "public" | "unlisted"
+            .addColumn("visibility", column("string"))
+            .addColumn("tags", jsonColumn<string[]>().nullable())
+            .addColumn("metadata", jsonColumn<Record<string, unknown>>().nullable())
+            // "created" | "in_progress" | "prepared" | "completed" | "aborted" | "failed" | "expired"
+            .addColumn("status", column("string"))
+            // "direct-single" | "direct-multipart" | "proxy"
+            .addColumn("strategy", column("string"))
+            .addColumn("objectKey", column("string"))
+            .addColumn("storageUploadId", column("string").nullable())
+            .addColumn("uploadUrl", column("string").nullable())
+            .addColumn("uploadHeaders", jsonColumn<Record<string, string>>().nullable())
+            .addColumn("bytesUploaded", column("bigint").defaultTo(0n))
+            .addColumn("partsUploaded", column("integer").defaultTo(0))
+            .addColumn("partSizeBytes", column("integer").nullable())
+            .addColumn("expiresAt", column("timestamp"))
+            .addColumn(
+              "createdAt",
+              column("timestamp").defaultTo((b) => b.now()),
+            )
+            .addColumn(
+              "updatedAt",
+              column("timestamp").defaultTo((b) => b.now()),
+            )
+            .addColumn("completedAt", column("timestamp").nullable())
+            .addColumn("errorCode", column("string").nullable())
+            .addColumn("errorMessage", column("string").nullable())
+            .createIndex("idx_upload_provider_key", ["provider", "key"])
+            .createIndex("idx_upload_provider_key_status_expiresAt", [
+              "provider",
+              "key",
+              "status",
+              "expiresAt",
+            ])
+            .createIndex("idx_upload_id_expiresAt", ["id", "expiresAt"])
+            .createIndex("idx_upload_status", ["status"])
+            .createIndex("idx_upload_expiresAt", ["expiresAt"])
+        );
+      })
+      .addTable("upload_part", (t) => {
+        return t
           .addColumn("id", idColumn())
-          .addColumn("key", column("string"))
-          .addColumn("provider", column("string"))
-          .addColumn("uploaderId", column("string").nullable())
-          .addColumn("filename", column("string"))
+          .addColumn("uploadId", referenceColumn({ table: "upload" }))
+          .addColumn("partNumber", column("integer"))
+          .addColumn("etag", column("string"))
           .addColumn("sizeBytes", column("bigint"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_upload_part_upload", ["uploadId"])
+          .createIndex("idx_upload_part_number", ["uploadId", "partNumber"], {
+            unique: true,
+          });
+      })
+      .noOp("removed obsolete upload_part -> upload addReference history")
+      .addTable("storage_object", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("storageKey", column("string"))
+          .addColumn("body", column("binary"))
           .addColumn("contentType", column("string"))
-          .addColumn("checksum", jsonColumn<UploadChecksum>().nullable())
-          // "private" | "public" | "unlisted"
-          .addColumn("visibility", column("string"))
-          .addColumn("tags", jsonColumn<string[]>().nullable())
-          .addColumn("metadata", jsonColumn<Record<string, unknown>>().nullable())
-          // "ready" | "deleted"
-          .addColumn("status", column("string"))
-          .addColumn("objectKey", column("string"))
+          .addColumn("sizeBytes", column("bigint"))
           .addColumn(
             "createdAt",
             column("timestamp").defaultTo((b) => b.now()),
@@ -32,147 +135,58 @@ export const uploadSchema = schema("upload", (s) => {
             "updatedAt",
             column("timestamp").defaultTo((b) => b.now()),
           )
-          .addColumn("completedAt", column("timestamp").nullable())
-          .addColumn("deletedAt", column("timestamp").nullable())
-          .addColumn("errorCode", column("string").nullable())
-          .addColumn("errorMessage", column("string").nullable())
-          .createIndex("idx_file_provider_key", ["provider", "key"], {
+          .createIndex("idx_storage_object_key", ["storageKey"], { unique: true });
+      })
+      .addTable("file_text_document", (t) => {
+        return t
+          .addColumn("id", idColumn())
+          .addColumn("fileId", referenceColumn({ table: "file" }))
+          .addColumn("provider", column("string"))
+          .addColumn("key", column("string"))
+          .addColumn("objectKey", column("string"))
+          .addColumn("contentHash", column("string"))
+          .addColumn("byteLength", column("bigint"))
+          .addColumn(
+            "indexedAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .addColumn(
+            "updatedAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_file_text_document_provider_key", ["provider", "key"], {
             unique: true,
           })
-          .createIndex("idx_file_provider_key_status", ["provider", "key", "status"])
-          .createIndex("idx_file_provider_key_uploaderId", ["provider", "key", "uploaderId"])
-          .createIndex("idx_file_provider_key_status_uploaderId", [
-            "provider",
-            "key",
-            "status",
-            "uploaderId",
-          ])
-          .createIndex("idx_file_uploaderId", ["uploaderId"])
-          .createIndex("idx_file_createdAt", ["createdAt"])
-          .createIndex("idx_file_status_createdAt", ["status", "createdAt"])
-      );
-    })
-    .addTable("upload", (t) => {
-      return (
-        t
+          .createIndex("idx_file_text_document_file", ["fileId"]);
+      })
+      .addTable("file_text_term", (t) => {
+        return t
           .addColumn("id", idColumn())
-          .addColumn("key", column("string"))
+          .addColumn("documentId", referenceColumn({ table: "file_text_document" }))
           .addColumn("provider", column("string"))
-          .addColumn("uploaderId", column("string").nullable())
-          .addColumn("filename", column("string"))
-          .addColumn("expectedSizeBytes", column("bigint"))
-          .addColumn("contentType", column("string"))
-          .addColumn("checksum", jsonColumn<UploadChecksum>().nullable())
-          // "private" | "public" | "unlisted"
-          .addColumn("visibility", column("string"))
-          .addColumn("tags", jsonColumn<string[]>().nullable())
-          .addColumn("metadata", jsonColumn<Record<string, unknown>>().nullable())
-          // "created" | "in_progress" | "prepared" | "completed" | "aborted" | "failed" | "expired"
-          .addColumn("status", column("string"))
-          // "direct-single" | "direct-multipart" | "proxy"
-          .addColumn("strategy", column("string"))
-          .addColumn("objectKey", column("string"))
-          .addColumn("storageUploadId", column("string").nullable())
-          .addColumn("uploadUrl", column("string").nullable())
-          .addColumn("uploadHeaders", jsonColumn<Record<string, string>>().nullable())
-          .addColumn("bytesUploaded", column("bigint").defaultTo(0n))
-          .addColumn("partsUploaded", column("integer").defaultTo(0))
-          .addColumn("partSizeBytes", column("integer").nullable())
-          .addColumn("expiresAt", column("timestamp"))
-          .addColumn(
-            "createdAt",
-            column("timestamp").defaultTo((b) => b.now()),
-          )
-          .addColumn(
-            "updatedAt",
-            column("timestamp").defaultTo((b) => b.now()),
-          )
-          .addColumn("completedAt", column("timestamp").nullable())
-          .addColumn("errorCode", column("string").nullable())
-          .addColumn("errorMessage", column("string").nullable())
-          .createIndex("idx_upload_provider_key", ["provider", "key"])
-          .createIndex("idx_upload_provider_key_status_expiresAt", [
-            "provider",
-            "key",
-            "status",
-            "expiresAt",
-          ])
-          .createIndex("idx_upload_id_expiresAt", ["id", "expiresAt"])
-          .createIndex("idx_upload_status", ["status"])
-          .createIndex("idx_upload_expiresAt", ["expiresAt"])
-      );
-    })
-    .addTable("upload_part", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("uploadId", referenceColumn({ table: "upload" }))
-        .addColumn("partNumber", column("integer"))
-        .addColumn("etag", column("string"))
-        .addColumn("sizeBytes", column("bigint"))
-        .addColumn(
-          "createdAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .createIndex("idx_upload_part_upload", ["uploadId"])
-        .createIndex("idx_upload_part_number", ["uploadId", "partNumber"], {
-          unique: true,
-        });
-    })
-    .noOp("removed obsolete upload_part -> upload addReference history")
-    .addTable("storage_object", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("storageKey", column("string"))
-        .addColumn("body", column("binary"))
-        .addColumn("contentType", column("string"))
-        .addColumn("sizeBytes", column("bigint"))
-        .addColumn(
-          "createdAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .addColumn(
-          "updatedAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .createIndex("idx_storage_object_key", ["storageKey"], { unique: true });
-    })
-    .addTable("file_text_document", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("fileId", referenceColumn({ table: "file" }))
-        .addColumn("provider", column("string"))
-        .addColumn("key", column("string"))
-        .addColumn("objectKey", column("string"))
-        .addColumn("contentHash", column("string"))
-        .addColumn("byteLength", column("bigint"))
-        .addColumn(
-          "indexedAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .addColumn(
-          "updatedAt",
-          column("timestamp").defaultTo((b) => b.now()),
-        )
-        .createIndex("idx_file_text_document_provider_key", ["provider", "key"], {
-          unique: true,
-        })
-        .createIndex("idx_file_text_document_file", ["fileId"]);
-    })
-    .addTable("file_text_term", (t) => {
-      return t
-        .addColumn("id", idColumn())
-        .addColumn("documentId", referenceColumn({ table: "file_text_document" }))
-        .addColumn("provider", column("string"))
-        .addColumn("key", column("string"))
-        .addColumn("term", column("string"))
-        .addColumn("positions", jsonColumn<number[]>())
-        .addColumn("count", column("integer"))
-        .createIndex("idx_file_text_term_provider_term", ["provider", "term"])
-        .createIndex("idx_file_text_term_provider_term_key", ["provider", "term", "key"])
-        .createIndex("idx_file_text_term_document", ["documentId"]);
-    })
-    .alterTable("upload", (t) => {
-      // "immediate" | "batch"
-      return t.addColumn("publicationMode", column("string").defaultTo("immediate"));
-    });
+          .addColumn("key", column("string"))
+          .addColumn("term", column("string"))
+          .addColumn("positions", jsonColumn<number[]>())
+          .addColumn("count", column("integer"))
+          .createIndex("idx_file_text_term_provider_term", ["provider", "term"])
+          .createIndex("idx_file_text_term_provider_term_key", ["provider", "term", "key"])
+          .createIndex("idx_file_text_term_document", ["documentId"]);
+      })
+      .alterTable("upload", (t) => {
+        // "immediate" | "batch"
+        return t.addColumn("publicationMode", column("string").defaultTo("immediate"));
+      })
+      // Left from object storage: direct and multipart uploads, and files that failed to publish.
+      .dropTable("upload_part")
+      .alterTable("upload", (t) =>
+        t
+          .dropColumn("strategy")
+          .dropColumn("storageUploadId")
+          .dropColumn("uploadUrl")
+          .dropColumn("uploadHeaders")
+          .dropColumn("partsUploaded")
+          .dropColumn("partSizeBytes"),
+      )
+      .alterTable("file", (t) => t.dropColumn("errorCode").dropColumn("errorMessage"))
+  );
 });

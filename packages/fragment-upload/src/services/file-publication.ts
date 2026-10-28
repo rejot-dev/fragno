@@ -140,8 +140,6 @@ export function publishFileContent(
     ...content,
     status: "ready" as FileStatus,
     deletedAt: null,
-    errorCode: null,
-    errorMessage: null,
   };
   // Publication starts the file over, even when it replaces one.
   const persistedRecord = { ...fileRecord, createdAt: now, updatedAt: now, completedAt: now };
