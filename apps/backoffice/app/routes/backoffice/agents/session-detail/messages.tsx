@@ -157,13 +157,17 @@ export function AssistantMessage({
         {copyable || turnCopyable ? (
           <ChatMessageActions>
             {copyable ? (
-              <CopyButton value={answerText} label="Copy response" labelled={turnCopyable} />
+              <CopyButton
+                value={answerText}
+                label="Copy response"
+                text={turnCopyable ? "Copy response" : null}
+              />
             ) : null}
             {turnCopyable ? (
               <CopyButton
                 value={() => turnTranscript({ steps, answer, stopped, failure })}
                 label="Copy full turn"
-                labelled
+                text="Copy full turn"
               />
             ) : null}
           </ChatMessageActions>

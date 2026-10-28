@@ -31,11 +31,7 @@ export function UserAndAnswer() {
           <>
             <ChatTokenUsage input={12_480} output={318} total={12_798} cost={0.0421} />
             <ChatMessageActions>
-              <CopyButton
-                value="€48,200 across 31 invoices."
-                label="Copy response"
-                labelled={false}
-              />
+              <CopyButton value="€48,200 across 31 invoices." label="Copy response" text={null} />
             </ChatMessageActions>
           </>
         }

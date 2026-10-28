@@ -121,8 +121,8 @@ export function SampleConversation({
           <>
             <ChatTokenUsage input={18_204} output={612} total={18_816} cost={0.0612} />
             <ChatMessageActions>
-              <CopyButton value={ANSWER} label="Copy response" labelled />
-              <CopyButton value={TURN} label="Copy full turn" labelled />
+              <CopyButton value={ANSWER} label="Copy response" text="Copy response" />
+              <CopyButton value={TURN} label="Copy full turn" text="Copy full turn" />
             </ChatMessageActions>
           </>
         }

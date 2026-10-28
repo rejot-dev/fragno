@@ -239,7 +239,7 @@ export default function BackofficeOrganizationInvites() {
               <Field label="Invitation link">
                 <div className="flex items-center gap-2">
                   <Input readOnly value={inviteLink} className="w-full font-mono text-xs" />
-                  <CopyButton value={inviteLink} label="Copy link" labelled />
+                  <CopyButton value={inviteLink} label="Copy link" text="Copy link" />
                 </div>
               </Field>
             ) : null}
@@ -283,7 +283,7 @@ export default function BackofficeOrganizationInvites() {
                       key="link"
                       value={`${origin}${backofficeInvitationPath(invitation.id)}`}
                       label="Copy link"
-                      labelled
+                      text="Copy link"
                     />
                   ) : (
                     "—"
