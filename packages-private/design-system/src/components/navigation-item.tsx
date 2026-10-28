@@ -23,6 +23,8 @@ export function SidebarNavigationItem({
   return (
     <Link
       to={item.to}
+      // A click otherwise discovers the route's chunks one import level at a time.
+      prefetch="intent"
       aria-current={item.active ? "page" : undefined}
       title={collapsed ? item.label : undefined}
       className={cn(
@@ -61,6 +63,7 @@ export function MobileNavigationItem({ item }: { item: NavigationItem }) {
   return (
     <Link
       to={item.to}
+      prefetch="intent"
       aria-current={item.active ? "page" : undefined}
       className={cn(
         "relative flex min-h-11 min-w-0 items-center justify-center border-b-2 px-1 text-[9px] font-semibold tracking-[0.1em] uppercase transition-[scale,background-color,border-color,color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none focus-visible:ring-inset active:scale-[0.96]",

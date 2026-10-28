@@ -185,6 +185,7 @@ export function OverflowTabRow({
                 ) : (
                   <Link
                     to={tab.to}
+                    prefetch="intent"
                     onClick={tab.onSelect}
                     aria-current={tab.active ? "page" : undefined}
                     className={tabClassName(variant, false, Boolean(tab.active))}
