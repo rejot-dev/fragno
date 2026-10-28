@@ -3,8 +3,10 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
   defineExtension,
   section,
+  type ConversationId,
   type Extension,
   type PromptInput,
+  type ToolRegistration,
 } from "@earendil-works/pi-durable";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
@@ -27,15 +29,21 @@ type PromptParts = {
   agentDefinition: Promise<string>;
 };
 
-/** Backoffice guidance, the agent's own instructions, and the tools every agent runs with. */
-export function createBackofficeExtension(agent: BackofficeAgentContext): Extension {
+/**
+ * Backoffice guidance, the agent's own instructions, and the tools every agent runs with, among
+ * them `awaitSubagentsTool`, which subagents run without.
+ */
+export function createBackofficeExtension(
+  agent: BackofficeAgentContext,
+  awaitSubagentsTool: ToolRegistration,
+): Extension {
   // Pi renders sections one after another but hands each the same `input` per request
   // preparation, so the sections share one turn read, one authorization, and concurrent reads.
   const preparations = new WeakMap<PromptInput, PromptParts>();
   function partsFor(input: PromptInput): PromptParts {
     let parts = preparations.get(input);
     if (!parts) {
-      parts = preparePromptParts(agent);
+      parts = preparePromptParts(agent, input.conversationId);
       preparations.set(input, parts);
     }
     return parts;
@@ -44,7 +52,7 @@ export function createBackofficeExtension(agent: BackofficeAgentContext): Extens
   return defineExtension({
     name: "backoffice",
     // Discovery runs inside codemode through `state`, so it shares a turn with other reads.
-    tools: [createCodemodeTool(agent)],
+    tools: [createCodemodeTool(agent), awaitSubagentsTool],
     sections: [
       section("system-md", (input) => partsFor(input).systemMd, { tag: false }),
       section("agents-md", (input) => partsFor(input).agentsMd, { tag: false }),
@@ -67,13 +75,16 @@ export function createBackofficeExtension(agent: BackofficeAgentContext): Extens
   });
 }
 
-function preparePromptParts(agent: BackofficeAgentContext): PromptParts {
-  const turn = agent.activeTurn(BACKGROUND_CONTEXT).then(async (turn) => {
+function preparePromptParts(
+  agent: BackofficeAgentContext,
+  conversationId: ConversationId,
+): PromptParts {
+  const turn = agent.activeTurn(conversationId, BACKGROUND_CONTEXT).then(async (turn) => {
     await turn.authorize();
     return turn;
   });
   const runtimeToolContext = turn.then((turn) =>
-    turn.toolContext(agent.agentName, BACKGROUND_CONTEXT),
+    turn.toolContext(agent.agentName, null, BACKGROUND_CONTEXT),
   );
   const parts: PromptParts = {
     systemMd: runtimeToolContext.then((runtimeToolContext) =>

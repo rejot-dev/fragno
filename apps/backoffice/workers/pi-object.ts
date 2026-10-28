@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import { copyJson } from "@earendil-works/chord";
 import {
+  type Conversation,
   type ConversationView,
   type EntryId,
   type JsonObject,
@@ -37,6 +38,8 @@ import {
   piAgentMessagePageRequestSchema,
   piAgentNotificationSchema,
   piAgentPromptSchema,
+  piAgentSteerSchema,
+  piQueuedSubagentSchema,
   piAgentTurnSchema,
   piAgentWorkSchema,
   PiConversationViewDamagedError,
@@ -44,6 +47,9 @@ import {
   type PiAgentCompactionStatus,
   type PiAgentNotification,
   type PiAgentPrompt,
+  type PiAgentSteer,
+  type PiQueuedSubagent,
+  type PiSubagentRun,
   type PiAgentTurn,
   type PiAgentViewFrame,
   type PiAgentWaitingQueue,
@@ -56,11 +62,21 @@ import {
 } from "@/fragno/pi/agent/pi-agent-harness";
 import {
   PI_NOTIFICATION_ENTRY_KIND,
+  piNotificationInput,
   piNotificationRequestId,
   renderPiNotification,
   renderPiNotificationRequest,
 } from "@/fragno/pi/agent/pi-agent-notification-entry";
 import { mayJoinPiAgentTurn } from "@/fragno/pi/agent/pi-agent-queue-rules";
+import {
+  PiSubagentStartedError,
+  piSubagentConversation,
+  recordDroppedPiSubagent,
+  recordPiSubagent,
+  recordStartedPiSubagent,
+  recordWaitingPiSubagent,
+  runningPiSubagentConversations,
+} from "@/fragno/pi/agent/pi-agent-subagents";
 import {
   readPiAgentRun,
   recordAdmittedPiAgentTurn,
@@ -73,6 +89,8 @@ import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-ob
 
 const AGENT_CONFIG_KEY = "pi-agent-config";
 const LEGACY_BILLING_SCOPE_KEY = "pi-legacy-billing-scope";
+// The queue revision of the agent's latest stop; work handed over before it is refused.
+const STOP_FENCE_KEY = "pi-stop-fence";
 const WAKE_HEARTBEAT_MS = 30_000;
 const WAKE_BUDGET_MS = 10 * 60_000;
 
@@ -285,8 +303,12 @@ export class PiObject extends RpcTarget implements PiAgent {
   // Records the turn before Pi admits its prompt, so no generation or tool can start without it.
   async #admit(
     opened: OpenPiAgent,
+    // The queue revision that handed it over, which a stop may fence.
+    revision: number,
     turn: PiAgentTurn,
     prompt: PiAgentPrompt,
+    // The transcript entry the input is placed as, when it is not the prompt's own.
+    entry: { kind: string; data: JsonObject } | null,
     whenBusy: "steer" | "followUp",
   ): Promise<void> {
     const { harness } = opened;
@@ -295,7 +317,7 @@ export class PiObject extends RpcTarget implements PiAgent {
     try {
       // The wake must be durable before Pi admits work, not after the HTTP request returns.
       await this.#state.storage.setAlarm(this.#nowEpochMs());
-      await recordPiAgentTurn(harness, prompt.requestId, turn, BACKGROUND_CONTEXT);
+      await recordPiAgentTurn(harness, root.id, prompt.requestId, turn, BACKGROUND_CONTEXT);
       try {
         // The conversation keeps its model and effort for turns that name none.
         const chosen = turn.agent.model;
@@ -315,37 +337,202 @@ export class PiObject extends RpcTarget implements PiAgent {
           );
         }
         await root.submit(
-          { type: "input", requestId: prompt.requestId, content: prompt.content, whenBusy },
+          {
+            type: "input",
+            requestId: prompt.requestId,
+            content: prompt.content,
+            whenBusy,
+            ...(entry && { entry }),
+          },
           BACKGROUND_CONTEXT,
         );
         await recordAdmittedPiAgentTurn(harness, turn, BACKGROUND_CONTEXT);
       } catch (error) {
         // Withdrawal keeps the record of a submission Pi did admit before the failure.
-        await withdrawPiAgentTurn(harness, prompt.requestId, BACKGROUND_CONTEXT);
+        await withdrawPiAgentTurn(harness, root.id, prompt.requestId, BACKGROUND_CONTEXT);
         throw error;
+      }
+      // A stop that landed while it was admitted aborted only what ran before it.
+      if (await this.#fenced(revision)) {
+        await root.abort(BACKGROUND_CONTEXT, { background: true });
       }
     } finally {
       this.#admitting -= 1;
     }
   }
 
-  async steer(config: PiAgentConfig, rawTurn: PiAgentTurn, rawPrompt: PiAgentPrompt) {
+  /** Whether a stop came after the queue handed over work at `revision`. */
+  async #fenced(revision: number): Promise<boolean> {
+    const fence = await this.#state.storage.get<number>(STOP_FENCE_KEY);
+    return fence !== undefined && revision < fence;
+  }
+
+  async startSubagent(
+    config: PiAgentConfig,
+    revision: number,
+    rawTurn: PiAgentTurn,
+    rawPrompt: PiAgentPrompt,
+  ) {
     const prompt = piAgentPromptSchema.parse(rawPrompt);
     const turn = piAgentTurnSchema.parse(rawTurn);
+    if (await this.#fenced(revision)) {
+      return;
+    }
+    const opened = await this.#requireAgent(config);
+    const { harness, storage } = opened;
+    this.#admitting += 1;
+    try {
+      // The wake must be durable before Pi admits work, not after the HTTP request returns.
+      await this.#state.storage.setAlarm(this.#nowEpochMs());
+      const conversation = await this.#subagentConversation(opened, prompt.requestId);
+      // A subagent handed over again keeps the submission and turn Pi already has for it.
+      if (
+        await storage.submissionByRequest(conversation.id, prompt.requestId, BACKGROUND_CONTEXT)
+      ) {
+        await this.#markSubagentStarted(harness, prompt.requestId);
+        return;
+      }
+      await recordPiAgentTurn(harness, conversation.id, prompt.requestId, turn, BACKGROUND_CONTEXT);
+      try {
+        const chosen = turn.agent.model;
+        if (chosen) {
+          await conversation.configure(
+            {
+              model: { provider: chosen.provider, modelId: chosen.modelId },
+              thinkingLevel: chosen.thinkingLevel,
+            },
+            BACKGROUND_CONTEXT,
+          );
+        }
+        await conversation.submit(
+          { type: "input", requestId: prompt.requestId, content: prompt.content },
+          BACKGROUND_CONTEXT,
+        );
+      } catch (error) {
+        await withdrawPiAgentTurn(harness, conversation.id, prompt.requestId, BACKGROUND_CONTEXT);
+        throw error;
+      }
+      await this.#markSubagentStarted(harness, prompt.requestId);
+      // A stop that landed while it started did not find it running.
+      if (await this.#fenced(revision)) {
+        await conversation.abort(BACKGROUND_CONTEXT, { background: true });
+      }
+    } finally {
+      this.#admitting -= 1;
+    }
+  }
+
+  // Only once its prompt is submitted, so a turn waiting for it finds the submission.
+  async #markSubagentStarted(harness: Harness, requestId: string) {
+    await harness.commit(async (tx) => {
+      await recordStartedPiSubagent(tx, requestId);
+    }, BACKGROUND_CONTEXT);
+  }
+
+  async recordSubagent(config: PiAgentConfig, requestId: string, rawSubagent: PiQueuedSubagent) {
+    const subagent = piQueuedSubagentSchema.parse(rawSubagent);
+    const { harness } = await this.#requireAgent(config);
+    await harness.commit(async (tx) => {
+      if (subagent.status === "waiting") {
+        await recordWaitingPiSubagent(tx, requestId);
+      } else {
+        await recordDroppedPiSubagent(tx, requestId, subagent.reason);
+      }
+    }, BACKGROUND_CONTEXT);
+  }
+
+  /** The subagent's conversation `requestId` started, created on its first start. */
+  async #subagentConversation(opened: OpenPiAgent, requestId: string): Promise<Conversation> {
+    const { harness, awaitSubagentsTool } = opened;
+    const recorded = await piSubagentConversation(harness, requestId, BACKGROUND_CONTEXT);
+    if (recorded !== null) {
+      return await this.#requireConversation(harness, recorded);
+    }
+    try {
+      return await harness.createConversation(
+        {
+          // Its manager tracks it, and a stop aborts it by name, so no task owns it.
+          ownership: { kind: "ownerless" },
+          // A subagent waiting for subagents would hold a slot they need.
+          agent: { tools: { remove: [awaitSubagentsTool] } },
+          init: async (tx, conversationId) => {
+            await recordPiSubagent(tx, requestId, conversationId);
+          },
+        },
+        BACKGROUND_CONTEXT,
+      );
+    } catch (error) {
+      // A concurrent handover of the same request created it first.
+      if (!(error instanceof PiSubagentStartedError)) {
+        throw error;
+      }
+      return await this.#subagentConversation(opened, requestId);
+    }
+  }
+
+  async #requireConversation(harness: Harness, conversationId: Conversation["id"]) {
+    const conversation = await harness.conversation(conversationId, BACKGROUND_CONTEXT);
+    if (!conversation) {
+      throw new Error(`Pi conversation ${conversationId} is missing.`);
+    }
+    return conversation;
+  }
+
+  /** The root conversation, or the subagent's that `subagent` asked for; null before it starts. */
+  async #conversation(harness: Harness, subagent: string | null): Promise<Conversation | null> {
+    if (subagent === null) {
+      return await harness.root(BACKGROUND_CONTEXT);
+    }
+    const conversationId = await piSubagentConversation(harness, subagent, BACKGROUND_CONTEXT);
+    return conversationId === null
+      ? null
+      : await this.#requireConversation(harness, conversationId);
+  }
+
+  async steer(
+    config: PiAgentConfig,
+    revision: number,
+    rawTurn: PiAgentTurn,
+    rawSteer: PiAgentSteer,
+  ) {
+    const steer = piAgentSteerSchema.parse(rawSteer);
+    const turn = piAgentTurnSchema.parse(rawTurn);
+    if (await this.#fenced(revision)) {
+      return;
+    }
+    const { entry, ...prompt } =
+      steer.type === "prompt"
+        ? { requestId: steer.requestId, content: steer.content, entry: null }
+        : piNotificationInput(steer.notification);
     const opened = await this.#requireAgent(config);
     const root = await opened.harness.root(BACKGROUND_CONTEXT);
     if (await opened.storage.submissionByRequest(root.id, prompt.requestId, BACKGROUND_CONTEXT)) {
       return;
     }
-    const run = await readPiAgentRun(opened.harness, opened.storage, BACKGROUND_CONTEXT);
+    const run = await readPiAgentRun(opened.harness, opened.storage, root.id, BACKGROUND_CONTEXT);
     // The manager's dispatched turn may have just ended; a steer never joins another authority's.
     const joins = run.type === "running" && run.turn !== null && mayJoinPiAgentTurn(run.turn, turn);
-    await this.#admit(opened, turn, prompt, joins ? "steer" : "followUp");
+    await this.#admit(
+      opened,
+      revision,
+      turn,
+      prompt,
+      entry && { kind: entry.kind, data: copyJson(entry.data) as JsonObject },
+      joins ? "steer" : "followUp",
+    );
   }
 
-  async dispatch(config: PiAgentConfig, rawTurn: PiAgentTurn, rawWork: PiAgentWork) {
+  async dispatch(
+    config: PiAgentConfig,
+    revision: number,
+    rawTurn: PiAgentTurn,
+    rawWork: PiAgentWork,
+  ) {
     const work = piAgentWorkSchema.parse(rawWork);
     const turn = piAgentTurnSchema.parse(rawTurn);
+    if (await this.#fenced(revision)) {
+      return;
+    }
     const opened = await this.#requireAgent(config);
     const root = await opened.harness.root(BACKGROUND_CONTEXT);
     // A turn handed over again keeps the submission and turn Pi already has for it.
@@ -354,13 +541,14 @@ export class PiObject extends RpcTarget implements PiAgent {
     }
     if (work.type === "prompt") {
       // Only a steer that outlived its turn can still be running; Pi queues the prompt behind it.
-      await this.#admit(opened, turn, work, "followUp");
+      await this.#admit(opened, revision, turn, work, null, "followUp");
       return;
     }
     // Cards written when their notifications arrived are kept where they are.
     await this.#writeNotifications(opened, work.notifications);
     await this.#admit(
       opened,
+      revision,
       turn,
       {
         requestId: work.requestId,
@@ -368,6 +556,7 @@ export class PiObject extends RpcTarget implements PiAgent {
           work.notifications.map(({ routeId, event }) => ({ routeId, eventId: event.id })),
         ),
       },
+      null,
       "followUp",
     );
   }
@@ -405,8 +594,56 @@ export class PiObject extends RpcTarget implements PiAgent {
 
   async getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null> {
     const { storage, harness } = await this.#requireAgent(config);
-    const root = await harness.root(BACKGROUND_CONTEXT);
-    return (await storage.submissionByRequest(root.id, requestId, BACKGROUND_CONTEXT)) ?? null;
+    const conversationId =
+      (await piSubagentConversation(harness, requestId, BACKGROUND_CONTEXT)) ??
+      (await harness.root(BACKGROUND_CONTEXT)).id;
+    return (
+      (await storage.submissionByRequest(conversationId, requestId, BACKGROUND_CONTEXT)) ?? null
+    );
+  }
+
+  async getSubagentRuns(config: PiAgentConfig, requestIds: string[]): Promise<PiSubagentRun[]> {
+    const { storage, harness } = await this.#requireAgent(config);
+    return await Promise.all(
+      requestIds.map(async (requestId): Promise<PiSubagentRun> => {
+        const conversationId = await piSubagentConversation(harness, requestId, BACKGROUND_CONTEXT);
+        const submission =
+          conversationId === null
+            ? null
+            : ((await storage.submissionByRequest(conversationId, requestId, BACKGROUND_CONTEXT)) ??
+              null);
+        async function entryMessages(entryId: EntryId | undefined) {
+          if (conversationId === null || entryId === undefined) {
+            return [];
+          }
+          const stored = await storage.entry(conversationId, entryId, BACKGROUND_CONTEXT);
+          return stored?.entry.model ?? [];
+        }
+        const prompt = await entryMessages(submission?.entry);
+        const answer = await entryMessages(
+          submission?.type === "input" && submission.status === "done"
+            ? submission.answer
+            : undefined,
+        );
+        const assistant = answer.filter((message) => message.role === "assistant");
+        const answered = assistant.at(-1);
+        return {
+          requestId,
+          submission,
+          startedAt: prompt[0]?.timestamp ?? null,
+          // An assistant message is stamped when its generation starts.
+          answeredAt:
+            answered === undefined ? null : answered.timestamp + (answered.durationMs ?? 0),
+          answer:
+            assistant.length === 0
+              ? null
+              : assistant
+                  .flatMap((message) => message.content)
+                  .flatMap((block) => (block.type === "text" ? [block.text] : []))
+                  .join("\n"),
+        };
+      }),
+    );
   }
 
   async listEntries(
@@ -432,7 +669,11 @@ export class PiObject extends RpcTarget implements PiAgent {
   ) {
     const request = piAgentMessagePageRequestSchema.parse(rawRequest);
     const { harness } = await this.#requireAgent(config);
-    return await listPiConversationMessages(await harness.root(BACKGROUND_CONTEXT), request);
+    const conversation = await this.#conversation(harness, request.subagent);
+    // A request that started no subagent has said nothing.
+    return conversation
+      ? await listPiConversationMessages(conversation, request)
+      : { messages: [], before: null };
   }
 
   async exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>> {
@@ -472,11 +713,14 @@ export class PiObject extends RpcTarget implements PiAgent {
     return await readPiCompactionStatus(harness, taskId);
   }
 
-  async getView(config: PiAgentConfig): Promise<unknown> {
+  async getView(config: PiAgentConfig, subagent: string | null): Promise<unknown> {
     const { harness } = await this.#requireAgent(config);
-    const root = await harness.root(BACKGROUND_CONTEXT);
+    const conversation = await this.#conversation(harness, subagent);
+    if (!conversation) {
+      return null;
+    }
     try {
-      const view = await root.viewState(BACKGROUND_CONTEXT);
+      const view = await conversation.viewState(BACKGROUND_CONTEXT);
       try {
         return view.value;
       } finally {
@@ -659,10 +903,23 @@ export class PiObject extends RpcTarget implements PiAgent {
     await (await harness.root(BACKGROUND_CONTEXT)).reset(undefined, BACKGROUND_CONTEXT);
   }
 
-  async abort(config: PiAgentConfig): Promise<void> {
+  async abort(config: PiAgentConfig, revision: number): Promise<void> {
     const { harness } = await this.#requireAgent(config);
+    // Stops arrive out of order; the latest one fences.
+    const fence = await this.#state.storage.get<number>(STOP_FENCE_KEY);
+    if (fence === undefined || fence < revision) {
+      await this.#state.storage.put(STOP_FENCE_KEY, revision);
+    }
     await this.#state.storage.setAlarm(this.#nowEpochMs());
     await (await harness.root(BACKGROUND_CONTEXT)).abort(BACKGROUND_CONTEXT, { background: true });
+    // No task owns the subagents prompts started, so the root's abort does not reach them.
+    for (const conversationId of await runningPiSubagentConversations(
+      harness,
+      BACKGROUND_CONTEXT,
+    )) {
+      const conversation = await harness.conversation(conversationId, BACKGROUND_CONTEXT);
+      await conversation?.abort(BACKGROUND_CONTEXT, { background: true });
+    }
   }
 
   async alarm(): Promise<void> {

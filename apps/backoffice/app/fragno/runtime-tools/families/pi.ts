@@ -53,6 +53,7 @@ const parsePromptSubmit = defineCliArgsParser<PiManagerSubmitPromptInput>("pi.pr
   requestId: { option: "request-id" },
   whenBusy: { option: "when-busy" },
   notifyWhenDone: { option: "notify-when-done", kind: "boolean" },
+  subagent: { kind: "boolean" },
 });
 const parsePromptGet = defineCliArgsParser<PiManagerPromptInput>("pi.prompt.get", {
   agentName: { option: "agent", required: true },
@@ -78,10 +79,12 @@ const parseAgentMessages = defineCliArgsParser<{
   agentName: string;
   last?: number;
   before?: number;
+  subagent?: string;
 }>("pi.agent.messages", {
   agentName: { option: "agent", required: true },
   last: { kind: "positiveInteger" },
   before: { kind: "positiveInteger" },
+  subagent: {},
 });
 const parseAgentExport = defineCliArgsParser<{ agentName: string; out: string }>(
   "pi.agent.export",
@@ -263,6 +266,11 @@ const promptSubmitTool = defineBackofficeRuntimeTool({
             name: "notify-when-done",
             description:
               "From an agent's turn: notify the calling agent with the event recording how the prompt ended",
+          },
+          {
+            name: "subagent",
+            description:
+              "Run the prompt in a new conversation of the agent, beside its own, that ends once it answers",
           },
           {
             name: "billing-organization-id",
@@ -471,6 +479,12 @@ const agentMessagesTool = defineBackofficeRuntimeTool({
             valueRequired: true,
             valueName: "entry-id",
             description: "Print the messages before this one, as a previous page suggests",
+          },
+          {
+            name: "subagent",
+            valueRequired: true,
+            valueName: "request-id",
+            description: "Print the messages of the agent's subagent this request started",
           },
         ],
         examples: [

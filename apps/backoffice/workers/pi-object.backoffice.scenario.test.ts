@@ -44,6 +44,7 @@ import {
   ToolTask,
   type ConversationView,
   type HarnessSettings,
+  type InboxState,
 } from "@earendil-works/pi-durable";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
@@ -67,6 +68,7 @@ import {
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
+import { PI_NOTIFICATION_ENTRY_KIND } from "@/fragno/pi/agent/pi-agent-notification-entry";
 import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog-extension";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -849,6 +851,476 @@ test("an agent's definition narrows every turn and an edited definition applies 
   );
 });
 
+test("an agent waits in its turn for the subagents it starts, also those waiting for a slot", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "subagent-join" },
+  });
+  const documents = ["doc-1", "doc-2", "doc-3", "doc-4", "doc-5"];
+  let heard: unknown = null;
+  let refused: { isError: boolean; text: string } | null = null;
+  let nested = "";
+  // Subagents answer only once the agent waits for them, so one still waits for a slot then.
+  let joined!: () => void;
+  const joining = new Promise<void>((resolve) => (joined = resolve));
+  // One dispatcher serves the agent's turn and its subagents.
+  const respond: FauxResponseStep = async (context) => {
+    const task = lastUserText(context);
+    const results = toolResults(context);
+    if (task === "Check every document.") {
+      if (results.length === 0) {
+        return fauxAssistantMessage(
+          [
+            fauxToolCall("codemode", {
+              code: `async () => {
+                for (const requestId of ${JSON.stringify(documents)}) {
+                  await pi.submitPrompt({ agentName: "assistant", requestId, subagent: true, content: "Check " + requestId + "." });
+                }
+              }`,
+            }),
+          ],
+          { stopReason: "toolUse" },
+        );
+      }
+      if (results.length === 1) {
+        joined();
+        return fauxAssistantMessage(
+          [fauxToolCall("awaitSubagents", { requestIds: [...documents, "doc-unknown"] })],
+          { stopReason: "toolUse" },
+        );
+      }
+      const [text] = results[1]!.content.flatMap((block) =>
+        block.type === "text" ? [block.text] : [],
+      );
+      heard = JSON.parse(text!);
+      return fauxAssistantMessage("Every document is checked.");
+    }
+    // A subagent cannot wait for subagents: four doing so would hold every slot.
+    if (task === "Check doc-1." && results.length === 0) {
+      return fauxAssistantMessage([fauxToolCall("awaitSubagents", { requestIds: ["doc-2"] })], {
+        stopReason: "toolUse",
+      });
+    }
+    // Nor start subagents, or ask to hear how prompts end, from code.
+    if (task === "Check doc-2." && results.length === 0) {
+      return fauxAssistantMessage(
+        [
+          fauxToolCall("codemode", {
+            code: `async () => {
+              const refusals = [];
+              for (const input of [
+                { subagent: true },
+                { agentName: "assistant", notifyWhenDone: true },
+              ]) {
+                try {
+                  await pi.submitPrompt({ agentName: "assistant", content: "Go deeper.", ...input });
+                  refusals.push("accepted");
+                } catch (error) {
+                  refusals.push(String(error.message));
+                }
+              }
+              return refusals;
+            }`,
+          }),
+        ],
+        { stopReason: "toolUse" },
+      );
+    }
+    if (task === "Check doc-2.") {
+      nested = results[0]!.content.flatMap((block) =>
+        block.type === "text" ? [block.text] : [],
+      )[0]!;
+    }
+    if (task === "Check doc-1.") {
+      const [result] = results;
+      refused = {
+        isError: result!.isError,
+        text: result!.content.flatMap((block) => (block.type === "text" ? [block.text] : []))[0]!,
+      };
+    }
+    await joining;
+    return fauxAssistantMessage(`${task.replace("Check ", "").replace(".", "")} is fine.`);
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi joins subagents",
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...scriptedAgents(Array.from({ length: 12 }, () => respond)) },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("the agent starts five subagents and waits for them", async ({ runtime }) => {
+          await prompt(runtime, execution, {
+            requestId: "check",
+            content: "Check every document.",
+          });
+          await runtime.drain();
+          expect(await submission(runtime, execution, "check")).toMatchObject({ status: "done" });
+        }),
+        then.assert("it hears each answer in the order it asked, in the same turn", () => {
+          expect(heard).toEqual([
+            { requestId: "doc-1", status: "answered", answer: "doc-1 is fine." },
+            { requestId: "doc-2", status: "answered", answer: "doc-2 is fine." },
+            { requestId: "doc-3", status: "answered", answer: "doc-3 is fine." },
+            { requestId: "doc-4", status: "answered", answer: "doc-4 is fine." },
+            // It still waited for a slot when the agent started waiting for it.
+            { requestId: "doc-5", status: "answered", answer: "doc-5 is fine." },
+            { requestId: "doc-unknown", status: "notFound" },
+          ]);
+        }),
+        then.assert("subagents run without the tool", () => {
+          expect(refused).toMatchObject({ isError: true });
+          expect(refused?.text).toContain("awaitSubagents");
+        }),
+        then.assert("subagents start no subagents and ask for no replies", () => {
+          expect(nested).toContain("A subagent cannot start subagents");
+          expect(nested).toContain("A subagent cannot be notified when a prompt ends");
+          expect(nested).not.toContain("accepted");
+        }),
+        then.assert("the agent's conversation holds only its own turn", async ({ runtime }) => {
+          const transcript = await view(runtime, execution);
+          expect(userTexts(transcript)).toHaveLength(1);
+          expect(JSON.stringify(transcript.entries)).toContain("Every document is checked.");
+        }),
+        then.assert("its page lists them under the tool call that asked", async ({ runtime }) => {
+          const transcript = await view(runtime, execution);
+          const [codemodeCall] = transcript.entries.flatMap((entry) =>
+            (entry.model ?? []).flatMap((message) =>
+              message.role === "assistant"
+                ? message.content.flatMap((block) =>
+                    block.type === "toolCall" && block.name === "codemode" ? [block.id] : [],
+                  )
+                : [],
+            ),
+          );
+          const listed = await (
+            await request(runtime, execution, "/agents/assistant/subagents", null)
+          ).json<{ subagents: { requestId: string; askedBy: unknown }[] }>();
+          expect(listed.subagents.map(({ requestId, askedBy }) => [requestId, askedBy])).toEqual(
+            [...documents]
+              .reverse()
+              .map((requestId) => [requestId, { kind: "turn", toolCallId: codemodeCall }]),
+          );
+        }),
+      ],
+    }),
+  );
+});
+
+test("reports of subagents that end together are handled in one turn", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "subagent-reports" },
+  });
+  const heard: string[][] = [];
+  // The turn handling the first report works on until the second waits to join it.
+  let reported!: () => void;
+  const reports = new Promise<void>((resolve) => (reported = resolve));
+  const respond: FauxResponseStep = async (context) => {
+    const task = lastUserText(context);
+    if (task.startsWith("Write a haiku about ")) {
+      return fauxAssistantMessage(`A haiku about ${task.slice("Write a haiku about ".length)}`);
+    }
+    if (task === "Ask for two haikus.") {
+      return toolResults(context).length === 0
+        ? fauxAssistantMessage(
+            [
+              fauxToolCall("codemode", {
+                code: `async () => {
+                  for (const season of ["spring", "summer"]) {
+                    await pi.submitPrompt({ agentName: "assistant", requestId: season, subagent: true, notifyWhenDone: true, content: "Write a haiku about " + season + "." });
+                  }
+                }`,
+              }),
+            ],
+            { stopReason: "toolUse" },
+          )
+        : fauxAssistantMessage("Asked; they report back.");
+    }
+    heard.push(heardEvents(context).map(({ subject }) => String(subject.requestId)));
+    if (heard.length === 1) {
+      await reports;
+      return fauxAssistantMessage([fauxToolCall("codemode", { code: "async () => null" })], {
+        stopReason: "toolUse",
+      });
+    }
+    return fauxAssistantMessage("Both haikus are in.");
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi handles subagent reports together",
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...scriptedAgents(Array.from({ length: 8 }, () => respond)) },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("the second report joins the turn the first started", async ({ runtime }) => {
+          await prompt(runtime, execution, { requestId: "ask", content: "Ask for two haikus." });
+          const running = runtime.drain();
+          await vi.waitFor(
+            async () => {
+              const inbox = (await view(runtime, execution)).docs["pi.inbox"] as InboxState;
+              expect(inbox.items.map(({ mode }) => mode)).toEqual(["steer"]);
+            },
+            { timeout: 5_000, interval: 20 },
+          );
+          reported();
+          await running;
+          expect(heard.map((events) => events.sort())).toEqual([
+            [expect.any(String)],
+            ["spring", "summer"],
+          ]);
+        }),
+        then.assert("each report shows once, and no turn handles it again", async ({ runtime }) => {
+          const transcript = await view(runtime, execution);
+          const kinds = transcript.entries.map(({ kind }) => kind);
+          expect(kinds.filter((kind) => kind === PI_NOTIFICATION_ENTRY_KIND)).toHaveLength(2);
+          // The prompt, and the request the first report's turn handles.
+          expect(userTexts(transcript)).toHaveLength(2);
+          expect(JSON.stringify(transcript.entries)).toContain("Both haikus are in.");
+        }),
+      ],
+    }),
+  );
+});
+
+test("subagents an app starts each answer one task in a conversation of their own", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "subagent-prompts" },
+  });
+  // What each conversation's first request saw, by its prompt, and the sessions they ran in.
+  const seen = new Map<string, string[]>();
+  const instructed = new Map<string, string>();
+  const sessions = new Set<string>();
+  const respond: FauxResponseStep = (context, options) => {
+    const task = lastUserText(context);
+    const results = toolResults(context);
+    if (results.length === 0) {
+      seen.set(
+        task,
+        context.messages
+          .filter((message) => message.role === "user")
+          .map(({ content }) => (typeof content === "string" ? content : JSON.stringify(content))),
+      );
+      const system = JSON.stringify(
+        context.messages.filter((message) => message.role === "system"),
+      );
+      instructed.set(task, system.includes("Answer as a subagent.") ? "subagent" : "agent");
+      sessions.add(options?.sessionId ?? "none");
+    }
+    if (task === "Write the store.") {
+      return results.length === 0
+        ? fauxAssistantMessage(
+            [
+              fauxToolCall("codemode", {
+                code: `async () => await store.set({ key: "reader/result", value: "written" })`,
+              }),
+            ],
+            { stopReason: "toolUse" },
+          )
+        : fauxAssistantMessage(
+            JSON.stringify(results).includes("Agent 'reader' is not granted store.modify")
+              ? "I may not write the store."
+              : "I wrote the store.",
+          );
+    }
+    return fauxAssistantMessage(task === "Read document 2." ? "Document 2 read." : "Hello.");
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi subagents started by prompts",
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...scriptedAgents(Array.from({ length: 6 }, () => respond)) },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("the agent and two subagents answer", async ({ runtime }) => {
+          const reader = {
+            description: "Reads documents.",
+            model: null,
+            permissions: ["upload.read"],
+            instructions: "Answer as the reader.",
+          };
+          const defined = await request(runtime, execution, "/agents", {
+            agentName: "reader",
+            ...reader,
+          });
+          assert.equal(defined.status, 201, await defined.clone().text());
+          const own = await request(runtime, execution, "/agents/reader/prompts", {
+            requestId: "own",
+            content: "Talk to me.",
+          });
+          assert.equal(own.status, 202, await own.clone().text());
+          // Subagents admitted after this run under the edited definition; the agent's turn not.
+          const edited = await request(
+            runtime,
+            execution,
+            "/agents/reader",
+            { ...reader, instructions: "Answer as a subagent." },
+            "PUT",
+          );
+          assert.equal(edited.status, 200, await edited.clone().text());
+          for (const [requestId, content, subagent] of [
+            ["doc-1", "Write the store.", true],
+            ["doc-2", "Read document 2.", true],
+          ] as const) {
+            const submitted = await request(runtime, execution, "/agents/reader/prompts", {
+              requestId,
+              content,
+              subagent,
+            });
+            assert.equal(submitted.status, 202, await submitted.clone().text());
+          }
+          await runtime.drain();
+          for (const requestId of ["own", "doc-1", "doc-2"]) {
+            expect(await submission(runtime, execution, requestId, "reader")).toMatchObject({
+              status: "done",
+            });
+          }
+        }),
+        then.assert("each conversation sees only its own prompt, under its own turn", () => {
+          expect(Object.fromEntries(instructed)).toEqual({
+            "Talk to me.": "agent",
+            "Write the store.": "subagent",
+            "Read document 2.": "subagent",
+          });
+          expect(Object.fromEntries(seen)).toEqual({
+            "Talk to me.": ["Talk to me."],
+            "Write the store.": ["Write the store."],
+            "Read document 2.": ["Read document 2."],
+          });
+          assert(sessions.size === 3);
+          assert(!sessions.has("none"));
+        }),
+        then.assert("the agent's conversation holds only its own turn", async ({ runtime }) => {
+          const transcript = await view(runtime, execution, "reader");
+          expect(userTexts(transcript)).toHaveLength(1);
+          expect(JSON.stringify(transcript.entries)).not.toContain("Document 2 read.");
+        }),
+        then.assert("the agent lists its subagents, newest first", async ({ runtime }) => {
+          const listed = await request(runtime, execution, "/agents/reader/subagents", null);
+          expect(await listed.json()).toEqual({
+            subagents: [
+              {
+                requestId: "doc-2",
+                task: "Read document 2.",
+                askedAt: expect.any(String),
+                askedBy: { kind: "person" },
+                status: { requestId: "doc-2", status: "completed" },
+                startedAt: expect.any(String),
+                answeredAt: expect.any(String),
+                answer: "Document 2 read.",
+              },
+              {
+                requestId: "doc-1",
+                task: "Write the store.",
+                askedAt: expect.any(String),
+                askedBy: { kind: "person" },
+                status: { requestId: "doc-1", status: "completed" },
+                startedAt: expect.any(String),
+                answeredAt: expect.any(String),
+                answer: "I may not write the store.",
+              },
+            ],
+          });
+        }),
+        then.assert("a subagent's conversation reads by its request ID", async ({ runtime }) => {
+          const subagentView = await request(
+            runtime,
+            execution,
+            "/agents/reader/subagents/doc-1/view",
+            null,
+          );
+          assert.equal(subagentView.status, 200, await subagentView.clone().text());
+          expect(JSON.stringify(await subagentView.json())).toContain("I may not write the store.");
+          const missing = await request(
+            runtime,
+            execution,
+            "/agents/reader/subagents/own/view",
+            null,
+          );
+          assert(missing.status === 404);
+          const messages = await request(
+            runtime,
+            execution,
+            "/agents/reader/messages?last=1&subagent=doc-2",
+            null,
+          );
+          expect(await messages.json()).toMatchObject({
+            messages: [{ role: "assistant", text: "Document 2 read." }],
+          });
+        }),
+        // A subagent runs as whoever started it, narrowed by the agent's definition.
+        then.store.missing({ orgId: "org-1", key: "reader/result" }),
+      ],
+    }),
+  );
+});
+
+test("stopping an agent aborts its running subagents and its turn waiting for them", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "subagent-stop" },
+  });
+  // The agent starts a subagent and waits for it; the subagent answers only once it is stopped.
+  const respond: FauxResponseStep = async (context, options) => {
+    const results = toolResults(context);
+    if (lastUserText(context) === "Delegate and wait.") {
+      return fauxAssistantMessage(
+        [
+          results.length === 0
+            ? fauxToolCall("codemode", {
+                code: `async () => await pi.submitPrompt({ agentName: "assistant", requestId: "doc-1", subagent: true, content: "Wait for the stop." })`,
+              })
+            : fauxToolCall("awaitSubagents", { requestIds: ["doc-1"] }),
+        ],
+        { stopReason: "toolUse" },
+      );
+    }
+    await new Promise<void>((resolve) => {
+      options?.signal?.addEventListener("abort", () => resolve(), { once: true });
+    });
+    return fauxAssistantMessage([], { stopReason: "aborted" });
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi subagents stopped",
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...scriptedAgents(Array.from({ length: 4 }, () => respond)) },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("the stop ends the subagent and the wait", async ({ runtime }) => {
+          await prompt(runtime, execution, { requestId: "lead", content: "Delegate and wait." });
+          const running = runtime.drainAlarms();
+          await vi.waitFor(
+            async () => {
+              expect(await submission(runtime, execution, "doc-1")).toMatchObject({
+                status: "placed",
+              });
+              // The agent's turn waits in the tool.
+              const live = (await view(runtime, execution)).docs["pi.live"];
+              expect(JSON.stringify(live)).toContain('"name":"awaitSubagents"');
+            },
+            { timeout: 5_000, interval: 20 },
+          );
+          const stopped = await request(runtime, execution, "/agents/assistant/stop", {});
+          assert.equal(stopped.status, 204, await stopped.clone().text());
+          await running;
+          await runtime.drain();
+          for (const requestId of ["lead", "doc-1"]) {
+            expect(await submission(runtime, execution, requestId)).toMatchObject({
+              status: "unanswered",
+              reason: "aborted",
+            });
+          }
+        }),
+      ],
+    }),
+  );
+});
+
 for (const revocation of ["restricted", "disabled", "deleted"] as const) {
   test(`durable Pi runs each turn as its own prompter after a linked-user route is ${revocation}`, async () => {
     const scope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
@@ -1588,7 +2060,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
               try {
                 // The restored turn record is the only authority the recovered tools can use.
                 await restored.alarm();
-                const transcript = (await restored.getView(config)) as ConversationView;
+                const transcript = (await restored.getView(config, null)) as ConversationView;
                 expect(JSON.stringify(transcript.entries)).toContain(
                   "Recovered with exactly one mutation.",
                 );

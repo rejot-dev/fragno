@@ -420,7 +420,13 @@ describe("Pi durable agent scenarios", () => {
         BACKGROUND_CONTEXT,
       );
       const root = await harness.root(BACKGROUND_CONTEXT);
-      await recordPiAgentTurn(harness, "recovery-1", seededTurn(config), BACKGROUND_CONTEXT);
+      await recordPiAgentTurn(
+        harness,
+        root.id,
+        "recovery-1",
+        seededTurn(config),
+        BACKGROUND_CONTEXT,
+      );
       await root.submit(
         { type: "input", content: "Recover this prompt.", requestId: "recovery-1" },
         BACKGROUND_CONTEXT,
@@ -486,7 +492,7 @@ describe("Pi durable agent scenarios", () => {
           if (retryThrough === "alarm") {
             await object.alarm();
           }
-          await expect(object.getView(config)).resolves.toMatchObject({ entries: [] });
+          await expect(object.getView(config, null)).resolves.toMatchObject({ entries: [] });
           expect(reports).toEqual([startupError]);
           await expect(state.storage.get("pi-agent-config")).resolves.toEqual(config);
           await expect(state.storage.get("pi-legacy-billing-scope")).resolves.toEqual({
@@ -495,7 +501,7 @@ describe("Pi durable agent scenarios", () => {
             jurisdiction: null,
           });
 
-          await object.dispatch(config, seededTurn(config), {
+          await object.dispatch(config, 1, seededTurn(config), {
             type: "prompt",
             requestId: "startup-recovered",
             content: "Finish the recovered turn.",
@@ -503,7 +509,7 @@ describe("Pi durable agent scenarios", () => {
           // The real object's alarm may already have consumed the one this submission scheduled;
           // running this object's alarm performs the turn either way.
           await object.alarm();
-          expect(JSON.stringify(await object.getView(config))).toContain(
+          expect(JSON.stringify(await object.getView(config, null))).toContain(
             "Recovered after startup.",
           );
           await expect(object.getSubmission(config, "startup-recovered")).resolves.toMatchObject({
@@ -621,7 +627,7 @@ describe("Pi durable agent scenarios", () => {
         await expect(alarm).rejects.toBe(storageError);
         // The next call opens the agent again, on storage that works.
         storageFails = false;
-        await expect(object.getView(config)).resolves.toMatchObject({ entries: [] });
+        await expect(object.getView(config, null)).resolves.toMatchObject({ entries: [] });
       } finally {
         await object.close();
       }

@@ -10,6 +10,7 @@ import type {
   PiAgent,
   PiAgentTurn,
   PiAgentPrompt,
+  PiAgentSteer,
   PiAgentWork,
   PiAgentNotification,
   piAgentEntryPageRequestSchema,
@@ -17,6 +18,8 @@ import type {
   piAgentCompactionSchema,
   PiAgentCompactionStatus,
   PiAgentWaitingQueue,
+  PiQueuedSubagent,
+  PiSubagentRun,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import type { PiAgentDependencies } from "@/fragno/pi/agent/pi-agent-harness";
 
@@ -99,17 +102,31 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   async warm(): Promise<void> {
     await this.#object.warm();
   }
-  async steer(config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt) {
-    await this.#object.steer(config, turn, prompt);
+  async steer(config: PiAgentConfig, revision: number, turn: PiAgentTurn, steer: PiAgentSteer) {
+    await this.#object.steer(config, revision, turn, steer);
   }
-  async dispatch(config: PiAgentConfig, turn: PiAgentTurn, work: PiAgentWork) {
-    await this.#object.dispatch(config, turn, work);
+  async dispatch(config: PiAgentConfig, revision: number, turn: PiAgentTurn, work: PiAgentWork) {
+    await this.#object.dispatch(config, revision, turn, work);
   }
   async writeNotifications(config: PiAgentConfig, notifications: PiAgentNotification[]) {
     await this.#object.writeNotifications(config, notifications);
   }
+  async startSubagent(
+    config: PiAgentConfig,
+    revision: number,
+    turn: PiAgentTurn,
+    prompt: PiAgentPrompt,
+  ) {
+    await this.#object.startSubagent(config, revision, turn, prompt);
+  }
+  async recordSubagent(config: PiAgentConfig, requestId: string, subagent: PiQueuedSubagent) {
+    await this.#object.recordSubagent(config, requestId, subagent);
+  }
   async getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null> {
     return await this.#object.getSubmission(config, requestId);
+  }
+  async getSubagentRuns(config: PiAgentConfig, requestIds: string[]): Promise<PiSubagentRun[]> {
+    return await this.#object.getSubagentRuns(config, requestIds);
   }
   async listEntries(config: PiAgentConfig, request: z.infer<typeof piAgentEntryPageRequestSchema>) {
     return await this.#object.listEntries(config, request);
@@ -136,8 +153,8 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   ): Promise<PiAgentCompactionStatus | null> {
     return await this.#object.getCompaction(config, taskId);
   }
-  async getView(config: PiAgentConfig): Promise<unknown> {
-    return await this.#object.getView(config);
+  async getView(config: PiAgentConfig, subagent: string | null): Promise<unknown> {
+    return await this.#object.getView(config, subagent);
   }
   async publishQueue(queue: PiAgentWaitingQueue): Promise<void> {
     await this.#object.publishQueue(queue);
@@ -201,8 +218,8 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   async reset(config: PiAgentConfig): Promise<void> {
     await this.#object.reset(config);
   }
-  async abort(config: PiAgentConfig): Promise<void> {
-    await this.#object.abort(config);
+  async abort(config: PiAgentConfig, revision: number): Promise<void> {
+    await this.#object.abort(config, revision);
   }
   async alarm(): Promise<void> {
     await this.#object.alarm();

@@ -277,7 +277,7 @@ describe("runtime tool reference generation", () => {
           inputType: "PiListMessagesInput",
           outputType: "PiListMessagesOutput",
           bashCommand: "pi.agent.messages",
-          bashOptions: ["agent", "last", "before"],
+          bashOptions: ["agent", "last", "before", "subagent"],
         },
         {
           id: "pi.agent.export",
@@ -330,6 +330,7 @@ describe("runtime tool reference generation", () => {
             "request-id",
             "when-busy",
             "notify-when-done",
+            "subagent",
             "billing-organization-id",
           ],
         },

@@ -23,10 +23,20 @@ export type PiAgentTurnProvenance = Pick<PiAgentTurn, "actors" | "scopeRestricti
 
 /**
  * What a queued item asks the agent for. A prompt's model is the one its turn runs with, which
- * null leaves as the conversation's.
+ * null leaves as the conversation's. A subagent is a prompt that runs in a new conversation of its
+ * own, beside the agent's, so its model starts that conversation; its agent's page lists it by when
+ * it was submitted, an ISO timestamp.
  */
 export type PiAgentQueueInput =
   | { type: "prompt"; content: string; model: PiAgentModelChoice | null }
+  | {
+      type: "subagent";
+      content: string;
+      model: PiAgentModelChoice | null;
+      submittedAt: string;
+      /** The tool call of the agent's own turn that asked for it; null when anyone else did. */
+      askingToolCall: string | null;
+    }
   | { type: "notification"; notification: PiAgentNotification };
 
 /**
@@ -44,6 +54,7 @@ export type PiAgentQueueItemState =
 
 export const AGENT_QUEUE_STATUS_INDEX = "idx_agent_queue_item_agentName_status_position";
 export const AGENT_QUEUE_REQUEST_INDEX = "idx_agent_queue_item_agentName_requestId";
+export const AGENT_QUEUE_SUBAGENT_INDEX = "idx_agent_queue_item_agentName_subagent_position";
 
 /**
  * A scope's agent definitions, keyed by agent name, the agents that have been provisioned, and
@@ -98,6 +109,13 @@ export const piAgentDirectorySchema = schema("pi_manager", (s) =>
     // The agent whose turn sent a prompt and asked to hear how it ends; null asks for nothing.
     .alterTable("agent_queue_item", (t) =>
       t.addColumn("replyTo", jsonColumn<PiAgentConfig>().nullable()),
+    )
+    // Repeats whether the input is a subagent, which the index listing an agent's subagents needs
+    // as a column.
+    .alterTable("agent_queue_item", (t) =>
+      t
+        .addColumn("subagent", column("bool").defaultTo(false))
+        .createIndex(AGENT_QUEUE_SUBAGENT_INDEX, ["agentName", "subagent", "position"]),
     ),
 );
 

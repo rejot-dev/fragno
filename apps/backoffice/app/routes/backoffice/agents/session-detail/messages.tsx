@@ -29,15 +29,21 @@ import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/re
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { FileScopeProvider, useFileScope } from "@/components/backoffice/file-scope";
 import { workflowCompletionFromNotification } from "@/fragno/automation/workflow-reply";
+import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiNotificationReference } from "@/fragno/pi/agent/pi-agent-notification-entry";
 
 import { sentAttachmentItems } from "../agent-attachments";
+import {
+  ToolCallSubagents,
+  useSubagentReports,
+  type SubagentReport,
+} from "../agent-subagent-batches";
 import { agentTurn, liveHeadline, type AgentTurnStep, type ToolCallPart } from "./agent-turn";
 import {
   notificationRequestLabel,
   type PiAssistantMessageMetadata,
   type PiCompactionMessageMetadata,
-  type PiNotificationMessageMetadata,
-  type PiNotificationRequestMessageMetadata,
+  type PiNotificationsMessageMetadata,
   type PiUserMessageMetadata,
 } from "./assistant-runtime";
 import { MarkdownText, MessageImage } from "./message-content";
@@ -188,7 +194,7 @@ export function AssistantMessage({
       };
 
   const shown = visibleSteps.length > 0 || workflowRuns.length > 0 || answer.length > 0;
-  const { notificationRequest } = metadata;
+  const { notificationRequest, notifications } = metadata;
   // A turn can end without saying anything, such as one that acknowledged a finished workflow
   // whose card already shows the result; an author with nothing under it reads as a stuck reply.
   // A silent answer to notifications goes with its request, whatever copy or usage it offers,
@@ -197,24 +203,19 @@ export function AssistantMessage({
     !running &&
     !shown &&
     (footer === null || (notificationRequest !== null && !stopped && failure === null));
-  if (silent) {
-    return null;
-  }
   // A turn answering notifications is one line until it has something to show.
   const handling = notificationRequest !== null && running && !shown;
   const requestLine =
-    notificationRequest === null ? null : (
-      <ChatEventDivider marker={handling ? "progress" : "notification"} time={createdAt ?? null}>
-        {handling ? (
-          <span className="bo-shimmer-text">
-            {notificationRequestLabel(notificationRequest, "handling")}
-          </span>
-        ) : (
-          notificationRequestLabel(notificationRequest, "asked")
-        )}
-      </ChatEventDivider>
+    notificationRequest === null && notifications.length === 0 ? null : (
+      <NotificationsLine
+        notifications={notifications}
+        request={notificationRequest}
+        handling={handling}
+        time={createdAt ?? null}
+      />
     );
-  if (handling) {
+  // The events stay where they were given, whatever the turn said about them.
+  if (silent || handling) {
     return <>{requestLine}</>;
   }
 
@@ -245,6 +246,9 @@ export function AssistantMessage({
           ) : null}
           {workflowRuns.map((run) => (
             <SessionWorkflow key={run.instanceId} run={run} />
+          ))}
+          {tools.map((tool) => (
+            <ToolCallSubagents key={tool.part.toolCallId} toolCallId={tool.part.toolCallId} />
           ))}
           {answer.map((part) =>
             part.kind === "text" ? (
@@ -360,18 +364,150 @@ export function CompactionMessage() {
   );
 }
 
+/** Events no turn shows, where they were delivered, or the request no turn has answered yet. */
+export function NotificationsMessage() {
+  const createdAt = useAuiState((state) => state.message.createdAt);
+  const { notifications, request } = useAuiState(
+    (state) => state.message.metadata.custom as PiNotificationsMessageMetadata,
+  );
+  return (
+    <MessagePrimitive.Root asChild>
+      <div>
+        <NotificationsLine
+          notifications={notifications}
+          request={request}
+          handling={false}
+          time={createdAt ?? null}
+        />
+      </div>
+    </MessagePrimitive.Root>
+  );
+}
+
 /**
- * An event a route delivered to the agent; expanding it shows the event's subject and payload. A
+ * The events the agent was given at one point, as one line. A subagent's report leads back to its
+ * card, which shows its answer; other events open to what they carry. Several open to one line
+ * each.
+ */
+function NotificationsLine({
+  notifications,
+  request,
+  handling,
+  time,
+}: {
+  notifications: readonly PiAgentNotification[];
+  /** What the agent was asked to handle, for when the events it names are not shown. */
+  request: readonly PiNotificationReference[] | null;
+  handling: boolean;
+  time: Date | null;
+}) {
+  const reports = useSubagentReports(notifications);
+  const [first] = notifications;
+  if (first === undefined || handling) {
+    const label =
+      first === undefined
+        ? notificationRequestLabel(request ?? [], handling ? "handling" : "asked")
+        : notificationsTitle(notifications, reports);
+    return (
+      <ChatEventDivider marker={handling ? "progress" : "notification"} time={time}>
+        {handling ? <span className="bo-shimmer-text">{label}</span> : label}
+      </ChatEventDivider>
+    );
+  }
+  const [report] = reports;
+  if (notifications.length === 1) {
+    return report ? (
+      <SubagentReportLine report={report} time={time} />
+    ) : (
+      <NotificationLine notification={first} time={time} />
+    );
+  }
+  const tasks = reports.flatMap((each) => (each === null ? [] : [each.task]));
+  return (
+    <ChatEventDisclosure
+      defaultOpen={false}
+      marker="notification"
+      title={notificationsTitle(notifications, reports)}
+      note={tasks.length === notifications.length ? tasks.join(" · ") : null}
+      time={time}
+    >
+      {notifications.map((notification, index) => {
+        const each = reports[index];
+        return each ? (
+          <SubagentReportLine key={notificationKey(notification)} report={each} time={null} />
+        ) : (
+          <NotificationLine
+            key={notificationKey(notification)}
+            notification={notification}
+            time={null}
+          />
+        );
+      })}
+    </ChatEventDisclosure>
+  );
+}
+
+function notificationKey({ routeId, event }: PiAgentNotification) {
+  return `${routeId ?? ""}:${event.id}`;
+}
+
+/** "2 subagents finished", or "3 notifications" for events of different kinds. */
+function notificationsTitle(
+  notifications: readonly PiAgentNotification[],
+  reports: readonly (SubagentReport | null)[],
+) {
+  const outcomes = new Set(reports.map((report) => report?.outcome ?? null));
+  if (notifications.length === 1) {
+    const [report] = reports;
+    return report
+      ? `Subagent ${report.outcome}`
+      : `${notifications[0].event.source} · ${notifications[0].event.eventType}`;
+  }
+  if (outcomes.has(null)) {
+    return `${notifications.length} notifications`;
+  }
+  const [outcome] = outcomes;
+  return `${notifications.length} subagents ${outcomes.size === 1 ? outcome : "ended"}`;
+}
+
+/** A subagent's report, which leads to its card rather than repeat its answer. */
+function SubagentReportLine({ report, time }: { report: SubagentReport; time: Date | null }) {
+  const marker =
+    report.outcome === "finished"
+      ? "live"
+      : report.outcome === "failed"
+        ? "failed"
+        : "notification";
+  if (report.show === null) {
+    return (
+      <ChatEventDivider marker={marker} time={time}>
+        {`Subagent ${report.outcome} · ${report.task}`}
+      </ChatEventDivider>
+    );
+  }
+  return (
+    <ChatEventLink
+      marker={marker}
+      title={`Subagent ${report.outcome}`}
+      note={report.task}
+      time={time}
+      action="Show"
+      onShow={report.show}
+    />
+  );
+}
+
+/**
+ * An event delivered to the agent; expanding it shows the event's subject and payload. A
  * workflow's completion opens on its output when the output is an interface.
  */
-export function NotificationMessage() {
-  const createdAt = useAuiState((state) => state.message.createdAt);
-  const { notification } = useAuiState(
-    (state) => state.message.metadata.custom as PiNotificationMessageMetadata,
-  );
-  const data = useAuiState((state) =>
-    state.message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
-  );
+function NotificationLine({
+  notification,
+  time,
+}: {
+  notification: PiAgentNotification;
+  time: Date | null;
+}) {
   const { resolvedScope, resolveScope } = useCurrentBackofficeContext();
   const agentScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
   const completion = workflowCompletionFromNotification(notification.event, agentScope);
@@ -393,76 +529,54 @@ export function NotificationMessage() {
   // The run's card above holds its output, so the event leads back to it rather than repeat it.
   if (completion !== null && run !== null) {
     return (
-      <MessagePrimitive.Root asChild>
-        <ChatEventLink
-          marker="live"
-          title={title}
-          note={completion.workflowName}
-          time={createdAt ?? null}
-          action={output === null ? "View run" : "View result"}
-          onShow={run.show}
-        />
-      </MessagePrimitive.Root>
+      <ChatEventLink
+        marker="live"
+        title={title}
+        note={completion.workflowName}
+        time={time}
+        action={output === null ? "View run" : "View result"}
+        onShow={run.show}
+      />
     );
   }
 
   return (
-    <MessagePrimitive.Root asChild>
-      <ChatEventDisclosure
-        defaultOpen={output !== null}
-        marker="notification"
-        title={title}
-        note={
-          completion !== null
-            ? completion.workflowName
-            : notification.routeId === null
-              ? null
-              : `via ${notification.routeId}`
-        }
-        time={createdAt ?? null}
-      >
-        {output !== null ? (
-          <FileScopeProvider scope={output.fileScope}>
-            <ResultContent parsedValue={output.parsed} showRawValue={false} value={output.value}>
-              {null}
-            </ResultContent>
-          </FileScopeProvider>
-        ) : (
-          <>
-            <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">
-              Event {notification.event.id},{" "}
-              {notification.routeId === null
-                ? "addressed to this agent."
-                : "delivered by an automation route."}
-            </p>
-            <pre className="overflow-x-auto text-xs leading-5 whitespace-pre-wrap text-[var(--bo-muted)]">
-              {data}
-            </pre>
-          </>
-        )}
-      </ChatEventDisclosure>
-    </MessagePrimitive.Root>
-  );
-}
-
-/** Where the agent was asked to handle the listed notifications, whose cards are above. */
-export function NotificationRequestMessage() {
-  const createdAt = useAuiState((state) => state.message.createdAt);
-  const { notifications } = useAuiState(
-    (state) => state.message.metadata.custom as PiNotificationRequestMessageMetadata,
-  );
-
-  return (
-    <MessagePrimitive.Root asChild>
-      <ChatEventDivider
-        marker="notification"
-        time={createdAt ?? null}
-        title={notifications
-          .map(({ routeId, eventId }) => (routeId === null ? eventId : `${eventId} via ${routeId}`))
-          .join("\n")}
-      >
-        {notificationRequestLabel(notifications, "asked")}
-      </ChatEventDivider>
-    </MessagePrimitive.Root>
+    <ChatEventDisclosure
+      defaultOpen={output !== null}
+      marker="notification"
+      title={title}
+      note={
+        completion !== null
+          ? completion.workflowName
+          : notification.routeId === null
+            ? null
+            : `via ${notification.routeId}`
+      }
+      time={time}
+    >
+      {output !== null ? (
+        <FileScopeProvider scope={output.fileScope}>
+          <ResultContent parsedValue={output.parsed} showRawValue={false} value={output.value}>
+            {null}
+          </ResultContent>
+        </FileScopeProvider>
+      ) : (
+        <>
+          <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">
+            Event {notification.event.id},{" "}
+            {notification.routeId === null
+              ? "addressed to this agent."
+              : "delivered by an automation route."}
+          </p>
+          <pre className="overflow-x-auto text-xs leading-5 whitespace-pre-wrap text-[var(--bo-muted)]">
+            {JSON.stringify(
+              { subject: notification.event.subject, payload: notification.event.payload },
+              null,
+              2,
+            )}
+          </pre>
+        </>
+      )}
+    </ChatEventDisclosure>
   );
 }

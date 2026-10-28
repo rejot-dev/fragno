@@ -33,10 +33,16 @@ import {
   defaultAgentModelChoice,
   type AgentModelChoice,
 } from "./agent-model-menu";
+import {
+  AgentSubagentsProvider,
+  useAgentSubagentsState,
+  withSubagentBatches,
+} from "./agent-subagent-batches";
 import type { PiManagerEntryPage } from "./data";
 import {
   createAssistantUiMessages,
   getAppendMessageText,
+  isPiConversationRunning,
   piConversationDraftAgentMessage,
   piConversationMessages,
   piConversationQueue,
@@ -93,15 +99,6 @@ type AgentConversationProps = {
   /** Where the conversation's workspace files, such as the files its messages carry, live. */
   resolvedScope: BackofficeResolvedScope;
 };
-
-function isPiConversationRunning(view: ConversationView) {
-  const live = view.docs["pi.live"];
-  if (live && Object.keys(live).length > 0) {
-    return true;
-  }
-  const inbox = view.docs["pi.inbox"] as { items?: readonly unknown[] } | undefined;
-  return (inbox?.items?.length ?? 0) > 0;
-}
 
 function isPiConversationCompacting(view: ConversationView) {
   const live = view.docs["pi.live"] as { compactions?: readonly unknown[] } | undefined;
@@ -445,17 +442,22 @@ function AgentConversationThread({
   );
   const contextTokens = useMemo(() => estimatePiContextTokens(view.entries), [view.entries]);
   const statusText = compacting ? "Compacting…" : running ? "Working…" : null;
-  const { messages: assistantMessages, activeContextStartMessageId } = useMemo(
-    () =>
-      createAssistantUiMessages({
-        draftAgentMessage,
-        messages,
-        activeContextStartIndex,
-        readyForInput: !running,
-        statusText,
-      }),
-    [activeContextStartIndex, draftAgentMessage, messages, running, statusText],
-  );
+  const subagents = useAgentSubagentsState(agentPath, view.entries.length);
+  const { assistantMessages, activeContextStartMessageId, subagentBatches } = useMemo(() => {
+    const converted = createAssistantUiMessages({
+      draftAgentMessage,
+      messages,
+      activeContextStartIndex,
+      readyForInput: !running,
+      statusText,
+    });
+    const placed = withSubagentBatches(converted.messages, subagents.listed);
+    return {
+      assistantMessages: placed.messages,
+      activeContextStartMessageId: converted.activeContextStartMessageId,
+      subagentBatches: placed.batches,
+    };
+  }, [activeContextStartIndex, draftAgentMessage, messages, running, statusText, subagents.listed]);
   const attachments = useAgentAttachments(
     useMemo(
       () => agentAttachmentTarget(resolvedScope, agent.agentName, agent.permissions),
@@ -582,52 +584,61 @@ function AgentConversationThread({
   }, [posthog, submitAction, compaction, running, agent.agentName]);
 
   const conversation = (
-    <SessionThread
-      dictation={dictation !== undefined}
-      attachments={
-        attachments === null
-          ? null
-          : {
-              items: attachments.items,
-              add: attachments.add,
-              sendFiles: () => void send(""),
-              sending: attachments.sending,
-            }
-      }
-      disabledReason={null}
-      error={attachments?.refusal ?? attachmentError ?? sendError}
-      queueLabels={conversationQueue.labels}
-      paused={agentQueue.paused && agentQueue.items.length > 0}
-      onResume={handleResume}
-      model={model.control}
-      needsNudge={false}
-      onCompact={handleCompact}
-      onClear={handleClear}
-      onContinue={() => undefined}
-      onStop={handleStop}
-      readyForInput={!running}
-      running={running}
-      showThinking={displayOptions.showThinking}
-      showToolCalls={displayOptions.showToolCalls}
-      showUsage={displayOptions.showUsage}
-      statusText={statusText}
-      composerAction={composerAction}
-      compacting={compacting}
-      compactionError={compaction.request.status === "failed" ? compaction.request.message : null}
-      compactionNotice={
-        compaction.request.status === "unchanged" ? compaction.request.message : null
-      }
-      contextUsage={{
-        tokens: contextTokens,
-        window: model.contextWindow,
-      }}
-      activeContextStartMessageId={activeContextStartMessageId}
-      hasMoreHistory={history.hasMore}
-      historyLoading={history.loading}
-      historyError={history.error}
-      onComposerActionChange={setComposerAction}
-      onLoadMoreHistory={history.loadMore}
-    />
+    <AgentSubagentsProvider
+      agentName={agent.agentName}
+      agentPath={agentPath}
+      listed={subagents.listed}
+      outside={subagentBatches}
+    >
+      <SessionThread
+        dictation={dictation !== undefined}
+        attachments={
+          attachments === null
+            ? null
+            : {
+                items: attachments.items,
+                add: attachments.add,
+                sendFiles: () => void send(""),
+                sending: attachments.sending,
+              }
+        }
+        disabledReason={null}
+        error={attachments?.refusal ?? attachmentError ?? sendError}
+        queueLabels={conversationQueue.labels}
+        // Stopping and resuming the agent concern its subagents too.
+        paused={agentQueue.paused && (agentQueue.items.length > 0 || subagents.summary.waiting)}
+        onResume={handleResume}
+        model={model.control}
+        needsNudge={false}
+        onCompact={handleCompact}
+        onClear={handleClear}
+        onContinue={() => undefined}
+        onStop={handleStop}
+        readyForInput={!running}
+        running={running}
+        subagentsRunning={subagents.summary.running}
+        showThinking={displayOptions.showThinking}
+        showToolCalls={displayOptions.showToolCalls}
+        showUsage={displayOptions.showUsage}
+        statusText={statusText}
+        composerAction={composerAction}
+        compacting={compacting}
+        compactionError={compaction.request.status === "failed" ? compaction.request.message : null}
+        compactionNotice={
+          compaction.request.status === "unchanged" ? compaction.request.message : null
+        }
+        contextUsage={{
+          tokens: contextTokens,
+          window: model.contextWindow,
+        }}
+        activeContextStartMessageId={activeContextStartMessageId}
+        hasMoreHistory={history.hasMore}
+        historyLoading={history.loading}
+        historyError={history.error}
+        onComposerActionChange={setComposerAction}
+        onLoadMoreHistory={history.loadMore}
+      />
+    </AgentSubagentsProvider>
   );
 
   return (

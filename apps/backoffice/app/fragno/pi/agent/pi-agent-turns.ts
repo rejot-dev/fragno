@@ -4,6 +4,7 @@ import {
   type JsonObject,
   LiveDoc,
   ROOT_CONVERSATION_ID,
+  type ConversationId,
   type DocumentReader,
   type Harness,
   type SettledSubmissionRecord,
@@ -11,15 +12,17 @@ import {
 } from "@earendil-works/pi-durable";
 
 import type { PiAgentTurn } from "./pi-agent-contract";
+import { forgetRunningPiSubagent, piSubagentConversation } from "./pi-agent-subagents";
 
 // Turns are stored as JSON; this module writes every value, so reads cast them back.
 type PiAgentTurnsState = {
   /**
-   * Turns by prompt request id, until their settlement has been reported. Pi settles submissions
-   * in its own commits, so a settled turn stays here as the outbox of its turn event.
+   * Turns by prompt request id, the root's and its subagents', until their settlement has been
+   * reported. Pi settles submissions in its own commits, so a settled turn stays here as the
+   * outbox of its turn event.
    */
   pending: { [requestId: string]: JsonObject };
-  /** Authority for work outside any run, such as compaction after the last turn ended. */
+  /** Authority for the root's work outside any run, such as compaction after its last turn. */
   latest: JsonObject | null;
 };
 
@@ -37,18 +40,20 @@ const PiAgentTurnsDoc = defineDoc<PiAgentTurnsState>({
 });
 
 /**
- * Records a turn before its prompt is admitted, so no generation or tool can start without it.
- * A retried admission keeps the authority of the submission it deduplicates to.
+ * Records a turn before its prompt is admitted to `conversationId`, the root or a subagent's, so
+ * no generation or tool can start without it. A retried admission keeps the authority of the
+ * submission it deduplicates to.
  */
 export async function recordPiAgentTurn(
   harness: Harness,
+  conversationId: ConversationId,
   requestId: string,
   turn: PiAgentTurn,
   context: Context,
 ): Promise<void> {
   await harness.commit(async (tx) => {
     const turns = await tx.doc(PiAgentTurnsDoc);
-    if (!(await tx.submissionByRequest(ROOT_CONVERSATION_ID, requestId))) {
+    if (!(await tx.submissionByRequest(conversationId, requestId))) {
       turns.pending[requestId] = storedTurn(turn);
     }
   }, context);
@@ -74,7 +79,9 @@ export async function readReportablePiAgentTurns(
   const turns = await read.snapshot(PiAgentTurnsDoc, context);
   const reportable: ReportablePiAgentTurn[] = [];
   for (const [requestId, turn] of Object.entries(turns?.pending ?? {})) {
-    const submission = await storage.submissionByRequest(ROOT_CONVERSATION_ID, requestId, context);
+    const conversationId =
+      (await piSubagentConversation(read, requestId, context)) ?? ROOT_CONVERSATION_ID;
+    const submission = await storage.submissionByRequest(conversationId, requestId, context);
     if (!submission) {
       continue;
     }
@@ -88,7 +95,10 @@ export async function readReportablePiAgentTurns(
   return reportable;
 }
 
-/** Forgets a settled turn once its turn event is recorded; running turns keep their authority. */
+/**
+ * Forgets a settled turn once its turn event is recorded, and that its subagent may run; running
+ * turns keep their authority.
+ */
 export async function forgetReportedPiAgentTurn(
   harness: Harness,
   requestId: string,
@@ -96,6 +106,7 @@ export async function forgetReportedPiAgentTurn(
 ): Promise<void> {
   await harness.commit(async (tx) => {
     delete (await tx.doc(PiAgentTurnsDoc)).pending[requestId];
+    await forgetRunningPiSubagent(tx, requestId);
   }, context);
 }
 
@@ -116,12 +127,13 @@ export async function recordAdmittedPiAgentTurn(
 /** Forgets a recorded turn whose prompt Pi did not admit; an admitted submission keeps its turn. */
 export async function withdrawPiAgentTurn(
   harness: Harness,
+  conversationId: ConversationId,
   requestId: string,
   context: Context,
 ): Promise<void> {
   await harness.commit(async (tx) => {
     const turns = await tx.doc(PiAgentTurnsDoc);
-    if (!(await tx.submissionByRequest(ROOT_CONVERSATION_ID, requestId))) {
+    if (!(await tx.submissionByRequest(conversationId, requestId))) {
       delete turns.pending[requestId];
     }
   }, context);
@@ -138,24 +150,25 @@ export async function recordPiAgentCompactionTurn(
   }, context);
 }
 
-/** A running root run whose turn record is missing has no authority, which fails closed. */
+/** A running run whose turn record is missing has no authority, which fails closed. */
 export type PiAgentRun = { type: "idle" } | { type: "running"; turn: PiAgentTurn | null };
 
-/** The root conversation's current run, which owns every turn-scoped piece of agent work. */
+/** The current run of `conversationId`: the root's, or a subagent's. */
 export async function readPiAgentRun(
   read: DocumentReader,
   storage: Pick<Storage, "submission">,
+  conversationId: ConversationId,
   context: Context,
 ): Promise<PiAgentRun> {
   const [turns, live] = await Promise.all([
     read.snapshot(PiAgentTurnsDoc, context),
-    read.snapshot(LiveDoc, ROOT_CONVERSATION_ID, context),
+    read.snapshot(LiveDoc, conversationId, context),
   ]);
-  const owner = live?.run?.inputs[0];
-  if (owner === undefined) {
+  const input = live?.run?.inputs[0];
+  if (input === undefined) {
     return { type: "idle" };
   }
-  const requestId = (await storage.submission(owner, context))?.requestId;
+  const requestId = (await storage.submission(input, context))?.requestId;
   return {
     type: "running",
     turn:
@@ -164,18 +177,22 @@ export async function readPiAgentRun(
 }
 
 /**
- * Returns the turn that owns the agent's current work. The root conversation is the agent's only
- * conversation and runs one turn at a time, so its current run owns everything; outside any run,
- * the latest admitted turn does.
+ * Returns the turn that owns work in `conversationId`. Every conversation runs one turn at a
+ * time, so its current run owns its work. Outside any run, the latest admitted turn owns the
+ * root's, such as background compaction; a subagent does no work of its own once it answered.
  */
 export async function readActivePiAgentTurn(
   read: DocumentReader,
   storage: Pick<Storage, "submission">,
+  conversationId: ConversationId,
   context: Context,
 ): Promise<PiAgentTurn | null> {
-  const run = await readPiAgentRun(read, storage, context);
+  const run = await readPiAgentRun(read, storage, conversationId, context);
   if (run.type === "running") {
     return run.turn;
+  }
+  if (conversationId !== ROOT_CONVERSATION_ID) {
+    return null;
   }
   const turns = await read.snapshot(PiAgentTurnsDoc, context);
   return (turns?.latest ?? null) as PiAgentTurn | null;

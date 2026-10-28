@@ -36,8 +36,8 @@ export function createPiPostHogExtension(input: {
               `${agentId}:${api.conversationId}:${api.taskId}:${message.timestamp}`,
             );
             // Generations are attributed to the person whose turn they serve.
-            const principal = (await agent.activeTurn(BACKGROUND_CONTEXT)).execution.actors
-              .principal;
+            const principal = (await agent.activeTurn(api.conversationId, BACKGROUND_CONTEXT))
+              .execution.actors.principal;
             const userId =
               principal?.scope === "internal" && principal.type === "user"
                 ? principal.id

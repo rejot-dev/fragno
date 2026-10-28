@@ -3564,6 +3564,12 @@
         "description": "Print the messages before this one, as a previous page suggests"
       },
       {
+        "name": "subagent",
+        "valueRequired": true,
+        "valueName": "request-id",
+        "description": "Print the messages of the agent's subagent this request started"
+      },
+      {
         "name": "help",
         "description": "Show this help text",
         "valueRequired": false,
@@ -3814,6 +3820,10 @@
       {
         "name": "notify-when-done",
         "description": "From an agent's turn: notify the calling agent with the event recording how the prompt ended"
+      },
+      {
+        "name": "subagent",
+        "description": "Run the prompt in a new conversation of the agent, beside its own, that ends once it answers"
       },
       {
         "name": "billing-organization-id",

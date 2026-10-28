@@ -43,7 +43,7 @@ export const PI_QUEUE_AUTOMATION_EVENTS = {
     eventType: "queue.added",
     label: "Agent work queued",
     description:
-      "Fires when work starts waiting for an agent: a prompt or notification in its queue, behind its running turn or while it is stopped, or a steer for the running turn's next tool boundary. queue.dispatched or queue.dropped ends a queued item's wait, and turn.started a steer's. Work an idle agent starts at once never waits.",
+      "Fires when work starts waiting for an agent: a prompt or notification in its queue, behind its running turn or while it is stopped, a steer for the running turn's next tool boundary, or a subagent while the agent runs as many as it may at once or is stopped. queue.dispatched or queue.dropped ends a queued item's wait, and turn.started a steer's. Work that starts at once never waits.",
   },
   dispatched: {
     eventType: "queue.dispatched",
@@ -107,8 +107,10 @@ const turnFailedPayloadSchema = z.object({
 
 const queueAddedPayloadSchema = z.object({
   type: z
-    .enum(["prompt", "notification", "steer"])
-    .describe("A steer is a prompt that joins the running turn instead of waiting for its own."),
+    .enum(["prompt", "notification", "steer", "subagent"])
+    .describe(
+      "A steer is a prompt that joins the running turn instead of waiting for its own; a subagent is a prompt that runs in a new conversation of the agent, waiting only for a free slot.",
+    ),
 });
 
 const queueDispatchedPayloadSchema = z.object({

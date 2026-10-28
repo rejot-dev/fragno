@@ -103,6 +103,11 @@ export default [
           route(":agentName.jsonl", "routes/backoffice/agents/agent-export.ts", {
             id: "agents/agent-jsonl",
           }),
+          route(":agentName/subagents", "routes/backoffice/agents/agent-subagents.ts"),
+          route(
+            ":agentName/subagents/:requestId",
+            "routes/backoffice/agents/agent-subagent-view.ts",
+          ),
           route(":agentName/compactions", "routes/backoffice/agents/agent-compactions.ts"),
           route(":agentName/compactions/:taskId", "routes/backoffice/agents/agent-compaction.ts"),
           route(":agentName/debug", "routes/backoffice/agents/debug-agent-detail.tsx"),

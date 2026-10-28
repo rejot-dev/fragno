@@ -7,8 +7,15 @@ import {
   type Model,
 } from "@earendil-works/pi-ai";
 
-/** Authorization guards actual generation, compaction and deferred fetches, not fail-open extension hooks. */
-export function createAuthorizedPiModels(models: Models, authorize: () => Promise<void>): Models {
+/**
+ * Authorization guards actual generation, compaction and deferred fetches, not fail-open extension
+ * hooks. `authorize` gets the request's provider session ID, which names its conversation; a
+ * deferred fetch carries none.
+ */
+export function createAuthorizedPiModels(
+  models: Models,
+  authorize: (sessionId: string | undefined) => Promise<void>,
+): Models {
   function requestFailure(
     model: Model<string>,
     signal: AbortSignal | undefined,
@@ -36,11 +43,12 @@ export function createAuthorizedPiModels(models: Models, authorize: () => Promis
 
   async function authorizedMessage(
     model: Model<string>,
-    signal: AbortSignal | undefined,
+    options: { signal?: AbortSignal; sessionId?: string } | undefined,
     request: () => Promise<AssistantMessage>,
   ): Promise<AssistantMessage> {
+    const signal = options?.signal;
     try {
-      await authorize();
+      await authorize(options?.sessionId);
       signal?.throwIfAborted();
     } catch (cause) {
       // Return the SDK's model-error shape so it settles inputs rather than faulting a task mid-run.
@@ -51,13 +59,14 @@ export function createAuthorizedPiModels(models: Models, authorize: () => Promis
 
   function authorizedStream(
     model: Model<string>,
-    signal: AbortSignal | undefined,
+    options: { signal?: AbortSignal; sessionId?: string } | undefined,
     start: () => AssistantMessageEventStream,
   ): AssistantMessageEventStream {
+    const signal = options?.signal;
     const output = createAssistantMessageEventStream();
     void (async () => {
       try {
-        await authorize();
+        await authorize(options?.sessionId);
         signal?.throwIfAborted();
         const source = start();
         for await (const event of source) {
@@ -79,15 +88,15 @@ export function createAuthorizedPiModels(models: Models, authorize: () => Promis
 
   const guarded = {
     streamSimple: ((model, context, options) =>
-      authorizedStream(model, options?.signal, () =>
+      authorizedStream(model, options, () =>
         models.streamSimple(model, context, options),
       )) satisfies Models["streamSimple"],
     completeSimple: ((model, context, options) =>
-      authorizedMessage(model, options?.signal, () =>
+      authorizedMessage(model, options, () =>
         models.completeSimple(model, context, options),
       )) satisfies Models["completeSimple"],
     fetchDeferred: ((model, handle, options) =>
-      authorizedMessage(model, options?.signal, () =>
+      authorizedMessage(model, options, () =>
         models.fetchDeferred(model, handle, options),
       )) satisfies Models["fetchDeferred"],
   };

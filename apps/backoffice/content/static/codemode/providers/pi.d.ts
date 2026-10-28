@@ -11,7 +11,7 @@ type PiCodemodeProvider = {
    */
   getAgent(input: PiGetAgentInput): Promise<PiGetAgentOutput>;
   /**
-   * Read the most recent messages of a started agent's conversation, oldest first, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you: what users said and the agent answered, without thinking, tool calls, or tool results. Pass the returned `before` to read further back; it is null at the conversation's start. Includes history before compactions and resets.
+   * Read the most recent messages of a started agent's conversation, oldest first, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you: what users said and the agent answered, without thinking, tool calls, or tool results. Pass the returned `before` to read further back; it is null at the conversation's start. Includes history before compactions and resets. Pass `subagent` to read one of the agent's subagents instead.
    * Requires `pi.read`.
    */
   listMessages(input: PiListMessagesInput): Promise<PiListMessagesOutput>;
@@ -36,7 +36,7 @@ type PiCodemodeProvider = {
    */
   deleteAgent(input: PiDeleteAgentInput): Promise<PiDeleteAgentOutput>;
   /**
-   * Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed event naming the answer's entry, or turn.failed, turn.aborted, or queue.dropped, each with the request ID in its subject. With `notifyWhenDone`, that event is also delivered to the calling agent as a notification; read the answer with `pi.listMessages` in the prompted agent's scope, passing `before` one past the answer's entry ID. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.
+   * Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed event naming the answer's entry, or turn.failed, turn.aborted, or queue.dropped, each with the request ID in its subject. With `subagent`, the prompt runs in a new conversation of the agent instead of its own, and ends with it. With `notifyWhenDone`, that event is also delivered to the calling agent as a notification; read the answer with `pi.listMessages` in the prompted agent's scope, passing `before` one past the answer's entry ID and, for a subagent, its request ID as `subagent`. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.
    * Requires `pi.modify`.
    */
   submitPrompt(input: PiSubmitPromptInput): Promise<PiSubmitPromptOutput>;
@@ -100,6 +100,8 @@ type PiListMessagesInput = {
   last?: number;
   /** A previous page's `before`, to read the messages preceding it. */
   before?: number | null;
+  /** The request ID that started a subagent of the agent, to read that subagent's conversation instead of the agent's. */
+  subagent?: string | null;
 };
 type PiListMessagesOutput = {
   messages: (
@@ -174,8 +176,10 @@ type PiSubmitPromptInput = {
   content: string;
   requestId?: string;
   whenBusy?: "followUp" | "steer" | "reject";
-  /** Only from an agent's turn, prompting another agent: notify you, the calling agent, with the event recording how the prompt ended. Works for agents in other scopes too. */
+  /** Only from an agent's turn, prompting another agent or starting a subagent: notify you, the calling agent, with the event recording how the prompt ended. Works for agents in other scopes too. */
   notifyWhenDone?: boolean;
+  /** Run the prompt in a subagent of the agent: a new conversation under the agent's definition that answers it alongside the agent's other work, a few at a time, and then ends. Use it for independent tasks, such as one per document; it cannot steer or be refused as busy. */
+  subagent?: boolean;
 };
 type PiSubmitPromptOutput = {
   requestId: string;

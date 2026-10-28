@@ -7,9 +7,11 @@ import type { Context } from "@earendil-works/chord";
 import {
   createRegistry,
   Harness,
+  ROOT_CONVERSATION_ID,
   type Extension,
   type HarnessSettings,
   type Storage,
+  type ToolRegistration,
   type Wake,
 } from "@earendil-works/pi-durable";
 
@@ -17,6 +19,7 @@ import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runti
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { BillingEventInput } from "@/fragno/billing/contracts";
 import { usageBillingForScope, type UsageBilling } from "@/fragno/billing/usage-billing";
+import { createAwaitSubagentsTool } from "@/fragno/pi/extensions/backoffice/await-subagents-tool";
 import { createBackofficeExtension } from "@/fragno/pi/extensions/backoffice/backoffice-extension";
 import {
   calculatePiDurableBillingRetryDelayMs,
@@ -30,6 +33,7 @@ import {
   createBackofficeAgentContext,
   type BackofficeAgentContext,
 } from "./backoffice-agent-context";
+import { piConversationOfSession } from "./pi-agent-subagents";
 import { startReportingPiAgentTurns } from "./pi-agent-turn-events";
 import { readActivePiAgentTurn } from "./pi-agent-turns";
 import { createPiModels } from "./pi-models";
@@ -47,6 +51,11 @@ export type OpenPiAgent = {
   harness: Harness;
   storage: Storage;
   billing: PiBilling;
+  /**
+   * The `awaitSubagents` tool, which subagents run without, so none holds a slot waiting for
+   * subagents that need one.
+   */
+  awaitSubagentsTool: ToolRegistration;
   /** Reports the turns started and settled since the last report to Automations and the manager. */
   reportTurns: (context: Context) => Promise<void>;
 };
@@ -105,9 +114,27 @@ export async function openPiAgentHarness(input: {
   const agent = createBackofficeAgentContext({
     config,
     runtime,
-    readActiveTurn: async (context) =>
-      opened ? await readActivePiAgentTurn(opened.harness, opened.storage, context) : null,
+    readActiveTurn: async (conversationId, context) =>
+      opened
+        ? await readActivePiAgentTurn(opened.harness, opened.storage, conversationId, context)
+        : null,
   });
+  // A deferred fetch names no session. It continues a request checked when it started, and is
+  // checked again as the root's, as before subagents.
+  async function requestConversation(sessionId: string | undefined) {
+    if (sessionId === undefined) {
+      return ROOT_CONVERSATION_ID;
+    }
+    const conversationId = opened
+      ? await piConversationOfSession(opened.harness, sessionId, BACKGROUND_CONTEXT)
+      : null;
+    if (conversationId === null) {
+      throw new Error(
+        "PI_AGENT_TURN_UNAVAILABLE: no running conversation made this model request.",
+      );
+    }
+    return conversationId;
+  }
   const usageBilling = usageBillingForScope(runtime, config.scope);
   const legacyBilling =
     input.legacyBillingScope === null
@@ -132,10 +159,23 @@ export async function openPiAgentHarness(input: {
     retryDelayMs: calculatePiDurableBillingRetryDelayMs,
   });
 
+  const awaitSubagentsTool = createAwaitSubagentsTool(
+    async (conversationId, requestId, context) => {
+      if (!opened) {
+        throw new Error("The Pi agent is not open.");
+      }
+      const record = await opened.storage.submissionByRequest(conversationId, requestId, context);
+      const submission = record && (await opened.harness.submission(record.id, context));
+      if (!submission) {
+        throw new Error(`Subagent ${requestId} has no submission.`);
+      }
+      return await submission.wait(context);
+    },
+  );
   const registry = createRegistry();
   for (const extension of [
     ...dependencies.extensions(config, agent),
-    createBackofficeExtension(agent),
+    createBackofficeExtension(agent, awaitSubagentsTool),
     billing.extension,
   ]) {
     registry.install(extension);
@@ -146,8 +186,9 @@ export async function openPiAgentHarness(input: {
     storage,
     {
       // Pi isolates failures in prompt sections and hooks, so only the model boundary can fail closed.
-      models: createAuthorizedPiModels(dependencies.models, async () => {
-        await (await agent.activeTurn(BACKGROUND_CONTEXT)).authorize();
+      models: createAuthorizedPiModels(dependencies.models, async (sessionId) => {
+        const conversationId = await requestConversation(sessionId);
+        await (await agent.activeTurn(conversationId, BACKGROUND_CONTEXT)).authorize();
       }),
       registry,
       settings: {
@@ -182,5 +223,5 @@ export async function openPiAgentHarness(input: {
     await harness.close(BACKGROUND_CONTEXT);
     throw cause;
   }
-  return { harness, storage, billing, reportTurns };
+  return { harness, storage, billing, awaitSubagentsTool, reportTurns };
 }

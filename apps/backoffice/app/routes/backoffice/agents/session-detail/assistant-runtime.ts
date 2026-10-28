@@ -96,7 +96,7 @@ export type PiResetMessageMetadata = {
   kind: "reset";
 };
 
-export type PiNotificationMessageMetadata = {
+type PiNotificationMessageMetadata = {
   kind: "notification";
   notification: PiAgentNotification;
 };
@@ -107,9 +107,20 @@ export type PiUserMessageMetadata = {
   attachments: PiAgentAttachment[];
 };
 
-export type PiNotificationRequestMessageMetadata = {
+type PiNotificationRequestMessageMetadata = {
   kind: "notification-request";
   notifications: PiNotificationReference[];
+};
+
+/**
+ * Events no turn of the agent shows: delivered while it worked on something else, or asked for by
+ * a request no turn has answered yet.
+ */
+export type PiNotificationsMessageMetadata = {
+  kind: "notifications";
+  notifications: PiAgentNotification[];
+  /** The request waiting for its turn; null for events only delivered so far. */
+  request: PiNotificationReference[] | null;
 };
 
 /** Tokens and cost added up over every model response in a turn. */
@@ -135,6 +146,8 @@ export type PiAssistantMessageMetadata = {
   finishedAt: Date | null;
   /** The notifications the agent was asked to handle in this turn; null for a turn it chose. */
   notificationRequest: PiNotificationReference[] | null;
+  /** The events the turn was given, asked to handle or delivered while it ran; oldest first. */
+  notifications: PiAgentNotification[];
 };
 
 type AssistantContentBlock = ThreadMessageLike["content"] extends string | readonly (infer Block)[]
@@ -321,6 +334,16 @@ export function piConversationMessages(
     messages.push(...visible);
   });
   return { messages, activeContextStartIndex };
+}
+
+/** Whether the conversation works on something: a generation, tools, or input it has yet to place. */
+export function isPiConversationRunning(view: ConversationView) {
+  const live = view.docs["pi.live"];
+  if (live && Object.keys(live).length > 0) {
+    return true;
+  }
+  const inbox = view.docs["pi.inbox"] as { items?: readonly unknown[] } | undefined;
+  return (inbox?.items?.length ?? 0) > 0;
 }
 
 /** Projects Pi's committed live document into the existing Assistant UI draft model. */
@@ -643,6 +666,7 @@ export function createAssistantUiMessages({
               ? null
               : new Date(message.timestamp + message.durationMs),
           notificationRequest: null,
+          notifications: [],
         } satisfies PiAssistantMessageMetadata,
       },
     });
@@ -694,6 +718,7 @@ export function createAssistantUiMessages({
           usage: null,
           finishedAt: null,
           notificationRequest: null,
+          notifications: [],
         } satisfies PiAssistantMessageMetadata,
       },
     });
@@ -716,8 +741,14 @@ function turnUsage(usage: Extract<PiConversationMessage, { role: "assistant" }>[
  * whole turn, so its thoughts and tool calls read as one piece of work. A turn is keyed by its
  * first response's start, which the live draft shares with the response it is persisted as, so
  * the turn keeps its identity while it streams. A run is split where the active context starts,
- * so the divider can sit between its halves. A request to handle notifications joins the turn
- * that answers it, which shows it as the turn's progress and drops it when the turn says nothing.
+ * so the divider can sit between its halves.
+ *
+ * Delivered events go with the turn they are given to, which shows them as one line: those before
+ * a request to handle them, and those delivered while it runs. Events Pi places after the turn
+ * replied start a new turn of their own, so that reply still reads as one. A request joins the
+ * turn that answers it, which shows it as the turn's progress and drops it when the turn says
+ * nothing.
+ * Events no turn takes, and a request no turn has answered yet, are one message where they are.
  */
 function joinAgentTurns(
   messages: readonly ThreadMessageLike[],
@@ -727,42 +758,142 @@ function joinAgentTurns(
   let activeContextStartMessageId: string | null = null;
   let turnStartPosition = activeContextStartPosition;
   let notificationRequest: PiNotificationReference[] | null = null;
+  // Events delivered since the last message that took them, and when the first was.
+  let delivered: { notifications: PiAgentNotification[]; at: Date | undefined } = {
+    notifications: [],
+    at: undefined,
+  };
+  const known = new Map<string, PiAgentNotification>();
+  function take() {
+    const taken = delivered;
+    delivered = { notifications: [], at: undefined };
+    return taken;
+  }
+  function placeDelivered(request: PiNotificationReference[] | null) {
+    const { notifications, at } = take();
+    if (notifications.length === 0 && request === null) {
+      return;
+    }
+    joined.push({
+      id: `pi-notifications-${joined.length}`,
+      role: "system",
+      content: [{ type: "text", text: notificationsLabel(notifications, request) }],
+      createdAt: at,
+      metadata: {
+        custom: {
+          kind: "notifications",
+          notifications: withRequested(notifications, request, known),
+          request,
+        } satisfies PiNotificationsMessageMetadata,
+      },
+    });
+  }
   messages.forEach((message, index) => {
     const previous = joined.at(-1);
-    const request = notificationRequestOf(message);
-    if (request !== null && messages[index + 1]?.role === "assistant") {
-      notificationRequest = request;
-      // The answering turn stands in for the request, at the active context's start too.
+    const notification = notificationOf(message);
+    if (notification !== null) {
+      known.set(notificationKey(notification), notification);
+      delivered.notifications.push(notification);
+      delivered.at ??= message.createdAt;
       if (index === turnStartPosition) {
         turnStartPosition = index + 1;
       }
       return;
     }
-    if (
+    const request = notificationRequestOf(message);
+    if (request !== null) {
+      // Events Pi places in a running turn can land between a request and its answer.
+      const answer = messages.slice(index + 1).find((next) => notificationOf(next) === null);
+      if (answer?.role === "assistant") {
+        notificationRequest = request;
+        // The answering turn stands in for the request, at the active context's start too.
+        if (index === turnStartPosition) {
+          turnStartPosition = index + 1;
+        }
+        return;
+      }
+      placeDelivered(request);
+    } else if (
       message.role === "assistant" &&
       previous?.role === "assistant" &&
       index !== turnStartPosition &&
-      notificationRequest === null
+      notificationRequest === null &&
+      !(delivered.notifications.length > 0 && previous.metadata?.custom?.stopReason === "stop")
     ) {
-      joined[joined.length - 1] = joinResponses(previous, message);
+      const turn = joinResponses(previous, message);
+      const turnMetadata = turn.metadata?.custom as PiAssistantMessageMetadata;
+      joined[joined.length - 1] = {
+        ...turn,
+        metadata: {
+          custom: {
+            ...turnMetadata,
+            notifications: [...turnMetadata.notifications, ...take().notifications],
+          } satisfies PiAssistantMessageMetadata,
+        },
+      };
     } else if (message.role === "assistant") {
       const metadata = message.metadata?.custom as PiAssistantMessageMetadata;
       joined.push({
         ...message,
         id: `pi-turn-${message.createdAt?.getTime()}`,
         metadata: {
-          custom: { ...metadata, notificationRequest } satisfies PiAssistantMessageMetadata,
+          custom: {
+            ...metadata,
+            notificationRequest,
+            notifications: withRequested(take().notifications, notificationRequest, known),
+          } satisfies PiAssistantMessageMetadata,
         },
       });
       notificationRequest = null;
     } else {
+      placeDelivered(null);
       joined.push(message);
     }
     if (index === turnStartPosition) {
       activeContextStartMessageId = joined.at(-1)?.id ?? null;
     }
   });
+  placeDelivered(null);
   return { messages: joined, activeContextStartMessageId };
+}
+
+function notificationKey({ routeId, event }: { routeId: string | null; event: { id: string } }) {
+  return `${routeId ?? ""}\n${event.id}`;
+}
+
+/** The delivered events, then those the request names that were delivered earlier, if shown. */
+function withRequested(
+  notifications: readonly PiAgentNotification[],
+  request: readonly PiNotificationReference[] | null,
+  known: ReadonlyMap<string, PiAgentNotification>,
+) {
+  const keys = new Set(notifications.map(notificationKey));
+  const earlier = (request ?? []).flatMap(({ routeId, eventId }) => {
+    const key = notificationKey({ routeId, event: { id: eventId } });
+    const notification = known.get(key);
+    return notification === undefined || keys.has(key) ? [] : [notification];
+  });
+  return [...notifications, ...earlier];
+}
+
+function notificationsLabel(
+  notifications: readonly PiAgentNotification[],
+  request: readonly PiNotificationReference[] | null,
+) {
+  if (request !== null) {
+    return notificationRequestLabel(request, "asked");
+  }
+  return notifications.length === 1 ? "1 notification" : `${notifications.length} notifications`;
+}
+
+function notificationOf(message: ThreadMessageLike): PiAgentNotification | null {
+  if (message.role !== "system") {
+    return null;
+  }
+  const metadata = message.metadata?.custom as { kind: string };
+  return metadata.kind === "notification"
+    ? (metadata as PiNotificationMessageMetadata).notification
+    : null;
 }
 
 function notificationRequestOf(message: ThreadMessageLike): PiNotificationReference[] | null {
@@ -793,6 +924,7 @@ function joinResponses(turn: ThreadMessageLike, response: ThreadMessageLike): Th
       custom: {
         ...responseMetadata,
         notificationRequest: turnMetadata.notificationRequest,
+        notifications: turnMetadata.notifications,
         usage:
           usages.length === 0
             ? null
@@ -844,9 +976,17 @@ export function piConversationQueue(
         ? item.content
         : item.content.map((part) => (part.type === "text" ? part.text : "[image]")).join("\n");
     const notifications = parsePiNotificationRequest(text);
-    const prompt = notifications
-      ? notificationRequestLabel(notifications, "asked")
-      : promptLabel(text);
+    // An event that joins the running turn waits as its card.
+    const event =
+      item.entry?.kind === PI_NOTIFICATION_ENTRY_KIND
+        ? (item.entry.data as PiAgentNotification).event
+        : null;
+    const prompt =
+      event !== null
+        ? `${event.source} · ${event.eventType}`
+        : notifications
+          ? notificationRequestLabel(notifications, "asked")
+          : promptLabel(text);
     items.push({ id, prompt });
     labels.set(id, item.mode === "steer" ? "Steering" : "Up next");
   }

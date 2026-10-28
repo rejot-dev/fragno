@@ -22,6 +22,7 @@ import {
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
+import type { piAgentSubagentListSchema } from "@/fragno/pi/manager/pi-manager-conversation-routes";
 import type { createPiManagerFragment } from "@/fragno/pi/manager/pi-manager-fragment";
 import { captureBackofficeServerEvent } from "@/posthog.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -226,8 +227,14 @@ export async function submitPiManagerPrompt(
   const response = await callRoute("POST", "/agents/:agentName/prompts", {
     pathParams: { agentName },
     // Middleware overwrites the provenance with the authenticated caller's before validation.
-    // People are not agents, so nothing replies to them.
-    body: { ...input, replyTo: null, provenance: callerProvenance(execution) },
+    // People are not agents, so nothing replies to them. People talk with the agent itself.
+    body: {
+      ...input,
+      subagent: false,
+      replyTo: null,
+      askingToolCall: null,
+      provenance: callerProvenance(execution),
+    },
   });
   if (response.type === "json") {
     captureBackofficeServerEvent(context, {
@@ -273,6 +280,59 @@ export async function fetchPiManagerEntryPage(
     throw Response.json(response.error, { status: response.status });
   }
   throw new Response(`Failed to fetch Pi entry history (${response.status}).`, {
+    status: response.status,
+  });
+}
+
+/** The agent's latest subagents, newest first, with where each stands. */
+export type PiManagerSubagentList = z.infer<typeof piAgentSubagentListSchema>;
+
+export async function fetchPiManagerSubagents(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  agentName: string,
+): Promise<PiManagerSubagentList> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("GET", "/agents/:agentName/subagents", {
+    pathParams: { agentName },
+  });
+  if (response.type === "json") {
+    return response.data;
+  }
+  if (response.type === "error") {
+    throwPiManagerAuthorizationFailure(response);
+    throw Response.json(response.error, { status: response.status });
+  }
+  throw new Response(`Failed to list Pi subagents (${response.status}).`, {
+    status: response.status,
+  });
+}
+
+/** A subagent's conversation view; null while it waits for a conversation, or for none. */
+export async function fetchPiManagerSubagentView(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+  scope: BackofficeContextScope,
+  agentName: string,
+  requestId: string,
+): Promise<ConversationView | null> {
+  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
+  const response = await callRoute("GET", "/agents/:agentName/subagents/:requestId/view", {
+    pathParams: { agentName, requestId },
+  });
+  if (response.type === "json") {
+    // The manager forwards Pi's view unchanged.
+    return response.data as ConversationView;
+  }
+  if (response.type === "error") {
+    throwPiManagerAuthorizationFailure(response);
+    if (response.error.code === "SUBAGENT_NOT_FOUND") {
+      return null;
+    }
+    throw Response.json(response.error, { status: response.status });
+  }
+  throw new Response(`Failed to read the Pi subagent (${response.status}).`, {
     status: response.status,
   });
 }

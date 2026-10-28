@@ -2,8 +2,8 @@
 name: pi-agents
 description: >
   Define, change, and prompt Pi agents: named instructions and permissions with one ongoing
-  conversation each. Load when creating, editing, or deleting an agent, or choosing which agent
-  should do work.
+  conversation each, and their one-task subagents. Load when creating, editing, or deleting an
+  agent, choosing which agent should do work, or delegating work to subagents.
 ---
 
 # Pi agents
@@ -62,6 +62,23 @@ turn.
 
 Work a turn persists, such as a workflow it starts, runs with the prompter's permissions without the
 definition's narrowing.
+
+## Subagents
+
+A subagent is a one-task conversation of an agent, under the agent's definition: it sees only its
+task, answers it beside the agent's own conversation, and ends. Start one with
+`pi.submitPrompt({ agentName, content, subagent: true })`, for an agent or yourself, with a
+self-contained `content`, such as one task per document. Four run at once per agent; more wait for a
+slot. Then get their answers one of two ways, not both:
+
+- **In this turn:** call the `awaitSubagents` tool with the request IDs `pi.submitPrompt` returned.
+  It waits for subagents of yourself, also those still waiting for a slot, and returns each one's
+  answer in the order given. Start them all first, then wait once.
+- **Later:** pass `notifyWhenDone` to be notified as each one ends, and read its answer with
+  `pi.listMessages({ agentName, subagent: requestId })`.
+
+Subagents cannot wait for subagents. Prompt a named agent without `subagent` instead when the work
+needs that agent's conversation.
 
 ## Prompt an agent
 
