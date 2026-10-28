@@ -316,8 +316,12 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.acceptShare"),
       namespace: "state",
       name: "acceptShare",
-      execute: async (input, context: StateToolContext) =>
-        await getFileShareRuntime(context).accept(input),
+      execute: async (input, context: StateToolContext) => {
+        const accepted = await getFileShareRuntime(context).accept(input);
+        // The mount may have been looked up, and missed, earlier in this execution.
+        context.runtimes.state?.refreshMetadata();
+        return accepted;
+      },
     }),
     defineBackofficeRuntimeTool({
       ...backofficeApiOperationToolFields("state.listShares"),
@@ -332,6 +336,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       name: "revokeShare",
       execute: async (input, context: StateToolContext) => {
         await getFileShareRuntime(context).revoke(input);
+        context.runtimes.state?.refreshMetadata();
       },
     }),
   ],

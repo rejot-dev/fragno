@@ -42,9 +42,14 @@ export function createUploadFileTreeEntries(
     const path = record.fileKey.slice(prefix.length);
 
     if (isUploadDirectoryMarker(record)) {
+      const directory = path.slice(0, -"/.fragno/dir-marker".length);
+      // The prefix's own folder is the tree's implicit root.
+      if (!directory) {
+        continue;
+      }
       entries.push({
         kind: "directory",
-        path: path.slice(0, -"/.fragno/dir-marker".length),
+        path: directory,
         updatedAt: serializeDate(record.updatedAt),
         metadata: record.metadata ?? null,
       });
