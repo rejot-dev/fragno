@@ -5,6 +5,7 @@ import { applyMigrations } from "../migrations";
 import directoryMigration from "./migrations/0001-directory.sql?raw";
 import operatorsMigration from "./migrations/0002-operators.sql?raw";
 import firmAgentsMigration from "./migrations/0003-firm-agents.sql?raw";
+import firmAccessMigration from "./migrations/0004-firm-access.sql?raw";
 
 /**
  * Operators run Bookkeeping; a firm keeps the books of its clients; a client is one business whose
@@ -12,7 +13,7 @@ import firmAgentsMigration from "./migrations/0003-firm-agents.sql?raw";
  */
 export type OrganizationKind = "operator" | "firm" | "client";
 
-/** A Backoffice organization Bookkeeping is installed in; clients name the firm that created them. */
+/** A Backoffice organization Bookkeeping is installed in; clients name the firm that manages them. */
 export type Organization = { id: string; slug: string; name: string } & (
   | { kind: "operator" }
   | { kind: "firm" }
@@ -22,8 +23,18 @@ export type Organization = { id: string; slug: string; name: string } & (
 /** The organizations Bookkeeping creates; Backoffice's administrator creates the operators'. */
 export type ProvisionedOrganization = Extract<Organization, { kind: "firm" | "client" }>;
 
+/**
+ * How someone reaches an organization: as one of its members, or as a member of the firm managing
+ * it, with their role in the firm, owners as admins.
+ */
+export type MembershipThrough = "membership" | "firm";
+
 /** Someone's membership, as Backoffice last confirmed it at `confirmedAt` (epoch milliseconds). */
-export type Membership = { roles: OrganizationRole[]; confirmedAt: number };
+export type Membership = {
+  roles: OrganizationRole[];
+  through: MembershipThrough;
+  confirmedAt: number;
+};
 
 export type OrganizationMembership = Membership & { organization: Organization };
 
@@ -58,7 +69,11 @@ type OrganizationRow = {
   kind: OrganizationKind;
   firmId: string | null;
 };
-type MembershipRow = OrganizationRow & { roles: string; confirmedAt: number };
+type MembershipRow = OrganizationRow & {
+  roles: string;
+  through: MembershipThrough;
+  confirmedAt: number;
+};
 type InvitationRow = OrganizationRow & {
   invitationId: string;
   email: string;
@@ -68,7 +83,7 @@ type InvitationRow = OrganizationRow & {
 };
 
 const ORGANIZATION_COLUMNS = `o."id", o."slug", o."name", o."kind", o."firmId"`;
-const MEMBERSHIP_QUERY = `SELECT ${ORGANIZATION_COLUMNS}, m."roles", m."confirmedAt"
+const MEMBERSHIP_QUERY = `SELECT ${ORGANIZATION_COLUMNS}, m."roles", m."through", m."confirmedAt"
   FROM "membership" m JOIN "organization" o ON o."id" = m."organizationId"`;
 const INVITATION_QUERY = `SELECT ${ORGANIZATION_COLUMNS}, i."id" AS "invitationId", i."email",
     i."roles", i."invitedBy", i."expiresAt"
@@ -91,6 +106,7 @@ function toMembership(row: MembershipRow): OrganizationMembership {
   return {
     organization: toOrganization(row),
     roles: parseRoles(row.roles),
+    through: row.through,
     confirmedAt: row.confirmedAt,
   };
 }
@@ -115,7 +131,12 @@ export class Directory extends DurableObject<CloudflareEnv> {
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
     super(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
-      applyMigrations(ctx, [directoryMigration, operatorsMigration, firmAgentsMigration]);
+      applyMigrations(ctx, [
+        directoryMigration,
+        operatorsMigration,
+        firmAgentsMigration,
+        firmAccessMigration,
+      ]);
     });
   }
 
@@ -149,14 +170,19 @@ export class Directory extends DurableObject<CloudflareEnv> {
         input.userId,
       )
       .toArray();
-    return row ? { roles: parseRoles(row.roles), confirmedAt: row.confirmedAt } : null;
+    return row
+      ? { roles: parseRoles(row.roles), through: row.through, confirmedAt: row.confirmedAt }
+      : null;
   }
 
-  /** The organizations the user belongs to: operators, then firms, then clients, by name. */
+  /**
+   * The organizations the user belongs to: operators, then firms, then clients, by name. Clients
+   * they reach through their firm are its, not theirs.
+   */
   listMemberships(userId: string): OrganizationMembership[] {
     return this.ctx.storage.sql
       .exec<MembershipRow>(
-        `${MEMBERSHIP_QUERY} WHERE m."userId" = ?
+        `${MEMBERSHIP_QUERY} WHERE m."userId" = ? AND m."through" = 'membership'
          ORDER BY CASE o."kind" WHEN 'operator' THEN 0 WHEN 'firm' THEN 1 ELSE 2 END,
            o."name", o."slug"`,
         userId,
@@ -195,7 +221,8 @@ export class Directory extends DurableObject<CloudflareEnv> {
     const [row] = this.ctx.storage.sql
       .exec<OrganizationRow & { memberCount: number }>(
         `SELECT ${ORGANIZATION_COLUMNS},
-           (SELECT COUNT(*) FROM "membership" m WHERE m."organizationId" = o."id") AS "memberCount"
+           (SELECT COUNT(*) FROM "membership" m
+             WHERE m."organizationId" = o."id" AND m."through" = 'membership') AS "memberCount"
          FROM "organization" o WHERE o."id" = ?`,
         id,
       )
@@ -230,6 +257,7 @@ export class Directory extends DurableObject<CloudflareEnv> {
         this.#recordMembership(organization.id, {
           userId: input.ownerUserId,
           roles: ["owner"],
+          through: "membership",
           confirmedAt: Date.now(),
         });
       }
@@ -265,7 +293,8 @@ export class Directory extends DurableObject<CloudflareEnv> {
 
   /**
    * Replaces the copy of an organization's memberships with Backoffice's full list of its members,
-   * confirmed at `confirmedAt`. Anyone missing from it was removed.
+   * confirmed at `confirmedAt`. Any member missing from it was removed; people reaching it through
+   * its firm are not listed, and keep their own confirmation.
    */
   confirmMembers(input: {
     organizationId: string;
@@ -274,7 +303,7 @@ export class Directory extends DurableObject<CloudflareEnv> {
   }): void {
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec(
-        `DELETE FROM "membership" WHERE "organizationId" = ?
+        `DELETE FROM "membership" WHERE "organizationId" = ? AND "through" = 'membership'
          AND "userId" NOT IN (SELECT "value" FROM json_each(?))`,
         input.organizationId,
         JSON.stringify(input.members.map(({ userId }) => userId)),
@@ -283,6 +312,7 @@ export class Directory extends DurableObject<CloudflareEnv> {
         this.#recordMembership(input.organizationId, {
           userId,
           roles,
+          through: "membership",
           confirmedAt: input.confirmedAt,
         });
       }
@@ -441,13 +471,14 @@ export class Directory extends DurableObject<CloudflareEnv> {
     membership: Omit<MembershipConfirmation, "organization">,
   ): void {
     this.ctx.storage.sql.exec(
-      `INSERT INTO "membership" ("organizationId", "userId", "roles", "confirmedAt")
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO "membership" ("organizationId", "userId", "roles", "through", "confirmedAt")
+       VALUES (?, ?, ?, ?, ?)
        ON CONFLICT ("organizationId", "userId") DO UPDATE SET "roles" = excluded."roles",
-         "confirmedAt" = excluded."confirmedAt"`,
+         "through" = excluded."through", "confirmedAt" = excluded."confirmedAt"`,
       organizationId,
       membership.userId,
       JSON.stringify(membership.roles),
+      membership.through,
       membership.confirmedAt,
     );
   }

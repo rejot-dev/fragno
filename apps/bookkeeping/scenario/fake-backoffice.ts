@@ -11,7 +11,10 @@ import {
   BACKOFFICE_TOKEN_ISSUER,
   type AppActionTokenClaims,
 } from "@fragno-dev/backoffice-api/v0/app-actions";
-import type { OrganizationMembershipRecord } from "@fragno-dev/backoffice-api/v0/organization";
+import type {
+  OrganizationAccessRecord,
+  OrganizationMembershipRecord,
+} from "@fragno-dev/backoffice-api/v0/organization";
 import type { PiAgentDefinitionCreate, PiPromptStatus } from "@fragno-dev/backoffice-api/v0/pi";
 import { backofficeProvisioningOperations } from "@fragno-dev/backoffice-api/v0/provisioning";
 import {
@@ -41,6 +44,8 @@ type Organization = {
   slug: string;
   createdAt: string;
   members: Map<string, { roles: Role[]; joinedAt: string }>;
+  /** The organization whose members act in this one, as a firm does in its clients. */
+  managingOrganizationId: string | null;
   installation: "active" | "uninstalled";
   /** Projects Bookkeeping provisioned, by its identifier for them. */
   projects: Map<string, { id: string; slug: string; name: string }>;
@@ -391,6 +396,7 @@ export class FakeBackoffice {
         members: new Map(
           ownerEmails.map((email) => [this.userId(email), { roles: ["owner"], joinedAt: now }]),
         ),
+        managingOrganizationId: null,
         installation: "active",
         projects: new Map(),
       };
@@ -441,8 +447,8 @@ export class FakeBackoffice {
       input.actor === "installation"
         ? { kind: "installation" }
         : { kind: "user", userId: this.userId(input.actor.email) };
-    if (actor.kind === "user" && !organization.members.has(actor.userId)) {
-      throw new Error(`Backoffice runs no actions for a non-member in ${organization.slug}.`);
+    if (actor.kind === "user" && !this.#access(organization, actor.userId)) {
+      throw new Error(`Backoffice runs no actions for an outsider in ${organization.slug}.`);
     }
     const orgScope = { kind: "org" as const, orgId: organization.id, jurisdiction: null };
     let scopeRestriction: AppActionTokenClaims["scopeRestriction"] = orgScope;
@@ -603,7 +609,8 @@ export class FakeBackoffice {
 
   /**
    * An app credential for one organization, as Backoffice issues it: Bookkeeping must be
-   * installed there, and a user's credential needs the user's own current membership.
+   * installed there, and a user's credential needs the user to act there now, as a member or a
+   * member of the organization managing it.
    */
   async #executionToken(request: Request): Promise<Response> {
     const principal = this.#accessTokens.get(bearer(request));
@@ -630,8 +637,8 @@ export class FakeBackoffice {
     ) {
       return scopeUnavailable("The organization has no such project.");
     }
-    if (principal.kind === "user" && !organization.members.has(principal.userId)) {
-      return scopeUnavailable("You are not a member of this organization.");
+    if (principal.kind === "user" && !this.#access(organization, principal.userId)) {
+      return scopeUnavailable("You are not a member of this organization or of its manager.");
     }
     const accessToken = randomToken();
     this.#executionTokens.set(accessToken, { principal, scope, organizationId: organization.id });
@@ -656,8 +663,7 @@ export class FakeBackoffice {
       throw new ApiError("authentication_failed", "The installation is no longer active.");
     }
     const { principal } = credential;
-    const member =
-      principal.kind === "user" ? organization.members.get(principal.userId) : undefined;
+    const member = principal.kind === "user" ? this.#access(organization, principal.userId) : null;
     const body = request.headers.get("content-type") ? await request.json() : undefined;
     // The installation works in the projects it was installed for, as a member does.
     if (scope.kind === "project" && (member || principal.kind === "app")) {
@@ -669,11 +675,7 @@ export class FakeBackoffice {
     }
     switch (operationId) {
       case "org.get":
-        return respond("org.get", undefined, () => ({
-          ...this.#membership(organization, member.roles),
-          managingOrganization: null,
-          through: "membership" as const,
-        }));
+        return respond("org.get", undefined, () => this.#accessRecord(organization, member));
       case "org.invitations.list":
         return respond("org.invitations.list", body, () => ({
           invitations: this.#pendingInvitations(organization).map((invitation) => ({
@@ -936,6 +938,7 @@ export class FakeBackoffice {
           ),
           createdAt: now,
           members: new Map([[input.ownerUserId, { roles: ["owner"], joinedAt: now }]]),
+          managingOrganizationId: null,
           installation: "active",
           projects: new Map(),
         };
@@ -972,6 +975,7 @@ export class FakeBackoffice {
           createdAt: now,
           // The inviting user does not become a member.
           members: new Map(),
+          managingOrganizationId: null,
           installation: "active",
           projects: new Map(),
         };
@@ -1012,6 +1016,62 @@ export class FakeBackoffice {
           }),
         );
       }
+      case "organizations.provisionManaged": {
+        const input = backofficeProvisioningOperations[operationId].input.parse(body);
+        const managing = this.#organizations.get(input.managingOrganizationId);
+        if (managing?.installation !== "active") {
+          throw new ApiError(
+            "not_found",
+            "This app is not installed in the managing organization.",
+          );
+        }
+        if (
+          !this.#consents.has(input.byUserId) ||
+          !managing.members.get(input.byUserId)?.roles.some((role) => MANAGING_ROLES.has(role))
+        ) {
+          throw new ApiError(
+            "forbidden",
+            `User '${input.byUserId}' does not own or administer the managing organization.`,
+          );
+        }
+        const existing = [...this.#organizations.values()].find(
+          (org) => org.externalId === input.externalOrganizationId,
+        );
+        if (existing && existing.managingOrganizationId !== managing.id) {
+          throw new ApiError("conflict", "The organization exists, managed by another or none.");
+        }
+        const now = new Date().toISOString();
+        const organization: Organization = existing ?? {
+          id: crypto.randomUUID(),
+          externalId: input.externalOrganizationId,
+          name: input.name,
+          slug: nextSlug(
+            input.name,
+            [...this.#organizations.values()].map(({ slug }) => slug),
+          ),
+          createdAt: now,
+          // The managing organization's owner or admin who asked does not become a member.
+          members: new Map(),
+          managingOrganizationId: managing.id,
+          installation: "active",
+          projects: new Map(),
+        };
+        this.#organizations.set(organization.id, organization);
+        if (input.owner.kind === "invitee") {
+          throw new Error(
+            "The fake provisions managed organizations without an owner, as Bookkeeping does.",
+          );
+        }
+        return Response.json(
+          backofficeProvisioningOperations[operationId].output.parse({
+            organizationId: organization.id,
+            slug: organization.slug,
+            jurisdiction: null,
+            created: existing === undefined,
+            ownerInvitation: null,
+          }),
+        );
+      }
       case "projects.provision": {
         const input = backofficeProvisioningOperations[operationId].input.parse(body);
         const organization = this.#organizations.get(input.organizationId);
@@ -1019,12 +1079,12 @@ export class FakeBackoffice {
           throw new ApiError("not_found", "This app is not installed in the organization.");
         }
         if (
-          !organization.members.has(input.createdByUserId) ||
+          !this.#access(organization, input.createdByUserId) ||
           !this.#consents.has(input.createdByUserId)
         ) {
           throw new ApiError(
             "forbidden",
-            `User '${input.createdByUserId}' is not a member who authorized this app.`,
+            `User '${input.createdByUserId}' does not act in the organization or has not authorized this app.`,
           );
         }
         const existing = organization.projects.get(input.externalProjectId);
@@ -1052,17 +1112,21 @@ export class FakeBackoffice {
         if (organization?.installation !== "active") {
           throw new ApiError("not_found", "This app is not installed in the organization.");
         }
-        const inviter = organization.members.get(input.inviterUserId);
+        const inviter = this.#access(organization, input.inviterUserId);
         if (!inviter || !this.#consents.has(input.inviterUserId)) {
           throw new ApiError(
             "forbidden",
-            `User '${input.inviterUserId}' is not a member who authorized this app.`,
+            `User '${input.inviterUserId}' does not act in the organization or has not authorized this app.`,
           );
         }
         if (!inviter.roles.some((role) => MANAGING_ROLES.has(role))) {
           throw new ApiError("forbidden", "Only owners and admins invite.");
         }
-        if (input.roles.includes("owner") && !inviter.roles.includes("owner")) {
+        // Management never confers owner, so a manager invites one only while there is none.
+        const ownerless =
+          inviter.through === "managing-organization" &&
+          ![...organization.members.values()].some(({ roles }) => roles.includes("owner"));
+        if (input.roles.includes("owner") && !inviter.roles.includes("owner") && !ownerless) {
           throw new ApiError("forbidden", "Only owners invite owners.");
         }
         const invitee = this.#userByEmail(input.email);
@@ -1153,6 +1217,49 @@ export class FakeBackoffice {
       default:
         throw new ApiError("not_found", `Unknown provisioning operation '${operationId}'.`);
     }
+  }
+
+  /**
+   * How the user acts in the organization: as a member, or as a member of the organization
+   * managing it, with their role there, owners as admins. Null when they do not.
+   */
+  #access(
+    organization: Organization,
+    userId: string,
+  ): { roles: Role[]; through: OrganizationAccessRecord["through"] } | null {
+    const member = organization.members.get(userId);
+    if (member) {
+      return { roles: member.roles, through: "membership" };
+    }
+    const managing =
+      organization.managingOrganizationId === null
+        ? undefined
+        : this.#organizations.get(organization.managingOrganizationId)?.members.get(userId);
+    return managing
+      ? {
+          roles: [...new Set(managing.roles.map((role) => (role === "owner" ? "admin" : role)))],
+          through: "managing-organization",
+        }
+      : null;
+  }
+
+  #accessRecord(
+    organization: Organization,
+    access: { roles: Role[]; through: OrganizationAccessRecord["through"] },
+  ): OrganizationAccessRecord {
+    const managing =
+      organization.managingOrganizationId === null
+        ? null
+        : this.#organizations.get(organization.managingOrganizationId)!;
+    return {
+      ...this.#membership(organization, access.roles),
+      managingOrganization: managing && {
+        organizationId: managing.id,
+        name: managing.name,
+        slug: managing.slug,
+      },
+      through: access.through,
+    };
   }
 
   #membership(organization: Organization, roles: Role[]): OrganizationMembershipRecord {

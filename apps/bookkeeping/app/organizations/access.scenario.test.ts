@@ -98,30 +98,22 @@ test("after Backoffice withdraws Bookkeeping's authorization, signing in again r
   });
 });
 
-test("resubmitting the form that created a client does not let a removed owner back in", async () => {
+test("the firm's people open its clients only while they are in the firm", async () => {
   await runBookkeepingScenario(async (scenario) => {
-    const { ada, firmPath } = await scenario.practice();
-    const path = `${firmPath}/clients/new`;
-    const form = await ada.navigate(path);
-    const { externalId } = form.loaderData["firms/new-client"] as { externalId: string };
-    const submission = { externalId, name: "Difference Engines" };
-    expect(await ada.submit(path, submission)).toMatchObject({ status: 200 });
-    const invited = await scenario.invite(
-      ada,
-      "/w/difference-engines",
-      "charles@example.test",
-      "owner",
-    );
-    await scenario.acceptInvitation("charles@example.test", "Charles Babbage", { path: invited });
-
-    scenario.backoffice.admin.removeMember("difference-engines", "ada@example.test");
-    scenario.advanceTime(CONFIRMATION_EXPIRED_MS);
-    expect(await ada.navigate("/w/difference-engines")).toMatchObject({ status: 404 });
-    // Backoffice answers that the client exists; it does not make Ada its owner again.
-    expect(await ada.submit(path, submission)).toMatchObject({
-      path: "/w/difference-engines/members",
-      status: 404,
+    const { clientPath } = await scenario.practice();
+    const joan = await scenario.signUp("joan@example.test", "Joan Clarke");
+    scenario.backoffice.admin.addMember("lovelace-co", "joan@example.test", ["member"]);
+    expect(await joan.navigate(clientPath)).toMatchObject({
+      status: 200,
+      loaderData: { "clients/layout": { user: { role: "Member" } } },
     });
-    expect(await ada.navigate("/w/difference-engines")).toMatchObject({ status: 404 });
+    // She acts there through the firm, so the client does not list her among its members.
+    expect(await joan.navigate(`${clientPath}/members`)).toMatchObject({
+      loaderData: { "clients/members": { team: { members: [], inviteRoles: [] } } },
+    });
+
+    scenario.backoffice.admin.removeMember("lovelace-co", "joan@example.test");
+    scenario.advanceTime(CONFIRMATION_EXPIRED_MS);
+    expect(await joan.navigate(clientPath)).toMatchObject({ status: 404 });
   });
 });

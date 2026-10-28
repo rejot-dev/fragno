@@ -53,10 +53,14 @@ export type Team = {
 
 /**
  * The roles someone may invite with, as Backoffice decides: owners invite anyone, admins invite
- * admins and members, and members invite no one.
+ * admins and members, and members invite no one. A firm's owners and admins act in its clients as
+ * admins, and invite a client's owner while it has none.
  */
-function inviteRolesFor(roles: OrganizationRole[]): OrganizationRole[] {
-  if (roles.includes("owner")) {
+function inviteRolesFor(
+  { roles, through }: Pick<OrganizationContext, "roles" | "through">,
+  hasOwner: boolean,
+): OrganizationRole[] {
+  if (roles.includes("owner") || (through === "firm" && roles.includes("admin") && !hasOwner)) {
     return ["member", "admin", "owner"];
   }
   return roles.includes("admin") ? ["member", "admin"] : [];
@@ -82,7 +86,7 @@ async function allPages<T>(
  * for an email; who invited someone, and the link, from the invitations Bookkeeping created.
  */
 export async function loadTeam(request: Request, context: OrganizationContext): Promise<Team> {
-  const { organization, user, roles } = context;
+  const { organization, user } = context;
   const backoffice = await connectAsUser(request, {
     kind: "org",
     orgId: organization.id,
@@ -120,7 +124,10 @@ export async function loadTeam(request: Request, context: OrganizationContext): 
     directory.confirmMembers({ organizationId: organization.id, members, confirmedAt: Date.now() }),
   ]);
   const createdById = new Map(created.map((invitation) => [invitation.id, invitation]));
-  const inviteRoles = inviteRolesFor(roles);
+  const inviteRoles = inviteRolesFor(
+    context,
+    members.some((member) => member.roles.includes("owner")),
+  );
   return {
     members: members
       .map(

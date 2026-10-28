@@ -162,14 +162,16 @@ Bookkeeping has three layers, as Brand Intelligence does with ReJot, partners, a
   with `backoffice:connect`. Bookkeeping records it with kind `operator`. To anyone else,
   `/operator` does not exist. Operators invite more operators at `/operator/members`.
 - **Firms** are accounting firms: Backoffice organizations Bookkeeping records with kind `firm`.
-- **Clients** are the businesses whose books a firm keeps: Backoffice organizations Bookkeeping
-  records with kind `client` and the firm that created them.
+- **Clients** are the businesses whose books a firm keeps: Backoffice organizations the firm
+  manages, which Bookkeeping records with kind `client` and their firm.
 
 Backoffice owns the organizations, their members, and their roles (owner, admin, member);
 Bookkeeping keeps a read-only copy in the `Directory` object and never changes membership itself.
-The link from a client to its firm is Bookkeeping's alone: Backoffice does not know it, and grants
-the firm nothing in the client. People sign up only through invitations: someone who signs in
-without one has no access yet.
+Backoffice also records that a firm manages its clients: every member of the firm acts in each
+client with their role in the firm, owners as admins, without becoming the client's member. The
+`Directory` keeps the firm of each client as Bookkeeping provisioned it. Operators manage no firms:
+an operator organization managing them would reach each firm's agent project and the skills in it.
+People sign up only through invitations: someone who signs in without one has no access yet.
 
 **Creating a firm.** At `/operator/firms/new`, an operator gives the firm's name and the email of
 its owner, who need not have signed in yet. Bookkeeping provisions it with
@@ -180,30 +182,36 @@ them. An operator who names their own email owns the firm instead, provisioned w
 `organizations.provision`. Resubmitting the form after a failure finds the same firm and the same
 pending invitation.
 
-**Creating a client.** Any firm member creates a client at `/f/:slug/clients/new`. Bookkeeping
-provisions its organization with the creator as owner, records it under the firm, and opens its
-members page to invite the client. Being a member of a firm does not open its clients: the firm's
-dashboard lists every client, and its members open those they belong to. External IDs are prefixed
-with the kind (`firm:`, `client:`), so a firm and a client never share one.
+**Creating a client.** The firm's owners and admins create a client at `/f/:slug/clients/new`.
+Bookkeeping provisions it with `organizations.provisionManaged`, managed by the firm and with no
+members or owner yet, with the creator recorded as its creator, records it under the firm, and opens
+its members page to invite the client's owner. The firm's dashboard lists every client, and every
+member of the firm opens each. External IDs are prefixed with the kind (`firm:`, `client:`), so a
+firm and a client never share one. Clients created before Backoffice recorded management have their
+creator as owner and no manager; Backoffice's administrator gives each its firm with
+`admin.org.manager.set --org <client> --manager <firm>`.
 
-**Access.** Each request to a firm or client checks the person's membership, and that the slug is of
-that kind. A membership Backoffice confirmed in the last minute is trusted; otherwise Bookkeeping
-exchanges the person's Backoffice token for a credential in that organization
-(`POST /api/backoffice/execution-token`) and reads their roles with `org.get`. When Backoffice
-refuses, because they were removed or Bookkeeping was uninstalled, Bookkeeping forgets their
-membership and answers 404; nothing is deleted. While Backoffice is unreachable, unconfirmed access
-answers 503. Installed apps cannot ask which organizations someone belongs to, so `/start` and the
-switcher show the memberships Bookkeeping recorded: from creating an organization, accepting an
-invitation, or a confirmed visit.
+**Access.** Each request to a firm or client checks the person's membership, or in a client their
+firm's, and that the slug is of that kind. A membership Backoffice confirmed in the last minute is
+trusted; otherwise Bookkeeping exchanges the person's Backoffice token for a credential in that
+organization (`POST /api/backoffice/execution-token`) and reads their roles, and whether they act
+through the firm, with `org.get`. When Backoffice refuses, because they were removed or Bookkeeping
+was uninstalled, Bookkeeping forgets their membership and answers 404; nothing is deleted. While
+Backoffice is unreachable, unconfirmed access answers 503. Installed apps cannot ask which
+organizations someone belongs to, so `/start` and the switcher show the memberships Bookkeeping
+recorded: from creating an organization, accepting an invitation, or a confirmed visit. Clients
+someone reaches through their firm are not among them: the firm's dashboard lists those.
 
 **Members.** A firm's and a client's members pages list members with `org.members.list` and pending
 invitations with `org.invitations.list`, as the viewer, and replace the copy's memberships with the
-list. Members show the names people gave Bookkeeping.
+list; the firm's people a client does not list keep their own confirmation. Members show the names
+people gave Bookkeeping.
 
 **Inviting.** Owners and admins invite on the members page: Bookkeeping creates the invitation with
 `invitations.create` as the inviter, so Backoffice applies their current role (only owners invite
-owners). Apps cannot use `org.invitations.create`, which only people acting directly may. Backoffice
-then emails the invitation in Bookkeeping's name with `invitations.send`, linking to
+owners). In a client, the firm's owners and admins invite as its admins, and invite its owner while
+it has none. Apps cannot use `org.invitations.create`, which only people acting directly may.
+Backoffice then emails the invitation in Bookkeeping's name with `invitations.send`, linking to
 `/invitations/:invitationId`; the page shows the link too, to send by hand when Backoffice cannot
 email, as a local Backoffice without Resend cannot. The invited person signs in there, with
 Backoffice's sign-in page already showing the invited address; someone signed in with another

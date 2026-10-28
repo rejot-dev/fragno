@@ -59,7 +59,8 @@ test("an operator creates a firm for its owner, who accepts the emailed invitati
     // Ada's only organization opens when she signs in.
     expect(await ada.navigate("/start")).toMatchObject({ path: "/f/lovelace-co" });
 
-    // The client opens on its members page, to invite the client.
+    // The client opens on its members page, to invite the client. The firm manages it, so Ada
+    // acts in it as the firm's owner, as an admin, without becoming its member.
     const client = await scenario.createClient(ada, "/f/lovelace-co", "Analytical Engines");
     expect(client).toMatchObject({
       path: "/w/analytical-engines/members",
@@ -67,29 +68,22 @@ test("an operator creates a firm for its owner, who accepts the emailed invitati
       loaderData: {
         "clients/layout": {
           place: { mode: "client", name: "Analytical Engines", path: "/w/analytical-engines" },
-          user: { name: "Ada Lovelace", role: "Owner" },
+          user: { name: "Ada Lovelace", role: "Admin" },
         },
       },
     });
-    expect(scenario.backoffice.organization("analytical-engines").members).toEqual(
-      new Map([["ada@example.test", ["owner"]]]),
-    );
+    expect(scenario.backoffice.organization("analytical-engines").members).toEqual(new Map());
     expect(await ada.navigate("/f/lovelace-co")).toMatchObject({
       loaderData: {
         "firms/dashboard": {
           clients: [{ name: "Analytical Engines", path: "/w/analytical-engines", member: true }],
+          canCreate: true,
         },
       },
     });
-    // With two organizations, signing in offers a choice, and so does the switcher.
-    const places = [
-      { mode: "firm", name: "Lovelace & Co", path: "/f/lovelace-co" },
-      { mode: "client", name: "Analytical Engines", path: "/w/analytical-engines" },
-    ];
-    expect(await ada.navigate("/start")).toMatchObject({
-      path: "/start",
-      loaderData: { "organizations/start": { places } },
-    });
+    // The firm's clients are reached through the firm, so Ada's own places stay the firm.
+    const places = [{ mode: "firm", name: "Lovelace & Co", path: "/f/lovelace-co" }];
+    expect(await ada.navigate("/start")).toMatchObject({ path: "/f/lovelace-co" });
     expect(await ada.navigate("/w/analytical-engines")).toMatchObject({
       loaderData: { "clients/layout": { places } },
     });
@@ -188,7 +182,7 @@ test("trying again after a failure creates one client", async () => {
     });
     scenario.backoffice.setReachable(true);
     // Backoffice creates it, but Bookkeeping never hears so.
-    scenario.backoffice.failNextResponse("organizations.provision");
+    scenario.backoffice.failNextResponse("organizations.provisionManaged");
     expect(await ada.submit(path, { externalId, name: "Analytical Engines" })).toMatchObject({
       actionData: failed,
     });
@@ -280,7 +274,7 @@ test("an operator who names themselves owns the firm without an invitation", asy
   });
 });
 
-test("a firm's members open its clients only as their members", async () => {
+test("every member of a firm opens its clients, and its owners and admins create them", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { firmPath, clientPath } = await scenario.practice();
     const joan = await scenario.signUp("joan@example.test", "Joan Clarke");
@@ -289,10 +283,23 @@ test("a firm's members open its clients only as their members", async () => {
     expect(await joan.navigate(firmPath)).toMatchObject({
       status: 200,
       loaderData: {
-        "firms/dashboard": { clients: [{ name: "Analytical Engines", member: false }] },
+        "firms/dashboard": {
+          clients: [{ name: "Analytical Engines", member: true }],
+          canCreate: false,
+        },
       },
     });
-    expect(await joan.navigate(clientPath)).toMatchObject({ status: 404 });
+    expect(await joan.navigate(clientPath)).toMatchObject({
+      status: 200,
+      loaderData: { "clients/layout": { user: { name: "Joan Clarke", role: "Member" } } },
+    });
+    expect(await joan.navigate(`${firmPath}/clients/new`)).toMatchObject({ status: 403 });
+    expect(
+      await joan.submit(`${firmPath}/clients/new`, {
+        externalId: crypto.randomUUID(),
+        name: "Difference Engines",
+      }),
+    ).toMatchObject({ status: 403 });
     // Nor does a client open as a firm, or the other way around.
     expect(await joan.navigate("/w/lovelace-co")).toMatchObject({ status: 404 });
     expect(await joan.navigate("/f/analytical-engines")).toMatchObject({ status: 404 });

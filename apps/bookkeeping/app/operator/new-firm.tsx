@@ -10,7 +10,7 @@ import { assertSameOrigin } from "../auth/session.server";
 import { deliverInvitation } from "../invitations/invite.server";
 import { requireOperator } from "../organizations/access.server";
 import { organizationPath } from "../organizations/paths";
-import { provisionFirmForInvitee, provisionOrganization } from "../organizations/provision.server";
+import { provisionFirm, provisionFirmForInvitee } from "../organizations/provision.server";
 import type { Route } from "./+types/new-firm";
 
 export function meta() {
@@ -60,10 +60,9 @@ export async function action({ request }: Route.ActionArgs) {
   const { externalId, name, ownerEmail } = parsed.data;
   const unavailable = "Creating the firm didn't work. Try again shortly.";
   if (ownerEmail === operator.email.toLowerCase()) {
-    const provisioned = await provisionOrganization({
+    const provisioned = await provisionFirm({
       externalId,
       name,
-      kind: "firm",
       ownerUserId: operator.backofficeUserId,
     });
     if (provisioned.status !== "provisioned") {
