@@ -67,7 +67,8 @@ const COMPACTED_HISTORY =
 const CLEARED_HISTORY =
   "Context cleared. Earlier messages are still visible but out of context for the agent.";
 
-export type ComposerAction = "message" | "compact" | "clear";
+/** What the composer's send does; clearing the context is no mode, it happens as it is chosen. */
+export type ComposerAction = "message" | "compact";
 
 /** Files waiting to go with the next message; they upload as soon as they are added. */
 export type ComposerAttachments = {
@@ -79,7 +80,10 @@ export type ComposerAttachments = {
   sending: boolean;
 };
 
-function composerActionOptions(readyForInput: boolean): RadioMenuOption<ComposerAction>[] {
+function composerActionOptions(
+  readyForInput: boolean,
+  contextEmpty: boolean,
+): RadioMenuOption<ComposerAction | "clear">[] {
   return [
     {
       value: "message",
@@ -98,9 +102,10 @@ function composerActionOptions(readyForInput: boolean): RadioMenuOption<Composer
     {
       value: "clear",
       label: "Clear context",
-      description: "Start a new, empty context; earlier messages stay in history",
+      description: "Start a new, empty context now; earlier messages stay in history",
       icon: null,
-      disabled: !readyForInput,
+      // An empty active context, as right after a reset, has nothing to clear.
+      disabled: !readyForInput || contextEmpty,
     },
   ];
 }
@@ -275,7 +280,6 @@ export function SessionThread({
 }) {
   const disabled = disabledReason !== null;
   // Clearing takes no text, so nothing can be written for it.
-  const writingDisabled = disabled || composerAction === "clear";
   // Compaction instructions and clearing say nothing to the agent, so carry no files.
   const attachingDisabled = disabled || composerAction !== "message" || attachments === null;
   // Files added while a message waits for its uploads go with the next message, after it.
@@ -441,18 +445,16 @@ export function SessionThread({
                         <ChatComposerAttachments attachments={attachments.items} />
                       )}
                       <ComposerPrimitive.Input
-                        disabled={writingDisabled}
+                        disabled={disabled}
                         submitMode="enter"
                         placeholder={
                           disabled
                             ? disabledReason
                             : composerAction === "compact"
                               ? "Tell Pi what the compaction summary must preserve"
-                              : composerAction === "clear"
-                                ? "Clear starts Pi on a new, empty context"
-                                : running
-                                  ? "Steer Pi; it reads this after the current step"
-                                  : "Message Pi"
+                              : running
+                                ? "Steer Pi; it reads this after the current step"
+                                : "Message Pi"
                         }
                         rows={1}
                         className={chatComposerInputClassName}
@@ -486,7 +488,7 @@ export function SessionThread({
                         }
                         end={
                           <>
-                            {dictation ? <DictationButton disabled={writingDisabled} /> : null}
+                            {dictation ? <DictationButton disabled={disabled} /> : null}
                             {needsNudge ? (
                               <Button variant="ghost" onClick={() => void onContinue()}>
                                 Continue
@@ -531,18 +533,6 @@ export function SessionThread({
                                     >
                                       Compact
                                     </ChatComposerButton>
-                                  ) : composerAction === "clear" ? (
-                                    <ChatComposerButton
-                                      tone="accent"
-                                      joined
-                                      // An empty active context, as right after a reset, has nothing to clear.
-                                      disabled={
-                                        disabled || !readyForInput || contextUsage.tokens === 0
-                                      }
-                                      onClick={() => void onClear()}
-                                    >
-                                      Clear
-                                    </ChatComposerButton>
                                   ) : (
                                     <SendOrResume
                                       disabled={disabled}
@@ -558,8 +548,17 @@ export function SessionThread({
                                     side="top"
                                     disabled={disabled}
                                     value={composerAction}
-                                    options={composerActionOptions(readyForInput)}
-                                    onValueChange={onComposerActionChange}
+                                    options={composerActionOptions(
+                                      readyForInput,
+                                      contextUsage.tokens === 0,
+                                    )}
+                                    onValueChange={(value) => {
+                                      if (value === "clear") {
+                                        void onClear();
+                                      } else {
+                                        onComposerActionChange(value);
+                                      }
+                                    }}
                                   />
                                 </ChatComposerSplit>
                               </>
