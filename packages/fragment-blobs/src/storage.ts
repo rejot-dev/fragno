@@ -67,7 +67,9 @@ export function createS3BlobStorage(options: S3BlobStorageOptions): BlobStorage 
 
   const send = async (method: "HEAD" | "DELETE", objectKey: string) => {
     const signed = await options.signer.sign({ method, url: objectUrl(objectKey) });
-    return await options.fetch(signed.url, { method, headers: signed.headers });
+    // Called unbound: Workers' global `fetch` throws when called as a method of another object.
+    const sendRequest = options.fetch;
+    return await sendRequest(signed.url, { method, headers: signed.headers });
   };
 
   return {

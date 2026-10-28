@@ -26,7 +26,11 @@ function createFakeBucket() {
     }),
   };
 
-  const fetch: typeof globalThis.fetch = async (input, init) => {
+  // Like Workers' global `fetch`, it refuses to be called as a method of another object.
+  const fetch = async function (this: unknown, input: RequestInfo | URL, init?: RequestInit) {
+    if (this !== undefined && this !== globalThis) {
+      throw new TypeError("Illegal invocation: function called with incorrect `this` reference.");
+    }
     const request = new Request(input, init);
     const url = new URL(request.url);
     const objectKey = decodeURIComponent(url.pathname.slice(new URL(BUCKET_URL).pathname.length));
@@ -63,6 +67,8 @@ function createFakeBucket() {
 
 describe("blobs fragment", async () => {
   const bucket = createFakeBucket();
+  // Requests from outside Backoffice, such as a browser following a presigned URL.
+  const storageFetch = bucket.fetch;
   const events: Array<{ event: "stored" | "deleted"; blob: StoredBlob }> = [];
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
@@ -111,7 +117,7 @@ describe("blobs fragment", async () => {
 
   /** Sends the bytes where a caller holding the URL would: straight to storage. */
   async function putBytes(upload: { url: string; headers: Record<string, string> }, text: string) {
-    const response = await bucket.fetch(upload.url, {
+    const response = await storageFetch(upload.url, {
       method: "PUT",
       headers: upload.headers,
       body: new TextEncoder().encode(text),
@@ -175,7 +181,7 @@ describe("blobs fragment", async () => {
       query: { key: "recordings/call.wav" },
     });
     assert(download.type === "json");
-    assert((await (await bucket.fetch(download.data.url)).text()) === "first take");
+    assert((await (await storageFetch(download.data.url)).text()) === "first take");
 
     const second = await createUpload("recordings/call.wav");
     await putBytes(second, "the second, longer take");
