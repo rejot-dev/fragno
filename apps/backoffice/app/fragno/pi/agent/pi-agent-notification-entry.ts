@@ -49,6 +49,18 @@ export function parsePiNotificationRequest(text: string): PiNotificationReferenc
 }
 
 /**
+ * A notification that joins a running turn, as the input Pi places: the event as the model reads
+ * it, shown as its card. No request follows it; the turn it joins handles it.
+ */
+export function piNotificationInput(notification: PiAgentNotification) {
+  return {
+    requestId: piNotificationRequestId(notification),
+    content: renderPiNotification(notification),
+    entry: { kind: PI_NOTIFICATION_ENTRY_KIND, data: notification },
+  };
+}
+
+/**
  * The text the model reads for a notification. Payloads can carry text from outside Backoffice,
  * so `<` is escaped inside the JSON and the data can never close the element.
  */

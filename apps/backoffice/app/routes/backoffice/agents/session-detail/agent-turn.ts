@@ -127,6 +127,17 @@ function thoughtSections(text: string): { headline: string; written: boolean; te
   });
 }
 
+/** What a running thought says now, as a running turn's header would: see `liveHeadline`. */
+export function liveThoughtHeadline(text: string): string {
+  const section = thoughtSections(text).at(-1);
+  if (section === undefined) {
+    return "Thinking";
+  }
+  return section.written
+    ? section.headline
+    : clip(latestSentence(section.text) ?? section.headline);
+}
+
 /**
  * What the agent is doing now, for the header of a running turn: the newest thought's headline,
  * or for prose its newest finished sentence, the tool it runs, or that it is writing its answer.
@@ -151,7 +162,8 @@ export function liveHeadline(
   return step.kind === "note" ? clip(firstSentence(step.text)) : toolHeadline(step.part);
 }
 
-function plainText(markdown: string) {
+/** Markdown as one line of plain text, for a preview of it. */
+export function plainText(markdown: string) {
   return markdown
     .replace(/[*_`~]+/g, "")
     .replace(/^\s*(?:#{1,6}|[-+>]|\d+\.)\s+/gm, "")

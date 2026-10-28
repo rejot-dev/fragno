@@ -6,6 +6,7 @@ import type {
   PiAgentMessagePage,
   PiAgentQueueEntry,
   PiAgentWatchFrame,
+  PiPromptStatus,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { backofficePermissionRequirementSchema } from "@fragno-dev/backoffice-api/v0/shared/permissions";
@@ -81,6 +82,25 @@ export const piAgentPromptSchema = z.object({
 export type PiAgentPrompt = z.infer<typeof piAgentPromptSchema>;
 
 /**
+ * Where a subagent stands in its agent: Pi's submission of its prompt, null before it starts; when
+ * its prompt was placed and when it was answered, as epoch milliseconds; and its answer's text.
+ */
+export type PiSubagentRun = {
+  requestId: string;
+  submission: SubmissionRecord | null;
+  startedAt: number | null;
+  answeredAt: number | null;
+  answer: string | null;
+};
+
+/** What the queue knows of a subagent before its agent starts it: it waits, or it was dropped. */
+export const piQueuedSubagentSchema = z.discriminatedUnion("status", [
+  z.object({ status: z.literal("waiting") }),
+  z.object({ status: z.literal("dropped"), reason: z.string() }),
+]);
+export type PiQueuedSubagent = z.infer<typeof piQueuedSubagentSchema>;
+
+/**
  * An event delivered to an agent, by an Automations route or, with no route, addressed to the
  * agent itself, as a workflow it started reports back. The route and event IDs name its turn.
  */
@@ -132,6 +152,19 @@ export const piAgentWorkSchema = z.lazy(() =>
 export type PiAgentWork = z.infer<typeof piAgentWorkSchema>;
 
 /**
+ * What joins the dispatched turn: a prompt its sender steers it with, or an event the turn's own
+ * sender caused, such as a prompt the turn sent ending, which the turn handles instead of a turn
+ * of its own.
+ */
+export const piAgentSteerSchema = z.lazy(() =>
+  z.discriminatedUnion("type", [
+    piAgentPromptSchema.extend({ type: z.literal("prompt") }),
+    z.object({ type: z.literal("notification"), notification: piAgentNotificationSchema }),
+  ]),
+);
+export type PiAgentSteer = z.infer<typeof piAgentSteerSchema>;
+
+/**
  * The authority of one turn: its submitter's actors, narrowed by the agent definition read when
  * the turn was admitted. The kernel re-resolves the actors' permissions on every check.
  */
@@ -162,6 +195,28 @@ export type PiAgentQueueSubmission =
   | { type: "input"; status: "queued"; requestId: string }
   | { type: "input"; status: "dropped"; requestId: string; reason: string };
 
+/**
+ * A submission as the manager answers for it, Pi's own once a turn took it, and where it stands in
+ * public terms.
+ */
+export function piPromptStatusOf(
+  requestId: string,
+  submission: PiAgentQueueSubmission | SubmissionRecord,
+): PiPromptStatus {
+  switch (submission.status) {
+    case "queued":
+      return { requestId, status: "queued" };
+    case "placed":
+      return { requestId, status: "running" };
+    case "done":
+      return { requestId, status: "completed" };
+    case "unanswered":
+    case "dropped":
+      return { requestId, status: "failed", reason: submission.reason };
+  }
+  throw new Error("Unsupported Pi submission status.");
+}
+
 /** Public manual compaction state omits internal durable checkpoints and task inputs. */
 export const piAgentCompactionStatusSchema = z.object({
   taskId: z.number().int().positive(),
@@ -185,10 +240,14 @@ export type PiAgentEntryPage = {
   cursor: Cursor | null;
 };
 
-/** The `last` messages said before entry `before`, or the latest ones when it is null. */
+/**
+ * The `last` messages said before entry `before`, or the latest ones when it is null, in the
+ * agent's conversation or, by the request ID that started it, one of its subagents'.
+ */
 export const piAgentMessagePageRequestSchema = z.object({
   last: z.number().int().min(1).max(100),
   before: z.number().int().positive().nullable(),
+  subagent: z.string().min(1).nullable(),
 });
 
 /**
@@ -214,20 +273,54 @@ export type PiAgent = {
   warm(): Promise<void>;
   /**
    * Joins the running turn at its next tool boundary. The manager steers only the turn it
-   * dispatched; if another turn runs by then, the prompt follows it instead of joining it.
+   * dispatched; if another turn runs by then, the prompt or event follows it instead of joining it.
+   * Like every start, refused when a stop fenced its queue `revision` (see `abort`).
    */
-  steer(config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt): Promise<void>;
+  steer(
+    config: PiAgentConfig,
+    revision: number,
+    turn: PiAgentTurn,
+    steer: PiAgentSteer,
+  ): Promise<void>;
   /**
    * Hands Pi the turn the manager's queue dispatched, writing its notifications into the
    * conversation first; a request ID Pi already has is kept.
    */
-  dispatch(config: PiAgentConfig, turn: PiAgentTurn, work: PiAgentWork): Promise<void>;
+  dispatch(
+    config: PiAgentConfig,
+    revision: number,
+    turn: PiAgentTurn,
+    work: PiAgentWork,
+  ): Promise<void>;
   /**
    * Writes notifications into the conversation as they arrive, at a running turn's next boundary;
    * the request to handle them waits in the manager's queue. A written one is not written again.
    */
   writeNotifications(config: PiAgentConfig, notifications: PiAgentNotification[]): Promise<void>;
-  getView(config: PiAgentConfig): Promise<unknown>;
+  /**
+   * Starts a subagent: a new conversation of the agent that answers `prompt` under `turn`,
+   * alongside the agent's other work. A request ID that started one finds it again.
+   */
+  startSubagent(
+    config: PiAgentConfig,
+    revision: number,
+    turn: PiAgentTurn,
+    prompt: PiAgentPrompt,
+  ): Promise<void>;
+  /**
+   * Records what the queue knows of a subagent before it starts, so a turn waiting for it learns
+   * that it waits or was dropped. A subagent that started keeps its record.
+   */
+  recordSubagent(
+    config: PiAgentConfig,
+    requestId: string,
+    subagent: PiQueuedSubagent,
+  ): Promise<void>;
+  /**
+   * The conversation's view, or by the request ID that started it a subagent's; null when no
+   * subagent has that request ID.
+   */
+  getView(config: PiAgentConfig, subagent: string | null): Promise<unknown>;
   /**
    * Accepts a view socket upgrade (see `PiAgentViewFrame`) signed for this agent with the viewer's
    * execution, which the agent's manager authorizes before the agent sends anything.
@@ -238,7 +331,10 @@ export type PiAgent = {
    * so an older revision than the agent has is ignored.
    */
   publishQueue(queue: PiAgentWaitingQueue): Promise<void>;
+  /** A request's submission, in the agent's conversation or the subagent it started. */
   getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null>;
+  /** Where each of the subagents `requestIds` asked for stands, in the same order. */
+  getSubagentRuns(config: PiAgentConfig, requestIds: string[]): Promise<PiSubagentRun[]>;
   listEntries(
     config: PiAgentConfig,
     request: z.infer<typeof piAgentEntryPageRequestSchema>,
@@ -259,7 +355,12 @@ export type PiAgent = {
    * boundary, where the reset lands.
    */
   reset(config: PiAgentConfig): Promise<void>;
-  abort(config: PiAgentConfig): Promise<void>;
+  /**
+   * Stops the agent's turn and subagents, and fences the queue revision `revision` that paused
+   * it: work handed over at an earlier revision is refused from then on, so a handover still on
+   * its way or retried cannot start once the stop returns. Resuming hands it over again.
+   */
+  abort(config: PiAgentConfig, revision: number): Promise<void>;
 };
 
 /**

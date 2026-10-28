@@ -4,7 +4,6 @@ import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 
 import type { Context } from "@earendil-works/chord";
 import {
-  ROOT_CONVERSATION_ID,
   type CommitPublication,
   type Harness,
   type SettledSubmissionRecord,
@@ -106,11 +105,11 @@ export function piAgentTurnCompletedEvent(
   return piAgentTurnEvent(config, agent, turn, completedTurnEvent(answerEntryId), occurredAt);
 }
 
-function changesRootSubmission(publication: CommitPublication) {
+// The root's turns and its subagents' are reported alike, so a change to any conversation counts.
+function changesSubmission(publication: CommitPublication) {
   return publication.changes.some(
     (change) =>
       change.type === "submission" &&
-      change.value.conversationId === ROOT_CONVERSATION_ID &&
       (change.value.status === "placed" ||
         change.value.status === "done" ||
         change.value.status === "unanswered"),
@@ -200,7 +199,7 @@ export function startReportingPiAgentTurns(input: {
   }
 
   harness.subscribeCommits((publication) => {
-    if (changesRootSubmission(publication)) {
+    if (changesSubmission(publication)) {
       report(BACKGROUND_CONTEXT).catch(input.report);
     }
   });

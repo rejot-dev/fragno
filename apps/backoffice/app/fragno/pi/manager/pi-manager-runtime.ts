@@ -11,6 +11,7 @@ import {
   type piPromptWhenBusySchema,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
+import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { z } from "zod";
 
 import type { Context } from "@earendil-works/chord";
@@ -30,10 +31,11 @@ import {
   backofficeOperationErrorKindForStatus,
 } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import type {
-  PiAgentAddress,
-  PiAgentNotification,
-  PiAgentQueueSubmission,
+import {
+  piPromptStatusOf,
+  type PiAgentAddress,
+  type PiAgentNotification,
+  type PiAgentQueueSubmission,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { backfillPiAgentEvents, type PiAgentBackfilledEvent } from "./pi-agent-change-events";
@@ -47,12 +49,16 @@ export type PiManagerSubmitPromptInput = {
   whenBusy?: z.infer<typeof piPromptWhenBusySchema>;
   /** Notifies the calling agent of how the prompt ends; see `caller`. */
   notifyWhenDone?: boolean;
+  /** Runs the prompt in a new conversation of the agent; see `pi.prompt.submit`. */
+  subagent?: boolean;
 };
 export type PiManagerNotifyAgentInput = { agentName: string } & PiAgentNotification;
 export type PiManagerListMessagesInput = {
   agentName: string;
   last: number;
   before: number | null;
+  /** The request ID of the subagent whose conversation to read; null reads the agent's. */
+  subagent: string | null;
 };
 
 /** Structured manager failures survive runtime-tool and codemode boundaries. */
@@ -99,28 +105,6 @@ function piManagerRuntimeRequestError(status: number, responseText: string) {
   );
 }
 
-/**
- * A submission as the manager answers for it, Pi's own once a turn took it, and where it stands in
- * public terms.
- */
-function promptStatusOf(
-  requestId: string,
-  submission: PiAgentQueueSubmission | SubmissionRecord,
-): PiPromptStatus {
-  switch (submission.status) {
-    case "queued":
-      return { requestId, status: "queued" };
-    case "placed":
-      return { requestId, status: "running" };
-    case "done":
-      return { requestId, status: "completed" };
-    case "unanswered":
-    case "dropped":
-      return { requestId, status: "failed", reason: submission.reason };
-  }
-  throw new Error("Unsupported Pi submission status.");
-}
-
 /** Durable Pi operations map directly to the scoped manager and agent contracts. */
 export type PiManagerRuntime = {
   listAgents(): Promise<PiManagerAgentDirectory>;
@@ -143,13 +127,23 @@ export type PiManagerRuntime = {
   exportConversation(input: PiManagerAgentInput): Promise<string>;
 };
 
+/**
+ * Who calls: an agent's own turn, which prompts may notify, from the tool call `toolCallId` names,
+ * which its page shows the subagents it starts under, or from no tool call, such as a prompt
+ * section; a subagent's turn, which can neither be notified, as replies reach its agent's own
+ * conversation, nor start subagents; or no agent.
+ */
+export type PiManagerCaller =
+  | { kind: "agent"; agent: PiAgentAddress; toolCallId: string | null }
+  | { kind: "subagent" }
+  | { kind: "none" };
+
 /** Creates a runtime for the durable Pi directory selected by the trusted execution scope. */
 export function createPiManagerRuntime(input: {
   runtime: BackofficeRuntimeServices;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
-  /** The agent whose turn calls, which prompts may notify; null outside an agent's turn. */
-  caller: PiAgentAddress | null;
+  caller: PiManagerCaller;
   createPromptRequestId?: () => string;
   context?: Context;
 }): PiManagerRuntime {
@@ -240,23 +234,40 @@ export function createPiManagerRuntime(input: {
     async deleteAgent({ agentName }) {
       await request(agentRoute(agentName), null, "DELETE");
     },
-    async submitPrompt({ agentName, content, requestId, whenBusy, notifyWhenDone }) {
+    async submitPrompt({ agentName, content, requestId, whenBusy, notifyWhenDone, subagent }) {
       const normalizedContent = content.trim();
       if (!normalizedContent) {
         throw new Error("PI_MANAGER_PROMPT_CONTENT_REQUIRED");
       }
-      if (notifyWhenDone && !input.caller) {
+      const { caller } = input;
+      if (subagent && caller.kind === "subagent") {
+        throw new PiManagerRuntimeRequestError(
+          400,
+          "SUBAGENT_NESTING_NOT_ALLOWED",
+          "A subagent cannot start subagents; do the task yourself.",
+        );
+      }
+      if (notifyWhenDone && caller.kind !== "agent") {
         throw new PiManagerRuntimeRequestError(
           400,
           "REPLY_NOT_ALLOWED",
-          "Only an agent's turn can be notified when a prompt ends.",
+          caller.kind === "subagent"
+            ? "A subagent cannot be notified when a prompt ends; its reply would reach its agent's own conversation."
+            : "Only an agent's turn can be notified when a prompt ends.",
         );
       }
+      // Only an agent's own subagents show under the call that started them.
+      const itself =
+        caller.kind === "agent" &&
+        caller.agent.agentName === piAgentNameSchema.parse(agentName.trim()) &&
+        backofficeContextScopesEqual(caller.agent.scope, input.execution.scope);
       return await request<PiPromptReceipt>(`${agentRoute(agentName)}/prompts`, {
         requestId: requestId?.trim() || createPromptRequestId(),
         content: normalizedContent,
         ...(whenBusy ? { whenBusy } : {}),
-        replyTo: notifyWhenDone ? input.caller : null,
+        subagent: subagent ?? false,
+        replyTo: notifyWhenDone && caller.kind === "agent" ? caller.agent : null,
+        askingToolCall: subagent && itself ? caller.toolCallId : null,
       });
     },
     async getPrompt({ agentName, requestId }) {
@@ -273,7 +284,7 @@ export function createPiManagerRuntime(input: {
         }
         throw error;
       }
-      return promptStatusOf(requestId, submission);
+      return piPromptStatusOf(requestId, submission);
     },
     async notifyAgent({ agentName, ...notification }) {
       await request(`${agentRoute(agentName)}/notifications`, notification);
@@ -281,10 +292,13 @@ export function createPiManagerRuntime(input: {
     async stopAgent({ agentName }) {
       await request(`${agentRoute(agentName)}/stop`, {});
     },
-    async listMessages({ agentName, last, before }) {
+    async listMessages({ agentName, last, before, subagent }) {
       const query = new URLSearchParams({ last: String(last) });
       if (before !== null) {
         query.set("before", String(before));
+      }
+      if (subagent !== null) {
+        query.set("subagent", subagent);
       }
       return await request<PiAgentMessagePage>(`${agentRoute(agentName)}/messages?${query}`, null);
     },

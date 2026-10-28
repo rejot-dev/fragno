@@ -135,7 +135,7 @@ export function createCodemodeTool(agent: BackofficeAgentContext) {
     // Codemode can execute arbitrary mutations. An interrupted call must not silently repeat them.
     replay: "unsafe",
     async execute(params, api, durableContext) {
-      const turn = await agent.activeTurn(durableContext);
+      const turn = await agent.activeTurn(api.conversationId, durableContext);
       await turn.authorize();
       const { code, dependencies } = params;
       if (durableContext.abortSignal?.aborted) {
@@ -143,7 +143,11 @@ export function createCodemodeTool(agent: BackofficeAgentContext) {
       }
 
       const taskId = String(api.taskId);
-      const runtimeToolContext = turn.toolContext(`${agent.agentName}:${taskId}`, durableContext);
+      const runtimeToolContext = turn.toolContext(
+        `${agent.agentName}:${taskId}`,
+        api.callId,
+        durableContext,
+      );
       const workflowRuntime = runtimeToolContext.workflow?.runtime;
       const workflowScheduler =
         workflowRuntime && "createInternalInstance" in workflowRuntime

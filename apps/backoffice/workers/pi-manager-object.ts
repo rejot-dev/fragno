@@ -133,7 +133,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
           runtime,
           kernel,
           execution: { kind: "deferred", scope, ...provenance },
-          caller: null,
+          caller: { kind: "none" },
         }).notifyAgent({ agentName, routeId: null, event });
       },
     };

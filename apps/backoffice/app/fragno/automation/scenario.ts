@@ -87,10 +87,15 @@ import { createBackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent
 import {
   piAgentObjectName,
   type PiAgent,
+  type PiAgentPrompt,
   type PiAgentTurn,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
-import { renderPiNotificationRequest } from "@/fragno/pi/agent/pi-agent-notification-entry";
+import {
+  piNotificationInput,
+  piNotificationRequestId,
+  renderPiNotificationRequest,
+} from "@/fragno/pi/agent/pi-agent-notification-entry";
 import { piAgentTurnCompletedEvent } from "@/fragno/pi/agent/pi-agent-turn-events";
 import {
   createPiClassifier,
@@ -1198,7 +1203,7 @@ const createFakePiManagerApi = (
   }
 
   // The fake answers each prompt as it receives it, steered or dispatched.
-  const answer: PiAgent["steer"] = async (config, turn, prompt) => {
+  const answer = async (config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt) => {
     const fake = requireAgent(config);
     if (fake.submissions.has(prompt.requestId)) {
       return;
@@ -1231,8 +1236,15 @@ const createFakePiManagerApi = (
 
   const agent: PiAgent = {
     async warm() {},
-    steer: answer,
-    async dispatch(config, turn, work) {
+    // The fake does not stop, so no stop fences the revisions work is handed over at.
+    async steer(config, _revision, turn, steer) {
+      await answer(
+        config,
+        turn,
+        steer.type === "prompt" ? steer : piNotificationInput(steer.notification),
+      );
+    },
+    async dispatch(config, _revision, turn, work) {
       await answer(config, turn, {
         requestId: work.requestId,
         content:
@@ -1244,6 +1256,12 @@ const createFakePiManagerApi = (
       });
     },
     async writeNotifications(config) {
+      requireAgent(config);
+    },
+    async startSubagent(config, _revision, turn, prompt) {
+      await answer(config, turn, prompt);
+    },
+    async recordSubagent(config) {
       requireAgent(config);
     },
     async getView(config) {
@@ -1258,6 +1276,16 @@ const createFakePiManagerApi = (
     async publishQueue() {},
     async getSubmission(config, requestId) {
       return requireAgent(config).submissions.get(requestId) ?? null;
+    },
+    async getSubagentRuns(config, requestIds) {
+      const fake = requireAgent(config);
+      return requestIds.map((requestId) => ({
+        requestId,
+        submission: fake.submissions.get(requestId) ?? null,
+        startedAt: null,
+        answeredAt: null,
+        answer: null,
+      }));
     },
     async listEntries(config) {
       requireAgent(config);
@@ -4518,12 +4546,17 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
               }
               return {
                 ...fakePi.agent,
-                async steer(config, turn, prompt) {
-                  await fakePi.agent.steer(config, turn, prompt);
-                  await settled(config, prompt.requestId);
+                async steer(config, revision, turn, steer) {
+                  await fakePi.agent.steer(config, revision, turn, steer);
+                  await settled(
+                    config,
+                    steer.type === "prompt"
+                      ? steer.requestId
+                      : piNotificationRequestId(steer.notification),
+                  );
                 },
-                async dispatch(config, turn, work) {
-                  await fakePi.agent.dispatch(config, turn, work);
+                async dispatch(config, revision, turn, work) {
+                  await fakePi.agent.dispatch(config, revision, turn, work);
                   await settled(config, work.requestId);
                 },
               };

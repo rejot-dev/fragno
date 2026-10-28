@@ -484,7 +484,7 @@ const handleNotifyAgentRouteAction = async ({
     runtime,
     kernel: new BackofficeKernel(runtime),
     execution: acting.execution,
-    caller: null,
+    caller: { kind: "none" },
   }).notifyAgent({
     agentName: action.agentName,
     routeId: route.id,

@@ -17,8 +17,10 @@ import type {
   PiAgentAddress,
   PiAgentNotification,
   PiAgentPrompt,
+  PiAgentSteer,
   PiAgentTurn,
   PiAgentWaitingQueue,
+  PiQueuedSubagent,
   PiAgentWork,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { piNotificationRequestId } from "@/fragno/pi/agent/pi-agent-notification-entry";
@@ -49,6 +51,8 @@ type PromptInput = {
   whenBusy?: "followUp" | "steer" | "reject";
   whenPaused?: "wait" | "resume";
   agentName?: string;
+  /** Runs the prompt in a new conversation of the agent. */
+  subagent?: boolean;
 };
 
 /** What the manager delivered to an agent a prompt replies to, and as whom. */
@@ -66,7 +70,7 @@ type NotificationInput = {
  * handles or writes. A write runs no turn, so it has no instructions.
  */
 type Handover = {
-  via: "steer" | "dispatch" | "write";
+  via: "steer" | "dispatch" | "subagent" | "write";
   requestId: string;
   instructions: string | null;
   events: string[];
@@ -88,6 +92,8 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
   // The latest queue each agent was shown, as the agent object keeps it.
   const published = new Map<string, PiAgentWaitingQueue>();
   const replies: Reply[] = [];
+  // What the agent knows of each subagent, as `awaitSubagents` reads it.
+  const subagents = new Map<string, string>();
   function receive(handover: Handover) {
     if (failing.handovers > 0) {
       failing.handovers -= 1;
@@ -117,15 +123,47 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
   }
   const agent: Omit<PiAgent, "publishQueue"> = {
     warm: unused,
-    async steer(_config: PiAgentConfig, turn: PiAgentTurn, prompt: PiAgentPrompt) {
+    async steer(_config: PiAgentConfig, _revision: number, turn: PiAgentTurn, steer: PiAgentSteer) {
       receive({
         via: "steer",
+        requestId:
+          steer.type === "prompt" ? steer.requestId : piNotificationRequestId(steer.notification),
+        instructions: turn.agent.instructions,
+        events: steer.type === "prompt" ? [] : [steer.notification.event.id],
+      });
+    },
+    async startSubagent(
+      _config: PiAgentConfig,
+      _revision: number,
+      turn: PiAgentTurn,
+      prompt: PiAgentPrompt,
+    ) {
+      receive({
+        via: "subagent",
         requestId: prompt.requestId,
         instructions: turn.agent.instructions,
         events: [],
       });
+      subagents.set(prompt.requestId, "started");
     },
-    async dispatch(_config: PiAgentConfig, turn: PiAgentTurn, work: PiAgentWork) {
+    async recordSubagent(_config: PiAgentConfig, requestId: string, subagent: PiQueuedSubagent) {
+      if (failing.handovers > 0) {
+        failing.handovers -= 1;
+        throw new Error("The agent object is unavailable.");
+      }
+      if (subagents.get(requestId) !== "started") {
+        subagents.set(
+          requestId,
+          subagent.status === "dropped" ? `dropped: ${subagent.reason}` : subagent.status,
+        );
+      }
+    },
+    async dispatch(
+      _config: PiAgentConfig,
+      _revision: number,
+      turn: PiAgentTurn,
+      work: PiAgentWork,
+    ) {
       receive({
         via: "dispatch",
         requestId: work.requestId,
@@ -143,6 +181,14 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       });
     },
     getSubmission: async (_config, requestId) => submissions.get(requestId) ?? null,
+    getSubagentRuns: async (_config, requestIds) =>
+      requestIds.map((requestId) => ({
+        requestId,
+        submission: submissions.get(requestId) ?? null,
+        startedAt: null,
+        answeredAt: null,
+        answer: null,
+      })),
     getView: unused,
     fetch: unused,
     listEntries: unused,
@@ -222,6 +268,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
     provenance,
     handovers,
     replies,
+    subagents,
     failing,
     async prompt(input: PromptInput) {
       const { agentName = "assistant", sender = "ada", sendingAgent, ...prompt } = input;
@@ -230,10 +277,12 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
         body: {
           requestId: prompt.requestId,
           content: `Prompt ${prompt.requestId}.`,
+          subagent: prompt.subagent ?? false,
           whenBusy: prompt.whenBusy ?? "followUp",
           whenPaused: prompt.whenPaused ?? "wait",
           model: null,
           replyTo: prompt.replyTo ?? null,
+          askingToolCall: null,
           provenance: provenance(sender, sendingAgent),
         },
       });
@@ -301,6 +350,16 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
         { pathParams: { agentName, requestId } },
       );
       return response.type === "json" ? response.data : response.type;
+    },
+    /** The agent's subagents as its page lists them, as `<status> <requestId>` lines. */
+    async listedSubagents(agentName = "assistant") {
+      const response = await fragment.callRoute("GET", "/agents/:agentName/subagents", {
+        pathParams: { agentName },
+      });
+      assert(response.type === "json", JSON.stringify(response));
+      return response.data.subagents.map(
+        ({ requestId, status }) => `${status.status} ${requestId}`,
+      );
     },
     /** Handovers that run turns, leaving out the cards written as notifications arrive. */
     turns() {
@@ -526,6 +585,167 @@ test("an agent of another scope hears how the prompts it asked about end, settle
   ]);
 });
 
+test("subagents run beside the agent's own turns, a few at a time, and wait while it is stopped", async () => {
+  const queue = await piManagerQueue();
+  await queue.receipt({ requestId: "own" });
+  for (const requestId of ["doc-1", "doc-2", "doc-3", "doc-4", "doc-5"]) {
+    expect(await queue.receipt({ requestId, subagent: true })).toEqual({
+      requestId,
+      status: "queued",
+    });
+  }
+  // The agent's own turn holds no subagent back, but only four run at once.
+  expect(queue.turns()).toEqual([
+    "dispatch own",
+    "subagent doc-1",
+    "subagent doc-2",
+    "subagent doc-3",
+    "subagent doc-4",
+  ]);
+  // A waiting subagent waits for a slot, not in the agent's conversation.
+  expect(queue.publishedQueue()).toEqual([]);
+  expect(await queue.submission("doc-5")).toEqual({
+    type: "input",
+    status: "queued",
+    requestId: "doc-5",
+  });
+  // A subagent's conversation is new, so it never steers or is refused as busy.
+  const steering = await queue.prompt({
+    requestId: "doc-steer",
+    subagent: true,
+    whenBusy: "steer",
+  });
+  assert(steering.type === "error" && steering.error.code === "SUBAGENT_NOT_BUSY");
+
+  // A subagent that ends frees its slot for the oldest waiting one; the agent's queue stays.
+  await queue.settle("doc-2");
+  assert(queue.turns().at(-1) === "subagent doc-5");
+  await queue.settle("own");
+  // Running subagents leave the agent itself idle.
+  await queue.receipt({ requestId: "idle", whenBusy: "reject" });
+  assert(queue.turns().at(-1) === "dispatch idle");
+
+  // Stopping holds new subagents until someone resumes the agent.
+  await queue.control("stop");
+  await queue.receipt({ requestId: "doc-6", subagent: true });
+  await queue.settle("doc-1");
+  assert(queue.turns().at(-1) === "dispatch idle");
+  await queue.control("resume");
+  assert(queue.turns().at(-1) === "subagent doc-6");
+
+  // Handovers that failed, telling the agent of a subagent and starting it, are made again by
+  // the queue's hooks.
+  queue.failing.handovers = 2;
+  await queue.settle("doc-3");
+  // The agent could not hear of it, so its request ID is not returned.
+  const unheard = await queue.prompt({ requestId: "doc-7", subagent: true });
+  assert(unheard.type === "error" && unheard.error.code === "AGENT_UNAVAILABLE");
+  assert(!queue.subagents.has("doc-7"));
+  await drainDurableHooks(queue.fragment);
+  expect(queue.turns()).toContain("subagent doc-7");
+  assert(queue.subagents.get("doc-7") === "started");
+});
+
+test("an agent knows of each subagent from when it is queued until it starts or is dropped", async () => {
+  const queue = await piManagerQueue();
+  const clerk = { description: "Checks documents.", model: null, permissions: ["*"] };
+  const created = await queue.fragment.callRoute("POST", "/agents", {
+    body: {
+      agentName: "clerk",
+      ...clerk,
+      instructions: "Check it.",
+      provenance: queue.provenance("ada"),
+    },
+  });
+  assert(created.type === "json");
+  for (const requestId of ["doc-1", "doc-2", "doc-3", "doc-4", "doc-5"]) {
+    await queue.receipt({ requestId, agentName: "clerk", subagent: true });
+  }
+  expect(Object.fromEntries(queue.subagents)).toEqual({
+    "doc-1": "started",
+    "doc-2": "started",
+    "doc-3": "started",
+    "doc-4": "started",
+    "doc-5": "waiting",
+  });
+
+  // Its request ID is returned only once its agent knows of it; the same ID retried tells it.
+  queue.failing.handovers = 1;
+  const unheard = await queue.prompt({ requestId: "doc-6", agentName: "clerk", subagent: true });
+  assert(unheard.type === "error" && unheard.error.code === "AGENT_UNAVAILABLE");
+  assert(!queue.subagents.has("doc-6"));
+  await queue.receipt({ requestId: "doc-6", agentName: "clerk", subagent: true });
+  assert(queue.subagents.get("doc-6") === "waiting");
+
+  // One that waited for a slot is dropped once its definition is gone, and its agent hears so.
+  const deleted = await queue.fragment.callRoute("DELETE", "/agents/:agentName", {
+    pathParams: { agentName: "clerk" },
+    body: { provenance: queue.provenance("ada") },
+  });
+  assert(deleted.type === "empty");
+  await queue.settle("doc-1", "clerk");
+  assert(queue.subagents.get("doc-5") === "dropped: Pi agent 'clerk' is not defined.");
+  assert(queue.subagents.get("doc-6") === "dropped: Pi agent 'clerk' is not defined.");
+});
+
+test("a subagent prompt that resumes a stopped agent resumes its own conversation too", async () => {
+  const queue = await piManagerQueue();
+  await queue.receipt({ requestId: "running" });
+  await queue.receipt({ requestId: "waiting" });
+  await queue.control("stop");
+  await queue.settle("running");
+  await queue.receipt({ requestId: "doc-1", subagent: true, whenPaused: "resume" });
+  expect(queue.turns()).toEqual(["dispatch running", "dispatch waiting", "subagent doc-1"]);
+});
+
+test("only an agent's own turn starts subagents from its tool calls", async () => {
+  const queue = await piManagerQueue();
+  const prompt = (sendingAgent: PiAgentConfig | undefined) =>
+    queue.fragment.callRoute("POST", "/agents/:agentName/prompts", {
+      pathParams: { agentName: "assistant" },
+      body: {
+        requestId: `doc-${sendingAgent?.agentName ?? "person"}`,
+        content: "Check it.",
+        subagent: true,
+        whenBusy: "followUp",
+        whenPaused: "wait",
+        model: null,
+        replyTo: null,
+        askingToolCall: "call-1",
+        provenance: queue.provenance("ada", sendingAgent),
+      },
+    });
+  const fromPerson = await prompt(undefined);
+  assert(fromPerson.type === "error" && fromPerson.error.code === "ASKING_TOOL_CALL_NOT_ALLOWED");
+  const fromOther = await prompt({ scope: ORG_SCOPE, agentName: "researcher" });
+  assert(fromOther.type === "error" && fromOther.error.code === "ASKING_TOOL_CALL_NOT_ALLOWED");
+  const fromItself = await prompt({ scope: ORG_SCOPE, agentName: "assistant" });
+  assert(fromItself.type === "json", JSON.stringify(fromItself));
+});
+
+test("an agent hears back from the subagents it starts of itself", async () => {
+  const queue = await piManagerQueue();
+  const assistant = { scope: ORG_SCOPE, agentName: "assistant" };
+  await queue.receipt({
+    requestId: "doc-1",
+    subagent: true,
+    sendingAgent: assistant,
+    replyTo: assistant,
+  });
+  await queue.settle("doc-1");
+  await drainDurableHooks(queue.fragment);
+
+  expect(queue.replies).toEqual([
+    expect.objectContaining({
+      agent: assistant,
+      event: expect.objectContaining({
+        eventType: "turn.completed",
+        subject: { scope: ORG_SCOPE, agentName: "assistant", requestId: "doc-1" },
+      }),
+    }),
+  ]);
+});
+
 test("stopping pauses the queue until someone sends a message, which joins its end", async () => {
   const queue = await piManagerQueue();
   for (const requestId of ["running", "waiting"]) {
@@ -601,9 +821,27 @@ test("the queue's hook hands over again what a failed request did not", async ()
       "dispatch first",
       "steer steered",
       "dispatch next",
-      "write route:orders:ada-1 (ada-1)",
+      "steer route:orders:ada-1 (ada-1)",
     ]),
   );
+});
+
+test("an agent's subagents list those running however many newer ones wait", async () => {
+  const queue = await piManagerQueue();
+
+  for (let index = 1; index <= 54; index += 1) {
+    await queue.receipt({ requestId: `task-${index}`, subagent: true });
+  }
+
+  // The latest are the 50 that wait; the four that run, older than them, are listed after them.
+  const listed = await queue.listedSubagents();
+  assert(listed.slice(0, 50).every((line) => line.startsWith("queued ")));
+  expect(listed.slice(50)).toEqual([
+    "running task-4",
+    "running task-3",
+    "running task-2",
+    "running task-1",
+  ]);
 });
 
 test("concurrent prompts to an idle agent dispatch exactly one of them", async () => {
@@ -628,7 +866,7 @@ test("concurrent prompts to an idle agent dispatch exactly one of them", async (
 
 test("events are written as they arrive, and a sender's waiting requests share one turn", async () => {
   const queue = await piManagerQueue();
-  await queue.receipt({ requestId: "first" });
+  await queue.receipt({ requestId: "first", sender: "linus" });
   await queue.delivered({ eventId: "ada-1" });
   await queue.delivered({ eventId: "grace-1", sender: "grace" });
   await queue.delivered({ eventId: "ada-2" });
@@ -666,6 +904,38 @@ test("events are written as they arrive, and a sender's waiting requests share o
   expect(queue.turns().slice(4)).toEqual(["dispatch reply:run-1 (run-1)"]);
 });
 
+test("an event the running turn's sender caused joins that turn instead of waiting for one", async () => {
+  const queue = await piManagerQueue();
+  await queue.receipt({ requestId: "first" });
+  await queue.delivered({ eventId: "ada-1" });
+  await queue.delivered({ eventId: "grace-1", sender: "grace" });
+  // Ada's turn sees both cards at its next boundary, but handles only her own event.
+  expect(queue.requestIds()).toEqual([
+    "dispatch first",
+    "steer route:orders:ada-1 (ada-1)",
+    "write route:orders:grace-1 (grace-1)",
+  ]);
+  expect(queue.publishedQueue()).toEqual(["notification route:orders:grace-1"]);
+  expect(await queue.submission("route:orders:ada-1")).toMatchObject({
+    requestId: "route:orders:ada-1",
+  });
+
+  await queue.settle("route:orders:ada-1");
+  await queue.settle("first");
+  expect(queue.turns()).toEqual([
+    "dispatch first",
+    "steer route:orders:ada-1 (ada-1)",
+    "dispatch route:orders:grace-1 (grace-1)",
+  ]);
+
+  // A stopped turn takes no more work, even from its own sender.
+  await queue.settle("route:orders:grace-1");
+  await queue.receipt({ requestId: "second" });
+  await queue.control("stop");
+  await queue.delivered({ eventId: "ada-2" });
+  assert(queue.requestIds().at(-1) === "write route:orders:ada-2 (ada-2)");
+});
+
 test("a notification never starts an agent", async () => {
   const queue = await piManagerQueue();
   const refused = await queue.notify({ eventId: "early" });
@@ -698,7 +968,7 @@ test("the agent is shown what waits in its queue", async () => {
 
   await queue.receipt({ requestId: "second" });
   expect(queue.publishedQueue()).toEqual(["prompt second"]);
-  await queue.delivered({ eventId: "ada-1" });
+  await queue.delivered({ eventId: "ada-1", sender: "grace" });
   expect(queue.publishedQueue()).toEqual(["prompt second", "notification route:orders:ada-1"]);
   await queue.settle("first");
   expect(queue.publishedQueue()).toEqual(["notification route:orders:ada-1"]);

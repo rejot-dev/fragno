@@ -71,14 +71,66 @@ narrow the submitter, so editing a definition never escalates. Running a turn it
 is checked with the submitter's actors alone, so definitions need not grant it. Deferred executions
 re-resolve permissions on every check, so revocations apply mid-turn.
 
-The root conversation's current run (`pi.live` `run.inputs[0]`) identifies the owning turn. Pi's
-model boundary has no conversation context, which is sound because the root conversation is the
-agent's only conversation and runs one turn at a time. Work outside any run, such as background or
-manual compaction, uses the latest admitted turn; manual compaction records its requester first. A
-turn is recorded before Pi admits its prompt, so no work can start without it, and withdrawn if Pi
-does not admit it, so a refused prompt never decides whom later work runs as. Work a turn persists,
-such as workflows or events, keeps the `pi-agent` actor, whose static role grants everything: it
-runs as the principal without the definition's narrowing.
+A conversation's current run (`pi.live` `run.inputs[0]`) identifies the owning turn, and each
+conversation runs one turn at a time: the root's, or a subagent's (see Subagents). Work outside any
+run, such as background or manual compaction, uses the latest admitted turn; manual compaction
+records its requester first. A turn is recorded before Pi admits its prompt, so no work can start
+without it, and withdrawn if Pi does not admit it, so a refused prompt never decides whom later work
+runs as. Work a turn persists, such as workflows or events, keeps the `pi-agent` actor, whose static
+role grants everything: it runs as the principal without the definition's narrowing.
+
+## Subagents
+
+A subagent is a one-task conversation of an agent, inside the agent's object and under its
+definition: it answers one prompt beside the agent's own conversation and ends. Any prompter, the
+agent itself included, starts one the same way: `pi.prompt.submit` with `subagent: true`, which
+queues a `subagent` item (see Queue).
+
+The agent object records each subagent under the request ID that asked for it, in the
+`backoffice.pi.subagent` document family (`agent/pi-agent-subagents.ts`), from when the queue takes
+it: `waiting`, `starting` once its conversation exists, `started` once its prompt is submitted
+there, or `dropped` if the queue dropped it before it started. The queue tells the agent object that
+a subagent waits or was dropped by a handover its `recordSubagent` hook repeats until it lands. The
+submit route returns a subagent's request ID only once that handover landed, since a turn may wait
+for the subagent as soon as it has the ID; if it failed, the route answers `AGENT_UNAVAILABLE`
+(503), the subagent stays queued, and submitting the same request ID again tells the agent object
+once more, while a new one would start a second subagent. Its submission, transcript, and messages
+read by that request ID; `backoffice.pi.subagents.running` lists those whose work may still run.
+
+`startSubagent` creates an ownerless conversation without the `awaitSubagents` tool, records the
+item's turn under its request ID like a root turn's, and submits the prompt; a handover repeated
+after a crash finds the conversation and submission again. A subagent reports its `turn.*` events,
+settles, and replies like any prompt, so `pi.prompt.get`, `notifyWhenDone`, and workflows waiting
+for its events work unchanged. A stop aborts it by name, since no task owns it. An agent may start
+subagents of itself with `notifyWhenDone`: the reply comes from another conversation, once.
+
+**Joining.** A turn waits for subagents of its agent with `awaitSubagents`
+(`extensions/backoffice/await-subagents-tool.ts`), which returns each one's answer, failure, or drop
+in the order asked, and `notFound` for a request ID the agent has no record of. It watches each
+subagent's record until it is `started` or `dropped`, then waits for its submission, so it also
+waits for subagents still waiting for a slot; a rerun after a restart reads the same records again.
+Subagents run without it: four subagents waiting for subagents of their own would hold every slot
+those need. Stopping the agent aborts the waiting turn with its subagents. A turn that waits for a
+subagent should not also ask to be notified of it, or hears its end twice.
+
+A subagent's work runs as its own turn. `readActivePiAgentTurn` reads the turn of the conversation's
+run; outside any run only the root's work has an authority, the latest admitted turn. The model
+boundary has no conversation, so it finds one by the provider session ID Pi sends with each request:
+the root's, or a running subagent's, and fails closed for any other. Deferred fetches carry no
+session and are checked as the root's. Billing counts subagents, as it bills the session's usage. Pi
+cannot delete conversations, so a finished subagent's stays in the agent's storage.
+
+**On the agent's page.** Subagents show in the agent's thread, one card per batch
+(`routes/backoffice/agents/agent-subagent-batches.tsx`). A subagent started from a tool call of the
+agent's own turn is listed under that call: `pi.submitPrompt` sends the call's ID as
+`askingToolCall`, which the prompt route accepts only from the agent's own turn and only for a
+subagent. Those anyone else asks for, another agent, an app, or a person, show where they were
+asked, after the turn then running, one card per asker. The list route returns the latest 50 and any
+still running before them, since Stop and the thread follow what runs, with each one's start and
+answer times and its answer, which the agent object reads in one call (`getSubagentRuns`); the page
+reads the transcripts of running ones, a few at a time, for what they do now, and a row opens its
+subagent's transcript. Stop shows while subagents run, also beside an idle conversation, and Resume
+while a stopped agent's subagents wait.
 
 ## Queue
 
@@ -88,8 +140,8 @@ and Pi only ever receives a steer or the one turn the queue dispatched. An item 
 dispatched or settled item names its turn by the turn's Pi request ID. Items stay after they end, so
 a resent request ID keeps its first placement and never runs twice; nothing prunes the log yet.
 
-The queue follows six rules. `nextPiAgentQueueTurn` in `pi-agent-queue-rules.ts` applies the first
-four, which pick each turn:
+The queue follows six rules for the agent's own conversation. `nextPiAgentQueueTurn` in
+`pi-agent-queue-rules.ts` applies the first four, which pick each turn:
 
 1. **Oldest first.** Items are handled in the order they arrived.
 2. **One sender per turn.** A turn acts for one sender, so items from different senders run in
@@ -119,6 +171,19 @@ oldest item it handles.
   turn starts at once, or when the stopped turn settles, with the queue's oldest item. The
   Backoffice UI sends `resume`; the default, `wait`, keeps automations and workflows from undoing a
   stop, so a workflow waiting for a prompt's turn event keeps waiting.
+- A stop also holds back work handed over before it but not yet started: a turn, steer, or subagent
+  whose handover is still on its way or failed. Each handover carries the queue revision that issued
+  it; the stop passes its own to the agent, which refuses earlier ones from then on, and the queue's
+  hook retries nothing while the queue is paused. Resuming runs the hook, which hands them over
+  again at the new revision.
+
+Subagent items (see Subagents) run beside the agent's turns rather than in them, so they wait only
+for a slot: up to `PI_AGENT_SUBAGENT_LIMIT`, four, run at once per agent, each dispatched as its own
+turn under its own request ID, and the oldest waiting one starts when one settles. A paused queue
+holds them too, and resuming starts them. `whenBusy` concerns only the agent's conversation, so a
+subagent prompt that asks to steer or reject is refused with `SUBAGENT_NOT_BUSY`, and the waiting
+queue the conversation's viewers see lists only its own items. The agent's subagent items are
+indexed by agent and position, for their list.
 
 Each change is one retrieve and one mutation, then the queue's publication to the agent object (see
 below) and at most one other call to it. The mutation decides: it admits the item against the
@@ -241,11 +306,14 @@ same turn event IDs for the same request ID. The prompted agent's `pi` events ca
 agent's delegate actor, so no route delivers them to it; `replyTo` is how it hears back.
 
 A notification is a queue item whose sender is the route's, the workflow run's, or the replying
-prompt's execution, so the request to handle it waits its turn like a prompt (see Queue). Its
-request ID is `route:<routeId>:<eventId>`, or `reply:<eventId>` without a route, so redelivering an
-event through one route, or to the agent directly, places nothing new, even after it was handled.
-Notifications never provision an agent: a person must start the conversation first. An agent with no
-turns answers `404 AGENT_NOT_STARTED`.
+prompt's execution, so the request to handle it waits its turn like a prompt (see Queue). One whose
+sender also sent the dispatched turn joins that turn instead, as a steer whose input is the event
+itself: the turn sees it at its next boundary anyway, so a turn of its own would find it handled.
+Subagents asked to report back that end together are handled this way, by the turn the first report
+starts. Its request ID is `route:<routeId>:<eventId>`, or `reply:<eventId>` without a route, so
+redelivering an event through one route, or to the agent directly, places nothing new, even after it
+was handled. Notifications never provision an agent: a person must start the conversation first. An
+agent with no turns answers `404 AGENT_NOT_STARTED`.
 
 The event itself is written as it arrives, into the root conversation as a `backoffice.notification`
 entry with request ID `<requestId>:event`. Pi places a write at a busy conversation's next boundary,
@@ -257,8 +325,10 @@ event ID. The entry's data is the route ID and event; its model message is one `
 element: the event's identity as attributes, its subject and payload as JSON whose `<` is escaped,
 so event data cannot close the element. Backoffice guidance tells agents to treat it as data. Users
 only submit inputs, which Pi writes as `pi.user`, so the chat's event card cannot be forged. The
-chat shows the event cards where Pi placed them and the request as a "Handling N notifications"
-divider; a typed request only restyles the typist's own message.
+chat shows the events a turn was given, those above its request and those placed while it ran, as
+one line above it, and events no turn takes where Pi placed them. A report of one of the agent's own
+subagents names its task and leads to its card. A typed request only restyles the typist's own
+message.
 
 Everything an agent's turns produce, including its `pi` events and any event reclassified or
 forwarded from them, keeps the agent's actor among its delegates, and a route never delivers such an

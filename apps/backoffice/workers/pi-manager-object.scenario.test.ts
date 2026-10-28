@@ -135,7 +135,7 @@ async function managerRequest(
 async function prompt(
   runtime: InMemoryBackofficeRuntime,
   scope: BackofficeContextScope,
-  input: { requestId: string; content: string; agentName?: string },
+  input: { requestId: string; content: string; agentName?: string; subagent?: boolean },
 ) {
   const { agentName = "assistant", ...body } = input;
   return await managerRequest(runtime, scope, `/agents/${agentName}/prompts`, {
@@ -823,6 +823,165 @@ test("a prompt whose handover to the agent fails is handed over again by the que
               await managerRequest(runtime, scope, "/agents/assistant/submissions/retried")
             ).json(),
           ).toMatchObject({ status: "done", requestId: "retried" });
+        }),
+      ],
+    }),
+  );
+});
+
+/** The agent's subagent `requestId` as its page lists it. */
+async function listedSubagent(
+  runtime: InMemoryBackofficeRuntime,
+  scope: BackofficeContextScope,
+  requestId: string,
+) {
+  const response = await managerRequest(runtime, scope, "/agents/assistant/subagents");
+  assert.equal(response.status, 200, await response.clone().text());
+  const { subagents } = await response.json<{
+    subagents: { requestId: string; status: { status: string }; answer: string | null }[];
+  }>();
+  return subagents.find((subagent) => subagent.requestId === requestId);
+}
+
+test("a subagent whose start failed before a stop starts only once the agent resumes", async () => {
+  const scope: BackofficeContextScope = {
+    kind: "org",
+    orgId: "stop-retry-org",
+    jurisdiction: null,
+  };
+  let unavailable = true;
+  class InterruptedPiObject extends PiObject {
+    override async startSubagent(...args: Parameters<PiObject["startSubagent"]>) {
+      if (unavailable) {
+        unavailable = false;
+        throw new Error("The agent is unavailable.");
+      }
+      return await super.startSubagent(...args);
+    }
+  }
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi subagent retried after a stop",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) =>
+          new InterruptedPiObject({
+            state,
+            dependencies: createPiScenarioDependencies(),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          }),
+      },
+      steps: ({ then }) => [
+        then.assert("the stop holds it back and the resume starts it", async ({ runtime }) => {
+          const queued = await prompt(runtime, scope, {
+            requestId: "late",
+            content: "Start late.",
+            subagent: true,
+          });
+          assert.equal(queued.status, 202, await queued.clone().text());
+          const stopped = await managerRequest(runtime, scope, "/agents/assistant/stop", {});
+          assert.equal(stopped.status, 204, await stopped.clone().text());
+
+          // The queue's hook retries the failed start, which the stop holds back.
+          await runtime.drain();
+          const view = await managerRequest(
+            runtime,
+            scope,
+            "/agents/assistant/subagents/late/view",
+          );
+          assert.equal(view.status, 404, await view.clone().text());
+
+          const resumed = await managerRequest(runtime, scope, "/agents/assistant/resume", {});
+          assert.equal(resumed.status, 204, await resumed.clone().text());
+          await runtime.drain();
+          expect(await listedSubagent(runtime, scope, "late")).toMatchObject({
+            status: { status: "completed" },
+            answer: "durable answer",
+          });
+        }),
+      ],
+    }),
+  );
+});
+
+test("a subagent start still on its way when the agent stops starts only once it resumes", async () => {
+  const scope: BackofficeContextScope = {
+    kind: "org",
+    orgId: "stop-fence-org",
+    jurisdiction: null,
+  };
+  // The first start reaches the agent, then waits there until the stop has returned.
+  let reached: () => void = () => undefined;
+  const reachedAgent = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let release: () => void = () => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let held = false;
+  class HoldingPiObject extends PiObject {
+    override async startSubagent(...args: Parameters<PiObject["startSubagent"]>) {
+      if (!held) {
+        held = true;
+        reached();
+        await released;
+      }
+      return await super.startSubagent(...args);
+    }
+  }
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi subagent start fenced by a stop",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) =>
+          new HoldingPiObject({
+            state,
+            dependencies: createPiScenarioDependencies(),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          }),
+      },
+      steps: ({ then }) => [
+        then.assert("the stop refuses it and the resume starts it", async ({ runtime }) => {
+          const queued = prompt(runtime, scope, {
+            requestId: "racing",
+            content: "Start while stopping.",
+            subagent: true,
+          });
+          await reachedAgent;
+          const stopped = await managerRequest(runtime, scope, "/agents/assistant/stop", {});
+          assert.equal(stopped.status, 204, await stopped.clone().text());
+          release();
+          const response = await queued;
+          assert.equal(response.status, 202, await response.clone().text());
+
+          await runtime.drain();
+          const view = await managerRequest(
+            runtime,
+            scope,
+            "/agents/assistant/subagents/racing/view",
+          );
+          assert.equal(view.status, 404, await view.clone().text());
+
+          const resumed = await managerRequest(runtime, scope, "/agents/assistant/resume", {});
+          assert.equal(resumed.status, 204, await resumed.clone().text());
+          await runtime.drain();
+          expect(await listedSubagent(runtime, scope, "racing")).toMatchObject({
+            status: { status: "completed" },
+            answer: "durable answer",
+          });
         }),
       ],
     }),

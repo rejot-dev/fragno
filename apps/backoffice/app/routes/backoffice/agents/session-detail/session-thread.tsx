@@ -39,18 +39,21 @@ import {
   useThreadViewport,
 } from "@assistant-ui/react";
 
+import {
+  SubagentBatchMessage,
+  SubagentsAtWork,
+  type PiSubagentBatchMessageMetadata,
+} from "../agent-subagent-batches";
 import type {
   PiCompactionMessageMetadata,
   PiConversationQueueLabel,
-  PiNotificationMessageMetadata,
-  PiNotificationRequestMessageMetadata,
+  PiNotificationsMessageMetadata,
   PiResetMessageMetadata,
 } from "./assistant-runtime";
 import {
   AssistantMessage,
   CompactionMessage,
-  NotificationMessage,
-  NotificationRequestMessage,
+  NotificationsMessage,
   ResetMessage,
   UserMessage,
 } from "./messages";
@@ -207,6 +210,7 @@ export function SessionThread({
   onStop,
   readyForInput,
   running,
+  subagentsRunning,
   showThinking,
   showToolCalls,
   showUsage,
@@ -229,7 +233,10 @@ export function SessionThread({
   error: string | null;
   /** Keyed by queue item id: steers join the running turn, everything else waits for a turn. */
   queueLabels: ReadonlyMap<string, PiConversationQueueLabel>;
-  /** Stopping the agent paused its queue with items waiting; sending anything resumes it. */
+  /**
+   * Stopping the agent paused its queue with items or subagents waiting; sending anything resumes
+   * it.
+   */
   paused: boolean;
   onResume: () => unknown;
   /** The model answering, or a control choosing it; null shows none. */
@@ -242,6 +249,8 @@ export function SessionThread({
   onStop: () => unknown;
   readyForInput: boolean;
   running: boolean;
+  /** Subagents run beside the conversation, so Stop shows while it is idle too; it stops them. */
+  subagentsRunning: boolean;
   showThinking: boolean;
   showToolCalls: boolean;
   showUsage: boolean;
@@ -344,9 +353,9 @@ export function SessionThread({
                         ? (
                             message.metadata.custom as
                               | PiCompactionMessageMetadata
-                              | PiNotificationMessageMetadata
-                              | PiNotificationRequestMessageMetadata
+                              | PiNotificationsMessageMetadata
                               | PiResetMessageMetadata
+                              | PiSubagentBatchMessageMetadata
                           ).kind
                         : null;
                     // A context that starts at a reset needs one boundary, not the reset's marker too.
@@ -406,6 +415,7 @@ export function SessionThread({
               <ThreadPrimitive.ViewportFooter asChild>
                 <ChatViewportFooter alert={error}>
                   <ScrollToLatest />
+                  <SubagentsAtWork />
                   <SessionWorkflowInputRequests />
                   <ComposerPrimitive.Root
                     onSubmit={(event) => {
@@ -501,47 +511,58 @@ export function SessionThread({
                                 )}
                               </>
                             ) : (
-                              <ChatComposerSplit>
-                                {composerAction === "compact" ? (
+                              <>
+                                {subagentsRunning ? (
                                   <ChatComposerButton
-                                    tone="accent"
-                                    joined
-                                    disabled={disabled || !readyForInput}
-                                    onClick={() => void onCompact()}
+                                    tone="neutral"
+                                    joined={false}
+                                    onClick={() => void onStop()}
                                   >
-                                    Compact
+                                    Stop
                                   </ChatComposerButton>
-                                ) : composerAction === "clear" ? (
-                                  <ChatComposerButton
-                                    tone="accent"
-                                    joined
-                                    // An empty active context, as right after a reset, has nothing to clear.
-                                    disabled={
-                                      disabled || !readyForInput || contextUsage.tokens === 0
-                                    }
-                                    onClick={() => void onClear()}
-                                  >
-                                    Clear
-                                  </ChatComposerButton>
-                                ) : (
-                                  <SendOrResume
+                                ) : null}
+                                <ChatComposerSplit>
+                                  {composerAction === "compact" ? (
+                                    <ChatComposerButton
+                                      tone="accent"
+                                      joined
+                                      disabled={disabled || !readyForInput}
+                                      onClick={() => void onCompact()}
+                                    >
+                                      Compact
+                                    </ChatComposerButton>
+                                  ) : composerAction === "clear" ? (
+                                    <ChatComposerButton
+                                      tone="accent"
+                                      joined
+                                      // An empty active context, as right after a reset, has nothing to clear.
+                                      disabled={
+                                        disabled || !readyForInput || contextUsage.tokens === 0
+                                      }
+                                      onClick={() => void onClear()}
+                                    >
+                                      Clear
+                                    </ChatComposerButton>
+                                  ) : (
+                                    <SendOrResume
+                                      disabled={disabled}
+                                      paused={paused}
+                                      onResume={onResume}
+                                      sendFiles={sendFiles}
+                                    />
+                                  )}
+                                  <RadioMenu
+                                    label="Choose composer action"
+                                    heading="Composer action"
+                                    trigger={{ kind: "accent" }}
+                                    side="top"
                                     disabled={disabled}
-                                    paused={paused}
-                                    onResume={onResume}
-                                    sendFiles={sendFiles}
+                                    value={composerAction}
+                                    options={composerActionOptions(readyForInput)}
+                                    onValueChange={onComposerActionChange}
                                   />
-                                )}
-                                <RadioMenu
-                                  label="Choose composer action"
-                                  heading="Composer action"
-                                  trigger={{ kind: "accent" }}
-                                  side="top"
-                                  disabled={disabled}
-                                  value={composerAction}
-                                  options={composerActionOptions(readyForInput)}
-                                  onValueChange={onComposerActionChange}
-                                />
-                              </ChatComposerSplit>
+                                </ChatComposerSplit>
+                              </>
                             )}
                           </>
                         }
@@ -558,22 +579,24 @@ export function SessionThread({
   );
 }
 
-/** System messages are compactions, resets, or notifications; their metadata names which. */
+/**
+ * System messages are compactions, resets, events, or subagent batches; their metadata names which.
+ */
 function SystemMessage({
   kind,
 }: {
   kind: (
     | PiCompactionMessageMetadata
-    | PiNotificationMessageMetadata
-    | PiNotificationRequestMessageMetadata
+    | PiNotificationsMessageMetadata
     | PiResetMessageMetadata
+    | PiSubagentBatchMessageMetadata
   )["kind"];
 }) {
   switch (kind) {
-    case "notification":
-      return <NotificationMessage />;
-    case "notification-request":
-      return <NotificationRequestMessage />;
+    case "subagents":
+      return <SubagentBatchMessage />;
+    case "notifications":
+      return <NotificationsMessage />;
     case "compaction":
       return <CompactionMessage />;
     case "reset":

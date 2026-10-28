@@ -226,7 +226,7 @@ const unavailableObject = <T>(resolve: () => T): T | null => {
   }
 };
 
-/** Tools outside an agent's turn; nothing they start can notify them. */
+/** Tools outside an agent's own turn, such as a subagent's; nothing they start can notify them. */
 export function createRouteBackedRuntimeContext(
   options: RouteBackedRuntimeContextOptions,
 ): InteractiveRuntimeToolContext {
@@ -518,7 +518,7 @@ const createRuntimeContext = ({
             throw new AutomationWorkflowRuntimeRequestError(
               400,
               "WORKFLOW_REPLY_NOT_ALLOWED",
-              "Only an agent's turn can be notified when a workflow ends.",
+              "Only an agent's own turn, not a subagent's, can be notified when a workflow ends.",
               null,
             );
           }
@@ -600,7 +600,9 @@ const createRuntimeContext = ({
         runtime,
         kernel,
         execution,
-        caller: callingAgent,
+        caller: callingAgent
+          ? { kind: "agent", agent: callingAgent, toolCallId: null }
+          : { kind: "none" },
       }),
     },
     integrations: {

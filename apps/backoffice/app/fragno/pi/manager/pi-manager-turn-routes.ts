@@ -41,12 +41,18 @@ export const promptRequestSchema = z.object({
   model: piAgentModelChoiceSchema.nullable().default(null),
   // The agent, in any scope, whose turn sends the prompt and is notified of how it ends.
   replyTo: piAgentConfigSchema.nullable().default(null),
+  // Runs the prompt in a new conversation of the agent, beside its own.
+  subagent: z.boolean().default(false),
+  // The tool call of the agent's own turn that starts the subagent, which its page shows it under.
+  askingToolCall: z.string().min(1).nullable().default(null),
 });
 const promptSchema = piAgentPromptSchema.extend({
+  subagent: z.boolean(),
   whenBusy: piPromptWhenBusySchema,
   whenPaused: promptWhenPausedSchema,
   model: piAgentModelChoiceSchema.nullable(),
   replyTo: piAgentConfigSchema.nullable(),
+  askingToolCall: z.string().min(1).nullable(),
   provenance: turnProvenanceSchema,
 });
 
@@ -104,15 +110,14 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
       );
     }
 
-    async function handOver(handover: PiAgentHandover | null) {
-      if (!handover) {
-        return;
-      }
-      try {
-        await handOverPiAgentWork(config.agent, handover);
-      } catch (cause) {
-        // The item is recorded, and the hook its placement triggered hands it over again.
-        console.error(cause);
+    async function handOver(handovers: readonly PiAgentHandover[]) {
+      for (const handover of handovers) {
+        try {
+          await handOverPiAgentWork(config.agent, handover);
+        } catch (cause) {
+          // The item is recorded, and the hook its placement triggered hands it over again.
+          console.error(cause);
+        }
       }
     }
 
@@ -128,11 +133,40 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
           "MODEL_NOT_CHOOSABLE",
           "AGENT_BUSY",
           "REPLY_NOT_ALLOWED",
+          "SUBAGENT_NOT_BUSY",
+          "AGENT_UNAVAILABLE",
+          "ASKING_TOOL_CALL_NOT_ALLOWED",
         ],
         handler: async function ({ pathParams, input }, { json, error }) {
-          const { provenance, whenBusy, whenPaused, model, replyTo, ...prompt } =
-            await input.valid();
+          const {
+            provenance,
+            subagent,
+            whenBusy,
+            whenPaused,
+            model,
+            replyTo,
+            askingToolCall,
+            ...prompt
+          } = await input.valid();
           const { agentName } = pathParams;
+          // Only the agent's own turn, acting with its delegate actor, asks from its tool calls.
+          if (
+            askingToolCall !== null &&
+            !(
+              subagent &&
+              provenance.actors.delegation.some((actor) =>
+                automationEntityRefsEqual(actor, piAgentActor(config.scope, agentName)),
+              )
+            )
+          ) {
+            return error(
+              {
+                code: "ASKING_TOOL_CALL_NOT_ALLOWED",
+                message: "Only an agent's own turn starts subagents from its tool calls.",
+              },
+              400,
+            );
+          }
           if (replyTo && !repliesToSendingAgent(replyTo, provenance)) {
             return error(
               {
@@ -142,16 +176,27 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
               400,
             );
           }
+          // A subagent runs in a conversation of its own, so it never steers or is refused as busy.
+          if (subagent && whenBusy !== "followUp") {
+            return error(
+              {
+                code: "SUBAGENT_NOT_BUSY",
+                message: `A subagent starts in a new conversation, which is never busy; drop whenBusy "${whenBusy}".`,
+              },
+              400,
+            );
+          }
           // An agent prompting itself only queues another turn of its own conversation, and a
-          // reply to it could wake it again and again.
+          // reply to it could wake it again and again. Its subagent replies once, from another.
           if (
+            !subagent &&
             replyTo?.agentName === agentName &&
             backofficeContextScopesEqual(replyTo.scope, config.scope)
           ) {
             return error(
               {
                 code: "REPLY_NOT_ALLOWED",
-                message: `An agent cannot be notified of its own prompts: you are "${agentName}" in this scope. Prompt another agent, or drop notifyWhenDone.`,
+                message: `An agent cannot be notified of its own prompts: you are "${agentName}" in this scope. Start a subagent of yourself, prompt another agent, or drop notifyWhenDone.`,
               },
               400,
             );
@@ -164,6 +209,8 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
                   services.submitPrompt({
                     agentName,
                     prompt,
+                    subagent: subagent ? { askingToolCall } : null,
+                    submittedAt: new Date(),
                     model,
                     whenBusy,
                     whenPaused,
@@ -191,7 +238,25 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
             config.agent({ scope: config.scope, agentName }),
             submitted.queue,
           );
-          await handOver(submitted.handover);
+          // A turn may wait for a subagent as soon as it has its request ID, and waiting finds only
+          // subagents its agent knows of, so the ID is returned only once the agent does.
+          try {
+            for (const handover of submitted.handovers) {
+              if (handover.type === "recordSubagent") {
+                await handOverPiAgentWork(config.agent, handover);
+              }
+            }
+          } catch (cause) {
+            console.error(cause);
+            return error(
+              {
+                code: "AGENT_UNAVAILABLE",
+                message: `Subagent "${prompt.requestId}" is queued, but agent "${agentName}" could not record it yet. Submit it again with requestId "${prompt.requestId}"; a new request ID would start a second subagent.`,
+              },
+              503,
+            );
+          }
+          await handOver(submitted.handovers.filter(({ type }) => type !== "recordSubagent"));
           return json({ requestId: prompt.requestId, status: submitted.status }, 202);
         },
       }),
@@ -228,7 +293,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
             config.agent({ scope: config.scope, agentName }),
             submitted.queue,
           );
-          await handOver(submitted.handover);
+          await handOver(submitted.handovers);
           return empty(204);
         },
       }),
@@ -325,7 +390,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
           await publishPiAgentQueue(config.agent(agent), paused);
-          await config.agent(agent).abort(agent);
+          await config.agent(agent).abort(agent, paused.revision);
           return empty(204);
         },
       }),
@@ -352,7 +417,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
             config.agent({ scope: config.scope, agentName }),
             resumed.queue,
           );
-          await handOver(resumed.handover);
+          await handOver(resumed.handovers);
           return empty(204);
         },
       }),

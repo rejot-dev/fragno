@@ -169,7 +169,7 @@ export async function reportPiAgentTurnSettled(
     config.agent({ scope: config.scope, agentName: input.agentName }),
     advanced.queue,
   );
-  if (advanced.handover) {
-    await handOverPiAgentWork(config.agent, advanced.handover);
+  for (const handover of advanced.handovers) {
+    await handOverPiAgentWork(config.agent, handover);
   }
 }

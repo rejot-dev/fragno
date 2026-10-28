@@ -3,6 +3,7 @@ import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/perm
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { Context } from "@earendil-works/chord";
+import { ROOT_CONVERSATION_ID, type ConversationId } from "@earendil-works/pi-durable";
 
 import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
@@ -20,7 +21,10 @@ import type {
   RegisteredAutomationsRuntime,
 } from "@/fragno/runtime-tools/bash-host";
 import type { OtpRuntime } from "@/fragno/runtime-tools/families/otp-runtime";
-import { createAgentRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import {
+  createAgentRouteBackedRuntimeContext,
+  createRouteBackedRuntimeContext,
+} from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import { piAgentActor } from "./pi-agent-actor";
 import type { PiAgentTurn } from "./pi-agent-contract";
@@ -42,15 +46,26 @@ export type BackofficeAgentTurnContext = {
   codemode: CodemodeRunner | null;
   /** Checks live permissions; persisted actors carry identity, not grants. */
   authorize: () => Promise<void>;
-  toolContext: (invocationId: string, context: Context) => PiRuntimeToolContext;
+  /** `toolCallId` names the tool call that uses it; null outside one, such as in a prompt section. */
+  toolContext: (
+    invocationId: string,
+    toolCallId: string | null,
+    context: Context,
+  ) => PiRuntimeToolContext;
 };
 
 /** One agent's Backoffice identity; every capability comes from the turn that owns its work. */
 export type BackofficeAgentContext = {
   agentName: string;
   scope: BackofficeContextScope;
-  /** Throws when no turn owns the current work, so nothing runs without an authority. */
-  activeTurn: (context: Context) => Promise<BackofficeAgentTurnContext>;
+  /**
+   * The turn that owns work in `conversationId`, the root's or a subagent's. Throws when none
+   * does, so nothing runs without an authority.
+   */
+  activeTurn: (
+    conversationId: ConversationId,
+    context: Context,
+  ) => Promise<BackofficeAgentTurnContext>;
   /** For work done on a turn's behalf before Pi admits it, such as loading its extensions. */
   turn: (turn: PiAgentTurn) => BackofficeAgentTurnContext;
 };
@@ -67,12 +82,13 @@ export function requirePiStateBackend(context: PiRuntimeToolContext): Backoffice
 export function createBackofficeAgentContext(input: {
   config: PiAgentConfig;
   runtime: BackofficeRuntimeServices;
-  readActiveTurn: (context: Context) => Promise<PiAgentTurn | null>;
+  readActiveTurn: (conversationId: ConversationId, context: Context) => Promise<PiAgentTurn | null>;
 }): BackofficeAgentContext {
   const { config } = input;
   const agentActor = piAgentActor(config.scope, config.agentName);
 
-  function createTurnContext(turn: PiAgentTurn): BackofficeAgentTurnContext {
+  /** `subagent` for a subagent's turn, which nothing it starts notifies and which starts none. */
+  function createTurnContext(turn: PiAgentTurn, subagent: boolean): BackofficeAgentTurnContext {
     // Grants bind to this turn only; elsewhere the pi-agent actor does not narrow, like other
     // runtime capability delegates.
     const runtime: BackofficeRuntimeServices = {
@@ -104,29 +120,39 @@ export function createBackofficeAgentContext(input: {
       });
     }
 
-    function toolContext(invocationId: string, context: Context): PiRuntimeToolContext {
+    function toolContext(
+      invocationId: string,
+      toolCallId: string | null,
+      context: Context,
+    ): PiRuntimeToolContext {
       let promptIndex = 0;
       const createPromptRequestId = () => `${invocationId}:${promptIndex++}`;
       // Whichever scope a tool addresses, prompts and workflows it starts reply to this agent.
       const callingAgent = { scope: config.scope, agentName: config.agentName };
-      return createAgentRouteBackedRuntimeContext({
+      const options = {
         emitter: { kind: "caller" },
         runtime,
         kernel,
         execution,
-        callingAgent,
         // A factory follows scope changes; a fixed runtime would leak the parent directory into child contexts.
-        pi: (scopedExecution) => ({
+        pi: (scopedExecution: BackofficeExecutionContext) => ({
           runtime: createPiManagerRuntime({
             runtime,
             kernel,
             execution: scopedExecution,
-            caller: callingAgent,
+            caller: subagent
+              ? { kind: "subagent" }
+              : { kind: "agent", agent: callingAgent, toolCallId },
             createPromptRequestId,
             context,
           }),
         }),
-      }) as PiRuntimeToolContext;
+      } as const;
+      return (
+        subagent
+          ? createRouteBackedRuntimeContext(options)
+          : createAgentRouteBackedRuntimeContext({ ...options, callingAgent })
+      ) as PiRuntimeToolContext;
     }
 
     return {
@@ -146,13 +172,14 @@ export function createBackofficeAgentContext(input: {
   return {
     agentName: config.agentName,
     scope: config.scope,
-    async activeTurn(context) {
-      const turn = await input.readActiveTurn(context);
+    async activeTurn(conversationId, context) {
+      const turn = await input.readActiveTurn(conversationId, context);
       if (!turn) {
         throw new Error("PI_AGENT_TURN_UNAVAILABLE: no turn owns this agent's current work.");
       }
-      return createTurnContext(turn);
+      return createTurnContext(turn, conversationId !== ROOT_CONVERSATION_ID);
     },
-    turn: createTurnContext,
+    // Admitted turns start in the agent's own conversation.
+    turn: (turn) => createTurnContext(turn, false),
   };
 }
