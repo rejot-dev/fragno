@@ -1,4 +1,4 @@
-import { afterAll, assert, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, assert, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
 import { getInternalFragment } from "@fragno-dev/db";
@@ -248,6 +248,20 @@ describe("blobs fragment", async () => {
       "recordingsx.wav",
     ]);
     expect(all.data.cursor).toBeNull();
+  });
+
+  test("completes an upload whose bytes finished arriving after its URL expired", async () => {
+    const upload = await createUpload("recordings/long-call.wav");
+    await putBytes(upload, "a slow upload");
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(new Date(upload.expiresAt).getTime() + 60_000);
+      const completed = await completeUpload(upload.uploadId);
+      assert(completed.type === "json", JSON.stringify(completed));
+      assert(completed.data.sizeBytes === 13);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("discards what unfinished and replaced uploads stored once their URLs expire", async () => {
