@@ -57,6 +57,7 @@ function toolApi(taskId: string) {
 const testRuntimeConfig: BackofficeRuntimeConfig = {
   authEmailVerification: { enabled: false },
   sandboxBackofficeBaseUrl: null,
+  sandboxContainers: true,
   signUpInvitationsEnabled: true,
   localEmailLog: false,
   bindings: {

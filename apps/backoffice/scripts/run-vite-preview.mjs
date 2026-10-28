@@ -14,6 +14,11 @@ const containerWorkerConfigUrl = new URL(
   "../dist/cf_sandbox_bridge/wrangler.json",
   import.meta.url,
 );
+// Backoffice fails sandbox starts at once when told the bridge has no containers.
+const backofficeWorkerConfigUrls = [
+  new URL("../build/server/wrangler.json", import.meta.url),
+  new URL("../dist/rejot_backoffice/wrangler.json", import.meta.url),
+];
 
 let activeChild = null;
 let stopSignal = null;
@@ -61,26 +66,40 @@ if (enableSourceMaps) {
   }
 }
 
-if (!enableContainers) {
-  process.exit((await runViteCommand(previewCommand)).code);
-}
+// Every run sets both sides, so output left patched by a killed run cannot leak into the next one.
+const configPatches = [
+  {
+    url: containerWorkerConfigUrl,
+    patch: (config) => ({ ...config, dev: { ...config.dev, enable_containers: enableContainers } }),
+  },
+  ...backofficeWorkerConfigUrls.map((url) => ({
+    url,
+    patch: (config) => ({
+      ...config,
+      vars: { ...config.vars, SANDBOX_CONTAINERS: String(enableContainers) },
+    }),
+  })),
+];
 
-let originalConfig;
+const originalConfigs = [];
 try {
-  originalConfig = await readFile(containerWorkerConfigUrl, "utf8");
+  for (const { url } of configPatches) {
+    originalConfigs.push(await readFile(url, "utf8"));
+  }
 } catch (cause) {
   throw new Error(
-    "Backoffice preview output is missing. Run `pnpm --filter @fragno-apps/backoffice-rr build` before previewing with containers.",
+    "Backoffice preview output is missing. Run `pnpm --filter @fragno-apps/backoffice-rr build` before previewing.",
     { cause },
   );
 }
 
-const config = JSON.parse(originalConfig);
-config.dev = { ...config.dev, enable_containers: true };
-await writeFile(containerWorkerConfigUrl, JSON.stringify(config));
-
 try {
+  for (const [index, { url, patch }] of configPatches.entries()) {
+    await writeFile(url, JSON.stringify(patch(JSON.parse(originalConfigs[index]))));
+  }
   process.exitCode = (await runViteCommand(previewCommand)).code;
 } finally {
-  await writeFile(containerWorkerConfigUrl, originalConfig);
+  for (const [index, { url }] of configPatches.entries()) {
+    await writeFile(url, originalConfigs[index]);
+  }
 }

@@ -43,6 +43,7 @@ describe("createOtpRuntime", () => {
         docsPublicBaseUrl: "https://backoffice.example",
         authEmailVerification: { enabled: false },
         sandboxBackofficeBaseUrl: null,
+        sandboxContainers: true,
         signUpInvitationsEnabled: true,
         localEmailLog: false,
         bindings: {
@@ -86,6 +87,7 @@ describe("createOtpRuntime", () => {
         docsPublicBaseUrl: "https://backoffice.example",
         authEmailVerification: { enabled: false },
         sandboxBackofficeBaseUrl: null,
+        sandboxContainers: true,
         signUpInvitationsEnabled: true,
         localEmailLog: false,
         bindings: {

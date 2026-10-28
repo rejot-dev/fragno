@@ -394,6 +394,8 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
       // Local sandboxes run on the deployed bridge, which forwards its intercepted origin to the
       // deployed Backoffice, so they reach this runtime only at a public URL such as a tunnel.
       sandboxBackofficeBaseUrl: this.env.DOCS_PUBLIC_BASE_URL?.trim() || null,
+      // Sandboxes run in a deployed bridge, which always has containers.
+      sandboxContainers: true,
       authEmailVerification: parseAuthEmailVerificationRuntimeConfig({
         enabled: this.env.AUTH_EMAIL_VERIFICATION_ENABLED,
         publicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL,

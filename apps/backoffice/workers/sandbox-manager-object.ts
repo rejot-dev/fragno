@@ -53,6 +53,7 @@ function buildSandboxAutomationEvent(
 export class SandboxManagerObject extends RpcTarget implements SandboxManagerCommands {
   readonly #host: FragmentDurableObjectHost<void, ReturnType<typeof createSandboxManagerRuntime>>;
   readonly #sandboxProviders: SandboxRuntimeProviders;
+  readonly #sandboxContainers: boolean;
   #runtime: ReturnType<typeof createSandboxManagerRuntime> | null = null;
 
   constructor({
@@ -70,6 +71,7 @@ export class SandboxManagerObject extends RpcTarget implements SandboxManagerCom
     const runtimeServices = runtime;
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "SANDBOX_MANAGER");
     this.#sandboxProviders = sandboxProviders;
+    this.#sandboxContainers = runtime.config.sandboxContainers;
     this.#host = implementation.createFragmentHost({
       name: "SandboxManager",
       createRuntime: () => {
@@ -129,6 +131,12 @@ export class SandboxManagerObject extends RpcTarget implements SandboxManagerCom
   }
 
   async requestSandboxInstance(input: SandboxInstanceRequestInput): Promise<SandboxInstanceRecord> {
+    // Without containers, a start would fail only after its startup workflow exhausts its retries.
+    if (!this.#sandboxContainers) {
+      throw new Error(
+        "Sandbox containers are off in this local Backoffice server. Restart it with `pnpm preview:containers`.",
+      );
+    }
     const fragment = this.#fragment();
     return await fragment.callServices(() => fragment.services.requestSandboxInstance(input));
   }

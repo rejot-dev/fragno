@@ -26,6 +26,8 @@
     // Keeps each organization's and user's Durable Objects in the jurisdiction they chose. Only
     // local .dev.vars says "local", as workerd does not implement jurisdictions.
     "DURABLE_OBJECT_JURISDICTIONS": "enforced",
+    // Local servers started without the bridge's containers say "false", so sandbox starts fail at once.
+    "SANDBOX_CONTAINERS": "true",
     "DOCS_PUBLIC_BASE_URL": "https://backoffice.rejot.dev/",
     "POSTHOG_HOST": "https://eu.i.posthog.com",
   },

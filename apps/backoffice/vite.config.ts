@@ -154,6 +154,12 @@ function previewServerUrlShortcutPlugin(): Plugin {
 
 export default defineConfig(({ command }) => {
   const isDevServer = command === "serve";
+  // The dev server never runs containers. Builds are deployed, so they keep the configured value.
+  const disableSandboxContainersOnDevServer = (workerConfig: { vars: Record<string, unknown> }) => {
+    if (isDevServer) {
+      workerConfig.vars.SANDBOX_CONTAINERS = "false";
+    }
+  };
   // Only serving needs a port; builds must not depend on running inside a git checkout.
   const port = isDevServer ? backofficeDevServerPort(__dirname) : undefined;
   const environments: Record<string, EnvironmentOptions> = isDevServer
@@ -184,11 +190,13 @@ export default defineConfig(({ command }) => {
     plugins: [
       cloudflare({
         configPath: "./wrangler.web.jsonc",
+        config: disableSandboxContainersOnDevServer,
         auxiliaryWorkers: [
-          { configPath: "./wrangler.jsonc" },
+          { configPath: "./wrangler.jsonc", config: disableSandboxContainersOnDevServer },
           {
             configPath: "../cf-sandbox-bridge/wrangler.jsonc",
-            // The bridge hosts Sandbox containers; `preview:containers` turns them on.
+            // The bridge hosts Sandbox containers; `preview:containers` turns them on, and
+            // scripts/run-vite-preview.mjs tells Backoffice when they are off.
             config(workerConfig) {
               workerConfig.dev.enable_containers = false;
             },

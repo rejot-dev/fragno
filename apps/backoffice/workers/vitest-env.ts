@@ -90,6 +90,7 @@ export class AuthSqlHarnessDurableObject extends DurableObject<CloudflareEnv> {
       config: {
         authEmailVerification: { enabled: false },
         sandboxBackofficeBaseUrl: null,
+        sandboxContainers: true,
         signUpInvitationsEnabled: true,
         localEmailLog: false,
       },

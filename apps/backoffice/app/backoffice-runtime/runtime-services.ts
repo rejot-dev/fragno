@@ -40,6 +40,8 @@ export type BackofficeRuntimeConfig = {
   docsPublicBaseUrl?: string;
   /** Where sandbox commands reach Backoffice file links, or null when they cannot. */
   sandboxBackofficeBaseUrl: string | null;
+  /** Whether the sandbox host runs containers; local servers started without them do not. */
+  sandboxContainers: boolean;
   authEmailVerification: AuthEmailVerificationRuntimeConfig;
   signUpInvitationsEnabled: boolean;
   /** Print outgoing email to the terminal, and skip delivery while Resend is unconfigured. */
@@ -156,6 +158,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
     : {}),
   // SANDBOX binds the bridge's Sandbox, whose containers intercept this origin into this deployment.
   sandboxBackofficeBaseUrl: `${SANDBOX_BACKOFFICE_ORIGIN}/`,
+  sandboxContainers: parseBooleanEnv("SANDBOX_CONTAINERS", env.SANDBOX_CONTAINERS),
   authEmailVerification: parseAuthEmailVerificationRuntimeConfig({
     enabled: env.AUTH_EMAIL_VERIFICATION_ENABLED,
     publicBaseUrl: env.DOCS_PUBLIC_BASE_URL,
