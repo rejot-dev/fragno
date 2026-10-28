@@ -59,6 +59,8 @@ type Prompt = {
   agentName: string;
   requestId: string;
   content: string;
+  /** Whether it runs in a subagent of the agent, beside its other work. */
+  subagent: boolean;
   prompter: Principal;
   status: PiPromptStatus;
 };
@@ -254,6 +256,7 @@ export class FakeBackoffice {
     agentName: string;
     requestId: string;
     content: string;
+    subagent: boolean;
     /** The email of the user who prompted, or `installation` for Bookkeeping itself. */
     prompter: string;
     status: string;
@@ -265,6 +268,7 @@ export class FakeBackoffice {
         agentName: prompt.agentName,
         requestId: prompt.requestId,
         content: prompt.content,
+        subagent: prompt.subagent,
         prompter:
           prompt.prompter.kind === "user"
             ? this.#users.get(prompt.prompter.userId)!.email
@@ -675,7 +679,7 @@ export class FakeBackoffice {
           };
         });
       case "pi.prompt.submit":
-        return respond("pi.prompt.submit", body, ({ agentName, requestId, content }) => {
+        return respond("pi.prompt.submit", body, ({ agentName, requestId, content, subagent }) => {
           if (!this.#agents.has(key(agentName))) {
             throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
           }
@@ -687,6 +691,7 @@ export class FakeBackoffice {
               agentName,
               requestId: id,
               content,
+              subagent: subagent ?? false,
               prompter: principal,
               status: { requestId: id, status: "queued" },
             });

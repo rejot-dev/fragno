@@ -506,9 +506,11 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     ]);
     const [prompt, ...more] = scenario.backoffice.prompts(CLIENT, ADMINISTRATION);
     expect(more).toEqual([]);
+    // Each document gets a subagent of its own, so documents are read side by side.
     expect(prompt).toMatchObject({
       agentName: "bookkeeper",
       requestId: `document:${id}:upload`,
+      subagent: true,
       prompter: "installation",
       status: "queued",
     });
