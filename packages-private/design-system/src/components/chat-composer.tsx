@@ -17,8 +17,12 @@ export function ChatComposer({
     <form
       aria-disabled={disabled}
       {...props}
-      // Shares the selected navigation item's surface, like the other prompt fields.
-      className={cn("bo-input p-2", disabled && "cursor-not-allowed opacity-50")}
+      // Shares the selected navigation item's surface, like the other prompt fields. A container,
+      // because the composer is narrow both on phones and in a drawer beside a wide page.
+      className={cn(
+        "bo-input @container/composer p-2",
+        disabled && "cursor-not-allowed opacity-50",
+      )}
     />
   );
 }
@@ -152,10 +156,15 @@ export function ChatComposerModelMenu<TModel extends string, TEffort extends str
         className="group inline-flex min-h-8 max-w-52 min-w-0 items-center gap-1 px-2 text-[10px] text-[var(--bo-muted-2)] transition-[color,scale] duration-150 ease-out outline-none hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:not-disabled:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-35 data-[popup-open]:text-[var(--bo-fg)]"
       >
         <span className="min-w-0 truncate">{modelLabel}</span>
-        <span aria-hidden className="shrink-0 text-[var(--bo-muted-2)]">
+        {/* A narrow composer keeps the model's name whole; the effort stays in the accessible name
+            and the menu. */}
+        <span
+          aria-hidden
+          className="shrink-0 text-[var(--bo-muted-2)] @max-[26rem]/composer:hidden"
+        >
           ·
         </span>
-        <span className="shrink-0">{effortLabel}</span>
+        <span className="shrink-0 @max-[26rem]/composer:hidden">{effortLabel}</span>
         <Icon
           name="chevron-down"
           className="size-3 shrink-0 transition-transform duration-150 ease-out group-data-[popup-open]:rotate-180"
