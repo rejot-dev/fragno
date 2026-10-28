@@ -122,6 +122,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - If you see changes unrelated to your work, prefer to keep them.
 - If I ask a question, answer it instead of implementing.
+- Never start Docker. Run services such as MySQL natively, through Homebrew (`brew services`); when
+  one is broken, tell me instead of working around it.
 
 ## References
 
