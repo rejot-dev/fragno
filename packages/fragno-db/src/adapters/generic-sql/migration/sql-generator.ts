@@ -33,15 +33,24 @@ export interface CompilableQuery {
   compile(): CompiledQuery;
 }
 
+/**
+ * Adds foreign keys after every other operation, once the tables they name exist. A table the
+ * migration also drops gets none: its foreign keys would come after the drop.
+ */
 export function reorderAddForeignKeysForExecution(
   operations: MigrationOperation[],
 ): MigrationOperation[] {
+  const droppedTables = new Set(
+    operations.flatMap((operation) => (operation.type === "drop-table" ? [operation.name] : [])),
+  );
   const addForeignKeys: MigrationOperation[] = [];
   const otherOperations: MigrationOperation[] = [];
 
   for (const operation of operations) {
     if (operation.type === "add-foreign-key") {
-      addForeignKeys.push(operation);
+      if (!droppedTables.has(operation.table)) {
+        addForeignKeys.push(operation);
+      }
     } else {
       otherOperations.push(operation);
     }

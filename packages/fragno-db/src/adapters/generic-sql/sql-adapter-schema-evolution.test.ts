@@ -8,7 +8,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 import { DatabaseConstraintError } from "../../errors";
 import { createNamingResolver } from "../../naming/sql-naming";
-import { column, idColumn, schema, type AnySchema } from "../../schema/create";
+import { column, idColumn, referenceColumn, schema, type AnySchema } from "../../schema/create";
 import { BetterSQLite3DriverConfig, PGLiteDriverConfig } from "./driver-config";
 import { SqlAdapter } from "./generic-sql-adapter";
 import { createColdKysely } from "./migration/cold-kysely";
@@ -166,31 +166,34 @@ describe.each(databases)("evolving a table with rows on $name", (database) => {
 
 // Three releases of one fragment. The second removed the draft table by replacing its `addTable`
 // with `noOp`, so only databases from the first hold it; the third restores the history and drops
-// the table, which must leave every database without it.
+// the table, which must leave every database without it. A draft references its post, so a
+// database the third release creates adds and drops a table with a foreign key in one migration.
 const releasedWithDrafts = schema("drafting", (s) =>
   s
+    .addTable("post", (t) => t.addColumn("id", idColumn()).addColumn("title", column("string")))
     .addTable("draft", (t) =>
       t
         .addColumn("id", idColumn())
+        .addColumn("postId", referenceColumn({ table: "post" }))
         .addColumn("body", column("string"))
         .createIndex("idx_draft_body", ["body"]),
-    )
-    .addTable("post", (t) => t.addColumn("id", idColumn()).addColumn("title", column("string"))),
+    ),
 );
 const releasedWithoutDraftHistory = schema("drafting", (s) =>
   s
-    .noOp("Removed draft table")
-    .addTable("post", (t) => t.addColumn("id", idColumn()).addColumn("title", column("string"))),
+    .addTable("post", (t) => t.addColumn("id", idColumn()).addColumn("title", column("string")))
+    .noOp("Removed draft table"),
 );
 const releasedDroppingDrafts = schema("drafting", (s) =>
   s
+    .addTable("post", (t) => t.addColumn("id", idColumn()).addColumn("title", column("string")))
     .addTable("draft", (t) =>
       t
         .addColumn("id", idColumn())
+        .addColumn("postId", referenceColumn({ table: "post" }))
         .addColumn("body", column("string"))
         .createIndex("idx_draft_body", ["body"]),
     )
-    .addTable("post", (t) => t.addColumn("id", idColumn()).addColumn("title", column("string")))
     .dropTable("draft"),
 );
 
