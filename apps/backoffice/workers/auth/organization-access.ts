@@ -7,22 +7,12 @@ import type {
 import {
   type AdministeredMember,
   administersMembers,
+  type OrganizationAccess,
   splitOrganizationRoles,
 } from "@/fragno/auth/contracts";
 
 import type { AuthDatabase } from "../auth-object";
 import { toDate } from "./stored-date";
-
-/**
- * How a person acts in an organization: as one of its members, or as a member of the organization
- * that manages it. Only the members of an organization are its members; managing grants access,
- * never membership.
- */
-export type OrganizationAccess = {
-  organizationId: string;
-  roles: string[];
-  through: { kind: "membership" } | { kind: "managing-organization"; organizationId: string };
-};
 
 /**
  * A role in the managing organization, as it applies in a managed one: owners act as admins, so
@@ -206,6 +196,22 @@ export async function findAdministeredMember(
     : null;
 }
 
+/** The organization managing this one, or null when none does. */
+export async function findManagingOrganization(
+  database: Kysely<AuthDatabase>,
+  organizationId: string,
+): Promise<{ organizationId: string; name: string; slug: string } | null> {
+  const managing = await database
+    .selectFrom("organization")
+    .innerJoin("organization as managing", "managing.id", "organization.managingOrganizationId")
+    .select(["managing.id", "managing.name", "managing.slug"])
+    .where("organization.id", "=", organizationId)
+    .executeTakeFirst();
+  return managing
+    ? { organizationId: managing.id, name: managing.name, slug: managing.slug }
+    : null;
+}
+
 /**
  * Three reads keyed by the organization, run together: its member count, the organization managing
  * it, and the organizations it manages with their member counts, ordered by name.
@@ -220,12 +226,7 @@ export async function readOrganizationRelations(
       .select((eb) => eb.fn.countAll<number>().as("count"))
       .where("organizationId", "=", organizationId)
       .executeTakeFirstOrThrow(),
-    database
-      .selectFrom("organization")
-      .innerJoin("organization as managing", "managing.id", "organization.managingOrganizationId")
-      .select(["managing.id", "managing.name", "managing.slug"])
-      .where("organization.id", "=", organizationId)
-      .executeTakeFirst(),
+    findManagingOrganization(database, organizationId),
     database
       .selectFrom("organization")
       .leftJoin("member", "member.organizationId", "organization.id")
@@ -244,9 +245,7 @@ export async function readOrganizationRelations(
   ]);
   return {
     memberCount: members.count,
-    managingOrganization: managing
-      ? { organizationId: managing.id, name: managing.name, slug: managing.slug }
-      : null,
+    managingOrganization: managing,
     managedOrganizations: managed.map(
       (organization): ManagedOrganizationRecord => ({
         organizationId: organization.id,

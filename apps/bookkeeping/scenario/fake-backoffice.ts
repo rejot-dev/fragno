@@ -669,7 +669,11 @@ export class FakeBackoffice {
     }
     switch (operationId) {
       case "org.get":
-        return respond("org.get", undefined, () => this.#membership(organization, member.roles));
+        return respond("org.get", undefined, () => ({
+          ...this.#membership(organization, member.roles),
+          managingOrganization: null,
+          through: "membership" as const,
+        }));
       case "org.invitations.list":
         return respond("org.invitations.list", body, () => ({
           invitations: this.#pendingInvitations(organization).map((invitation) => ({

@@ -8,6 +8,10 @@ import {
   backofficeProvisioningOperations,
   type BackofficeProvisioningOperationId,
   type CreateInvitationInput,
+  type ListManagedOrganizationsInput,
+  type ManagedOrganizationPage,
+  type ProvisionManagedOrganizationInput,
+  type ProvisionManagedOrganizationResult,
   type ProvisionOrganizationForInviteeInput,
   type ProvisionOrganizationForInviteeResult,
   type ProvisionOrganizationInput,
@@ -152,6 +156,79 @@ async function provisionOrganizationForInvitee(
   return installed.ok ? provisioned : installed;
 }
 
+/**
+ * Creates the organization managed by one where the app is installed, then installs the app there
+ * as the managing organization's owner or admin who asked.
+ */
+async function provisionManagedOrganization(
+  runtime: BackofficeRuntimeServices,
+  app: ProvisioningApp,
+  input: ProvisionManagedOrganizationInput,
+): Promise<AppProvisioningResult<ProvisionManagedOrganizationResult>> {
+  if (!(await installedOrganization(runtime, app, input.managingOrganizationId))) {
+    return notInstalled(input.managingOrganizationId);
+  }
+  const provisioned = await runtime.objects.auth
+    .singleton()
+    .commands.provisionAppManagedOrganization({
+      appId: app.id,
+      oauthClientId: app.oauthClientId,
+      ...input,
+    });
+  if (!provisioned.ok) {
+    return provisioned;
+  }
+  const installed = await installProvisioned(runtime, app, {
+    organization: {
+      kind: "org",
+      orgId: provisioned.value.organizationId,
+      jurisdiction: provisioned.value.jurisdiction,
+    },
+    externalOrganizationId: input.externalOrganizationId,
+    name: input.name,
+    installedByUserId: input.byUserId,
+  });
+  return installed.ok ? provisioned : installed;
+}
+
+/** The organizations one where the app is installed manages, keeping those where it is too. */
+async function listManagedOrganizations(
+  runtime: BackofficeRuntimeServices,
+  app: ProvisioningApp,
+  input: ListManagedOrganizationsInput,
+): Promise<AppProvisioningResult<ManagedOrganizationPage>> {
+  if (!(await installedOrganization(runtime, app, input.managingOrganizationId))) {
+    return notInstalled(input.managingOrganizationId);
+  }
+  const page = await runtime.objects.auth.singleton().commands.listManagedOrganizations(input);
+  const installed = await Promise.all(
+    page.organizations.map(async ({ organizationId, jurisdiction }) => {
+      const installation = await runtime.objects.appInstallations
+        .for({ kind: "org", orgId: organizationId, jurisdiction })
+        .commands.getInstallation({ appId: app.id });
+      return installation?.status === "active";
+    }),
+  );
+  return {
+    ok: true,
+    value: {
+      organizations: page.organizations.filter((_, index) => installed[index]),
+      nextCursor: page.nextCursor,
+      hasNextPage: page.nextCursor !== null,
+    },
+  };
+}
+
+function notInstalled(organizationId: string): AppProvisioningResult<never> {
+  return {
+    ok: false,
+    error: {
+      code: "not_found",
+      message: `This app is not installed in organization '${organizationId}'.`,
+    },
+  };
+}
+
 /** The organization, when the app is installed there: apps reach no other. */
 async function installedOrganization(
   runtime: BackofficeRuntimeServices,
@@ -178,15 +255,9 @@ async function provisionProject(
 ): Promise<AppProvisioningResult<ProvisionProjectResult>> {
   const organization = await installedOrganization(runtime, app, input.organizationId);
   if (!organization) {
-    return {
-      ok: false,
-      error: {
-        code: "not_found",
-        message: `This app is not installed in organization '${input.organizationId}'.`,
-      },
-    };
+    return notInstalled(input.organizationId);
   }
-  const creator = await runtime.objects.auth.singleton().commands.confirmAppOrganizationMember({
+  const creator = await runtime.objects.auth.singleton().commands.confirmAppOrganizationActor({
     oauthClientId: app.oauthClientId,
     organizationId: input.organizationId,
     userId: input.createdByUserId,
@@ -209,13 +280,7 @@ async function createInvitation(
   input: CreateInvitationInput,
 ): Promise<AppProvisioningResult<OrganizationInvitationRecord>> {
   if (!(await installedOrganization(runtime, app, input.organizationId))) {
-    return {
-      ok: false,
-      error: {
-        code: "not_found",
-        message: `This app is not installed in organization '${input.organizationId}'.`,
-      },
-    };
+    return notInstalled(input.organizationId);
   }
   return await runtime.objects.auth
     .singleton()
@@ -314,6 +379,8 @@ const provisioningHandlers: {
 } = {
   "organizations.provision": provisionOrganization,
   "organizations.provisionForInvitee": provisionOrganizationForInvitee,
+  "organizations.provisionManaged": provisionManagedOrganization,
+  "organizations.listManaged": listManagedOrganizations,
   "projects.provision": provisionProject,
   "invitations.create": createInvitation,
   "invitations.send": sendInvitation,
@@ -384,12 +451,17 @@ export const backofficeProvisioningRouter = new Hono<{
   }
   const output = operation.output.parse(result.value);
 
+  const event = PROVISIONING_AUTOMATION_EVENTS[id];
+  // Listing changes nothing, so it leaves no trail.
+  if (event === null) {
+    return c.json(output, 200, { "cache-control": "no-store" });
+  }
   await runtime.objects.automations.singleton().commands.ingestEvent({
     id: crypto.randomUUID(),
     scopeRestriction: null,
     scope: { kind: "system" },
     source: PROVISIONING_AUTOMATION_SOURCE,
-    eventType: PROVISIONING_AUTOMATION_EVENTS[id].eventType,
+    eventType: event.eventType,
     occurredAt: new Date().toISOString(),
     payload: { appId: app.id, input: input.data, result: output },
     actors: {

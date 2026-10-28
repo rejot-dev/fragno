@@ -23,13 +23,18 @@ export const PROVISIONING_AUTOMATION_EVENTS = {
     eventType: "organization.provisionedForInvitee",
     label: "Organization provisioned for an invited owner",
   },
+  "organizations.provisionManaged": {
+    eventType: "organization.provisionedManaged",
+    label: "Managed organization provisioned",
+  },
+  "organizations.listManaged": null,
   "projects.provision": { eventType: "project.provisioned", label: "Project provisioned" },
   "invitations.create": { eventType: "invitation.created", label: "Invitation created" },
   "invitations.send": { eventType: "invitation.sent", label: "Invitation sent" },
   "invitations.accept": { eventType: "invitation.accepted", label: "Invitation accepted" },
 } as const satisfies Record<
   BackofficeProvisioningOperationId,
-  { eventType: string; label: string }
+  { eventType: string; label: string } | null
 >;
 
 const provisioningActorSchema = z.object({
@@ -101,7 +106,10 @@ export const authCapability: BackofficeCapability = {
     skillPaths: [],
     externalEntities: [],
     automationEvents: [
-      ...Object.entries(PROVISIONING_AUTOMATION_EVENTS).map(([operationId, event]) => {
+      ...Object.entries(PROVISIONING_AUTOMATION_EVENTS).flatMap(([operationId, event]) => {
+        if (event === null) {
+          return [];
+        }
         const operation =
           backofficeProvisioningOperations[operationId as BackofficeProvisioningOperationId];
         return {

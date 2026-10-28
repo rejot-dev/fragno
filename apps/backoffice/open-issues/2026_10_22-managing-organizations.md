@@ -33,8 +33,8 @@ This version differs from the proposal below:
 
 - `organization.managingOrganizationId` replaces `managedBy`. It has no role ceiling: owners act as
   admins and everyone else keeps their role.
-- A system administrator sets and ends it (`admin.org.manager.set`, `admin.org.manager.clear`). It
-  is not fixed at provisioning.
+- A system administrator sets and ends it (`admin.org.manager.set`, `admin.org.manager.clear`), and
+  first-party apps set it at provisioning (`organizations.provisionManaged`). Apps cannot end it.
 - Its admins also act in O's members' personal workspaces, and like O's own members, everyone
   reaching O can read its app workspaces.
 - Membership changes in O stay with O's own members, because Better Auth's organization endpoints
@@ -43,12 +43,24 @@ This version differs from the proposal below:
   credential lasts until it expires, as after leaving an organization.
 
 - Inside Backoffice, both organizations see the relationship: a "Who can act here" panel, a Clients
-  tab for the managing organization, and `admin.org.get`'s `managingOrganization`. Apps cannot read
-  any of this yet.
+  tab for the managing organization, and `admin.org.get`'s `managingOrganization`.
 
-Everything for first-party apps is still open: managed provisioning, the `managed.list` operation,
-`org.get`'s `managedBy`/`access`, ownerless managed organizations, and Bookkeeping's and MI's
-migrations.
+For first-party apps (see [the provisioning API](../app/fragno/apps/README.md#provisioning-api)):
+
+- `organizations.provisionManaged` creates a managed organization for an invited owner or none, from
+  an owner or admin of the managing organization, who does not become a member. There is no role
+  ceiling, as above, and no separate operation for ownerless organizations.
+- `organizations.listManaged` replaces `managed.list`. It is a provisioning operation, since only
+  provisioning knows which app calls, and lists the organizations where that app is installed.
+- `org.get` answers `managingOrganization` and `through` (`membership` or `managing-organization`)
+  instead of `managedBy` and `access`.
+- `projects.provision` and `invitations.create` accept someone acting through the managing
+  organization. While a managed organization has no owner, its manager's owners and admins invite
+  one.
+- Bookkeeping provisions its clients managed by their firm. Its firms stay unmanaged: an operator
+  organization managing them would reach each firm's own agent project and the skills in it.
+
+MI's migration, ending management from an app, and attaching existing organizations are still open.
 
 ## Motivation
 

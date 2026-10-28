@@ -392,7 +392,7 @@ system administrator says otherwise:
 
 ```bash
 admin.apps.update-trust --app-id APP_ID --trust-json \
-  '{"kind":"first-party","provisioningPermissions":["organizations.provision","organizations.provisionForInvitee","projects.provision","invitations.create","invitations.send","invitations.accept"],
+  '{"kind":"first-party","provisioningPermissions":["organizations.provision","organizations.provisionForInvitee","organizations.provisionManaged","organizations.listManaged","projects.provision","invitations.create","invitations.send","invitations.accept"],
     "branding":{"displayName":"Bookkeeping","logoUrl":"https://bookkeeping.example/logo.svg","accentColor":"#2f6f4e",
       "homeUrl":"https://bookkeeping.example","supportUrl":"https://bookkeeping.example/help"}}'
 ```
@@ -433,8 +433,10 @@ is unknown can therefore be retried. The contract and a client live in
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `organizations.provision`           | Creates an organization owned by a user who authorized the app, installs the app there with every requested permission, owner-wide, and claims it for the app                                           |
 | `organizations.provisionForInvitee` | Creates an organization with no members and a pending owner invitation to an email address, from a user who authorized the app, and installs and claims the app there as `organizations.provision` does |
-| `projects.provision`                | Creates a project in an organization where the app is installed, as a member who authorized the app                                                                                                     |
-| `invitations.create`                | Invites an email address to an organization where the app is installed, as a member who authorized the app                                                                                              |
+| `organizations.provisionManaged`    | Creates an organization managed by one where the app is installed, for an invited owner or none, from an owner or admin of the managing organization, and installs and claims the app there             |
+| `organizations.listManaged`         | Lists the organizations one where the app is installed manages, where the app is installed too                                                                                                          |
+| `projects.provision`                | Creates a project in an organization where the app is installed, as someone acting there who authorized the app                                                                                         |
+| `invitations.create`                | Invites an email address to an organization where the app is installed, as someone acting there who authorized the app                                                                                  |
 | `invitations.send`                  | Emails a pending invitation in the app's name, linking to the app's page for accepting it                                                                                                               |
 | `invitations.accept`                | Accepts an invitation for the user it is addressed to, in an organization where the app is installed                                                                                                    |
 
@@ -447,29 +449,46 @@ is unknown can therefore be retried. The contract and a client live in
   reach it. Provisioning it again returns the pending invitation, a new one once it expired, or none
   once it has an owner; another address while one is pending answers `409`. The invitation lasts 48
   hours, as members' own invitations do.
+- **Managed organizations.** `organizations.provisionManaged` creates an organization managed by
+  another (see [Managed organizations](../auth/README.md#managed-organizations)), such as an
+  accounting firm's client. The managing organization must have the app installed, and the acting
+  user must own or administer it themselves and have authorized the app; they are recorded as
+  creator, installer, and the owner's inviter, and do not become a member. The organization keeps
+  its objects where its manager's are. It may have no owner: the managing organization's members
+  reach it without one, and its owners and admins invite one later with `invitations.create`.
+  Provisioning it again under another managing organization, or an organization the app provisioned
+  unmanaged, answers `409`. `organizations.listManaged` pages through a managing organization's
+  organizations by ID, keeping those where the app is installed, so a page may hold fewer than asked
+  for while more follow; it records no event.
 - **The app's identifiers.** Organizations and projects get IDs derived from the app and its
   identifier (`app/fragno/apps/provisioned-id.ts`), so a repeated call finds them by primary key.
   Nothing else records them. A project's ID also derives from its organization, so the same
   identifier in two organizations makes two projects.
 - **Only where it is installed.** Projects and invitations are only in organizations where the app
-  has an active installation, however it got there.
+  has an active installation, however it got there. They are made as a user acting there: one of its
+  members, or a member of the organization managing it.
 - **Invitations stay Backoffice's.** `invitations.create` invites as the member the app names, and
   Better Auth applies that member's current role as when they invite in Backoffice: owners and
-  admins invite, and only owners invite owners. The app cannot use `org.invitations.create`, which
-  needs `org.manage`. Inviting an address that already has a pending invitation returns it when the
-  roles match and answers `409` when they differ. `invitations.send` emails one to the address it is
-  for, branded as the app and from the configured sending address under the app's name, with a link
-  that must be on the origin of the app's home URL; it sends each invitation once, however often the
-  app asks. `invitations.accept` only does what the invited person could do themselves: the
-  invitation must be pending and addressed to the user's verified email, and an invitation they
-  already accepted returns their membership. It never adds anyone else.
+  admins invite, and only owners invite owners. Someone acting through the managing organization
+  invites with their role there, owners as admins, under the same rules, applied by Auth since
+  Better Auth's endpoints serve only members, including its limit of 100 pending invitations per
+  organization; while the organization has no owner, they may invite one. The app cannot use
+  `org.invitations.create`, which needs `org.manage`. Inviting an address that already has a pending
+  invitation returns it when the roles match and answers `409` when they differ. `invitations.send`
+  emails one to the address it is for, branded as the app and from the configured sending address
+  under the app's name, with a link that must be on the origin of the app's home URL; it sends each
+  invitation once, however often the app asks. `invitations.accept` only does what the invited
+  person could do themselves: the invitation must be pending and addressed to the user's verified
+  email, and an invitation they already accepted returns their membership. It never adds anyone
+  else.
 - **Uninstalling wins.** If the organization's owners uninstalled the app, provisioning that
   organization again answers `409` instead of installing it again.
 - **Audit.** Every completed call is recorded as a System event from source `provisioning`
-  (`organization.provisioned`, `organization.provisionedForInvitee`, `project.provisioned`,
-  `invitation.created`, `invitation.sent`, `invitation.accepted`), with the app as initiator and the
-  input and result as payload. Administrators read them with `events.list` in System context. The
-  event is recorded after the operation, so a retry after a failure in between records it again.
+  (`organization.provisioned`, `organization.provisionedForInvitee`,
+  `organization.provisionedManaged`, `project.provisioned`, `invitation.created`, `invitation.sent`,
+  `invitation.accepted`), with the app as initiator and the input and result as payload.
+  Administrators read them with `events.list` in System context. The event is recorded after the
+  operation, so a retry after a failure in between records it again.
 
 Errors use the API's envelope: `400` for an invitation link outside the app, `401` for a missing or
 invalid token, `403` for a third-party app, a missing provisioning permission, a user who has not

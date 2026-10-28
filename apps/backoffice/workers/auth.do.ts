@@ -10,6 +10,9 @@ import type {
   ProvisionOrganizationForInviteeResult,
   AcceptInvitationInput,
   CreateInvitationInput,
+  ListManagedOrganizationsInput,
+  ProvisionManagedOrganizationInput,
+  ProvisionManagedOrganizationResult,
 } from "@fragno-dev/backoffice-api/v0/provisioning";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import type { BackofficeJurisdiction } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -24,6 +27,7 @@ import type {
   AppInvitation,
 } from "@/fragno/auth/app-provisioning";
 import type {
+  OrganizationAccess,
   OrganizationHookPayload,
   VerifyUserEmailInput,
   VerifyUserEmailResult,
@@ -220,12 +224,22 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthCommands {
     return await this.#object.provisionAppOrganizationForInvitee(input);
   }
 
-  async confirmAppOrganizationMember(input: {
+  async provisionAppManagedOrganization(
+    input: ProvisioningApp & ProvisionManagedOrganizationInput,
+  ): Promise<AppProvisioningResult<ProvisionManagedOrganizationResult>> {
+    return await this.#object.provisionAppManagedOrganization(input);
+  }
+
+  async listManagedOrganizations(input: ListManagedOrganizationsInput) {
+    return await this.#object.listManagedOrganizations(input);
+  }
+
+  async confirmAppOrganizationActor(input: {
     oauthClientId: string;
     organizationId: string;
     userId: string;
-  }): Promise<AppProvisioningResult<null>> {
-    return await this.#object.confirmAppOrganizationMember(input);
+  }): Promise<AppProvisioningResult<OrganizationAccess>> {
+    return await this.#object.confirmAppOrganizationActor(input);
   }
 
   async findInvitation(input: { invitationId: string }): Promise<AppInvitation | null> {
@@ -290,6 +304,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthCommands {
 
   async getOrganizationMembership(input: { organizationId: string; userId: string }) {
     return await this.#object.getOrganizationMembership(input);
+  }
+
+  async getOrganizationAccess(input: { organizationId: string; userId: string }) {
+    return await this.#object.getOrganizationAccess(input);
   }
 
   async updateOrganization(input: { organizationId: string; name: string }) {

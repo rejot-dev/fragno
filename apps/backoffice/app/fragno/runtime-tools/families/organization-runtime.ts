@@ -35,14 +35,14 @@ export function createOrganizationRuntime({
 
   return {
     get: async () => {
-      const membership = await auth().getOrganizationMembership({ organizationId, userId });
-      if (!membership) {
+      const access = await auth().getOrganizationAccess({ organizationId, userId });
+      if (!access) {
         throw new BackofficeOperationError(
           "not_found",
           `User '${userId}' is not a member of organization '${organizationId}'.`,
         );
       }
-      return membership;
+      return access;
     },
     update: async ({ name }) => await auth().updateOrganization({ organizationId, name }),
     listMembers: async (page) => await auth().listOrganizationMembers({ organizationId, ...page }),

@@ -2,7 +2,7 @@ import type {
   OrganizationInvitationLink,
   OrganizationInvitationLinkPage,
   OrganizationMemberPage,
-  OrganizationMembershipRecord,
+  OrganizationAccessRecord,
   OrganizationRecord,
   OrganizationRole,
 } from "@fragno-dev/backoffice-api/v0/organization";
@@ -20,7 +20,7 @@ import {
 
 /** Acts on the scoped organization as the current user principal; neither is caller input. */
 export type OrganizationRuntime = {
-  get(): Promise<OrganizationMembershipRecord>;
+  get(): Promise<OrganizationAccessRecord>;
   update(input: { name: string }): Promise<OrganizationRecord>;
   listMembers(input: DirectoryPageInput): Promise<OrganizationMemberPage>;
   listInvitations(input: DirectoryPageInput): Promise<OrganizationInvitationLinkPage>;
@@ -131,7 +131,11 @@ const getOrganizationTool = defineBackofficeRuntimeTool({
           ? { data: result }
           : {
               data: result,
-              stdout: `${formatOrganizationText(result.organization)}\n  Your roles: ${result.roles.join(", ")}\n`,
+              stdout: `${formatOrganizationText(result.organization)}\n  Your roles: ${result.roles.join(", ")}\n${
+                result.managingOrganization
+                  ? `  Managed by: ${result.managingOrganization.name} (${result.managingOrganization.slug})\n`
+                  : ""
+              }${result.through === "managing-organization" ? "  You act here through the managing organization.\n" : ""}`,
             },
     },
   },

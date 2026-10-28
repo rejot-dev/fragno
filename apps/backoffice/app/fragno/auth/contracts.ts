@@ -20,6 +20,17 @@ export const BACKOFFICE_TOKEN_EXPIRED_CODE = "backoffice_token_expired";
 
 export type Role = "user" | "admin";
 
+/**
+ * How a person acts in an organization: as one of its members, or as a member of the organization
+ * that manages it. Only the members of an organization are its members; managing grants access,
+ * never membership.
+ */
+export type OrganizationAccess = {
+  organizationId: string;
+  roles: string[];
+  through: { kind: "membership" } | { kind: "managing-organization"; organizationId: string };
+};
+
 export type AuthUser = {
   id: string;
   name: string;

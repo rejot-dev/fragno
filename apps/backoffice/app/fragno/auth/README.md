@@ -182,7 +182,10 @@ membership. They are not listed among its members and do not become its owners. 
 chain, and the organization's own members gain nothing in the managing organization.
 
 A system administrator sets it with `admin.org.manager.set --org <client> --manager <agency>` and
-ends it with `admin.org.manager.clear --org <client>`. Every membership question Auth answers for
+ends it with `admin.org.manager.clear --org <client>`. A first-party app creates organizations
+managed by one where it is installed with `organizations.provisionManaged`, for an invited owner or
+none, and lists them with `organizations.listManaged` (see
+[the apps README](../apps/README.md#provisioning-api)). Every membership question Auth answers for
 authority counts it: credential selection, `me`, the live facts deferred work and organization roles
 resolve from, and the personal workspaces a user administers
 (`workers/auth/organization-access.ts`). Pages follow `me`, so ending management or leaving the
@@ -192,15 +195,18 @@ stay valid until they expire, as after leaving any organization.
 Better Auth's organization endpoints only serve an organization's own members. They handle inviting,
 changing roles, removing members, and the rename form. So someone acting through management can read
 the organization's members but cannot change its membership, and can rename it only with
-`org.update`.
+`org.update`. Apps invite through provisioning, where Auth applies the same rules to them itself:
+owners and admins invite, and only owners invite owners, except that while a managed organization
+has no owner, its managing organization's owners and admins invite one.
 
 Both sides can see the relationship. An organization's Overview has a "Who can act here" panel,
 showing its member count, the organization managing it, and how many it manages. A managing
 organization also gets a Clients tab. Both read `getOrganizationRelations`, which lists clients only
 to the managing organization's own members, since management reaches one organization deep.
-`admin.org.get` reports the manager too. Managers see one notice on the organization's settings
-pages instead of forms they cannot use. In a member's personal workspace, a banner names whose
-workspace it is and the organization that grants access to it.
+`admin.org.get` reports the manager too, and `org.get` tells anyone acting in an organization which
+organization manages it and whether they act there as a member or through it. Managers see one
+notice on the organization's settings pages instead of forms they cannot use. In a member's personal
+workspace, a banner names whose workspace it is and the organization that grants access to it.
 
 `app/layouts/backoffice-managed-organizations.scenario.test.ts` drives an agency through managing a
 customer and ending it.
