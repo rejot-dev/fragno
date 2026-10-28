@@ -1612,14 +1612,26 @@ describe("BackofficeStateBackend", () => {
   });
 
   describe("shared folders", () => {
-    /** Shares of `source`'s `docs/` folder, counting how often each is found and opened. */
+    /**
+     * Shares of `source`'s `docs/` folder, counting how often each is found, opened, and asked
+     * whether it stands. The sharing scope revokes a share by adding its name to `revoked`.
+     */
     const sharedDocs = (source: MemoryUploadObject, names: string[]) => {
       const calls: string[] = [];
+      const revoked = new Set<string>();
       const folder = (name: string) => ({
         name,
         async open() {
           calls.push(`open ${name}`);
-          return createWorkspaceFileCollection(source, "docs/");
+          return revoked.has(name)
+            ? null
+            : {
+                collection: createWorkspaceFileCollection(source, "docs/"),
+                async standing() {
+                  calls.push(`standing ${name}`);
+                  return !revoked.has(name);
+                },
+              };
         },
       });
       const folders: SharedFolders = {
@@ -1632,7 +1644,7 @@ describe("BackofficeStateBackend", () => {
           return names.includes(name) ? folder(name) : null;
         },
       };
-      return { folders, calls };
+      return { folders, calls, revoked };
     };
 
     test("reading a shared file opens its share once and lists no tree", async () => {
@@ -1643,7 +1655,8 @@ describe("BackofficeStateBackend", () => {
       await expect(state.readFile("/shared/client/a.txt")).resolves.toBe("a");
       await expect(state.readFile("/shared/client/b.txt")).resolves.toBe("b");
 
-      expect(calls).toEqual(["find client", "open client"]);
+      // Opening asked whether the share stands; the next read asks again.
+      expect(calls).toEqual(["find client", "open client", "standing client"]);
       assert.equal(countUploadTreeRequests(source), 0);
     });
 
@@ -1659,8 +1672,30 @@ describe("BackofficeStateBackend", () => {
       ]);
       await expect(state.readFile("/shared/client/a.txt")).resolves.toBe("a");
 
-      expect(calls).toEqual(["list", "open client", "open other", "list"]);
+      expect(calls).toEqual([
+        "list",
+        "open client",
+        "open other",
+        "list",
+        "standing client",
+        "standing other",
+        "standing client",
+      ]);
       assert.equal(countUploadTreeRequests(source), 2);
+    });
+
+    test("a share revoked after it opened is read no more", async () => {
+      const source = new MemoryUploadObject({ "docs/a.txt": "a", "docs/b.txt": "b" });
+      const { folders, revoked } = sharedDocs(source, ["client"]);
+      const state = createTestStateBackend({ sharedFolders: folders });
+      await expect(state.readdir("/shared/client")).resolves.toEqual(["a.txt", "b.txt"]);
+
+      revoked.add("client");
+      await expect(state.readFile("/shared/client/b.txt")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(state.readdir("/shared")).resolves.toEqual([]);
+      await expect(state.glob("/shared/client/*")).resolves.toEqual([]);
     });
   });
 

@@ -180,6 +180,15 @@ test("a folder one organization shares opens read-only in the other once it acce
           });
 
           await client.call("state.revokeShare", { shareId: share.shareId });
+          // An execution that opened the share before reads nothing more, not even what the
+          // client writes after revoking it.
+          await client.state.writeFile("/workspace/documents/d1/after-revoke.txt", "Later\n");
+          await expect(firm.state.readFile(`${mounted}/after-revoke.txt`)).rejects.toMatchObject({
+            code: "ENOENT",
+          });
+          await expect(firm.state.readFile(`${mounted}/invoice.txt`)).rejects.toMatchObject({
+            code: "ENOENT",
+          });
           const revoked = inOrganization(ctx, "firm", "ada");
           await expect(revoked.state.readdir("/shared")).resolves.toEqual([]);
           await expect(revoked.state.readFile(`${mounted}/invoice.txt`)).rejects.toMatchObject({

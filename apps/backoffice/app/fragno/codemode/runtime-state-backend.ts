@@ -48,7 +48,7 @@ export function createRuntimeStateBackend({
 /**
  * The shares `scope` accepted. The sharing scope's share is the authority: this scope reads the
  * folder through it only while it stands and names this scope, whatever this scope's own record
- * says, so revoking takes effect at once.
+ * says, and asks again on every use, so revoking takes effect at once.
  */
 function acceptedSharedFolders({
   runtime,
@@ -61,17 +61,25 @@ function acceptedSharedFolders({
 }): SharedFolders {
   const automations = (owner: BackofficeRoutableScope) =>
     kernel.scoped("AUTOMATIONS", owner, runtime.objects.automations).commands;
+  // The share, while it stands and names this scope.
+  const standingShare = async (accepted: AcceptedFileShare) => {
+    const share = await automations(accepted.from).getFileShare({ shareId: accepted.shareId });
+    return share && backofficeContextScopesEqual(share.with, scope) ? share : null;
+  };
   const folder = (accepted: AcceptedFileShare): SharedFolder => ({
     name: accepted.name,
     async open() {
-      const share = await automations(accepted.from).getFileShare({ shareId: accepted.shareId });
-      if (!share || !backofficeContextScopesEqual(share.with, scope)) {
+      const share = await standingShare(accepted);
+      if (!share) {
         return null;
       }
-      return createWorkspaceFileCollection(
-        kernel.scoped("UPLOAD", accepted.from, runtime.objects.upload).http,
-        share.path.slice(WORKSPACE_ROOT.length),
-      );
+      return {
+        collection: createWorkspaceFileCollection(
+          kernel.scoped("UPLOAD", accepted.from, runtime.objects.upload).http,
+          share.path.slice(WORKSPACE_ROOT.length),
+        ),
+        standing: async () => (await standingShare(accepted)) !== null,
+      };
     },
   });
   return {
