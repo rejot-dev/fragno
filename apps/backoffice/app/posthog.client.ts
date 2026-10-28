@@ -1,4 +1,4 @@
-import posthogClient, { type CaptureResult, type PostHog } from "posthog-js";
+import type { CaptureResult, PostHog } from "posthog-js";
 
 function redactAnalyticsValue(value: unknown, key: string): unknown {
   const property = key.replace(/^\$/, "");
@@ -61,7 +61,7 @@ function redactAnalyticsEvent(event: CaptureResult | null): CaptureResult | null
   }
 }
 
-export function initializePostHog(): PostHog | null {
+export async function loadPostHog(): Promise<PostHog | null> {
   // Local preview serves the production build too, so the build target alone is insufficient.
   if (
     import.meta.env.BACKOFFICE_TARGET !== "cloudflare" ||
@@ -81,6 +81,9 @@ export function initializePostHog(): PostHog | null {
   }
 
   try {
+    // Imported statically, the SDK would be two thirds of the client entry. Loaded here, only
+    // origins that report analytics download it, and hydration never waits for it.
+    const { default: posthogClient } = await import("posthog-js");
     posthogClient.init(projectToken, {
       api_host: host,
       defaults: "2026-05-30",
@@ -99,7 +102,7 @@ export function initializePostHog(): PostHog | null {
     });
     return posthogClient;
   } catch {
-    console.warn("PostHog initialization failed; continuing without browser analytics.");
+    console.warn("PostHog failed to load; continuing without browser analytics.");
     return null;
   }
 }
