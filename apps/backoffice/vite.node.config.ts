@@ -17,10 +17,6 @@ export default defineConfig({
     dedupe: ["react", "react-dom", "react-router"],
     alias: {
       "cloudflare:workers": path.resolve(__dirname, "shims/node-cloudflare-workers.ts"),
-      "@/artifacts/pages/wa-sqlite-wasm.server": path.resolve(
-        __dirname,
-        "shims/node-wa-sqlite-wasm.ts",
-      ),
       "@/posthog.client": path.resolve(__dirname, "shims/node-posthog.client.ts"),
       "@/components": path.resolve(__dirname, "app/components"),
       "@/lib": path.resolve(__dirname, "app/lib"),

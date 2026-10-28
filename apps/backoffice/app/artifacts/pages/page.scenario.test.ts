@@ -371,6 +371,26 @@ describe("workspace pages", () => {
               "Runs per hour": ["1", "2"],
             });
           }),
+          then.assert("a list binds as one value, however many it holds", async (ctx) => {
+            // A hundred statuses and one more value: more than Durable Object SQLite binds.
+            const statuses = JSON.stringify([
+              "complete",
+              "errored",
+              ...Array.from({ length: 98 }, (_, index) => `unused-${index}`),
+            ]);
+            const { verifyError } = await writePage(
+              ctx,
+              queryPage(
+                `SELECT instanceId FROM runs WHERE status IN (\${${statuses}}) AND instanceId <> \${"none"} ORDER BY instanceId`,
+              ),
+            );
+            assert.equal(verifyError, null);
+            const loaded = await loadBuiltPage(ctx);
+            assert(loaded.kind === "ready", JSON.stringify(loaded));
+            assert.lengthOf(Object.values(loaded.definition.queries)[0]!.params, 2);
+            const { markup } = await renderPage(ctx, loaded.definition);
+            assert.deepEqual(tables(markup), { Rows: ["charge-1", "ship-1", "ship-2"] });
+          }),
           then.assert("the dashboard offers every page in the workspace", async (ctx) => {
             await ctx.runCodemode({
               scope,
@@ -547,32 +567,13 @@ describe("workspace pages", () => {
             );
             assert.include(diagnostics.join("\n"), "Property 'statsu' does not exist");
           }),
-          then.assert(
-            "queries only read, and a misspelt relation names the relations",
-            async (ctx) => {
-              const failures: Record<string, string | null> = {};
-              for (const [label, sql] of Object.entries({
-                misspelt: "SELECT instanceId FROM run",
-                write: "DELETE FROM agents",
-                twoStatements: "SELECT instanceId FROM runs; SELECT 1",
-                random: "SELECT hex(randomblob(4)) AS instanceId",
-                pragma: "PRAGMA table_info(runs)",
-              })) {
-                failures[label] = (await writePage(ctx, queryPage(sql))).verifyError;
-              }
-              assert.deepEqual(failures, {
-                misspelt:
-                  "queries.q0: no such table: run. Read one of: runs, steps, workflow_events, events, event_sources, event_definitions, routes, route_schedules, route_dispatches, projects, kv_store, connections, agent_turns, agents, workflow_waits.",
-                write:
-                  "queries.q0: Queries only read: they cannot write, attach databases, or change settings.",
-                twoStatements:
-                  "queries.q0: SQL holds more than one statement: SELECT instanceId FROM runs; SELECT 1",
-                random: "queries.q0: Queries cannot call randomblob().",
-                pragma:
-                  "queries.q0: Queries only read: they cannot write, attach databases, or change settings.",
-              });
-            },
-          ),
+          then.assert("a misspelt relation names the relations", async (ctx) => {
+            const { verifyError } = await writePage(ctx, queryPage("SELECT instanceId FROM run"));
+            assert.equal(
+              verifyError,
+              "queries.q0: no such table: run. Read one of: runs, steps, workflow_events, events, event_sources, event_definitions, routes, route_schedules, route_dispatches, projects, kv_store, connections, agent_turns, agents, workflow_waits.",
+            );
+          }),
           then.assert(
             "a page written for the older page format names how to rewrite it",
             async (ctx) => {

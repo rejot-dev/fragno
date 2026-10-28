@@ -13,6 +13,7 @@ import {
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { AutomationsCommands } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { runBackofficeCodemode } from "@/fragno/codemode/execute";
@@ -89,7 +90,10 @@ export async function loadPage({
   if (run.error !== undefined) {
     return { kind: "failed", message: `The page could not be built right now: ${run.error}` };
   }
-  const outcome = await buildOutcome(run.result);
+  const outcome = await buildOutcome(
+    run.result,
+    kernel.scoped("AUTOMATIONS", execution.scope, runtime.objects.automations).commands,
+  );
   const system = createCodemodeRouteBackedRuntimeContext({
     emitter: { kind: "caller" },
     runtime,
@@ -148,7 +152,10 @@ async function readPageImports(
  * The source's own failures, invalid definitions, and queries that cannot run are cached, so they
  * are not rebuilt on every view.
  */
-async function buildOutcome(result: unknown): Promise<ArtifactBuildOutcome> {
+async function buildOutcome(
+  result: unknown,
+  automations: Pick<AutomationsCommands, "checkPageQueries">,
+): Promise<ArtifactBuildOutcome> {
   // The build program returns one of its two shapes.
   const built = result as { ok: true; definition: unknown } | { ok: false; message: string };
   if (!built.ok) {
@@ -158,7 +165,7 @@ async function buildOutcome(result: unknown): Promise<ArtifactBuildOutcome> {
   if (parsed.kind === "invalid") {
     return { kind: "failed", message: parsed.message };
   }
-  const queries = await pageQueriesError(parsed.definition);
+  const queries = await pageQueriesError(parsed.definition, automations);
   return queries === null
     ? // Codemode results cross the guest boundary as JSON.
       { kind: "built", output: built.definition as JsonValue }

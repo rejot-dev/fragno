@@ -90,6 +90,7 @@ import {
   importLegacyPackageInstallations,
   type LegacyPackageImportOutcome,
 } from "@/fragno/automation/legacy-package-installations";
+import { AUTOMATION_PAGE_DATABASE_SCHEMA } from "@/fragno/automation/lofi/page-relations";
 import {
   assertMarketplaceIngestionTargetAccessible,
   assertMarketplaceIngestionSourceAccessible,
@@ -151,7 +152,12 @@ import type {
   BackofficeObjectState,
   BackofficeOutboxItem,
 } from "./lib/backoffice-fragment-durable-object";
-import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
+import type {
+  BackofficeObjectImplementation,
+  SqlQuery,
+  SqlQueryCheck,
+  SqlQueryChecker,
+} from "./lib/backoffice-object-implementation";
 
 type AutomationDurableObjectConfig = {
   scope: BackofficeContextScope;
@@ -283,6 +289,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
   > | null;
   readonly #nowEpochMs: () => number;
   readonly #kernel: BackofficeKernel;
+  readonly #checkSqlQueries: SqlQueryChecker;
   readonly #host: BackofficeFragmentDurableObject<
     AutomationDurableObjectConfig,
     AutomationDurableObjectConfig,
@@ -325,6 +332,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     };
     this.#nowEpochMs = nowEpochMs;
     this.#kernel = new BackofficeKernel(this.#runtimeServices);
+    this.#checkSqlQueries = implementation.checkSqlQueries;
     this.#scope = backofficeContextScopeFromDurableObjectId(state.id, "AUTOMATIONS");
     const automationSourceReader =
       readAutomationSource ??
@@ -1420,6 +1428,10 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       ({ runtime }) => selectAutomationsDurableHookFragment(runtime, fragment),
       hookId,
     );
+  }
+
+  async checkPageQueries(queries: SqlQuery[]): Promise<SqlQueryCheck[]> {
+    return await this.#checkSqlQueries(AUTOMATION_PAGE_DATABASE_SCHEMA, queries);
   }
 
   async fetch(request: Request): Promise<Response> {

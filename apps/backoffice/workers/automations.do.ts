@@ -29,6 +29,7 @@ import type { MarketplacePackagePublishRequest } from "@/fragno/marketplace/pack
 import type { OnboardingAnswer } from "@/fragno/onboarding/contracts";
 
 import type { AutomationsObject } from "./automations-object";
+import type { SqlQuery } from "./lib/backoffice-object-implementation";
 import { acceptsBrotli, compressStreamingResponse } from "./lib/flushing-brotli-response";
 
 export class Automations extends DurableObject<CloudflareEnv> implements AutomationsCommands {
@@ -241,6 +242,10 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async getDurableHook(fragment: AutomationsDurableHookFragment, hookId: string) {
     return await this.#object.getDurableHook(fragment, hookId);
+  }
+
+  async checkPageQueries(queries: SqlQuery[]) {
+    return await this.#object.checkPageQueries(queries);
   }
 
   async fetch(request: Request): Promise<Response> {

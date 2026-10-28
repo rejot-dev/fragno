@@ -32,6 +32,23 @@ export type BackofficeObjectFragmentDatabase = {
   transactionInstrumentation: DatabaseTransactionInstrumentation;
 };
 
+/** A query and the values it binds. */
+export type SqlQuery = { sql: string; params: (string | number | null)[] };
+
+/** What running a query on an empty database showed: the columns it selects, or why it failed. */
+export type SqlQueryCheck =
+  | { kind: "ran"; columns: string[] }
+  | { kind: "failed"; message: string };
+
+/**
+ * Runs each query on its own empty database that `schema` creates, keeping none of the query's
+ * changes, so a query that writes or drops what it reads cannot change what later checks see.
+ */
+export type SqlQueryChecker = (
+  schema: readonly string[],
+  queries: readonly SqlQuery[],
+) => Promise<SqlQueryCheck[]>;
+
 /**
  * Runtime-specific implementation used by a Backoffice object.
  *
@@ -63,6 +80,7 @@ export type BackofficeObjectImplementation = {
    * runtimes use this for their own outcomes, such as finished workflows.
    */
   hostTelemetry(host: string): BackofficeHostTelemetry;
+  checkSqlQueries: SqlQueryChecker;
 };
 
 /** Telemetry names the host that reported a signal. */
@@ -81,6 +99,7 @@ export type CreateBackofficeObjectImplementationOptions<TEnv> = {
   telemetry: BackofficeTelemetry;
   fragmentHostOperations?: FragmentDurableObjectHostOperations<TEnv>;
   configuredObjectLifecycle: BackofficeConfiguredObjectLifecycle;
+  checkSqlQueries: SqlQueryChecker;
 };
 
 /** Binds one runtime's infrastructure to the primitives consumed by a Backoffice object. */
@@ -151,6 +170,7 @@ export function createBackofficeObjectImplementation<TEnv>(
       options.configuredObjectLifecycle.registerRefresh(refresh);
     },
     hostTelemetry,
+    checkSqlQueries: options.checkSqlQueries,
   };
 }
 

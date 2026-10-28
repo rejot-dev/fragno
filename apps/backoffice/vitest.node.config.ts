@@ -1,20 +1,9 @@
-import { fileURLToPath } from "node:url";
-
 import { defineProject } from "vitest/config";
 
 import { docsVitestResolveConfig } from "./vitest.shared";
 
 export default defineProject({
-  resolve: {
-    alias: [
-      // Node compiles wa-sqlite's WebAssembly itself, where the Worker's bundler imports it.
-      {
-        find: "@/artifacts/pages/wa-sqlite-wasm.server",
-        replacement: fileURLToPath(new URL("./shims/node-wa-sqlite-wasm.ts", import.meta.url)),
-      },
-      ...docsVitestResolveConfig.alias,
-    ],
-  },
+  resolve: docsVitestResolveConfig,
   test: {
     name: "node",
     environment: "node",

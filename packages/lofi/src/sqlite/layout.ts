@@ -91,6 +91,17 @@ export function createSqliteTableStatements(
   return statements;
 }
 
+/** The statements that create the replica's tables of `registrations`, empty. */
+export function createLofiSqliteTableStatements(
+  registrations: readonly LofiSchemaRegistration[],
+): string[] {
+  return registrations.flatMap((registration) =>
+    [...createSqliteTableLayouts(registration).values()].flatMap((layout) =>
+      createSqliteTableStatements(registration, layout),
+    ),
+  );
+}
+
 export function quoteSqliteIdentifier(identifier: string): string {
   return `"${identifier.replaceAll('"', '""')}"`;
 }

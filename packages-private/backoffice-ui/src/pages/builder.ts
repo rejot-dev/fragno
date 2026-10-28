@@ -45,7 +45,10 @@ const PAGE_BUILDER_SOURCE = String.raw`({ version, listItems, legacy }) => (ui, 
     if (times.has(value)) return [{ param: { now: times.get(value) } }];
     if (Array.isArray(value)) {
       if (value.length > listItems) fail(label + " lists at most " + listItems + " values.");
-      return value.flatMap((item, index) => [...(index === 0 ? [] : [{ text: ", " }]), literal(item, label + " item " + index)]);
+      // One JSON parameter for the whole list, as the subquery IN (...) reads: a list costs one of
+      // the parameters SQLite binds, however long it is.
+      const items = value.map((item, index) => literal(item, label + " item " + index).param);
+      return [{ text: "SELECT value FROM json_each(" }, { param: JSON.stringify(items) }, { text: ")" }];
     }
     return [literal(value, label)];
   };

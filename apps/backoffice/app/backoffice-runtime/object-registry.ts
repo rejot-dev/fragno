@@ -48,6 +48,7 @@ import type { AcceptedFileShare, FileShare } from "@fragno-dev/backoffice-api/v0
 import type { CodemodeHost } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
+import type { SqlQuery, SqlQueryCheck } from "workers/lib/backoffice-object-implementation";
 import type { IssueIdentityClaimInput, IssueIdentityClaimResult } from "workers/otp-object";
 import type { Otp } from "workers/otp.do";
 import type { Resend } from "workers/resend.do";
@@ -797,6 +798,8 @@ export type AutomationsCommands = {
     fragment: AutomationsDurableHookFragment,
     hookId: string,
   ): Promise<DurableHookQueueEntry | null>;
+  /** Runs each of a page's queries on an empty database of the relations pages read. */
+  checkPageQueries(queries: SqlQuery[]): Promise<SqlQueryCheck[]>;
 };
 
 export type TelegramCommands = DurableHookCommands &
