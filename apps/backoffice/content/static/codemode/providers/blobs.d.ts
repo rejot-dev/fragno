@@ -26,6 +26,11 @@ type BlobsCodemodeProvider = {
    */
   createDownloadUrl(input: BlobsCreateDownloadUrlInput): Promise<BlobsCreateDownloadUrlOutput>;
   /**
+   * Read up to 1048576 bytes of a blob from byte `offset`, without downloading the rest, to look inside large files in place. For example, a zip archive lists its entries at its end: read its last 64 KiB to find the central directory, then read only the entries needed. It returns fewer bytes when the blob ends sooner, and fails for an offset at or past the end; blobs.get gives the blob's size. It fails rather than return bytes other than the blob's, such as when its upload URL overwrote it after completion.
+   * Requires `upload.read`.
+   */
+  read(input: BlobsReadInput): Promise<BlobsReadOutput>;
+  /**
    * Delete a blob and its stored bytes.
    * Requires `upload.modify`.
    */
@@ -96,6 +101,17 @@ type BlobsCreateDownloadUrlOutput = {
   url: string;
   /** ISO 8601 datetime string. */
   expiresAt: string;
+};
+type BlobsReadInput = {
+  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */
+  key: string;
+  offset: number;
+  length: number;
+};
+type BlobsReadOutput = {
+  content: Uint8Array;
+  /** The tag of the bytes read; it changes when the blob is replaced. */
+  etag: string;
 };
 type BlobsDeleteInput = {
   /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */

@@ -184,6 +184,27 @@ test("a scope stores a large file as a blob through presigned URLs, apart from o
             ),
           ).resolves.toEqual({ listed: { blobs: [], cursor: null }, got: null });
         }),
+        then.assert("agents read ranges of the blob without downloading it", async (ctx) => {
+          const read = async (offset: number, length: number) =>
+            (await runCodemode(
+              ctx,
+              acme,
+              `async () => {
+                const { content, etag } = await blobs.read({ key: "calls/monday.wav", offset: ${offset}, length: ${length} });
+                return { bytes: Array.from(content), etag };
+              }`,
+            )) as { bytes: number[]; etag: string };
+
+          await expect(read(8, 7)).resolves.toEqual({
+            bytes: Array.from(recording.slice(8, 15)),
+            etag: await etagOf(recording),
+          });
+          // A read that runs past the end returns what the blob holds.
+          await expect(read(recording.byteLength - 9, 1024)).resolves.toMatchObject({
+            bytes: Array.from(recording.slice(-9)),
+          });
+          await expect(read(recording.byteLength, 1)).rejects.toThrow("Blobs returned 416");
+        }),
         then.assert("uploading to the same key replaces the blob", async (ctx) => {
           const upload = (await runCodemode(
             ctx,

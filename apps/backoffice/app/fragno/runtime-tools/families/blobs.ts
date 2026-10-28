@@ -1,5 +1,8 @@
+import { z } from "zod";
+
 import {
   backofficeApiOperationToolFields,
+  codemodeBytesSchema,
   defineBackofficeRuntimeTool,
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
@@ -53,6 +56,19 @@ export const blobsToolFamily = defineBackofficeRuntimeToolFamily({
       name: "createDownloadUrl",
       execute: async (input, context: BlobsToolContext) =>
         await getBlobsRuntime(context).createDownloadUrl(input),
+    }),
+    defineBackofficeRuntimeTool({
+      ...backofficeApiOperationToolFields("blobs.read"),
+      outputSchema: z.object({
+        content: codemodeBytesSchema,
+        etag: z
+          .string()
+          .describe("The tag of the bytes read; it changes when the blob is replaced."),
+      }),
+      namespace: "blobs",
+      name: "read",
+      execute: async (input, context: BlobsToolContext) =>
+        await getBlobsRuntime(context).read(input),
     }),
     defineBackofficeRuntimeTool({
       ...backofficeApiOperationToolFields("blobs.delete"),

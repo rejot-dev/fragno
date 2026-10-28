@@ -117,8 +117,8 @@ function createR2Signer(bucket: BlobsR2Bucket): S3Signer {
   });
 
   return {
-    sign: async ({ url, method }) => {
-      const request = await client.sign(url, { method });
+    sign: async ({ url, method, headers }) => {
+      const request = await client.sign(url, { method, headers });
       return { url: request.url, headers: Object.fromEntries(request.headers) };
     },
     presign: async ({ url, method, headers, expiresInSeconds }) => {

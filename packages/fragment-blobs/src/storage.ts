@@ -11,6 +11,16 @@ export interface BlobStorage {
   }): Promise<{ url: string; headers: Record<string, string> }>;
   /** A URL whose GET returns the object's bytes. */
   createDownloadUrl(input: { objectKey: string; expiresInSeconds: number }): Promise<string>;
+  /**
+   * `length` bytes of the object from byte `offset`, which must lie within it, provided the object
+   * still carries `etag`.
+   */
+  readObjectRange(input: {
+    objectKey: string;
+    etag: string;
+    offset: number;
+    length: number;
+  }): Promise<ObjectRange>;
   /** What storage holds at the key, or null when it holds no object there. */
   describeObject(objectKey: string): Promise<StoredObject | null>;
   /** Deletes the object; deleting a missing object succeeds. */
@@ -23,12 +33,19 @@ export type StoredObject = {
   etag: string;
 };
 
+export type ObjectRange =
+  | { status: "read"; bytes: Uint8Array<ArrayBuffer> }
+  | { status: "missing" }
+  // Storage holds other bytes than those tagged `etag`.
+  | { status: "changed" };
+
 /** Signs S3 API requests with AWS Signature Version 4. */
 export type S3Signer = {
   /** Signs a request the server sends itself, with the signature in its headers. */
   sign(request: {
-    method: "HEAD" | "DELETE";
+    method: "GET" | "HEAD" | "DELETE";
     url: string;
+    headers: Record<string, string>;
   }): Promise<{ url: string; headers: Record<string, string> }>;
   /** Signs a request someone else sends, with the signature in the URL. */
   presign(request: {
@@ -65,8 +82,12 @@ export function createS3BlobStorage(options: S3BlobStorageOptions): BlobStorage 
     return url.toString();
   };
 
-  const send = async (method: "HEAD" | "DELETE", objectKey: string) => {
-    const signed = await options.signer.sign({ method, url: objectUrl(objectKey) });
+  const send = async (
+    method: "GET" | "HEAD" | "DELETE",
+    objectKey: string,
+    headers: Record<string, string>,
+  ) => {
+    const signed = await options.signer.sign({ method, url: objectUrl(objectKey), headers });
     // Called unbound: Workers' global `fetch` throws when called as a method of another object.
     const sendRequest = options.fetch;
     return await sendRequest(signed.url, { method, headers: signed.headers });
@@ -90,8 +111,24 @@ export function createS3BlobStorage(options: S3BlobStorageOptions): BlobStorage 
       });
       return signed.url;
     },
+    async readObjectRange({ objectKey, etag, offset, length }) {
+      const response = await send("GET", objectKey, {
+        "If-Match": `"${etag}"`,
+        Range: `bytes=${offset}-${offset + length - 1}`,
+      });
+      if (response.status === 404) {
+        return { status: "missing" };
+      }
+      if (response.status === 412) {
+        return { status: "changed" };
+      }
+      if (response.status !== 206) {
+        throw new Error(`Storage could not read object ${objectKey} (${response.status}).`);
+      }
+      return { status: "read", bytes: new Uint8Array(await response.arrayBuffer()) };
+    },
     async describeObject(objectKey) {
-      const response = await send("HEAD", objectKey);
+      const response = await send("HEAD", objectKey, {});
       if (response.status === 404) {
         return null;
       }
@@ -103,7 +140,7 @@ export function createS3BlobStorage(options: S3BlobStorageOptions): BlobStorage 
       return { sizeBytes: BigInt(contentLength), etag };
     },
     async deleteObject(objectKey) {
-      const response = await send("DELETE", objectKey);
+      const response = await send("DELETE", objectKey, {});
       if (!response.ok && response.status !== 404) {
         throw new Error(`Storage could not delete object ${objectKey} (${response.status}).`);
       }

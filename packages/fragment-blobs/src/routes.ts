@@ -13,15 +13,20 @@ const DOWNLOAD_URL_EXPIRES_IN_SECONDS = 60 * 60;
 const UNFINISHED_UPLOAD_DISCARD_GRACE_MS = 60 * 60 * 1000;
 // S3's limit on object key length.
 const MAX_OBJECT_KEY_BYTES = 1024;
+// Bounds what one range read holds in memory.
+const MAX_RANGE_BYTES = 8 * 1024 * 1024;
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 1000;
 
 const errorCodes = [
   "INVALID_KEY",
+  "INVALID_RANGE",
+  "RANGE_NOT_SATISFIABLE",
   "UPLOAD_NOT_FOUND",
   "UPLOAD_EXPIRED",
   "UPLOAD_CONTENT_MISSING",
   "BLOB_NOT_FOUND",
+  "BLOB_CHANGED",
   "STORAGE_ERROR",
 ] as const;
 
@@ -29,10 +34,13 @@ type BlobsErrorCode = (typeof errorCodes)[number];
 
 const ERROR_STATUS = {
   INVALID_KEY: 400,
+  INVALID_RANGE: 400,
+  RANGE_NOT_SATISFIABLE: 416,
   UPLOAD_NOT_FOUND: 404,
   UPLOAD_EXPIRED: 410,
   UPLOAD_CONTENT_MISSING: 409,
   BLOB_NOT_FOUND: 404,
+  BLOB_CHANGED: 409,
   STORAGE_ERROR: 502,
 } as const satisfies Record<BlobsErrorCode, number>;
 
@@ -80,6 +88,11 @@ function isBlobKey(value: string): boolean {
 function blobKeyQuery(query: URLSearchParams): string | null {
   const key = query.get("key");
   return key !== null && isBlobKey(key) ? key : null;
+}
+
+function integerQuery(query: URLSearchParams, name: string): number | null {
+  const value = query.get(name);
+  return value !== null && /^\d+$/.test(value) ? Number(value) : null;
 }
 
 export const blobsRoutesFactory = defineRoutes(blobsFragmentDefinition).create(
@@ -329,6 +342,88 @@ export const blobsRoutesFactory = defineRoutes(blobsFragmentDefinition).create(
           } catch {
             return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
           }
+        },
+      }),
+
+      defineRoute({
+        method: "GET",
+        path: "/blobs/by-key/range",
+        queryParameters: ["key", "offset", "length"],
+        errorCodes,
+        handler: async function ({ query }, { error }) {
+          const key = blobKeyQuery(query);
+          if (key === null) {
+            return error({ message: "The blob key is invalid.", code: "INVALID_KEY" }, 400);
+          }
+          const offset = integerQuery(query, "offset");
+          const length = integerQuery(query, "length");
+          if (offset === null || length === null || length < 1 || length > MAX_RANGE_BYTES) {
+            return error(
+              {
+                message: `Ranges start at a byte offset and span 1 to ${MAX_RANGE_BYTES} bytes.`,
+                code: "INVALID_RANGE",
+              },
+              400,
+            );
+          }
+          const blob = await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(blobsSchema).findFirst("blob", (b) =>
+                b.whereIndex("idx_blob_key", (eb) => eb("key", "=", key)),
+              ),
+            )
+            .transformRetrieve(([result]) => result)
+            .execute();
+          if (!blob) {
+            return error({ message: "The blob does not exist.", code: "BLOB_NOT_FOUND" }, 404);
+          }
+          const sizeBytes = Number(blob.sizeBytes);
+          if (offset >= sizeBytes) {
+            return error(
+              {
+                message: `The blob ends before byte ${offset}; it holds ${sizeBytes} bytes.`,
+                code: "RANGE_NOT_SATISFIABLE",
+              },
+              416,
+            );
+          }
+
+          const end = Math.min(offset + length, sizeBytes);
+          let range;
+          try {
+            // The upload's URL can still overwrite the object after the upload completed, so only
+            // bytes that still carry the recorded tag match the blob's size and tag.
+            range = await config.storage.readObjectRange({
+              objectKey: blob.objectKey,
+              etag: blob.etag,
+              offset,
+              length: end - offset,
+            });
+          } catch {
+            return error({ message: "Storage error", code: "STORAGE_ERROR" }, 502);
+          }
+          // Replacing or deleting the blob since it was read removes its object.
+          if (range.status === "missing") {
+            return error({ message: "The blob does not exist.", code: "BLOB_NOT_FOUND" }, 404);
+          }
+          if (range.status === "changed") {
+            return error(
+              {
+                message: "Storage holds other bytes than the blob recorded.",
+                code: "BLOB_CHANGED",
+              },
+              409,
+            );
+          }
+          return new Response(range.bytes, {
+            status: 206,
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "Content-Range": `bytes ${offset}-${end - 1}/${sizeBytes}`,
+              // Tells readers combining several ranges whether they all came from the same bytes.
+              ETag: `"${blob.etag}"`,
+            },
+          });
         },
       }),
 

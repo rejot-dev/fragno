@@ -1,11 +1,15 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { base64BytesSchema } from "./shared/bytes";
 import { isoDateTimeOutputSchema } from "./shared/datetime";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
 /** R2 accepts at most 5 GiB less 5 MiB in one PUT, and a blob uploads in one PUT. */
 export const BLOB_MAX_SIZE_BYTES = 5 * 1024 ** 3 - 5 * 1024 ** 2;
+
+/** Bounds one read, whose bytes return inside the result. */
+export const BLOB_READ_MAX_BYTES = 1024 ** 2;
 
 const blobKeySchema = z.lazy(() =>
   z
@@ -62,6 +66,19 @@ const blobDownloadUrlSchema = z.lazy(() =>
 
 export type BlobDownloadUrl = z.output<typeof blobDownloadUrlSchema>;
 
+const blobRangeSchema = z.lazy(() =>
+  z.object({
+    content: base64BytesSchema,
+    etag: z
+      .string()
+      .describe(
+        "The tag of the bytes read; when reads of one blob return different tags, the blob was replaced between them.",
+      ),
+  }),
+);
+
+export type BlobRange = z.output<typeof blobRangeSchema>;
+
 const blobPageSchema = z.lazy(() =>
   z.object({
     blobs: z.array(blobSchema),
@@ -117,6 +134,18 @@ export const blobsOperations = {
     permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: z.lazy(() => z.strictObject({ key: blobKeySchema })),
     output: blobDownloadUrlSchema,
+  },
+  "blobs.read": {
+    description: `Read up to ${BLOB_READ_MAX_BYTES} bytes of a blob from byte \`offset\`, without downloading the rest, to look inside large files in place. For example, a zip archive lists its entries at its end: read its last 64 KiB to find the central directory, then read only the entries needed. It returns fewer bytes when the blob ends sooner, and fails for an offset at or past the end; blobs.get gives the blob's size. It fails rather than return bytes other than the blob's, such as when its upload URL overwrote it after completion.`,
+    permissions: [BACKOFFICE_PERMISSION.upload.read],
+    input: z.lazy(() =>
+      z.strictObject({
+        key: blobKeySchema,
+        offset: z.number().int().min(0),
+        length: z.number().int().min(1).max(BLOB_READ_MAX_BYTES),
+      }),
+    ),
+    output: blobRangeSchema,
   },
   "blobs.delete": {
     description: "Delete a blob and its stored bytes.",

@@ -19,7 +19,7 @@ function createFakeBucket() {
   const etags = new Map<string, string>();
 
   const signer: S3Signer = {
-    sign: async ({ url }) => ({ url, headers: { authorization: "signed" } }),
+    sign: async ({ url, headers }) => ({ url, headers: { ...headers, authorization: "signed" } }),
     presign: async ({ url, headers, expiresInSeconds }) => ({
       url: `${url}?X-Amz-Expires=${expiresInSeconds}`,
       headers,
@@ -47,13 +47,26 @@ function createFakeBucket() {
         return new Response(null, { status: 200, headers: { etag: etags.get(objectKey)! } });
       }
       case "HEAD":
-      case "GET":
+      case "GET": {
         if (!object) {
           return new Response(null, { status: 404 });
         }
+        const etag = etags.get(objectKey)!;
+        const ifMatch = request.headers.get("if-match");
+        if (ifMatch !== null && ifMatch !== etag) {
+          return new Response(null, { status: 412 });
+        }
+        const range = request.headers.get("range")?.match(/^bytes=(\d+)-(\d+)$/);
+        if (request.method === "GET" && range) {
+          return new Response(object.slice(Number(range[1]), Number(range[2]) + 1), {
+            status: 206,
+            headers: { etag },
+          });
+        }
         return new Response(request.method === "GET" ? object : null, {
-          headers: { "content-length": String(object.byteLength), etag: etags.get(objectKey)! },
+          headers: { "content-length": String(object.byteLength), etag },
         });
+      }
       case "DELETE":
         objects.delete(objectKey);
         return new Response(null, { status: 204 });
@@ -220,6 +233,47 @@ describe("blobs fragment", async () => {
       { event: "stored", blob: replaced.data },
       { event: "deleted", blob: replaced.data },
     ]);
+  });
+
+  test("reads ranges of a blob's bytes, ending at the blob's end", async () => {
+    const upload = await createUpload("archives/site.zip");
+    await putBytes(upload, "local entries, then the directory");
+    const blob = await completeUpload(upload.uploadId);
+    assert(blob.type === "json");
+    const readRange = (offset: number, length: number) =>
+      fragment.callRouteRaw("GET", "/blobs/by-key/range", {
+        query: { key: "archives/site.zip", offset: String(offset), length: String(length) },
+      });
+
+    const middle = await readRange(6, 7);
+    assert(middle.status === 206);
+    assert((await middle.text()) === "entries");
+    assert(middle.headers.get("content-range") === "bytes 6-12/33");
+    expect(middle.headers.get("etag")).toBe(`"${blob.data.etag}"`);
+
+    const tail = await readRange(20, 1024);
+    assert((await tail.text()) === "the directory");
+    assert(tail.headers.get("content-range") === "bytes 20-32/33");
+
+    const pastEnd = await fragment.callRoute("GET", "/blobs/by-key/range", {
+      query: { key: "archives/site.zip", offset: "33", length: "1" },
+    });
+    assert(pastEnd.type === "error");
+    expect([pastEnd.status, pastEnd.error.code]).toEqual([416, "RANGE_NOT_SATISFIABLE"]);
+
+    const empty = await fragment.callRoute("GET", "/blobs/by-key/range", {
+      query: { key: "archives/site.zip", offset: "0", length: "0" },
+    });
+    assert(empty.type === "error");
+    assert(empty.error.code === "INVALID_RANGE");
+
+    // The completed upload's URL still accepts PUTs until it expires.
+    await putBytes(upload, "other entries, and another directory");
+    const changed = await fragment.callRoute("GET", "/blobs/by-key/range", {
+      query: { key: "archives/site.zip", offset: "0", length: "5" },
+    });
+    assert(changed.type === "error");
+    expect([changed.status, changed.error.code]).toEqual([409, "BLOB_CHANGED"]);
   });
 
   test("lists blobs under a prefix, a page at a time", async () => {

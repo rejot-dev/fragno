@@ -34,14 +34,15 @@ const blobs = createBlobsFragment(
 
 ## Routes
 
-| Route                                  | Behavior                                                                  |
-| -------------------------------------- | ------------------------------------------------------------------------- |
-| `POST /uploads`                        | `{ key, contentType }` → a presigned PUT `url`, its `headers`, `uploadId` |
-| `POST /uploads/:uploadId/complete`     | Records what storage holds as the key's blob, replacing any earlier one   |
-| `GET /blobs?prefix=&cursor=&pageSize=` | Blobs by key, a page at a time                                            |
-| `GET /blobs/by-key?key=`               | One blob's key, size, content type, and ETag                              |
-| `GET /blobs/by-key/download-url?key=`  | A presigned GET URL                                                       |
-| `DELETE /blobs/by-key?key=`            | Deletes the blob and its object                                           |
+| Route                                          | Behavior                                                                  |
+| ---------------------------------------------- | ------------------------------------------------------------------------- |
+| `POST /uploads`                                | `{ key, contentType }` → a presigned PUT `url`, its `headers`, `uploadId` |
+| `POST /uploads/:uploadId/complete`             | Records what storage holds as the key's blob, replacing any earlier one   |
+| `GET /blobs?prefix=&cursor=&pageSize=`         | Blobs by key, a page at a time                                            |
+| `GET /blobs/by-key?key=`                       | One blob's key, size, content type, and ETag                              |
+| `GET /blobs/by-key/download-url?key=`          | A presigned GET URL                                                       |
+| `GET /blobs/by-key/range?key=&offset=&length=` | Up to 8 MiB of the blob's bytes from `offset`                             |
+| `DELETE /blobs/by-key?key=`                    | Deletes the blob and its object                                           |
 
 An upload's URL accepts one PUT for an hour, and completion stays open for another hour, so a PUT
 that started in time may finish late. The uploader need not know the size in advance: completion
@@ -52,6 +53,13 @@ object, so neither an unfinished upload nor a replacement touches the object a d
 A download URL ends in the last segment of the blob's key, so browsers save the file under its name.
 Storage serves the bytes with the content type they were uploaded with, so browsers show some types,
 such as videos, in place.
+
+A range read returns the bytes with status 206, a `Content-Range` giving the blob's size, and the
+blob's `ETag`, so readers combining several ranges can tell whether the blob was replaced between
+them. It ends early at the blob's end, and fails with `RANGE_NOT_SATISFIABLE` from there on. It
+reads only bytes that still carry the blob's ETag, and fails with `BLOB_CHANGED` when storage holds
+others, as when the upload's URL overwrote the object after completion. Readers can look inside
+large files without downloading them, such as a zip archive's directory at its end.
 
 `onBlobStored` runs for a new blob and for a replacement; `onBlobDeleted` runs only for
 `DELETE /blobs/by-key`. Both receive the blob as `GET /blobs/by-key` returns it.

@@ -16,6 +16,11 @@ export const backofficeApiV0Adapters: RuntimeToolAdapters<typeof backofficeApiV0
     bytesToBase64((await runTool(input)) as Uint8Array),
   "state.writeFileBytes": async ({ path, content }, runTool) =>
     await runTool({ path, content: base64ToBytes(content) }),
+  "blobs.read": async (input, runTool) => {
+    // The tool's output schema has already parsed the content as bytes.
+    const { content, etag } = (await runTool(input)) as { content: Uint8Array; etag: string };
+    return { content: bytesToBase64(content), etag };
+  },
   "state.appendFile": async ({ path, content, encoding }, runTool) =>
     await runTool({ path, content: encoding === "base64" ? base64ToBytes(content) : content }),
 };

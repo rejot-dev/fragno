@@ -8,7 +8,11 @@ import type {
 import type { FetchCommands } from "@/backoffice-runtime/object-registry";
 import { createBlobsRouteCaller } from "@/fragno/blobs-server";
 
-import { isSuccessStatus, throwOnRouteRuntimeError } from "../runtime-errors";
+import {
+  isSuccessStatus,
+  throwOnHttpResponseError,
+  throwOnRouteRuntimeError,
+} from "../runtime-errors";
 
 export type BlobsRuntime = {
   createUpload(input: { key: string; contentType: string }): Promise<BlobUpload>;
@@ -16,6 +20,11 @@ export type BlobsRuntime = {
   get(input: { key: string }): Promise<Blob | null>;
   list(input: { prefix?: string; cursor?: string }): Promise<BlobPage>;
   createDownloadUrl(input: { key: string }): Promise<BlobDownloadUrl>;
+  read(input: {
+    key: string;
+    offset: number;
+    length: number;
+  }): Promise<{ content: Uint8Array<ArrayBuffer>; etag: string }>;
   delete(input: { key: string }): Promise<void>;
 };
 
@@ -77,6 +86,22 @@ export function createBlobsRuntime({ object }: { object: () => FetchCommands }):
         });
       }
       return { url: response.data.url, expiresAt: new Date(response.data.expiresAt).toISOString() };
+    },
+    async read({ key, offset, length }) {
+      const response = await callRoute().raw("GET", "/blobs/by-key/range", {
+        query: { key, offset: String(offset), length: String(length) },
+      });
+      if (!isSuccessStatus(response.status)) {
+        return await throwOnHttpResponseError(response, {
+          runtimeLabel: "Blobs",
+          label: "blobs.read",
+        });
+      }
+      return {
+        content: new Uint8Array(await response.arrayBuffer()),
+        // The route always sends the blob's tag, quoted as HTTP quotes it.
+        etag: response.headers.get("etag")!.replace(/^"|"$/g, ""),
+      };
     },
     async delete({ key }) {
       const response = await callRoute()("DELETE", "/blobs/by-key", { query: { key } });

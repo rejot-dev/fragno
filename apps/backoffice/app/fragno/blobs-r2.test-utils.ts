@@ -63,9 +63,20 @@ export function createFakeR2(buckets: BlobsR2Buckets) {
         return new Response(null, { status: 200, headers: { etag } });
       }
       case "HEAD":
-      case "GET":
+      case "GET": {
         if (!object) {
           return new Response(null, { status: 404 });
+        }
+        const ifMatch = request.headers.get("if-match");
+        if (ifMatch !== null && ifMatch !== object.etag) {
+          return new Response(null, { status: 412 });
+        }
+        const range = request.headers.get("range")?.match(/^bytes=(\d+)-(\d+)$/);
+        if (request.method === "GET" && range) {
+          return new Response(object.bytes.slice(Number(range[1]), Number(range[2]) + 1), {
+            status: 206,
+            headers: { "content-type": object.contentType, etag: object.etag },
+          });
         }
         return new Response(request.method === "GET" ? object.bytes : null, {
           headers: {
@@ -74,6 +85,7 @@ export function createFakeR2(buckets: BlobsR2Buckets) {
             etag: object.etag,
           },
         });
+      }
       case "DELETE":
         objects.delete(objectUrl);
         return new Response(null, { status: 204 });

@@ -8,6 +8,7 @@ export type { BlobsFragmentConfig, StoredBlob } from "./definition";
 export {
   createS3BlobStorage,
   type BlobStorage,
+  type ObjectRange,
   type S3BlobStorageOptions,
   type S3Signer,
   type StoredObject,
