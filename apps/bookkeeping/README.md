@@ -226,9 +226,11 @@ or through a client from `integrations.generateClient`. `workers/backoffice/acti
 Agents also keep an administration's books with the actions in
 `workers/backoffice/books-actions.ts`, one per operation of its pages. Each declares zod input and
 output schemas, which registration sends as JSON Schema and the handler parses with. They run in the
-administration's Backoffice project: the signed project, never the input, picks the books, and calls
-in any other scope are refused. Inputs name accounts, journals, customers, suppliers, and dimensions
-by code and amounts as decimals; `books.describe` lists them.
+administration's Backoffice project, where the signed project picks the books; or, for the
+[bookkeeping agent](#the-bookkeeping-agent), in the agent project of the firm keeping them, where
+every input names the administration as `administration` and Bookkeeping checks that it is one of
+the firm's clients'. Calls in any other scope are refused. Inputs name accounts, journals,
+customers, suppliers, and dimensions by code and amounts as decimals; `books.describe` lists them.
 
 | Access                       | Actions                                                                                                                                                          |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -240,12 +242,14 @@ by code and amounts as decimals; `books.describe` lists them.
 Only people close and lock periods, on the settings page. Changing the books needs a person: calls
 Backoffice makes as the installation, for automations such as the
 [bookkeeping agent](#the-bookkeeping-agent), only read and answer documents' reviews, which posts
-nothing. The person must have signed in to Bookkeeping, which names them on the entries and
-settlements their agent makes ("Ada Lovelace via Backoffice"). Their roles are confirmed as the
-pages confirm them: a membership Backoffice confirmed within the last minute is trusted, otherwise
-Bookkeeping asks Backoffice again with their stored authorization. An entry's reference, such as an
-invoice number, is unique in its journal, so an agent posting again after a lost answer cannot post
-twice. The ledger's refusals answer HTTP 422 with its message, which Backoffice passes to the agent.
+nothing. In a firm's agent project only the installation's calls are taken: people keep their
+clients' books in the clients' projects. The person must have signed in to Bookkeeping, which names
+them on the entries and settlements their agent makes ("Ada Lovelace via Backoffice"). Their roles
+are confirmed as the pages confirm them: a membership Backoffice confirmed within the last minute is
+trusted, otherwise Bookkeeping asks Backoffice again with their stored authorization. An entry's
+reference, such as an invoice number, is unique in its journal, so an agent posting again after a
+lost answer cannot post twice. The ledger's refusals answer HTTP 422 with its message, which
+Backoffice passes to the agent.
 
 After changing the actions, run `pnpm backoffice:connect` to register them.
 
@@ -320,17 +324,31 @@ The upload's body is read only up to the largest upload, so a larger one is refu
 
 #### The bookkeeping agent
 
-Uploading a document asks the `bookkeeper` agent, a Backoffice agent in the administration's
-project, to propose the entry booking it. Bookkeeping asks it as its installation, not as the
-person, so the agent's calls to Bookkeeping arrive as the installation's: they read the books and
-answer reviews (`documents.propose` and `documents.decline`), and every other change is refused, as
-for any automation, whatever a document tells the agent. Bookkeeping defines the agent there when
-the project has none, granting it `upload.read`, `models.extract`, `integrations.read` (to read the
-actions' input schemas), and `integrations.execute`; a definition members changed in Backoffice is
-left as it is. So is one Bookkeeping defined before its definition changed: members update or delete
-it to get the new one. It then submits the prompt with `pi.prompt.submit` as a `subagent`: each
-document runs in a new conversation of the agent, beside the others, so documents uploaded together
-are read side by side and no document sees another's text. Backoffice bills the turn to the client.
+Uploading a document asks the `bookkeeper` agent of the firm keeping the books to propose the entry
+booking it. The agent lives in the firm's own Backoffice project, `Bookkeeping agent`, so the skills
+the firm gives it never reach a client's workspace, where the client could read them. Bookkeeping
+provisions that project the first time one of the firm's owners or admins opens the firm, since
+Backoffice creates a project as a member of the firm who authorized Bookkeeping; until then, asking
+the agent says the firm has not set it up.
+
+To ask, Bookkeeping shares the document's folder from the administration's project with the firm's
+agent project (`state.share`), which mounts it read-only at `/shared/document-<hash>/`
+(`state.acceptShare`); asking again reuses the share that stands. A document's ID is unique only in
+its administration, and the firm's agent serves all its clients, so the mount's name hashes the
+administration's ID with the document's, and the prompt's request ID names both. Answering the
+review revokes the share, as does the document's page when it shows a document whose review was
+answered, or that was booked or dismissed, so the firm reads a client's file only while it is asked
+about it. Bookkeeping asks as its installation, not as the person, so the agent's calls to
+Bookkeeping arrive as the installation's: they read the books and answer reviews
+(`documents.propose` and `documents.decline`), and every other change is refused, whatever a
+document tells the agent. Bookkeeping defines the agent when the firm's project has none, granting
+it `upload.read`, `models.extract`, `integrations.read` (to read the actions' input schemas), and
+`integrations.execute`; a definition the firm's members changed in Backoffice is left as it is. So
+is one Bookkeeping defined before its definition changed: members update or delete it to get the new
+one. It then submits the prompt, naming the administration and where the file is shared, with
+`pi.prompt.submit` as a `subagent`: each document runs in a new conversation of the agent, beside
+the others, so documents uploaded together are read side by side and no document sees another's
+text. Backoffice bills the turn to the firm.
 
 The agent reads the document with `documents.get` and `models.extract`, the books with
 `books.describe` and `entries.list`, and answers with `documents.propose`, an entry as

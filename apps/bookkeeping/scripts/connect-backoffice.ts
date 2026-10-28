@@ -37,8 +37,9 @@ const OAUTH_SCOPES = ["openid", "profile", "email", "offline_access", "backoffic
 // Firms and clients are Backoffice organizations: Bookkeeping reads them and their members as the
 // person signed in. Owners and admins invite through provisioning, since apps never hold org.manage.
 // Documents' files live in their administration's project workspace, stored and read as the person.
-// Bookkeeping defines the bookkeeping agent there and asks it about documents, as the installation;
-// the agent's turns run with these grants, so they include what it reads the files and the books with.
+// Bookkeeping defines the bookkeeping agent in each firm's agent project, shares a document's folder
+// with it, and asks it about the document, as the installation; the agent's turns run with these
+// grants, so they include what it reads the files and the books with.
 const REQUESTED_PERMISSIONS = [
   { namespace: "org", permission: "read" },
   { namespace: "upload", permission: "read" },

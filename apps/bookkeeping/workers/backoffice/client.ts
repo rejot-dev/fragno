@@ -110,3 +110,22 @@ export async function exchangeForScope(
     client: createBackofficeApiClient({ origin: backofficeOrigin(env), accessToken, fetch }),
   };
 }
+
+/**
+ * Backoffice's API as Bookkeeping's installation, in one scope, so what it starts, such as an
+ * agent's turn, acts as Bookkeeping and not as a person; null when Bookkeeping is not installed
+ * there. Throws `BackofficeUnavailableError` when Backoffice cannot be reached.
+ */
+export async function connectAsInstallation(
+  env: BackofficeEnv,
+  scope: BackofficeContextScope,
+): Promise<BackofficeApiClient | null> {
+  const credential = await exchangeForScope(env, {
+    oauthAccessToken: await requestAppToken(env),
+    scope,
+  });
+  if (credential.status === "unauthorized") {
+    throw new Error("Backoffice refused Bookkeeping's own token. Check its OAuth client.");
+  }
+  return credential.status === "issued" ? credential.client : null;
+}

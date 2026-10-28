@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from "react-router";
 
+import { setUpFirmAgent } from "../documents/bookkeeper.server";
 import { requireOrganization } from "../organizations/access.server";
 import { organizationPath } from "../organizations/paths";
 import { highestRole, ROLE_LABELS } from "../organizations/roles";
@@ -8,7 +9,9 @@ import { loadShell } from "../shell/shell.server";
 import type { Route } from "./+types/layout";
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-  const { user, organization, roles } = await requireOrganization(request, params.slug, "firm");
+  const context = await requireOrganization(request, params.slug, "firm");
+  const { user, organization, roles } = context;
+  await setUpFirmAgent(context);
   const place = {
     mode: "firm",
     name: organization.name,

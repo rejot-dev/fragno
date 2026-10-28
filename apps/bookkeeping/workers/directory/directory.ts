@@ -4,6 +4,7 @@ import { DurableObject } from "cloudflare:workers";
 import { applyMigrations } from "../migrations";
 import directoryMigration from "./migrations/0001-directory.sql?raw";
 import operatorsMigration from "./migrations/0002-operators.sql?raw";
+import firmAgentsMigration from "./migrations/0003-firm-agents.sql?raw";
 
 /**
  * Operators run Bookkeeping; a firm keeps the books of its clients; a client is one business whose
@@ -114,7 +115,7 @@ export class Directory extends DurableObject<CloudflareEnv> {
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
     super(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
-      applyMigrations(ctx, [directoryMigration, operatorsMigration]);
+      applyMigrations(ctx, [directoryMigration, operatorsMigration, firmAgentsMigration]);
     });
   }
 
@@ -386,6 +387,44 @@ export class Directory extends DurableObject<CloudflareEnv> {
       )
       .toArray();
     return row ?? null;
+  }
+
+  /**
+   * The administration `id` of one of the firm's clients, or null when no client of the firm has
+   * it: what the firm's bookkeeping agent may keep.
+   */
+  findFirmAdministration(input: { firmId: string; id: string }): Administration | null {
+    const [row] = this.ctx.storage.sql
+      .exec<Administration>(
+        `SELECT a."id", a."clientId", a."slug", a."name" FROM "administration" a
+         JOIN "organization" o ON o."id" = a."clientId"
+         WHERE a."id" = ? AND o."firmId" = ?`,
+        input.id,
+        input.firmId,
+      )
+      .toArray();
+    return row ?? null;
+  }
+
+  /** Records the project holding the firm's bookkeeping agent; recording it again changes nothing. */
+  recordFirmAgent(input: { firmId: string; projectId: string }): void {
+    this.ctx.storage.sql.exec(
+      `INSERT INTO "firm_agent" ("firmId", "projectId") VALUES (?, ?)
+       ON CONFLICT ("firmId") DO NOTHING`,
+      input.firmId,
+      input.projectId,
+    );
+  }
+
+  /** The ID of the project holding the firm's bookkeeping agent, once an owner or admin set it up. */
+  findFirmAgent(firmId: string): string | null {
+    const [row] = this.ctx.storage.sql
+      .exec<{ projectId: string }>(
+        `SELECT "projectId" FROM "firm_agent" WHERE "firmId" = ?`,
+        firmId,
+      )
+      .toArray();
+    return row?.projectId ?? null;
   }
 
   #renameOrganization(organization: Pick<Organization, "id" | "slug" | "name">): void {

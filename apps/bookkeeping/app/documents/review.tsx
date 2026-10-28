@@ -70,7 +70,7 @@ function requestState(progress: BookkeeperProgress): {
         tone: "failed",
         label: "The agent proposed nothing",
         detail:
-          "It finished without proposing an entry or saying why. Its conversation in Backoffice tells what it did.",
+          "It finished without proposing an entry or saying why. The firm keeping these books can read what it did in its Bookkeeping agent's conversation in Backoffice.",
         askAgain: true,
       };
     case "failed":
