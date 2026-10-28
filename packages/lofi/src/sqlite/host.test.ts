@@ -116,7 +116,7 @@ const guardedEngine = guardedSqlViewEngine({
       },
     },
   },
-  limits: { rows: 2, bytes: 200, operations: 100, length: 1_000 },
+  operations: 100,
 });
 // An engine with no views, which records the tables of each refresh and fails while `failures`
 // is above zero.
@@ -516,12 +516,7 @@ describe("Lofi SQLite host", () => {
 
   it("maintains guarded views, which only read, within limits", async () => {
     let computedBefore = 0;
-    const ready = (columns: string[], rows: unknown[][], truncated = false) => ({
-      status: "ready",
-      columns,
-      rows,
-      truncated,
-    });
+    const ready = (columns: string[], rows: unknown[][]) => ({ status: "ready", columns, rows });
     const failed = (message: string) => ({
       status: "error",
       message: expect.stringContaining(message),
@@ -544,11 +539,10 @@ describe("Lofi SQLite host", () => {
         uow.create("users", { email: "ada@example.com", active: true });
         uow.create("users", { email: "cy@example.com", active: true });
       }),
-      // The view holds two of the three rows.
       waitForView(
         "a",
         "emails",
-        ready(["email"], [["ADA@EXAMPLE.COM"], ["BOB@EXAMPLE.COM"]], true),
+        ready(["email"], [["ADA@EXAMPLE.COM"], ["BOB@EXAMPLE.COM"], ["CY@EXAMPLE.COM"]]),
       ),
       waitForView("a", "active", ready(["count"], [[3]])),
       check(() => {
@@ -570,10 +564,10 @@ describe("Lofi SQLite host", () => {
         "misspelt",
         failed(`no such table: person. Read one of: people, active_people.`),
       ),
-      watch("a", "function", guardedView(`SELECT hex(randomblob(4)) FROM "people"`)),
-      waitForView("a", "function", failed("Queries cannot call randomblob().")),
-      watch("a", "write", guardedView(`DELETE FROM "active_people"`)),
-      waitForView("a", "write", failed("Queries only read")),
+      watch("a", "write", guardedView(`DELETE FROM ${table("users")} RETURNING "active"`)),
+      waitForView("a", "write", failed("Queries only read: they cannot write.")),
+      watch("a", "transaction", guardedView(`COMMIT`)),
+      waitForView("a", "transaction", failed("cannot begin or end transactions")),
       watch("a", "two", guardedView(`SELECT 1; SELECT 2`)),
       waitForView("a", "two", failed("more than one statement")),
       watch("a", "params", guardedView(`SELECT ?1, ?2`, [1])),
@@ -586,12 +580,6 @@ describe("Lofi SQLite host", () => {
         ),
       ),
       waitForView("a", "work", failed("more than 100000 operations")),
-      watch(
-        "a",
-        "bytes",
-        guardedView(`SELECT ${Array(8).fill(`"email"`).join(" || ")} FROM "people" ORDER BY 1`),
-      ),
-      waitForView("a", "bytes", failed("more than 200 bytes")),
     ]);
     expect(ctx.errors).toEqual([]);
   });
@@ -618,7 +606,7 @@ describe("Lofi SQLite host", () => {
   });
 
   it("reports a read that fails to refresh to its view, and its recovery", async () => {
-    const people = { status: "ready", columns: ["email"], truncated: false };
+    const people = { status: "ready", columns: ["email"] };
     const ctx = await runScenario([
       openTab("a"),
       write("ada", (uow) => {

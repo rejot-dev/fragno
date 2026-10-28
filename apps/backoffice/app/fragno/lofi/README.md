@@ -155,10 +155,12 @@ page's interface.
   `currentWorkflowWaits`, the functions the dashboard uses, so a page repeats none of their logic;
   they are computed again only after a batch wrote what they read. `page-schema.d.ts`, which agents
   read, is generated from the same list.
-- **Guard.** Pages cannot write or call `random()` and the like, and stop at 500 rows, 4 MB of text,
-  and 25 million operations, which take about 200 ms. A page's query that cannot run shows its error
-  in place of the page. Pages could read the replica's own tables, which hold nothing the page
-  cannot already read; `page-schema.d.ts` describes only the relations, so pages use those.
+- **Guard.** A page's query only reads: it cannot write, begin or end transactions, attach
+  databases, or set a pragma, and stops at 125 million operations, about a second, as the build's
+  check does. A failed or interrupted write could end the leader's read transaction, which lofi's
+  README explains. A page's query that cannot run shows its error in place of the page. Pages could
+  read the replica's own tables, which hold nothing the page cannot already read; `page-schema.d.ts`
+  describes only the relations, so pages use those.
 - **Build.** The build asks the scope's Automations object to run each query once on an empty
   database with the replica's tables and the same relations, as permanent views and tables
   (`AUTOMATION_PAGE_DATABASE_SCHEMA` in `../automation/lofi/page-relations.ts`), and fails with the
@@ -276,9 +278,9 @@ download the outbox again.
   measurements. The list still reads its origins' payloads to summarize them, and the overview's
   runs and event counts grow with the scope's history.
 - **Pages are only as fast as their SQL.** A query that scans every event to group a few runs takes
-  that time after every batch that writes events, up to the 25 million operations its guard allows,
-  about 200 ms. The budget is per query, so a page of eleven slow queries can hold the leader for
-  about 2 s per batch.
+  that time after every batch that writes events, up to the 125 million operations its guard allows,
+  about a second. The budget is per query, so a page of eleven slow queries can hold the leader for
+  about 11 s per batch.
 - **The replica has only the backend's indexes,** and pages cannot add any. Filtering `runs` by
   `status`, such as for waiting runs, scans every run, and `events` by `type` alone cannot use the
   index on `source`, `type`, and `occurredAt`. The replica's indexes are not unique, so indexes for
@@ -293,10 +295,12 @@ download the outbox again.
   page reads either. See lofi's README.
 - **Pages and the dashboard compute alike things twice.** The home page and the Overview tab read
   much the same, through separate views, and two tabs on one page get two of each.
-- **The build and the browser disagree on what pages may do.** The build no longer refuses writes,
-  `random()`, PRAGMAs, or a second statement, which the browser's guard still refuses, so such a
-  page builds and then shows its error in place. Workerd runs every statement of a query and reports
-  the last; `node:sqlite` runs only the first.
+- **The build and the browser disagree on a few queries.** The build rolls back what a query writes,
+  where the browser refuses it, so a query that writes builds and then shows its error in place. The
+  browser runs one statement, which a live view needs to know the tables it reads, and the build's
+  workerd runs every statement and reports the last, so a query of two statements does the same;
+  `node:sqlite` runs only the first. Workerd also refuses most pragmas, which the browser reads, and
+  `node:sqlite` runs transaction statements and `ATTACH`, which the browser refuses.
 - **The build's CPU limit is unconfirmed.** Whether Cloudflare enforces a Dynamic Worker's `cpuMs`
   on a facet is untested, and local workerd enforces none: locally, a query that never ends, such as
   an unbounded `WITH RECURSIVE`, holds the scope's Automations object until it is restarted. Facets

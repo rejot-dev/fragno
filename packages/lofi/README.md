@@ -851,10 +851,9 @@ synchronously. Engines must not write the replica's tables: only the replica doe
 `connection.prepare(sql)` prepares one statement and reports its `columnNames`, `isReadOnly`,
 `tables`, and `parameterCount`. `connection.guarded(guard, run)` runs `run` with a `guard` that
 decides each access the statements prepared meanwhile make, as SQLite's authorizer reports it, and
-interrupts a statement that takes more than `guard.maxOperations` thousand of SQLite's operations or
-produces a string or blob longer than `guard.maxLength`. wa-sqlite installs such hooks per module
-rather than per connection, so the connection installs them only while it runs synchronously and
-removes them before returning.
+interrupts a statement that takes more than `guard.maxOperations` thousand of SQLite's operations.
+wa-sqlite installs such hooks per module rather than per connection, so the connection installs them
+only while it runs synchronously and removes them before returning.
 
 ### Guarded SQL views
 
@@ -874,23 +873,26 @@ guardedSqlViewEngine({
       compute: (reader) => [[countActive(reader)]],
     },
   },
-  limits: { rows: 500, bytes: 4_000_000, operations: 25_000, length: 16_000_000 },
+  // Thousands of operations one run may take; 25 million take about 200 ms in Node.
+  operations: 125_000,
 });
 ```
 
-A view's query is `{ sql, params }`, one SELECT with its parameters bound as values, and its data is
-`{ status: "ready", columns, rows, truncated }` or `{ status: "error", message }`: queries that
-cannot run, and runs that fail, report why to the page that asked rather than to the worker.
+A view's query is `{ sql, params }`, one statement with its parameters bound as values, and its data
+is `{ status: "ready", columns, rows }` or `{ status: "error", message }`: queries that cannot run,
+and runs that fail, report why to the page that asked rather than to the worker.
 
 - **Reads.** A query reads the `views` and `derived` relations, and the replica's tables too: the
   relations give shorter names and rows the app computes, not a boundary, since the replica holds
   only what the backend already sent the page. A query that names a missing table is told the
-  relations. It cannot write, attach, or run pragmas, or call functions whose result changes on its
-  own, such as `random()`; `date('now')` is the exception, so pass the time as a parameter.
-- **Limits.** A view holds `limits.rows` rows and says when it dropped more. A run that takes more
-  than `limits.operations` thousand operations, or rows holding more than `limits.bytes` bytes of
-  text, in UTF-8, and blobs, fails. 25 million operations take about 200 ms in Node. A query given
-  the wrong number of parameters fails for good.
+  relations.
+- **Only reads.** A query cannot write, begin or end transactions, attach databases, or set a
+  pragma. Queries run inside the leader's read transaction, which SQLite rolls back whole when a
+  write fails with `OR ROLLBACK` or is interrupted, so a savepoint could not undo a write. A query
+  runs again only when a table it reads changes, so `random()` and `date('now')` change only then;
+  pass the time as a parameter.
+- **Limits.** A run that takes more than `operations` thousand operations fails. A query given the
+  wrong number of parameters fails for good.
 - **Derived relations** run their `compute` with a reader of the replica, only while views exist,
   and again before the next refresh once a batch wrote a table their last run read. Rows that
   changed are written to the temporary table, and the views that read it refresh.
