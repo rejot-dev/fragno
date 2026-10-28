@@ -33,7 +33,6 @@ import type {
 } from "@/file-collection/file-collection";
 import { inferFileContentType } from "@/file-collection/file-content-type";
 import { createBackofficeSystemFileCollection } from "@/files/content/system";
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller, type UploadRouteCaller } from "@/fragno/upload-server";
 import { readBoundedBytes } from "@/lib/bounded-bytes";
 
@@ -117,7 +116,6 @@ type StateMount = {
 
 type UploadStateMount = StateMount & {
   routes: UploadRouteCaller;
-  provider: string;
 };
 
 type UploadFileEntry = Extract<FileTreeEntry, { kind: "file" }>;
@@ -206,14 +204,12 @@ export function createWorkspaceFileCollection(
 ): FileCollection {
   return createUploadFileCollection({
     routes: createUploadRouteCaller(uploadObject),
-    provider: UPLOAD_PROVIDER_DATABASE,
     ...(prefix ? { prefix } : {}),
     maxPages: UPLOAD_TREE_MAX_PAGES,
-    getFileResponse: ({ provider: fileProvider, fileKey }) =>
+    getFileResponse: ({ fileKey }) =>
       uploadObject.fetch(
         new Request(
           `https://upload.internal/api/upload/files/by-key/content?${new URLSearchParams({
-            provider: fileProvider,
             key: fileKey,
           })}`,
         ),
@@ -230,7 +226,6 @@ export const createBackofficeStateBackend = (input: {
     upload: {
       mountPoint: UPLOAD_MOUNT_POINT,
       routes: createUploadRouteCaller(input.uploadObject),
-      provider: UPLOAD_PROVIDER_DATABASE,
       collection: createWorkspaceFileCollection(input.uploadObject),
     },
     static: {
@@ -801,7 +796,6 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
           },
           {
             kind: "delete",
-            provider: this.#upload.provider,
             fileKey: this.#toUploadKey(source.relativePath),
             precondition: { kind: "revision", revision: sourceRevision },
           },
@@ -851,10 +845,9 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
       ? uploadPrefix
         ? listUploadFiles({
             routes: this.#upload.routes,
-            provider: this.#upload.provider,
             glob: uploadPattern,
             maxPages: UPLOAD_TREE_MAX_PAGES,
-          }).then((files) => createUploadFileTree(files, { provider: this.#upload.provider }))
+          }).then((files) => createUploadFileTree(files))
         : this.#getUploadTree()
       : null;
     const [uploadTree, staticTree, sharedPaths] = await Promise.all([
@@ -915,7 +908,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
       };
     });
     const response = await this.#upload.routes("POST", "/files/apply-edits", {
-      body: { provider: this.#upload.provider, edits: uploadEdits },
+      body: { edits: uploadEdits },
     });
     if (response.type === "error") {
       throw new Error(
@@ -1097,7 +1090,6 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
   ): Promise<string> {
     const created = await this.#upload.routes("POST", "/uploads", {
       body: {
-        provider: this.#upload.provider,
         fileKey: this.#toUploadKey(destination.relativePath),
         filename: posix.basename(destination.relativePath),
         sizeBytes: content.byteLength,
@@ -1143,7 +1135,6 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
     const form = new FormData();
     const contentType = inferFileContentType(resolved.relativePath);
     const body = typeof content === "string" ? content : Uint8Array.from(content);
-    form.set("provider", this.#upload.provider);
     form.set("fileKey", this.#toUploadKey(resolved.relativePath));
     form.set("filename", posix.basename(resolved.relativePath));
     form.set("file", new Blob([body], { type: contentType }));
@@ -1159,7 +1150,6 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
 
   async #writeDirectoryMarker(relativePath: string): Promise<void> {
     const form = new FormData();
-    form.set("provider", this.#upload.provider);
     form.set("fileKey", this.#toUploadKey(`${relativePath}${DIRECTORY_MARKER_SUFFIX}`));
     form.set("filename", "dir-marker");
     form.set("metadata", JSON.stringify({ __docsDirectoryMarker: true }));
@@ -1173,7 +1163,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
 
   async #tryDeleteUploadKey(key: string): Promise<boolean> {
     const response = await this.#upload.routes("DELETE", "/files/by-key", {
-      query: { provider: this.#upload.provider, key },
+      query: { key },
     });
     this.#invalidateUploadTree();
     if (response.type === "error" && response.error.code === "FILE_NOT_FOUND") {
@@ -1185,7 +1175,7 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
 
   async #deleteUploadKey(key: string, force: boolean): Promise<void> {
     const response = await this.#upload.routes("DELETE", "/files/by-key", {
-      query: { provider: this.#upload.provider, key },
+      query: { key },
     });
     if (!(force && response.type === "error" && response.error.code === "FILE_NOT_FOUND")) {
       requireUploadMutation(response, `delete '${key}'`);
@@ -1229,7 +1219,6 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
   async #getUploadFileEntry(relativePath: string): Promise<UploadFileEntry | null> {
     const response = await this.#upload.routes("GET", "/files/by-key", {
       query: {
-        provider: this.#upload.provider,
         key: this.#toUploadKey(relativePath),
       },
     });

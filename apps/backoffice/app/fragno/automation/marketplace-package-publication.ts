@@ -58,7 +58,6 @@ export async function publishMarketplacePackageFiles({
     async (): Promise<{ state: "committed" } | { state: "prepare"; unchangedKeys: string[] }> => {
       const inventory = await listUploadFiles({
         routes,
-        provider: "database",
         prefix: publication.filePrefix,
       });
       if (marketplacePackageFileInventoryMatches(files, inventory)) {
@@ -113,7 +112,6 @@ export async function publishMarketplacePackageFiles({
     await publication.beforeCommit();
     const currentFiles = await listUploadFiles({
       routes,
-      provider: "database",
       prefix: publication.filePrefix,
     });
     if (marketplacePackageFileInventoryMatches(files, currentFiles)) {
@@ -134,7 +132,6 @@ export async function publishMarketplacePackageFiles({
       ...plan.unchangedKeys.map(
         (fileKey): PreparedFileBatchEntry => ({
           kind: "assert",
-          provider: "database",
           fileKey,
           precondition: preconditions.get(fileKey)!,
         }),
@@ -145,7 +142,6 @@ export async function publishMarketplacePackageFiles({
       if (!desiredKeys.has(file.fileKey) && file.precondition.kind === "revision") {
         entries.push({
           kind: "delete",
-          provider: "database",
           fileKey: file.fileKey,
           precondition: file.precondition,
         });
@@ -157,7 +153,7 @@ export async function publishMarketplacePackageFiles({
         if (
           marketplacePackageFileInventoryMatches(
             files,
-            await listUploadFiles({ routes, provider: "database", prefix: publication.filePrefix }),
+            await listUploadFiles({ routes, prefix: publication.filePrefix }),
           )
         ) {
           return;

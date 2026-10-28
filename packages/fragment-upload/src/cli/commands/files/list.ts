@@ -7,10 +7,6 @@ export const filesListCommand = define({
   description: "List files",
   args: {
     ...baseArgs,
-    provider: {
-      type: "string",
-      description: "Filter by storage provider",
-    },
     prefix: {
       type: "string",
       description: "File key prefix",
@@ -39,7 +35,6 @@ export const filesListCommand = define({
 
     const client = createClientFromContext(ctx);
     const response = await client.listFiles({
-      provider: ctx.values.provider,
       prefix,
       cursor: ctx.values.cursor,
       pageSize: ctx.values["page-size"],

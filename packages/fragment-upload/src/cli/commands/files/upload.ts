@@ -8,7 +8,6 @@ import {
   createClientFromContext,
   parseJsonValue,
   resolveFileKeyValue,
-  resolveProviderValue,
 } from "../../utils/options.js";
 
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
@@ -22,10 +21,6 @@ export const filesUploadCommand = define({
       type: "string",
       short: "f",
       description: "Path to file",
-    },
-    provider: {
-      type: "string",
-      description: "File provider namespace",
     },
     "file-key": {
       type: "string",
@@ -69,7 +64,6 @@ export const filesUploadCommand = define({
     const fileBuffer = await fs.readFile(filePath);
     const filename = ctx.values.filename ?? path.basename(filePath);
     const contentType = ctx.values["content-type"] ?? DEFAULT_CONTENT_TYPE;
-    const provider = resolveProviderValue(ctx.values.provider);
 
     const resolvedKey = resolveFileKeyValue({
       fileKey: ctx.values["file-key"],
@@ -81,7 +75,6 @@ export const filesUploadCommand = define({
 
     const form = new FormData();
     form.append("file", new File([fileBuffer], filename, { type: contentType }));
-    form.append("provider", provider);
 
     form.append("fileKey", resolvedKey.fileKey);
     if (checksum !== undefined) {

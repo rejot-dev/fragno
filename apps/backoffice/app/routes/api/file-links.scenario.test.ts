@@ -66,7 +66,7 @@ async function tar(entries: TarEntry[]) {
 /** Sends a request the way a browser or a sandbox's curl reaches the public file-link route. */
 async function sendToLink(ctx: BackofficeScenarioContext, url: string, init?: RequestInit) {
   const request = new Request(url, init);
-  const match = matchPath("/api/file-links/:scopeKind/:scopeId/:provider/*", new URL(url).pathname);
+  const match = matchPath("/api/file-links/:scopeKind/:scopeId/*", new URL(url).pathname);
   assert(match, `${url} is not a file-link route`);
   const args = {
     request,
@@ -134,9 +134,7 @@ test("a sandbox pulls a workspace folder and pushes its results back through fil
           const listed = await ctx.runtime.objects.upload
             .for({ kind: "org", orgId: "org-1", jurisdiction: null })
             .http.fetch(
-              new Request(
-                "https://upload.internal/api/upload/files/by-key?provider=database&key=results/summary.md",
-              ),
+              new Request("https://upload.internal/api/upload/files/by-key?key=results/summary.md"),
             );
           expect(await listed.json()).toMatchObject({ contentType: "text/markdown" });
 

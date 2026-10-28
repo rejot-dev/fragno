@@ -431,7 +431,6 @@ describe("Marketplace browsing scenarios", () => {
                 assert(manifest);
                 const uploadPackageFile = async (fileKey: string, text: string) => {
                   const form = new FormData();
-                  form.set("provider", "database");
                   form.set("fileKey", fileKey);
                   form.set("file", new File([text], "README.md", { type: "text/markdown" }));
                   const uploaded = await ctx.runtime.objects.upload

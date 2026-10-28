@@ -271,7 +271,7 @@ export class MarketplaceObject extends RpcTarget implements MarketplaceCommands 
       ).http,
     );
     const files = await marketplaceReleasePackageFiles(release);
-    const existing = await listUploadFiles({ routes, provider: "database", prefix: filePrefix });
+    const existing = await listUploadFiles({ routes, prefix: filePrefix });
     if (plan.state === "published") {
       if (
         marketplacePackageFileInventoryMatches(
@@ -302,10 +302,7 @@ export class MarketplaceObject extends RpcTarget implements MarketplaceCommands 
       ]),
     ).sort();
     const snapshots = new Map(
-      (await getUploadFileSnapshots({ routes, provider: "database", fileKeys })).map((file) => [
-        file.fileKey,
-        file,
-      ]),
+      (await getUploadFileSnapshots({ routes, fileKeys })).map((file) => [file.fileKey, file]),
     );
     const expectedFiles: MarketplacePackagePublishRequest["expectedFiles"] = fileKeys.map(
       (fileKey) => {
@@ -388,7 +385,6 @@ export class MarketplaceObject extends RpcTarget implements MarketplaceCommands 
     const packageFiles = await marketplaceReleasePackageFiles(request.intent.release);
     const files = await listUploadFiles({
       routes: createUploadRouteCaller(this.#runtime.objects.upload.forName(uploadName).http),
-      provider: "database",
       prefix: filePrefix,
       maxPages: 1,
     });

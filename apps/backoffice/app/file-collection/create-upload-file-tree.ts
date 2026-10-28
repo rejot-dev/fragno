@@ -2,7 +2,6 @@ import { createFileTree } from "./create-file-tree";
 import type { FileTree, FileTreeEntry } from "./file-collection";
 
 export type UploadFileTreeRecord = {
-  provider?: string;
   fileKey: string;
   filename: string;
   sizeBytes: number;
@@ -15,13 +14,12 @@ export type UploadFileTreeRecord = {
 };
 
 export type UploadFileTreeOptions = {
-  provider: string;
   prefix?: string;
 };
 
 export function createUploadFileTree(
   records: readonly UploadFileTreeRecord[],
-  options: UploadFileTreeOptions,
+  options: UploadFileTreeOptions = {},
 ): FileTree {
   return createFileTree(createUploadFileTreeEntries(records, options));
 }
@@ -34,11 +32,7 @@ export function createUploadFileTreeEntries(
   const entries: FileTreeEntry[] = [];
 
   for (const record of records) {
-    if (
-      (record.provider !== undefined && record.provider !== options.provider) ||
-      (record.status !== undefined && record.status !== "ready") ||
-      record.deletedAt
-    ) {
+    if ((record.status !== undefined && record.status !== "ready") || record.deletedAt) {
       continue;
     }
     if (!record.fileKey.startsWith(prefix)) {

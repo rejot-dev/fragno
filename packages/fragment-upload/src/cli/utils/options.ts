@@ -141,11 +141,3 @@ export const resolveFileKeyValue = (input: { fileKey: string | undefined }) => {
 };
 
 export const resolvePrefixValue = (input: { prefix: string | undefined }) => input.prefix;
-
-export const resolveProviderValue = (provider: string | undefined) => {
-  if (!provider) {
-    throw new Error("Missing provider. Provide --provider.");
-  }
-
-  return provider;
-};

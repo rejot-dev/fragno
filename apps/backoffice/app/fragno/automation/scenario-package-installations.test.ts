@@ -168,7 +168,6 @@ function routes(ctx: BackofficeScenarioContext) {
 
 async function readWorkspaceFile(ctx: BackofficeScenarioContext, path: string) {
   const url = new URL("https://upload.test/api/upload/files/by-key/content");
-  url.searchParams.set("provider", "database");
   url.searchParams.set("key", path.slice("/workspace/".length));
   return await ctx.runtime.objects.upload.for(TARGET_SCOPE).http.fetch(new Request(url));
 }
@@ -179,7 +178,6 @@ async function writeUploadFile(input: {
   fetch: (request: Request) => Promise<Response>;
 }) {
   const form = new FormData();
-  form.set("provider", "database");
   form.set("fileKey", input.fileKey);
   form.set("filename", input.fileKey.split("/").at(-1)!);
   form.set(

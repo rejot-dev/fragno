@@ -45,7 +45,6 @@ const { useUploadHelpers } = uploadClient;
 
 const helpers = useUploadHelpers();
 await helpers.createUploadAndTransfer(file, {
-  provider: "avatars",
   fileKey: `users/${userId}/avatar`,
   onProgress: (progress) => {
     console.log(progress.bytesUploaded, progress.totalBytes);

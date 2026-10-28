@@ -15,7 +15,6 @@ export type UploadServiceErrorCode =
 
 export type UploadServiceErrorDetails = {
   uploadId?: string;
-  provider?: string;
   fileKey?: string;
 };
 

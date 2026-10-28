@@ -188,5 +188,38 @@ export const uploadSchema = schema("upload", (s) => {
           .dropColumn("partSizeBytes"),
       )
       .alterTable("file", (t) => t.dropColumn("errorCode").dropColumn("errorMessage"))
+      // Files were namespaced by the storage provider that held them; the database is the only one.
+      .alterTable("file", (t) =>
+        t
+          .dropIndex("idx_file_provider_key")
+          .dropIndex("idx_file_provider_key_status")
+          .dropIndex("idx_file_provider_key_uploaderId")
+          .dropIndex("idx_file_provider_key_status_uploaderId")
+          .dropColumn("provider")
+          .createIndex("idx_file_key", ["key"], { unique: true })
+          .createIndex("idx_file_key_status", ["key", "status"])
+          .createIndex("idx_file_key_uploaderId", ["key", "uploaderId"])
+          .createIndex("idx_file_key_status_uploaderId", ["key", "status", "uploaderId"]),
+      )
+      .alterTable("upload", (t) =>
+        t
+          .dropIndex("idx_upload_provider_key")
+          .dropIndex("idx_upload_provider_key_status_expiresAt")
+          .dropColumn("provider")
+          .createIndex("idx_upload_key_status_expiresAt", ["key", "status", "expiresAt"]),
+      )
+      .alterTable("file_text_document", (t) =>
+        t
+          .dropIndex("idx_file_text_document_provider_key")
+          .dropColumn("provider")
+          .createIndex("idx_file_text_document_key", ["key"], { unique: true }),
+      )
+      .alterTable("file_text_term", (t) =>
+        t
+          .dropIndex("idx_file_text_term_provider_term")
+          .dropIndex("idx_file_text_term_provider_term_key")
+          .dropColumn("provider")
+          .createIndex("idx_file_text_term_term_key", ["term", "key"]),
+      )
   );
 });

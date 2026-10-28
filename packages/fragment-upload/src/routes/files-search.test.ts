@@ -21,7 +21,6 @@ const createSearchTestBuild = () =>
     .build();
 
 describe("text index search", () => {
-  const provider = "database";
   let build!: Awaited<ReturnType<typeof createSearchTestBuild>>;
 
   beforeAll(async () => {
@@ -45,7 +44,6 @@ describe("text index search", () => {
     const contentType = input.contentType ?? "text/plain";
     const created = await fragment.callRoute("POST", "/uploads", {
       body: {
-        provider,
         fileKey: input.fileKey,
         filename: input.fileKey.split("/").at(-1) ?? "file.txt",
         sizeBytes: Buffer.byteLength(input.content),
@@ -75,7 +73,6 @@ describe("text index search", () => {
   const searchCandidateKeys = async (input: { glob: string; query: string }) => {
     const response = await build.fragments.upload.fragment.callRoute("POST", "/files/search", {
       body: {
-        provider,
         glob: input.glob,
         keywords: [input.query],
       },
@@ -87,7 +84,6 @@ describe("text index search", () => {
   it("stores POST /files content in the upload database", async () => {
     const { fragment, db } = build.fragments.upload;
     const form = new FormData();
-    form.set("provider", provider);
     form.set("fileKey", "reports/q1.txt");
     form.set("file", new File(["database bytes"], "q1.txt", { type: "text/plain" }));
 
@@ -96,7 +92,7 @@ describe("text index search", () => {
     assert(uploadResponse.data.status === "ready");
 
     const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: "reports/q1.txt" },
+      query: { key: "reports/q1.txt" },
     });
     assert(contentResponse.status === 200);
     assert(contentResponse.headers.get("Content-Type") === "text/plain");
@@ -106,9 +102,7 @@ describe("text index search", () => {
       .createUnitOfWork("read-file")
       .forSchema(uploadSchema)
       .findFirst("file", (b) =>
-        b.whereIndex("idx_file_provider_key", (eb) =>
-          eb.and(eb("provider", "=", provider), eb("key", "=", "reports/q1.txt")),
-        ),
+        b.whereIndex("idx_file_key", (eb) => eb("key", "=", "reports/q1.txt")),
       );
     await fileUow.executeRetrieve();
     const storedFile = (await fileUow.retrievalPhase)[0];
@@ -132,7 +126,6 @@ describe("text index search", () => {
 
     const uploadTextFile = async (fileKey: string, content: string, contentType = "text/plain") => {
       const form = new FormData();
-      form.set("provider", provider);
       form.set("fileKey", fileKey);
       form.set(
         "file",
@@ -167,7 +160,6 @@ describe("text index search", () => {
 
     const searchResponse = await fragment.callRoute("POST", "/files/search", {
       body: {
-        provider,
         glob: "/workspace/**/*.ts",
         keywords: ["createWorkflow"],
         options: {
@@ -196,13 +188,11 @@ describe("text index search", () => {
         ],
         "excludedTerms": [],
         "hasMoreCandidates": false,
-        "provider": "database",
       }
     `);
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: searchResponse.data.candidates.map((candidate) => candidate.key),
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -262,7 +252,6 @@ describe("text index search", () => {
     const { fragment } = build.fragments.upload;
     const content = "export const transform = (value) => value => value;";
     const form = new FormData();
-    form.set("provider", provider);
     form.set("fileKey", "workspace/src/operator.ts");
     form.set("file", new File([content], "operator.ts", { type: "application/typescript" }));
     const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
@@ -271,7 +260,6 @@ describe("text index search", () => {
 
     const candidateResponse = await fragment.callRoute("POST", "/files/search", {
       body: {
-        provider,
         glob: "/workspace/**/*.ts",
         keywords: ["=>"],
       },
@@ -289,7 +277,6 @@ describe("text index search", () => {
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: candidateResponse.data.candidates.map((candidate) => candidate.key),
         keywords: ["=>"],
         excludedTerms: [],
@@ -386,7 +373,6 @@ describe("text index search", () => {
     const { fragment } = build.fragments.upload;
     const fileKey = "batch/search/replaced-document.txt";
     const form = new FormData();
-    form.set("provider", provider);
     form.set("fileKey", fileKey);
     form.set(
       "file",
@@ -395,7 +381,7 @@ describe("text index search", () => {
     const initial = await fragment.callRoute("POST", "/files", { body: form });
     assert(initial.type === "json");
     const initialSnapshot = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert(initialSnapshot.type === "json");
     await drainDurableHooks(fragment);
@@ -440,7 +426,6 @@ describe("text index search", () => {
     const writeFiles = async (files: Record<string, string>) => {
       const response = await fragment.callRoute("POST", "/files/apply-edits", {
         body: {
-          provider,
           edits: Object.entries(files).map(([fileKey, content]) => ({
             kind: "write" as const,
             fileKey,
@@ -457,7 +442,6 @@ describe("text index search", () => {
 
     const hydrated = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: ["notes/first.txt", "notes/second.txt"],
         keywords: ["needle"],
         excludedTerms: [],
@@ -479,7 +463,6 @@ describe("text index search", () => {
 
     for (const fileKey of ["workspace/src/a.ts", "workspace/src/b.ts", "workspace/src/c.ts"]) {
       const form = new FormData();
-      form.set("provider", provider);
       form.set("fileKey", fileKey);
       form.set(
         "file",
@@ -495,7 +478,6 @@ describe("text index search", () => {
 
     const searchResponse = await fragment.callRoute("POST", "/files/search", {
       body: {
-        provider,
         glob: "workspace/**/*.ts",
         keywords: ["createWorkflow"],
         maxCandidateFiles: 2,
@@ -525,12 +507,11 @@ describe("text index search", () => {
           },
         ],
         "cursor": {
-          "indexCursor": "eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfZmlsZV90ZXh0X3Rlcm1fcHJvdmlkZXJfdGVybV9rZXkiLCJvcmRlckRpcmVjdGlvbiI6ImFzYyIsInBhZ2VTaXplIjoyLCJpbmRleFZhbHVlcyI6eyJwcm92aWRlciI6ImRhdGFiYXNlIiwidGVybSI6ImNyZWF0ZXdvcmtmbG93Iiwia2V5Ijoid29ya3NwYWNlL3NyYy9iLnRzIn19",
+          "indexCursor": "eyJ2IjoxLCJpbmRleE5hbWUiOiJpZHhfZmlsZV90ZXh0X3Rlcm1fdGVybV9rZXkiLCJvcmRlckRpcmVjdGlvbiI6ImFzYyIsInBhZ2VTaXplIjoyLCJpbmRleFZhbHVlcyI6eyJ0ZXJtIjoiY3JlYXRld29ya2Zsb3ciLCJrZXkiOiJ3b3Jrc3BhY2Uvc3JjL2IudHMifX0=",
           "pass": 0,
         },
         "excludedTerms": [],
         "hasMoreCandidates": true,
-        "provider": "database",
       }
     `);
 
@@ -539,7 +520,6 @@ describe("text index search", () => {
 
     const nextSearchResponse = await fragment.callRoute("POST", "/files/search", {
       body: {
-        provider,
         glob: "workspace/**/*.ts",
         keywords: ["createWorkflow"],
         maxCandidateFiles: 2,
@@ -563,13 +543,11 @@ describe("text index search", () => {
         ],
         "excludedTerms": [],
         "hasMoreCandidates": false,
-        "provider": "database",
       }
     `);
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: searchResponse.data.candidates.map((candidate) => candidate.key),
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -614,7 +592,6 @@ describe("text index search", () => {
 
     const nextHydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: nextSearchResponse.data.candidates.map((candidate) => candidate.key),
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -656,7 +633,6 @@ describe("text index search", () => {
     };
     for (const [fileKey, content] of Object.entries(files)) {
       const form = new FormData();
-      form.set("provider", provider);
       form.set("fileKey", fileKey);
       form.set(
         "file",
@@ -672,12 +648,11 @@ describe("text index search", () => {
     let cursor: { pass: number; indexCursor?: string } | undefined;
     do {
       const candidatePage = await fragment.callRoute("POST", "/files/search", {
-        body: { provider, glob: "workspace/**/*.ts", keywords, cursor },
+        body: { glob: "workspace/**/*.ts", keywords, cursor },
       });
       assert(candidatePage.type === "json");
       const hydrated = await fragment.callRoute("POST", "/files/search/hydrate", {
         body: {
-          provider,
           candidateKeys: candidatePage.data.candidates.map((candidate) => candidate.key),
           keywords,
           excludedTerms: candidatePage.data.excludedTerms,
@@ -702,7 +677,6 @@ describe("text index search", () => {
     const fileKey = "workspace/src/repeated.txt";
     const content = "needle needle needle needle needle";
     const form = new FormData();
-    form.set("provider", provider);
     form.set("fileKey", fileKey);
     form.set("file", new File([content], "repeated.txt", { type: "text/plain" }));
     const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
@@ -711,7 +685,6 @@ describe("text index search", () => {
 
     const firstPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: [fileKey],
         keywords: ["needle"],
         excludedTerms: [],
@@ -730,7 +703,6 @@ describe("text index search", () => {
 
     const secondPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: [fileKey],
         keywords: ["needle"],
         excludedTerms: [],
@@ -758,7 +730,6 @@ describe("text index search", () => {
 
     for (const file of files) {
       const form = new FormData();
-      form.set("provider", provider);
       form.set("fileKey", file.key);
       form.set("file", new File([file.content], file.key, { type: "text/plain" }));
       const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
@@ -768,7 +739,6 @@ describe("text index search", () => {
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: files.map((file) => file.key),
         keywords: ["needle"],
         excludedTerms: [],
@@ -800,7 +770,6 @@ describe("text index search", () => {
     const fileKey = "workspace/src/replaced-between-pages.txt";
     const uploadFile = async (content: string) => {
       const form = new FormData();
-      form.set("provider", provider);
       form.set("fileKey", fileKey);
       form.set("file", new File([content], "replaced-between-pages.txt", { type: "text/plain" }));
       const response = await fragment.callRoute("POST", "/files", { body: form });
@@ -811,7 +780,6 @@ describe("text index search", () => {
     await uploadFile("needle needle needle");
     const firstPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: [fileKey],
         keywords: ["needle"],
         excludedTerms: [],
@@ -825,7 +793,6 @@ describe("text index search", () => {
     await uploadFile("prefix needle needle");
     const nextPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: [fileKey],
         keywords: ["needle"],
         excludedTerms: [],
@@ -845,7 +812,6 @@ describe("text index search", () => {
     const fileKey = "workspace/src/large-line.txt";
     const content = `${"a".repeat(10_000)}${" needle".repeat(500)}${"b".repeat(10_000)}`;
     const form = new FormData();
-    form.set("provider", provider);
     form.set("fileKey", fileKey);
     form.set("file", new File([content], "large-line.txt", { type: "text/plain" }));
     const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
@@ -854,7 +820,6 @@ describe("text index search", () => {
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: [fileKey],
         keywords: ["needle"],
         excludedTerms: [],
@@ -893,7 +858,6 @@ describe("text index search", () => {
 
     for (const file of files) {
       const form = new FormData();
-      form.set("provider", provider);
       form.set("fileKey", file.key);
       form.set(
         "file",
@@ -909,7 +873,6 @@ describe("text index search", () => {
 
     const firstPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: [files[0]!.key, files[2]!.key],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -929,7 +892,6 @@ describe("text index search", () => {
 
     const remainingPage = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: [files[2]!.key],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -946,7 +908,6 @@ describe("text index search", () => {
     const fileKey = "workspace/src/large.ts";
     const content = "export const createWorkflow = 'larger than the budget';\n";
     const form = new FormData();
-    form.set("provider", provider);
     form.set("fileKey", fileKey);
     form.set("file", new File([content], "large.ts", { type: "application/typescript" }));
     const uploadResponse = await fragment.callRoute("POST", "/files", { body: form });
@@ -955,7 +916,6 @@ describe("text index search", () => {
 
     const hydrateResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: [fileKey],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -978,7 +938,6 @@ describe("text index search", () => {
     const { fragment } = build.fragments.upload;
     const uploadTextFile = async (content: string) => {
       const form = new FormData();
-      form.set("provider", provider);
       form.set("fileKey", "workspace/src/stale.ts");
       form.set("file", new File([content], "stale.ts", { type: "application/typescript" }));
       const response = await fragment.callRoute("POST", "/files", { body: form });
@@ -990,7 +949,6 @@ describe("text index search", () => {
 
     const before = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: ["workspace/src/stale.ts"],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -1026,7 +984,6 @@ describe("text index search", () => {
 
     const after = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: ["workspace/src/stale.ts"],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -1050,7 +1007,6 @@ describe("text index search", () => {
     const { fragment } = build.fragments.upload;
     const uploadFile = async (content: string, contentType: string) => {
       const form = new FormData();
-      form.set("provider", provider);
       form.set("fileKey", "workspace/src/replaced.ts");
       form.set("file", new File([content], "replaced.ts", { type: contentType }));
       const response = await fragment.callRoute("POST", "/files", { body: form });
@@ -1065,7 +1021,6 @@ describe("text index search", () => {
 
     const searchResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: ["workspace/src/replaced.ts"],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -1087,7 +1042,6 @@ describe("text index search", () => {
   it("clears the text index idempotently when a file is deleted", async () => {
     const { fragment, db } = build.fragments.upload;
     const form = new FormData();
-    form.set("provider", provider);
     form.set("fileKey", "workspace/src/deleted.ts");
     form.set(
       "file",
@@ -1104,23 +1058,20 @@ describe("text index search", () => {
       .createUnitOfWork("read-file-before-delete")
       .forSchema(uploadSchema)
       .findFirst("file", (b) =>
-        b.whereIndex("idx_file_provider_key", (eb) =>
-          eb.and(eb("provider", "=", provider), eb("key", "=", "workspace/src/deleted.ts")),
-        ),
+        b.whereIndex("idx_file_key", (eb) => eb("key", "=", "workspace/src/deleted.ts")),
       );
     await fileUow.executeRetrieve();
     const fileBeforeDelete = (await fileUow.retrievalPhase)[0];
     assert(fileBeforeDelete?.objectKey);
 
     const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
-      query: { provider, key: "workspace/src/deleted.ts" },
+      query: { key: "workspace/src/deleted.ts" },
     });
     assert(deleteResponse.type === "json");
     await drainDurableHooks(fragment);
 
     const searchResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: ["workspace/src/deleted.ts"],
         keywords: ["createWorkflow"],
         excludedTerms: [],
@@ -1142,7 +1093,6 @@ describe("text index search", () => {
       await this.handlerTx()
         .mutate(({ forSchema }) => {
           forSchema(uploadSchema).triggerHook("onFileDeleted", {
-            provider,
             fileKey: "workspace/src/deleted.ts",
             objectKey: fileBeforeDelete.objectKey,
             sizeBytes: Number(fileBeforeDelete.sizeBytes),
@@ -1155,7 +1105,6 @@ describe("text index search", () => {
 
     const repeatedSearchResponse = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: ["workspace/src/deleted.ts"],
         keywords: ["createWorkflow"],
         excludedTerms: [],

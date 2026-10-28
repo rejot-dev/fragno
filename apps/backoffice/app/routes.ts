@@ -338,7 +338,7 @@ export default [
       "files-scoped/:scopeKind/:scopeId/large-files/uploads",
       "routes/api/large-files-uploads.ts",
     ),
-    route("file-links/:scopeKind/:scopeId/:provider/*", "routes/api/file-links.ts"),
+    route("file-links/:scopeKind/:scopeId/*", "routes/api/file-links.ts"),
     route("upload-scoped/:scopeKind/:scopeId/*", "routes/api/upload-scoped.ts"),
     route("workflows/:scopeSegment/*", "routes/api/workflows.ts"),
     route("automations-scoped/:scopeKind/:scopeId/*", "routes/api/automations-scoped.ts"),

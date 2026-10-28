@@ -27,7 +27,6 @@ import {
   fileMutationSnapshotSchema,
   fileSnapshotSchema,
   fileWritePreconditionSchema,
-  providerNamespaceSchema,
   toFileMetadata,
   toFileMutationResult,
   visibilitySchema,
@@ -42,7 +41,6 @@ const legacyFileKeyPartsSchema = z.array(z.union([z.string(), z.number().int()])
 
 const listQuerySchema = z
   .object({
-    provider: providerNamespaceSchema.optional(),
     prefix: z.string().optional(),
     glob: z.string().min(1).max(512).optional(),
     cursor: z.string().optional(),
@@ -64,7 +62,6 @@ const directoryMetadataSchema = z.object({
 });
 
 const byKeyQuerySchema = z.object({
-  provider: providerNamespaceSchema,
   key: z.string().min(1),
 });
 
@@ -76,7 +73,6 @@ const preparedFileBatchEntrySchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("delete"),
-    provider: providerNamespaceSchema,
     fileKey: z.string().min(1),
     precondition: z.object({
       kind: z.literal("revision"),
@@ -85,7 +81,6 @@ const preparedFileBatchEntrySchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("assert"),
-    provider: providerNamespaceSchema,
     fileKey: z.string().min(1),
     precondition: fileWritePreconditionSchema,
   }),
@@ -128,7 +123,6 @@ const fileEditOperationSchema = z.discriminatedUnion("kind", [
 ]);
 
 const applyFileEditsSchema = z.object({
-  provider: providerNamespaceSchema,
   edits: z.array(fileEditOperationSchema).min(1).max(MAX_FILE_EDIT_OPERATIONS),
 });
 
@@ -173,7 +167,6 @@ const searchCandidateCursorSchema = z.object({
 });
 
 const searchFilesSchema = z.object({
-  provider: providerNamespaceSchema,
   glob: z.string().min(1).max(512),
   keywords: z.array(z.string().min(1).max(512)).min(1).max(MAX_SEARCH_KEYWORDS),
   options: stateSearchOptionsSchema.optional(),
@@ -192,7 +185,6 @@ const searchFileCandidateSchema = z.object({
 const MAX_SEARCH_HYDRATION_BYTES = 30 * 1024 * 1024;
 
 const hydrateSearchMatchesSchema = z.object({
-  provider: providerNamespaceSchema,
   candidateKeys: z.array(z.string().min(1)).min(1).max(500),
   keywords: z.array(z.string().min(1).max(512)).min(1).max(MAX_SEARCH_KEYWORDS),
   /** Files containing any of these index terms were candidates of an earlier pass. */
@@ -333,7 +325,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
   ({ services, defineRoute, config }) => {
     const parseListQuery = (query: URLSearchParams) => {
       const result = listQuerySchema.safeParse({
-        provider: query.has("provider") ? query.get("provider") : undefined,
         prefix: query.get("prefix") || undefined,
         glob: query.get("glob") || undefined,
         cursor: query.get("cursor") || undefined,
@@ -350,7 +341,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
 
     const parseByKeyQuery = (query: URLSearchParams) => {
       const result = byKeyQuerySchema.safeParse({
-        provider: query.get("provider"),
         key: query.get("key"),
       });
       if (!result.success) {
@@ -359,10 +349,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
 
       try {
         const resolvedKey = resolveFileKeyInput({ fileKey: result.data.key });
-        return {
-          provider: result.data.provider,
-          fileKey: resolvedKey.fileKey,
-        };
+        return { fileKey: resolvedKey.fileKey };
       } catch (cause) {
         if (cause instanceof UploadServiceError) {
           throw cause;
@@ -386,13 +373,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           if (!(file instanceof Blob)) {
             return error({ message: "File is required", code: "INVALID_REQUEST" }, 400);
           }
-
-          const providerValue = form.get("provider");
-          const providerResult = providerNamespaceSchema.safeParse(providerValue);
-          if (!providerResult.success) {
-            return error({ message: "Invalid request", code: "INVALID_REQUEST" }, 400);
-          }
-          const provider = providerResult.data;
 
           let keyParts: z.infer<typeof legacyFileKeyPartsSchema> | undefined;
           if (form.has("keyParts")) {
@@ -459,7 +439,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             const content = new Uint8Array(await file.arrayBuffer());
             const [written] = await this.handlerTx()
               .withServiceCalls(() => [
-                services.writeFiles(provider, [
+                services.writeFiles([
                   {
                     fileKey: resolvedKey.fileKey,
                     content,
@@ -505,7 +485,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             }
 
             const result = await this.handlerTx()
-              .withServiceCalls(() => [services.applyFileEdits(payload.provider, edits)])
+              .withServiceCalls(() => [services.applyFileEdits(edits)])
               .transform(({ serviceResult: [applied] }) => applied)
               .execute();
             return json(result);
@@ -553,7 +533,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         method: "GET",
         path: "/files",
         queryParameters: [
-          "provider",
           "prefix",
           "glob",
           "cursor",
@@ -581,7 +560,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           const result = await this.handlerTx()
             .withServiceCalls(() => [
               services.listFiles({
-                provider: params.provider,
                 prefix: params.glob ? getStaticGlobPrefix(params.glob) : params.prefix,
                 pageSize: params.pageSize,
                 cursor: params.cursor,
@@ -622,7 +600,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         method: "POST",
         path: "/files/snapshots",
         inputSchema: z.object({
-          provider: providerNamespaceSchema,
           fileKeys: z.array(z.string().min(1)).min(1).max(500),
         }),
         outputSchema: z.object({ files: z.array(fileSnapshotSchema) }),
@@ -636,9 +613,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
             return handleServiceError(cause, error);
           }
           const files = await this.handlerTx()
-            .withServiceCalls(() => [
-              services.findFilesByKeys({ provider: payload.provider, fileKeys }),
-            ])
+            .withServiceCalls(() => [services.findFilesByKeys({ fileKeys })])
             .transform(({ serviceResult: [files] }) =>
               files.map((file) => ({ ...toFileMetadata(file), revision: file.id.version })),
             )
@@ -654,7 +629,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
         path: "/files/search",
         inputSchema: searchFilesSchema,
         outputSchema: z.object({
-          provider: providerNamespaceSchema,
           candidates: z.array(searchFileCandidateSchema),
           candidateFiles: z.number(),
           /** Pass these to hydration so files from earlier passes are not matched twice. */
@@ -710,14 +684,10 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                   .retrieve(({ forSchema }) =>
                     forSchema(uploadSchema).findWithCursor("file_text_term", (b) => {
                       const query = b
-                        .whereIndex("idx_file_text_term_provider_term_key", (eb) =>
-                          eb.and(
-                            eb("provider", "=", payload.provider),
-                            eb("term", "=", searchTerm),
-                            eb("key", "starts with", globPrefix),
-                          ),
+                        .whereIndex("idx_file_text_term_term_key", (eb) =>
+                          eb.and(eb("term", "=", searchTerm), eb("key", "starts with", globPrefix)),
                         )
-                        .orderByIndex("idx_file_text_term_provider_term_key", "asc")
+                        .orderByIndex("idx_file_text_term_term_key", "asc")
                         .pageSize(maxCandidateFiles)
                         .joinOne("document", "file_text_document", (document) =>
                           document.onIndex("primary", (eb) =>
@@ -754,13 +724,10 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
                   .retrieve(({ forSchema }) =>
                     forSchema(uploadSchema).findWithCursor("file_text_document", (b) => {
                       const query = b
-                        .whereIndex("idx_file_text_document_provider_key", (eb) =>
-                          eb.and(
-                            eb("provider", "=", payload.provider),
-                            eb("key", "starts with", globPrefix),
-                          ),
+                        .whereIndex("idx_file_text_document_key", (eb) =>
+                          eb("key", "starts with", globPrefix),
                         )
-                        .orderByIndex("idx_file_text_document_provider_key", "asc")
+                        .orderByIndex("idx_file_text_document_key", "asc")
                         .pageSize(maxCandidateFiles);
                       return cursor.indexCursor ? query.after(cursor.indexCursor) : query;
                     }),
@@ -793,7 +760,6 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               : undefined;
 
           return json({
-            provider: payload.provider,
             candidates,
             candidateFiles: candidates.length,
             excludedTerms: passTerms?.slice(0, cursor.pass) ?? [],
@@ -856,8 +822,8 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
               for (const candidateKeys of chunkQueryValues(payload.candidateKeys)) {
                 uow.find("file_text_document", (b) =>
                   b
-                    .whereIndex("idx_file_text_document_provider_key", (eb) =>
-                      eb.and(eb("provider", "=", payload.provider), eb("key", "in", candidateKeys)),
+                    .whereIndex("idx_file_text_document_key", (eb) =>
+                      eb("key", "in", candidateKeys),
                     )
                     .joinOne("object", "storage_object", (object) =>
                       object
@@ -972,7 +938,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
       defineRoute({
         method: "GET",
         path: "/files/by-key",
-        queryParameters: ["provider", "key"],
+        queryParameters: ["key"],
         outputSchema: fileSnapshotSchema,
         errorCodes,
         handler: async function ({ query }, { json, error }) {
@@ -1002,7 +968,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
       defineRoute({
         method: "PATCH",
         path: "/files/by-key",
-        queryParameters: ["provider", "key"],
+        queryParameters: ["key"],
         inputSchema: updateFileSchema,
         outputSchema: fileMutationResultSchema,
         errorCodes,
@@ -1031,7 +997,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
       defineRoute({
         method: "DELETE",
         path: "/files/by-key",
-        queryParameters: ["provider", "key"],
+        queryParameters: ["key"],
         outputSchema: z.object({ ok: z.literal(true) }),
         errorCodes,
         handler: async function ({ query }, { json, error }) {
@@ -1057,7 +1023,7 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
       defineRoute({
         method: "GET",
         path: "/files/by-key/content",
-        queryParameters: ["provider", "key"],
+        queryParameters: ["key"],
         errorCodes,
         handler: async function ({ query }, { error }) {
           try {

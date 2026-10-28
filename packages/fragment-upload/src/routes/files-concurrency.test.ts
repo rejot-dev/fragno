@@ -68,18 +68,16 @@ const buildUploadRoutesTest = async (instrumentation?: UOWInstrumentation) => {
     await build.test.cleanup();
   });
 
-  return { ...build, provider: "workspace" };
+  return build;
 };
 
 const prepareProxyFile = async (
   fragment: Awaited<ReturnType<typeof buildUploadRoutesTest>>["fragments"]["upload"]["fragment"],
-  provider: string,
   fileKey: string,
   content: string,
 ) => {
   const created = await fragment.callRoute("POST", "/uploads", {
     body: {
-      provider,
       fileKey,
       filename: path.basename(fileKey),
       sizeBytes: Buffer.byteLength(content),
@@ -106,12 +104,10 @@ const prepareProxyFile = async (
 
 const replaceFile = async (
   fragment: Awaited<ReturnType<typeof buildUploadRoutesTest>>["fragments"]["upload"]["fragment"],
-  provider: string,
   fileKey: string,
   content: string,
 ) => {
   const body = new FormData();
-  body.set("provider", provider);
   body.set("fileKey", fileKey);
   body.set(
     "file",
@@ -155,14 +151,9 @@ describe("prepared file commit concurrency", () => {
         }
       },
     };
-    const { fragments, test, provider } = await buildUploadRoutesTest(instrumentation);
+    const { fragments, test } = await buildUploadRoutesTest(instrumentation);
     const { fragment, db } = fragments.upload;
-    const prepared = await prepareProxyFile(
-      fragment,
-      provider,
-      "prepared/timeout-race.txt",
-      "published",
-    );
+    const prepared = await prepareProxyFile(fragment, "prepared/timeout-race.txt", "published");
 
     const deadline = new Date(Date.now() + 250);
     const uploadUow = db.createUnitOfWork("set timeout deadline").forSchema(uploadSchema);
@@ -230,7 +221,7 @@ describe("prepared file commit concurrency", () => {
     assert(upload.data.status === "completed");
 
     const content = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: prepared.fileKey },
+      query: { key: prepared.fileKey },
     });
     assert((await content.text()) === "published");
   });
@@ -249,20 +240,10 @@ describe("prepared file commit concurrency", () => {
         }
       },
     };
-    const { fragments, provider } = await buildUploadRoutesTest(instrumentation);
+    const { fragments } = await buildUploadRoutesTest(instrumentation);
     const { fragment } = fragments.upload;
-    const replayed = await prepareProxyFile(
-      fragment,
-      provider,
-      "prepared/replayed-race.txt",
-      "original",
-    );
-    const pending = await prepareProxyFile(
-      fragment,
-      provider,
-      "prepared/pending-race.txt",
-      "pending",
-    );
+    const replayed = await prepareProxyFile(fragment, "prepared/replayed-race.txt", "original");
+    const pending = await prepareProxyFile(fragment, "prepared/pending-race.txt", "pending");
     const firstCommit = await fragment.callRoute("POST", "/files/commit-prepared", {
       body: {
         entries: [
@@ -295,7 +276,7 @@ describe("prepared file commit concurrency", () => {
     });
     await batchRetrieved.promise;
 
-    await replaceFile(fragment, provider, replayed.fileKey, "replacement");
+    await replaceFile(fragment, replayed.fileKey, "replacement");
     releaseBatchMutation.resolve();
 
     const rejected = await mixedCommit;
@@ -304,11 +285,11 @@ describe("prepared file commit concurrency", () => {
     assert(rejected.error.code === "UPLOAD_INVALID_STATE");
 
     const replayedContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: replayed.fileKey },
+      query: { key: replayed.fileKey },
     });
     assert((await replayedContent.text()) === "replacement");
     const pendingFile = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: pending.fileKey },
+      query: { key: pending.fileKey },
     });
     assert(pendingFile.type === "error");
     assert(pendingFile.error.code === "FILE_NOT_FOUND");
@@ -328,14 +309,9 @@ describe("prepared file commit concurrency", () => {
         }
       },
     };
-    const { fragments, provider } = await buildUploadRoutesTest(instrumentation);
+    const { fragments } = await buildUploadRoutesTest(instrumentation);
     const { fragment } = fragments.upload;
-    const pending = await prepareProxyFile(
-      fragment,
-      provider,
-      "prepared/absence-guard-write.txt",
-      "pending",
-    );
+    const pending = await prepareProxyFile(fragment, "prepared/absence-guard-write.txt", "pending");
     const assertedFileKey = "prepared/absence-guard-assertion.txt";
 
     pauseBatch = true;
@@ -349,7 +325,6 @@ describe("prepared file commit concurrency", () => {
           },
           {
             kind: "assert",
-            provider,
             fileKey: assertedFileKey,
             precondition: { kind: "absent" },
           },
@@ -358,7 +333,7 @@ describe("prepared file commit concurrency", () => {
     });
     await batchRetrieved.promise;
 
-    await replaceFile(fragment, provider, assertedFileKey, "concurrent");
+    await replaceFile(fragment, assertedFileKey, "concurrent");
     releaseBatchMutation.resolve();
 
     const rejected = await batchCommit;
@@ -367,12 +342,12 @@ describe("prepared file commit concurrency", () => {
     assert(rejected.error.code === "FILE_PRECONDITION_FAILED");
 
     const pendingFile = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: pending.fileKey },
+      query: { key: pending.fileKey },
     });
     assert(pendingFile.type === "error");
     assert(pendingFile.error.code === "FILE_NOT_FOUND");
     const assertedContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: assertedFileKey },
+      query: { key: assertedFileKey },
     });
     assert((await assertedContent.text()) === "concurrent");
   });
@@ -391,15 +366,14 @@ describe("prepared file commit concurrency", () => {
         }
       },
     };
-    const { fragments, provider } = await buildUploadRoutesTest(instrumentation);
+    const { fragments } = await buildUploadRoutesTest(instrumentation);
     const { fragment } = fragments.upload;
-    await replaceFile(fragment, provider, "edits/first.txt", "first-v1");
-    await replaceFile(fragment, provider, "edits/second.txt", "second-v1");
+    await replaceFile(fragment, "edits/first.txt", "first-v1");
+    await replaceFile(fragment, "edits/second.txt", "second-v1");
 
     pauseEdit = true;
     const editRequest = fragment.callRoute("POST", "/files/apply-edits", {
       body: {
-        provider,
         edits: [
           {
             kind: "replace",
@@ -418,7 +392,7 @@ describe("prepared file commit concurrency", () => {
     });
     await editRetrieved.promise;
 
-    await replaceFile(fragment, provider, "edits/first.txt", "first-v2");
+    await replaceFile(fragment, "edits/first.txt", "first-v2");
     releaseEditMutation.resolve();
 
     // The edit read v1 of the first file, so it retries against v2 instead of overwriting it.
@@ -433,18 +407,17 @@ describe("prepared file commit concurrency", () => {
       ["edits/second.txt", "second-edited-v1"],
     ]) {
       const content = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-        query: { provider, key },
+        query: { key },
       });
       expect(await content.text()).toBe(text);
     }
   });
 
   it("maps descriptive prepared-batch failures through their structured error codes", async () => {
-    const { fragments, provider } = await buildUploadRoutesTest();
+    const { fragments } = await buildUploadRoutesTest();
     const { fragment } = fragments.upload;
     const active = await fragment.callRoute("POST", "/uploads", {
       body: {
-        provider,
         fileKey: "prepared/active-structured-error.txt",
         filename: "active-structured-error.txt",
         sizeBytes: 1,

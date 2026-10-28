@@ -34,7 +34,6 @@ import { Collapsible, Progress } from "@base-ui/react";
 import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { isUploadDirectoryMarker } from "@/file-collection/create-upload-file-tree";
 import { LofiReplicaGate, useLofiReplicaStatus } from "@/fragno/lofi/replica-gate";
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadClient } from "@/fragno/upload-client";
 import type { UploadFileRecord } from "@/fragno/upload/file-record";
 import {
@@ -52,7 +51,6 @@ import type { UploadLayoutContext } from "./layout-context";
 type ExplorerSelectionKind = "root" | "folder" | "file";
 
 type FilesLoaderData = {
-  selectedFileProvider: string | null;
   selectedFileKey: string | null;
   selectedNodeKind: ExplorerSelectionKind;
   selectedPrefix: string;
@@ -62,7 +60,6 @@ type FilesActionData = {
   ok: boolean;
   message: string;
   intent?: "delete-file";
-  provider?: string;
   fileKey?: string;
 };
 
@@ -76,17 +73,8 @@ type UploadQueueItem = {
   bytesUploaded: number;
   totalBytes: number;
   status: UploadQueueStatus;
-  targetProvider: string;
   targetPrefix: string;
   errorMessage?: string;
-};
-
-type UploadProviderTree = {
-  provider: string;
-  label: string;
-  root: UploadTreeFolderNode;
-  foldersByPrefix: Map<string, UploadTreeFolderNode>;
-  allFolderPrefixes: string[];
 };
 
 type UploadTreeFolderNode = {
@@ -97,7 +85,6 @@ type UploadTreeFolderNode = {
   fileCount: number;
   folderCount: number;
   totalSizeBytes: number;
-  providers: string[];
 };
 
 type MutableUploadTreeFolderNode = {
@@ -109,10 +96,7 @@ type MutableUploadTreeFolderNode = {
 };
 
 const SORT_COLLATOR = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
-// Every scope stores its files in its own database, which the explorer shows as one workspace tree.
-const WORKSPACE_PROVIDERS = [UPLOAD_PROVIDER_DATABASE] as const;
 
-const composeVirtualFolderKey = (provider: string, prefix: string) => `${provider}\u0000${prefix}`;
 const hasControlCharacters = (value: string): boolean => {
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index);
@@ -337,37 +321,21 @@ const parseSelectedNodeKind = (value?: string | null): ExplorerSelectionKind => 
 const buildSelectionHref = (
   orgSlug: string,
   selection:
-    | {
-        kind: "root";
-        provider?: string | null;
-      }
-    | {
-        kind: "folder";
-        provider: string;
-        prefix: string;
-      }
-    | {
-        kind: "file";
-        provider: string;
-        fileKey: string;
-      },
+    | { kind: "root" }
+    | { kind: "folder"; prefix: string }
+    | { kind: "file"; fileKey: string },
 ) => {
   const searchParams = new URLSearchParams();
 
   if (selection.kind === "root") {
     searchParams.set("node", "root");
-    if (selection.provider) {
-      searchParams.set("provider", selection.provider);
-    }
   } else if (selection.kind === "folder") {
     searchParams.set("node", "folder");
-    searchParams.set("provider", selection.provider);
     if (selection.prefix) {
       searchParams.set("prefix", stripTrailingSlash(selection.prefix));
     }
   } else {
     searchParams.set("node", "file");
-    searchParams.set("provider", selection.provider);
     searchParams.set("fileKey", selection.fileKey);
   }
 
@@ -442,7 +410,6 @@ const buildUploadFileTree = (files: UploadFileRecord[], extraPrefixes: string[] 
     const filesForNode = [...node.files].sort((left, right) =>
       SORT_COLLATOR.compare(left.fileKey, right.fileKey),
     );
-    const providers = new Set(filesForNode.map((file) => file.provider));
     let fileCount = filesForNode.length;
     let folderCount = folders.length;
     let totalSizeBytes = filesForNode.reduce((sum, file) => sum + file.sizeBytes, 0);
@@ -451,10 +418,6 @@ const buildUploadFileTree = (files: UploadFileRecord[], extraPrefixes: string[] 
       fileCount += folder.fileCount;
       folderCount += folder.folderCount;
       totalSizeBytes += folder.totalSizeBytes;
-
-      for (const provider of folder.providers) {
-        providers.add(provider);
-      }
     }
 
     const finalizedNode: UploadTreeFolderNode = {
@@ -465,7 +428,6 @@ const buildUploadFileTree = (files: UploadFileRecord[], extraPrefixes: string[] 
       fileCount,
       folderCount,
       totalSizeBytes,
-      providers: [...providers].sort((left, right) => SORT_COLLATOR.compare(left, right)),
     };
 
     foldersByPrefix.set(finalizedNode.prefix, finalizedNode);
@@ -490,7 +452,6 @@ const createSyntheticFolderNode = (prefix: string): UploadTreeFolderNode => ({
   fileCount: 0,
   folderCount: 0,
   totalSizeBytes: 0,
-  providers: [],
 });
 
 export async function loader({ request, context, url }: LoaderFunctionArgs) {
@@ -499,21 +460,17 @@ export async function loader({ request, context, url }: LoaderFunctionArgs) {
   let selectedNodeKind = parseSelectedNodeKind(url.searchParams.get("node"));
   let selectedPrefix = normalizeFolderPrefix(url.searchParams.get("prefix"));
   const requestedFileKey = url.searchParams.get("fileKey")?.trim() || null;
-  const requestedProvider = url.searchParams.get("provider")?.trim() || null;
-  const selectedProvider =
-    requestedProvider === UPLOAD_PROVIDER_DATABASE ? requestedProvider : null;
 
-  if (selectedNodeKind === "folder" && (!selectedPrefix || !selectedProvider)) {
+  if (selectedNodeKind === "folder" && !selectedPrefix) {
     selectedNodeKind = "root";
     selectedPrefix = "";
   }
 
   if (selectedNodeKind === "file" && !requestedFileKey) {
-    selectedNodeKind = selectedProvider && selectedPrefix ? "folder" : "root";
+    selectedNodeKind = selectedPrefix ? "folder" : "root";
   }
 
   return {
-    selectedFileProvider: selectedProvider,
     selectedFileKey: selectedNodeKind === "file" ? requestedFileKey : null,
     selectedNodeKind,
     selectedPrefix:
@@ -527,17 +484,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const { organization } = uploadConnection.require({ request, context }).resolvedScope;
   const formData = await request.formData();
   const intent = formData.get("intent");
-  const providerValue = formData.get("provider");
-  const provider = typeof providerValue === "string" ? providerValue.trim() : "";
   const fileKeyValue = formData.get("fileKey");
   const fileKey = typeof fileKeyValue === "string" ? fileKeyValue.trim() : "";
-
-  if (!provider) {
-    return {
-      ok: false,
-      message: "Provider is required.",
-    } satisfies FilesActionData;
-  }
 
   if (!fileKey) {
     return {
@@ -551,7 +499,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
       request,
       context,
       backofficeOrganizationContextScope(organization),
-      provider,
       fileKey,
     );
     if (!deleted.ok) {
@@ -565,7 +512,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
       ok: true,
       message: "File deleted.",
       intent: "delete-file",
-      provider,
       fileKey,
     } satisfies FilesActionData;
   }
@@ -631,7 +577,7 @@ function SynchronizedUploadFiles({ source }: { source: UploadReplicaSource }) {
 
 function UploadReplicaFiles({ replica }: { replica: LofiSqliteClient }) {
   const status = useLofiReplicaStatus(replica);
-  const reading = useReadyUploadFiles(replica, null);
+  const reading = useReadyUploadFiles(replica);
   const files = useMemo<UploadFileRecord[]>(
     () =>
       reading.status === "ready"
@@ -727,8 +673,7 @@ function useUploadFilesViewState({
   files: UploadFileRecord[];
   filesError: string | null;
 }) {
-  const { selectedFileProvider, selectedFileKey, selectedNodeKind, selectedPrefix } =
-    useLoaderData<typeof loader>();
+  const { selectedFileKey, selectedNodeKind, selectedPrefix } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const navigate = useNavigate();
@@ -752,128 +697,77 @@ function useUploadFilesViewState({
   const deletedByAction =
     actionData?.ok === true &&
     actionData.intent === "delete-file" &&
-    actionData.fileKey === selectedFileKey &&
-    (!selectedFileProvider || actionData.provider === selectedFileProvider);
+    actionData.fileKey === selectedFileKey;
   const selectedFile = deletedByAction
     ? null
-    : (files.find(
-        (file) =>
-          file.fileKey === selectedFileKey &&
-          (!selectedFileProvider || file.provider === selectedFileProvider),
-      ) ?? null);
-  const selectedProvider = selectedFile?.provider ?? selectedFileProvider ?? null;
+    : (files.find((file) => file.fileKey === selectedFileKey) ?? null);
   const actionBusy = navigation.state === "submitting";
   const selectedExplorerPrefix =
     selectedNodeKind === "file"
       ? getParentPrefix(selectedFile?.fileKey ?? selectedFileKey ?? "")
       : selectedPrefix;
   const extraFolderPrefixes = useMemo(() => {
-    if (!selectedProvider) {
-      return [];
-    }
-
-    const prefixes = new Set<string>();
-    for (const key of virtualFolders) {
-      const [provider, prefix] = key.split("\u0000", 2);
-      if (provider === selectedProvider && prefix) {
-        prefixes.add(prefix);
-      }
-    }
+    const prefixes = new Set(virtualFolders);
     if (selectedExplorerPrefix) {
       prefixes.add(selectedExplorerPrefix);
     }
 
     return [...prefixes].sort((left, right) => SORT_COLLATOR.compare(left, right));
-  }, [selectedExplorerPrefix, selectedProvider, virtualFolders]);
-  const providerTrees = useMemo<UploadProviderTree[]>(
-    () =>
-      WORKSPACE_PROVIDERS.map((provider) => {
-        const tree = buildUploadFileTree(
-          files.filter((file) => file.provider === provider),
-          provider === selectedProvider ? extraFolderPrefixes : [],
-        );
-        return {
-          provider,
-          label: "Workspace",
-          ...tree,
-        };
-      }),
-    [extraFolderPrefixes, files, selectedProvider],
-  );
-  const selectedProviderTree = providerTrees.find((tree) => tree.provider === selectedProvider);
-  const allFolderPrefixes = providerTrees.flatMap((tree) =>
-    tree.allFolderPrefixes.map((prefix) => composeVirtualFolderKey(tree.provider, prefix)),
+  }, [selectedExplorerPrefix, virtualFolders]);
+  const tree = useMemo(
+    () => buildUploadFileTree(files, extraFolderPrefixes),
+    [extraFolderPrefixes, files],
   );
   const [closedFolders, setClosedFolders] = useState<Set<string>>(() => new Set());
   const openFolders = useMemo(() => {
-    const openPrefixes = new Set(allFolderPrefixes.filter((prefix) => !closedFolders.has(prefix)));
-
-    if (selectedProvider) {
-      for (const prefix of getAncestorPrefixes(selectedPrefix)) {
-        openPrefixes.add(composeVirtualFolderKey(selectedProvider, prefix));
-      }
+    const openPrefixes = new Set(
+      tree.allFolderPrefixes.filter((prefix) => !closedFolders.has(prefix)),
+    );
+    for (const prefix of getAncestorPrefixes(selectedPrefix)) {
+      openPrefixes.add(prefix);
     }
 
     return openPrefixes;
-  }, [allFolderPrefixes, closedFolders, selectedPrefix, selectedProvider]);
+  }, [tree, closedFolders, selectedPrefix]);
   const selectedNodeKey =
     selectedNodeKind === "file" && selectedFileKey
-      ? `file:${selectedProvider ?? "unknown"}:${selectedFileKey}`
-      : selectedNodeKind === "folder" && selectedProvider
-        ? `folder:${selectedProvider}:${selectedPrefix}`
-        : selectedNodeKind === "root" && selectedProvider
-          ? `root:${selectedProvider}`
-          : "root";
+      ? `file:${selectedFileKey}`
+      : selectedNodeKind === "folder"
+        ? `folder:${selectedPrefix}`
+        : "root";
   const selectedFolderNode =
-    selectedNodeKind === "root" && selectedProvider
-      ? (selectedProviderTree?.root ?? null)
-      : selectedNodeKind === "folder" && selectedProvider
-        ? (selectedProviderTree?.foldersByPrefix.get(selectedPrefix) ??
-          createSyntheticFolderNode(selectedPrefix))
+    selectedNodeKind === "root"
+      ? tree.root
+      : selectedNodeKind === "folder"
+        ? (tree.foldersByPrefix.get(selectedPrefix) ?? createSyntheticFolderNode(selectedPrefix))
         : null;
-  const uploadTargetProvider = selectedNodeKind === "file" ? null : selectedProvider;
   const uploadTargetPrefix =
-    uploadTargetProvider && selectedNodeKind === "root"
-      ? ""
-      : uploadTargetProvider && selectedNodeKind === "folder"
-        ? selectedPrefix
-        : null;
+    selectedNodeKind === "root" ? "" : selectedNodeKind === "folder" ? selectedPrefix : null;
   const folderQueue =
-    uploadTargetProvider === null || uploadTargetPrefix === null
+    uploadTargetPrefix === null
       ? []
-      : uploadQueue.filter(
-          (item) =>
-            item.targetProvider === uploadTargetProvider &&
-            item.targetPrefix === uploadTargetPrefix,
-        );
+      : uploadQueue.filter((item) => item.targetPrefix === uploadTargetPrefix);
   const hasFailedUploads = folderQueue.some((item) => item.status === "failed");
   const hasFinishedUploads = folderQueue.some(
     (item) => item.status === "completed" || item.status === "failed",
   );
   const nextQueuedUpload = uploadQueue.find((item) => item.status === "queued") ?? null;
   const pendingUploadsElsewhere =
-    uploadTargetProvider === null || uploadTargetPrefix === null
+    uploadTargetPrefix === null
       ? 0
       : uploadQueue.filter(
           (item) =>
-            (item.targetProvider !== uploadTargetProvider ||
-              item.targetPrefix !== uploadTargetPrefix) &&
+            item.targetPrefix !== uploadTargetPrefix &&
             (item.status === "queued" || item.status === "uploading" || item.status === "failed"),
         ).length;
   const missingFileParentHref = buildSelectionHref(
     orgSlug,
-    selectedProvider && selectedPrefix
-      ? { kind: "folder", provider: selectedProvider, prefix: selectedPrefix }
-      : { kind: "root", provider: selectedProvider },
+    selectedPrefix ? { kind: "folder", prefix: selectedPrefix } : { kind: "root" },
   );
   const isDragActive = dragDepth > 0;
 
   const startUploads = useCallback(
-    async (
-      targetProvider: string,
-      targetPrefix: string,
-      options: { includeFailed?: boolean } = {},
-    ) => {
+    async (targetPrefix: string, options: { includeFailed?: boolean } = {}) => {
       if (uploadingFiles) {
         return;
       }
@@ -881,7 +775,6 @@ function useUploadFilesViewState({
       const includeFailed = options.includeFailed ?? true;
       const candidates = uploadQueue.filter(
         (item) =>
-          item.targetProvider === targetProvider &&
           item.targetPrefix === targetPrefix &&
           (item.status === "queued" || (includeFailed && item.status === "failed")),
       );
@@ -911,7 +804,6 @@ function useUploadFilesViewState({
 
           try {
             await uploadHelpers.createUploadAndTransfer(item.file, {
-              provider: item.targetProvider,
               fileKey: createReadableUploadKey(item.targetPrefix, item.filename),
               filename: item.filename,
               contentType: item.file.type || "application/octet-stream",
@@ -971,23 +863,17 @@ function useUploadFilesViewState({
 
   useEffect(() => {
     setDragDepth(0);
-  }, [selectedNodeKind, selectedPrefix, selectedFileKey, selectedFileProvider]);
+  }, [selectedNodeKind, selectedPrefix, selectedFileKey]);
 
   useEffect(() => {
     if (uploadingFiles || !nextQueuedUpload) {
       return;
     }
 
-    void startUploads(nextQueuedUpload.targetProvider, nextQueuedUpload.targetPrefix, {
-      includeFailed: false,
-    });
+    void startUploads(nextQueuedUpload.targetPrefix, { includeFailed: false });
   }, [nextQueuedUpload, startUploads, uploadingFiles]);
 
-  const queueFilesForPrefix = (
-    incomingFiles: File[],
-    targetProvider: string,
-    targetPrefix: string,
-  ) => {
+  const queueFilesForPrefix = (incomingFiles: File[], targetPrefix: string) => {
     if (incomingFiles.length === 0) {
       return;
     }
@@ -1003,37 +889,28 @@ function useUploadFilesViewState({
         bytesUploaded: 0,
         totalBytes: file.size,
         status: "queued" as const,
-        targetProvider,
         targetPrefix,
       })),
     ]);
   };
 
   const handleBrowseSelection = (event: ChangeEvent<HTMLInputElement>) => {
-    if (!uploadTargetProvider || uploadTargetPrefix === null) {
+    if (uploadTargetPrefix === null) {
       return;
     }
 
-    queueFilesForPrefix(
-      Array.from(event.target.files ?? []),
-      uploadTargetProvider,
-      uploadTargetPrefix,
-    );
+    queueFilesForPrefix(Array.from(event.target.files ?? []), uploadTargetPrefix);
     event.target.value = "";
   };
 
   const handleDropFiles = (event: DragEvent<HTMLDivElement>) => {
-    if (!uploadTargetProvider || uploadTargetPrefix === null) {
+    if (uploadTargetPrefix === null) {
       return;
     }
 
     event.preventDefault();
     setDragDepth(0);
-    queueFilesForPrefix(
-      Array.from(event.dataTransfer.files ?? []),
-      uploadTargetProvider,
-      uploadTargetPrefix,
-    );
+    queueFilesForPrefix(Array.from(event.dataTransfer.files ?? []), uploadTargetPrefix);
   };
 
   const handleDragEnter = (event: DragEvent<HTMLDivElement>) => {
@@ -1054,11 +931,10 @@ function useUploadFilesViewState({
     setDragDepth((current) => Math.max(0, current - 1));
   };
 
-  const clearFinishedUploads = (targetProvider: string, targetPrefix: string) => {
+  const clearFinishedUploads = (targetPrefix: string) => {
     setUploadQueue((previous) =>
       previous.filter(
         (item) =>
-          item.targetProvider !== targetProvider ||
           item.targetPrefix !== targetPrefix ||
           (item.status !== "completed" && item.status !== "failed"),
       ),
@@ -1066,7 +942,7 @@ function useUploadFilesViewState({
   };
 
   const createFolder = (folderName: string): string | null => {
-    if (!uploadTargetProvider || uploadTargetPrefix === null) {
+    if (uploadTargetPrefix === null) {
       return "Select a writable folder before creating a child folder.";
     }
 
@@ -1076,38 +952,30 @@ function useUploadFilesViewState({
     }
     const nextPrefix = result.prefix;
 
-    if (!selectedProviderTree?.foldersByPrefix.has(nextPrefix)) {
+    if (!tree.foldersByPrefix.has(nextPrefix)) {
       setVirtualFolders((previous) => {
-        const virtualFolderKey = composeVirtualFolderKey(uploadTargetProvider, nextPrefix);
-        if (previous.has(virtualFolderKey)) {
+        if (previous.has(nextPrefix)) {
           return previous;
         }
 
         const next = new Set(previous);
-        next.add(virtualFolderKey);
+        next.add(nextPrefix);
         return next;
       });
     }
 
-    void navigate(
-      buildSelectionHref(orgSlug, {
-        kind: "folder",
-        provider: uploadTargetProvider,
-        prefix: nextPrefix,
-      }),
-    );
+    void navigate(buildSelectionHref(orgSlug, { kind: "folder", prefix: nextPrefix }));
     return null;
   };
 
-  const setFolderOpen = (provider: string, prefix: string, open: boolean) => {
+  const setFolderOpen = (prefix: string, open: boolean) => {
     setClosedFolders((previous) => {
       const next = new Set(previous);
-      const key = composeVirtualFolderKey(provider, prefix);
 
       if (open) {
-        next.delete(key);
+        next.delete(prefix);
       } else {
-        next.add(key);
+        next.add(prefix);
       }
 
       return next;
@@ -1123,9 +991,7 @@ function useUploadFilesViewState({
     setDownloadingFile(true);
 
     try {
-      const response = await uploadHelpers.downloadFile(selectedFile.fileKey, {
-        provider: selectedFile.provider,
-      });
+      const response = await uploadHelpers.downloadFile(selectedFile.fileKey);
       const blob = await response.blob();
       downloadBlob(blob, selectedFile.filename || "download");
     } catch (error) {
@@ -1144,7 +1010,7 @@ function useUploadFilesViewState({
     downloadError,
     orgSlug,
     selectedNodeKey,
-    providerTrees,
+    tree,
     openFolders,
     setFolderOpen,
     selectedNodeKind,
@@ -1155,7 +1021,6 @@ function useUploadFilesViewState({
     handleDownloadFile,
     selectedFolderNode,
     selectedPrefix,
-    uploadTargetProvider,
     uploadTargetPrefix,
     createFolder,
     isDragActive,
@@ -1206,7 +1071,7 @@ function UploadFilesView({
 }
 
 function UploadExplorerPanel({ state }: { state: UploadFilesViewState }) {
-  const { files, orgSlug, selectedNodeKey, providerTrees, openFolders, setFolderOpen } = state;
+  const { files, orgSlug, selectedNodeKey, tree, openFolders, setFolderOpen } = state;
 
   return (
     <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4">
@@ -1230,42 +1095,13 @@ function UploadExplorerPanel({ state }: { state: UploadFilesViewState }) {
         aria-label="Upload file explorer"
         className="mt-4 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-3"
       >
-        <Link
-          to={buildSelectionHref(orgSlug, { kind: "root" })}
-          aria-current={selectedNodeKey === "root" ? "page" : undefined}
-          className={
-            selectedNodeKey === "root"
-              ? "flex items-center justify-between gap-3 rounded-sm border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-3 py-3 text-[var(--bo-fg)]"
-              : "flex items-center justify-between gap-3 rounded-sm border border-transparent bg-transparent px-3 py-3 text-[var(--bo-muted)] transition-colors hover:border-[color:var(--bo-border)] hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)]"
-          }
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <Icon name="folder" className="h-4 w-4 shrink-0" />
-            <span className="truncate text-sm font-semibold">Upload roots</span>
-          </span>
-          <span className="shrink-0 text-[11px] tracking-[0.22em] text-current/70 uppercase">
-            {files.length} files
-          </span>
-        </Link>
-
-        {providerTrees.length === 0 ? (
-          <p className="mt-4 text-sm text-[var(--bo-muted)]">
-            No upload providers are configured yet.
-          </p>
-        ) : (
-          <div className="mt-3 space-y-2">
-            {providerTrees.map((providerTree) => (
-              <UploadProviderRootTree
-                key={providerTree.provider}
-                providerTree={providerTree}
-                orgSlug={orgSlug}
-                selectedNodeKey={selectedNodeKey}
-                openPrefixes={openFolders}
-                onOpenChange={setFolderOpen}
-              />
-            ))}
-          </div>
-        )}
+        <UploadRootTree
+          tree={tree}
+          orgSlug={orgSlug}
+          selectedNodeKey={selectedNodeKey}
+          openPrefixes={openFolders}
+          onOpenChange={setFolderOpen}
+        />
       </nav>
     </div>
   );
@@ -1329,7 +1165,6 @@ function UploadFileSelectionPanel({ state }: { state: UploadFilesViewState }) {
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <DetailStat label="Provider" value={selectedFile.provider} />
           <DetailStat label="Status" value={selectedFile.status} />
           <DetailStat label="Size" value={formatBytes(selectedFile.sizeBytes)} />
           <DetailStat label="Content type" value={selectedFile.contentType} />
@@ -1357,7 +1192,6 @@ function UploadFileSelectionPanel({ state }: { state: UploadFilesViewState }) {
 
         <Form method="post">
           <input type="hidden" name="intent" value="delete-file" />
-          <input type="hidden" name="provider" value={selectedFile.provider} />
           <input type="hidden" name="fileKey" value={selectedFile.fileKey} />
           <button
             type="submit"
@@ -1378,7 +1212,6 @@ function UploadFolderSelectionPanel({ state }: { state: UploadFilesViewState }) 
     selectedNodeKind,
     selectedFolderNode,
     selectedPrefix,
-    uploadTargetProvider,
     uploadTargetPrefix,
     createFolder,
     isDragActive,
@@ -1412,17 +1245,11 @@ function UploadFolderSelectionPanel({ state }: { state: UploadFilesViewState }) 
                 : (selectedFolderNode?.name ?? getLeafLabel(stripTrailingSlash(selectedPrefix)))}
             </p>
             <p className="mt-1 text-xs text-[var(--bo-muted)]">
-              {uploadTargetProvider ? (
-                <>
-                  Uploads land under{" "}
-                  <span className="font-semibold text-[var(--bo-fg)]">
-                    {formatPrefixLabel(uploadTargetPrefix ?? "")}
-                  </span>{" "}
-                  using readable collision-safe keys.
-                </>
-              ) : (
-                "Select the workspace root to browse, create folders, or upload files."
-              )}
+              Uploads land under{" "}
+              <span className="font-semibold text-[var(--bo-fg)]">
+                {formatPrefixLabel(uploadTargetPrefix ?? "")}
+              </span>{" "}
+              using readable collision-safe keys.
             </p>
           </div>
         </div>
@@ -1435,25 +1262,12 @@ function UploadFolderSelectionPanel({ state }: { state: UploadFilesViewState }) 
             value={formatBytes(selectedFolderNode?.totalSizeBytes ?? 0)}
           />
         </div>
-
-        {selectedFolderNode?.providers.length ? (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {selectedFolderNode.providers.map((provider) => (
-              <span
-                key={provider}
-                className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] px-2 py-1 text-[10px] tracking-[0.22em] text-[var(--bo-muted)] uppercase"
-              >
-                {provider}
-              </span>
-            ))}
-          </div>
-        ) : null}
       </div>
 
       <CreateFolderForm
-        key={`${uploadTargetProvider ?? "none"}:${uploadTargetPrefix ?? "none"}`}
+        key={uploadTargetPrefix ?? "none"}
         parentPrefix={uploadTargetPrefix ?? ""}
-        enabled={Boolean(uploadTargetProvider)}
+        enabled={uploadTargetPrefix !== null}
         onCreate={createFolder}
       />
 
@@ -1495,7 +1309,7 @@ function UploadFolderSelectionPanel({ state }: { state: UploadFilesViewState }) 
             <Button
               variant="secondary"
               onClick={() => fileInputRef.current?.click()}
-              disabled={!uploadTargetProvider}
+              disabled={uploadTargetPrefix === null}
             >
               <Icon name="upload" className="h-3.5 w-3.5" />
               Choose files
@@ -1504,11 +1318,11 @@ function UploadFolderSelectionPanel({ state }: { state: UploadFilesViewState }) 
               <Button
                 variant="accent"
                 onClick={() => {
-                  if (uploadTargetProvider && uploadTargetPrefix !== null) {
-                    void startUploads(uploadTargetProvider, uploadTargetPrefix);
+                  if (uploadTargetPrefix !== null) {
+                    void startUploads(uploadTargetPrefix);
                   }
                 }}
-                disabled={uploadingFiles || !uploadTargetProvider || uploadTargetPrefix === null}
+                disabled={uploadingFiles || uploadTargetPrefix === null}
               >
                 <Icon name="refresh-ccw" className="h-3.5 w-3.5" />
                 {uploadingFiles && activeUploadPrefix === uploadTargetPrefix
@@ -1519,16 +1333,11 @@ function UploadFolderSelectionPanel({ state }: { state: UploadFilesViewState }) 
             <Button
               variant="secondary"
               onClick={() => {
-                if (uploadTargetProvider && uploadTargetPrefix !== null) {
-                  clearFinishedUploads(uploadTargetProvider, uploadTargetPrefix);
+                if (uploadTargetPrefix !== null) {
+                  clearFinishedUploads(uploadTargetPrefix);
                 }
               }}
-              disabled={
-                !hasFinishedUploads ||
-                uploadingFiles ||
-                !uploadTargetProvider ||
-                uploadTargetPrefix === null
-              }
+              disabled={!hasFinishedUploads || uploadingFiles || uploadTargetPrefix === null}
             >
               <Icon name="trash-2" className="h-3.5 w-3.5" />
               Clear finished
@@ -1612,26 +1421,26 @@ function UploadQueueCard({ item }: { item: UploadQueueItem }) {
   );
 }
 
-function UploadProviderRootTree({
-  providerTree,
+function UploadRootTree({
+  tree,
   orgSlug,
   selectedNodeKey,
   openPrefixes,
   onOpenChange,
 }: {
-  providerTree: UploadProviderTree;
+  tree: ReturnType<typeof buildUploadFileTree>;
   orgSlug: string;
   selectedNodeKey: string;
   openPrefixes: ReadonlySet<string>;
-  onOpenChange: (provider: string, prefix: string, open: boolean) => void;
+  onOpenChange: (prefix: string, open: boolean) => void;
 }) {
-  const root = providerTree.root;
-  const isSelected = selectedNodeKey === `root:${providerTree.provider}`;
+  const root = tree.root;
+  const isSelected = selectedNodeKey === "root";
 
   return (
     <div className="space-y-1">
       <Link
-        to={buildSelectionHref(orgSlug, { kind: "root", provider: providerTree.provider })}
+        to={buildSelectionHref(orgSlug, { kind: "root" })}
         aria-current={isSelected ? "page" : undefined}
         className={
           isSelected
@@ -1641,7 +1450,7 @@ function UploadProviderRootTree({
       >
         <span className="flex min-w-0 items-center gap-2">
           <Icon name="folder" className="h-4 w-4 shrink-0" />
-          <span className="truncate text-sm font-semibold">{providerTree.label}</span>
+          <span className="truncate text-sm font-semibold">Workspace</span>
         </span>
         <span className="shrink-0 text-[11px] tracking-[0.22em] text-current/70 uppercase">
           {root.fileCount} files
@@ -1649,13 +1458,14 @@ function UploadProviderRootTree({
       </Link>
 
       {root.folders.length === 0 && root.files.length === 0 ? (
-        <p className="px-3 py-2 text-xs text-[var(--bo-muted-2)]">No files in this root yet.</p>
+        <p className="px-3 py-2 text-xs text-[var(--bo-muted-2)]">
+          No files in this workspace yet.
+        </p>
       ) : (
         <div className="space-y-1 border-l border-[color:var(--bo-border)] pl-4">
           {root.folders.map((folder) => (
             <UploadFolderTreeNode
-              key={`${providerTree.provider}:${folder.prefix}`}
-              provider={providerTree.provider}
+              key={folder.prefix}
               folder={folder}
               orgSlug={orgSlug}
               selectedNodeKey={selectedNodeKey}
@@ -1665,7 +1475,7 @@ function UploadProviderRootTree({
           ))}
           {root.files.map((file) => (
             <UploadFileTreeLeaf
-              key={`${file.provider}:${file.fileKey}`}
+              key={file.fileKey}
               file={file}
               orgSlug={orgSlug}
               selectedNodeKey={selectedNodeKey}
@@ -1678,29 +1488,27 @@ function UploadProviderRootTree({
 }
 
 function UploadFolderTreeNode({
-  provider,
   folder,
   orgSlug,
   selectedNodeKey,
   openPrefixes,
   onOpenChange,
 }: {
-  provider: string;
   folder: UploadTreeFolderNode;
   orgSlug: string;
   selectedNodeKey: string;
   openPrefixes: ReadonlySet<string>;
-  onOpenChange: (provider: string, prefix: string, open: boolean) => void;
+  onOpenChange: (prefix: string, open: boolean) => void;
 }) {
-  const isOpen = openPrefixes.has(composeVirtualFolderKey(provider, folder.prefix));
-  const isSelected = selectedNodeKey === `folder:${provider}:${folder.prefix}`;
+  const isOpen = openPrefixes.has(folder.prefix);
+  const isSelected = selectedNodeKey === `folder:${folder.prefix}`;
   const hasChildren = folder.folders.length > 0 || folder.files.length > 0;
 
   return (
     <Collapsible.Root
       open={isOpen}
       onOpenChange={(open) => {
-        onOpenChange(provider, folder.prefix, open);
+        onOpenChange(folder.prefix, open);
       }}
     >
       <div className="space-y-1">
@@ -1720,7 +1528,7 @@ function UploadFolderTreeNode({
           )}
 
           <Link
-            to={buildSelectionHref(orgSlug, { kind: "folder", provider, prefix: folder.prefix })}
+            to={buildSelectionHref(orgSlug, { kind: "folder", prefix: folder.prefix })}
             aria-current={isSelected ? "page" : undefined}
             className={
               isSelected
@@ -1748,8 +1556,7 @@ function UploadFolderTreeNode({
             <div className="space-y-1 border-l border-[color:var(--bo-border)] pl-4">
               {folder.folders.map((childFolder) => (
                 <UploadFolderTreeNode
-                  key={`${provider}:${childFolder.prefix}`}
-                  provider={provider}
+                  key={childFolder.prefix}
                   folder={childFolder}
                   orgSlug={orgSlug}
                   selectedNodeKey={selectedNodeKey}
@@ -1759,7 +1566,7 @@ function UploadFolderTreeNode({
               ))}
               {folder.files.map((file) => (
                 <UploadFileTreeLeaf
-                  key={`${file.provider}:${file.fileKey}`}
+                  key={file.fileKey}
                   file={file}
                   orgSlug={orgSlug}
                   selectedNodeKey={selectedNodeKey}
@@ -1782,17 +1589,13 @@ function UploadFileTreeLeaf({
   orgSlug: string;
   selectedNodeKey: string;
 }) {
-  const isSelected = selectedNodeKey === `file:${file.provider}:${file.fileKey}`;
+  const isSelected = selectedNodeKey === `file:${file.fileKey}`;
   const keyLeaf = getLeafLabel(file.fileKey);
   const showOriginalName = file.filename !== keyLeaf;
 
   return (
     <Link
-      to={buildSelectionHref(orgSlug, {
-        kind: "file",
-        provider: file.provider,
-        fileKey: file.fileKey,
-      })}
+      to={buildSelectionHref(orgSlug, { kind: "file", fileKey: file.fileKey })}
       aria-current={isSelected ? "page" : undefined}
       className={
         isSelected
@@ -1809,10 +1612,6 @@ function UploadFileTreeLeaf({
           <span>{formatBytes(file.sizeBytes)}</span>
           {showOriginalName ? <span className="truncate">{file.filename}</span> : null}
         </span>
-      </span>
-
-      <span className="shrink-0 rounded-sm border border-current/10 bg-[var(--bo-panel-2)] px-2 py-1 text-[10px] tracking-[0.22em] text-current/60 uppercase">
-        {file.provider}
       </span>
     </Link>
   );

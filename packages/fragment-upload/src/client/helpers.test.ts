@@ -44,10 +44,8 @@ const getHeaderValue = (headers: HeadersInit | undefined, name: string): string 
   return undefined;
 };
 
-const TEST_PROVIDER = "workspace";
-
-const byKeyContentPath = (provider: string, fileKey: string) =>
-  `/files/by-key/content?${new URLSearchParams({ provider, key: fileKey }).toString()}`;
+const byKeyContentPath = (fileKey: string) =>
+  `/files/by-key/content?${new URLSearchParams({ key: fileKey }).toString()}`;
 
 const uploadContentPath = (uploadId: string) => `/uploads/${uploadId}/content`;
 
@@ -60,13 +58,11 @@ describe("upload client helpers", () => {
 
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
-        expect(body.provider).toBe(TEST_PROVIDER);
         assert(body.fileKey === "files.assets.banner");
         assert(body.contentType === "text/plain");
         return jsonResponse({
           uploadId: "proxy-1",
           fileKey: "files.assets.banner",
-          provider: TEST_PROVIDER,
           status: "created",
           expiresAt: new Date().toISOString(),
         });
@@ -95,7 +91,6 @@ describe("upload client helpers", () => {
     const file = new Blob(["hello"], { type: "text/plain" });
 
     const result = await helpers.createUploadAndTransfer(file, {
-      provider: TEST_PROVIDER,
       fileKey: "files.assets.banner",
       onProgress: (value) => progress.push(value.bytesUploaded),
     });
@@ -117,7 +112,6 @@ describe("upload client helpers", () => {
         return jsonResponse({
           uploadId: "prepared-proxy",
           fileKey: "files/prepared.txt",
-          provider: TEST_PROVIDER,
           status: "created",
           publicationMode: "batch",
           expiresAt,
@@ -129,7 +123,6 @@ describe("upload client helpers", () => {
           kind: "prepared",
           write: {
             uploadId: "prepared-proxy",
-            provider: TEST_PROVIDER,
             fileKey: "files/prepared.txt",
             sizeBytes: 8,
             contentType: "text/plain",
@@ -148,7 +141,6 @@ describe("upload client helpers", () => {
     });
 
     const result = await helpers.createUploadAndTransfer(new Blob(["prepared"]), {
-      provider: TEST_PROVIDER,
       fileKey: "files/prepared.txt",
       publicationMode: "batch",
     });
@@ -169,12 +161,10 @@ describe("upload client helpers", () => {
 
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
-        expect(body.provider).toBe(TEST_PROVIDER);
         assert(body.fileKey === "files.assets.logo");
         return jsonResponse({
           uploadId: "proxy-2",
           fileKey: "files.assets.logo",
-          provider: TEST_PROVIDER,
           status: "created",
           expiresAt: new Date().toISOString(),
         });
@@ -205,7 +195,6 @@ describe("upload client helpers", () => {
     const file = new Blob(["hello"], { type: "text/plain" });
 
     const result = await helpers.createUploadAndTransfer(file, {
-      provider: TEST_PROVIDER,
       fileKey: "files.assets.logo",
       onProgress: (value) => progress.push(value.bytesUploaded),
     });
@@ -221,12 +210,10 @@ describe("upload client helpers", () => {
 
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
-        expect(body.provider).toBe(TEST_PROVIDER);
         assert(body.fileKey === "files.assets.fail");
         return jsonResponse({
           uploadId: "proxy-3",
           fileKey: "files.assets.fail",
-          provider: TEST_PROVIDER,
           status: "created",
           expiresAt: new Date().toISOString(),
         });
@@ -248,14 +235,12 @@ describe("upload client helpers", () => {
 
     await expect(
       helpers.createUploadAndTransfer(file, {
-        provider: TEST_PROVIDER,
         fileKey: "files.assets.fail",
       }),
     ).rejects.toThrow(/Upload to '.*' failed/);
 
     await expect(
       helpers.createUploadAndTransfer(file, {
-        provider: TEST_PROVIDER,
         fileKey: "files.assets.fail",
       }),
     ).rejects.toThrow(/\/uploads\/:uploadId\/content/);
@@ -269,12 +254,10 @@ describe("upload client helpers", () => {
 
       if (url.endsWith("/uploads")) {
         const body = JSON.parse(_init?.body as string);
-        expect(body.provider).toBe(TEST_PROVIDER);
         assert(body.fileKey === "files.assets.protocol");
         return jsonResponse({
           uploadId: "proxy-4",
           fileKey: "files.assets.protocol",
-          provider: TEST_PROVIDER,
           status: "created",
           expiresAt: new Date().toISOString(),
         });
@@ -296,7 +279,6 @@ describe("upload client helpers", () => {
 
     await expect(
       helpers.createUploadAndTransfer(file, {
-        provider: TEST_PROVIDER,
         fileKey: "files.assets.protocol",
       }),
     ).rejects.toThrow(/must use http:\/\/ or https:\/\//);
@@ -306,7 +288,7 @@ describe("upload client helpers", () => {
 
   it("throws actionable context when content download request fails", async () => {
     const fileKey = "files.sample.download-fail";
-    const contentPath = byKeyContentPath(TEST_PROVIDER, fileKey);
+    const contentPath = byKeyContentPath(fileKey);
     const fetcher = async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = typeof input === "string" ? input : input.toString();
 
@@ -322,22 +304,7 @@ describe("upload client helpers", () => {
       fetcher: fetcher as typeof fetch,
     });
 
-    await expect(
-      helpers.downloadFile(fileKey, {
-        provider: TEST_PROVIDER,
-      }),
-    ).rejects.toThrow(/\/files\/by-key\/content/);
-  });
-
-  it("requires callers to specify an explicit download provider", async () => {
-    const helpers = createUploadHelpers({
-      buildUrl: (path) => `https://local${path}`,
-      fetcher: (async () => new Response(null, { status: 500 })) as typeof fetch,
-    });
-
-    await expect(
-      helpers.downloadFile("files.sample.download-missing-provider", {} as never),
-    ).rejects.toThrow(/Download provider is required/);
+    await expect(helpers.downloadFile(fileKey)).rejects.toThrow(/\/files\/by-key\/content/);
   });
 
   it.each([0, -1, Number.NaN])(
@@ -351,7 +318,6 @@ describe("upload client helpers", () => {
 
       await expect(
         helpers.hydrateSearchMatches(["workspace/src/workflows.ts"], ["createWorkflow"], {
-          provider: TEST_PROVIDER,
           excludedTerms: [],
           maxBytes,
         }),
@@ -366,11 +332,9 @@ describe("upload client helpers", () => {
       fetcher: (async () => new Response(null, { status: 500 })) as typeof fetch,
     });
 
-    await expect(
-      helpers.createUploadAndTransfer(new Blob(["data"]), {
-        provider: TEST_PROVIDER,
-      } as never),
-    ).rejects.toThrow(/File key is required/);
+    await expect(helpers.createUploadAndTransfer(new Blob(["data"]), {} as never)).rejects.toThrow(
+      /File key is required/,
+    );
   });
 
   it("sends file edits to the server in one request", async () => {
@@ -395,7 +359,6 @@ describe("upload client helpers", () => {
     });
 
     const input = {
-      provider: TEST_PROVIDER,
       edits: [
         {
           kind: "replace" as const,

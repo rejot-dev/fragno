@@ -18,7 +18,6 @@ type FileMutationResultSource = Pick<
   | "tags"
   | "metadata"
   | "status"
-  | "provider"
 >;
 
 const checksumValueSchema = z.object({
@@ -27,17 +26,6 @@ const checksumValueSchema = z.object({
 });
 
 export const checksumSchema = checksumValueSchema.nullable().optional();
-
-export const providerNamespaceSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .refine(
-    (value) => value !== "." && value !== ".." && !value.includes("/") && !value.includes("\\"),
-    {
-      message: "Invalid provider",
-    },
-  );
 
 export const visibilitySchema = z.enum(["private", "public", "unlisted"]);
 
@@ -65,7 +53,6 @@ export const fileMetadataSchema = z.object({
   tags: z.array(z.string()).nullable(),
   metadata: z.record(z.string(), z.unknown()).nullable(),
   status: z.enum(["ready", "deleted"]),
-  provider: providerNamespaceSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
   completedAt: z.string().nullable(),
@@ -89,7 +76,6 @@ export const fileMutationSnapshotSchema = fileMutationResultSchema.extend({
 
 export const preparedFileWriteSchema = z.object({
   uploadId: z.string(),
-  provider: providerNamespaceSchema,
   fileKey: z.string(),
   sizeBytes: z.number().int().nonnegative(),
   contentType: z.string(),
@@ -119,7 +105,6 @@ export const toFileMutationResult = (file: FileMutationResultSource): FileMutati
   tags: file.tags,
   metadata: file.metadata,
   status: file.status as FileMutationResult["status"],
-  provider: file.provider,
 });
 
 export const toFileMetadata = (file: FileMetadataSource): FileMetadata => {
@@ -136,7 +121,6 @@ export const toFileMetadata = (file: FileMetadataSource): FileMetadata => {
     tags: file.tags,
     metadata: file.metadata,
     status: file.status as FileMetadata["status"],
-    provider: file.provider,
     createdAt: file.createdAt.toISOString(),
     updatedAt: file.updatedAt.toISOString(),
     completedAt: toIsoString(file.completedAt),

@@ -114,7 +114,6 @@ test("workspace uploads preserve streaming bytes and resolve MIME metadata for n
 
             async function assertWorkspaceFileContentType(path: string, contentType: string) {
               const query = new URLSearchParams({
-                provider: "database",
                 key: path.slice("/workspace/".length),
               });
               const upload = ctx.runtime.objects.upload.for({
@@ -221,12 +220,9 @@ test("workspace uploads preserve streaming bytes and resolve MIME metadata for n
             const deleted = await ctx.runtime.objects.upload
               .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .http.fetch(
-                new Request(
-                  "https://upload.internal/api/upload/files/by-key?provider=database&key=custom.json",
-                  {
-                    method: "DELETE",
-                  },
-                ),
+                new Request("https://upload.internal/api/upload/files/by-key?key=custom.json", {
+                  method: "DELETE",
+                }),
               );
             assert(deleted.ok);
             const recreated = await uploadWorkspaceFile(
@@ -238,7 +234,6 @@ test("workspace uploads preserve streaming bytes and resolve MIME metadata for n
             await assertWorkspaceFileContentType(customPath, "application/json");
 
             const legacyForm = new FormData();
-            legacyForm.set("provider", "database");
             legacyForm.set("fileKey", "legacy.json");
             legacyForm.set("filename", "legacy.json");
             legacyForm.set(

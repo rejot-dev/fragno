@@ -19,7 +19,6 @@ import { readScenarioReplicaView } from "@/fragno/lofi/scenario-replica-database
 
 import { AutomationsObject } from "../../../../workers/automations-object";
 import { UploadObject } from "../../../../workers/upload-object";
-import { UPLOAD_PROVIDER_DATABASE } from "../../upload";
 import { readyUploadFilesView, toUploadFileRecord } from "./replica";
 
 const scenarioObjects = {
@@ -42,7 +41,6 @@ async function writeFile(
   file: { key: string; content: string; contentType: string },
 ) {
   const form = new FormData();
-  form.set("provider", UPLOAD_PROVIDER_DATABASE);
   form.set("fileKey", file.key);
   form.set(
     "file",
@@ -65,7 +63,6 @@ async function uploadFile(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        provider: UPLOAD_PROVIDER_DATABASE,
         fileKey: file.key,
         filename: file.key.split("/").at(-1)!,
         sizeBytes: new TextEncoder().encode(file.content).byteLength,
@@ -98,7 +95,6 @@ async function uploadFile(
 
 async function deleteFile(ctx: BackofficeScenarioContext, key: string) {
   const url = new URL("https://backoffice.example/api/upload/files/by-key");
-  url.searchParams.set("provider", UPLOAD_PROVIDER_DATABASE);
   url.searchParams.set("key", key);
   const response = await uploadObject(ctx).http.fetch(new Request(url, { method: "DELETE" }));
   assert(response.ok, await response.clone().text());
@@ -107,13 +103,9 @@ async function deleteFile(ctx: BackofficeScenarioContext, key: string) {
 async function readExplorerTree(ctx: BackofficeScenarioContext) {
   const upload = ctx.lofi.upload.forOrg(ORG_ID);
   await upload.drain();
-  const rows = await readScenarioReplicaView(
-    readyUploadFilesView(upload.replica, UPLOAD_PROVIDER_DATABASE),
-  );
+  const rows = await readScenarioReplicaView(readyUploadFilesView(upload.replica));
   expect(upload.replica.getStatus()).toEqual({ phase: "caught-up", error: null });
-  return createUploadFileTree(rows.map(toUploadFileRecord), {
-    provider: UPLOAD_PROVIDER_DATABASE,
-  }).entries.map((entry) => ({
+  return createUploadFileTree(rows.map(toUploadFileRecord)).entries.map((entry) => ({
     kind: entry.kind,
     path: entry.path,
     ...(entry.kind === "file" ? { sizeBytes: entry.sizeBytes } : {}),
@@ -157,10 +149,6 @@ test("the Files explorer lists the ready files and folders of the Upload replica
             { kind: "directory", path: "reports" },
             { kind: "file", path: "reports/q1.csv", sizeBytes: 17 },
           ]);
-          const upload = ctx.lofi.upload.forOrg(ORG_ID);
-          expect(await readScenarioReplicaView(readyUploadFilesView(upload.replica, "r2"))).toEqual(
-            [],
-          );
         }),
         then.assert("a file uploaded later appears after the next sync", async (ctx) => {
           await writeFile(ctx, {

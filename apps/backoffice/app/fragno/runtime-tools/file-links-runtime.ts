@@ -6,7 +6,6 @@ import { z } from "zod";
 import type { FetchCommands } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 
 export type FileLinkRuntime = {
   createDownloadLink(input: FileLinkInput): Promise<FileLink>;
@@ -68,7 +67,6 @@ export function createFileLinkRuntime({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: UPLOAD_PROVIDER_DATABASE,
           access,
           target,
           expiresInSeconds,
@@ -85,7 +83,7 @@ export function createFileLinkRuntime({
     const { token, expiresAt } = z
       .object({ token: z.string(), expiresAt: z.iso.datetime() })
       .parse(await response.json());
-    const linkPath = `api/file-links/${backofficeContextScopeRoutePath(scope)}/${UPLOAD_PROVIDER_DATABASE}/${token}${target.kind === "file" ? "" : "/archive.tar"}`;
+    const linkPath = `api/file-links/${backofficeContextScopeRoutePath(scope)}/${token}${target.kind === "file" ? "" : "/archive.tar"}`;
     const url = new URL(linkPath, origins.public).toString();
     const sandboxUrl = new URL(linkPath, origins.sandbox).toString();
     return target.kind === "file"

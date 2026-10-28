@@ -25,7 +25,6 @@ const FILES_EXPLORER_MAX_TEXT_PREVIEW_BYTES = 1024 * 1024;
 export type FilesExplorerSourceSnapshot = FilesExplorerSource & {
   synchronization?: {
     kind: "upload";
-    provider: string;
     source: UploadReplicaSource;
   };
 };
@@ -235,7 +234,6 @@ async function attachClientSynchronization({
               ...fileSource,
               synchronization: {
                 kind: "upload" as const,
-                provider: synchronization.provider,
                 source,
               },
             }

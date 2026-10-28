@@ -49,7 +49,7 @@ beforeEach(() => {
       collection: createStaticFileCollection({
         "automations/example.workflow.js": "export default {};",
       }),
-      clientSynchronization: { kind: "upload", provider: "database" },
+      clientSynchronization: { kind: "upload" },
     },
   ]);
 });
@@ -74,7 +74,6 @@ describe("files explorer route data", () => {
       result.sources.find((source) => source.rootPath === "/workspace")?.synchronization,
     ).toEqual({
       kind: "upload",
-      provider: "database",
       source: {
         scope: { kind: "org", orgId: "acme-org", jurisdiction: null },
         adapterIdentity: "adapter-1",
@@ -136,7 +135,6 @@ describe("files explorer route data", () => {
       result.sources.find((source) => source.rootPath === "/workspace")?.synchronization,
     ).toEqual({
       kind: "upload",
-      provider: "database",
       source: { scope, adapterIdentity: "adapter-1" },
     });
   });

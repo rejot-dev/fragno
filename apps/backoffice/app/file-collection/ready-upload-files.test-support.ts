@@ -8,14 +8,13 @@ import { uploadSchema } from "@fragno-dev/upload";
  */
 export async function seedReadyUploadFiles(
   db: TestDb,
-  input: { provider: string; fileKeys: readonly string[] },
+  input: { fileKeys: readonly string[] },
 ): Promise<void> {
   const uow = db.createUnitOfWork("seed-ready-upload-files").forSchema(uploadSchema);
   const now = new Date();
   for (const fileKey of input.fileKeys) {
     uow.create("file", {
       key: fileKey,
-      provider: input.provider,
       uploaderId: null,
       filename: fileKey.split("/").at(-1) ?? fileKey,
       sizeBytes: 0n,
@@ -25,7 +24,7 @@ export async function seedReadyUploadFiles(
       tags: null,
       metadata: null,
       status: "ready",
-      objectKey: `seeded/${input.provider}/${fileKey}`,
+      objectKey: `seeded/${fileKey}`,
       createdAt: now,
       updatedAt: now,
       completedAt: now,

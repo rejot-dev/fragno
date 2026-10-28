@@ -54,7 +54,6 @@ export type AppliedFileEdit = {
 };
 
 export type ApplyFileEditsInput = {
-  provider: string;
   edits: FileEditOperation[];
 };
 

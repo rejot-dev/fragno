@@ -3,12 +3,10 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { createStaticFileCollection } from "@/file-collection/create-static-file-collection";
 import { createBackofficeStateBackend } from "@/fragno/codemode/state-backend";
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 
 import { WORKSPACE_STARTER_CONTENT } from "./content/starter";
 
 export type WorkspaceStarterFilesSeedOutput = {
-  provider: string;
   force: boolean;
   created: string[];
   overwritten: string[];
@@ -47,5 +45,5 @@ export async function seedWorkspaceStarterFiles({
     }
     (exists ? overwritten : created).push(path);
   }
-  return { provider: UPLOAD_PROVIDER_DATABASE, force, created, overwritten, skipped };
+  return { force, created, overwritten, skipped };
 }

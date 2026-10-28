@@ -29,17 +29,14 @@ import { chunkQueryValues } from "./query-chunks";
 export const MAX_FILE_EDIT_TEXT_BYTES = 10 * 1024 * 1024;
 
 export type FileByKeyInput = {
-  provider: string;
   fileKey: string;
 };
 
 export type FilesByKeysInput = {
-  provider: string;
   fileKeys: string[];
 };
 
 export type ListFilesInput = {
-  provider?: string;
   prefix?: string;
   pageSize: number;
   cursor?: string;
@@ -68,14 +65,14 @@ export type FileContentWrite = {
   precondition: UploadFileWritePrecondition | null;
 };
 
-function decodeEditedText(provider: string, fileKey: string, body: Uint8Array): string {
+function decodeEditedText(fileKey: string, body: Uint8Array): string {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(body);
   } catch (cause) {
     throw new UploadServiceError(
       "INVALID_REQUEST",
       "Edited files must contain valid UTF-8 text.",
-      { provider, fileKey },
+      { fileKey },
       { cause },
     );
   }
@@ -83,7 +80,6 @@ function decodeEditedText(provider: string, fileKey: string, body: Uint8Array): 
 
 /** Applies the edits in order to the files' current text, as one atomic change. */
 function evaluateFileEdits(
-  provider: string,
   edits: FileEditOperation[],
   initialContents: Map<string, string | null>,
 ) {
@@ -105,7 +101,7 @@ function evaluateFileEdits(
       throw new UploadServiceError(
         previous === null && edit.kind === "replace" ? "FILE_NOT_FOUND" : "INVALID_REQUEST",
         cause.message,
-        { provider, fileKey: edit.fileKey },
+        { fileKey: edit.fileKey },
       );
     }
     generatedBytes += new TextEncoder().encode(content).byteLength;
@@ -128,9 +124,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.find("file", (b) =>
-            b.whereIndex("idx_file_provider_key", (eb) =>
-              eb.and(eb("provider", "=", input.provider), eb("key", "in", input.fileKeys)),
-            ),
+            b.whereIndex("idx_file_key", (eb) => eb("key", "in", input.fileKeys)),
           ),
         )
         .transformRetrieve(([files]) => files)
@@ -141,9 +135,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.findFirst("file", (b) =>
-            b.whereIndex("idx_file_provider_key", (eb) =>
-              eb.and(eb("provider", "=", input.provider), eb("key", "=", input.fileKey)),
-            ),
+            b.whereIndex("idx_file_key", (eb) => eb("key", "=", input.fileKey)),
           ),
         )
         .transformRetrieve(([file]) => {
@@ -161,9 +153,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
         .retrieve((uow) =>
           uow.findFirst("file", (b) =>
             b
-              .whereIndex("idx_file_provider_key", (eb) =>
-                eb.and(eb("provider", "=", input.provider), eb("key", "=", input.fileKey)),
-              )
+              .whereIndex("idx_file_key", (eb) => eb("key", "=", input.fileKey))
               .joinOne("object", "storage_object", (object) =>
                 object.onIndex("idx_storage_object_key", (eb) =>
                   eb("storageKey", "=", eb.parent("objectKey")),
@@ -180,7 +170,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
           }
           const { object, ...row } = file;
           if (!object) {
-            throw new Error(`File '${file.provider}:${file.key}' has no stored content.`);
+            throw new Error(`File '${file.key}' has no stored content.`);
           }
           return { file: row, body: object.body };
         })
@@ -195,67 +185,45 @@ export const createFileServices = (config: UploadFragmentConfig) => {
             if (input.status && input.uploaderId) {
               const status = input.status;
               const uploaderId = input.uploaderId;
-              const query = b.whereIndex("idx_file_provider_key_status_uploaderId", (eb) =>
+              const query = b.whereIndex("idx_file_key_status_uploaderId", (eb) =>
                 eb.and(
-                  input.provider !== undefined
-                    ? eb("provider", "=", input.provider)
-                    : eb("provider", "starts with", ""),
                   eb("key", "starts with", prefix),
                   eb("status", "=", status),
                   eb("uploaderId", "=", uploaderId),
                 ),
               );
               const ordered = query
-                .orderByIndex("idx_file_provider_key_status_uploaderId", "asc")
+                .orderByIndex("idx_file_key_status_uploaderId", "asc")
                 .pageSize(input.pageSize);
               return input.cursor ? ordered.after(input.cursor) : ordered;
             }
 
             if (input.status) {
               const status = input.status;
-              const query = b.whereIndex("idx_file_provider_key_status", (eb) =>
-                eb.and(
-                  input.provider !== undefined
-                    ? eb("provider", "=", input.provider)
-                    : eb("provider", "starts with", ""),
-                  eb("key", "starts with", prefix),
-                  eb("status", "=", status),
-                ),
+              const query = b.whereIndex("idx_file_key_status", (eb) =>
+                eb.and(eb("key", "starts with", prefix), eb("status", "=", status)),
               );
               const ordered = query
-                .orderByIndex("idx_file_provider_key_status", "asc")
+                .orderByIndex("idx_file_key_status", "asc")
                 .pageSize(input.pageSize);
               return input.cursor ? ordered.after(input.cursor) : ordered;
             }
 
             if (input.uploaderId) {
               const uploaderId = input.uploaderId;
-              const query = b.whereIndex("idx_file_provider_key_uploaderId", (eb) =>
-                eb.and(
-                  input.provider !== undefined
-                    ? eb("provider", "=", input.provider)
-                    : eb("provider", "starts with", ""),
-                  eb("key", "starts with", prefix),
-                  eb("uploaderId", "=", uploaderId),
-                ),
+              const query = b.whereIndex("idx_file_key_uploaderId", (eb) =>
+                eb.and(eb("key", "starts with", prefix), eb("uploaderId", "=", uploaderId)),
               );
               const ordered = query
-                .orderByIndex("idx_file_provider_key_uploaderId", "asc")
+                .orderByIndex("idx_file_key_uploaderId", "asc")
                 .pageSize(input.pageSize);
               return input.cursor ? ordered.after(input.cursor) : ordered;
             }
 
-            const query = b.whereIndex("idx_file_provider_key", (eb) =>
-              eb.and(
-                input.provider !== undefined
-                  ? eb("provider", "=", input.provider)
-                  : eb("provider", "starts with", ""),
-                eb("key", "starts with", prefix),
-              ),
+            const query = b.whereIndex("idx_file_key", (eb) =>
+              eb.and(eb("key", "starts with", prefix)),
             );
-            const ordered = query
-              .orderByIndex("idx_file_provider_key", "asc")
-              .pageSize(input.pageSize);
+            const ordered = query.orderByIndex("idx_file_key", "asc").pageSize(input.pageSize);
             return input.cursor ? ordered.after(input.cursor) : ordered;
           }),
         )
@@ -264,11 +232,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
     },
 
     /** Publishes every write, or none of them when a precondition fails. */
-    writeFiles: function (
-      this: UploadServiceContext,
-      provider: string,
-      writes: FileContentWrite[],
-    ) {
+    writeFiles: function (this: UploadServiceContext, writes: FileContentWrite[]) {
       const fileKeys = writes.map((write) => write.fileKey);
       if (new Set(fileKeys).size !== fileKeys.length) {
         throw new UploadServiceError("INVALID_REQUEST", "A file can be written only once.");
@@ -280,9 +244,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
           for (const keys of chunkQueryValues(fileKeys)) {
             retrieval.find("file", (b) =>
               b
-                .whereIndex("idx_file_provider_key", (eb) =>
-                  eb.and(eb("provider", "=", provider), eb("key", "in", keys)),
-                )
+                .whereIndex("idx_file_key", (eb) => eb("key", "in", keys))
                 .joinOne("object", "storage_object", (object) =>
                   object
                     .onIndex("idx_storage_object_key", (eb) =>
@@ -305,12 +267,12 @@ export const createFileServices = (config: UploadFragmentConfig) => {
             assertFileWritePrecondition(
               filesByKey.get(write.fileKey) ?? null,
               write.precondition ?? undefined,
-              { provider, fileKey: write.fileKey },
+              { fileKey: write.fileKey },
             );
           }
 
           return writes.map(({ fileKey, content, precondition: _precondition, ...file }) => {
-            const objectKey = newObjectKey(provider, fileKey);
+            const objectKey = newObjectKey(fileKey);
             const sizeBytes = BigInt(content.byteLength);
             uow.create("storage_object", {
               storageKey: objectKey,
@@ -321,7 +283,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
             return publishFileContent(
               uow as UploadMutationUnitOfWork,
               filesByKey.get(fileKey) ?? null,
-              { ...file, key: fileKey, provider, objectKey, sizeBytes, uploadId: null },
+              { ...file, key: fileKey, objectKey, sizeBytes, uploadId: null },
             );
           });
         })
@@ -332,11 +294,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
      * Applies text edits to the files' current content and publishes the changed files in one
      * transaction, which fails when another write changes one of the files first.
      */
-    applyFileEdits: function (
-      this: UploadServiceContext,
-      provider: string,
-      edits: FileEditOperation[],
-    ) {
+    applyFileEdits: function (this: UploadServiceContext, edits: FileEditOperation[]) {
       const fileKeys = Array.from(new Set(edits.map((edit) => edit.fileKey)));
       // Only files whose first edit is a replacement start from their current text.
       const readKeys = fileKeys.filter(
@@ -349,9 +307,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
           uow
             .find("file", (b) =>
               b
-                .whereIndex("idx_file_provider_key", (eb) =>
-                  eb.and(eb("provider", "=", provider), eb("key", "in", readKeys)),
-                )
+                .whereIndex("idx_file_key", (eb) => eb("key", "in", readKeys))
                 .joinOne("object", "storage_object", (object) =>
                   object.onIndex("idx_storage_object_key", (eb) =>
                     eb("storageKey", "=", eb.parent("objectKey")),
@@ -360,9 +316,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
             )
             .find("file", (b) =>
               b
-                .whereIndex("idx_file_provider_key", (eb) =>
-                  eb.and(eb("provider", "=", provider), eb("key", "in", overwrittenKeys)),
-                )
+                .whereIndex("idx_file_key", (eb) => eb("key", "in", overwrittenKeys))
                 .joinOne("object", "storage_object", (object) =>
                   object
                     .onIndex("idx_storage_object_key", (eb) =>
@@ -382,11 +336,11 @@ export const createFileServices = (config: UploadFragmentConfig) => {
           );
           for (const file of readFiles) {
             if (file.status === "ready" && file.object) {
-              initialContents.set(file.key, decodeEditedText(provider, file.key, file.object.body));
+              initialContents.set(file.key, decodeEditedText(file.key, file.object.body));
             }
           }
 
-          const { results, finalContents } = evaluateFileEdits(provider, edits, initialContents);
+          const { results, finalContents } = evaluateFileEdits(edits, initialContents);
 
           let totalChanged = 0;
           for (const fileKey of fileKeys) {
@@ -402,7 +356,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
               if (existing) {
                 uow.check("file", existing.id);
               } else {
-                uow.checkAbsent("file", "idx_file_provider_key", { provider, key: fileKey });
+                uow.checkAbsent("file", "idx_file_key", { key: fileKey });
               }
               continue;
             }
@@ -411,7 +365,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
             const lastEdit = edits.findLast((edit) => edit.fileKey === fileKey)!;
             const bytes = new TextEncoder().encode(content);
             assertFileSize(bytes.byteLength, config.maxFileBytes, `File '${fileKey}'`);
-            const objectKey = newObjectKey(provider, fileKey);
+            const objectKey = newObjectKey(fileKey);
             // TODO: Track publication metadata from the latest write/writeJson operation per file.
             // A later replace only transforms content and must not change a new JSON file's
             // content type back to text/plain.
@@ -426,7 +380,6 @@ export const createFileServices = (config: UploadFragmentConfig) => {
             });
             publishFileContent(uow as UploadMutationUnitOfWork, existing, {
               key: fileKey,
-              provider,
               uploaderId: original?.uploaderId ?? null,
               filename: original?.filename ?? fileKey.split("/").at(-1)!,
               contentType,
@@ -453,9 +406,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.findFirst("file", (b) =>
-            b.whereIndex("idx_file_provider_key", (eb) =>
-              eb.and(eb("provider", "=", fileByKey.provider), eb("key", "=", fileByKey.fileKey)),
-            ),
+            b.whereIndex("idx_file_key", (eb) => eb("key", "=", fileByKey.fileKey)),
           ),
         )
         .mutate(({ uow, retrieveResult: [file] }) => {
@@ -472,7 +423,6 @@ export const createFileServices = (config: UploadFragmentConfig) => {
 
           const updatedFile = {
             key: file.key,
-            provider: file.provider,
             uploaderId: file.uploaderId,
             filename: input.filename ?? file.filename,
             sizeBytes: file.sizeBytes,
@@ -506,9 +456,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
         .retrieve((uow) =>
           uow.findFirst("file", (b) =>
             b
-              .whereIndex("idx_file_provider_key", (eb) =>
-                eb.and(eb("provider", "=", fileByKey.provider), eb("key", "=", fileByKey.fileKey)),
-              )
+              .whereIndex("idx_file_key", (eb) => eb("key", "=", fileByKey.fileKey))
               .joinOne("object", "storage_object", (object) =>
                 object
                   .onIndex("idx_storage_object_key", (eb) =>

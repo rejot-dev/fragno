@@ -5,7 +5,6 @@ import type { FileVisibility, UploadChecksum, UploadPublicationMode, UploadStatu
 import { UploadServiceError } from "./errors";
 
 export type CreateUploadInput = {
-  provider: string;
   keyParts?: readonly (string | number)[];
   fileKey?: string;
   filename: string;
@@ -33,11 +32,10 @@ export type ActiveUploadSnapshot = Omit<UploadSnapshot, "status"> & {
 
 export type UploadSessionSnapshot = Pick<
   ActiveUploadSnapshot,
-  "id" | "key" | "provider" | "status" | "publicationMode" | "expiresAt"
+  "id" | "key" | "status" | "publicationMode" | "expiresAt"
 >;
 
 export type NormalizedUploadInput = {
-  provider: string;
   keyParts?: readonly (string | number)[];
   fileKey?: string;
   filename: string;

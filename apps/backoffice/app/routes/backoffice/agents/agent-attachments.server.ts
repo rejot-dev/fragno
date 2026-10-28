@@ -9,7 +9,6 @@ import {
   piAgentAttachmentsFolder,
   type PiAgentAttachment,
 } from "@/fragno/pi/agent/pi-agent-attachments";
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -61,7 +60,7 @@ export async function readPiAgentAttachments({
   const attachments: PiAgentAttachment[] = [];
   for (const path of paths) {
     const file = await routes("GET", "/files/by-key", {
-      query: { provider: UPLOAD_PROVIDER_DATABASE, key: path.slice("/workspace/".length) },
+      query: { key: path.slice("/workspace/".length) },
     });
     if (file.type !== "json" || file.data.status === "deleted") {
       return { error: `${path.split("/").at(-1)} is no longer in the workspace.` };

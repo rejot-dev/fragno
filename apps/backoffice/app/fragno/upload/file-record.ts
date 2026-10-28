@@ -1,7 +1,6 @@
 import type { UploadChecksum } from "@fragno-dev/upload";
 
 export type UploadFileRecord = {
-  provider: string;
   fileKey: string;
   revision?: number;
   status: string;

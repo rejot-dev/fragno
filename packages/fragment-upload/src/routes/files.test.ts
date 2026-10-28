@@ -12,8 +12,6 @@ import { uploadSchema } from "../schema";
 import type { FileMutationResult, UploadFileWritePrecondition } from "../types";
 
 describe("upload file routes", async () => {
-  const provider = "workspace";
-
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
     .withDbRoundtripGuard(true)
@@ -46,7 +44,6 @@ describe("upload file routes", async () => {
       "file",
       new File([Buffer.from(input.content)], input.filename, { type: "text/plain" }),
     );
-    form.set("provider", provider);
     form.set("fileKey", input.fileKey);
     if (input.precondition) {
       form.set("precondition", JSON.stringify(input.precondition));
@@ -88,7 +85,6 @@ describe("upload file routes", async () => {
   const prepareProxyFile = async (fileKey: string, content: string) => {
     const created = await fragment.callRoute("POST", "/uploads", {
       body: {
-        provider,
         fileKey,
         filename: path.basename(fileKey),
         sizeBytes: Buffer.byteLength(content),
@@ -125,12 +121,12 @@ describe("upload file routes", async () => {
     });
     assert(replacement.type === "json");
     const deleted = await fragment.callRoute("DELETE", "/files/by-key", {
-      query: { provider, key: "deleted.txt" },
+      query: { key: "deleted.txt" },
     });
     assert(deleted.type === "json");
     const prepared = await prepareProxyFile("prepared.txt", "invisible");
     const snapshots = await fragment.callRoute("POST", "/files/snapshots", {
-      body: { provider, fileKeys: ["ready.txt", "deleted.txt", "missing.txt", prepared.fileKey] },
+      body: { fileKeys: ["ready.txt", "deleted.txt", "missing.txt", prepared.fileKey] },
     });
     assert(snapshots.type === "json");
     expect(snapshots.data.files).toHaveLength(2);
@@ -141,7 +137,7 @@ describe("upload file routes", async () => {
       ]),
     );
     const snapshot = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: "ready.txt" },
+      query: { key: "ready.txt" },
     });
     assert(snapshot.type === "json");
     expect(snapshots.data.files.find((file) => file.fileKey === "ready.txt")).toEqual(
@@ -156,7 +152,7 @@ describe("upload file routes", async () => {
       Array.from({ length: 501 }, (_, index) => `file-${index}`),
     ]) {
       const result = await fragment.callRoute("POST", "/files/snapshots", {
-        body: { provider, fileKeys },
+        body: { fileKeys },
       });
       assert(result.status === 400);
     }
@@ -168,7 +164,7 @@ describe("upload file routes", async () => {
 
     for (const fileKey of [first.fileKey, second.fileKey]) {
       const invisible = await fragment.callRoute("GET", "/files/by-key", {
-        query: { provider, key: fileKey },
+        query: { key: fileKey },
       });
       assert(invisible.type === "error");
       assert(invisible.error.code === "FILE_NOT_FOUND");
@@ -200,10 +196,10 @@ describe("upload file routes", async () => {
     replayed.data.files.forEach(expectMutationResultWithoutTimestamps);
 
     const firstContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: first.fileKey },
+      query: { key: first.fileKey },
     });
     const secondContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: second.fileKey },
+      query: { key: second.fileKey },
     });
     assert((await firstContent.text()) === "first-v1");
     assert((await secondContent.text()) === "second-v1");
@@ -216,7 +212,7 @@ describe("upload file routes", async () => {
     });
     assert(removed.type === "json");
     const removedSnapshot = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: removedKey },
+      query: { key: removedKey },
     });
     assert(removedSnapshot.type === "json");
     const prepared = await prepareProxyFile("prepared/created-with-delete.txt", "created");
@@ -228,7 +224,6 @@ describe("upload file routes", async () => {
       },
       {
         kind: "delete" as const,
-        provider,
         fileKey: removedKey,
         precondition: { kind: "revision" as const, revision: removedSnapshot.data.revision },
       },
@@ -257,11 +252,11 @@ describe("upload file routes", async () => {
     );
 
     const removedContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: removedKey },
+      query: { key: removedKey },
     });
     assert(removedContent.status === 410);
     const createdContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: prepared.fileKey },
+      query: { key: prepared.fileKey },
     });
     await expect(createdContent.text()).resolves.toBe("created");
   });
@@ -277,7 +272,7 @@ describe("upload file routes", async () => {
     });
     assert(removed.type === "json");
     const removedSnapshot = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: removedKey },
+      query: { key: removedKey },
     });
     assert(removedSnapshot.type === "json");
     const prepared = await prepareProxyFile("prepared/rejected-by-delete.txt", "unpublished");
@@ -292,7 +287,6 @@ describe("upload file routes", async () => {
           },
           {
             kind: "delete",
-            provider,
             fileKey: removedKey,
             precondition: { kind: "revision", revision: removedSnapshot.data.revision + 1 },
           },
@@ -304,11 +298,11 @@ describe("upload file routes", async () => {
     assert(rejected.error.code === "FILE_PRECONDITION_FAILED");
 
     const removedContent = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: removedKey },
+      query: { key: removedKey },
     });
     await expect(removedContent.text()).resolves.toBe("current");
     const unpublished = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: prepared.fileKey },
+      query: { key: prepared.fileKey },
     });
     assert(unpublished.status === 404);
   });
@@ -330,7 +324,6 @@ describe("upload file routes", async () => {
           },
           {
             kind: "delete",
-            provider,
             fileKey: missingKey,
             precondition: { kind: "revision", revision: 0 },
           },
@@ -342,7 +335,7 @@ describe("upload file routes", async () => {
     assert(rejected.error.code === "FILE_PRECONDITION_FAILED");
 
     const unpublished = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: prepared.fileKey },
+      query: { key: prepared.fileKey },
     });
     assert(unpublished.status === 404);
   });
@@ -361,10 +354,10 @@ describe("upload file routes", async () => {
     }
 
     const stable = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: stableKey },
+      query: { key: stableKey },
     });
     const changed = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: changedKey },
+      query: { key: changedKey },
     });
     assert(stable.type === "json");
     assert(changed.type === "json");
@@ -380,7 +373,6 @@ describe("upload file routes", async () => {
           },
           {
             kind: "assert",
-            provider,
             fileKey: stableKey,
             precondition: { kind: "revision", revision: stable.data.revision + 1 },
           },
@@ -396,7 +388,7 @@ describe("upload file routes", async () => {
       [changedKey, "changed-v1"],
     ] as const) {
       const response = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-        query: { provider, key: fileKey },
+        query: { key: fileKey },
       });
       expect(await response.text()).toBe(content);
     }
@@ -413,7 +405,7 @@ describe("upload file routes", async () => {
     });
     assert(observed.type === "json");
     const observedSnapshot = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: observedKey },
+      query: { key: observedKey },
     });
     assert(observedSnapshot.type === "json");
     const prepared = await prepareProxyFile("prepared/asserted-write.txt", "new");
@@ -428,7 +420,6 @@ describe("upload file routes", async () => {
           },
           {
             kind: "assert",
-            provider,
             fileKey: observedKey,
             precondition: { kind: "revision", revision: observedSnapshot.data.revision },
           },
@@ -493,7 +484,7 @@ describe("upload file routes", async () => {
     await drainDurableHooks(fragment);
 
     const content = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert((await content.text()) === "published");
   });
@@ -521,7 +512,7 @@ describe("upload file routes", async () => {
     assert(aborted.error.code === "UPLOAD_INVALID_STATE");
 
     const content = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: prepared.fileKey },
+      query: { key: prepared.fileKey },
     });
     assert(content.status === 200);
     assert((await content.text()) === "committed");
@@ -538,7 +529,7 @@ describe("upload file routes", async () => {
     const snapshots = await Promise.all(
       fileKeys.map(async (fileKey) => {
         const response = await fragment.callRoute("GET", "/files/by-key", {
-          query: { provider, key: fileKey },
+          query: { key: fileKey },
         });
         assert(response.type === "json");
         return response.data;
@@ -643,7 +634,7 @@ describe("upload file routes", async () => {
       ["prepared/concurrent-b.txt", "first-b"],
     ] as const) {
       const response = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-        query: { provider, key: fileKey },
+        query: { key: fileKey },
       });
       expect(await response.text()).toBe(content);
     }
@@ -679,7 +670,7 @@ describe("upload file routes", async () => {
     assert(failure.error.code === "FILE_PRECONDITION_FAILED");
 
     const content = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: "prepared/unique-race.txt" },
+      query: { key: "prepared/unique-race.txt" },
     });
     expect(await content.text()).toBe(successfulIndex === 0 ? "first" : "second");
   });
@@ -687,7 +678,6 @@ describe("upload file routes", async () => {
   it("rejects unknown, active, failed, aborted, and expired uploads", async () => {
     const active = await fragment.callRoute("POST", "/uploads", {
       body: {
-        provider,
         fileKey: "prepared/active.txt",
         filename: "active.txt",
         sizeBytes: 1,
@@ -740,7 +730,6 @@ describe("upload file routes", async () => {
       type: "text/plain",
     });
     form.set("file", file);
-    form.set("provider", provider);
     form.set("keyParts", JSON.stringify(["users", 1, "avatar"]));
     form.set("metadata", JSON.stringify({ purpose: "test" }));
     form.set("tags", JSON.stringify(["profile"]));
@@ -753,7 +742,7 @@ describe("upload file routes", async () => {
     const { fileKey } = response.data;
 
     const getResponse = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert(getResponse.type === "json");
     expect(getResponse.data.fileKey).toBe(fileKey);
@@ -761,54 +750,10 @@ describe("upload file routes", async () => {
     assert(getResponse.data.revision === 0);
 
     const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert(contentResponse.status === 200);
     assert((await contentResponse.text()) === "hello");
-  });
-
-  it("keeps files under any provider namespace", async () => {
-    const providerAlias = "customer-assets";
-    const form = new FormData();
-    const file = new File([Buffer.from("aliased")], "aliased.txt", {
-      type: "text/plain",
-    });
-    form.set("file", file);
-    form.set("provider", providerAlias);
-    form.set("keyParts", JSON.stringify(["users", 7, "aliased"]));
-
-    const createResponse = await fragment.callRoute("POST", "/files", {
-      body: form,
-    });
-    assert(createResponse.type === "json");
-    expect(createResponse.data.provider).toBe(providerAlias);
-    const { fileKey } = createResponse.data;
-
-    const getResponse = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider: providerAlias, key: fileKey },
-    });
-    assert(getResponse.type === "json");
-    expect(getResponse.data.provider).toBe(providerAlias);
-
-    const updateResponse = await fragment.callRoute("PATCH", "/files/by-key", {
-      query: { provider: providerAlias, key: fileKey },
-      body: { filename: "renamed.txt" },
-    });
-    assert(updateResponse.type === "json");
-    assert(updateResponse.data.filename === "renamed.txt");
-    expectMutationResultWithoutTimestamps(updateResponse.data);
-
-    const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider: providerAlias, key: fileKey },
-    });
-    assert(contentResponse.status === 200);
-    assert((await contentResponse.text()) === "aliased");
-
-    const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
-      query: { provider: providerAlias, key: fileKey },
-    });
-    assert(deleteResponse.type === "json");
-    expect(deleteResponse.data).toEqual({ ok: true });
   });
 
   it("enforces absent and revision preconditions and stores nothing for rejected writes", async () => {
@@ -824,7 +769,7 @@ describe("upload file routes", async () => {
     assert(initialResponse.type === "json");
 
     const initialSnapshot = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert(initialSnapshot.type === "json");
     assert(initialSnapshot.data.revision === 0);
@@ -840,7 +785,7 @@ describe("upload file routes", async () => {
     assert(replacementResponse.type === "json");
 
     const replacementSnapshot = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert(replacementSnapshot.type === "json");
     assert(replacementSnapshot.data.revision === 1);
@@ -859,7 +804,7 @@ describe("upload file routes", async () => {
     expect(await listStoredContents()).toEqual(["replacement"]);
 
     const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert(contentResponse.status === 200);
     assert((await contentResponse.text()) === "replacement");
@@ -895,7 +840,7 @@ describe("upload file routes", async () => {
       assert(rejected[0].error.code === "FILE_PRECONDITION_FAILED");
 
       const contentResponse = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-        query: { provider, key: fileKey },
+        query: { key: fileKey },
       });
       assert(contentResponse.status === 200);
       assert((await contentResponse.text()) === attempts[successfulIndex]?.content);
@@ -904,21 +849,6 @@ describe("upload file routes", async () => {
     } finally {
       now.mockRestore();
     }
-  });
-
-  it("rejects malformed provider namespaces in POST /files", async () => {
-    const form = new FormData();
-    const file = new File([Buffer.from("hello")], "hello.txt", {
-      type: "text/plain",
-    });
-    form.set("file", file);
-    form.set("provider", "bad/provider");
-    form.set("keyParts", JSON.stringify(["users", 11, "avatar"]));
-
-    const response = await fragment.callRoute("POST", "/files", { body: form });
-    assert(response.type === "error");
-    assert(response.status === 400);
-    assert(response.error.code === "INVALID_REQUEST");
   });
 
   it("rejects malformed file write preconditions", async () => {
@@ -941,7 +871,6 @@ describe("upload file routes", async () => {
       type: "text/plain",
     });
     form.set("file", file);
-    form.set("provider", provider);
     form.set("keyParts", JSON.stringify(["users", 9, "goodbye"]));
 
     const createResponse = await fragment.callRoute("POST", "/files", {
@@ -951,13 +880,13 @@ describe("upload file routes", async () => {
     const { fileKey } = createResponse.data;
 
     const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert(deleteResponse.type === "json");
     expect(deleteResponse.data).toEqual({ ok: true });
 
     const contentResponse = await fragment.callRoute("GET", "/files/by-key/content", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert(contentResponse.type === "error");
     assert(contentResponse.status === 410);
@@ -968,7 +897,6 @@ describe("upload file routes", async () => {
     const form = new FormData();
     const file = new File([Buffer.from("deleted")], "deleted.txt", { type: "text/plain" });
     form.set("file", file);
-    form.set("provider", provider);
     form.set("keyParts", JSON.stringify(["users", 10, "deleted"]));
 
     const createResponse = await fragment.callRoute("POST", "/files", { body: form });
@@ -976,7 +904,7 @@ describe("upload file routes", async () => {
     expect(await listStoredContents()).toEqual(["deleted"]);
 
     const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
-      query: { provider, key: createResponse.data.fileKey },
+      query: { key: createResponse.data.fileKey },
     });
     assert(deleteResponse.type === "json");
     expect(deleteResponse.data).toEqual({ ok: true });
@@ -986,7 +914,6 @@ describe("upload file routes", async () => {
   it("POST /files allows re-uploading a deleted path without deleting the replacement bytes", async () => {
     const firstForm = new FormData();
     firstForm.set("file", new File([Buffer.from("first")], "first.txt", { type: "text/plain" }));
-    firstForm.set("provider", provider);
     firstForm.set("keyParts", JSON.stringify(["users", 11, "avatar"]));
 
     const firstCreate = await fragment.callRoute("POST", "/files", {
@@ -995,13 +922,12 @@ describe("upload file routes", async () => {
     assert(firstCreate.type === "json");
 
     const deleteResponse = await fragment.callRoute("DELETE", "/files/by-key", {
-      query: { provider, key: firstCreate.data.fileKey },
+      query: { key: firstCreate.data.fileKey },
     });
     assert(deleteResponse.type === "json");
 
     const secondForm = new FormData();
     secondForm.set("file", new File([Buffer.from("second")], "second.txt", { type: "text/plain" }));
-    secondForm.set("provider", provider);
     secondForm.set("fileKey", firstCreate.data.fileKey);
     secondForm.set("precondition", JSON.stringify({ kind: "absent" }));
 
@@ -1013,7 +939,7 @@ describe("upload file routes", async () => {
     assert(secondCreate.data.filename === "second.txt");
 
     const beforeDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: firstCreate.data.fileKey },
+      query: { key: firstCreate.data.fileKey },
     });
     assert(beforeDrain.status === 200);
     assert((await beforeDrain.text()) === "second");
@@ -1021,7 +947,7 @@ describe("upload file routes", async () => {
     await drainDurableHooks(fragment);
 
     const afterDrain = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: firstCreate.data.fileKey },
+      query: { key: firstCreate.data.fileKey },
     });
     assert(afterDrain.status === 200);
     assert((await afterDrain.text()) === "second");
@@ -1034,7 +960,6 @@ describe("upload file routes", async () => {
         type: "text/plain",
       });
       form.set("file", file);
-      form.set("provider", provider);
       form.set("keyParts", JSON.stringify(keyParts));
       return form;
     };
@@ -1061,7 +986,7 @@ describe("upload file routes", async () => {
     assert(response.data.files[0]?.fileKey.startsWith("users/1/"));
   });
 
-  it("GET /files paginates provider-scoped prefixes without SQL pattern matching", async () => {
+  it("GET /files paginates prefixes without SQL pattern matching", async () => {
     const prefix = "bla/wilcokruijer.github.io/.git/refs/remotes/origin/";
     expect(Buffer.byteLength(`${prefix}%`, "utf8")).toBeGreaterThan(50);
 
@@ -1073,7 +998,7 @@ describe("upload file routes", async () => {
     }
 
     const firstPage = await fragment.callRoute("GET", "/files", {
-      query: { provider, prefix, pageSize: "1", status: "ready" },
+      query: { prefix, pageSize: "1", status: "ready" },
     });
     assert(firstPage.type === "json");
     expect(firstPage.data.files.map((file) => file.fileKey)).toEqual([`${prefix}HEAD`]);
@@ -1082,7 +1007,6 @@ describe("upload file routes", async () => {
 
     const secondPage = await fragment.callRoute("GET", "/files", {
       query: {
-        provider,
         prefix,
         pageSize: "1",
         status: "ready",
@@ -1120,7 +1044,6 @@ describe("upload file routes", async () => {
     const createForm = (fileKey: string) => {
       const form = new FormData();
       form.set("file", new File([fileKey], fileKey.split("/").at(-1) ?? "file.txt"));
-      form.set("provider", provider);
       form.set("fileKey", fileKey);
       return form;
     };
@@ -1150,7 +1073,6 @@ describe("upload file routes", async () => {
     const createForm = (fileKey: string) => {
       const form = new FormData();
       form.set("file", new File([fileKey], fileKey.split("/").at(-1) ?? "file.txt"));
-      form.set("provider", provider);
       form.set("fileKey", fileKey);
       return form;
     };
@@ -1210,7 +1132,6 @@ describe("upload file routes", async () => {
   it("POST /files/search/hydrate rejects search offsets above 30 MiB", async () => {
     const response = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: ["workspace/file.txt"],
         keywords: ["workflow"],
         excludedTerms: [],
@@ -1226,7 +1147,6 @@ describe("upload file routes", async () => {
   it("POST /files/search/hydrate rejects hydration budgets above 30 MiB", async () => {
     const response = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: ["workspace/file.txt"],
         keywords: ["workflow"],
         excludedTerms: [],
@@ -1245,7 +1165,6 @@ describe("upload file routes", async () => {
         type: "text/plain",
       });
       form.set("file", file);
-      form.set("provider", provider);
       form.set("keyParts", JSON.stringify(keyParts));
       return form;
     };
@@ -1277,15 +1196,5 @@ describe("upload file routes", async () => {
       },
     ]);
     assert(!response.data.hasNextPage);
-  });
-
-  it("GET /files rejects an empty provider filter", async () => {
-    const response = await fragment.callRoute("GET", "/files", {
-      query: { provider: "" },
-    });
-
-    assert(response.type === "error");
-    assert(response.status === 400);
-    assert(response.error.code === "INVALID_REQUEST");
   });
 });

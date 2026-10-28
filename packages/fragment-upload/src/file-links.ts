@@ -26,7 +26,6 @@ export type FileLinkAccess = "read" | "write";
 export type FileLinkTarget = { kind: "file"; fileKey: FileKey } | { kind: "glob"; glob: string };
 
 export type FileLinkGrant = {
-  provider: string;
   access: FileLinkAccess;
   target: FileLinkTarget;
   expiresAtEpochMs: number;

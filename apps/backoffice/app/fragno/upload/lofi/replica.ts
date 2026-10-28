@@ -46,7 +46,6 @@ export function getUploadReplica(source: UploadReplicaSource): Promise<LofiSqlit
 
 const { columns } = uploadSchema.tables.file;
 const READY_FILE_COLUMNS = {
-  provider: columns.provider,
   key: columns.key,
   status: columns.status,
   uploaderId: columns.uploaderId,
@@ -64,13 +63,9 @@ const READY_FILE_COLUMNS = {
 } as const;
 const READY_FILES_SQL = `SELECT ${Object.keys(READY_FILE_COLUMNS).map(quoteSqliteIdentifier).join(", ")} FROM ${quoteSqliteIdentifier(lofiSqliteTableName({ schema: uploadSchema }, "file"))} WHERE "status" = 'ready'`;
 
-/** A live view of the files that finished uploading and were not deleted, of one provider or all. */
-export function readyUploadFilesView(replica: LofiSqliteClient, provider: string | null) {
-  return replica.sql({
-    sql: provider === null ? READY_FILES_SQL : `${READY_FILES_SQL} AND "provider" = ?1`,
-    params: provider === null ? [] : [provider],
-    columns: READY_FILE_COLUMNS,
-  });
+/** A live view of the files that finished uploading and were not deleted. */
+export function readyUploadFilesView(replica: LofiSqliteClient) {
+  return replica.sql({ sql: READY_FILES_SQL, params: [], columns: READY_FILE_COLUMNS });
 }
 
 type ReadyUploadFileRow =
@@ -80,7 +75,6 @@ type ReadyUploadFileRow =
 
 export function toUploadFileRecord(row: ReadyUploadFileRow): UploadFileRecord {
   return {
-    provider: row.provider,
     fileKey: row.key,
     status: row.status,
     uploaderId: row.uploaderId,
@@ -97,14 +91,11 @@ export function toUploadFileRecord(row: ReadyUploadFileRow): UploadFileRecord {
   };
 }
 
-/** The ready files of one provider, or of all of them, as the replica changes. */
+/** The ready files, as the replica changes. */
 export function useReadyUploadFiles(
   replica: LofiSqliteClient,
-  provider: string | null,
 ): LofiSqliteViewResult<UploadFileRecord[]> {
-  const result = useLofiView(
-    useMemo(() => readyUploadFilesView(replica, provider), [replica, provider]),
-  );
+  const result = useLofiView(useMemo(() => readyUploadFilesView(replica), [replica]));
   return useMemo(
     () =>
       result.status === "ready"

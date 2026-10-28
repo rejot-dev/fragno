@@ -9,7 +9,6 @@ import {
   createClientFromContext,
   parseJsonValue,
   resolveFileKeyValue,
-  resolveProviderValue,
 } from "../../utils/options.js";
 
 const DEFAULT_CONTENT_TYPE = "application/octet-stream";
@@ -23,10 +22,6 @@ export const uploadsTransferCommand = define({
       type: "string",
       short: "f",
       description: "Path to file",
-    },
-    provider: {
-      type: "string",
-      description: "File provider namespace",
     },
     "file-key": {
       type: "string",
@@ -71,7 +66,6 @@ export const uploadsTransferCommand = define({
       throw new Error("Missing --file");
     }
 
-    const provider = resolveProviderValue(ctx.values.provider);
     const resolvedKey = resolveFileKeyValue({
       fileKey: ctx.values["file-key"],
     });
@@ -95,7 +89,6 @@ export const uploadsTransferCommand = define({
 
     const client = createClientFromContext(ctx);
     const upload = (await client.createUpload({
-      provider,
       fileKey: resolvedKey.fileKey,
       filename,
       sizeBytes,

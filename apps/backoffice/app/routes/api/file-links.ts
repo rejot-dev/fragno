@@ -11,7 +11,7 @@ const FILE_LINK_ROUTE_PREFIX = "/api/upload/file-links/";
  */
 async function forwardFileLink({ request, context, params }: LoaderFunctionArgs) {
   const scope = requireBackofficeContextScopeFromRouteParams(params);
-  if (scope.kind === "system" || !params.provider || !params["*"]) {
+  if (scope.kind === "system" || !params["*"]) {
     throw new Response("File link not found.", { status: 404 });
   }
   if (request.method !== "GET" && request.method !== "HEAD" && request.method !== "PUT") {
@@ -23,7 +23,6 @@ async function forwardFileLink({ request, context, params }: LoaderFunctionArgs)
     throw new Response("File link not found.", { status: 404 });
   }
   url.search = new URL(request.url).search;
-  url.searchParams.set("provider", params.provider);
 
   // Clients such as `curl -T` send no content type, and link requests carry no credentials.
   const headers = new Headers();

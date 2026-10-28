@@ -11,7 +11,6 @@ import { uploadSchema } from "../schema";
 import { uploadRoutes } from "./index";
 
 describe("POST /files/apply-edits", async () => {
-  const provider = "workspace";
   const testSetup = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
     .withDbRoundtripGuard(true)
@@ -43,7 +42,6 @@ describe("POST /files/apply-edits", async () => {
         type: options.contentType ?? "text/plain",
       }),
     );
-    form.set("provider", provider);
     form.set("fileKey", fileKey);
     if (options.uploaderId) {
       form.set("uploaderId", options.uploaderId);
@@ -64,7 +62,7 @@ describe("POST /files/apply-edits", async () => {
 
   const getFile = async (fileKey: string) => {
     const response = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert(response.type === "json");
     return response.data;
@@ -84,7 +82,7 @@ describe("POST /files/apply-edits", async () => {
 
   const readFile = async (fileKey: string) => {
     const response = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert(response.status === 200);
     return await response.text();
@@ -104,7 +102,6 @@ describe("POST /files/apply-edits", async () => {
 
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
-        provider,
         edits: [
           {
             kind: "replace",
@@ -135,7 +132,6 @@ describe("POST /files/apply-edits", async () => {
 
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
-        provider,
         edits: [
           {
             kind: "replace",
@@ -167,7 +163,6 @@ describe("POST /files/apply-edits", async () => {
 
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
-        provider,
         edits: [
           {
             kind: "replace",
@@ -200,13 +195,12 @@ describe("POST /files/apply-edits", async () => {
       metadata: { previous: true },
     });
     const deleted = await fragment.callRoute("DELETE", "/files/by-key", {
-      query: { provider, key: "deleted/recreated.txt" },
+      query: { key: "deleted/recreated.txt" },
     });
     assert(deleted.type === "json");
 
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
-        provider,
         edits: [{ kind: "write", fileKey: "deleted/recreated.txt", content: "new" }],
       },
     });
@@ -229,7 +223,6 @@ describe("POST /files/apply-edits", async () => {
 
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
-        provider,
         edits: [
           {
             kind: "replace",
@@ -260,7 +253,6 @@ describe("POST /files/apply-edits", async () => {
   it("rejects replacement of a missing file", async () => {
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
-        provider,
         edits: [
           {
             kind: "replace",
@@ -283,7 +275,6 @@ describe("POST /files/apply-edits", async () => {
 
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
-        provider,
         edits: [
           {
             kind: "replace",
@@ -306,7 +297,6 @@ describe("POST /files/apply-edits", async () => {
   it("rejects more than ten edit operations", async () => {
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
-        provider,
         edits: Array.from({ length: 11 }, (_, index) => ({
           kind: "write" as const,
           fileKey: `limit/${index}.txt`,
@@ -322,7 +312,6 @@ describe("POST /files/apply-edits", async () => {
   it("maps diff line-limit failures to an invalid request", async () => {
     const response = await fragment.callRoute("POST", "/files/apply-edits", {
       body: {
-        provider,
         edits: [
           {
             kind: "write",

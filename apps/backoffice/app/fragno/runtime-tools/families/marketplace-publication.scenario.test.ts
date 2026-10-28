@@ -1285,7 +1285,6 @@ describe("Marketplace package publication scenarios", () => {
                         : "packages/report/assets/late.txt";
                     const bytes = new TextEncoder().encode("Changed README!");
                     const form = new FormData();
-                    form.set("provider", "database");
                     form.set("fileKey", fileKey);
                     form.set(
                       "checksum",

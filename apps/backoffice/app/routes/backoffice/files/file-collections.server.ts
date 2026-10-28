@@ -8,7 +8,6 @@ import type { FileCollection } from "@/file-collection/file-collection";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
 import { createBackofficeSystemFileCollection } from "@/files/content/system";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -16,7 +15,6 @@ export type FilesOverviewCollection = Omit<FilesExplorerSource, "tree"> & {
   collection: FileCollection;
   clientSynchronization?: {
     kind: "upload";
-    provider: string;
   };
 };
 
@@ -87,7 +85,6 @@ export async function createFilesOverviewCollections({
       collection: createWorkspaceFileCollection(uploadObject, request),
       clientSynchronization: {
         kind: "upload",
-        provider: UPLOAD_PROVIDER_DATABASE,
       },
     });
   }
@@ -101,20 +98,16 @@ function createWorkspaceFileCollection(
 ): FileCollection {
   return createUploadFileCollection({
     routes: createUploadRouteCaller(uploadObject.http, request),
-    provider: UPLOAD_PROVIDER_DATABASE,
-    getFileResponse: ({ provider, fileKey }) =>
-      fetchUploadFile(uploadObject, request, provider, fileKey),
+    getFileResponse: ({ fileKey }) => fetchUploadFile(uploadObject, request, fileKey),
   });
 }
 
 function fetchUploadFile(
   uploadObject: BackofficeObjectHandle<UploadCommands>,
   request: Request,
-  provider: string,
   fileKey: string,
 ): Promise<Response> {
   const url = new URL("/api/upload/files/by-key/content", request.url);
-  url.searchParams.set("provider", provider);
   url.searchParams.set("key", fileKey);
   return uploadObject.http.fetch(new Request(url, { headers: request.headers }));
 }

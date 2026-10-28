@@ -42,7 +42,6 @@ type ExplorerNodeDetail = {
 };
 
 const PUBLIC_FILE_METADATA_FIELDS = [
-  "provider",
   "filename",
   "status",
   "visibility",

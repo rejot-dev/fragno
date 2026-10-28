@@ -21,7 +21,6 @@ export type UploadPublicationMode = "immediate" | "batch";
 
 export type PreparedFileWrite = {
   uploadId: string;
-  provider: string;
   fileKey: string;
   sizeBytes: number;
   contentType: string;
@@ -37,13 +36,11 @@ export type PreparedFileBatchEntry =
     }
   | {
       kind: "delete";
-      provider: string;
       fileKey: string;
       precondition: Extract<UploadFileWritePrecondition, { kind: "revision" }>;
     }
   | {
       kind: "assert";
-      provider: string;
       fileKey: string;
       precondition: UploadFileWritePrecondition;
     };
@@ -59,7 +56,6 @@ export type FileMetadata = {
   tags: string[] | null;
   metadata: Record<string, unknown> | null;
   status: FileStatus;
-  provider: string;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;

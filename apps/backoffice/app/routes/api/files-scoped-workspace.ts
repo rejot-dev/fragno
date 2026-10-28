@@ -3,7 +3,6 @@ import type { ActionFunctionArgs } from "react-router";
 import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
 import { inferFileContentType } from "@/file-collection/file-content-type";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -35,7 +34,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     "application/octet-stream";
   if (isGenericBinaryContentType(contentType)) {
     const existing = await routes("GET", "/files/by-key", {
-      query: { provider: UPLOAD_PROVIDER_DATABASE, key: fileKey },
+      query: { key: fileKey },
     });
     if (existing.type === "error" && existing.status !== 404) {
       return Response.json(existing.error, { status: existing.status });
@@ -54,7 +53,6 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   }
   const created = await routes("POST", "/uploads", {
     body: {
-      provider: UPLOAD_PROVIDER_DATABASE,
       fileKey,
       filename: path.split("/").at(-1)!,
       sizeBytes,

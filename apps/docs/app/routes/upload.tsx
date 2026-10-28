@@ -87,7 +87,6 @@ const usageSnippet = `const { useUploadHelpers } = uploadClient;
 
 const helpers = useUploadHelpers();
 await helpers.createUploadAndTransfer(file, {
-  provider: "avatars",
   fileKey: \`users/\${userId}/avatar.png\`,
   onProgress: (progress) => {
     console.log(progress.bytesUploaded, progress.totalBytes);
@@ -114,7 +113,7 @@ const useCases = [
   },
   {
     title: "Multi-tenant files",
-    description: "Keep each tenant's files under its own provider namespace or key prefix.",
+    description: "Keep each tenant's files under its own key prefix.",
   },
 ];
 

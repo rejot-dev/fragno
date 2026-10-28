@@ -8,8 +8,6 @@ import { piAgentDefinitionCreateSchema } from "@fragno-dev/backoffice-api/v0/pi"
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
-
 import { normalizeMarketplacePackagePath } from "./package-files";
 
 /** What installing a release sets up in a workspace, beyond copying its files. */
@@ -147,7 +145,6 @@ export async function readMarketplacePackageDeclaration({
   version: string;
 }): Promise<MarketplacePackageDeclaration> {
   const url = new URL("https://upload.internal/api/upload/files/by-key/content");
-  url.searchParams.set("provider", UPLOAD_PROVIDER_DATABASE);
   url.searchParams.set("key", `${version}/${MARKETPLACE_DECLARATION_PATH}`);
   const response = await http.fetch(new Request(url));
   if (response.status === 404 || response.status === 410) {

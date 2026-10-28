@@ -12,7 +12,6 @@ import {
 
 type FileListItem = {
   fileKey: string;
-  provider: string;
   filename: string;
   status: string;
 };
@@ -22,7 +21,6 @@ export type UploadPanelProps = {
   description: string;
   client: UploadClient;
   defaultCollection: string;
-  defaultProvider: string;
   accent: "amber" | "emerald" | "sky";
 };
 
@@ -37,14 +35,12 @@ export function UploadPanel({
   description,
   client,
   defaultCollection,
-  defaultProvider,
   accent,
 }: UploadPanelProps) {
   const { useFiles, useUploadHelpers } = client;
 
   const helpers = useUploadHelpers();
   const [file, setFile] = useState<File | null>(null);
-  const [provider, setProvider] = useState(defaultProvider);
   const [collection, setCollection] = useState(defaultCollection);
   const [entityId, setEntityId] = useState("1");
   const [filterByPrefix, setFilterByPrefix] = useState(true);
@@ -71,7 +67,6 @@ export function UploadPanel({
 
   const listResponse = useFiles({
     query: {
-      provider,
       prefix: prefix ?? undefined,
       pageSize: "10",
     },
@@ -101,7 +96,6 @@ export function UploadPanel({
 
     try {
       const result = await helpers.createUploadAndTransfer(file, {
-        provider,
         fileKey: fileKey!,
         onProgress: (value: UploadProgress) => {
           setProgress(value);
@@ -119,9 +113,9 @@ export function UploadPanel({
     }
   };
 
-  const handleDownload = async (input: { provider: string; fileKey: string; filename: string }) => {
+  const handleDownload = async (input: { fileKey: string; filename: string }) => {
     try {
-      const response = await helpers.downloadFile(input.fileKey, { provider: input.provider });
+      const response = await helpers.downloadFile(input.fileKey);
       if (!response.ok) {
         const text = await response.text();
         let message = `Download failed (${response.status})`;
@@ -160,16 +154,6 @@ export function UploadPanel({
             Upload
           </h2>
           <div className="mt-4 grid gap-4">
-            <label className="grid gap-2 text-sm font-medium text-slate-700">
-              Provider
-              <input
-                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                value={provider}
-                onChange={(event) => {
-                  setProvider(event.target.value);
-                }}
-              />
-            </label>
             <label className="grid gap-2 text-sm font-medium text-slate-700">
               Collection
               <input
@@ -300,7 +284,6 @@ export function UploadPanel({
                     className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700"
                     onClick={() =>
                       void handleDownload({
-                        provider: fileItem.provider,
                         fileKey: fileItem.fileKey,
                         filename: fileItem.filename,
                       })

@@ -32,23 +32,20 @@ export const MAX_PREPARED_FILE_BATCH_ENTRIES = 5_000;
 
 type UploadWithFile = UploadSnapshot & { file: StoredFileRow | null };
 
-const batchFileAddress = (provider: string, fileKey: string) => `${provider}\0${fileKey}`;
-
 export const createUploadServices = (config: UploadFragmentConfig) => {
   return {
     createUploadSession: function (this: UploadServiceContext, input: CreateUploadInput) {
       const resolved = resolveFileKeyInput(input);
       const normalized = normalizeUploadInput(input);
       assertFileSize(normalized.sizeBytes, config.maxFileBytes, `File '${resolved.fileKey}'`);
-      const objectKey = newObjectKey(normalized.provider, resolved.fileKey);
+      const objectKey = newObjectKey(resolved.fileKey);
       const expiresAt = new Date(Date.now() + uploadExpiresInSeconds(config) * 1000);
 
       return this.serviceTx(uploadSchema)
         .retrieve((uow) =>
           uow.find("upload", (b) =>
-            b.whereIndex("idx_upload_provider_key_status_expiresAt", (eb) =>
+            b.whereIndex("idx_upload_key_status_expiresAt", (eb) =>
               eb.and(
-                eb("provider", "=", normalized.provider),
                 eb("key", "=", resolved.fileKey),
                 eb("status", "in", ["created", "in_progress"]),
                 eb("expiresAt", ">", eb.now()),
@@ -67,7 +64,7 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
             if (!input.replaceActiveUpload) {
               throw new UploadServiceError(
                 "UPLOAD_ALREADY_ACTIVE",
-                "An active upload already exists for this provider and file key.",
+                "An active upload already exists for this file key.",
               );
             }
 
@@ -90,7 +87,6 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
           const databaseNow = uow.now();
           const uploadId = uow.create("upload", {
             key: resolved.fileKey,
-            provider: normalized.provider,
             uploaderId: normalized.uploaderId,
             filename: normalized.filename,
             expectedSizeBytes: normalized.expectedSizeBytes,
@@ -115,7 +111,6 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
             "onUploadTimeout",
             {
               uploadId: uploadId.toString(),
-              provider: normalized.provider,
               fileKey: resolved.fileKey,
             },
             { processAt: expiresAt },
@@ -124,7 +119,6 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
           return {
             id: uploadId,
             key: resolved.fileKey,
-            provider: normalized.provider,
             status: "created",
             publicationMode: normalized.publicationMode,
             expiresAt,
@@ -150,12 +144,7 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
                 .whereIndex("primary", (eb) => eb("id", "=", uploadId))
                 .joinOne("file", "file", (file) =>
                   file
-                    .onIndex("idx_file_provider_key", (eb) =>
-                      eb.and(
-                        eb("provider", "=", eb.parent("provider")),
-                        eb("key", "=", eb.parent("key")),
-                      ),
-                    )
+                    .onIndex("idx_file_key", (eb) => eb("key", "=", eb.parent("key")))
                     .joinOne("object", "storage_object", (object) =>
                       object
                         .onIndex("idx_storage_object_key", (eb) =>
@@ -317,16 +306,10 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
         );
       }
 
-      const fileQueryGroups = new Map<string, string[]>();
-      for (const entry of [...deletions, ...assertions]) {
-        const keys = fileQueryGroups.get(entry.provider) ?? [];
-        keys.push(entry.fileKey);
-        fileQueryGroups.set(entry.provider, keys);
-      }
       const uploadIdChunks = chunkQueryValues(uploadIds);
-      const fileQueries = Array.from(fileQueryGroups, ([provider, keys]) =>
-        chunkQueryValues(Array.from(new Set(keys))).map((fileKeys) => ({ provider, fileKeys })),
-      ).flat();
+      const fileKeyChunks = chunkQueryValues(
+        Array.from(new Set([...deletions, ...assertions].map((entry) => entry.fileKey))),
+      );
 
       return this.serviceTx(uploadSchema)
         .retrieve((uow) => {
@@ -337,12 +320,7 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
                 .whereIndex("primary", (eb) => eb("id", "in", ids))
                 .joinOne("file", "file", (file) =>
                   file
-                    .onIndex("idx_file_provider_key", (eb) =>
-                      eb.and(
-                        eb("provider", "=", eb.parent("provider")),
-                        eb("key", "=", eb.parent("key")),
-                      ),
-                    )
+                    .onIndex("idx_file_key", (eb) => eb("key", "=", eb.parent("key")))
                     .joinOne("object", "storage_object", (object) =>
                       object
                         .onIndex("idx_storage_object_key", (eb) =>
@@ -360,12 +338,10 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
               ),
             );
           }
-          for (const query of fileQueries) {
+          for (const fileKeys of fileKeyChunks) {
             retrieval.find("file", (b) =>
               b
-                .whereIndex("idx_file_provider_key", (eb) =>
-                  eb.and(eb("provider", "=", query.provider), eb("key", "in", query.fileKeys)),
-                )
+                .whereIndex("idx_file_key", (eb) => eb("key", "in", fileKeys))
                 .joinOne("object", "storage_object", (object) =>
                   object
                     .onIndex("idx_storage_object_key", (eb) =>
@@ -401,22 +377,11 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
           const uploadsById = new Map(
             uploadResults.flat().map((upload) => [upload.id.toString(), upload]),
           );
-          const filesByAddress = new Map([
+          const filesByKey = new Map([
             ...uploadResults
               .flat()
-              .flatMap((upload) =>
-                upload.file
-                  ? [
-                      [
-                        batchFileAddress(upload.file.provider, upload.file.key),
-                        upload.file,
-                      ] as const,
-                    ]
-                  : [],
-              ),
-            ...fileResults
-              .flat()
-              .map((file) => [batchFileAddress(file.provider, file.key), file] as const),
+              .flatMap((upload) => (upload.file ? [[upload.file.key, upload.file] as const] : [])),
+            ...fileResults.flat().map((file) => [file.key, file] as const),
           ]);
 
           const mutationDestinations = new Set<string>();
@@ -430,20 +395,18 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
               );
             }
 
-            const address = batchFileAddress(upload.provider, upload.key);
-            if (mutationDestinations.has(address)) {
+            if (mutationDestinations.has(upload.key)) {
               throw new UploadServiceError(
                 "INVALID_REQUEST",
                 "Prepared file batches cannot contain duplicate mutation destinations.",
                 {
                   uploadId: entry.uploadId,
-                  provider: upload.provider,
                   fileKey: upload.key,
                 },
               );
             }
-            mutationDestinations.add(address);
-            const file = upload.file ?? filesByAddress.get(address) ?? null;
+            mutationDestinations.add(upload.key);
+            const file = upload.file ?? filesByKey.get(upload.key) ?? null;
 
             if (upload.status === "completed") {
               if (file?.status !== "ready" || file.objectKey !== upload.objectKey) {
@@ -452,7 +415,6 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
                   "The completed upload no longer publishes its expected content.",
                   {
                     uploadId: entry.uploadId,
-                    provider: upload.provider,
                     fileKey: upload.key,
                   },
                 );
@@ -462,7 +424,6 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
             if (upload.status === "expired" || !unexpiredUploadIds.has(entry.uploadId)) {
               throw new UploadServiceError("UPLOAD_EXPIRED", "The prepared upload has expired.", {
                 uploadId: entry.uploadId,
-                provider: upload.provider,
                 fileKey: upload.key,
               });
             }
@@ -472,7 +433,6 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
                 `Uploads in the '${upload.status}' state cannot be committed as prepared files.`,
                 {
                   uploadId: entry.uploadId,
-                  provider: upload.provider,
                   fileKey: upload.key,
                 },
               );
@@ -480,47 +440,41 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
 
             assertFileWritePrecondition(file, entry.precondition, {
               uploadId: entry.uploadId,
-              provider: upload.provider,
               fileKey: upload.key,
             });
             return { upload, file, alreadyCommitted: false as const };
           });
 
           const deletionPlans = deletions.map((entry) => {
-            const address = batchFileAddress(entry.provider, entry.fileKey);
-            if (mutationDestinations.has(address)) {
+            if (mutationDestinations.has(entry.fileKey)) {
               throw new UploadServiceError(
                 "INVALID_REQUEST",
                 "Prepared file batches cannot contain duplicate mutation destinations.",
-                { provider: entry.provider, fileKey: entry.fileKey },
+                { fileKey: entry.fileKey },
               );
             }
-            mutationDestinations.add(address);
+            mutationDestinations.add(entry.fileKey);
 
-            const file = filesByAddress.get(address) ?? null;
+            const file = filesByKey.get(entry.fileKey) ?? null;
             if (file?.status === "deleted" && file.id.version === entry.precondition.revision + 1) {
               return { file, alreadyDeleted: true as const };
             }
 
             assertFileWritePrecondition(file, entry.precondition, {
-              provider: entry.provider,
               fileKey: entry.fileKey,
             });
             return { file: file as StoredFileRow, alreadyDeleted: false as const };
           });
 
           for (const assertion of assertions) {
-            const file =
-              filesByAddress.get(batchFileAddress(assertion.provider, assertion.fileKey)) ?? null;
+            const file = filesByKey.get(assertion.fileKey) ?? null;
             assertFileWritePrecondition(file, assertion.precondition, {
-              provider: assertion.provider,
               fileKey: assertion.fileKey,
             });
             if (file) {
               mutation.check("file", file.id);
             } else {
-              mutation.checkAbsent("file", "idx_file_provider_key", {
-                provider: assertion.provider,
+              mutation.checkAbsent("file", "idx_file_key", {
                 key: assertion.fileKey,
               });
             }

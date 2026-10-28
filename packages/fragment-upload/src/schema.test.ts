@@ -27,12 +27,10 @@ describe("uploadSchema", async () => {
           const uow = forSchema(uploadSchema);
           const fileKey = "users/1/avatar";
           const timestamp = new Date();
-          const provider = "test";
           const objectKey = "uploads/test/users/1/avatar/20260319T115043123Z";
 
           const fileId = uow.create("file", {
             key: fileKey,
-            provider,
             uploaderId: null,
             filename: "avatar.png",
             sizeBytes: 1024n,
@@ -51,7 +49,6 @@ describe("uploadSchema", async () => {
 
           const uploadId = uow.create("upload", {
             key: fileKey,
-            provider,
             uploaderId: null,
             filename: "avatar.png",
             expectedSizeBytes: 1024n,

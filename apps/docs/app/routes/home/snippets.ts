@@ -255,15 +255,11 @@ export const dataLayerTabs: ShowcaseTab[] = [
       {
         label: "Service: soft-delete with version check and hook",
         lang: "ts",
-        code: `markFileDeleted({ provider, fileKey }: FileByKeyInput) {
+        code: `markFileDeleted({ fileKey }: FileByKeyInput) {
   return this.serviceTx(uploadSchema)
     .retrieve((uow) =>
       uow.findFirst("file", (b) =>
-        b.whereIndex("idx_file_provider_key", (eb) =>
-          eb.and(
-            eb("provider", "=", provider),
-            eb("key", "=", fileKey),
-          )),
+        b.whereIndex("idx_file_key", (eb) => eb("key", "=", fileKey)),
       ),
     )
     .mutate(({ uow, retrieveResult: [file] }) => {
@@ -289,7 +285,7 @@ export const dataLayerTabs: ShowcaseTab[] = [
   const data = await input.valid();
   await this.handlerTx()
     .withServiceCalls(() => [
-      services.markFileDeleted({ provider: data.provider, fileKey: data.key }),
+      services.markFileDeleted({ fileKey: data.key }),
     ])
     .execute();
   return json({ ok: true });
