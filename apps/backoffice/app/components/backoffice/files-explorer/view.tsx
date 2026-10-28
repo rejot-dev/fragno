@@ -1,3 +1,4 @@
+import { CopyButton } from "@fragno-private/design-system/copy-button";
 import {
   FileTreeExplorer,
   type FileTreeExplorerNode,
@@ -242,7 +243,6 @@ export function FilesExplorerView({
                 <ExplorerNodeDetailPanel
                   detail={selectedDetail}
                   buildFileHref={buildFileHref}
-                  rootIcon={rootIcon}
                   headingLevel={detailHeadingLevel}
                   workflowRouting={workflowRouting}
                   pageHref={pageHref}
@@ -365,14 +365,12 @@ function searchMatchPreview(match: FilesExplorerSearchMatch): string {
 function ExplorerNodeDetailPanel({
   detail,
   buildFileHref,
-  rootIcon,
   headingLevel,
   workflowRouting,
   pageHref,
 }: {
   detail: ExplorerNodeDetail;
   buildFileHref?: (path: string, disposition: "attachment" | "inline") => string;
-  rootIcon: IconName;
   headingLevel: 2 | 3 | 4;
   workflowRouting: WorkflowFileRouting;
   pageHref: ((sourcePath: string) => string) | null;
@@ -414,8 +412,6 @@ function ExplorerNodeDetailPanel({
   const contentPreamble = contentRenderer?.renderBefore?.(contentPreview) ?? null;
   const downloadHref = fileHrefs?.download ?? null;
   const Heading = getHeadingComponent(headingLevel);
-  const detailIcon: IconName =
-    detail.node.kind === "root" ? rootIcon : detail.node.kind === "directory" ? "folder" : "file";
   const displayedMetadata = Object.fromEntries(
     PUBLIC_FILE_METADATA_FIELDS.flatMap((field) => {
       const value = detail.metadata?.[field];
@@ -425,21 +421,15 @@ function ExplorerNodeDetailPanel({
 
   return (
     <section className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-[var(--bo-border)] p-4 md:px-5">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-accent)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
-            <Icon name={detailIcon} className="size-[18px]" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-              {detail.node.kind}
-            </p>
-            <Heading className="mt-1 text-2xl font-semibold tracking-tight text-balance break-all text-[var(--bo-fg)]">
-              {detail.node.title}
-            </Heading>
-          </div>
-        </div>
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-[var(--bo-border)] p-4 md:px-5">
+        <Heading className="min-w-0 text-2xl font-semibold tracking-tight text-balance break-all text-[var(--bo-fg)]">
+          {detail.node.title}
+        </Heading>
         <div className="relative flex items-center gap-2">
+          <CopyButton value={detail.node.path} label="Copy path" labelled />
+          {detail.textContent === null ? null : (
+            <CopyButton value={detail.textContent} label="Copy contents" labelled />
+          )}
           {downloadHref ? (
             <a
               href={downloadHref}
