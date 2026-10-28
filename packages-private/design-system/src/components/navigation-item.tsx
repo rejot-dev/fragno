@@ -76,3 +76,69 @@ export function MobileNavigationItem({ item }: { item: NavigationItem }) {
     </Link>
   );
 }
+
+// Icon over label, sized for a thumb; the current destination takes the foreground colour.
+function bottomNavigationClassName(active: boolean) {
+  return cn(
+    "flex min-h-14 min-w-0 cursor-pointer flex-col items-center justify-center gap-1 text-[10px] font-semibold transition-[scale,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset active:scale-[0.96]",
+    active ? "text-[var(--bo-fg)]" : "text-[var(--bo-muted-2)] hover:text-[var(--bo-fg)]",
+  );
+}
+
+function BottomNavigationGlyph({ icon, active }: { icon: IconName; active: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex h-7 w-12 items-center justify-center rounded-full transition-[background-color] duration-150 ease-out",
+        active && "bg-[var(--bo-selected-bg)] shadow-[var(--bo-selected-shadow)]",
+      )}
+    >
+      <Icon name={icon} className="size-5" strokeWidth={active ? 2 : 1.75} />
+    </span>
+  );
+}
+
+export function BottomNavigationItem({ item }: { item: NavigationItem }) {
+  return (
+    <Link
+      to={item.to}
+      prefetch="intent"
+      aria-current={item.active ? "page" : undefined}
+      className={bottomNavigationClassName(item.active)}
+    >
+      <BottomNavigationGlyph icon={item.icon} active={item.active} />
+      <span className="max-w-full truncate px-1">{item.label}</span>
+    </Link>
+  );
+}
+
+/**
+ * A bottom navigation slot that opens something rather than going somewhere, such as a sheet of
+ * the destinations that do not fit. `active` marks it while the current page is one of them.
+ */
+export function BottomNavigationButton({
+  label,
+  icon,
+  active,
+  expanded,
+  onClick,
+}: {
+  label: string;
+  icon: IconName;
+  active: boolean;
+  expanded: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-haspopup="dialog"
+      aria-expanded={expanded}
+      onClick={onClick}
+      className={bottomNavigationClassName(active)}
+    >
+      <BottomNavigationGlyph icon={icon} active={active} />
+      <span className="max-w-full truncate px-1">{label}</span>
+    </button>
+  );
+}

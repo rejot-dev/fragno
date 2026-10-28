@@ -1,7 +1,16 @@
 import { useState } from "react";
 
-import { MobileNavigation, SidebarNavigation, type NavigationSection } from "./navigation";
-import type { NavigationItem } from "./navigation-item";
+import {
+  BottomNavigation,
+  MobileNavigation,
+  SidebarNavigation,
+  type NavigationSection,
+} from "./navigation";
+import {
+  BottomNavigationButton,
+  BottomNavigationItem,
+  type NavigationItem,
+} from "./navigation-item";
 
 export default { title: "Navigation/Main navigation" };
 
@@ -65,5 +74,24 @@ export function Mobile() {
     <div className="max-w-md border border-[color:var(--bo-border)] bg-[var(--bo-header-bg)]">
       <MobileNavigation items={items} ariaLabel="Backoffice" />
     </div>
+  );
+}
+
+// Fixed to the bottom of the viewport, as on a phone; the last slot opens the destinations that do
+// not fit.
+export function Bottom() {
+  return (
+    <BottomNavigation ariaLabel="Backoffice">
+      {items.slice(0, 3).map((item) => (
+        <BottomNavigationItem key={item.to} item={item} />
+      ))}
+      <BottomNavigationButton
+        label="More"
+        icon="more-horizontal"
+        active={false}
+        expanded={false}
+        onClick={() => undefined}
+      />
+    </BottomNavigation>
   );
 }

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import { cn } from "../cn";
 import { IconButton } from "./button";
 import { Icon } from "./icon";
@@ -109,6 +111,28 @@ export function MobileNavigation({
       {items.map((item) => (
         <MobileNavigationItem key={item.to} item={item} />
       ))}
+    </nav>
+  );
+}
+
+/**
+ * Phone navigation pinned to the bottom of the screen, within reach of a thumb: evenly split slots
+ * of BottomNavigationItem and BottomNavigationButton. The consumer hides it where it does not apply
+ * and keeps page content clear of it; it pads itself above the home indicator.
+ */
+export function BottomNavigation({
+  ariaLabel,
+  children,
+}: {
+  ariaLabel: string;
+  children: ReactNode;
+}) {
+  return (
+    <nav
+      aria-label={ariaLabel}
+      className="fixed inset-x-0 bottom-0 z-30 grid auto-cols-fr grid-flow-col border-t border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] px-1 pb-[env(safe-area-inset-bottom)]"
+    >
+      {children}
     </nav>
   );
 }
