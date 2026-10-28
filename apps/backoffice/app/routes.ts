@@ -116,8 +116,13 @@ export default [
       route("files", "routes/backoffice/files/index.tsx"),
       route("files/:scopeKind/:scopeId/download", "routes/backoffice/files/download.ts"),
       route("files/:scopeKind/:scopeId/preview", "routes/backoffice/files/preview.ts"),
+      route(
+        "files/:scopeKind/:scopeId/large-files/download",
+        "routes/backoffice/files/large-files-download.ts",
+      ),
       route("files/:scopeKind/:scopeId", "routes/backoffice/files/scope-layout.tsx", [
         index("routes/backoffice/files/explorer.tsx"),
+        route("large-files", "routes/backoffice/files/large-files.tsx"),
         route("*", "routes/backoffice/files/explorer-path.tsx"),
       ]),
       route("integrations", "routes/backoffice/integrations/index.tsx"),
@@ -329,6 +334,10 @@ export default [
     route("github/webhooks", "routes/api/github-webhooks.ts"),
     route("upload/:orgSlug/*", "routes/api/upload.ts"),
     route("files-scoped/:scopeKind/:scopeId/workspace", "routes/api/files-scoped-workspace.ts"),
+    route(
+      "files-scoped/:scopeKind/:scopeId/large-files/uploads",
+      "routes/api/large-files-uploads.ts",
+    ),
     route("file-links/:scopeKind/:scopeId/:provider/*", "routes/api/file-links.ts"),
     route("upload-scoped/:scopeKind/:scopeId/*", "routes/api/upload-scoped.ts"),
     route("workflows/:scopeSegment/*", "routes/api/workflows.ts"),

@@ -1,9 +1,12 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
+import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 
 export function filesScopeBasePath(scope: BackofficeResolvedScope): string {
   return `/backoffice/files/${backofficeRouteScopePath(backofficeRouteScopeFromResolvedScope(scope))}`;
@@ -33,3 +36,13 @@ export const filesDownloadPath = (
   const params = new URLSearchParams(disposition === "inline" ? { path, disposition } : { path });
   return `${filesScopeBasePath(scope)}/download?${params.toString()}`;
 };
+
+export const largeFilesPath = (scope: BackofficeResolvedScope): string =>
+  `${filesScopeBasePath(scope)}/large-files`;
+
+export function largeFileDownloadPath(scope: BackofficeResolvedScope, key: string): string {
+  return `${largeFilesPath(scope)}/download?${new URLSearchParams({ key })}`;
+}
+
+export const largeFileUploadsPath = (scope: BackofficeContextScope): string =>
+  `/api/files-scoped/${backofficeContextScopeRoutePath(scope)}/large-files/uploads`;

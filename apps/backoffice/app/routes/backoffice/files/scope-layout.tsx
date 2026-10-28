@@ -1,14 +1,29 @@
-import { Outlet } from "react-router";
+import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+import { Outlet, useLocation } from "react-router";
 
+import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
+import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/scope-layout";
 import type { FilesLayoutContext } from "./layout-context";
+import { filesExplorerPath, largeFilesPath } from "./scope";
 import { FilesErrorBoundary } from "./shared";
 
 export async function loader({ context, url }: Route.LoaderArgs) {
-  return { origin: url.origin, selectedScope: requireScopeSelection(context) };
+  const selectedScope = requireScopeSelection(context);
+  const { runtime } = context.get(BackofficeWorkerContext);
+  return {
+    origin: url.origin,
+    selectedScope,
+    hasLargeFiles:
+      runtime.config.bindings.blobs &&
+      isBackofficeObjectAvailableInContext(
+        "BLOBS",
+        backofficeRuntimeScopeFromResolvedScope(selectedScope),
+      ),
+  };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -20,16 +35,39 @@ export function ErrorBoundary({ error, params }: Route.ErrorBoundaryProps) {
 }
 
 export default function BackofficeFilesScopeLayout({ loaderData }: Route.ComponentProps) {
+  const { selectedScope, hasLargeFiles } = loaderData;
+  const { pathname } = useLocation();
+  const largeFilesTo = largeFilesPath(selectedScope);
+  const onLargeFiles = pathname === largeFilesTo;
   const outletContext = {
-    scope: backofficeRuntimeScopeFromResolvedScope(loaderData.selectedScope),
-    selectedScope: loaderData.selectedScope,
+    scope: backofficeRuntimeScopeFromResolvedScope(selectedScope),
+    selectedScope,
     origin: loaderData.origin,
   } satisfies FilesLayoutContext;
 
   return (
-    <div className="flex h-[calc(100dvh-6.75rem)] min-h-0 flex-col gap-4 overflow-hidden sm:h-[calc(100dvh-4rem)]">
-      <h1 className="sr-only">Files for {loaderData.selectedScope.label}</h1>
-      <Outlet context={outletContext} />
+    <div className="flex h-[calc(100dvh-6.75rem)] min-h-0 flex-col overflow-hidden sm:h-[calc(100dvh-4rem)]">
+      <h1 className="sr-only">Files for {selectedScope.label}</h1>
+      {/* Large files sit in their own tab because the explorer's search never reaches them. */}
+      <BackofficeTabHeader
+        items={[
+          {
+            id: "files",
+            label: "Files",
+            to: filesExplorerPath(selectedScope),
+            active: !onLargeFiles,
+          },
+          ...(hasLargeFiles || onLargeFiles
+            ? [{ id: "large-files", label: "Large files", to: largeFilesTo, active: onLargeFiles }]
+            : []),
+        ]}
+        ariaLabel="File storage"
+        trailing={null}
+        options={null}
+      />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <Outlet context={outletContext} />
+      </div>
     </div>
   );
 }

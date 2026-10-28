@@ -24,11 +24,16 @@ export function createFakeR2(buckets: BlobsR2Buckets) {
     string,
     { bytes: Uint8Array<ArrayBuffer>; contentType: string; etag: string }
   >();
+  // Flipped to simulate an outage: every request fails, as R2 does when it cannot serve.
+  const availability = { reachable: true };
 
   // Like Workers' global `fetch`, it refuses to be called as a method of another object.
   const fetch = async function (this: unknown, input: RequestInfo | URL, init?: RequestInit) {
     if (this !== undefined && this !== globalThis) {
       throw new TypeError("Illegal invocation: function called with incorrect `this` reference.");
+    }
+    if (!availability.reachable) {
+      return new Response("InternalError", { status: 500 });
     }
     const request = new Request(input, init);
     const url = new URL(request.url);
@@ -77,7 +82,13 @@ export function createFakeR2(buckets: BlobsR2Buckets) {
     }
   };
 
-  return { objects, fetch };
+  return {
+    objects,
+    fetch,
+    setReachable: (reachable: boolean) => {
+      availability.reachable = reachable;
+    },
+  };
 }
 
 /** A request from outside Backoffice, such as a sandbox or browser following a presigned URL. */
