@@ -13,6 +13,9 @@ import { INVOICE } from "../../scenario/fixtures/invoice";
 import type { DocumentView } from "../../workers/books/documents/documents";
 import type { BooksOutletContext } from "../books/layout";
 
+const FIRM = "lovelace-co";
+/** The project in which Bookkeeping set up the firm's bookkeeping agent. */
+const FIRM_AGENT = "Bookkeeping agent";
 const CLIENT = "analytical-engines";
 const ADMINISTRATION = "Analytical Engines";
 const BOOKS = "/w/analytical-engines/a/analytical-engines";
@@ -474,6 +477,20 @@ const invoiceFixture: Upload = {
 
 const INVOICE_TOTAL = (INVOICE.totalCents / 100).toFixed(2);
 
+/**
+ * The firm's bookkeeping agent, which Bookkeeping prompts as its installation in the firm's agent
+ * project; its calls name the administration whose books they keep.
+ */
+async function firmAgent(scenario: BookkeepingScenario, browser: ScenarioBrowser) {
+  const { administration } = await readBooks(browser);
+  const agent = scenario.agent("installation", { organization: FIRM, project: FIRM_AGENT });
+  return {
+    administration,
+    call: async (actionId: string, input: Record<string, unknown>) =>
+      await agent.call(actionId, { administration: administration.id, ...input }),
+  };
+}
+
 /** The fixture invoice's entry, as the agent proposes it, with these amounts. */
 function proposal(id: string, debit: string, credit: string) {
   return {
@@ -498,23 +515,37 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     const id = await uploadFormId(ada);
     await Promise.all([upload(ada, invoice, id), upload(ada, invoice, id)]);
 
-    expect(scenario.backoffice.agents(CLIENT, ADMINISTRATION)).toMatchObject([
+    // The agent lives with the firm, so the skills the firm gives it stay out of the client's
+    // workspace; the document's folder is shared with it while it is asked.
+    expect(scenario.backoffice.agents(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(scenario.backoffice.agents(FIRM, FIRM_AGENT)).toMatchObject([
       {
         agentName: "bookkeeper",
         permissions: ["upload.read", "models.extract", "integrations.read", "integrations.execute"],
       },
     ]);
-    const [prompt, ...more] = scenario.backoffice.prompts(CLIENT, ADMINISTRATION);
+    const [prompt, ...more] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
     expect(more).toEqual([]);
-    // Each document gets a subagent of its own, so documents are read side by side.
+    const agent = await firmAgent(scenario, ada);
+    // Each document gets a subagent of its own, so documents are read side by side. The firm's
+    // agent answers all its clients' administrations, so the request names the administration.
     expect(prompt).toMatchObject({
       agentName: "bookkeeper",
-      requestId: `document:${id}:upload`,
+      requestId: `document:${agent.administration.id}:${id}:upload`,
       subagent: true,
       prompter: "installation",
       status: "queued",
     });
-    expect(prompt.content).toContain(id);
+    const folder = `/workspace/documents/${id}/${await sha256(invoice.bytes)}/`;
+    const [mount, ...otherMounts] = scenario.backoffice.mountedShares(FIRM, FIRM_AGENT);
+    expect(otherMounts).toEqual([]);
+    expect(mount).toEqual({
+      name: expect.stringMatching(/^document-[0-9a-f]{40}$/u),
+      path: folder,
+    });
+    const sharedFile = `/shared/${mount!.name}/${INVOICE.number}.pdf`;
+    expect(prompt.content).toContain(agent.administration.id);
+    expect(prompt.content).toContain(sharedFile);
     expect(await readDocument(ada, id)).toMatchObject({
       review: { status: "requested", requestId: prompt.requestId, by: "Ada Lovelace" },
     });
@@ -524,23 +555,19 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
 
     // Bookkeeping prompts the agent as its installation, so its calls change nothing but reviews,
     // whatever a document tells it.
-    const agent = scenario.agent("installation", {
-      organization: CLIENT,
-      project: ADMINISTRATION,
-    });
     expect(
       await agent.call("entries.post", proposal(id, INVOICE_TOTAL, INVOICE_TOTAL).entry),
     ).toEqual({
       status: 403,
       body: {
         message:
-          "Automations without a person behind them read the books and propose documents' entries; only people change the books.",
+          "A firm's bookkeeping agent reads its clients' books and proposes documents' entries; people change them, in their client's project.",
       },
     });
     expect(await agent.call("documents.get", { document: id })).toEqual({
       status: 200,
       body: expect.objectContaining({
-        path: `/workspace/documents/${id}/${await sha256(invoice.bytes)}/${INVOICE.number}.pdf`,
+        path: sharedFile,
         mediaType: "application/pdf",
         status: "to-book",
         bookedIn: null,
@@ -568,9 +595,11 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       document: { review: { status: "proposed" } },
       progress: null,
     });
+    // Having answered, the agent no longer reads the document's file.
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
     // Uploading again does not ask again, nor undo the answer.
     await upload(ada, invoice, id);
-    expect(scenario.backoffice.prompts(CLIENT, ADMINISTRATION)).toHaveLength(1);
+    expect(scenario.backoffice.prompts(FIRM, FIRM_AGENT)).toHaveLength(1);
 
     const { books } = await readBooks(ada);
     const document = await readDocument(ada, id);
@@ -630,14 +659,54 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
   });
 });
 
+test("the same document ID in two administrations reaches the firm's agent as two documents", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, clientPath } = await openBooks(scenario);
+    const other = await scenario.openAdministration(ada, clientPath, "Difference Engines");
+    // The page chooses a document's ID, which is unique only in its administration.
+    const id = await uploadFormId(ada);
+    const first = pdf("Babbage Instruments, invoice 11");
+    const second = pdf("Babbage Instruments, invoice 12");
+    await upload(ada, first, id);
+    await ada.upload(`${other}/documents`, { intent: "upload", documentId: id }, second);
+
+    const administrationOf = async (books: string) =>
+      (
+        (await ada.navigate(`${books}/settings`)).loaderData["books/layout"] as {
+          administration: { id: string };
+        }
+      ).administration.id;
+    const expected = [
+      {
+        administration: await administrationOf(BOOKS),
+        folder: `/workspace/documents/${id}/${await sha256(first.bytes)}/`,
+      },
+      {
+        administration: await administrationOf(other),
+        folder: `/workspace/documents/${id}/${await sha256(second.bytes)}/`,
+      },
+    ];
+    // Each prompt names its administration and the mount of that administration's file.
+    const mounts = scenario.backoffice.mountedShares(FIRM, FIRM_AGENT);
+    expect(
+      scenario.backoffice.prompts(FIRM, FIRM_AGENT).map((prompt) => ({
+        administration: expected.find(({ administration }) =>
+          prompt.content.includes(administration),
+        )?.administration,
+        folder: mounts.find(({ name }) => prompt.content.includes(`/shared/${name}/`))?.path,
+      })),
+    ).toEqual(expected);
+  });
+});
+
 test("a request the agent never received, or failed, is asked again from the document's page", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { ada } = await openBooks(scenario);
     // Backoffice could not set the agent up, so it was never asked; the page says so.
     scenario.backoffice.failNextRequest("pi.agent.create");
     const id = await uploaded(ada, pdf("Babbage Instruments, invoice 10"));
-    expect(scenario.backoffice.agents(CLIENT, ADMINISTRATION)).toEqual([]);
-    expect(scenario.backoffice.prompts(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(scenario.backoffice.agents(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(scenario.backoffice.prompts(FIRM, FIRM_AGENT)).toEqual([]);
     const { review } = await readDocument(ada, id);
     assert(review?.status === "requested");
     expect(await readProgress(ada, id)).toEqual({ status: "lost" });
@@ -659,7 +728,7 @@ test("a request the agent never received, or failed, is asked again from the doc
     expect(await ada.submit(`${BOOKS}/documents/${id}`, ask)).toMatchObject({
       actionData: { intent: "ask", error: null },
     });
-    const [first, ...more] = scenario.backoffice.prompts(CLIENT, ADMINISTRATION);
+    const [first, ...more] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
     expect(more).toEqual([]);
     expect(first.requestId).not.toBe(review.requestId);
     scenario.backoffice.settlePrompt(first.requestId, {
@@ -673,23 +742,34 @@ test("a request the agent never received, or failed, is asked again from the doc
     });
 
     await ada.submit(`${BOOKS}/documents/${id}`, ask);
-    const second = scenario.backoffice.prompts(CLIENT, ADMINISTRATION).at(-1)!;
+    const second = scenario.backoffice.prompts(FIRM, FIRM_AGENT).at(-1)!;
     expect(second.requestId).not.toBe(first.requestId);
-    // The agent stays as Bookkeeping defined it the first time.
-    expect(scenario.backoffice.agents(CLIENT, ADMINISTRATION)).toHaveLength(1);
-    const agent = scenario.agent("installation", {
-      organization: CLIENT,
-      project: ADMINISTRATION,
-    });
+    // The agent stays as Bookkeeping defined it the first time, and asking again shares the
+    // document once.
+    expect(scenario.backoffice.agents(FIRM, FIRM_AGENT)).toHaveLength(1);
+    expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toHaveLength(1);
+    const [mount, ...otherMounts] = scenario.backoffice.mountedShares(FIRM, FIRM_AGENT);
+    expect(otherMounts).toEqual([]);
+    const agent = await firmAgent(scenario, ada);
     expect(
       await agent.call("documents.decline", { document: id, reason: "This is a price list." }),
     ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+    // Having answered, the agent no longer reads the document's file.
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
     expect(await readDocument(ada, id)).toMatchObject({
       review: { status: "declined", reason: "This is a price list." },
     });
+    // Asking after the answer shares the file again, under the name the revoked share held.
+    await ada.submit(`${BOOKS}/documents/${id}`, ask);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([
+      { name: mount!.name, path: expect.stringMatching(`^/workspace/documents/${id}/`) },
+    ]);
 
-    // A dismissed document is not proposed for, nor asked about.
+    // A dismissed document is not proposed for, nor asked about, and its file is no longer
+    // shared once its page shows it dismissed.
     await ada.submit(`${BOOKS}/documents/${id}`, { intent: "dismiss", resultIntent: "dismiss" });
+    await readDocument(ada, id);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
     expect(await agent.call("documents.propose", proposal(id, "1.00", "1.00"))).toEqual({
       status: 422,
       body: { message: "This document was dismissed." },
@@ -697,6 +777,6 @@ test("a request the agent never received, or failed, is asked again from the doc
     expect(await ada.submit(`${BOOKS}/documents/${id}`, ask)).toMatchObject({
       actionData: { intent: "ask", error: "This document was dismissed." },
     });
-    expect(scenario.backoffice.prompts(CLIENT, ADMINISTRATION)).toHaveLength(2);
+    expect(scenario.backoffice.prompts(FIRM, FIRM_AGENT)).toHaveLength(3);
   });
 });

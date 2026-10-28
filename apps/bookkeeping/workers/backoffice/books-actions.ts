@@ -13,14 +13,17 @@ import { DOCUMENT_MEDIA_TYPES } from "../books/documents/schema";
 import { dayAfter, PERIOD_LENGTHS, periodEndDates } from "../books/fiscal-years";
 import { decimalAmount, parseAmount } from "../books/money";
 import { CONTROL_ROLES, usualControlAccount } from "../books/parties";
+import type { Administration } from "../directory/directory";
 import { canManage, MEMBERSHIP_CONFIRMATION_LIFETIME_MS } from "../directory/membership";
 import { exchangeForScope, isBackofficeUnavailable } from "./client";
+import { releaseDocument, sharedDocumentPath } from "./document-shares";
 
 /**
  * The actions Backoffice agents keep an administration's books with. They run in the
- * administration's Backoffice project, which names its books; inputs and outputs name the books'
- * records by code and amounts as decimals, as people do. Closing and locking periods stay with
- * people, in Bookkeeping's pages.
+ * administration's Backoffice project, which names its books, or in the project of the bookkeeping
+ * agent of the firm keeping them, which names the administration; inputs and outputs name the
+ * books' records by code and amounts as decimals, as people do. Closing and locking periods stay
+ * with people, in Bookkeeping's pages.
  */
 
 type BooksStub = ReturnType<CloudflareEnv["BOOKS"]["getByName"]>;
@@ -28,6 +31,29 @@ type Described = Awaited<ReturnType<Books["describe"]>>;
 
 /** The person an action that changes the books acts for. */
 type Person = { name: string };
+
+/**
+ * Where a call runs: the administration's own project, whose workspace holds its documents' files,
+ * or its firm's agent project, which reads a document's file where Bookkeeping shares it.
+ */
+type Workplace = {
+  documentPath(document: { id: string; storageKey: string }): Promise<string>;
+};
+
+const ADMINISTRATION_PROJECT: Workplace = { documentPath: async (document) => document.storageKey };
+
+function firmAgentProject(administration: Administration): Workplace {
+  return { documentPath: (document) => sharedDocumentPath(administration.id, document) };
+}
+
+/** Every action's input names the administration when the call runs in a firm's agent project. */
+const administrationInput = z
+  .string()
+  .min(1)
+  .optional()
+  .describe(
+    "The administration's ID. A firm's bookkeeping agent names the administration whose books it keeps; leave it out in the administration's own project.",
+  );
 
 /**
  * Who answers a document's review when Bookkeeping's installation calls: the bookkeeping agent,
@@ -58,20 +84,26 @@ function settled<T>(outcome: Outcome<T>): T {
 }
 
 /**
- * Who may run an action: `read` anyone Backoffice signs for; `review`, which proposes and posts
- * nothing, people and Bookkeeping's installation; `keep` people; and `set-up` owners and admins.
+ * Who may run an action: `read` anyone Backoffice signs for; `review`, which answers a document's
+ * review and posts nothing, people and Bookkeeping's installation; `keep` people; and `set-up`
+ * owners and admins.
  */
-type ChangeAccess = "review" | "keep" | "set-up";
-
 type BooksAction = { declaration: AppAction } & (
-  | { access: "read"; run(books: BooksStub, input: unknown): Promise<unknown> }
   | {
-      access: ChangeAccess;
+      access: "read";
+      run(books: BooksStub, input: unknown, workplace: Workplace): Promise<unknown>;
+    }
+  | {
+      access: "review";
+      run(books: BooksStub, input: unknown, person: Person): Promise<{ document: string }>;
+    }
+  | {
+      access: "keep" | "set-up";
       run(books: BooksStub, input: unknown, person: Person): Promise<unknown>;
     }
 );
 
-type ActionDefinition<TInput extends z.ZodType, TOutput extends z.ZodType> = {
+type ActionDefinition<TInput extends z.ZodObject, TOutput extends z.ZodType> = {
   id: string;
   label: string;
   description: string;
@@ -80,12 +112,14 @@ type ActionDefinition<TInput extends z.ZodType, TOutput extends z.ZodType> = {
 };
 
 /** Declares the action from its schemas, so what Backoffice validates is what the handler parses. */
-function declare(definition: ActionDefinition<z.ZodType, z.ZodType>): AppAction {
+function declare(definition: ActionDefinition<z.ZodObject, z.ZodType>): AppAction {
   return {
     id: definition.id,
     label: definition.label,
     description: definition.description,
-    inputSchema: z.toJSONSchema(definition.input, { io: "input" }),
+    inputSchema: z.toJSONSchema(definition.input.extend({ administration: administrationInput }), {
+      io: "input",
+    }),
     outputSchema: z.toJSONSchema(definition.output, { io: "output" }),
   };
 }
@@ -98,20 +132,35 @@ function parse<TInput extends z.ZodType>(schema: TInput, input: unknown): z.outp
   return parsed.data;
 }
 
-function readAction<TInput extends z.ZodType, TOutput extends z.ZodType>(
+function readAction<TInput extends z.ZodObject, TOutput extends z.ZodType>(
   definition: ActionDefinition<TInput, TOutput> & {
-    run(books: BooksStub, input: z.output<TInput>): Promise<z.input<TOutput>>;
+    run(books: BooksStub, input: z.output<TInput>, workplace: Workplace): Promise<z.input<TOutput>>;
   },
 ): BooksAction {
   return {
     declaration: declare(definition),
     access: "read",
-    run: (books, input) => definition.run(books, parse(definition.input, input)),
+    run: (books, input, workplace) =>
+      definition.run(books, parse(definition.input, input), workplace),
   };
 }
 
-function writeAction<TInput extends z.ZodType, TOutput extends z.ZodType>(
-  access: ChangeAccess,
+/** An action answering a document's review, which says which document it answered. */
+function reviewAction<TInput extends z.ZodObject, TOutput extends z.ZodType<{ document: string }>>(
+  definition: ActionDefinition<TInput, TOutput> & {
+    run(books: BooksStub, input: z.output<TInput>, person: Person): Promise<z.input<TOutput>>;
+  },
+): BooksAction {
+  return {
+    declaration: declare(definition),
+    access: "review",
+    run: async (books, input, person) =>
+      definition.output.parse(await definition.run(books, parse(definition.input, input), person)),
+  };
+}
+
+function writeAction<TInput extends z.ZodObject, TOutput extends z.ZodType>(
+  access: "keep" | "set-up",
   definition: ActionDefinition<TInput, TOutput> & {
     run(books: BooksStub, input: z.output<TInput>, person: Person): Promise<z.input<TOutput>>;
   },
@@ -697,12 +746,16 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     id: "documents.get",
     label: "Describe a document",
     description:
-      "A document uploaded to the books, such as an invoice or receipt: where its file is in this project's workspace, to read with models.extract, and whether it is to book, booked, or dismissed.",
+      "A document uploaded to the books, such as an invoice or receipt: where its file is, to read with models.extract, and whether it is to book, booked, or dismissed.",
     input: z.strictObject({ document: z.uuid().describe("The document's ID.") }),
     output: z.object({
       id: z.string(),
       filename: z.string(),
-      path: z.string().describe("The file's path in this project's workspace."),
+      path: z
+        .string()
+        .describe(
+          "The file's path: in the administration's own project, in its workspace; in a firm's agent project, where Bookkeeping shares it while the agent is asked about it.",
+        ),
       mediaType: z.enum(DOCUMENT_MEDIA_TYPES),
       uploadedAt: z.string().describe("When it was uploaded, as an ISO timestamp."),
       uploadedBy: z.string(),
@@ -722,7 +775,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
           "Whether the bookkeeping agent was asked about it, proposed an entry, or proposed none.",
         ),
     }),
-    async run(books, input) {
+    async run(books, input, workplace) {
       const document = await requireDocument(books, input.document);
       const { state, source } = document;
       const index = indexBooks(await books.describe());
@@ -733,7 +786,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
       return {
         id: document.id,
         filename: document.filename,
-        path: document.storageKey,
+        path: await workplace.documentPath(document),
         mediaType: document.mediaType,
         uploadedAt: document.uploadedAt.toISOString(),
         uploadedBy: document.uploadedBy,
@@ -933,7 +986,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     },
   }),
 
-  writeAction("review", {
+  reviewAction({
     id: "documents.propose",
     label: "Propose a document's entry",
     description:
@@ -1006,7 +1059,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     },
   }),
 
-  writeAction("review", {
+  reviewAction({
     id: "documents.decline",
     label: "Propose no entry for a document",
     description:
@@ -1231,10 +1284,85 @@ export function isBooksAction(actionId: string): boolean {
   return booksActionsById.has(actionId);
 }
 
+const FIRM_AGENT_KEEPS_NOTHING =
+  "A firm's bookkeeping agent reads its clients' books and proposes documents' entries; people change them, in their client's project.";
+
 /**
- * Runs a books action Backoffice signed. It acts on the books of the administration whose project
- * the call runs in. Reads are for anyone Backoffice signs for; answering a document's review also
- * for Bookkeeping's installation, which the bookkeeping agent calls as; changing the books is for
+ * The administration a call keeps the books of, and where it runs: the administration's own
+ * project, or the agent project of the firm keeping its books, as Bookkeeping's installation, for
+ * an administration of one of the firm's clients.
+ */
+async function administrationOf(
+  env: CloudflareEnv,
+  claims: AppActionTokenClaims,
+  access: BooksAction["access"],
+  named: string | undefined,
+): Promise<{ administration: Administration; workplace: Workplace }> {
+  const scope = claims.scopeRestriction;
+  if (scope.kind !== "project" || scope.owner.kind !== "org") {
+    throw new ActionFailure(403, "Books actions run in an administration's Backoffice project.");
+  }
+  const directory = env.DIRECTORY.getByName("directory");
+  const own = await directory.findAdministration({
+    clientId: scope.owner.orgId,
+    id: scope.projectId,
+  });
+  if (own) {
+    if (named !== undefined && named !== own.id) {
+      throw new ActionFailure(
+        403,
+        "Actions in an administration's project keep its own books: leave out the administration.",
+      );
+    }
+    return { administration: own, workplace: ADMINISTRATION_PROJECT };
+  }
+  if ((await directory.findFirmAgent(scope.owner.orgId)) !== scope.projectId) {
+    throw new ActionFailure(
+      403,
+      "This Backoffice project is not an administration in Bookkeeping.",
+    );
+  }
+  if (claims.actor.kind !== "installation" || (access !== "read" && access !== "review")) {
+    throw new ActionFailure(403, FIRM_AGENT_KEEPS_NOTHING);
+  }
+  if (named === undefined) {
+    throw new ActionFailure(
+      400,
+      "Name the administration: a firm's bookkeeping agent keeps the books of its clients.",
+    );
+  }
+  const administration = await directory.findFirmAdministration({
+    firmId: scope.owner.orgId,
+    id: named,
+  });
+  if (!administration) {
+    throw new ActionFailure(403, `The firm keeps the books of no administration ${named}.`);
+  }
+  return { administration, workplace: firmAgentProject(administration) };
+}
+
+/**
+ * Answers a document's review, then revokes the document's shares: the firm's agent is done with
+ * its file. Should that fail, the document's page revokes them when it shows the answer.
+ */
+async function answerReview(
+  env: CloudflareEnv,
+  administration: Administration,
+  answer: () => Promise<{ document: string }>,
+): Promise<{ document: string }> {
+  const answered = await answer();
+  try {
+    await releaseDocument(env, administration, answered.document);
+  } catch (error) {
+    console.warn("Bookkeeping could not revoke a reviewed document's shares.", error);
+  }
+  return answered;
+}
+
+/**
+ * Runs a books action Backoffice signed, on the books of the administration `administrationOf`
+ * finds. Reads are for anyone Backoffice signs for; answering a document's review also for
+ * Bookkeeping's installation, which the bookkeeping agent calls as; changing the books is for
  * people whose membership Bookkeeping confirms, and setting them up for owners and admins.
  */
 export async function runBooksAction(
@@ -1244,27 +1372,22 @@ export async function runBooksAction(
   input: unknown,
 ): Promise<Response> {
   const action = booksActionsById.get(actionId)!;
-  const scope = claims.scopeRestriction;
   try {
-    if (scope.kind !== "project" || scope.owner.kind !== "org") {
-      throw new ActionFailure(403, "Books actions run in an administration's Backoffice project.");
-    }
-    const administration = await env.DIRECTORY.getByName("directory").findAdministration({
-      clientId: scope.owner.orgId,
-      id: scope.projectId,
-    });
-    if (!administration) {
-      throw new ActionFailure(
-        403,
-        "This Backoffice project is not an administration in Bookkeeping.",
-      );
-    }
+    const { administration: named, ...actionInput } = parse(
+      z.looseObject({ administration: administrationInput }),
+      input,
+    );
+    const { administration, workplace } = await administrationOf(env, claims, action.access, named);
     const books = env.BOOKS.getByName(administration.id);
     if (action.access === "read") {
-      return Response.json(await action.run(books, input));
+      return Response.json(await action.run(books, actionInput, workplace));
     }
     if (action.access === "review" && claims.actor.kind === "installation") {
-      return Response.json(await action.run(books, input, BOOKKEEPING_AGENT));
+      return Response.json(
+        await answerReview(env, administration, () =>
+          action.run(books, actionInput, BOOKKEEPING_AGENT),
+        ),
+      );
     }
     if (claims.actor.kind !== "user") {
       throw new ActionFailure(
@@ -1272,12 +1395,20 @@ export async function runBooksAction(
         "Automations without a person behind them read the books and propose documents' entries; only people change the books.",
       );
     }
-    const person = await confirmPerson(env, scope.owner.orgId, claims.actor.userId);
+    const person = await confirmPerson(env, administration.clientId, claims.actor.userId);
     if (action.access === "set-up" && !canManage(person.roles)) {
       throw new ActionFailure(403, "Only owners and admins set up the books.");
     }
     // Entries and settlements show they were made through Backoffice, e.g. by the person's agent.
-    return Response.json(await action.run(books, input, { name: `${person.name} via Backoffice` }));
+    const viaBackoffice = { name: `${person.name} via Backoffice` };
+    if (action.access === "review") {
+      return Response.json(
+        await answerReview(env, administration, () =>
+          action.run(books, actionInput, viaBackoffice),
+        ),
+      );
+    }
+    return Response.json(await action.run(books, actionInput, viaBackoffice));
   } catch (error) {
     if (error instanceof ActionFailure) {
       return Response.json({ message: error.message }, { status: error.status });

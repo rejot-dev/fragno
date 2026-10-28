@@ -17,8 +17,10 @@ import { backofficeProvisioningOperations } from "@fragno-dev/backoffice-api/v0/
 import {
   backofficeContextScopeSchema,
   backofficeScopePathSegment,
+  isBackofficeRoutableScope,
   parseBackofficeScopePathSegment,
   type BackofficeContextScope,
+  type BackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { z } from "zod";
@@ -63,6 +65,21 @@ type Prompt = {
   subagent: boolean;
   prompter: Principal;
   status: PiPromptStatus;
+};
+type Share = {
+  shareId: string;
+  from: BackofficeRoutableScope;
+  path: string;
+  with: BackofficeRoutableScope;
+  sharedAt: string;
+};
+type AcceptedShare = {
+  shareId: string;
+  name: string;
+  from: BackofficeRoutableScope;
+  /** The accepting scope's workspace key. */
+  scope: string;
+  acceptedAt: string;
 };
 /** Who a credential acts as: a user who authorized Bookkeeping, or Bookkeeping itself. */
 type Principal = { kind: "user"; userId: string } | { kind: "app" };
@@ -128,6 +145,10 @@ export class FakeBackoffice {
   readonly #agents = new Map<string, PiAgentDefinitionCreate>();
   /** Prompts agents received, in the order they arrived. */
   readonly #prompts: Prompt[] = [];
+  /** Folders one scope shares with another, by share ID; revoking the share deletes it. */
+  readonly #shares = new Map<string, Share>();
+  /** Shares scopes accepted, by the accepting scope and the name they mount the share under. */
+  readonly #acceptedShares = new Map<string, AcceptedShare>();
   #reachable = true;
   /** Provisioning operations whose next response is lost after Backoffice did the work. */
   readonly #failNextResponse = new Set<string>();
@@ -287,6 +308,26 @@ export class FakeBackoffice {
       throw new Error(`No agent received prompt ${requestId}.`);
     }
     prompt.status = { requestId, ...status };
+  }
+
+  /**
+   * The shares one of the organization's projects mounts and may read, by name, with the folder
+   * each opens: those it accepted whose sharing scope has not revoked them.
+   */
+  mountedShares(slug: string, project: string): { name: string; path: string }[] {
+    const scope = this.#projectFileKey(slug, project, "");
+    return [...this.#acceptedShares.values()].flatMap((accepted) => {
+      const share = this.#shares.get(accepted.shareId);
+      return accepted.scope === scope && share ? [{ name: accepted.name, path: share.path }] : [];
+    });
+  }
+
+  /** The folders one of the organization's projects shares and has not revoked. */
+  standingShares(slug: string, project: string): string[] {
+    const scope = this.#projectFileKey(slug, project, "");
+    return [...this.#shares.values()].flatMap((share) =>
+      `${backofficeScopePathSegment(share.from)} ` === scope ? [share.path] : [],
+    );
   }
 
   organizationCount(): number {
@@ -710,6 +751,94 @@ export class FakeBackoffice {
                 prompt.requestId === requestId,
             )?.status ?? null,
         );
+      case "state.share":
+        return respond("state.share", body, (input) => {
+          if (!isBackofficeRoutableScope(scope)) {
+            throw new ApiError("not_found", "Only workspaces share folders.");
+          }
+          const target = backofficeScopePathSegment(input.with);
+          const exists = [...this.#organizations.values()].some((organization) =>
+            [...organization.projects.values()].some(
+              ({ id }) =>
+                target ===
+                backofficeScopePathSegment({
+                  kind: "project",
+                  owner: { kind: "org", orgId: organization.id, jurisdiction: null },
+                  projectId: id,
+                }),
+            ),
+          );
+          if (!exists) {
+            throw new ApiError("not_found", "The named scope does not exist.");
+          }
+          const share: Share = {
+            shareId: crypto.randomUUID(),
+            from: scope,
+            path: input.path.endsWith("/") ? input.path : `${input.path}/`,
+            with: input.with,
+            sharedAt: new Date().toISOString(),
+          };
+          this.#shares.set(share.shareId, share);
+          return this.#fileShare(share);
+        });
+      case "state.acceptShare":
+        return respond("state.acceptShare", body, ({ from, shareId, name = shareId }) => {
+          const share = this.#shares.get(shareId);
+          if (
+            !share ||
+            backofficeScopePathSegment(share.from) !== backofficeScopePathSegment(from) ||
+            backofficeScopePathSegment(share.with) !== backofficeScopePathSegment(scope)
+          ) {
+            throw new ApiError(
+              "not_found",
+              `That scope shares nothing with this one as ${shareId}.`,
+            );
+          }
+          const accepted = [...this.#acceptedShares.values()].find(
+            (candidate) => candidate.scope === key("") && candidate.shareId === shareId,
+          );
+          if (accepted) {
+            return this.#acceptedFileShare(accepted);
+          }
+          if (this.#acceptedShares.has(key(name))) {
+            throw new ApiError("conflict", `This scope already mounts another share as ${name}.`);
+          }
+          const record = {
+            shareId,
+            name,
+            from: share.from,
+            scope: key(""),
+            acceptedAt: new Date().toISOString(),
+          };
+          this.#acceptedShares.set(key(name), record);
+          return this.#acceptedFileShare(record);
+        });
+      case "state.listShares":
+        return respond("state.listShares", body, () => ({
+          shared: [...this.#shares.values()]
+            .filter((share) => key("") === `${backofficeScopePathSegment(share.from)} `)
+            .map((share) => this.#fileShare(share)),
+          accepted: [...this.#acceptedShares.values()]
+            .filter((accepted) => accepted.scope === key(""))
+            .map((accepted) => this.#acceptedFileShare(accepted)),
+        }));
+      case "state.revokeShare":
+        return respond("state.revokeShare", body, ({ shareId }) => {
+          const share = this.#shares.get(shareId);
+          const shared = share && key("") === `${backofficeScopePathSegment(share.from)} `;
+          const accepted = [...this.#acceptedShares].find(
+            ([, candidate]) => candidate.scope === key("") && candidate.shareId === shareId,
+          );
+          if (!shared && !accepted) {
+            throw new ApiError("not_found", `This scope has no share ${shareId}.`);
+          }
+          if (shared) {
+            this.#shares.delete(shareId);
+          }
+          if (accepted) {
+            this.#acceptedShares.delete(accepted[0]);
+          }
+        });
       case "state.writeFileBytes":
         return respond("state.writeFileBytes", body, ({ path, content }) => {
           const bytes = new Uint8Array(Buffer.from(content, "base64"));
@@ -729,6 +858,23 @@ export class FakeBackoffice {
       default:
         throw new ApiError("not_found", `Operation '${operationId}' is not available here.`);
     }
+  }
+
+  #fileShare(share: Share) {
+    return { shareId: share.shareId, path: share.path, with: share.with, sharedAt: share.sharedAt };
+  }
+
+  /** What the accepting scope sees of a share; one revoked since still shows until it revokes it. */
+  #acceptedFileShare(accepted: AcceptedShare) {
+    const share = this.#shares.get(accepted.shareId);
+    return {
+      shareId: accepted.shareId,
+      name: accepted.name,
+      from: accepted.from,
+      path: `/shared/${accepted.name}/`,
+      sourcePath: share?.path ?? "",
+      acceptedAt: accepted.acceptedAt,
+    };
   }
 
   #projectFileKey(slug: string, project: string, path: string): string {

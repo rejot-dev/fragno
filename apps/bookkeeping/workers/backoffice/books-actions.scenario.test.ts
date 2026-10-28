@@ -6,6 +6,7 @@ import {
   type BookkeepingScenario,
 } from "../../scenario/bookkeeping-scenario";
 
+const FIRM = "lovelace-co";
 const CLIENT = "analytical-engines";
 
 type Books = BooksOutletContext["books"];
@@ -332,6 +333,101 @@ test("actions reach only the books of the administration Backoffice signed the c
     expect(await stranger.call("entries.post", entry)).toEqual({
       status: 403,
       body: { message: "Sign in to Bookkeeping once, so it knows who keeps these books." },
+    });
+  });
+});
+
+test("a firm's bookkeeping agent reads only its clients' books and answers their reviews", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { grace, ada, clientPath } = await scenario.practice();
+    const books = await scenario.openAdministration(ada, clientPath, "Analytical Engines");
+    const settings = await ada.navigate(`${books}/settings`);
+    const { administration } = settings.loaderData["books/layout"] as {
+      administration: { id: string };
+    };
+    // Ada owns the firm, so opening its pages set up its agent's project.
+    const firmAgentProject = { organization: FIRM, project: "Bookkeeping agent" };
+    const agent = scenario.agent("installation", firmAgentProject);
+    const keepsNothing = {
+      status: 403,
+      body: {
+        message:
+          "A firm's bookkeeping agent reads its clients' books and proposes documents' entries; people change them, in their client's project.",
+      },
+    };
+
+    expect(await agent.call("books.describe", {})).toEqual({
+      status: 400,
+      body: {
+        message:
+          "Name the administration: a firm's bookkeeping agent keeps the books of its clients.",
+      },
+    });
+    expect(await agent.call("books.describe", { administration: administration.id })).toMatchObject(
+      { status: 200, body: { name: "Analytical Engines" } },
+    );
+    const year = new Date().getUTCFullYear();
+    expect(
+      await agent.call("entries.post", {
+        administration: administration.id,
+        journal: "GEN",
+        postingDate: `${year}-03-10`,
+        reference: null,
+        description: "Capital",
+        lines: [line("1000", "debit", "1000"), line("0500", "credit", "1000")],
+      }),
+    ).toEqual(keepsNothing);
+    // People keep their client's books in its own project, even the firm's owner.
+    expect(
+      await scenario
+        .agent({ email: "ada@example.test" }, firmAgentProject)
+        .call("books.describe", { administration: administration.id }),
+    ).toEqual(keepsNothing);
+
+    // Another firm's agent keeps none of this firm's clients' books.
+    const otherFirm = await scenario.createFirm(grace, "Babbage & Sons", "charles@example.test");
+    const { browser: charles } = await scenario.acceptInvitation(
+      "charles@example.test",
+      "Charles Babbage",
+    );
+    await charles.navigate(otherFirm);
+    expect(
+      await scenario
+        .agent("installation", { organization: "babbage-sons", project: "Bookkeeping agent" })
+        .call("books.describe", { administration: administration.id }),
+    ).toEqual({
+      status: 403,
+      body: { message: `The firm keeps the books of no administration ${administration.id}.` },
+    });
+    // Nor does any other project of the firm.
+    scenario.backoffice.admin.createProject(FIRM, "Marketing");
+    expect(
+      await scenario
+        .agent("installation", { organization: FIRM, project: "Marketing" })
+        .call("books.describe", { administration: administration.id }),
+    ).toEqual({
+      status: 403,
+      body: { message: "This Backoffice project is not an administration in Bookkeeping." },
+    });
+
+    // In an administration's own project, actions keep its books, whichever one they name.
+    await scenario.openAdministration(ada, clientPath, "Difference Engines");
+    const difference = await ada.navigate(`${clientPath}/a/difference-engines/settings`);
+    const other = (difference.loaderData["books/layout"] as { administration: { id: string } })
+      .administration;
+    const analytical = scenario.agent("installation", {
+      organization: CLIENT,
+      project: "Analytical Engines",
+    });
+    expect(
+      await analytical.call("books.describe", { administration: administration.id }),
+    ).toMatchObject({ status: 200, body: { name: "Analytical Engines" } });
+    expect(await analytical.call("books.describe", { administration: other.id })).toEqual({
+      status: 403,
+      body: {
+        message:
+          "Actions in an administration's project keep its own books: leave out the administration.",
+      },
     });
   });
 });

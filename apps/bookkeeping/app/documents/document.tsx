@@ -26,6 +26,7 @@ import type { Route } from "./+types/document";
 import {
   askBookkeeper,
   readBookkeeperProgress,
+  releaseDocumentIfDone,
   type BookkeeperProgress,
 } from "./bookkeeper.server";
 import { DocumentPreview } from "./preview";
@@ -55,6 +56,7 @@ async function documentWithProgress(
   const document = await requireDocument(context, documentId);
   const { review } = document;
   if (document.state.status !== "to-book" || review?.status !== "requested") {
+    await releaseDocumentIfDone(context, document);
     return { document, progress: null };
   }
   const progress = await readBookkeeperProgress(context, review.requestId);
