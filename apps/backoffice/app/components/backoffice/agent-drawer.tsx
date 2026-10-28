@@ -1,6 +1,6 @@
 import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { SideDrawer } from "@fragno-private/design-system/side-drawer";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 
 import {
   backofficeRouteScopeFromResolvedScope,
@@ -14,11 +14,19 @@ import { AgentDrawerHeader } from "./agent-drawer-header";
 export const AGENT_DRAWER_ID = "agent-drawer";
 
 // The conversation is imported on its own, so the server, which renders the drawer closed, never
-// loads the chat. Browsers load it once the page is idle, so the drawer opens without waiting.
+// loads the chat.
 const loadAgentDrawerScope = () => import("./agent-drawer-scope");
 const AgentDrawerScope = lazy(async () => ({
   default: (await loadAgentDrawerScope()).AgentDrawerScope,
 }));
+
+/**
+ * Starts loading the conversation when the user reaches for the drawer. Its ~1 MB of chat, Markdown,
+ * and diagram code would otherwise compete with every page's first interactions.
+ */
+export function preloadAgentDrawer() {
+  void loadAgentDrawerScope();
+}
 
 /** A conversation with one of the scope's agents beside every page, starting with the main agent. */
 export function AgentDrawer({
@@ -39,20 +47,6 @@ export function AgentDrawer({
     ? piAgentsPath(backofficeRouteScopeFromResolvedScope(resolvedScope))
     : null;
   const agentName = selection?.agentsPath === agentsPath ? selection.agentName : MAIN_PI_AGENT_NAME;
-
-  useEffect(() => {
-    const prefetch = () => void loadAgentDrawerScope();
-    if (typeof window.requestIdleCallback !== "function") {
-      const timeout = window.setTimeout(prefetch, 1000);
-      return () => {
-        window.clearTimeout(timeout);
-      };
-    }
-    const idle = window.requestIdleCallback(prefetch);
-    return () => {
-      window.cancelIdleCallback(idle);
-    };
-  }, []);
 
   return (
     <SideDrawer

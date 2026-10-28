@@ -9,7 +9,7 @@ import {
 import type { AdministeredMember, BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 import type { AutomationProjectList } from "@/fragno/automation/project-list";
 
-import { AGENT_DRAWER_ID } from "./agent-drawer";
+import { AGENT_DRAWER_ID, preloadAgentDrawer } from "./agent-drawer";
 import { BackofficeAppearanceMenu } from "./appearance-menu";
 import { BackofficePresenceIndicator } from "./presence-indicator";
 import {
@@ -143,6 +143,8 @@ export function BackofficeTopBar({
             aria-keyshortcuts="Meta+I Control+I"
             title={`${agentDrawerOpen ? "Close" : "Open"} agent (⌘I)`}
             onClick={onAgentDrawerToggle}
+            onPointerEnter={preloadAgentDrawer}
+            onFocus={preloadAgentDrawer}
             className={`flex w-16 shrink-0 cursor-pointer items-center justify-center border-l border-[color:var(--bo-border)] transition-[background-color,color] duration-150 ease-out outline-none ${agentDrawerOpen ? "bg-[color:var(--bo-sidebar-bg)]" : "hover:bg-[var(--bo-panel-2)]"}`}
           >
             <span className="flex size-8 items-center justify-center rounded-full bg-[linear-gradient(135deg,var(--bo-accent)_-40%,var(--bo-fg)_65%)] text-xs leading-none font-bold tracking-tight text-[var(--bo-panel)] shadow-md ring-4 inset-shadow-[0_1px_0_rgb(255_255_255/0.25)] ring-[color:var(--bo-fg)]/15">
