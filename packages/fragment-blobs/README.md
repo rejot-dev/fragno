@@ -49,6 +49,10 @@ reads it and the ETag from storage, and fails with `UPLOAD_CONTENT_MISSING` unti
 Creating another upload for the same key replaces an unfinished one. Every upload writes its own
 object, so neither an unfinished upload nor a replacement touches the object a download URL reads.
 
+A download URL ends in the last segment of the blob's key, so browsers save the file under its name.
+Storage serves the bytes with the content type they were uploaded with, so browsers show some types,
+such as videos, in place.
+
 `onBlobStored` runs for a new blob and for a replacement; `onBlobDeleted` runs only for
 `DELETE /blobs/by-key`. Both receive the blob as `GET /blobs/by-key` returns it.
 

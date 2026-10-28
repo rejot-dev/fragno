@@ -101,8 +101,17 @@ export const blobsRoutesFactory = defineRoutes(blobsFragmentDefinition).create(
         errorCodes,
         handler: async function ({ input }, { json, error }) {
           const { key, contentType } = await input.valid();
-          // Every upload gets its own object, so an unfinished upload never touches the blob.
-          const objectKey = [storagePrefix, key, crypto.randomUUID()].filter(Boolean).join("/");
+          // Every upload gets its own object, so an unfinished upload never touches the blob. The
+          // object's key ends in the blob's name, so browsers save downloads under that name.
+          const segments = key.split("/");
+          const objectKey = [
+            storagePrefix,
+            ...segments.slice(0, -1),
+            crypto.randomUUID(),
+            segments.at(-1),
+          ]
+            .filter(Boolean)
+            .join("/");
           if (
             !isBlobKey(key) ||
             new TextEncoder().encode(objectKey).length > MAX_OBJECT_KEY_BYTES

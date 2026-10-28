@@ -134,7 +134,7 @@ test("a scope stores a large file as a blob through presigned URLs, apart from o
             // The URL names the hosting URL, and Acme's bytes go under Acme's prefix of the bucket.
             expect(url.origin).toBe(new URL(hostingUrl).origin);
             expect(url.pathname).toMatch(
-              new RegExp(`^${new URL(localBucketUrl).pathname}org/acme/calls/monday\\.wav/[^/]+$`),
+              new RegExp(`^${new URL(localBucketUrl).pathname}org/acme/calls/[^/]+/monday\\.wav$`),
             );
             assert(url.searchParams.has("X-Amz-Signature"));
             await expect(completeUpload(abandoned.uploadId)).rejects.toThrow("Blobs returned");
@@ -171,6 +171,8 @@ test("a scope stores a large file as a blob through presigned URLs, apart from o
             acme,
             `async () => await blobs.createDownloadUrl({ key: "calls/monday.wav" })`,
           )) as { url: string };
+          // The URL ends in the blob's name, so browsers save the file under it.
+          assert(new URL(download.url).pathname.endsWith("/monday.wav"));
           const response = await requestFromOutside(r2, download.url);
           expect(new Uint8Array(await response.arrayBuffer())).toEqual(recording);
 
