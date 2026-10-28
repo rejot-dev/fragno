@@ -15,13 +15,30 @@ const containerWorkerConfigUrl = new URL(
   import.meta.url,
 );
 
+let activeChild = null;
+let stopSignal = null;
+
+// Ctrl-C signals the whole process group. Without handlers Node exits at once and skips the
+// configuration restore below, so the wrapper stays up until Vite has shut down.
+function stopViteCommand(signal) {
+  stopSignal = signal;
+  activeChild?.kill(signal);
+}
+process.on("SIGINT", stopViteCommand);
+process.on("SIGTERM", stopViteCommand);
+
 function runViteCommand(args) {
+  if (stopSignal) {
+    return Promise.resolve({ code: 0, signal: stopSignal });
+  }
   return new Promise((resolve, reject) => {
     const child = spawn("pnpm", ["exec", ...args], {
       stdio: "inherit",
     });
+    activeChild = child;
     child.once("error", reject);
     child.once("exit", (code, signal) => {
+      activeChild = null;
       if (signal && signal !== "SIGINT" && signal !== "SIGTERM") {
         reject(new Error(`Backoffice Vite command terminated by ${signal}`));
         return;
