@@ -3,6 +3,7 @@ import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { env } from "cloudflare:workers";
 
+import { canManage } from "../../workers/directory/membership";
 import { requireOrganization } from "../organizations/access.server";
 import { organizationPath } from "../organizations/paths";
 import { PlaceList } from "../shell/place-list";
@@ -13,24 +14,20 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 /**
- * The firm's clients. Membership of the firm does not open them: its members reach a client as
- * members of it.
+ * The firm's clients. The firm manages them in Backoffice, so every member of the firm opens each
+ * one, with their role in the firm, owners as admins.
  */
 export async function loader({ request, params }: Route.LoaderArgs) {
-  const { organization, user } = await requireOrganization(request, params.slug, "firm");
-  const directory = env.DIRECTORY.getByName("directory");
-  const [clients, memberships] = await Promise.all([
-    directory.listClients(organization.id),
-    directory.listMemberships(user.backofficeUserId),
-  ]);
-  const joined = new Set(memberships.map((membership) => membership.organization.id));
+  const { organization, roles } = await requireOrganization(request, params.slug, "firm");
+  const clients = await env.DIRECTORY.getByName("directory").listClients(organization.id);
   return {
     firmName: organization.name,
-    clients: clients.map(({ id, name, kind, slug }) => ({
+    clients: clients.map(({ name, kind, slug }) => ({
       name,
       path: organizationPath(kind, slug),
-      member: joined.has(id),
+      member: true,
     })),
+    canCreate: canManage(roles),
   };
 }
 
@@ -39,18 +36,18 @@ export function headers() {
 }
 
 export default function FirmDashboard({ loaderData, params }: Route.ComponentProps) {
-  const { firmName, clients } = loaderData;
-  const newClient = (
+  const { firmName, clients, canCreate } = loaderData;
+  const newClient = canCreate ? (
     <ButtonLink variant="solid" to={`/f/${params.slug}/clients/new`}>
       New client
     </ButtonLink>
-  );
+  ) : null;
   return (
     <div className="space-y-6">
       <PageHeading
         eyebrow={firmName}
         title="Clients"
-        meta={`The businesses whose books ${firmName} keeps. You open a client's books as a member of it.`}
+        meta={`The businesses whose books ${firmName} keeps. Everyone in the firm opens them.`}
         actions={clients.length > 0 ? newClient : null}
       />
       {clients.length === 0 ? (
@@ -58,7 +55,11 @@ export default function FirmDashboard({ loaderData, params }: Route.ComponentPro
           tone="empty"
           label="Getting started"
           title="No clients yet"
-          description="Create a client, then invite them to their books."
+          description={
+            canCreate
+              ? "Create a client, then invite them to their books."
+              : "The firm's owners and admins create its clients."
+          }
           actions={newClient}
         />
       ) : (

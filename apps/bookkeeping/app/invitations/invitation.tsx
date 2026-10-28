@@ -95,6 +95,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     organization: { id, slug, name },
     userId: user.backofficeUserId,
     roles: parseRoles(membership.roles),
+    through: "membership",
     confirmedAt: Date.now(),
   });
   await directory().removeInvitation(invitation.id);

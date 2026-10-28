@@ -173,6 +173,7 @@ const TRUST = {
   provisioningPermissions: [
     "organizations.provision",
     "organizations.provisionForInvitee",
+    "organizations.provisionManaged",
     "projects.provision",
     "invitations.create",
     "invitations.send",

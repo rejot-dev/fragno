@@ -13,15 +13,23 @@ import { redirect } from "react-router";
 
 import type { SessionUser } from "../../workers/auth/auth";
 import { exchangeForScope, isBackofficeUnavailable } from "../../workers/backoffice/client";
-import type { Organization, OrganizationKind } from "../../workers/directory/directory";
-import { MEMBERSHIP_CONFIRMATION_LIFETIME_MS } from "../../workers/directory/membership";
+import type {
+  MembershipThrough,
+  Organization,
+  OrganizationKind,
+} from "../../workers/directory/directory";
+import {
+  MEMBERSHIP_CONFIRMATION_LIFETIME_MS,
+  membershipThrough,
+} from "../../workers/directory/membership";
 import { currentPath, requireSessionUser } from "../auth/session.server";
 
-/** The signed-in person in one of their organizations. */
+/** The signed-in person in one of their organizations, or a client of their firm. */
 export type OrganizationContext = {
   user: SessionUser;
   organization: Organization;
   roles: OrganizationRole[];
+  through: MembershipThrough;
 };
 
 function directory() {
@@ -96,7 +104,8 @@ export async function connectAsUser(
 
 /**
  * The person's membership as Backoffice confirms it now, with the organization as Backoffice names
- * it; null when Backoffice refuses them, because they were removed or Bookkeeping was uninstalled.
+ * it and whether they reach it through its firm; null when Backoffice refuses them, because they
+ * were removed or Bookkeeping was uninstalled.
  */
 async function confirmWithBackoffice(request: Request, organizationId: string) {
   const backoffice = await connectAsUser(request, {
@@ -117,15 +126,16 @@ async function confirmWithBackoffice(request: Request, organizationId: string) {
       name: confirmed.organization.name,
     },
     roles: parseRoles(confirmed.roles),
+    through: membershipThrough(confirmed.through),
     confirmedAt: Date.now(),
   };
 }
 
 /**
- * The signed-in person in the organization at `slug`, which must be of `kind`. A membership
- * Backoffice confirmed within the last minute is trusted; otherwise Backoffice confirms it again,
- * with their current roles, or Bookkeeping forgets it: they were removed, or Bookkeeping was
- * uninstalled.
+ * The signed-in person in the organization at `slug`, which must be of `kind`: one of its members,
+ * or, in a client, a member of its firm. A membership Backoffice confirmed within the last minute is
+ * trusted; otherwise Backoffice confirms it again, with their current roles, or Bookkeeping forgets
+ * it: they were removed, or Bookkeeping was uninstalled.
  */
 export async function requireOrganization(
   request: Request,
@@ -142,7 +152,7 @@ export async function requireOrganization(
     userId: user.backofficeUserId,
   });
   if (known && Date.now() - known.confirmedAt < MEMBERSHIP_CONFIRMATION_LIFETIME_MS) {
-    return { user, organization, roles: known.roles };
+    return { user, organization, roles: known.roles, through: known.through };
   }
   const confirmed = await confirmWithBackoffice(request, organization.id);
   if (!confirmed) {
@@ -157,6 +167,7 @@ export async function requireOrganization(
     user,
     organization: { ...organization, ...confirmed.organization },
     roles: confirmed.roles,
+    through: confirmed.through,
   };
 }
 
@@ -179,7 +190,7 @@ export async function requireOperator(request: Request): Promise<OrganizationCon
       userId: user.backofficeUserId,
     }));
   if (operators && known && Date.now() - known.confirmedAt < MEMBERSHIP_CONFIRMATION_LIFETIME_MS) {
-    return { user, organization: operators, roles: known.roles };
+    return { user, organization: operators, roles: known.roles, through: known.through };
   }
   const confirmed = await confirmWithBackoffice(request, operatorsId);
   if (!confirmed) {
@@ -196,5 +207,6 @@ export async function requireOperator(request: Request): Promise<OrganizationCon
     user,
     organization: { ...confirmed.organization, kind: "operator" },
     roles: confirmed.roles,
+    through: confirmed.through,
   };
 }

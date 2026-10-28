@@ -14,7 +14,11 @@ import { dayAfter, PERIOD_LENGTHS, periodEndDates } from "../books/fiscal-years"
 import { decimalAmount, parseAmount } from "../books/money";
 import { CONTROL_ROLES, usualControlAccount } from "../books/parties";
 import type { Administration } from "../directory/directory";
-import { canManage, MEMBERSHIP_CONFIRMATION_LIFETIME_MS } from "../directory/membership";
+import {
+  canManage,
+  MEMBERSHIP_CONFIRMATION_LIFETIME_MS,
+  membershipThrough,
+} from "../directory/membership";
 import { exchangeForScope, isBackofficeUnavailable } from "./client";
 import { releaseDocument, sharedDocumentPath } from "./document-shares";
 
@@ -1482,6 +1486,7 @@ async function confirmPerson(env: CloudflareEnv, organizationId: string, userId:
       name: confirmed.organization.name,
     },
     roles,
+    through: membershipThrough(confirmed.through),
     confirmedAt: Date.now(),
     userId,
   });

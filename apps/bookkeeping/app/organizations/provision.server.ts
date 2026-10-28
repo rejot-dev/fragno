@@ -5,17 +5,15 @@ import { createProvisioningClient } from "../../workers/backoffice/client";
 import type { ProvisionedOrganization } from "../../workers/directory/directory";
 import { isOutcomeUnknown } from "./access.server";
 
-/** An organization for Bookkeeping to create in Backoffice; a client names its firm. */
-export type OrganizationRequest = {
+/** What every organization Bookkeeping creates in Backoffice is asked for with. */
+type OrganizationRequest = {
   /**
    * Bookkeeping's identifier for it, chosen when the form was shown. Provisioning the same one
    * again returns what the first attempt made, so a retry after a failure never creates a second.
    */
   externalId: string;
   name: string;
-  /** The Backoffice user who becomes its owner; they must have signed in. Others are invited. */
-  ownerUserId: string;
-} & ({ kind: "firm" } | { kind: "client"; firmId: string });
+};
 
 export type ProvisionResult =
   | { status: "provisioned"; organization: ProvisionedOrganization }
@@ -25,20 +23,23 @@ export type ProvisionResult =
   | { status: "unavailable" };
 
 /**
- * Creates the organization in Backoffice, which installs Bookkeeping there and makes the owner its
- * owner, then records it in the directory. Both steps are idempotent. Only a creation makes the
- * owner an owner: an organization that already existed may have removed them since, so their
- * membership is left for the next visit to confirm.
+ * Creates the firm in Backoffice, which installs Bookkeeping there and makes the owner its owner,
+ * then records it in the directory. Both steps are idempotent. Only a creation makes the owner an
+ * owner: a firm that already existed may have removed them since, so their membership is left for
+ * the next visit to confirm.
  */
-export async function provisionOrganization(
-  request: OrganizationRequest,
+export async function provisionFirm(
+  request: OrganizationRequest & {
+    /** The Backoffice user who becomes its owner; they must have signed in. Others are invited. */
+    ownerUserId: string;
+  },
 ): Promise<ProvisionResult> {
   let provisioned;
   try {
     const provisioning = await createProvisioningClient(env);
     provisioned = await provisioning.call("organizations.provision", {
       // Kinds have their own identifiers, so a firm and a client never share one.
-      externalOrganizationId: `${request.kind}:${request.externalId}`,
+      externalOrganizationId: `firm:${request.externalId}`,
       name: request.name,
       ownerUserId: request.ownerUserId,
     });
@@ -51,11 +52,12 @@ export async function provisionOrganization(
     }
     throw error;
   }
-  const named = { id: provisioned.organizationId, slug: provisioned.slug, name: request.name };
-  const organization: ProvisionedOrganization =
-    request.kind === "firm"
-      ? { ...named, kind: "firm" }
-      : { ...named, kind: "client", firmId: request.firmId };
+  const organization: ProvisionedOrganization = {
+    id: provisioned.organizationId,
+    slug: provisioned.slug,
+    name: request.name,
+    kind: "firm",
+  };
   await env.DIRECTORY.getByName("directory").recordProvisioned({
     organization,
     ownerUserId: provisioned.created ? request.ownerUserId : null,
@@ -118,4 +120,44 @@ export async function provisionFirmForInvitee(request: {
       expiresAt: Date.parse(ownerInvitation.expiresAt),
     },
   };
+}
+
+/**
+ * Creates a client in Backoffice, managed by its firm, then records it in the directory. Every
+ * member of the firm acts in it with their role in the firm, owners as admins, without becoming its
+ * member, so it starts with no members: the firm invites its owner from its members page.
+ * `createdByUserId`, an owner or admin of the firm, is recorded as its creator. Both steps are
+ * idempotent.
+ */
+export async function provisionClient(
+  request: OrganizationRequest & { firmId: string; createdByUserId: string },
+): Promise<ProvisionResult> {
+  let provisioned;
+  try {
+    const provisioning = await createProvisioningClient(env);
+    provisioned = await provisioning.call("organizations.provisionManaged", {
+      externalOrganizationId: `client:${request.externalId}`,
+      name: request.name,
+      managingOrganizationId: request.firmId,
+      byUserId: request.createdByUserId,
+      owner: { kind: "none" },
+    });
+  } catch (error) {
+    if (isOutcomeUnknown(error)) {
+      return { status: "unavailable" };
+    }
+    if (error instanceof BackofficeApiRequestError) {
+      return { status: "refused", message: error.message };
+    }
+    throw error;
+  }
+  const organization: ProvisionedOrganization = {
+    id: provisioned.organizationId,
+    slug: provisioned.slug,
+    name: request.name,
+    kind: "client",
+    firmId: request.firmId,
+  };
+  await env.DIRECTORY.getByName("directory").recordProvisioned({ organization, ownerUserId: null });
+  return { status: "provisioned", organization };
 }

@@ -29,7 +29,7 @@ export default function ClientMembers({ loaderData, actionData }: Route.Componen
       <PageHeading
         eyebrow={name}
         title="Members"
-        meta={`Everyone here opens ${name}'s books: the client, and the people from the firm keeping them. Owners and admins invite new people.`}
+        meta={`Everyone here opens ${name}'s books, and so does everyone in the firm keeping them. Owners and admins invite new people.`}
         actions={null}
       />
       <TeamSection team={team} result={actionData} />

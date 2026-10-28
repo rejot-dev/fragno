@@ -408,7 +408,10 @@ export class BookkeepingScenario {
     return new URL(result.link).pathname;
   }
 
-  /** A firm member creates a client, whose workspace opens on its members page. */
+  /**
+   * A firm's owner or admin creates a client the firm manages, whose workspace opens on its members
+   * page.
+   */
   async createClient(
     member: ScenarioBrowser,
     firmPath: string,

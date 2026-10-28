@@ -297,7 +297,11 @@ test("actions reach only the books of the administration Backoffice signed the c
       status: 403,
       body: { message: "Books actions run in an administration's Backoffice project." },
     });
-    expect(await workspace.call("organization.get", {})).toMatchObject({ status: 200 });
+    // Charles is the client's member; Ada acts there through the firm, and is not.
+    expect(await workspace.call("organization.get", {})).toMatchObject({
+      status: 200,
+      body: { name: "Analytical Engines", kind: "client", memberCount: 1 },
+    });
 
     // Backoffice's signature covers the exact body and expires within a minute.
     const signed = await analytical.request("entries.post", entry);

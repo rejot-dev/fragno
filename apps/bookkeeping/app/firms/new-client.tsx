@@ -6,10 +6,11 @@ import { PageHeading } from "@fragno-private/design-system/page-heading";
 import { Form, Link, redirect, useNavigation } from "react-router";
 import { z } from "zod";
 
+import { canManage } from "../../workers/directory/membership";
 import { assertSameOrigin } from "../auth/session.server";
 import { requireOrganization } from "../organizations/access.server";
 import { organizationPath } from "../organizations/paths";
-import { provisionOrganization } from "../organizations/provision.server";
+import { provisionClient } from "../organizations/provision.server";
 import type { Route } from "./+types/new-client";
 
 export function meta() {
@@ -26,17 +27,26 @@ const clientSchema = z.object({
     .max(160, "Use at most 160 characters."),
 });
 
+/** Backoffice lets the firm's owners and admins create the clients it manages. */
+async function requireManager(request: Request, slug: string) {
+  const context = await requireOrganization(request, slug, "firm");
+  if (!canManage(context.roles)) {
+    throw new Response("Only the firm's owners and admins create clients.", { status: 403 });
+  }
+  return context;
+}
+
 export async function loader({ request, params }: Route.LoaderArgs) {
-  await requireOrganization(request, params.slug, "firm");
+  await requireManager(request, params.slug);
   return { externalId: crypto.randomUUID() };
 }
 
 /**
- * Creates the client's workspace, owned by the person creating it, and opens its members page to
- * invite the client. Submitting it again after a failure finishes the same client.
+ * Creates the client's workspace, managed by the firm, and opens its members page to invite the
+ * client. Submitting it again after a failure finishes the same client.
  */
 export async function action({ request, params }: Route.ActionArgs) {
-  const { organization, user } = await requireOrganization(request, params.slug, "firm");
+  const { organization, user } = await requireManager(request, params.slug);
   assertSameOrigin(request);
   const form = Object.fromEntries(await request.formData());
   const parsed = clientSchema.safeParse(form);
@@ -47,12 +57,11 @@ export async function action({ request, params }: Route.ActionArgs) {
     };
   }
   const { externalId, name } = parsed.data;
-  const result = await provisionOrganization({
+  const result = await provisionClient({
     externalId,
     name,
-    kind: "client",
     firmId: organization.id,
-    ownerUserId: user.backofficeUserId,
+    createdByUserId: user.backofficeUserId,
   });
   if (result.status === "unavailable") {
     return { externalId, error: "Creating the client didn't work. Try again shortly." };
@@ -81,7 +90,7 @@ export default function NewClient({ loaderData, actionData, params }: Route.Comp
           </Link>
         }
         title="New client"
-        meta="You become the owner of the client's workspace, and invite the client next."
+        meta="Everyone in the firm opens the client's workspace. Invite the client to own it next."
         actions={null}
       />
       <div className="max-w-2xl">

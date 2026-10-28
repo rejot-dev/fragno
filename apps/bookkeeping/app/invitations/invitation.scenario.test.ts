@@ -4,12 +4,20 @@ import { runBookkeepingScenario } from "../../scenario/bookkeeping-scenario";
 
 const INVITATION_EXPIRED_MS = 49 * 60 * 60 * 1000;
 
-test("a client's owner invites the client, who follows the emailed link, signs in with the invited address, and joins", async () => {
+test("the firm invites the client's owner, who follows the emailed link, signs in with the invited address, and owns it", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { ada } = await scenario.practice();
+    // The client has no owner yet, so Ada, who acts in it through the firm, may invite one.
+    expect(await ada.navigate("/w/analytical-engines/members")).toMatchObject({
+      loaderData: {
+        "clients/members": {
+          team: { members: [], inviteRoles: ["member", "admin", "owner"] },
+        },
+      },
+    });
     const invited = await ada.submit("/w/analytical-engines/members", {
       email: "Charles@Example.test",
-      role: "member",
+      role: "owner",
     });
     expect(invited.actionData).toMatchObject({
       status: "invited",
@@ -33,7 +41,7 @@ test("a client's owner invites the client, who follows the emailed link, signs i
           invitedTo: "the books of Analytical Engines",
           invitedBy: "Ada Lovelace",
           email: "charles@example.test",
-          role: "member",
+          role: "owner",
           signedInAs: null,
         },
       },
@@ -49,16 +57,14 @@ test("a client's owner invites the client, who follows the emailed link, signs i
     });
     expect(await charles.submit(invitationPath, {})).toMatchObject({
       path: "/w/analytical-engines",
-      loaderData: { "clients/layout": { user: { role: "Member" } } },
+      loaderData: { "clients/layout": { user: { role: "Owner" } } },
     });
     expect(scenario.backoffice.organization("analytical-engines").members).toEqual(
-      new Map([
-        ["ada@example.test", ["owner"]],
-        ["charles@example.test", ["member"]],
-      ]),
+      new Map([["charles@example.test", ["owner"]]]),
     );
 
-    // The link is used up, and Ada sees Charles among the members.
+    // The link is used up, and Ada sees Charles as the client's only member. Now that it has an
+    // owner, only its owners invite owners.
     expect(await charles.navigate(invitationPath)).toMatchObject({
       loaderData: { "invitations/invitation": { status: "invalid" } },
     });
@@ -66,15 +72,19 @@ test("a client's owner invites the client, who follows the emailed link, signs i
       loaderData: {
         "clients/members": {
           team: {
-            members: [
-              { name: "Ada Lovelace", email: "ada@example.test", role: "owner", you: true },
-              { name: "Charles Babbage", email: "charles@example.test", role: "member" },
-            ],
+            members: [{ name: "Charles Babbage", email: "charles@example.test", role: "owner" }],
             invitations: [],
+            inviteRoles: ["member", "admin"],
           },
         },
       },
     });
+    expect(
+      await ada.submit("/w/analytical-engines/members", {
+        email: "dora@example.test",
+        role: "owner",
+      }),
+    ).toMatchObject({ actionData: { status: "failed", error: "Only owners invite owners." } });
   });
 });
 
