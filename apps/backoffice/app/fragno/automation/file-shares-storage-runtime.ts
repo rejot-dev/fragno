@@ -139,7 +139,13 @@ export const createFileShareServices = (
             return { ok: false, reason: "name-taken" };
           }
           const createdAt = new Date();
-          uow.create("accepted_file_share", { id: shareId, name, source, path, createdAt });
+          // A concurrent acceptance of the share, or of another under the name, runs this again,
+          // which answers as for an acceptance already made.
+          uow.create(
+            "accepted_file_share",
+            { id: shareId, name, source, path, createdAt },
+            { retryOnUniqueConflict: ({ error }) => error.kind === "unique" },
+          );
           return {
             ok: true,
             share: acceptedFileShareFromRow({

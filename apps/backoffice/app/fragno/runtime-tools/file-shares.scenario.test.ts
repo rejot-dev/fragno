@@ -236,6 +236,27 @@ test("a folder one organization shares opens read-only in the other once it acce
             code: "ENOENT",
           });
         }),
+        then.assert("accepting the same share twice at once mounts it once", async (ctx) => {
+          const client = inOrganization(ctx, "client", "ada");
+          await client.state.writeFile("/workspace/twice/a.txt", "a");
+          const share = (await client.call("state.share", {
+            path: "/workspace/twice",
+            with: { kind: "org", orgId: "firm" },
+          })) as FileShare;
+          const accept = () =>
+            inOrganization(ctx, "firm", "ada").call("state.acceptShare", {
+              from: { kind: "org", orgId: "client" },
+              shareId: share.shareId,
+              name: "twice",
+            });
+          const [first, second] = (await Promise.all([accept(), accept()])) as AcceptedFileShare[];
+          expect(second).toEqual(first);
+          await expect(
+            inOrganization(ctx, "firm", "ada").state.readFile("/shared/twice/a.txt"),
+          ).resolves.toBe("a");
+          // Later steps list the firm's mounts.
+          await client.call("state.revokeShare", { shareId: share.shareId });
+        }),
         then.assert("the firm mounts shares under names it chooses", async (ctx) => {
           const client = inOrganization(ctx, "client", "ada");
           const firm = inOrganization(ctx, "firm", "ada");
