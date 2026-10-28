@@ -5,6 +5,7 @@ export {
 } from "./sqlite/adapter";
 export {
   LOFI_SQLITE_LAYOUT_VERSION,
+  createLofiSqliteTableStatements,
   lofiSqliteTableName,
   quoteSqliteIdentifier,
   registeredSchemaName,

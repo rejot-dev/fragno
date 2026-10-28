@@ -7,7 +7,7 @@ type PageLimits = {
   queries: 16;
   values: 32;
   sqlLength: 20000;
-  params: 200;
+  params: 100;
   columns: 64;
   nestedRows: 3;
   rowsPerQuery: 500;

@@ -5,15 +5,13 @@ import type {
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createCloudflareDurableObjectRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
-import {
-  noOpBackofficeConfiguredObjectLifecycle,
-  type BackofficeObjectState,
-} from "./backoffice-fragment-durable-object";
+import { noOpBackofficeConfiguredObjectLifecycle } from "./backoffice-fragment-durable-object";
 import { createBackofficeObjectImplementation } from "./backoffice-object-implementation";
 import { createCloudflareDatabaseTransactionInstrumentation } from "./cloudflare-database-transaction-instrumentation";
 import { createCloudflareDurableHooksInstrumentation } from "./cloudflare-durable-hooks-instrumentation";
 import { createCloudflareFragmentInitializationInstrumentation } from "./cloudflare-fragment-initialization-instrumentation";
 import { createCloudflarePostHogTelemetry } from "./cloudflare-posthog-telemetry";
+import { createFacetSqlQueryChecker } from "./facet-sql-query-checker";
 
 function createCloudflareBackofficeRuntimeInstrumentation(scope: BackofficeScopeFields) {
   return {
@@ -24,7 +22,7 @@ function createCloudflareBackofficeRuntimeInstrumentation(scope: BackofficeScope
 }
 
 export function createCloudflareBackofficeObjectImplementation(
-  state: BackofficeObjectState,
+  state: DurableObjectState,
   env: CloudflareEnv,
   runtime: BackofficeRuntimeServices,
   telemetry: BackofficeTelemetry,
@@ -36,6 +34,7 @@ export function createCloudflareBackofficeObjectImplementation(
     instrumentation: createCloudflareBackofficeRuntimeInstrumentation,
     telemetry,
     configuredObjectLifecycle: noOpBackofficeConfiguredObjectLifecycle,
+    checkSqlQueries: createFacetSqlQueryChecker(state, env.LOADER),
   });
 }
 

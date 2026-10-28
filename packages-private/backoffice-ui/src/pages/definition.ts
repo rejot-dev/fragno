@@ -10,8 +10,8 @@ export const PAGE_LIMITS = {
   values: 32,
   /** Characters of one query's SQL. */
   sqlLength: 20_000,
-  /** Values one query binds, counting each item of a list. */
-  params: 200,
+  /** Values one query binds, a list counting as one: Durable Object SQLite binds at most 100. */
+  params: 100,
   /** Columns one query declares, counting those of nested rows. */
   columns: 64,
   /** How deep nested rows declared with `{ rows }` may nest. */

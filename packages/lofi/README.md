@@ -894,9 +894,9 @@ cannot run, and runs that fail, report why to the page that asked rather than to
 - **Derived relations** run their `compute` with a reader of the replica, only while views exist,
   and again before the next refresh once a batch wrote a table their last run read. Rows that
   changed are written to the temporary table, and the views that read it refresh.
-- **Checking on a server.** Open the engine on a connection to an empty in-memory database of the
-  replica's tables, such as one `SqliteLofiAdapter.open` created, and `materialize` a query to learn
-  whether it runs and which columns it selects before any page asks for it.
+- **Checking on a server.** `createLofiSqliteTableStatements(registrations)` returns the statements
+  that create the replica's tables, empty. Run a query once on such a database, in a transaction you
+  roll back, to learn whether it runs and which columns it selects before any page asks for it.
 
 ### Read views
 
@@ -1048,7 +1048,7 @@ export const schema = schema("app", (s) =>
 - `InMemoryLofiAdapter` - in-memory `LofiAdapter` for optimistic overlays/tests.
 - `StackedLofiAdapter` - merges base + overlay adapters for optimistic reads.
 - `@fragno-dev/lofi/sqlite`: `SqliteLofiAdapter`, `decodeLofiSqliteRow`, `lofiSqliteTableName`,
-  `quoteSqliteIdentifier`, and the replica's types.
+  `quoteSqliteIdentifier`, `createLofiSqliteTableStatements`, and the replica's types.
 - `@fragno-dev/lofi/sqlite/testing`: `openLofiSqliteMemoryFiles` opens replicas in Node on
   wa-sqlite's in-memory VFS, `openLofiSqliteTab` opens a replica worker's host and its page's client
   over a `MessageChannel`, and `waitForLofiSqliteReplica` waits until a replica reaches a

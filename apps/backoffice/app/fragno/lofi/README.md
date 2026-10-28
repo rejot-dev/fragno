@@ -159,12 +159,18 @@ page's interface.
   and 25 million operations, which take about 200 ms. A page's query that cannot run shows its error
   in place of the page. Pages could read the replica's own tables, which hold nothing the page
   cannot already read; `page-schema.d.ts` describes only the relations, so pages use those.
-- **Build.** The build runs each query once on wa-sqlite in the server, on an empty in-memory
-  database with the replica's tables and the same relations and guard
-  (`../../artifacts/pages/page-queries.server.ts`), and fails with the query's error, such as a
-  misspelled column, or a declared column the query does not select. The Worker imports
-  `wa-sqlite.wasm` as a module; Node builds and tests alias that import to
-  `shims/node-wa-sqlite-wasm.ts`. A cached build is checked again when the relations change.
+- **Build.** The build asks the scope's Automations object to run each query once on an empty
+  database with the replica's tables and the same relations, as permanent views and tables
+  (`AUTOMATION_PAGE_DATABASE_SCHEMA` in `../automation/lofi/page-relations.ts`), and fails with the
+  query's error, such as a misspelled column, or a declared column the query does not select
+  (`../../artifacts/pages/page-queries.server.ts`). On Cloudflare the database is a facet of the
+  object whose class is loaded as a Dynamic Worker (`workers/lib/facet-sql-query-checker.ts`), with
+  a CPU limit of a second per query; each query creates the tables and views, runs, and rolls all of
+  it back, so the facet stays empty. The object keeps the facet, and the loader the Dynamic Worker,
+  while they run, so later builds reuse them until Cloudflare evicts them. Node runs each query on
+  its own `node:sqlite` in-memory database. The build refuses nothing of its own: only what workerd
+  or `node:sqlite` refuses fails it. Opening a built page reads the cached build and runs no check;
+  a cached build is checked again when its source or the relations change.
 - **Older pages.** Pages written for version 4, which queried TanStack DB's collections, fail their
   build with a message that says to rewrite their queries in SQL.
 
@@ -287,5 +293,17 @@ download the outbox again.
   page reads either. See lofi's README.
 - **Pages and the dashboard compute alike things twice.** The home page and the Overview tab read
   much the same, through separate views, and two tabs on one page get two of each.
+- **The build and the browser disagree on what pages may do.** The build no longer refuses writes,
+  `random()`, PRAGMAs, or a second statement, which the browser's guard still refuses, so such a
+  page builds and then shows its error in place. Workerd runs every statement of a query and reports
+  the last; `node:sqlite` runs only the first.
+- **The build's CPU limit is unconfirmed.** Whether Cloudflare enforces a Dynamic Worker's `cpuMs`
+  on a facet is untested, and local workerd enforces none: locally, a query that never ends, such as
+  an unbounded `WITH RECURSIVE`, holds the scope's Automations object until it is restarted. Facets
+  are in open beta.
+- **Each check creates the schema again.** The facet creates every table and view of the relations
+  for each query, and rolls them back, so a page of eleven queries creates them eleven times. On an
+  empty database that takes milliseconds; checking a page's queries in one call would create them
+  once.
 - **Saved version 4 pages stop working.** A page written for the TanStack builder fails until an
   agent rewrites its queries; nothing rewrites them on its own.

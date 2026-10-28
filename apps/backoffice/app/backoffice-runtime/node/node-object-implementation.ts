@@ -12,6 +12,7 @@ import type { BackofficeRuntimeEnv } from "../backoffice-runtime-env";
 import type { BackofficeTelemetry } from "../backoffice-telemetry";
 import type { BackofficeRuntimeServices } from "../runtime-services";
 import { nodeBackofficeRuntimeInstrumentation } from "./node-runtime-instrumentation";
+import { checkSqliteQueries } from "./sqlite-query-checker";
 
 export function createNodeBackofficeObjectImplementation(options: {
   state: BackofficeObjectState;
@@ -29,5 +30,6 @@ export function createNodeBackofficeObjectImplementation(options: {
     telemetry: options.telemetry,
     fragmentHostOperations: options.fragmentHostOperations,
     configuredObjectLifecycle: options.configuredObjectLifecycle,
+    checkSqlQueries: checkSqliteQueries,
   });
 }

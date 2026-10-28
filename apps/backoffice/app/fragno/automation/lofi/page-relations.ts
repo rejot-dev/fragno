@@ -1,21 +1,18 @@
 import { getTableForeignKey, type AnyColumn, type AnyTable } from "@fragno-dev/db/schema";
 import {
+  createLofiSqliteTableStatements,
   lofiSqliteTableName,
   quoteSqliteIdentifier,
   type SqliteValue,
 } from "@fragno-dev/lofi/sqlite";
-import {
-  guardedSqlViewEngine,
-  type LofiSqliteDerivedRelation,
-} from "@fragno-dev/lofi/sqlite/worker";
+import type { LofiSqliteDerivedRelation } from "@fragno-dev/lofi/sqlite/worker";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
-import { PAGE_LIMITS } from "@fragno-private/backoffice-ui/pages/definition";
 
 import { automationFragmentSchema } from "../schema";
 import { currentWorkflowWaits } from "../workflow-waits";
 import { readWorkflowRuns } from "./reads";
-import { AUTOMATION_PAGE_VIEWS } from "./replica-schemas";
-import { automationViewsSchema, readPiAgents } from "./views";
+import { AUTOMATION_REPLICA_SCHEMAS } from "./replica-schemas";
+import { automationViews, automationViewsSchema, readPiAgents } from "./views";
 
 /** How a relation's column reads in SQL. */
 export type PageRelationColumnType =
@@ -335,32 +332,40 @@ export const AUTOMATION_PAGE_RELATIONS: PageRelation[] = [
   ...DERIVED_RELATIONS.map(({ name, description, columns }) => ({ name, description, columns })),
 ];
 
-/**
- * The live SQL views pages ask the replica worker for: each page query is one SELECT over the
- * relations above, guarded so that a page cannot change the replica or stall the worker.
- */
-export const automationPageViewEngine = guardedSqlViewEngine({
-  kind: AUTOMATION_PAGE_VIEWS,
-  views: Object.fromEntries([
-    ...tableViews.map(({ relation, sql }) => [relation.name, sql]),
-    ...PROJECTION_RELATIONS.map(({ name, sql }) => [name, sql]),
+/** Each relation computed from tables, as the SELECT that reads it from the replica's tables. */
+export const AUTOMATION_PAGE_VIEWS_SQL: Readonly<Record<string, string>> = Object.fromEntries([
+  ...tableViews.map(({ relation, sql }) => [relation.name, sql]),
+  ...PROJECTION_RELATIONS.map(({ name, sql }) => [name, sql]),
+]);
+
+/** The relations Backoffice derives in JavaScript, as the replica worker computes them. */
+export const AUTOMATION_PAGE_DERIVED_RELATIONS: Readonly<
+  Record<string, LofiSqliteDerivedRelation>
+> = Object.fromEntries(
+  DERIVED_RELATIONS.map(({ name, columns, rows }): [string, LofiSqliteDerivedRelation] => [
+    name,
+    {
+      columns: columns.map((column) => column.name),
+      compute: (reader) =>
+        rows(reader).map((row) => columns.map((column) => storedValue(row[column.name]))),
+    },
   ]),
-  derived: Object.fromEntries(
-    DERIVED_RELATIONS.map(({ name, columns, rows }): [string, LofiSqliteDerivedRelation] => [
-      name,
-      {
-        columns: columns.map((column) => column.name),
-        compute: (reader) =>
-          rows(reader).map((row) => columns.map((column) => storedValue(row[column.name]))),
-      },
-    ]),
+);
+
+/**
+ * Creates an empty database that page queries read as they read the replica: the replica's
+ * tables, the relations computed from them as views, and the derived relations as tables.
+ */
+export const AUTOMATION_PAGE_DATABASE_SCHEMA: readonly string[] = [
+  ...createLofiSqliteTableStatements([
+    ...AUTOMATION_REPLICA_SCHEMAS,
+    ...automationViews.localSchemas,
+  ]),
+  ...Object.entries(AUTOMATION_PAGE_VIEWS_SQL).map(
+    ([name, sql]) => `CREATE VIEW ${quoteSqliteIdentifier(name)} AS ${sql}`,
   ),
-  // 25 million operations take about 200 ms; the home page's eleven queries take under one
-  // million together over a scope with 12,000 events.
-  limits: {
-    rows: PAGE_LIMITS.rowsPerQuery,
-    bytes: 4_000_000,
-    operations: 25_000,
-    length: 16_000_000,
-  },
-});
+  ...DERIVED_RELATIONS.map(
+    ({ name, columns }) =>
+      `CREATE TABLE ${quoteSqliteIdentifier(name)} (${columns.map((column) => quoteSqliteIdentifier(column.name)).join(", ")})`,
+  ),
+];

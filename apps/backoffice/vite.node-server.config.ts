@@ -7,10 +7,6 @@ export default defineConfig({
     tsconfigPaths: true,
     alias: {
       "cloudflare:workers": path.resolve(__dirname, "shims/node-cloudflare-workers.ts"),
-      "@/artifacts/pages/wa-sqlite-wasm.server": path.resolve(
-        __dirname,
-        "shims/node-wa-sqlite-wasm.ts",
-      ),
       "@": path.resolve(__dirname, "app"),
       ajv: path.resolve(__dirname, "shims/ajv.ts"),
       "ajv-formats": path.resolve(__dirname, "shims/ajv-formats.ts"),

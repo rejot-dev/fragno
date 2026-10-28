@@ -87,7 +87,9 @@
   },
   // Tags telemetry with the deployed version, so errors and metrics can be compared per release.
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
-  // Codemode guests compile and run in the bridge, one request each; Backoffice loads none itself.
+  // Codemode guests compile and run in the bridge, one request each. Backoffice loads only the
+  // checker of page queries, one per Automations object, as the class of a facet.
+  "worker_loaders": [{ "binding": "LOADER" }],
   "services": [
     {
       "binding": "CODEMODE_COMPILER",
