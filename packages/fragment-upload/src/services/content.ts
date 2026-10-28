@@ -4,8 +4,8 @@ import { UploadServiceError } from "./errors";
  * Names the `storage_object` row for one write of a file. Every write gets its own row, so content
  * prepared for a batch never touches the content the file publishes until the batch commits.
  */
-export function newObjectKey(provider: string, fileKey: string): string {
-  return `${provider}/${fileKey}/${crypto.randomUUID()}`;
+export function newObjectKey(fileKey: string): string {
+  return `${fileKey}/${crypto.randomUUID()}`;
 }
 
 /** Rejects content larger than the largest file; `name` says whose content it is. */

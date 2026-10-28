@@ -6,21 +6,17 @@ import { packTar, unpackTar } from "modern-tar";
 const FILE_COUNT = 150;
 
 async function createLink(upload: DurableObjectStub, access: "read" | "write") {
-  const response = await upload.fetch(
-    "https://upload.internal/api/upload/file-links?provider=database",
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        provider: "database",
-        access,
-        target: { kind: "glob", glob: "repo/**" },
-        expiresInSeconds: 600,
-      }),
-    },
-  );
+  const response = await upload.fetch("https://upload.internal/api/upload/file-links", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      access,
+      target: { kind: "glob", glob: "repo/**" },
+      expiresInSeconds: 600,
+    }),
+  });
   const { token } = (await response.json()) as { token: string };
-  return `https://upload.internal/api/upload/file-links/${token}/archive.tar?provider=database`;
+  return `https://upload.internal/api/upload/file-links/${token}/archive.tar`;
 }
 
 // Durable Object SQLite binds at most 100 parameters per statement, which plain SQLite tests miss.

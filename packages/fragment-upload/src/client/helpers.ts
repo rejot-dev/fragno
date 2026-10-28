@@ -21,7 +21,6 @@ export type UploadProgress = {
 };
 
 export type CreateUploadAndTransferOptions = {
-  provider: string;
   fileKey: string;
   filename?: string;
   contentType?: string;
@@ -34,10 +33,6 @@ export type CreateUploadAndTransferOptions = {
   onProgress?: (progress: UploadProgress) => void;
 };
 
-export type DownloadFileOptions = {
-  provider: string;
-};
-
 /** Candidates come from one index pass per keyword; `indexCursor` resumes within `pass`. */
 export type SearchCandidateCursor = {
   pass: number;
@@ -45,13 +40,11 @@ export type SearchCandidateCursor = {
 };
 
 export type SearchFileCandidatesOptions = {
-  provider: string;
   maxCandidateFiles?: number;
   cursor?: SearchCandidateCursor;
 };
 
 export type HydrateSearchMatchesOptions = StateSearchOptions & {
-  provider: string;
   /** The candidate page's `excludedTerms`, so files from earlier passes are not matched twice. */
   excludedTerms: readonly string[];
   searchOffset?: number;
@@ -67,7 +60,6 @@ export type SearchFileCandidate = {
 };
 
 export type SearchFileCandidatesResult = {
-  provider: string;
   candidates: SearchFileCandidate[];
   candidateFiles: number;
   excludedTerms: string[];
@@ -93,7 +85,6 @@ export type HydrateSearchMatchesResult = {
 export type UploadCreateResponse = {
   uploadId: string;
   fileKey: string;
-  provider: string;
   status: "created" | "in_progress";
   publicationMode: UploadPublicationMode;
   expiresAt: string;
@@ -109,9 +100,9 @@ export type UploadHelpers = {
     options: CreateUploadAndTransferOptions,
   ) => Promise<UploadTransferResult>;
   applyEdits: (input: ApplyFileEditsInput) => Promise<ApplyFileEditsResult>;
-  downloadFile: (fileKey: string, options: DownloadFileOptions) => Promise<Response>;
+  downloadFile: (fileKey: string) => Promise<Response>;
   /** Deletes the file at `fileKey` and its content. */
-  deleteFile: (fileKey: string, options: { provider: string }) => Promise<void>;
+  deleteFile: (fileKey: string) => Promise<void>;
   /** Lists files that may contain any of `keywords`, one index pass per keyword. */
   searchFileCandidates: (
     glob: string,
@@ -284,8 +275,7 @@ const buildDownloadRequestErrorMessage = (input: {
 const hasText = (value: string | undefined | null): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
-const buildByKeyQuery = (provider: string, fileKey: string) =>
-  new URLSearchParams({ provider, key: fileKey }).toString();
+const buildByKeyQuery = (fileKey: string) => new URLSearchParams({ key: fileKey }).toString();
 
 export const createUploadHelpers = (input: {
   buildUrl: (path: string) => string;
@@ -339,7 +329,6 @@ export const createUploadHelpers = (input: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        provider: options.provider,
         fileKey: options.fileKey,
         filename,
         sizeBytes,
@@ -465,15 +454,11 @@ export const createUploadHelpers = (input: {
     if (keywords.length === 0 || !keywords.every(hasText)) {
       throw new Error("Search keywords are required");
     }
-    if (!options || !hasText(options.provider)) {
-      throw new Error("Search provider is required");
-    }
 
     return await fetchJson<SearchFileCandidatesResult>("/files/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        provider: options.provider,
         glob,
         keywords,
         maxCandidateFiles: options.maxCandidateFiles,
@@ -493,19 +478,15 @@ export const createUploadHelpers = (input: {
     if (keywords.length === 0 || !keywords.every(hasText)) {
       throw new Error("Search keywords are required");
     }
-    if (!options || !hasText(options.provider)) {
-      throw new Error("Search provider is required");
-    }
     if (!Number.isFinite(options.maxBytes) || options.maxBytes <= 0) {
       throw new Error("Search byte budget must be a positive number");
     }
 
-    const { provider, excludedTerms, searchOffset, maxBytes, ...searchOptions } = options;
+    const { excludedTerms, searchOffset, maxBytes, ...searchOptions } = options;
     return await fetchJson<HydrateSearchMatchesResult>("/files/search/hydrate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        provider,
         candidateKeys,
         keywords,
         excludedTerms,
@@ -516,22 +497,18 @@ export const createUploadHelpers = (input: {
     });
   };
 
-  const deleteFile: UploadHelpers["deleteFile"] = async (fileKey, { provider }) => {
-    await fetchJson<{ ok: true }>(`/files/by-key?${buildByKeyQuery(provider, fileKey)}`, {
+  const deleteFile: UploadHelpers["deleteFile"] = async (fileKey) => {
+    await fetchJson<{ ok: true }>(`/files/by-key?${buildByKeyQuery(fileKey)}`, {
       method: "DELETE",
     });
   };
 
-  const downloadFile: UploadHelpers["downloadFile"] = async (fileKey, options) => {
+  const downloadFile: UploadHelpers["downloadFile"] = async (fileKey) => {
     if (!hasText(fileKey)) {
       throw new Error("File key is required");
     }
 
-    if (!options || !hasText(options.provider)) {
-      throw new Error("Download provider is required");
-    }
-
-    const byKeyQuery = buildByKeyQuery(options.provider, fileKey);
+    const byKeyQuery = buildByKeyQuery(fileKey);
     const contentEndpoint = buildUrl(`/files/by-key/content?${byKeyQuery}`);
     let contentResponse: Response;
     try {

@@ -207,10 +207,7 @@ async function requestJson<T>(
 }
 
 export function createClient(config: ClientConfig) {
-  const buildByKeyQuery = (provider: string, fileKey: string) => ({
-    provider,
-    key: fileKey,
-  });
+  const buildByKeyQuery = (fileKey: string) => ({ key: fileKey });
 
   return {
     buildUrl: (path: string, query?: Record<string, string | number | boolean | undefined>) =>
@@ -241,26 +238,26 @@ export function createClient(config: ClientConfig) {
     },
     listFiles: (query: Record<string, string | number | boolean | undefined>) =>
       requestJson(config, "/files", { method: "GET", query }),
-    getFile: (provider: string, fileKey: string) =>
+    getFile: (fileKey: string) =>
       requestJson(config, "/files/by-key", {
         method: "GET",
-        query: buildByKeyQuery(provider, fileKey),
+        query: buildByKeyQuery(fileKey),
       }),
-    updateFile: (provider: string, fileKey: string, payload: Record<string, unknown>) =>
+    updateFile: (fileKey: string, payload: Record<string, unknown>) =>
       requestJson(config, "/files/by-key", {
         method: "PATCH",
-        query: buildByKeyQuery(provider, fileKey),
+        query: buildByKeyQuery(fileKey),
         body: payload,
       }),
-    deleteFile: (provider: string, fileKey: string) =>
+    deleteFile: (fileKey: string) =>
       requestJson(config, "/files/by-key", {
         method: "DELETE",
-        query: buildByKeyQuery(provider, fileKey),
+        query: buildByKeyQuery(fileKey),
       }),
-    downloadContent: (provider: string, fileKey: string) =>
+    downloadContent: (fileKey: string) =>
       requestResponse(config, "/files/by-key/content", {
         method: "GET",
-        query: buildByKeyQuery(provider, fileKey),
+        query: buildByKeyQuery(fileKey),
       }),
   };
 }

@@ -212,9 +212,7 @@ describe("shared state shell scenarios", () => {
             const response = await ctx.runtime.objects.upload
               .for({ kind: "org", orgId: "org-1", jurisdiction: null })
               .http.fetch(
-                new Request(
-                  "https://upload.internal/api/upload/files/by-key?provider=database&key=AGENTS.md",
-                ),
+                new Request("https://upload.internal/api/upload/files/by-key?key=AGENTS.md"),
               );
             assert(response.ok);
             const file = (await response.json()) as { metadata: Record<string, unknown> | null };

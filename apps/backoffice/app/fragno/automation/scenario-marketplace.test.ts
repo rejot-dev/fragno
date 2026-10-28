@@ -358,7 +358,6 @@ const writeUploadFile = async (input: {
   upload: { http: { fetch(request: Request): Promise<Response> } };
 }) => {
   const form = new FormData();
-  form.set("provider", "database");
   form.set("fileKey", input.fileKey);
   form.set("filename", input.fileKey.split("/").at(-1) ?? "package");
   form.set("file", new File([input.content], input.fileKey.split("/").at(-1) ?? "package"));
@@ -404,7 +403,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   )?.versions,
                 ).toContain("1.0.0");
                 const url = new URL("https://upload.test/api/upload/files/by-key/content");
-                url.searchParams.set("provider", "database");
                 url.searchParams.set("key", `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`);
                 const response = await ctx.runtime.objects.upload
                   .forName(
@@ -891,7 +889,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               ]) {
                 const upload = ctx.runtime.objects.upload.for(targetScope);
                 const url = new URL("https://upload.test/api/upload/files/by-key/content");
-                url.searchParams.set("provider", "database");
                 url.searchParams.set("key", "automations/telegram-test-command.workflow.js");
                 const response = await upload.http.fetch(new Request(url));
                 assert(response.ok);
@@ -902,7 +899,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 const listingReadmeUrl = new URL(
                   "https://upload.test/api/upload/files/by-key/content",
                 );
-                listingReadmeUrl.searchParams.set("provider", "database");
                 listingReadmeUrl.searchParams.set("key", "README.md");
                 const listingReadmeResponse = await upload.http.fetch(
                   new Request(listingReadmeUrl),
@@ -910,7 +906,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 assert(listingReadmeResponse.status === 404);
 
                 const installerUrl = new URL("https://upload.test/api/upload/files/by-key/content");
-                installerUrl.searchParams.set("provider", "database");
                 installerUrl.searchParams.set("key", MARKETPLACE_INSTALL_WORKFLOW_PATH);
                 const installerResponse = await upload.http.fetch(new Request(installerUrl));
                 assert(installerResponse.status === 404);
@@ -1456,7 +1451,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             expect(transferUploadAttempts).toBe(2);
 
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
-            url.searchParams.set("provider", "database");
             url.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const response = await ctx.runtime.objects.upload
               .for({ kind: "org", orgId: "org-1", jurisdiction: null })
@@ -1618,7 +1612,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                   [MARKETPLACE_UNCHANGED_FILE_KEY, MARKETPLACE_UNCHANGED_FILE_SOURCE],
                 ] as const) {
                   const url = new URL("https://upload.test/api/upload/files/by-key/content");
-                  url.searchParams.set("provider", "database");
                   url.searchParams.set("key", fileKey);
                   const response = await upload.http.fetch(new Request(url));
                   assert(response.ok);
@@ -1807,7 +1800,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             "the existing file remains unchanged and is not recorded as installed",
             async (ctx) => {
               const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
-              contentUrl.searchParams.set("provider", "database");
               contentUrl.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
               const response = await ctx.runtime.objects.upload
                 .for({ kind: "org", orgId: "org-1", jurisdiction: null })
@@ -1939,7 +1931,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
             "the version 1.0.0 file remains and Marketplace is not installed",
             async (ctx) => {
               const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
-              contentUrl.searchParams.set("provider", "database");
               contentUrl.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
               const response = await ctx.runtime.objects.upload
                 .for({ kind: "org", orgId: "org-1", jurisdiction: null })
@@ -2016,7 +2007,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }),
               );
               const url = new URL("https://upload.test/api/upload/files/by-key/content");
-              url.searchParams.set("provider", "database");
               url.searchParams.set("key", `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`);
               const response = await upload.http.fetch(new Request(url));
               assert(response.ok);
@@ -2188,7 +2178,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               }),
             );
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
-            url.searchParams.set("provider", "database");
             url.searchParams.set("key", `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`);
             const response = await upload.http.fetch(new Request(url));
             assert(response.ok);
@@ -2365,7 +2354,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
                 }),
               );
               const url = new URL("https://upload.test/api/upload/files/by-key/content");
-              url.searchParams.set("provider", "database");
               url.searchParams.set("key", `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`);
               const response = await upload.http.fetch(new Request(url));
               assert(response.ok);
@@ -2459,7 +2447,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
               }),
             );
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
-            url.searchParams.set("provider", "database");
             url.searchParams.set("key", `1.0.0/${MARKETPLACE_PACKAGE_FILE_KEY}`);
             const response = await upload.http.fetch(new Request(url));
             assert(response.status === 404);
@@ -2548,7 +2535,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           then.assert("the committed batch remains readable", async (ctx) => {
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
-            url.searchParams.set("provider", "database");
             url.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const response = await ctx.runtime.objects.upload
               .for({ kind: "org", orgId: "org-1", jurisdiction: null })
@@ -2672,7 +2658,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           then.assert("the changed source is rejected before destination transfer", async (ctx) => {
             expect(destinationTransferAttempts).toBe(0);
             const url = new URL("https://upload.test/api/upload/files/by-key/content");
-            url.searchParams.set("provider", "database");
             url.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const response = await ctx.runtime.objects.upload
               .for({ kind: "org", orgId: "org-1", jurisdiction: null })
@@ -2772,7 +2757,6 @@ describe("marketplace scenarios", { concurrent: false }, () => {
           }),
           then.assert("the changed source was never written or recorded", async (ctx) => {
             const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
-            contentUrl.searchParams.set("provider", "database");
             contentUrl.searchParams.set("key", MARKETPLACE_PACKAGE_FILE_KEY);
             const contentResponse = await ctx.runtime.objects.upload
               .for({ kind: "org", orgId: "org-1", jurisdiction: null })

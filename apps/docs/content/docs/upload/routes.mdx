@@ -26,14 +26,13 @@ Notes:
 - `POST /files/commit-prepared` — atomically publish prepared uploads, delete files, and assert file
   revisions.
 - `POST /files/apply-edits` — apply text edits to files atomically.
-- `GET /files` — list files with cursor pagination and optional `provider` + `prefix` filters.
+- `GET /files` — list files with cursor pagination and an optional `prefix` filter.
 - `POST /files/snapshots` — read many files' metadata and revisions at once.
 - `POST /files/search` and `POST /files/search/hydrate` — search the text index.
-- `GET /files/by-key?provider=<provider>&key=<fileKey>` — fetch file metadata.
-- `PATCH /files/by-key?provider=<provider>&key=<fileKey>` — update file metadata.
-- `DELETE /files/by-key?provider=<provider>&key=<fileKey>` — delete a file and its content
-  (idempotent).
-- `GET /files/by-key/content?provider=<provider>&key=<fileKey>` — download a file's content.
+- `GET /files/by-key?key=<fileKey>` — fetch file metadata.
+- `PATCH /files/by-key?key=<fileKey>` — update file metadata.
+- `DELETE /files/by-key?key=<fileKey>` — delete a file and its content (idempotent).
+- `GET /files/by-key/content?key=<fileKey>` — download a file's content.
 
 ## Error codes
 

@@ -11,7 +11,6 @@ import { uploadRoutes } from "./index";
 const MAX_FILE_BYTES = 64;
 
 describe("upload sessions", async () => {
-  const provider = "workspace";
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "drizzle-pglite" })
     .withDbRoundtripGuard(true)
@@ -43,7 +42,6 @@ describe("upload sessions", async () => {
   ) {
     return await fragment.callRoute("POST", "/uploads", {
       body: {
-        provider,
         fileKey,
         filename: fileKey.split("/").at(-1)!,
         sizeBytes: new TextEncoder().encode(content).byteLength,
@@ -62,7 +60,7 @@ describe("upload sessions", async () => {
 
   async function readFile(fileKey: string) {
     const response = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     return response.status === 200 ? await response.text() : response.status;
   }
@@ -155,13 +153,12 @@ describe("upload sessions", async () => {
     // The text index reads the published content.
     await drainDurableHooks(fragment);
     const search = await fragment.callRoute("POST", "/files/search", {
-      body: { provider, glob: "notes/*", keywords: ["final"] },
+      body: { glob: "notes/*", keywords: ["final"] },
     });
     assert(search.type === "json");
     expect(search.data.candidates.map((candidate) => candidate.key)).toEqual(["notes/today.txt"]);
     const hydrated = await fragment.callRoute("POST", "/files/search/hydrate", {
       body: {
-        provider,
         candidateKeys: ["notes/today.txt"],
         keywords: ["final"],
         excludedTerms: [],

@@ -1245,7 +1245,6 @@ describe("Automations object scope binding", () => {
       ]);
 
       const contentUrl = new URL("https://upload.test/api/upload/files/by-key/content");
-      contentUrl.searchParams.set("provider", "database");
       contentUrl.searchParams.set("key", "automations/telegram-test-command.workflow.js");
       const content = await runtime.objects.upload
         .for({ kind: "user", userId: "user-1", jurisdiction: null })

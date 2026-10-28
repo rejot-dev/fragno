@@ -11,7 +11,6 @@ import { searchUploadFiles } from "./search-upload-files";
 
 export async function listUploadFiles(input: {
   routes: UploadRouteCaller;
-  provider: string;
   prefix?: string;
   glob?: string;
   maxPages?: number;
@@ -27,7 +26,6 @@ export async function listUploadFiles(input: {
   for (let page = 1; page <= maxPages; page += 1) {
     const response = await input.routes("GET", "/files", {
       query: {
-        provider: input.provider,
         ...(input.prefix ? { prefix: input.prefix } : {}),
         ...(input.glob ? { glob: input.glob } : {}),
         ...(cursor ? { cursor } : {}),
@@ -75,10 +73,9 @@ export async function listUploadFiles(input: {
  */
 export function createUploadFileCollection(input: {
   routes: UploadRouteCaller;
-  provider: string;
   prefix?: string;
   maxPages?: number;
-  getFileResponse(input: { provider: string; fileKey: string }): Promise<Response | null>;
+  getFileResponse(input: { fileKey: string }): Promise<Response | null>;
 }): FileCollection {
   const prefix = normalizeFileCollectionPrefix(input.prefix);
   const maxPages = input.maxPages ?? 1;
@@ -90,12 +87,10 @@ export function createUploadFileCollection(input: {
     async getTree() {
       const files = await listUploadFiles({
         routes: input.routes,
-        provider: input.provider,
         ...(prefix ? { prefix } : {}),
         maxPages,
       });
       const entries: FileTreeEntry[] = createUploadFileTreeEntries(files, {
-        provider: input.provider,
         prefix,
       });
       return createFileTree(entries);
@@ -104,7 +99,6 @@ export function createUploadFileCollection(input: {
       assertValidFileCollectionPath(path);
       return toFileContent(
         await input.getFileResponse({
-          provider: input.provider,
           fileKey: `${prefix}${path}`,
         }),
       );
@@ -112,7 +106,6 @@ export function createUploadFileCollection(input: {
     async searchFiles(pattern, keywords, options = {}, cursor) {
       const result = await searchUploadFiles({
         routes: input.routes,
-        provider: input.provider,
         glob: `${prefix}${pattern.replace(/^\/+/, "")}`,
         keywords,
         options,

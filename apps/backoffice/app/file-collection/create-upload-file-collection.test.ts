@@ -190,7 +190,6 @@ describe("Upload file collection", () => {
     const { object, requests } = createUploadObject();
 
     await seedReadyUploadFiles(uploadTest.fragments.upload.db, {
-      provider: "database",
       fileKeys: Array.from({ length: 501 }, (_, index) => `workspace/generated/file-${index}.txt`),
     });
 
@@ -259,7 +258,6 @@ describe("Upload file collection", () => {
       let retrievalCount = 0;
       const collection = createUploadFileCollection({
         routes: createUnexpectedRouteCaller(),
-        provider: "database",
         prefix: "workspace",
         getFileResponse: async () => {
           retrievalCount += 1;
@@ -357,11 +355,10 @@ function createCollection(
 ) {
   return createUploadFileCollection({
     routes: createUploadRouteCaller(object),
-    provider: "database",
     prefix,
     ...(maxPages === undefined ? {} : { maxPages }),
-    getFileResponse: ({ provider, fileKey }) => {
-      const query = new URLSearchParams({ provider, key: fileKey });
+    getFileResponse: ({ fileKey }) => {
+      const query = new URLSearchParams({ key: fileKey });
       return object.fetch(
         new Request(`https://upload.test/api/upload/files/by-key/content?${query}`),
       );
@@ -372,7 +369,6 @@ function createCollection(
 function createContentResponseCollection(response: Response) {
   return createUploadFileCollection({
     routes: createUnexpectedRouteCaller(),
-    provider: "database",
     getFileResponse: async () => response,
   });
 }
@@ -396,7 +392,6 @@ async function uploadFile(
   },
 ): Promise<void> {
   const form = new FormData();
-  form.set("provider", "database");
   form.set("fileKey", input.fileKey);
   form.set(
     "file",

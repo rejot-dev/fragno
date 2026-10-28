@@ -3,7 +3,6 @@ import type { GeneratedUiUploadedFile } from "@fragno-private/backoffice-ui/gene
 
 import type { UploadProgress } from "@fragno-dev/upload";
 
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createScopedUploadHelpers } from "@/fragno/upload-client";
 import { workspaceFileName } from "@/lib/workspace-file-name";
 
@@ -33,7 +32,6 @@ export async function uploadGeneratedUiFile({
 }): Promise<GeneratedUiUploadedFile> {
   const fileKey = `${runUploadsFolder(instanceId)}${crypto.randomUUID()}/${workspaceFileName(file.name)}`;
   const result = await createScopedUploadHelpers(scope).createUploadAndTransfer(file, {
-    provider: UPLOAD_PROVIDER_DATABASE,
     fileKey,
     onProgress,
   });
@@ -45,9 +43,7 @@ export async function uploadGeneratedUiFile({
   const replacedFileKey = replaces?.path.slice("/workspace/".length);
   if (replaces && replacedFileKey?.startsWith(runUploadsFolder(instanceId))) {
     try {
-      await createScopedUploadHelpers(replaces.scope).deleteFile(replacedFileKey, {
-        provider: UPLOAD_PROVIDER_DATABASE,
-      });
+      await createScopedUploadHelpers(replaces.scope).deleteFile(replacedFileKey);
     } catch (error) {
       // The new file is uploaded and the form holds it; a leftover file must not undo that.
       console.error("Could not delete the replaced generated UI upload.", error);

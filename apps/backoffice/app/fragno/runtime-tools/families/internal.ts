@@ -27,7 +27,6 @@ type InternalToolContext = BackofficeToolContext<{
 }>;
 
 const workspaceStarterFilesSeedOutputSchema = z.object({
-  provider: z.string(),
   force: z.boolean(),
   created: z.array(z.string()),
   overwritten: z.array(z.string()),
@@ -90,7 +89,7 @@ const filesSeedExecuteTool = defineBackofficeRuntimeTool({
         options.format === "json" || options.print
           ? { data: output }
           : {
-              stdout: `provider=${output.provider}\nforce=${output.force ? "yes" : "no"}\ncreated=${output.created.length}\noverwritten=${output.overwritten.length}\nskipped=${output.skipped.length}\n`,
+              stdout: `force=${output.force ? "yes" : "no"}\ncreated=${output.created.length}\noverwritten=${output.overwritten.length}\nskipped=${output.skipped.length}\n`,
             },
     },
   },

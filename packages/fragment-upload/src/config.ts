@@ -3,7 +3,6 @@ import type { FileLinksConfig } from "./file-links";
 import type { TextIndexOptions } from "./text-index";
 
 export type FileHookPayload = {
-  provider: string;
   fileKey: FileKey;
   objectKey?: string;
   uploadId?: string;
@@ -14,7 +13,6 @@ export type FileHookPayload = {
 
 export type UploadTimeoutPayload = {
   uploadId: string;
-  provider: string;
   fileKey: FileKey;
 };
 

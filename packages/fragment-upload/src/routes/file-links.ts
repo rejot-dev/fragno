@@ -20,7 +20,6 @@ import { UploadServiceError } from "../services/errors";
 import type { FileContentWrite } from "../services/files";
 import { resolveFileKeyInput } from "../services/helpers";
 import { MAX_PREPARED_FILE_BATCH_ENTRIES } from "../services/uploads";
-import { providerNamespaceSchema } from "./shared";
 import { handleUploadServiceError } from "./uploads-errors";
 
 const MAX_FILE_LINK_LIFETIME_SECONDS = 60 * 60;
@@ -58,7 +57,6 @@ class FileLinkRequestError extends Error {
 }
 
 const createFileLinkInputSchema = z.object({
-  provider: providerNamespaceSchema,
   access: z.enum(["read", "write"]),
   target: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("file"), fileKey: z.string().min(1) }),
@@ -352,7 +350,6 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
                 : payload.target;
             const expiresAtEpochMs = Date.now() + payload.expiresInSeconds * 1000;
             const token = await signFileLink(links, {
-              provider: payload.provider,
               access: payload.access,
               target,
               expiresAtEpochMs,
@@ -374,7 +371,6 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
             const { file, body } = await this.handlerTx()
               .withServiceCalls(() => [
                 services.getFileContent({
-                  provider: grant.provider,
                   fileKey: requireFileTarget(grant),
                 }),
               ])
@@ -417,7 +413,7 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
               }),
             );
             await this.handlerTx()
-              .withServiceCalls(() => [services.writeFiles(grant.provider, writes)])
+              .withServiceCalls(() => [services.writeFiles(writes)])
               .execute();
             return json(summarizeLinkWrites(writes));
           } catch (cause) {
@@ -439,7 +435,6 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
             const page = await this.handlerTx()
               .withServiceCalls(() => [
                 services.listFiles({
-                  provider: grant.provider,
                   prefix: base,
                   pageSize: MAX_FILE_LINK_ARCHIVE_PAGE_FILES,
                   cursor: query.get("cursor") || undefined,
@@ -456,9 +451,7 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
               // holds a page of files in memory.
               for (const file of files) {
                 const content = await this.handlerTx()
-                  .withServiceCalls(() => [
-                    services.getFileContent({ provider: grant.provider, fileKey: file.key }),
-                  ])
+                  .withServiceCalls(() => [services.getFileContent({ fileKey: file.key })])
                   .transform(({ serviceResult: [result] }) => result)
                   .execute();
                 const entry = controller.add({
@@ -507,7 +500,7 @@ export const fileLinkRoutesFactory = defineRoutes(uploadFragmentDefinition).crea
             );
             if (writes.length > 0) {
               await this.handlerTx()
-                .withServiceCalls(() => [services.writeFiles(grant.provider, writes)])
+                .withServiceCalls(() => [services.writeFiles(writes)])
                 .execute();
             }
             return json(summarizeLinkWrites(writes));

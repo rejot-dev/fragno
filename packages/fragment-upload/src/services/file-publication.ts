@@ -14,7 +14,6 @@ type ReadyFileRow = FileRow & { status: "ready" };
 type RevisionFileWritePrecondition = Extract<UploadFileWritePrecondition, { kind: "revision" }>;
 type FileWritePreconditionDetails = {
   uploadId?: string;
-  provider: string;
   fileKey: string;
 };
 
@@ -25,7 +24,6 @@ export type StoredFileRow = FileRow & { object: { id: FragnoId } | null };
 export type FileContentSource = Pick<
   FileRow,
   | "key"
-  | "provider"
   | "uploaderId"
   | "filename"
   | "contentType"
@@ -40,11 +38,10 @@ export type FileContentSource = Pick<
 export function buildUploadHookPayload(
   upload: Pick<
     UploadSnapshot,
-    "id" | "key" | "provider" | "uploaderId" | "contentType" | "objectKey" | "expectedSizeBytes"
+    "id" | "key" | "uploaderId" | "contentType" | "objectKey" | "expectedSizeBytes"
   >,
 ): FileHookPayload {
   return {
-    provider: upload.provider,
     fileKey: upload.key,
     objectKey: upload.objectKey,
     uploadId: upload.id.toString(),
@@ -55,14 +52,10 @@ export function buildUploadHookPayload(
 }
 
 export function buildFileHookPayload(
-  file: Pick<
-    FileRow,
-    "provider" | "key" | "objectKey" | "uploaderId" | "sizeBytes" | "contentType"
-  >,
+  file: Pick<FileRow, "key" | "objectKey" | "uploaderId" | "sizeBytes" | "contentType">,
   uploadId?: string,
 ): FileHookPayload {
   return {
-    provider: file.provider,
     fileKey: file.key,
     objectKey: file.objectKey,
     uploadId,
@@ -125,7 +118,6 @@ export function publishFileContent(
   // overwrite the file's and lose it to replicas that know the file by its ID.
   const content: Omit<FileContentSource, "uploadId"> = {
     key: source.key,
-    provider: source.provider,
     uploaderId: source.uploaderId,
     filename: source.filename,
     contentType: source.contentType,
@@ -181,7 +173,6 @@ export function deleteFileContent(uow: UploadMutationUnitOfWork, file: StoredFil
 export function toPreparedFileWrite(upload: UploadSnapshot): PreparedFileWrite {
   return {
     uploadId: upload.id.toString(),
-    provider: upload.provider,
     fileKey: upload.key,
     sizeBytes: toSafeNumber(upload.bytesUploaded),
     contentType: upload.contentType,

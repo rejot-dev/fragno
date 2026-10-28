@@ -140,12 +140,11 @@ function SynchronizedFilesExplorer({
   synchronizedSource: SynchronizedFilesExplorerSource;
   replica: LofiSqliteClient;
 }) {
-  const { provider } = synchronizedSource.synchronization;
   const status = useLofiReplicaStatus(replica);
-  const files = useReadyUploadFiles(replica, provider);
+  const files = useReadyUploadFiles(replica);
   const localTree = useMemo(
-    () => (files.status === "ready" ? createUploadFileTree(files.data, { provider }) : null),
-    [files, provider],
+    () => (files.status === "ready" ? createUploadFileTree(files.data) : null),
+    [files],
   );
   const synchronizedTree = resolveSynchronizedFileTree(
     synchronizedSource.tree,

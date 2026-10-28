@@ -10,7 +10,6 @@ import { createUploadHelpers } from "./helpers";
 const TEST_BASE_URL = "http://upload-helpers.test";
 
 describe("upload client helpers against the fragment", async () => {
-  const provider = "workspace";
   const testSetup = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
     .withDbRoundtripGuard(true)
@@ -31,7 +30,6 @@ describe("upload client helpers against the fragment", async () => {
   const readFile = async (fileKey: string) => {
     const response = await fetcher(
       `${TEST_BASE_URL}${server.fragment.mountRoute}/files/by-key/content?${new URLSearchParams({
-        provider,
         key: fileKey,
       })}`,
     );
@@ -49,15 +47,13 @@ describe("upload client helpers against the fragment", async () => {
 
   it("deletes a file by key so reading it reports it gone", async () => {
     await helpers.applyEdits({
-      provider,
       edits: [{ kind: "write", fileKey: "uploads/old.txt", content: "old" }],
     });
 
-    await helpers.deleteFile("uploads/old.txt", { provider });
+    await helpers.deleteFile("uploads/old.txt");
 
     const response = await fetcher(
       `${TEST_BASE_URL}${server.fragment.mountRoute}/files/by-key/content?${new URLSearchParams({
-        provider,
         key: "uploads/old.txt",
       })}`,
     );
@@ -69,7 +65,6 @@ describe("upload client helpers against the fragment", async () => {
     const uploaded = await helpers.createUploadAndTransfer(
       new Blob(["report body"], { type: "text/plain" }),
       {
-        provider,
         fileKey: "reports/q3.txt",
         onProgress: ({ bytesUploaded }) => progress.push(bytesUploaded),
       },
@@ -77,18 +72,15 @@ describe("upload client helpers against the fragment", async () => {
     assert(uploaded.kind === "published");
     expect(uploaded.file).toMatchObject({ fileKey: "reports/q3.txt", sizeBytes: 11 });
     assert(progress.at(-1) === 11);
-    const downloaded = await helpers.downloadFile("reports/q3.txt", { provider });
+    const downloaded = await helpers.downloadFile("reports/q3.txt");
     assert((await downloaded.text()) === "report body");
 
     const prepared = await helpers.createUploadAndTransfer(new Blob(["next quarter"]), {
-      provider,
       fileKey: "reports/q4.txt",
       publicationMode: "batch",
     });
     assert(prepared.kind === "prepared");
-    await expect(helpers.downloadFile("reports/q4.txt", { provider })).rejects.toThrow(
-      /response status 404/,
-    );
+    await expect(helpers.downloadFile("reports/q4.txt")).rejects.toThrow(/response status 404/);
     const committed = await fetcher(
       `${TEST_BASE_URL}${server.fragment.mountRoute}/files/commit-prepared`,
       {
@@ -105,7 +97,6 @@ describe("upload client helpers against the fragment", async () => {
 
   it("applies write, replace, and JSON operations through one client request", async () => {
     await helpers.applyEdits({
-      provider,
       edits: [
         { kind: "write", fileKey: "src/config.ts", content: "export const enabled = false;" },
         { kind: "write", fileKey: "generated/config.json", content: '{"enabled":false}' },
@@ -113,7 +104,6 @@ describe("upload client helpers against the fragment", async () => {
     });
 
     const applied = await helpers.applyEdits({
-      provider,
       edits: [
         {
           kind: "replace",

@@ -48,8 +48,7 @@ export const uploadClient = createUploadFragmentClient({ mountRoute: "/api/uploa
 ```
 
 `useUploadHelpers()` returns `createUploadAndTransfer`, `downloadFile`, `deleteFile`, `applyEdits`,
-`searchFileCandidates`, and `hydrateSearchMatches`. Every call takes a `provider`, the namespace its
-files belong to.
+`searchFileCandidates`, and `hydrateSearchMatches`.
 
 ## Key routes
 

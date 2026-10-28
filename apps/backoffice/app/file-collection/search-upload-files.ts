@@ -40,7 +40,6 @@ export type UploadFileSearchResult = {
 
 export async function searchUploadFiles(input: {
   routes: UploadRouteCaller;
-  provider: string;
   glob: string;
   keywords: readonly string[];
   options?: FileSearchOptions;
@@ -173,7 +172,6 @@ async function findCandidates(
 ) {
   const response = await input.routes("POST", "/files/search", {
     body: {
-      provider: input.provider,
       glob: input.glob,
       keywords: [...input.keywords],
       maxCandidateFiles: MAX_CANDIDATE_FILES,
@@ -203,7 +201,6 @@ async function hydrateMatches(
 ) {
   const response = await input.routes("POST", "/files/search/hydrate", {
     body: {
-      provider: input.provider,
       candidateKeys: batch.candidateKeys,
       keywords: [...input.keywords],
       excludedTerms: batch.excludedTerms,

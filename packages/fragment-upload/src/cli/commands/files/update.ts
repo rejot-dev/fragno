@@ -5,7 +5,6 @@ import {
   createClientFromContext,
   parseJsonValue,
   resolveFileKeyValue,
-  resolveProviderValue,
 } from "../../utils/options.js";
 
 export const filesUpdateCommand = define({
@@ -13,10 +12,6 @@ export const filesUpdateCommand = define({
   description: "Update file metadata",
   args: {
     ...baseArgs,
-    provider: {
-      type: "string",
-      description: "File provider namespace",
-    },
     "file-key": {
       type: "string",
       description: "File key",
@@ -39,7 +34,6 @@ export const filesUpdateCommand = define({
     },
   },
   run: async (ctx) => {
-    const provider = resolveProviderValue(ctx.values.provider);
     const resolvedKey = resolveFileKeyValue({
       fileKey: ctx.values["file-key"],
     });
@@ -63,7 +57,7 @@ export const filesUpdateCommand = define({
     }
 
     const client = createClientFromContext(ctx);
-    const response = await client.updateFile(provider, resolvedKey.fileKey, payload);
+    const response = await client.updateFile(resolvedKey.fileKey, payload);
     console.log(JSON.stringify(response, null, 2));
   },
 });

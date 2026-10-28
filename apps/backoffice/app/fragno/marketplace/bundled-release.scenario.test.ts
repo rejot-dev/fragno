@@ -84,7 +84,6 @@ function packageRoutes(ctx: BackofficeScenarioContext) {
 
 async function fileContent(ctx: BackofficeScenarioContext, fileKey: string): Promise<Response> {
   const url = new URL("https://upload.test/api/upload/files/by-key/content");
-  url.searchParams.set("provider", "database");
   url.searchParams.set("key", fileKey);
   return ctx.runtime.objects.upload
     .forName(
@@ -161,7 +160,7 @@ test("a maximum-size release captures destination revisions in one batch without
               )?.versions,
             ).toEqual(["1.0.0"]);
             const response = await packageRoutes(ctx)("GET", "/files", {
-              query: { provider: "database", prefix: "1.0.0/", pageSize: "500", status: "ready" },
+              query: { prefix: "1.0.0/", pageSize: "500", status: "ready" },
             });
             assert(response.type === "json");
             expect(response.data.files).toHaveLength(101);
@@ -195,7 +194,6 @@ test("a maximum-size release captures destination revisions in one batch without
             expect(individualReads).toBe(0);
             const result = await packageRoutes(ctx)("POST", "/files/snapshots", {
               body: {
-                provider: "database",
                 fileKeys: ["1.0.0/file-99.txt", `1.0.0/${MARKETPLACE_RELEASE_GUARD_PATH}`],
               },
             });
@@ -242,7 +240,6 @@ test("reused files are revision-asserted atomically with the metadata guard", as
               ) {
                 changeDuringPreparation = false;
                 const form = new FormData();
-                form.set("provider", "database");
                 form.set("fileKey", "1.0.0/README.md");
                 form.set(
                   "file",
@@ -486,7 +483,7 @@ test("bundled releases use captured input, guarded replacement, and stale-restar
               workflowInstanceId: ctx.vars.originalInstanceId,
             });
             const marker = await packageRoutes(ctx)("GET", "/files/by-key", {
-              query: { provider: "database", key: `1.0.0/${MARKETPLACE_RELEASE_GUARD_PATH}` },
+              query: { key: `1.0.0/${MARKETPLACE_RELEASE_GUARD_PATH}` },
             });
             assert(marker.type === "json");
             ctx.vars.markerRevision = marker.data.revision;
@@ -528,7 +525,7 @@ test("bundled releases use captured input, guarded replacement, and stale-restar
               )?.listing.name === "Replaced metadata",
             );
             const marker = await packageRoutes(ctx)("GET", "/files/by-key", {
-              query: { provider: "database", key: `1.0.0/${MARKETPLACE_RELEASE_GUARD_PATH}` },
+              query: { key: `1.0.0/${MARKETPLACE_RELEASE_GUARD_PATH}` },
             });
             assert(marker.type === "json");
             expect(marker.data.revision).toBeGreaterThan(ctx.vars.markerRevision);

@@ -102,7 +102,6 @@ describe("Marketplace package files", () => {
     const storedFile = await readStoredFile("2.0.0/README.md");
     expect(storedFile).toMatchObject({
       key: "2.0.0/README.md",
-      provider: "database",
       filename: "README.md",
       status: "ready",
     });
@@ -111,7 +110,6 @@ describe("Marketplace package files", () => {
   test("paginates shared listing storage across Upload metadata pages", async () => {
     const { objects, requests } = await createUploadObjects();
     await seedReadyUploadFiles(uploadTest.fragments.upload.db, {
-      provider: "database",
       fileKeys: Array.from({ length: 501 }, (_, index) => `2.0.0/generated/file-${index}.txt`),
     });
     const result = await loadPublishedMarketplacePackageExplorer({
@@ -202,7 +200,6 @@ async function createUploadObjects(): Promise<{
 
   for (const file of files) {
     const form = new FormData();
-    form.set("provider", "database");
     form.set("fileKey", file.fileKey);
     form.set(
       "file",
@@ -237,9 +234,7 @@ async function readStoredFile(fileKey: string) {
     .createUnitOfWork("read-marketplace-package-file")
     .forSchema(uploadSchema)
     .findFirst("file", (builder) =>
-      builder.whereIndex("idx_file_provider_key", (expression) =>
-        expression.and(expression("provider", "=", "database"), expression("key", "=", fileKey)),
-      ),
+      builder.whereIndex("idx_file_key", (expression) => expression("key", "=", fileKey)),
     );
   await fileUow.executeRetrieve();
   return (await fileUow.retrievalPhase)[0];

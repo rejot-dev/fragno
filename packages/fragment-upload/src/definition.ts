@@ -25,18 +25,14 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
           .retrieve(({ forSchema }) =>
             forSchema(uploadSchema)
               .findFirst("file", (b) =>
-                b.whereIndex("idx_file_provider_key", (eb) =>
-                  eb.and(eb("provider", "=", payload.provider), eb("key", "=", payload.fileKey)),
-                ),
+                b.whereIndex("idx_file_key", (eb) => eb("key", "=", payload.fileKey)),
               )
               .findFirst("storage_object", (b) =>
                 b.whereIndex("idx_storage_object_key", (eb) => eb("storageKey", "=", objectKey)),
               )
               .findFirst("file_text_document", (b) =>
                 b
-                  .whereIndex("idx_file_text_document_provider_key", (eb) =>
-                    eb.and(eb("provider", "=", payload.provider), eb("key", "=", payload.fileKey)),
-                  )
+                  .whereIndex("idx_file_text_document_key", (eb) => eb("key", "=", payload.fileKey))
                   .joinMany("terms", "file_text_term", (term) =>
                     term.onIndex("idx_file_text_term_document", (eb) =>
                       eb("documentId", "=", eb.parent("id")),
@@ -71,7 +67,6 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
               ? document.id
               : uow.create("file_text_document", {
                   fileId: file.id,
-                  provider: file.provider,
                   key: file.key,
                   objectKey,
                   contentHash: index.contentHash,
@@ -100,7 +95,6 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
             for (const term of index.terms) {
               uow.create("file_text_term", {
                 documentId,
-                provider: file.provider,
                 key: file.key,
                 term: term.term,
                 positions: term.positions,
@@ -118,9 +112,7 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
           .retrieve(({ forSchema }) =>
             forSchema(uploadSchema).findFirst("file_text_document", (b) =>
               b
-                .whereIndex("idx_file_text_document_provider_key", (eb) =>
-                  eb.and(eb("provider", "=", payload.provider), eb("key", "=", payload.fileKey)),
-                )
+                .whereIndex("idx_file_text_document_key", (eb) => eb("key", "=", payload.fileKey))
                 .joinMany("terms", "file_text_term", (term) =>
                   term.onIndex("idx_file_text_term_document", (eb) =>
                     eb("documentId", "=", eb.parent("id")),
@@ -195,7 +187,6 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
             return {
               shouldNotify: true as const,
               payload: {
-                provider: upload.provider,
                 fileKey: upload.key,
                 objectKey: upload.objectKey,
                 uploadId: payload.uploadId,

@@ -15,7 +15,6 @@ export default function Home() {
       description="Files stream through the server into the app's database. Each upload stores its content and publishes the file in one transaction."
       client={uploadClient}
       defaultCollection="files"
-      defaultProvider="files"
       accent="emerald"
     />
   );

@@ -23,7 +23,6 @@ export async function createMarketplacePackageUpload({
 }): Promise<string> {
   const response = await routes("POST", "/uploads", {
     body: {
-      provider: "database",
       fileKey: file.fileKey,
       filename: file.relativePath.split("/").at(-1)!,
       sizeBytes: file.sizeBytes,
@@ -60,7 +59,7 @@ export async function transferMarketplacePackageUpload({
 }): Promise<PreparedFileWrite> {
   const response = await routes("PUT", "/uploads/:uploadId/content", {
     pathParams: { uploadId },
-    query: { provider: "database" },
+    query: {},
     headers: { "content-type": "application/octet-stream" },
     body: new Blob([Uint8Array.from(content)]),
   });

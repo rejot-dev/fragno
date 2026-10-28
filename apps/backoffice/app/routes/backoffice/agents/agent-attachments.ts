@@ -15,7 +15,6 @@ import {
   piAgentAttachmentsFolder,
   type PiAgentAttachment,
 } from "@/fragno/pi/agent/pi-agent-attachments";
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createScopedUploadHelpers } from "@/fragno/upload-client";
 import { workspaceFileName } from "@/lib/workspace-file-name";
 import {
@@ -76,7 +75,6 @@ async function uploadAttachment(
 ): Promise<string> {
   const folder = piAgentAttachmentsFolder(agentName).slice("/workspace/".length);
   const result = await createScopedUploadHelpers(scope).createUploadAndTransfer(file, {
-    provider: UPLOAD_PROVIDER_DATABASE,
     fileKey: `${folder}${crypto.randomUUID()}/${workspaceFileName(file.name)}`,
     onProgress: ({ bytesUploaded, totalBytes }) => {
       onProgress(totalBytes > 0 ? bytesUploaded / totalBytes : null);
@@ -90,9 +88,7 @@ async function uploadAttachment(
 
 async function deleteAttachment(scope: BackofficeRoutableScope, path: string) {
   try {
-    await createScopedUploadHelpers(scope).deleteFile(path.slice("/workspace/".length), {
-      provider: UPLOAD_PROVIDER_DATABASE,
-    });
+    await createScopedUploadHelpers(scope).deleteFile(path.slice("/workspace/".length));
   } catch (error) {
     // The file only stays behind in the workspace; the composer no longer holds it.
     console.error("Could not delete a removed attachment.", error);

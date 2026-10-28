@@ -17,11 +17,6 @@ const fragment = createUploadFragment(
 );
 ```
 
-## Providers
-
-Every file belongs to a `provider`, a namespace the caller names on every request. Files of
-different providers never collide, even with the same key.
-
 ## Upload a File
 
 Routes are relative to the fragment mount, for example `/api/uploads`.
@@ -31,7 +26,6 @@ POST /uploads
 Content-Type: application/json
 
 {
-  "provider": "workspace",
   "fileKey": "reports/q3.csv",
   "filename": "q3.csv",
   "sizeBytes": 1048576,
@@ -43,7 +37,6 @@ Content-Type: application/json
 ```json
 {
   "uploadId": "upload_123",
-  "provider": "workspace",
   "fileKey": "reports/q3.csv",
   "status": "created",
   "publicationMode": "batch",
@@ -67,7 +60,7 @@ timestamps; read the file when you need them.
 ```json
 {
   "kind": "published",
-  "file": { "provider": "workspace", "fileKey": "reports/q3.csv", "status": "ready" }
+  "file": { "fileKey": "reports/q3.csv", "status": "ready" }
 }
 ```
 
@@ -78,7 +71,6 @@ A batch upload returns a prepared write:
   "kind": "prepared",
   "write": {
     "uploadId": "upload_123",
-    "provider": "workspace",
     "fileKey": "reports/q3.csv",
     "sizeBytes": 1048576,
     "contentType": "text/csv",
@@ -109,13 +101,11 @@ Content-Type: application/json
     { "kind": "write", "uploadId": "upload_456", "precondition": { "kind": "revision", "revision": 4 } },
     {
       "kind": "delete",
-      "provider": "workspace",
       "fileKey": "reports/old.csv",
       "precondition": { "kind": "revision", "revision": 2 }
     },
     {
       "kind": "assert",
-      "provider": "workspace",
       "fileKey": "reports/manifest.json",
       "precondition": { "kind": "revision", "revision": 9 }
     }
@@ -140,7 +130,6 @@ Prepared uploads that are aborted, or whose session expires before a commit, los
 
 ```ts
 const result = await helpers.createUploadAndTransfer(file, {
-  provider: "workspace",
   fileKey: "reports/q3.csv",
   publicationMode: "batch",
   onProgress(progress) {
@@ -161,7 +150,7 @@ if (result.kind === "prepared") {
 }
 ```
 
-`downloadFile(fileKey, { provider })` reads `GET /files/by-key/content`.
+`downloadFile(fileKey)` reads `GET /files/by-key/content`.
 
 ## File Links
 
@@ -201,7 +190,6 @@ POST /file-links
 Content-Type: application/json
 
 {
-  "provider": "workspace",
   "access": "read",
   "target": { "kind": "glob", "glob": "reports/**" },
   "expiresInSeconds": 900
@@ -279,11 +267,11 @@ node packages/fragment-upload/bin/run.js --help
 
 ```bash
 fragno-upload --help
-fragno-upload uploads create -b https://host.example.com/api/uploads --provider workspace --file-key users/42/avatar --filename demo.txt --size-bytes 10 --content-type text/plain
-fragno-upload uploads transfer -b https://host.example.com/api/uploads -f ./demo.txt --provider workspace --file-key users/42/avatar
-fragno-upload uploads transfer -b https://host.example.com/api/uploads -f ./report.csv --provider workspace --file-key reports/q3.csv --publication-mode batch
-fragno-upload files list -b https://host.example.com/api/uploads --provider workspace --prefix users/42/
-fragno-upload files download -b https://host.example.com/api/uploads --provider workspace --file-key users/42/avatar -o ./download.txt
+fragno-upload uploads create -b https://host.example.com/api/uploads --file-key users/42/avatar --filename demo.txt --size-bytes 10 --content-type text/plain
+fragno-upload uploads transfer -b https://host.example.com/api/uploads -f ./demo.txt --file-key users/42/avatar
+fragno-upload uploads transfer -b https://host.example.com/api/uploads -f ./report.csv --file-key reports/q3.csv --publication-mode batch
+fragno-upload files list -b https://host.example.com/api/uploads --prefix users/42/
+fragno-upload files download -b https://host.example.com/api/uploads --file-key users/42/avatar -o ./download.txt
 ```
 
 Environment defaults:

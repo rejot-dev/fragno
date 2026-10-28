@@ -31,7 +31,6 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
             return json({
               uploadId: upload.id.toString(),
               fileKey: upload.key,
-              provider: upload.provider,
               status: upload.status,
               publicationMode: upload.publicationMode,
               expiresAt: upload.expiresAt,
@@ -57,7 +56,6 @@ export const uploadRoutesFactory = defineRoutes(uploadFragmentDefinition).create
             return json({
               uploadId: upload.id.toString(),
               fileKey: upload.key,
-              provider: upload.provider,
               status: upload.status,
               publicationMode: upload.publicationMode,
               expectedSizeBytes: Number(upload.expectedSizeBytes),

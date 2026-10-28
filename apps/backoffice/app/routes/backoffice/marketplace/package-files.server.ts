@@ -10,7 +10,6 @@ import { createUploadFileCollection } from "@/file-collection/create-upload-file
 import type { FileCollection, FileContent, FileTree } from "@/file-collection/file-collection";
 import { isPathWithin, normalizeAbsolutePath } from "@/files/normalize-path";
 import { type MarketplaceListingStorage } from "@/fragno/marketplace/contracts";
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 
 import {
@@ -86,11 +85,9 @@ function createPublishedMarketplacePackageCollection(input: {
   const uploadObject = input.objects.upload.forName(input.manifest.uploadName);
   const uploadCollection = createUploadFileCollection({
     routes: createUploadRouteCaller(uploadObject.http, input.request),
-    provider: UPLOAD_PROVIDER_DATABASE,
     // Shared listing storage spans releases; retain a page budget for each version and listing-root files.
     maxPages: input.manifest.versions.length + 1,
-    getFileResponse: ({ provider, fileKey }) =>
-      fetchUploadFile(uploadObject, input.request, provider, fileKey),
+    getFileResponse: ({ fileKey }) => fetchUploadFile(uploadObject, input.request, fileKey),
   });
 
   return {
@@ -112,11 +109,9 @@ function createPublishedMarketplacePackageCollection(input: {
 function fetchUploadFile(
   object: BackofficeObjectHandle<UploadCommands>,
   request: Request,
-  provider: string,
   fileKey: string,
 ): Promise<Response> {
   const url = new URL("/api/upload/files/by-key/content", request.url);
-  url.searchParams.set("provider", provider);
   url.searchParams.set("key", fileKey);
   return object.http.fetch(new Request(url, { headers: request.headers }));
 }

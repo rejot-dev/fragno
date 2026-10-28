@@ -13,7 +13,6 @@ import { uploadSchema } from "../schema";
 import { uploadRoutes } from "./index";
 
 describe("file links", async () => {
-  const provider = "workspace";
   const fileLinks: FileLinksConfig = {
     secret: "file-link-test-secret",
     audience: "workspace-a",
@@ -74,7 +73,7 @@ describe("file links", async () => {
     expiresInSeconds = 60,
   ) => {
     const response = await fragment.callRoute("POST", "/file-links", {
-      body: { provider, access, target, expiresInSeconds },
+      body: { access, target, expiresInSeconds },
     });
     assert(response.type === "json");
     return response.data.token;
@@ -83,7 +82,6 @@ describe("file links", async () => {
   const writeFile = async (fileKey: string, content: string) => {
     const form = new FormData();
     form.set("file", new File([content], path.basename(fileKey), { type: "text/plain" }));
-    form.set("provider", provider);
     form.set("fileKey", fileKey);
     const response = await fragment.callRoute("POST", "/files", { body: form });
     assert(response.type === "json");
@@ -91,14 +89,14 @@ describe("file links", async () => {
 
   const readFile = async (fileKey: string) => {
     const response = await fragment.callRouteRaw("GET", "/files/by-key/content", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     return response.status === 200 ? await response.text() : null;
   };
 
   const getFile = async (fileKey: string) => {
     const response = await fragment.callRoute("GET", "/files/by-key", {
-      query: { provider, key: fileKey },
+      query: { key: fileKey },
     });
     assert(response.type === "json");
     return response.data;
@@ -264,7 +262,7 @@ describe("file links", async () => {
 
     await expect(readFile("out/kept.txt")).resolves.toBe("before");
     const listed = await fragment.callRoute("GET", "/files", {
-      query: { provider, prefix: "" },
+      query: { prefix: "" },
     });
     assert(listed.type === "json");
     expect(listed.data.files.map((file) => file.fileKey)).toEqual(["out/kept.txt"]);

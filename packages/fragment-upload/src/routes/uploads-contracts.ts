@@ -1,11 +1,10 @@
 import { z } from "zod";
 
-import { checksumSchema, providerNamespaceSchema } from "./shared";
+import { checksumSchema } from "./shared";
 
 const uploadPublicationModeSchema = z.enum(["immediate", "batch"]);
 
 export const createUploadInputSchema = z.object({
-  provider: providerNamespaceSchema,
   keyParts: z.array(z.union([z.string(), z.number().int()])).optional(),
   fileKey: z.string().optional(),
   filename: z.string().min(1),
@@ -27,7 +26,6 @@ export const createUploadInputSchema = z.object({
 export const createUploadOutputSchema = z.object({
   uploadId: z.string(),
   fileKey: z.string(),
-  provider: z.string(),
   status: z.enum(["created", "in_progress"]),
   publicationMode: uploadPublicationModeSchema,
   expiresAt: z.date(),
@@ -36,7 +34,6 @@ export const createUploadOutputSchema = z.object({
 export const uploadStatusOutputSchema = z.object({
   uploadId: z.string(),
   fileKey: z.string(),
-  provider: z.string(),
   status: z.enum([
     "created",
     "in_progress",

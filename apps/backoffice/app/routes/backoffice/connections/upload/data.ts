@@ -40,22 +40,16 @@ const readMessageFromPayload = (payload: unknown): string | null => {
   return null;
 };
 
-const toByKeyQuery = (provider: string, fileKey: string) => ({
-  provider,
-  key: fileKey,
-});
-
 export async function deleteUploadFile(
   request: Request,
   context: Readonly<RouterContextProvider>,
   organization: BackofficeOrganizationContextScope,
-  provider: string,
   fileKey: string,
 ): Promise<UploadDeleteFileResult> {
   try {
     const callRoute = createUploadRouteCaller(request, context, organization);
     const response = await callRoute("DELETE", "/files/by-key", {
-      query: toByKeyQuery(provider, fileKey),
+      query: { key: fileKey },
     });
 
     if (response.type === "json" && isSuccessStatus(response.status)) {

@@ -15,10 +15,11 @@ This is a pre-1.0 breaking change:
 - Direct and multipart uploads are removed, with the routes `POST /uploads/:uploadId/complete`,
   `/progress`, `/parts`, `/parts/complete`, and `GET /files/by-key/download-url`. Content always
   goes through `PUT /uploads/:uploadId/content`.
-- `provider` is required on `POST /uploads` and in the client helpers, and names any namespace;
+- `provider` is gone: a file is addressed by its key alone in routes, client helpers, the CLI, file
+  links, hook payloads, and records. `downloadFile` and `deleteFile` take only the key, and
   `PROVIDER_MISMATCH` is gone. Upload responses no longer carry `strategy` or follow-up endpoint
   URLs, and prepared writes no longer carry `objectKey`.
-- `downloadFile` takes no `method`. Oversized content fails with `FILE_TOO_LARGE` (413).
+- Oversized content fails with `FILE_TOO_LARGE` (413).
 - Concurrent edits now re-apply to the text another write published, instead of failing with
   `FILE_PRECONDITION_FAILED`. Edits enforce `maxFileBytes` on each file they write.
 - Search candidates carry their `byteLength`. `POST /files/search/hydrate` reads every candidate's
@@ -27,6 +28,7 @@ This is a pre-1.0 breaking change:
 - Cleanup events that earlier versions queued are no longer handled, and fail once their retries run
   out; the content they named stays stored.
 
-The schema drops the `upload_part` table, the upload columns direct and multipart uploads used, and
-the file error columns. Existing files keep their content, provided it was stored by the database
-storage adapter in the same database.
+The schema drops the `upload_part` table, the upload columns direct and multipart uploads used, the
+file error columns, and every `provider` column. Keys become unique on their own, so a database
+holding one key under two providers fails to migrate; delete one of each pair first. Existing files
+keep their content, provided it was stored by the database storage adapter in the same database.

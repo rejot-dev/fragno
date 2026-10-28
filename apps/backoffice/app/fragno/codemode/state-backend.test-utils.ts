@@ -244,7 +244,6 @@ export class MemoryUploadObject implements FetchCommands {
       tags: null,
       metadata: record.metadata,
       status: record.status,
-      provider: "database",
       createdAt: record.updatedAt,
       updatedAt: record.updatedAt,
       completedAt: record.updatedAt,
@@ -274,7 +273,6 @@ export class MemoryUploadObject implements FetchCommands {
 
     return Response.json({
       files: page.map((record) => ({
-        provider: "database",
         fileKey: record.fileKey,
         filename: record.filename,
         sizeBytes: record.content.byteLength,
@@ -352,7 +350,6 @@ export class MemoryUploadObject implements FetchCommands {
       String(form.get("filename") ?? fileKey.split("/").at(-1) ?? "file"),
     );
     return Response.json({
-      provider: "database",
       fileKey: record.fileKey,
       filename: record.filename,
       sizeBytes: record.content.byteLength,
@@ -404,7 +401,6 @@ export class MemoryUploadObject implements FetchCommands {
       status: "created",
       publicationMode: "batch",
       expiresAt,
-      provider: "database",
     });
   }
 
@@ -422,7 +418,6 @@ export class MemoryUploadObject implements FetchCommands {
       kind: "prepared",
       write: {
         uploadId,
-        provider: "database",
         fileKey: upload.fileKey,
         sizeBytes: upload.content.byteLength,
         contentType: upload.contentType,
@@ -498,7 +493,6 @@ export class MemoryUploadObject implements FetchCommands {
       tags: null,
       metadata: record.metadata,
       status: record.status,
-      provider: "database",
       errorCode: null,
       errorMessage: null,
       revision: record.revision,
@@ -531,7 +525,6 @@ export class MemoryUploadObject implements FetchCommands {
     const nextOffset = offset + page.length;
 
     return Response.json({
-      provider: "database",
       candidates: page.map((record) => ({
         key: record.fileKey,
         positions: [0],

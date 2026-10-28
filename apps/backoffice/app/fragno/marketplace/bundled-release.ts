@@ -59,7 +59,7 @@ export async function initializeMarketplaceListingRootFiles(
   }));
   const fileKeys = roots.map((file) => file.fileKey);
   const existing = new Set(
-    (await getUploadFileSnapshots({ routes, provider: "database", fileKeys }))
+    (await getUploadFileSnapshots({ routes, fileKeys }))
       .filter((file) => file.status === "ready")
       .map((file) => file.fileKey),
   );
@@ -89,7 +89,7 @@ export async function initializeMarketplaceListingRootFiles(
     if (committed.error.code === "FILE_PRECONDITION_FAILED") {
       // Another seed may initialize the roots while this request prepares its uploads.
       const ready = new Set(
-        (await getUploadFileSnapshots({ routes, provider: "database", fileKeys }))
+        (await getUploadFileSnapshots({ routes, fileKeys }))
           .filter((file) => file.status === "ready")
           .map((file) => file.fileKey),
       );

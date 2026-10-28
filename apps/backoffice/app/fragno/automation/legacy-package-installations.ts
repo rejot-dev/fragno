@@ -8,8 +8,6 @@ import {
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
-
 import type { createAutomationFragment } from "./index";
 
 type AutomationFragment = Pick<
@@ -28,7 +26,6 @@ const LOCK_FILE_KEY = MARKETPLACE_LOCK_PATH.slice("/workspace/".length);
 
 function lockFileUrl(path: string) {
   const url = new URL(`https://upload.internal/api/upload${path}`);
-  url.searchParams.set("provider", UPLOAD_PROVIDER_DATABASE);
   url.searchParams.set("key", LOCK_FILE_KEY);
   return url;
 }
@@ -73,7 +70,6 @@ async function deleteLegacyLock(upload: UploadHttp, revision: number) {
         entries: [
           {
             kind: "delete",
-            provider: UPLOAD_PROVIDER_DATABASE,
             fileKey: LOCK_FILE_KEY,
             precondition: { kind: "revision", revision },
           },

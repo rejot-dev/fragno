@@ -5,7 +5,6 @@ import {
   createClientFromContext,
   parseJsonValue,
   resolveFileKeyValue,
-  resolveProviderValue,
 } from "../../utils/options.js";
 
 export const uploadsCreateCommand = define({
@@ -13,10 +12,6 @@ export const uploadsCreateCommand = define({
   description: "Create an upload session",
   args: {
     ...baseArgs,
-    provider: {
-      type: "string",
-      description: "File provider namespace",
-    },
     "file-key": {
       type: "string",
       description: "File key",
@@ -73,7 +68,6 @@ export const uploadsCreateCommand = define({
       throw new Error("Missing --content-type");
     }
 
-    const provider = resolveProviderValue(ctx.values.provider);
     const resolvedKey = resolveFileKeyValue({
       fileKey: ctx.values["file-key"],
     });
@@ -92,7 +86,6 @@ export const uploadsCreateCommand = define({
 
     const client = createClientFromContext(ctx);
     const response = await client.createUpload({
-      provider,
       fileKey: resolvedKey.fileKey,
       filename,
       sizeBytes,

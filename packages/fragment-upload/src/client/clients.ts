@@ -37,21 +37,19 @@ export function createUploadFragmentClients(config: FragnoPublicClientConfig = {
       },
     ),
     useUpdateFile: builder.createMutator("PATCH", "/files/by-key", (invalidate, params) => {
-      const provider = params.queryParams?.["provider"];
       const key = params.queryParams?.["key"];
-      if (!provider || !key) {
+      if (!key) {
         return;
       }
-      invalidate("GET", "/files/by-key", { queryParams: { provider, key } });
+      invalidate("GET", "/files/by-key", { queryParams: { key } });
       invalidate("GET", "/files", {});
     }),
     useDeleteFile: builder.createMutator("DELETE", "/files/by-key", (invalidate, params) => {
-      const provider = params.queryParams?.["provider"];
       const key = params.queryParams?.["key"];
-      if (!provider || !key) {
+      if (!key) {
         return;
       }
-      invalidate("GET", "/files/by-key", { queryParams: { provider, key } });
+      invalidate("GET", "/files/by-key", { queryParams: { key } });
       invalidate("GET", "/files", {});
     }),
     useUploadHelpers: builder.createStore(helpers),

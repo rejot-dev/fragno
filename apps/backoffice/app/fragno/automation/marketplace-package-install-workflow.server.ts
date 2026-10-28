@@ -42,7 +42,6 @@ import {
   MARKETPLACE_INSTALL_WORKFLOW_PATH,
   normalizeMarketplacePackagePath,
 } from "@/fragno/marketplace/package-files";
-import { UPLOAD_PROVIDER_DATABASE } from "@/fragno/upload";
 import type { UploadFragment } from "@/fragno/upload-server";
 import { sha256Hex } from "@/lib/crypto";
 
@@ -120,7 +119,6 @@ type UploadRouteCaller = ReturnType<typeof createUploadRouteCaller>;
 
 const requestMarketplacePackageBytes = async (http: UploadHttpTransport, fileKey: string) => {
   const url = new URL("/api/upload/files/by-key/content", UPLOAD_INTERNAL_ORIGIN);
-  url.searchParams.set("provider", UPLOAD_PROVIDER_DATABASE);
   url.searchParams.set("key", fileKey);
   const response = await http.fetch(new Request(url));
   if (!response.ok) {
@@ -149,7 +147,7 @@ const requestMarketplacePackageBytes = async (http: UploadHttpTransport, fileKey
 
 const requestUploadFile = async (callRoute: UploadRouteCaller, fileKey: string) => {
   const response = await callRoute("GET", "/files/by-key", {
-    query: { provider: UPLOAD_PROVIDER_DATABASE, key: fileKey },
+    query: { key: fileKey },
   });
   if (response.type === "error" && response.status === 404) {
     return null;
@@ -335,7 +333,6 @@ export function defineMarketplacePackageInstallWorkflow(
           const page = await step.do(stepName, MARKETPLACE_EXTERNAL_STEP_RETRIES, async () => {
             const response = await sourceUploadRoutes("GET", "/files", {
               query: {
-                provider: UPLOAD_PROVIDER_DATABASE,
                 prefix: packagePrefix,
                 status: "ready",
                 pageSize: String(MARKETPLACE_PACKAGE_LIST_PAGE_SIZE),
@@ -594,7 +591,6 @@ export function defineMarketplacePackageInstallWorkflow(
             await assertMarketplaceSourceBytesMatch(source, sourceBytes);
             const response = await destinationUploadRoutes("POST", "/uploads", {
               body: {
-                provider: UPLOAD_PROVIDER_DATABASE,
                 fileKey: targetPath.slice("/workspace/".length),
                 filename: source.relativePath.split("/").at(-1)!,
                 sizeBytes: sourceBytes.byteLength,
@@ -640,7 +636,7 @@ export function defineMarketplacePackageInstallWorkflow(
             await assertMarketplaceSourceBytesMatch(source, sourceBytes);
             const response = await destinationUploadRoutes("PUT", "/uploads/:uploadId/content", {
               pathParams: { uploadId: uploadSession.uploadId },
-              query: { provider: UPLOAD_PROVIDER_DATABASE },
+              query: {},
               headers: { "content-type": "application/octet-stream" },
               body: new Blob([Uint8Array.from(sourceBytes)]),
             });
@@ -699,13 +695,11 @@ export function defineMarketplacePackageInstallWorkflow(
                 })),
                 ...installationPlan.deletes.map((deletion) => ({
                   kind: "delete" as const,
-                  provider: UPLOAD_PROVIDER_DATABASE,
                   fileKey: deletion.path.slice("/workspace/".length),
                   precondition: { kind: "revision" as const, revision: deletion.revision },
                 })),
                 ...installationPlan.assertions.map((assertion) => ({
                   kind: "assert" as const,
-                  provider: UPLOAD_PROVIDER_DATABASE,
                   fileKey: assertion.path.slice("/workspace/".length),
                   precondition: assertion.precondition,
                 })),

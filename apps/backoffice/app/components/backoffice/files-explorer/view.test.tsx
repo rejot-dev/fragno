@@ -186,7 +186,6 @@ describe("FilesExplorerView", () => {
                   contentType: "text/markdown",
                   updatedAt: null,
                   metadata: {
-                    provider: "database",
                     filename: "README.md",
                     status: "ready",
                     visibility: "public",
@@ -208,7 +207,6 @@ describe("FilesExplorerView", () => {
       </MemoryRouter>,
     );
 
-    assert(markup.includes("database"));
     assert(markup.includes("/preview/README.md"));
     assert(!markup.includes("internal/README.md"));
     assert(!markup.includes("upload-internal"));

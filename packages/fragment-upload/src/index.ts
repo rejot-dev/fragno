@@ -30,7 +30,6 @@ export {
 export type { UploadChecksum, UploadFileWritePrecondition } from "./types";
 export type {
   CreateUploadAndTransferOptions,
-  DownloadFileOptions,
   HydrateSearchMatchesResult,
   SearchCandidateCursor,
   SearchFileCandidate,
