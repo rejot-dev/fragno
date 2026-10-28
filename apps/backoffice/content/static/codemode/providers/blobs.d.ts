@@ -21,7 +21,7 @@ type BlobsCodemodeProvider = {
    */
   list(input: BlobsListInput): Promise<BlobsListOutput>;
   /**
-   * Create a temporary URL that reads a blob straight from storage without credentials. It works from sandboxes, browsers, and services outside Backoffice. Anyone holding the URL can read the blob until it expires.
+   * Create a temporary URL that reads a blob straight from storage without credentials. It works from sandboxes, browsers, and services outside Backoffice. Anyone holding the URL can read the blob until it expires. The URL ends in the blob's name, so browsers save the file under it; browsers show some types, such as videos and PDFs, in a tab.
    * Requires `upload.read`.
    */
   createDownloadUrl(input: BlobsCreateDownloadUrlInput): Promise<BlobsCreateDownloadUrlOutput>;

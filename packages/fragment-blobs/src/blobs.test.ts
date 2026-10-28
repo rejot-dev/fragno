@@ -161,7 +161,10 @@ describe("blobs fragment", async () => {
 
   test("stores a blob, replaces it, and deletes it along with its bytes, telling the integrator", async () => {
     const first = await createUpload("recordings/call.wav");
-    assert(first.url.startsWith(`${BUCKET_URL}scope-1/recordings/call.wav/`));
+    // The object's key ends in the blob's name, so browsers save its downloads under that name.
+    expect(new URL(first.url).pathname).toMatch(
+      new RegExp(`^${new URL(BUCKET_URL).pathname}scope-1/recordings/[0-9a-f-]{36}/call\\.wav$`),
+    );
 
     const early = await completeUpload(first.uploadId);
     assert(early.type === "error");
