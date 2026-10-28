@@ -12,6 +12,7 @@ import {
   type AppendMessage,
   type AssistantRuntime,
   type ExternalThreadQueueAdapter,
+  type ThreadMessageLike,
 } from "@assistant-ui/react";
 import type { ConversationView, EntryRecord } from "@earendil-works/pi-durable";
 
@@ -26,6 +27,7 @@ import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 
 import { agentAttachmentTarget, useAgentAttachments } from "./agent-attachments";
 import type { action as compactionsAction } from "./agent-compactions";
+import type { action as messagesAction } from "./agent-messages";
 import {
   AgentModelMenu,
   agentModelChoiceFormFields,
@@ -48,9 +50,11 @@ import {
   piConversationQueue,
   type PiConversationMessage,
   type PiDraftAgentMessage,
+  type PiUserMessageMetadata,
 } from "./session-detail/assistant-runtime";
 import { estimatePiContextTokens } from "./session-detail/context-usage";
 import { SessionDisplayOptions } from "./session-detail/display-options";
+import { usePiPendingMessages } from "./session-detail/pending-messages";
 import {
   usePiSessionViewSocket,
   type PiAgentQueueState,
@@ -74,9 +78,9 @@ const PI_ENTRY_HISTORY_PAGE_SIZE = 100;
 const PI_COMPACTION_POLL_MS = 250;
 
 export type PiAgentActionData =
-  | { ok: true; intent: "start" | "send"; receipt: PiPromptReceipt }
+  | { ok: true; intent: "start"; receipt: PiPromptReceipt }
   | { ok: true; intent: "stop" | "resume" | "reset" }
-  | { ok: false; intent: "start" | "send" | "stop" | "resume" | "reset"; error: string };
+  | { ok: false; intent: "start" | "stop" | "resume" | "reset"; error: string };
 
 /** What the conversation produced, opened beside it. */
 export type AgentConversationWorkspace = {
@@ -246,6 +250,19 @@ async function startPiCompaction(url: string, instructions: string, signal: Abor
     throw new Error(result.error);
   }
   return result.taskId;
+}
+
+async function postPiAgentMessage(url: string, fields: Record<string, string>) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { accept: "application/json" },
+    body: new URLSearchParams(fields),
+  });
+  if (!response.ok) {
+    throw new Error(`Pi message request failed with status ${response.status}.`);
+  }
+  // This application-owned resource route returns its action data unchanged.
+  return await response.json<Awaited<ReturnType<typeof messagesAction>>>();
 }
 
 /** A compaction requested here; the view stream shows every running compaction, wherever started. */
@@ -436,10 +453,25 @@ function AgentConversationThread({
     [activeContextStart, transcript],
   );
   const draftAgentMessage = useMemo(() => piConversationDraftAgentMessage(view), [view]);
-  const conversationQueue = useMemo(
-    () => piConversationQueue(view, agentQueue.items),
-    [view, agentQueue.items],
-  );
+  const {
+    messages: pendingMessages,
+    add: addPendingMessage,
+    withdraw: withdrawPendingMessage,
+  } = usePiPendingMessages(view, agentQueue.items);
+  // A message sent during a run waits in the queue; otherwise it starts a turn in the thread.
+  const conversationQueue = useMemo(() => {
+    const queue = piConversationQueue(view, agentQueue.items);
+    if (!running) {
+      return queue;
+    }
+    const labels = new Map(queue.labels);
+    const sending = pendingMessages.map(({ requestId, text }) => {
+      const id = `pending:${requestId}`;
+      labels.set(id, "Sending");
+      return { id, prompt: text };
+    });
+    return { items: [...queue.items, ...sending], labels };
+  }, [view, agentQueue.items, running, pendingMessages]);
   const contextTokens = useMemo(() => estimatePiContextTokens(view.entries), [view.entries]);
   const statusText = compacting ? "Compacting…" : running ? "Working…" : null;
   const subagents = useAgentSubagentsState(agentPath, view.entries.length);
@@ -452,12 +484,32 @@ function AgentConversationThread({
       statusText,
     });
     const placed = withSubagentBatches(converted.messages, subagents.listed);
+    const sending = running
+      ? []
+      : pendingMessages.map(
+          ({ requestId, text }): ThreadMessageLike => ({
+            id: `pending-${requestId}`,
+            role: "user",
+            content: [{ type: "text", text }],
+            metadata: {
+              custom: { kind: "user", attachments: [] } satisfies PiUserMessageMetadata,
+            },
+          }),
+        );
     return {
-      assistantMessages: placed.messages,
+      assistantMessages: [...placed.messages, ...sending],
       activeContextStartMessageId: converted.activeContextStartMessageId,
       subagentBatches: placed.batches,
     };
-  }, [activeContextStartIndex, draftAgentMessage, messages, running, statusText, subagents.listed]);
+  }, [
+    activeContextStartIndex,
+    draftAgentMessage,
+    messages,
+    running,
+    statusText,
+    subagents.listed,
+    pendingMessages,
+  ]);
   const attachments = useAgentAttachments(
     useMemo(
       () => agentAttachmentTarget(resolvedScope, agent.agentName, agent.permissions),
@@ -466,8 +518,9 @@ function AgentConversationThread({
   );
   const takeAttachments = attachments?.take ?? null;
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
-  const sendError = fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
-  const submitting = fetcher.state !== "idle";
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
+  const actionError = fetcher.data?.ok === false ? fetcher.data.error : null;
   const model = useConversationModel({ agent, view, availableModelOptions });
   // The agent's route owns its actions, wherever its conversation is shown.
   const submitAction = useCallback(
@@ -477,10 +530,16 @@ function AgentConversationThread({
     [fetcher, agentPath],
   );
 
-  // A message waits for the files it carries to upload, then goes with those that did.
+  // A message shows at once, then waits for the files it carries to upload, and goes with those
+  // that did.
   const send = useCallback(
     async (text: string) => {
       setAttachmentError(null);
+      setMessageError(null);
+      const requestId = crypto.randomUUID();
+      if (text) {
+        addPendingMessage(requestId, text);
+      }
       const files = takeAttachments === null ? null : await takeAttachments();
       if (files !== null && files.failed.length > 0) {
         setAttachmentError(`Not attached, because the upload failed: ${files.failed.join(", ")}.`);
@@ -495,14 +554,37 @@ function AgentConversationThread({
           agent_running: running,
         });
       }
-      submitAction({
-        intent: "send",
+      setSendingMessage(true);
+      const error = await postPiAgentMessage(`${agentPath}/messages`, {
+        requestId,
         content: text,
         ...(paths.length === 0 ? {} : { attachments: JSON.stringify(paths) }),
         ...(model.sent ? agentModelChoiceFormFields(model.sent) : {}),
-      });
+      }).then(
+        (result) => (result.ok ? null : result.error),
+        (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
+      );
+      setSendingMessage(false);
+      setMessageError(error);
+      if (error !== null) {
+        withdrawPendingMessage(requestId);
+        // The text returns to the composer unless the reader already started another message.
+        const composer = runtimeRef.current?.thread.composer;
+        if (composer?.getState().text === "") {
+          composer.setText(text);
+        }
+      }
     },
-    [takeAttachments, posthog, submitAction, running, agent.agentName, model.sent],
+    [
+      takeAttachments,
+      posthog,
+      addPendingMessage,
+      withdrawPendingMessage,
+      agentPath,
+      running,
+      agent.agentName,
+      model.sent,
+    ],
   );
   const handleSend = useCallback(
     async (message: AppendMessage) => {
@@ -537,8 +619,9 @@ function AgentConversationThread({
     messages: assistantMessages,
     convertMessage: (message) => message,
     isRunning: running,
-    // A message waiting for its uploads would otherwise be overtaken by the next one.
-    isSendDisabled: submitting || attachments?.sending === true,
+    // A message waiting for its uploads would otherwise be overtaken by the next one. A stop or
+    // reset in flight could withdraw or clear a message that reached the agent first.
+    isSendDisabled: sendingMessage || attachments?.sending === true || fetcher.state !== "idle",
     onNew: handleSend,
     queue,
     adapters: { dictation },
@@ -603,7 +686,7 @@ function AgentConversationThread({
               }
         }
         disabledReason={null}
-        error={attachments?.refusal ?? attachmentError ?? sendError}
+        error={attachments?.refusal ?? attachmentError ?? messageError ?? actionError}
         queueLabels={conversationQueue.labels}
         // Stopping and resuming the agent concern its subagents too.
         paused={agentQueue.paused && (agentQueue.items.length > 0 || subagents.summary.waiting)}

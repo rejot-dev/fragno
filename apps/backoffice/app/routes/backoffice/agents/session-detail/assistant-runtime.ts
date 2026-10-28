@@ -947,7 +947,12 @@ export function getAppendMessageText(message: AppendMessage) {
 }
 
 /** How the composer queue labels an item. */
-export type PiConversationQueueLabel = "Steering" | "Up next" | "Queued" | "Notification";
+export type PiConversationQueueLabel =
+  | "Sending"
+  | "Steering"
+  | "Up next"
+  | "Queued"
+  | "Notification";
 
 export type PiConversationQueue = {
   items: QueueItemState[];

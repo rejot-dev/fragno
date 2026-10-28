@@ -108,6 +108,7 @@ export default [
             ":agentName/subagents/:requestId",
             "routes/backoffice/agents/agent-subagent-view.ts",
           ),
+          route(":agentName/messages", "routes/backoffice/agents/agent-messages.ts"),
           route(":agentName/compactions", "routes/backoffice/agents/agent-compactions.ts"),
           route(":agentName/compactions/:taskId", "routes/backoffice/agents/agent-compaction.ts"),
           route(":agentName/debug", "routes/backoffice/agents/debug-agent-detail.tsx"),
