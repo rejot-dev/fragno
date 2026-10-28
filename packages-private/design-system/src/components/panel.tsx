@@ -1,5 +1,13 @@
 import type { ReactNode } from "react";
 
+import {
+  stackedTableBodyClassName,
+  stackedTableCellClassName,
+  stackedTableClassName,
+  stackedTableRowClassName,
+  stackedTableTitleCellClassName,
+} from "./stacked-table-class-names";
+
 // Panels are a titled rule over their content rather than cards, so a page of them stays flat.
 const panelHeaderClassName = "flex h-9 items-center gap-2 border-b border-[color:var(--bo-border)]";
 const panelTitleClassName = "text-sm font-semibold text-[var(--bo-fg)]";
@@ -53,7 +61,7 @@ export type PanelTableColumn = { label: string; align: "start" | "end" };
 /**
  * A panel whose rows share columns: its title heads the first column, and each other column has a
  * label. Rows are PanelTableRow elements; without any, as before a live query's rows arrive, CSS
- * shows `empty` under the header.
+ * shows `empty` under the header. On phones rows stack into cards under the title.
  */
 export function PanelTable({
   title,
@@ -71,24 +79,31 @@ export function PanelTable({
   return (
     <section aria-label={title} className="min-w-0">
       <div className="backoffice-scroll overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="text-left">
-            <tr className="border-b border-[color:var(--bo-border)]">
-              <th scope="col" className={`h-9 pr-4 ${panelTitleClassName}`}>
+        <table className={`min-w-full text-sm ${stackedTableClassName}`}>
+          <thead className="text-left max-sm:block">
+            <tr className="border-b border-[color:var(--bo-border)] max-sm:flex">
+              <th
+                scope="col"
+                className={`h-9 pr-4 max-sm:flex max-sm:items-center ${panelTitleClassName}`}
+              >
                 {title}
               </th>
               {columns.map((column, index) => (
                 <th
                   key={column.label}
                   scope="col"
-                  className={`${columnLabelClassName} ${index === columns.length - 1 ? "pl-3" : "px-3"} ${column.align === "end" ? "text-right" : ""}`}
+                  className={`${columnLabelClassName} ${index === columns.length - 1 ? "pl-3" : "px-3"} ${column.align === "end" ? "text-right" : ""} max-sm:hidden`}
                 >
                   {column.label}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[color:var(--bo-border)]">{children}</tbody>
+          <tbody
+            className={`divide-y divide-[color:var(--bo-border)] ${stackedTableBodyClassName}`}
+          >
+            {children}
+          </tbody>
         </table>
       </div>
       {empty === null ? null : (
@@ -115,15 +130,26 @@ export function PanelTableRow({
   cells: readonly ReactNode[];
 }) {
   return (
-    <tr>
-      <td className="max-w-[18rem] py-2 pr-4">{title}</td>
+    <tr className={`${stackedTableRowClassName} max-sm:py-2.5`}>
+      <td className={`max-w-[18rem] py-2 pr-4 max-sm:max-w-none ${stackedTableTitleCellClassName}`}>
+        {title}
+      </td>
       {cells.map((cell, index) => {
-        const align = columns[index]?.align === "end" ? "justify-end text-right" : "";
+        const column = columns[index];
+        const align = column?.align === "end" ? "justify-end text-right" : "";
         return (
-          // Cells are positional, so their index is their identity.
-          // oxlint-disable-next-line no-array-index-key
-          <td key={index} className={`py-2 ${index === cells.length - 1 ? "pl-3" : "px-3"}`}>
-            <span className={`flex items-center gap-3 whitespace-nowrap ${align}`}>{cell}</span>
+          <td
+            // Cells are positional, so their index is their identity.
+            // oxlint-disable-next-line no-array-index-key
+            key={index}
+            data-label={column?.label}
+            className={`py-2 ${index === cells.length - 1 ? "pl-3" : "px-3"} ${stackedTableCellClassName}`}
+          >
+            <span
+              className={`flex items-center gap-3 whitespace-nowrap ${align} max-sm:justify-start max-sm:text-left`}
+            >
+              {cell}
+            </span>
           </td>
         );
       })}

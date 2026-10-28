@@ -1,5 +1,14 @@
 import type { ReactNode } from "react";
 
+import {
+  stackedTableBodyClassName,
+  stackedTableCellClassName,
+  stackedTableClassName,
+  stackedTableRowClassName,
+  stackedTableTitleCellClassName,
+  stackedTableValueClassName,
+} from "./stacked-table-class-names";
+
 /**
  * A raised panel of records, such as a scope's connections or an organization's members. Its
  * caption counts or names what the panel holds, with the panel's actions beside it. Content rules
@@ -119,7 +128,10 @@ export function SurfaceFacts({ items }: { items: readonly SurfaceFact[] }) {
 
 export type SurfaceTableColumn = { label: string; align: "start" | "end" };
 
-/** The panel's records as rows of SurfaceTableRow, scrolling sideways instead of widening the page. */
+/**
+ * The panel's records as rows of SurfaceTableRow, scrolling sideways instead of widening the page.
+ * On phones rows stack into cards instead.
+ */
 export function SurfaceTable({
   columns,
   children,
@@ -129,8 +141,10 @@ export function SurfaceTable({
 }) {
   return (
     <div className="backoffice-scroll overflow-x-auto border-t border-[color:var(--bo-border)]">
-      <table className="min-w-full divide-y divide-[color:var(--bo-border)] text-sm">
-        <thead className="bg-[var(--bo-panel-2)]">
+      <table
+        className={`min-w-full divide-y divide-[color:var(--bo-border)] text-sm ${stackedTableClassName}`}
+      >
+        <thead className="bg-[var(--bo-panel-2)] max-sm:hidden">
           <tr className="text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
             {columns.map((column) => (
               <th
@@ -143,7 +157,9 @@ export function SurfaceTable({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-[color:var(--bo-border)]">{children}</tbody>
+        <tbody className={`divide-y divide-[color:var(--bo-border)] ${stackedTableBodyClassName}`}>
+          {children}
+        </tbody>
       </table>
     </div>
   );
@@ -161,16 +177,20 @@ export function SurfaceTableRow({
   cells: readonly ReactNode[];
 }) {
   return (
-    <tr className="text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)]">
+    <tr
+      className={`text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] ${stackedTableRowClassName} max-sm:px-4 max-sm:py-3`}
+    >
       {cells.map((cell, index) => (
-        // Cells are positional, so their index is their identity.
-        // oxlint-disable-next-line no-array-index-key
-        <td
+        <SurfaceTableCell
+          // Cells are positional, so their index is their identity.
+          // oxlint-disable-next-line no-array-index-key
           key={index}
-          className={`px-4 py-2.5 ${columns[index]?.align === "end" ? "text-right tabular-nums" : ""}`}
+          column={columns[index]}
+          first={index === 0}
+          className="px-4 py-2.5"
         >
           {cell}
-        </td>
+        </SurfaceTableCell>
       ))}
     </tr>
   );
@@ -188,8 +208,8 @@ export function SurfaceTableGroupRow({
   children: ReactNode;
 }) {
   return (
-    <tr className="bg-[var(--bo-panel-2)]">
-      <td colSpan={columns.length} className="px-4 py-2 text-[var(--bo-fg)]">
+    <tr className="bg-[var(--bo-panel-2)] max-sm:block">
+      <td colSpan={columns.length} className="px-4 py-2 text-[var(--bo-fg)] max-sm:block">
         {children}
       </td>
     </tr>
@@ -205,17 +225,45 @@ export function SurfaceTableTotalRow({
   cells: readonly ReactNode[];
 }) {
   return (
-    <tr className="border-t border-[color:color-mix(in_srgb,var(--bo-fg)_22%,transparent)] font-semibold text-[var(--bo-fg)]">
+    <tr
+      className={`border-t border-[color:color-mix(in_srgb,var(--bo-fg)_22%,transparent)] font-semibold text-[var(--bo-fg)] ${stackedTableRowClassName} max-sm:px-4 max-sm:py-3`}
+    >
       {cells.map((cell, index) => (
-        // Cells are positional, so their index is their identity.
-        // oxlint-disable-next-line no-array-index-key
-        <td
+        <SurfaceTableCell
+          // Cells are positional, so their index is their identity.
+          // oxlint-disable-next-line no-array-index-key
           key={index}
-          className={`px-4 py-3 ${columns[index]?.align === "end" ? "text-right tabular-nums" : ""}`}
+          column={columns[index]}
+          first={index === 0}
+          className="px-4 py-3"
         >
           {cell}
-        </td>
+        </SurfaceTableCell>
       ))}
     </tr>
+  );
+}
+
+// End-aligned columns hold figures, so they also get tabular numerals. Stacked on phones, the first
+// cell titles the card and the others carry their column's label.
+function SurfaceTableCell({
+  column,
+  first,
+  className,
+  children,
+}: {
+  column: SurfaceTableColumn | undefined;
+  first: boolean;
+  className: string;
+  children: ReactNode;
+}) {
+  const align = column?.align ?? "start";
+  return (
+    <td
+      data-label={first ? undefined : column?.label}
+      className={`${className} ${align === "end" ? "text-right tabular-nums" : ""} ${first ? `${stackedTableTitleCellClassName} max-sm:text-[var(--bo-fg)]` : stackedTableCellClassName}`}
+    >
+      {first ? children : <div className={stackedTableValueClassName}>{children}</div>}
+    </td>
   );
 }
