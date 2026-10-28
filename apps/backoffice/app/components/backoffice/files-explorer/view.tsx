@@ -14,6 +14,8 @@ import type { FileTree, FileTreeEntry } from "@/file-collection/file-collection"
 
 import { resolveFilesContentRenderer, type WorkflowFileRouting } from "./content-renderers";
 
+type NarrowPane = "tree" | "detail";
+
 type FilesExplorerRootKind = "static" | "upload" | "custom";
 type FilesExplorerPersistence = "ephemeral" | "persistent" | "session";
 
@@ -134,13 +136,23 @@ export function FilesExplorerView({
   workflowRouting,
   pageHref,
 }: FilesExplorerViewProps) {
-  const [isMobileTreeCollapsed, setIsMobileTreeCollapsed] = useState(false);
   const { tree, selectedDetail } = useMemo(
     () => createExplorerViewModel(sources, selectedPath, selectedContent),
     [selectedContent, selectedPath, sources],
   );
   const selectedRoot =
     rootSelection === "summary" && selectedDetail?.node.kind === "root" ? selectedDetail : null;
+  // Narrow screens show one pane at a time: opening a file or searching shows the detail, and its
+  // back button the tree. Folders are browsed in the tree.
+  const searchQuery = contentSearch?.query ?? "";
+  const openedPane: NarrowPane =
+    searchQuery !== "" || selectedDetail?.node.kind === "file" ? "detail" : "tree";
+  const [narrowPane, setNarrowPane] = useState(openedPane);
+  const [paneOpenedFor, setPaneOpenedFor] = useState({ selectedPath, searchQuery });
+  if (paneOpenedFor.selectedPath !== selectedPath || paneOpenedFor.searchQuery !== searchQuery) {
+    setPaneOpenedFor({ selectedPath, searchQuery });
+    setNarrowPane(openedPane);
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
@@ -157,34 +169,36 @@ export function FilesExplorerView({
         // The tree column plus the 1px gap divider matches the top bar's w-72 project selector,
         // whose border-r sits inside its width, so both dividers line up.
         <section
-          className={`${isMobileTreeCollapsed ? "grid-rows-[auto_minmax(22rem,1fr)]" : "grid-rows-[auto_minmax(22rem,1fr)_minmax(22rem,1fr)]"} grid min-h-[22rem] flex-1 gap-px overflow-hidden bg-[var(--bo-border)] shadow-[0_0_0_1px_var(--bo-border)] md:min-h-0 md:grid-cols-[calc(--spacing(72)-1px)_minmax(0,1fr)] md:grid-rows-1`}
+          data-narrow-pane={narrowPane}
+          className="flex min-h-[22rem] flex-1 flex-col gap-px overflow-hidden bg-[var(--bo-border)] shadow-[0_0_0_1px_var(--bo-border)] md:grid md:min-h-0 md:grid-cols-[calc(--spacing(72)-1px)_minmax(0,1fr)] md:grid-rows-1"
         >
-          <button
-            type="button"
-            aria-expanded={!isMobileTreeCollapsed}
-            aria-controls="files-explorer-tree"
-            onClick={() => {
-              setIsMobileTreeCollapsed((collapsed) => !collapsed);
-            }}
-            className="flex min-h-10 items-center justify-between bg-[var(--bo-sidebar-bg)] px-3 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted)] uppercase transition-[background-color,color] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none md:hidden"
-          >
-            <span>{isMobileTreeCollapsed ? "Show file tree" : "Hide file tree"}</span>
-            {isMobileTreeCollapsed ? (
-              <Icon name="chevrons-right" className="size-4" />
-            ) : (
-              <Icon name="chevrons-left" className="size-4" />
-            )}
-          </button>
+          {narrowPane === "detail" ? (
+            <button
+              type="button"
+              onClick={() => {
+                setNarrowPane("tree");
+              }}
+              className="flex min-h-11 shrink-0 cursor-pointer items-center gap-2 bg-[var(--bo-sidebar-bg)] px-3 text-sm font-semibold text-[var(--bo-fg)] transition-[background-color] duration-150 ease-out hover:bg-[var(--bo-panel)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none focus-visible:ring-inset md:hidden"
+            >
+              <Icon name="chevron-left" className="size-4 text-[var(--bo-muted)]" />
+              Back to files
+            </button>
+          ) : null}
 
           <aside
-            id="files-explorer-tree"
-            className={`${isMobileTreeCollapsed ? "hidden md:flex" : "flex"} min-h-0 flex-col overflow-hidden bg-[var(--bo-sidebar-bg)]`}
+            className={`${narrowPane === "detail" ? "hidden" : "flex flex-1"} min-h-0 flex-col overflow-hidden bg-[var(--bo-sidebar-bg)] md:flex`}
           >
             <FileTreeExplorer
               nodes={tree}
               selectedPath={selectedPath}
               buildNodeTo={buildNodeTo}
-              onNodeSelect={onNodeSelect}
+              onNodeSelect={(node) => {
+                // Reopens the file the back button left, whose selection does not change.
+                if (node.kind === "file") {
+                  setNarrowPane("detail");
+                }
+                onNodeSelect?.(node);
+              }}
               defaultCollapsedRootPaths={defaultCollapsedRootPaths}
               collapsedRootPaths={collapsedRootPaths}
               onCollapsedRootPathsChange={onCollapsedRootPathsChange}
@@ -194,7 +208,9 @@ export function FilesExplorerView({
           </aside>
 
           {/* Files sit on the panel surface; the toolbars around them share the tree's recessed one. */}
-          <div className="flex min-h-0 min-w-0 flex-col bg-[var(--bo-panel)]">
+          <div
+            className={`${narrowPane === "detail" ? "flex-1" : contentSearch ? "order-first md:order-none" : "hidden"} flex min-h-0 min-w-0 flex-col bg-[var(--bo-panel)] md:flex`}
+          >
             {contentSearch ? (
               <div className="shrink-0 border-b border-[var(--bo-border)] bg-[var(--bo-sidebar-bg)] p-3">
                 <Form method="get" className="relative">
@@ -226,7 +242,7 @@ export function FilesExplorerView({
               </div>
             ) : null}
 
-            <div className="min-h-0 flex-1">
+            <div className={`min-h-0 flex-1 ${narrowPane === "detail" ? "" : "hidden md:block"}`}>
               {contentSearch?.query ? (
                 <FilesSearchResults
                   query={contentSearch.query}
@@ -420,23 +436,34 @@ function ExplorerNodeDetailPanel({
   );
 
   return (
-    <section className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-[var(--bo-border)] p-4 md:px-5">
-        <Heading className="min-w-0 text-2xl font-semibold tracking-tight text-balance break-all text-[var(--bo-fg)]">
+    // A narrow pane, as on a phone, keeps the header to one line: the name truncates, copy actions
+    // shorten to what they copy, and the rest show only their icons.
+    <section className="@container/file-header flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-[var(--bo-border)] p-4 md:px-5 @max-lg/file-header:flex-nowrap @max-lg/file-header:gap-2">
+        <Heading className="min-w-0 text-2xl font-semibold tracking-tight text-balance break-all text-[var(--bo-fg)] @max-lg/file-header:flex-1 @max-lg/file-header:truncate @max-lg/file-header:text-lg">
           {detail.node.title}
         </Heading>
-        <div className="relative flex items-center gap-2">
-          <CopyButton value={detail.node.path} label="Copy path" labelled />
+        <div className="relative flex shrink-0 items-center gap-2">
+          <CopyButton
+            value={detail.node.path}
+            label="Copy path"
+            text={<FileHeaderCopyText wide="Copy path" narrow="Path" />}
+          />
           {detail.textContent === null ? null : (
-            <CopyButton value={detail.textContent} label="Copy contents" labelled />
+            <CopyButton
+              value={detail.textContent}
+              label="Copy contents"
+              text={<FileHeaderCopyText wide="Copy contents" narrow="Contents" />}
+            />
           )}
           {downloadHref ? (
             <a
               href={downloadHref}
-              className="bo-control-surface inline-flex min-h-10 items-center gap-2 bg-[var(--bo-panel-2)] px-3.5 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96]"
+              aria-label="Download"
+              className="bo-control-surface inline-flex min-h-10 items-center gap-2 bg-[var(--bo-panel-2)] px-3.5 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] @max-lg/file-header:w-10 @max-lg/file-header:justify-center @max-lg/file-header:px-0"
             >
               <Icon name="download" className="h-3.5 w-3.5" />
-              Download
+              <span className="@max-lg/file-header:hidden">Download</span>
             </a>
           ) : null}
           <details className="group relative">
@@ -481,6 +508,16 @@ function ExplorerNodeDetailPanel({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** Copy-button text that shortens to name only what it copies when the header is narrow. */
+function FileHeaderCopyText({ wide, narrow }: { wide: string; narrow: string }) {
+  return (
+    <>
+      <span className="@max-lg/file-header:hidden">{wide}</span>
+      <span className="hidden @max-lg/file-header:inline">{narrow}</span>
+    </>
   );
 }
 

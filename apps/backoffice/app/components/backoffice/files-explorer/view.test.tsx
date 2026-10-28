@@ -309,20 +309,27 @@ describe("FilesExplorerView", () => {
     assert(screen.queryByRole("link", { name: "notes" }) === null);
   });
 
-  test("collapses and restores the complete file tree on smaller screens", () => {
-    render(<ExplorerHarness source={source} initialSelectedPath={filePath} />);
+  test("narrow screens show an opened file in place of the tree until going back", () => {
+    render(
+      <ExplorerHarness source={createNestedWorkspaceSource()} initialSelectedPath="/workspace" />,
+    );
+    const pane = () =>
+      document.querySelector("[data-narrow-pane]")?.getAttribute("data-narrow-pane");
+    assert.equal(pane(), "tree");
 
-    const toggle = screen.getByRole("button", { name: "Hide file tree" });
-    const tree = document.getElementById("files-explorer-tree");
-    assert(tree);
-    assert.equal(toggle.getAttribute("aria-expanded"), "true");
+    fireEvent.click(screen.getByRole("link", { name: "notes" }));
+    assert.equal(pane(), "tree");
 
-    fireEvent.click(toggle);
-    assert.equal(toggle.getAttribute("aria-expanded"), "false");
-    assert(tree.className.includes("hidden md:flex"));
+    fireEvent.click(screen.getByRole("link", { name: "todo.txt" }));
+    assert.equal(pane(), "detail");
 
-    fireEvent.click(screen.getByRole("button", { name: "Show file tree" }));
-    assert(!tree.className.includes("hidden md:flex"));
+    fireEvent.click(screen.getByRole("button", { name: "Back to files" }));
+    assert.equal(pane(), "tree");
+    assert(screen.queryByRole("button", { name: "Back to files" }) === null);
+
+    // The file is still selected, so opening it again does not change the selection.
+    fireEvent.click(screen.getByRole("link", { name: "todo.txt" }));
+    assert.equal(pane(), "detail");
   });
 
   test("starts folders collapsed and expands them when their row is selected", () => {
