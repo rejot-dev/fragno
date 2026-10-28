@@ -12,13 +12,6 @@ export type FileHookPayload = {
   contentType: string;
 };
 
-/** Names the content of an upload that never completed, in cleanup events queued before writes
- * deleted content themselves. */
-export type UnfinishedUploadPayload = {
-  objectKey: string;
-  storageUploadId: string | null;
-};
-
 export type UploadTimeoutPayload = {
   uploadId: string;
   provider: string;

@@ -1,41 +1,12 @@
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase, type DatabaseHandlerTx } from "@fragno-dev/db";
+import { withDatabase } from "@fragno-dev/db";
 
-import type {
-  FileHookPayload,
-  UnfinishedUploadPayload,
-  UploadFragmentConfig,
-  UploadTimeoutPayload,
-} from "./config";
+import type { FileHookPayload, UploadFragmentConfig, UploadTimeoutPayload } from "./config";
 import { uploadSchema } from "./schema";
 import { createFileServices } from "./services/files";
 import { createUploadServices } from "./services/uploads";
 import { buildTextIndex, shouldIndexContentType } from "./text-index";
 import type { UploadStatus } from "./types";
-
-/**
- * Deletes content its file or upload no longer needs. Writes delete the content they replace in
- * their own transaction; the hooks using this serve events queued before they did.
- */
-async function deleteStoredObject(handlerTx: DatabaseHandlerTx, objectKey: string | undefined) {
-  if (!objectKey) {
-    return;
-  }
-  await handlerTx()
-    .retrieve(({ forSchema }) =>
-      forSchema(uploadSchema).findFirst("storage_object", (b) =>
-        b
-          .whereIndex("idx_storage_object_key", (eb) => eb("storageKey", "=", objectKey))
-          .select(["id"]),
-      ),
-    )
-    .mutate(({ forSchema, retrieveResult: [object] }) => {
-      if (object) {
-        forSchema(uploadSchema).delete("storage_object", object.id);
-      }
-    })
-    .execute();
-}
 
 export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("upload")
   .extend(withDatabase(uploadSchema))
@@ -142,41 +113,23 @@ export const uploadFragmentDefinition = defineFragment<UploadFragmentConfig>("up
       onUploadFailed: defineHook(async function (payload: FileHookPayload) {
         await config.onUploadFailed?.(payload, this.idempotencyKey);
       }),
-      cleanupStorageObject: defineHook(async function ({ objectKey }: FileHookPayload) {
-        await deleteStoredObject((options) => this.handlerTx(options), objectKey);
-      }),
-      cleanupUnfinishedUpload: defineHook(async function ({ objectKey }: UnfinishedUploadPayload) {
-        await deleteStoredObject((options) => this.handlerTx(options), objectKey);
-      }),
       onFileDeleted: defineHook(async function (payload: FileHookPayload) {
-        const objectKey = payload.objectKey ?? "";
         await this.handlerTx()
           .retrieve(({ forSchema }) =>
-            forSchema(uploadSchema)
-              .findFirst("file_text_document", (b) =>
-                b
-                  .whereIndex("idx_file_text_document_provider_key", (eb) =>
-                    eb.and(eb("provider", "=", payload.provider), eb("key", "=", payload.fileKey)),
-                  )
-                  .joinMany("terms", "file_text_term", (term) =>
-                    term.onIndex("idx_file_text_term_document", (eb) =>
-                      eb("documentId", "=", eb.parent("id")),
-                    ),
+            forSchema(uploadSchema).findFirst("file_text_document", (b) =>
+              b
+                .whereIndex("idx_file_text_document_provider_key", (eb) =>
+                  eb.and(eb("provider", "=", payload.provider), eb("key", "=", payload.fileKey)),
+                )
+                .joinMany("terms", "file_text_term", (term) =>
+                  term.onIndex("idx_file_text_term_document", (eb) =>
+                    eb("documentId", "=", eb.parent("id")),
                   ),
-              )
-              .findFirst("storage_object", (b) =>
-                b
-                  .whereIndex("idx_storage_object_key", (eb) => eb("storageKey", "=", objectKey))
-                  .select(["id"]),
-              ),
+                ),
+            ),
           )
-          .mutate(({ forSchema, retrieveResult: [document, object] }) => {
+          .mutate(({ forSchema, retrieveResult: [document] }) => {
             const uow = forSchema(uploadSchema);
-            // Deletes delete their content themselves, but this hook deleted it for deletes
-            // queued before they did.
-            if (object) {
-              uow.delete("storage_object", object.id);
-            }
             if (!document || document.objectKey !== payload.objectKey) {
               return;
             }

@@ -29,8 +29,6 @@ import {
 } from "./upload-model";
 
 export const MAX_PREPARED_FILE_BATCH_ENTRIES = 5_000;
-// Uploads record how their bytes reached storage; the database is the only storage left.
-const UPLOAD_STRATEGY = "proxy";
 
 type UploadWithFile = UploadSnapshot & { file: StoredFileRow | null };
 
@@ -103,14 +101,8 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
             metadata: normalized.metadata,
             status: "created",
             publicationMode: normalized.publicationMode,
-            strategy: UPLOAD_STRATEGY,
             objectKey,
-            storageUploadId: null,
-            uploadUrl: null,
-            uploadHeaders: null,
             bytesUploaded: 0n,
-            partsUploaded: 0,
-            partSizeBytes: null,
             expiresAt,
             createdAt: databaseNow,
             updatedAt: databaseNow,

@@ -482,8 +482,6 @@ export const createFileServices = (config: UploadFragmentConfig) => {
             tags: input.tags ?? file.tags,
             metadata: input.metadata ?? file.metadata,
             status: file.status,
-            errorCode: file.errorCode,
-            errorMessage: file.errorMessage,
           };
 
           uow.update("file", file.id, (b) =>

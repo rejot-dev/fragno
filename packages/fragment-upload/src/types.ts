@@ -64,8 +64,6 @@ export type FileMetadata = {
   updatedAt: string;
   completedAt: string | null;
   deletedAt: string | null;
-  errorCode: string | null;
-  errorMessage: string | null;
 };
 
 export type FileMutationResult = Omit<

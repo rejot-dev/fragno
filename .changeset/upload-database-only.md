@@ -23,6 +23,10 @@ This is a pre-1.0 breaking change:
   `FILE_PRECONDITION_FAILED`. Edits enforce `maxFileBytes` on each file they write.
 - Search candidates carry their `byteLength`. `POST /files/search/hydrate` reads every candidate's
   content in its one read, so send only as many candidates as `maxBytes` scans.
+- File records no longer carry `errorCode` or `errorMessage`, which were always `null`.
+- Cleanup events that earlier versions queued are no longer handled, and fail once their retries run
+  out; the content they named stays stored.
 
-The schema is unchanged, so existing files keep their content, provided it was stored by the
-database storage adapter in the same database.
+The schema drops the `upload_part` table, the upload columns direct and multipart uploads used, and
+the file error columns. Existing files keep their content, provided it was stored by the database
+storage adapter in the same database.

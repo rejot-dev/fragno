@@ -1,6 +1,6 @@
 import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-dev/db";
 
-import type { FileHookPayload, UnfinishedUploadPayload, UploadTimeoutPayload } from "../config";
+import type { FileHookPayload, UploadTimeoutPayload } from "../config";
 import type { uploadSchema } from "../schema";
 
 export type UploadHooks = {
@@ -8,8 +8,6 @@ export type UploadHooks = {
   onFileTextIndexRequested: HookFn<FileHookPayload>;
   onUploadFailed: HookFn<FileHookPayload>;
   onFileDeleted: HookFn<FileHookPayload>;
-  cleanupStorageObject: HookFn<FileHookPayload>;
-  cleanupUnfinishedUpload: HookFn<UnfinishedUploadPayload>;
   onUploadTimeout: HookFn<UploadTimeoutPayload>;
 };
 
