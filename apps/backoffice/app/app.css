@@ -4,9 +4,37 @@
 
 @source "../node_modules/streamdown/dist/*.js";
 
+/* The viewport covers the whole screen (viewport-fit=cover) so the phone chrome can reach under the
+   home indicator, which also reaches under a landscape phone's notch; pages stay clear of it. */
+body {
+  padding-right: env(safe-area-inset-right);
+  padding-left: env(safe-area-inset-left);
+}
+
 /* A page scrollbar appearing for a long connection detail would otherwise narrow the table. */
 html:has([data-integrations-workspace]) {
   scrollbar-gutter: stable;
+}
+
+/* The shell's chrome above and below a page, so pages that fill the screen, such as explorers and
+   chats, take what is left. Phones have the slim header and the tab bar; from sm, the top bar and its section strip; from 960px, the top bar beside the sidebar. */
+[data-backoffice-shell] {
+  --bo-shell-top: calc(var(--spacing) * 14 + 1px + env(safe-area-inset-top));
+  --bo-shell-bottom: calc(var(--spacing) * 14 + 1px + env(safe-area-inset-bottom));
+  --bo-page-height: calc(100dvh - var(--bo-shell-top) - var(--bo-shell-bottom));
+}
+
+@media (width >= 40rem) {
+  [data-backoffice-shell] {
+    --bo-shell-top: calc(var(--spacing) * 27 + 2px + env(safe-area-inset-top));
+    --bo-shell-bottom: 0px;
+  }
+}
+
+@media (width >= 960px) {
+  [data-backoffice-shell] {
+    --bo-shell-top: calc(var(--spacing) * 16 + 1px + env(safe-area-inset-top));
+  }
 }
 
 /* The shell sets this until the saved sidebar state has painted, so it does not animate on load. */

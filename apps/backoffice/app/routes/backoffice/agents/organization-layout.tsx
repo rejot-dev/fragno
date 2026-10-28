@@ -40,7 +40,7 @@ export default function BackofficeScopedPiLayout({ loaderData, matches }: Route.
     <div
       className={
         isAgents
-          ? "flex h-[calc(100dvh-6.75rem)] min-h-0 flex-col gap-2 overflow-hidden sm:h-[calc(100dvh-4rem)]"
+          ? "flex h-[var(--bo-page-height)] min-h-0 flex-col gap-2 overflow-hidden"
           : "space-y-4"
       }
     >

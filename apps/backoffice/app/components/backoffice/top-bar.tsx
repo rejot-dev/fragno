@@ -1,5 +1,4 @@
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { Suspense, use, type ReactNode } from "react";
 
 import {
   type BackofficeNamedProject,
@@ -12,15 +11,9 @@ import type { AutomationProjectList } from "@/fragno/automation/project-list";
 import { AGENT_DRAWER_ID, preloadAgentDrawer } from "./agent-drawer";
 import { BackofficeAppearanceMenu } from "./appearance-menu";
 import { BackofficePresenceIndicator } from "./presence-indicator";
-import {
-  BackofficeProjectMenu,
-  type BackofficeProjectMenuOwner,
-  type BackofficeProjectOption,
-} from "./project-menu";
+import { StreamedBackofficeProjectMenu } from "./project-menu";
 import { BackofficeScopeMenu } from "./scope-menu";
 import { BackofficeMobileNav } from "./sidebar-nav";
-
-const EMPTY_PROJECTS: BackofficeProjectOption[] = [];
 
 type BackofficeTopBarProps = {
   me: BackofficeMeData | null;
@@ -32,55 +25,6 @@ type BackofficeTopBarProps = {
   agentDrawerOpen?: boolean;
   onAgentDrawerToggle?: () => void;
 };
-
-/** The project menu, which lists the owner's projects once the layout's loader streams them in. */
-function StreamedBackofficeProjectMenu({
-  owner,
-  administeredMember,
-  currentProject,
-  projectList,
-}: {
-  owner: BackofficeProjectMenuOwner;
-  administeredMember: AdministeredMember | null;
-  currentProject: BackofficeProjectOption | null;
-  projectList: Promise<AutomationProjectList> | null;
-}) {
-  const menu = (list: AutomationProjectList | null) => (
-    <BackofficeProjectMenu
-      owner={owner}
-      administeredMember={administeredMember}
-      currentProject={currentProject}
-      projects={
-        list?.kind === "listed"
-          ? list.projects.map((project) => ({
-              slug: project.slug,
-              label: project.name.trim() || project.slug,
-            }))
-          : EMPTY_PROJECTS
-      }
-      projectsError={list?.kind === "failed" ? list.message : null}
-      projectsLoading={list === null}
-    />
-  );
-  if (!projectList) {
-    return menu({ kind: "failed", message: "Projects are unavailable here." });
-  }
-  return (
-    <Suspense fallback={menu(null)}>
-      <ListedProjects projectList={projectList}>{menu}</ListedProjects>
-    </Suspense>
-  );
-}
-
-function ListedProjects({
-  projectList,
-  children,
-}: {
-  projectList: Promise<AutomationProjectList>;
-  children: (list: AutomationProjectList) => ReactNode;
-}) {
-  return children(use(projectList));
-}
 
 export function BackofficeTopBar({
   me,
@@ -95,7 +39,8 @@ export function BackofficeTopBar({
   const projectOwner = resolvedScope && backofficeScopeProjectOwner(resolvedScope);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)]">
+    // Phones get BackofficePhoneChrome instead.
+    <header className="sticky top-0 z-30 hidden border-b border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] pt-[env(safe-area-inset-top)] sm:block">
       <div className="flex h-16 items-stretch">
         {/* Tracks the sidebar's width below it, including its collapse transition. */}
         <div
@@ -130,7 +75,7 @@ export function BackofficeTopBar({
             <BackofficePresenceIndicator key={me.activeOrganizationId} />
           ) : null}
           <div className="flex shrink-0 items-center min-[960px]:border-l min-[960px]:border-[color:var(--bo-border)]">
-            <BackofficeAppearanceMenu me={me} isLoading={isLoading} />
+            <BackofficeAppearanceMenu me={me} isLoading={isLoading} trigger="icon" />
           </div>
         </div>
 

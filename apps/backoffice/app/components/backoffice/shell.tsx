@@ -21,6 +21,7 @@ import { CurrentBackofficeProvider } from "./current-context";
 import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { MemberWorkspaceBanner } from "./member-workspace-banner";
+import { BackofficePhoneChrome } from "./phone-chrome";
 import { BackofficeSidebarNav } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
 
@@ -219,12 +220,20 @@ function BackofficeShellFrame({
   return (
     <div
       data-backoffice-root
+      data-backoffice-shell
       data-sidebar-restoring={sidebarRestoring || undefined}
       className="relative isolate flex min-h-screen bg-[var(--bo-bg)] text-[var(--bo-fg)]"
     >
       <BackofficeClsDebugger />
-      <div className="relative flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col pb-[var(--bo-shell-bottom)]">
         <div className="bo-grid-backdrop pointer-events-none absolute inset-0" />
+        <BackofficePhoneChrome
+          me={me}
+          resolvedScope={resolvedScope}
+          administeredMember={administeredMember}
+          projectList={projectList}
+          isLoading={isLoading ?? false}
+        />
         <BackofficeTopBar
           me={me}
           resolvedScope={resolvedScope}
@@ -254,14 +263,17 @@ function BackofficeShellFrame({
           </main>
         </div>
       </div>
-      <AgentDrawer
-        open={agentDrawerOpen}
-        // Agents read their directory from the scope's Automations replica.
-        resolvedScope={automationReplicaSource ? resolvedScope : null}
-        onClose={() => {
-          setAgentDrawerOpen(false);
-        }}
-      />
+      {/* Phones reach agents through the Agents tab instead. */}
+      <div className="hidden sm:contents">
+        <AgentDrawer
+          open={agentDrawerOpen}
+          // Agents read their directory from the scope's Automations replica.
+          resolvedScope={automationReplicaSource ? resolvedScope : null}
+          onClose={() => {
+            setAgentDrawerOpen(false);
+          }}
+        />
+      </div>
       {terminalScope ? (
         <ClientOnly>
           <Suspense fallback={null}>

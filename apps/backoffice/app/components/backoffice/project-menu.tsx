@@ -7,6 +7,7 @@ import {
   SelectorMenuPopup,
   SelectorMenuTrigger,
 } from "@fragno-private/design-system/selector-menu";
+import { Suspense, use, type ReactNode } from "react";
 import { useLocation } from "react-router";
 
 import {
@@ -14,6 +15,7 @@ import {
   type BackofficeRouteScope,
 } from "@/backoffice-runtime/route-scope";
 import type { AdministeredMember } from "@/fragno/auth/contracts";
+import type { AutomationProjectList } from "@/fragno/automation/project-list";
 
 import { scopeSwitchPath } from "./scope-switch-path";
 
@@ -123,4 +125,55 @@ export function BackofficeProjectMenu({
       </SelectorMenuPopup>
     </SelectorMenu>
   );
+}
+
+const EMPTY_PROJECTS: BackofficeProjectOption[] = [];
+
+/** The project menu, which lists the owner's projects once the layout's loader streams them in. */
+export function StreamedBackofficeProjectMenu({
+  owner,
+  administeredMember,
+  currentProject,
+  projectList,
+}: {
+  owner: BackofficeProjectMenuOwner;
+  administeredMember: AdministeredMember | null;
+  currentProject: BackofficeProjectOption | null;
+  projectList: Promise<AutomationProjectList> | null;
+}) {
+  const menu = (list: AutomationProjectList | null) => (
+    <BackofficeProjectMenu
+      owner={owner}
+      administeredMember={administeredMember}
+      currentProject={currentProject}
+      projects={
+        list?.kind === "listed"
+          ? list.projects.map((project) => ({
+              slug: project.slug,
+              label: project.name.trim() || project.slug,
+            }))
+          : EMPTY_PROJECTS
+      }
+      projectsError={list?.kind === "failed" ? list.message : null}
+      projectsLoading={list === null}
+    />
+  );
+  if (!projectList) {
+    return menu({ kind: "failed", message: "Projects are unavailable here." });
+  }
+  return (
+    <Suspense fallback={menu(null)}>
+      <ListedProjects projectList={projectList}>{menu}</ListedProjects>
+    </Suspense>
+  );
+}
+
+function ListedProjects({
+  projectList,
+  children,
+}: {
+  projectList: Promise<AutomationProjectList>;
+  children: (list: AutomationProjectList) => ReactNode;
+}) {
+  return children(use(projectList));
 }

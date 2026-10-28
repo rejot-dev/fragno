@@ -135,7 +135,7 @@ const scopeColor = (
     ? { kind: "primary" }
     : { kind: "seeded", seed: scopeId };
 
-const currentScopeLabel = (
+export const currentScopeLabel = (
   scope: BackofficeResolvedScope<Organization>,
   me: BackofficeMeData,
   administeredMember: AdministeredMember | null,

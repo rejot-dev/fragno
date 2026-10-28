@@ -10,7 +10,7 @@ import {
   type LoaderFunctionArgs,
 } from "react-router";
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import {
@@ -20,6 +20,7 @@ import {
 import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 import { resolveBackofficePageScope } from "@/layouts/backoffice-layout-scope";
 
+import { BackofficePhoneChrome } from "./phone-chrome";
 import { BackofficeProjectMenu } from "./project-menu";
 import { BackofficeMobileNav, BackofficeSidebarNav } from "./sidebar-nav";
 
@@ -76,7 +77,9 @@ async function loadScope({ params }: LoaderFunctionArgs) {
   return result.scope;
 }
 
-function NavigationScenario({ navigation }: { navigation: "desktop" | "mobile" }) {
+type Navigation = "desktop" | "mobile" | "phone";
+
+function NavigationScenario({ navigation }: { navigation: Navigation }) {
   const scope = useLoaderData<typeof loadScope>();
   const [collapsed, setCollapsed] = useState(false);
   const routeScope = backofficeRouteScopeFromResolvedScope(scope);
@@ -90,8 +93,16 @@ function NavigationScenario({ navigation }: { navigation: "desktop" | "mobile" }
           collapsed={collapsed}
           onCollapsedChange={setCollapsed}
         />
-      ) : (
+      ) : navigation === "mobile" ? (
         <BackofficeMobileNav currentScope={scope} me={me} />
+      ) : (
+        <BackofficePhoneChrome
+          me={me}
+          resolvedScope={scope}
+          administeredMember={null}
+          projectList={null}
+          isLoading={false}
+        />
       )}
       {owner.kind !== "system" ? (
         <BackofficeProjectMenu
@@ -111,10 +122,10 @@ function NavigationScenario({ navigation }: { navigation: "desktop" | "mobile" }
   );
 }
 
-async function renderNavigation(initialPath: string, navigation: "desktop" | "mobile") {
+async function renderNavigation(initialPath: string, navigation: Navigation) {
   const router = createMemoryRouter(
     [
-      ...["/backoffice/organizations/:orgSlug/*", "/backoffice/dashboard/:scopeKind/:scopeId"].map(
+      ...["/backoffice/organizations/:orgSlug/*", "/backoffice/:section/:scopeKind/:scopeId/*"].map(
         (path) => ({
           path,
           loader: loadScope,
@@ -134,6 +145,15 @@ async function renderNavigation(initialPath: string, navigation: "desktop" | "mo
   return router;
 }
 
+// Phones list Settings in the menu that More opens, rather than in the tab bar.
+async function querySettingsLink(navigation: Navigation): Promise<HTMLElement | null> {
+  if (navigation === "phone") {
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    await screen.findByRole("dialog", { name: "Menu" });
+  }
+  return screen.queryByRole("link", { name: "Settings" });
+}
+
 function personalScopes(userId: string): BackofficeRouteScope[] {
   const owner = { kind: "user" as const, userId, jurisdiction: null };
   const app = { kind: "app" as const, owner, appId: "bookkeeping" };
@@ -146,7 +166,7 @@ function personalScopes(userId: string): BackofficeRouteScope[] {
 }
 
 describe("scope navigation scenarios", () => {
-  test.each(["desktop", "mobile"] as const)(
+  test.each(["desktop", "mobile", "phone"] as const)(
     "%s navigation reaches personal settings from owned descendants but not another member's",
     async (navigation) => {
       const router = await renderNavigation("/backoffice/dashboard/user/ada", navigation);
@@ -156,8 +176,8 @@ describe("scope navigation scenarios", () => {
         await act(() =>
           router.navigate(`/backoffice/dashboard/${backofficeRouteScopePath(scope)}`),
         );
-        const settings = screen.getByRole("link", { name: "Settings" });
-        assert(settings.getAttribute("href") === "/backoffice/settings");
+        const settings = await querySettingsLink(navigation);
+        assert(settings?.getAttribute("href") === "/backoffice/settings");
         fireEvent.click(settings);
         await screen.findByRole("heading", { name: "Personal settings" });
         assert(router.state.location.pathname === "/backoffice/settings");
@@ -168,7 +188,7 @@ describe("scope navigation scenarios", () => {
           router.navigate(`/backoffice/dashboard/${backofficeRouteScopePath(scope)}`),
         );
         expect(screen.getByRole("navigation", { name: "Backoffice" })).toBeTruthy();
-        expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
+        expect(await querySettingsLink(navigation)).toBeNull();
       }
     },
   );
@@ -210,4 +230,32 @@ describe("scope navigation scenarios", () => {
       }
     },
   );
+
+  test("phone tabs return to where each section was left, per scope", async () => {
+    const router = await renderNavigation("/backoffice/dashboard/user/ada", "phone");
+    const tab = (name: string) =>
+      within(screen.getByRole("navigation", { name: "Backoffice" })).getByRole("link", { name });
+    const follow = async (name: string) => {
+      await act(async () => {
+        fireEvent.click(tab(name));
+      });
+    };
+    const pathname = () => router.state.location.pathname;
+
+    await act(() => router.navigate("/backoffice/agents/user/ada/agents/assistant"));
+    await follow("Files");
+    assert(pathname() === "/backoffice/files/user/ada");
+    await act(() => router.navigate("/backoffice/files/user/ada?path=uploads"));
+
+    await follow("Agents");
+    assert(pathname() === "/backoffice/agents/user/ada/agents/assistant");
+    assert(tab("Files").getAttribute("href") === "/backoffice/files/user/ada?path=uploads");
+
+    // The current section's tab starts it over.
+    await follow("Agents");
+    assert(pathname() === "/backoffice/agents/user/ada/agents");
+
+    await act(() => router.navigate("/backoffice/dashboard/org/agency"));
+    assert(tab("Agents").getAttribute("href") === "/backoffice/agents/org/agency/agents");
+  });
 });

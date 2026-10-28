@@ -46,7 +46,7 @@ export default function BackofficeFilesScopeLayout({ loaderData }: Route.Compone
   } satisfies FilesLayoutContext;
 
   return (
-    <div className="flex h-[calc(100dvh-6.75rem)] min-h-0 flex-col overflow-hidden sm:h-[calc(100dvh-4rem)]">
+    <div className="flex h-[var(--bo-page-height)] min-h-0 flex-col overflow-hidden">
       <h1 className="sr-only">Files for {selectedScope.label}</h1>
       {/* Large files sit in their own tab because the explorer's search never reaches them. */}
       <BackofficeTabHeader

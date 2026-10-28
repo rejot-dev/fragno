@@ -17,6 +17,8 @@ type PrimaryNavigationItem = {
   to: string;
   icon: IconName;
   isActive: (pathname: string) => boolean;
+  /** Whether phones give it a tab of its own; the others are in the phone menu. */
+  phoneTab: boolean;
 };
 
 const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
@@ -25,36 +27,42 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     to: "/backoffice/dashboard",
     icon: "grid",
     isActive: (pathname) => pathname.startsWith("/backoffice/dashboard"),
+    phoneTab: true,
   },
   {
     label: "Integrations",
     to: "/backoffice/integrations",
     icon: "link",
     isActive: (pathname) => pathname.startsWith("/backoffice/integrations"),
+    phoneTab: false,
   },
   {
     label: "Agents",
     to: "/backoffice/agents",
     icon: "message-square",
     isActive: (pathname) => pathname.startsWith("/backoffice/agents"),
+    phoneTab: true,
   },
   {
     label: "Files",
     to: "/backoffice/files",
     icon: "folder",
     isActive: (pathname) => pathname.startsWith("/backoffice/files"),
+    phoneTab: true,
   },
   {
     label: "Computers",
     to: "/backoffice/computers",
     icon: "monitor",
     isActive: (pathname) => pathname.startsWith("/backoffice/computers"),
+    phoneTab: false,
   },
   {
     label: "Marketplace",
     to: "/backoffice/marketplace",
     icon: "shopping-bag",
     isActive: (pathname) => pathname.startsWith("/backoffice/marketplace"),
+    phoneTab: false,
   },
 ];
 
@@ -62,9 +70,13 @@ type SidebarScope = BackofficeResolvedScope<Organization>;
 
 // Section links carry the current scope so switching sections keeps the
 // selected organization/project instead of falling back to the default scope.
-function resolveNavigationItems(scope: SidebarScope | null, pathname: string): NavigationItem[] {
+function resolveNavigationItems(
+  scope: SidebarScope | null,
+  pathname: string,
+  items: readonly PrimaryNavigationItem[],
+): NavigationItem[] {
   const routeScope = scope ? backofficeRouteScopeFromResolvedScope(scope) : null;
-  return PRIMARY_NAVIGATION.map((item) => ({
+  return items.map((item) => ({
     label: item.label,
     to: routeScope ? scopeSwitchPath(item.to, routeScope) : item.to,
     icon: item.icon,
@@ -144,7 +156,12 @@ export function BackofficeSidebarNav({
 
   return (
     <SidebarNavigation
-      sections={[{ label: null, items: resolveNavigationItems(currentScope, location.pathname) }]}
+      sections={[
+        {
+          label: null,
+          items: resolveNavigationItems(currentScope, location.pathname, PRIMARY_NAVIGATION),
+        },
+      ]}
       secondaryItems={resolveContextNavigationItems(currentScope, me, location.pathname)}
       ariaLabel="Backoffice"
       collapsed={collapsed}
@@ -160,15 +177,26 @@ export function BackofficeMobileNav({
   currentScope: SidebarScope | null;
   me: BackofficeMeData | null;
 }) {
-  const location = useLocation();
-
   return (
-    <MobileNavigation
-      items={[
-        ...resolveNavigationItems(currentScope, location.pathname),
-        ...resolveContextNavigationItems(currentScope, me, location.pathname),
-      ]}
-      ariaLabel="Backoffice"
-    />
+    <MobileNavigation items={useBackofficeSections(currentScope, me).all} ariaLabel="Backoffice" />
   );
+}
+
+/** Every section in the sidebar's order, and the ones phones give a tab of their own. */
+export function useBackofficeSections(
+  currentScope: SidebarScope | null,
+  me: BackofficeMeData | null,
+): { all: NavigationItem[]; phoneTabs: NavigationItem[] } {
+  const location = useLocation();
+  return {
+    all: [
+      ...resolveNavigationItems(currentScope, location.pathname, PRIMARY_NAVIGATION),
+      ...resolveContextNavigationItems(currentScope, me, location.pathname),
+    ],
+    phoneTabs: resolveNavigationItems(
+      currentScope,
+      location.pathname,
+      PRIMARY_NAVIGATION.filter((item) => item.phoneTab),
+    ),
+  };
 }
