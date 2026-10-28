@@ -71,6 +71,35 @@ function reactDomStreamingRendererOnlyPlugin(): Plugin {
   };
 }
 
+// Vite emits every Web Worker the client build bundled into each environment built after it, so the
+// server Workers also received the browser's replica workers and the wa-sqlite.wasm they load.
+// Wrangler uploads every JavaScript and WebAssembly file of a Worker's output as a module, so these
+// counted against the Worker's size although nothing on the server loads them.
+function dropUnloadedServerModulesPlugin(): Plugin {
+  return {
+    name: "drop-unloaded-server-modules",
+    apply: "build",
+    enforce: "post",
+    generateBundle(_, bundle) {
+      if (this.environment.config.consumer !== "server") {
+        return;
+      }
+      const chunks = Object.values(bundle).flatMap((output) =>
+        output.type === "chunk" ? [output.code] : [],
+      );
+      for (const [fileName, output] of Object.entries(bundle)) {
+        if (output.type !== "asset" || !/\.(?:m?js|wasm)$/.test(fileName)) {
+          continue;
+        }
+        const name = path.posix.basename(fileName);
+        if (!chunks.some((code) => code.includes(name))) {
+          delete bundle[fileName];
+        }
+      }
+    },
+  };
+}
+
 // The server build React Router generates imports every route module, so a cold Worker compiled
 // all of them, about 47 ms per MB, whichever route it served. Production builds import each
 // route module but root's on first use instead; `workers/lazy-request-handler.ts` loads those a
@@ -176,6 +205,7 @@ export default defineConfig(({ command }) => {
       emitWaSqliteWasmAssetPlugin(),
       reactDomStreamingRendererOnlyPlugin(),
       lazyServerRouteModulesPlugin(),
+      dropUnloadedServerModulesPlugin(),
       emitWorkerLocalDevVarsPlugin(),
       previewServerUrlShortcutPlugin(),
     ],
