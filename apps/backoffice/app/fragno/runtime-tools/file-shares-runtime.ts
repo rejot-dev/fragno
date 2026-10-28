@@ -30,6 +30,7 @@ type ShareAutomations = Pick<
   | "acceptFileShare"
   | "listAcceptedFileShares"
   | "deleteAcceptedFileShare"
+  | "resolveProjectForExecution"
 >;
 
 const WORKSPACE_ROOT = "/workspace/";
@@ -69,18 +70,30 @@ export function createFileShareRuntime({
 }): FileShareRuntime {
   const automations = () => automationsFor(scope);
 
-  /** Callers name organizations and users by ID; Auth knows their jurisdiction. */
+  /**
+   * Callers name organizations and users by ID; Auth knows their jurisdiction. A project is
+   * stored with its owner, so a share can never name one nobody could accept it in.
+   */
   async function existingScope(named: BackofficeRoutableScope): Promise<BackofficeRoutableScope> {
     const owner = backofficeScopeRootOwner(named);
     const resolved = owner && (await resolveRootOwner(owner));
-    if (!resolved) {
+    const target =
+      resolved &&
+      mapBackofficeScopeNames(named, {
+        organization: ({ orgId }) => ({ orgId, jurisdiction: resolved.jurisdiction }),
+        user: ({ userId }) => ({ userId, jurisdiction: resolved.jurisdiction }),
+        project: ({ projectId }) => ({ projectId }),
+      });
+    if (
+      !target ||
+      (target.kind === "project" &&
+        !(await automationsFor(target.owner).resolveProjectForExecution({
+          projectId: target.projectId,
+        })))
+    ) {
       throw new BackofficeOperationError("not_found", "The named scope does not exist.");
     }
-    return mapBackofficeScopeNames(named, {
-      organization: ({ orgId }) => ({ orgId, jurisdiction: resolved.jurisdiction }),
-      user: ({ userId }) => ({ userId, jurisdiction: resolved.jurisdiction }),
-      project: ({ projectId }) => ({ projectId }),
-    });
+    return target;
   }
 
   return {

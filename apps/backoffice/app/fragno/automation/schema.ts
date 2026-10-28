@@ -322,7 +322,7 @@ export const automationFragmentSchema = schema("automations", (s) => {
             column("timestamp").defaultTo((b) => b.now()),
           ),
       )
-      // A share another scope offered and this one accepted, under the share's ID. The sharing
+      // A share another scope offered and this one accepted, mounted at /shared/<name>/. The sharing
       // scope's `file_share` row stays the authority: this row only says where to look.
       .addTable("accepted_file_share", (t) =>
         t
@@ -334,8 +334,8 @@ export const automationFragmentSchema = schema("automations", (s) => {
             column("timestamp").defaultTo((b) => b.now()),
           ),
       )
-      // Where this scope mounts the share, /shared/<name>/, which it chose on accepting; the share's
-      // ID unless it named it. Empty only for shares accepted before they had names.
+      // Where this scope mounts the share, which it chose on accepting; the share's ID unless it
+      // named it. The default only lets the column be added: every share is accepted with a name.
       .alterTable("accepted_file_share", (t) =>
         t
           .addColumn("name", column("string").defaultTo(""))
