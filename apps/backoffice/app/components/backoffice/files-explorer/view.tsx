@@ -192,13 +192,15 @@ export function FilesExplorerView({
             />
           </aside>
 
-          <div className="flex min-h-0 min-w-0 flex-col bg-[var(--bo-bg)]">
+          {/* Files sit on the panel surface; the toolbars around them share the tree's recessed one. */}
+          <div className="flex min-h-0 min-w-0 flex-col bg-[var(--bo-panel)]">
             {contentSearch ? (
-              <div className="shrink-0 border-b border-[var(--bo-border)] bg-[var(--bo-panel-2)] p-3 md:p-4">
+              <div className="shrink-0 border-b border-[var(--bo-border)] bg-[var(--bo-sidebar-bg)] p-3">
                 <Form method="get" className="relative">
                   <Icon
                     name="search"
-                    className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-[var(--bo-muted-2)]"
+                    strokeWidth={1.75}
+                    className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-[var(--bo-muted-2)]"
                   />
                   <Input
                     key={contentSearch.query}
@@ -208,7 +210,7 @@ export function FilesExplorerView({
                     defaultValue={contentSearch.query}
                     placeholder="Search file contents"
                     aria-label="Search file contents"
-                    className="min-h-11 w-full pr-11 pl-10"
+                    className="min-h-10 w-full pr-11 pl-9"
                   />
                   {contentSearch.query ? (
                     <Link
@@ -422,8 +424,8 @@ function ExplorerNodeDetailPanel({
   );
 
   return (
-    <section className="flex h-full min-h-0 flex-col p-4 md:p-5">
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 pb-4">
+    <section className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-[var(--bo-border)] p-4 md:px-5">
         <div className="flex min-w-0 items-start gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-accent)] shadow-[inset_0_0_0_1px_var(--bo-border)]">
             <Icon name={detailIcon} className="size-[18px]" />
@@ -481,21 +483,11 @@ function ExplorerNodeDetailPanel({
         </div>
       </div>
 
-      {contentPreamble ? <div className="mt-2 shrink-0">{contentPreamble}</div> : null}
-
+      {/* The header stays put while the file scrolls; previews that fill the height scroll inside. */}
       {contentRenderer ? (
-        <div className="mt-2 flex min-h-0 flex-1 flex-col bg-[var(--bo-panel-2)] p-3 shadow-[inset_0_0_0_1px_var(--bo-border)] md:p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[9px] font-semibold tracking-[0.2em] text-[var(--bo-muted-2)] uppercase">
-              {contentRenderer.label}
-            </p>
-            {detail.node.contentType ? (
-              <p className="text-[9px] text-[var(--bo-muted-2)]">{detail.node.contentType}</p>
-            ) : null}
-          </div>
-          <div className="mt-3 min-h-0 flex-1 overflow-auto">
-            {contentRenderer.render(contentPreview)}
-          </div>
+        <div className="backoffice-scroll min-h-0 flex-1 overflow-auto p-4 md:p-5">
+          {contentPreamble ? <div className="mb-4">{contentPreamble}</div> : null}
+          {contentRenderer.render(contentPreview)}
         </div>
       ) : null}
     </section>
@@ -515,7 +507,7 @@ function RootSelectionState({
   const Heading = getHeadingComponent(headingLevel);
 
   return (
-    <section className="flex min-h-full items-center justify-center bg-[var(--bo-bg)] p-6">
+    <section className="flex min-h-full items-center justify-center p-6">
       <div className="max-w-sm text-center">
         <div className="bo-control-surface mx-auto flex size-12 items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-accent)]">
           <Icon name={icon} className="size-5" />

@@ -5,6 +5,7 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/automation";
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
+import { SourceView } from "@fragno-private/design-system/source-view";
 import { Spinner } from "@fragno-private/design-system/spinner";
 import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
 import { useState, type ReactNode } from "react";
@@ -38,7 +39,6 @@ export type FilesContentPreview = {
 
 type FilesContentRenderer = {
   id: string;
-  label: string;
   renderBefore?: (preview: FilesContentPreview) => ReactNode;
   render: (preview: FilesContentPreview) => ReactNode;
 };
@@ -50,7 +50,6 @@ const EMPTY_WORKFLOW_RUNTIME_TOOL_CALLS: ReadonlyMap<
 
 const WorkflowRenderer: FilesContentRenderer = {
   id: "workflow",
-  label: "Workflow preview",
   render(preview) {
     return <WorkflowFilePreview preview={preview} />;
   },
@@ -76,14 +75,13 @@ export function WorkflowFilePreview({ preview }: { preview: FilesContentPreview 
         </UnderlineTab>
       </UnderlineTabList>
 
-      <Tabs.Panel value="code" className="min-h-0 flex-1 pt-3">
-        <pre
-          aria-label="Workflow code"
-          tabIndex={0}
-          className="backoffice-scroll h-full overflow-auto overscroll-contain px-1 font-mono text-[12px] leading-6 whitespace-pre-wrap text-[var(--bo-fg)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--bo-accent)]"
-        >
-          <code>{source}</code>
-        </pre>
+      {/* The graph fills the panel, so the code scrolls inside the same height. */}
+      <Tabs.Panel
+        value="code"
+        tabIndex={0}
+        className="backoffice-scroll min-h-0 flex-1 overflow-auto overscroll-contain pt-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--bo-accent)]"
+      >
+        <SourceView source={source} label="Workflow code" />
       </Tabs.Panel>
       <Tabs.Panel value="graph" className="flex min-h-0 flex-1 flex-col pt-3">
         <WorkflowStartRouteSummary routing={preview.workflowRouting} />
@@ -252,7 +250,6 @@ function formatMatcherValue(value: unknown): string {
 
 const PageRenderer: FilesContentRenderer = {
   id: "page",
-  label: "Page preview",
   render(preview) {
     return <PageFilePreview preview={preview} />;
   },
@@ -261,41 +258,29 @@ const PageRenderer: FilesContentRenderer = {
 /** Pages render with live data on their own route, which the preview links to. */
 function PageFilePreview({ preview }: { preview: FilesContentPreview }) {
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div>
       {preview.pageHref === null ? null : (
-        <div className="mb-3 shrink-0">
+        <div className="mb-4">
           <ButtonLink to={preview.pageHref} variant="secondary">
             <Icon name="layout" />
             Open page
           </ButtonLink>
         </div>
       )}
-      <pre
-        aria-label="Page source"
-        tabIndex={0}
-        className="backoffice-scroll min-h-0 flex-1 overflow-auto overscroll-contain px-1 font-mono text-[12px] leading-6 whitespace-pre-wrap text-[var(--bo-fg)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--bo-accent)]"
-      >
-        <code>{preview.textContent ?? ""}</code>
-      </pre>
+      <SourceView source={preview.textContent ?? ""} label="Page source" />
     </div>
   );
 }
 
 const TextRenderer: FilesContentRenderer = {
   id: "text",
-  label: "Text preview",
   render(preview) {
-    return (
-      <pre className="backoffice-scroll h-full overflow-auto font-mono text-[12px] leading-6 whitespace-pre-wrap text-[var(--bo-fg)]">
-        {preview.textContent ?? ""}
-      </pre>
-    );
+    return <SourceView source={preview.textContent ?? ""} label={preview.title} />;
   },
 };
 
 const MarkdownRenderer: FilesContentRenderer = {
   id: "markdown",
-  label: "Markdown preview",
   renderBefore(preview) {
     const { frontmatter } = readMarkdownDocument(preview);
     if (!frontmatter || Object.keys(frontmatter).length === 0) {
@@ -328,7 +313,7 @@ const MarkdownRenderer: FilesContentRenderer = {
     return (
       <Streamdown
         mode="streaming"
-        className="bo-file-markdown bo-session-markdown min-h-full text-sm leading-7 text-pretty"
+        className="bo-file-markdown bo-session-markdown max-w-[72ch] text-sm leading-7 text-pretty"
         controls={{ code: true, table: true }}
         skipHtml
       >
@@ -361,7 +346,6 @@ function readMarkdownDocument(preview: FilesContentPreview) {
 
 const ImageRenderer: FilesContentRenderer = {
   id: "image",
-  label: "Image preview",
   render(preview) {
     const src = getImageSource(preview);
     if (!src) {
