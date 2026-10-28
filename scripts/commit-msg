@@ -53,12 +53,19 @@ NR == 1 || /^#/ || /^[[:space:]]/ || /^[A-Za-z0-9-]+: / || /^$/ {
 mv "$FORMATTED_FILE" "$FILE"
 
 SUBJECT=$(head -n 1 "$FILE")
-REGEX='^((Revert.*)|(fixup! .*)|((build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\(.*\))?!?: .*))$'
+REGEX='^((Revert.*)|((fixup|amend)! .*)|((build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\(.*\))?!?: .*))$'
 
 echo "Commit Message:"
 cat "$FILE"
 
-if [ "${#SUBJECT}" -gt "$MAX_COLUMNS" ]; then
+# Git names a fixup's target by repeating its subject, which already fits, after the prefix; an
+# autosquash rebase drops the prefix.
+case "$SUBJECT" in
+  "fixup! "* | "amend! "*) SUBJECT_COLUMNS=0 ;;
+  *) SUBJECT_COLUMNS=${#SUBJECT} ;;
+esac
+
+if [ "$SUBJECT_COLUMNS" -gt "$MAX_COLUMNS" ]; then
   echo >&2 "ERROR: Commit subject exceeds ${MAX_COLUMNS} columns."
   exit 1
 fi
