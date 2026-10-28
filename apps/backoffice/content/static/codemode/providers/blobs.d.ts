@@ -48,7 +48,7 @@ type BlobsCreateUploadOutput = {
   headers: {
     [key: string]: string;
   };
-  /** The URL stops working, and an uncompleted upload is discarded, at this time. */
+  /** The URL accepts no PUT started after this time. An upload not completed within an hour after it is discarded. */
   expiresAt: string;
 };
 type BlobsCompleteUploadInput = {

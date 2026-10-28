@@ -46,7 +46,7 @@ const blobUploadSchema = z.lazy(() =>
       .record(z.string(), z.string())
       .describe("Headers the PUT must send unchanged, as they are part of the signature."),
     expiresAt: isoDateTimeOutputSchema.describe(
-      "The URL stops working, and an uncompleted upload is discarded, at this time.",
+      "The URL accepts no PUT started after this time. An upload not completed within an hour after it is discarded.",
     ),
   }),
 );

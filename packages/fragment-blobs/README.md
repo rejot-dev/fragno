@@ -43,11 +43,11 @@ const blobs = createBlobsFragment(
 | `GET /blobs/by-key/download-url?key=`  | A presigned GET URL                                                       |
 | `DELETE /blobs/by-key?key=`            | Deletes the blob and its object                                           |
 
-An upload's URL accepts one PUT for an hour. The uploader need not know the size in advance:
-completion reads it and the ETag from storage, and fails with `UPLOAD_CONTENT_MISSING` until the
-bytes arrive. Creating another upload for the same key replaces an unfinished one. Every upload
-writes its own object, so neither an unfinished upload nor a replacement touches the object a
-download URL reads.
+An upload's URL accepts one PUT for an hour, and completion stays open for another hour, so a PUT
+that started in time may finish late. The uploader need not know the size in advance: completion
+reads it and the ETag from storage, and fails with `UPLOAD_CONTENT_MISSING` until the bytes arrive.
+Creating another upload for the same key replaces an unfinished one. Every upload writes its own
+object, so neither an unfinished upload nor a replacement touches the object a download URL reads.
 
 `onBlobStored` runs for a new blob and for a replacement; `onBlobDeleted` runs only for
 `DELETE /blobs/by-key`. Both receive the blob as `GET /blobs/by-key` returns it.

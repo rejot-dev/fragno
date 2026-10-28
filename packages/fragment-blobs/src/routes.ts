@@ -171,7 +171,9 @@ export const blobsRoutesFactory = defineRoutes(blobsFragmentDefinition).create(
                 if (!upload) {
                   throw new BlobsError("UPLOAD_NOT_FOUND", "The upload does not exist.");
                 }
-                if (upload.expiresAt.getTime() <= Date.now()) {
+                // A PUT that started before the URL expired may finish after it, so completion
+                // stays open until the upload is discarded.
+                if (upload.expiresAt.getTime() + UNFINISHED_UPLOAD_DISCARD_GRACE_MS <= Date.now()) {
                   throw new BlobsError("UPLOAD_EXPIRED", "The upload has expired.");
                 }
                 try {
