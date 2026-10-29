@@ -1,11 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { parseEnv } from "node:util";
 
 import { reactRouter } from "@react-router/dev/vite";
 import { backofficeDevServerPort } from "@rejot-dev/backoffice-local/dev-server-port";
 import { defineConfig } from "vite";
-import type { EnvironmentOptions, Plugin } from "vite";
+import type { EnvironmentOptions, Plugin, PreviewServer, ViteDevServer } from "vite";
 import devtoolsJson from "vite-plugin-devtools-json";
 
 import { cloudflare } from "@cloudflare/vite-plugin";
@@ -20,10 +21,9 @@ const workerWarmupFiles = ["./workers/app.ts"];
 const boxdVmHost = process.env.BOXD_VM_HOST;
 const viteHost = boxdVmHost ? "0.0.0.0" : "127.0.0.1";
 const boxdAllowedHosts = boxdVmHost ? [`.${boxdVmHost}`] : [];
+const localDevVarsPath = path.resolve(__dirname, ".dev.vars");
 
 function emitWorkerLocalDevVarsPlugin(): Plugin {
-  const localDevVarsPath = path.resolve(__dirname, ".dev.vars");
-
   return {
     name: "emit-worker-local-dev-vars",
     apply: "build",
@@ -134,6 +134,36 @@ function lazyServerRouteModulesPlugin(): Plugin {
   };
 }
 
+/**
+ * Lists DOCS_PUBLIC_BASE_URL (the boxd proxy or tunnel) as the server's Network URL. Vite would list
+ * the machine's interface addresses, which the proxy or tunnel in front of it makes irrelevant.
+ */
+function printPublicBaseUrlPlugin(): Plugin {
+  function listPublicBaseUrl(server: ViteDevServer | PreviewServer) {
+    if (!existsSync(localDevVarsPath)) {
+      return;
+    }
+    const publicBaseUrl = parseEnv(readFileSync(localDevVarsPath, "utf8")).DOCS_PUBLIC_BASE_URL;
+    if (!publicBaseUrl || /^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(publicBaseUrl)) {
+      return;
+    }
+
+    const printUrls = server.printUrls;
+    server.printUrls = () => {
+      if (server.resolvedUrls) {
+        server.resolvedUrls.network = [publicBaseUrl];
+      }
+      printUrls();
+    };
+  }
+
+  return {
+    name: "print-public-base-url",
+    configureServer: listPublicBaseUrl,
+    configurePreviewServer: listPublicBaseUrl,
+  };
+}
+
 // Vite's dev server has a `u` shortcut, but its preview server does not. Shortcuts bound here merge
 // with the ones Vite's CLI binds after startup.
 function previewServerUrlShortcutPlugin(): Plugin {
@@ -220,6 +250,7 @@ export default defineConfig(({ command }) => {
       dropUnloadedServerModulesPlugin(),
       emitWorkerLocalDevVarsPlugin(),
       previewServerUrlShortcutPlugin(),
+      printPublicBaseUrlPlugin(),
     ],
     ssr: {
       noExternal: ["@earendil-works/pi-ai"],
