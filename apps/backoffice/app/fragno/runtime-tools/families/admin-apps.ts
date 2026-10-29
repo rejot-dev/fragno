@@ -15,10 +15,8 @@ import {
 } from "@/fragno/apps/contracts";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
-import { defineBackofficeRuntimeTool, type BackofficeToolContext } from "../runtime-tools";
-import type { AdminRuntime } from "./admin";
-
-type AdminAppsToolContext = BackofficeToolContext<Partial<{ admin: AdminRuntime }>>;
+import { defineBackofficeRuntimeTool } from "../runtime-tools";
+import { requireSystemAdminRuntime, type AdminSystemToolContext } from "./admin-system-runtime";
 
 const listAppsInputSchema = backofficeAppPageInputSchema.extend({
   pageSize: backofficeAppPageInputSchema.shape.pageSize.default(25),
@@ -41,17 +39,6 @@ const trustOption = {
     'Trust: {"kind":"third-party"}, or {"kind":"first-party","provisioningPermissions":["organizations.provision","organizations.provisionForInvitee","projects.provision","invitations.create","invitations.send","invitations.accept"],"branding":{"displayName","logoUrl","accentColor":"#rrggbb","homeUrl","supportUrl"}} for an app Backoffice operates',
 };
 
-function requireAdminAppsRuntime(context: AdminAppsToolContext): AdminRuntime {
-  if (context.execution.scope.kind !== "system") {
-    throw new Error("Admin app management requires System context.");
-  }
-  const admin = context.runtimes.admin;
-  if (!admin) {
-    throw new Error("Admin app runtime is not available in this execution context.");
-  }
-  return admin;
-}
-
 const createAppTool = defineBackofficeRuntimeTool({
   id: "admin.apps.create",
   namespace: "admin",
@@ -64,8 +51,8 @@ const createAppTool = defineBackofficeRuntimeTool({
     trust: appTrustSchema.default({ kind: "third-party" }),
   }),
   outputSchema: backofficeAppRegistrationResultSchema,
-  execute: async (input, context: AdminAppsToolContext) =>
-    await requireAdminAppsRuntime(context).createApp(input),
+  execute: async (input, context: AdminSystemToolContext) =>
+    await requireSystemAdminRuntime(context, "app management").createApp(input),
   adapters: {
     bash: {
       command: "admin.apps.create",
@@ -133,8 +120,8 @@ const updateAppActionsTool = defineBackofficeRuntimeTool({
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
   inputSchema: backofficeAppActionsUpdateInputSchema,
   outputSchema: backofficeAppActionsUpdateResultSchema,
-  execute: async (input, context: AdminAppsToolContext) =>
-    await requireAdminAppsRuntime(context).updateAppActions(input),
+  execute: async (input, context: AdminSystemToolContext) =>
+    await requireSystemAdminRuntime(context, "app management").updateAppActions(input),
   adapters: {
     bash: {
       command: "admin.apps.update-actions",
@@ -177,8 +164,8 @@ const updateAppPermissionsTool = defineBackofficeRuntimeTool({
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
   inputSchema: backofficeAppPermissionsUpdateInputSchema,
   outputSchema: backofficeAppPermissionsUpdateResultSchema,
-  execute: async (input, context: AdminAppsToolContext) =>
-    await requireAdminAppsRuntime(context).updateAppPermissions(input),
+  execute: async (input, context: AdminSystemToolContext) =>
+    await requireSystemAdminRuntime(context, "app management").updateAppPermissions(input),
   adapters: {
     bash: {
       command: "admin.apps.update-permissions",
@@ -236,8 +223,8 @@ const updateAppTrustTool = defineBackofficeRuntimeTool({
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
   inputSchema: backofficeAppTrustUpdateInputSchema,
   outputSchema: backofficeAppTrustUpdateResultSchema,
-  execute: async (input, context: AdminAppsToolContext) =>
-    await requireAdminAppsRuntime(context).updateAppTrust(input),
+  execute: async (input, context: AdminSystemToolContext) =>
+    await requireSystemAdminRuntime(context, "app management").updateAppTrust(input),
   adapters: {
     bash: {
       command: "admin.apps.update-trust",
@@ -282,8 +269,8 @@ const listAppsTool = defineBackofficeRuntimeTool({
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsRead],
   inputSchema: listAppsInputSchema,
   outputSchema: backofficeAppPageSchema,
-  execute: async (input, context: AdminAppsToolContext) =>
-    await requireAdminAppsRuntime(context).listApps(input),
+  execute: async (input, context: AdminSystemToolContext) =>
+    await requireSystemAdminRuntime(context, "app management").listApps(input),
   adapters: {
     bash: {
       command: "admin.apps.list",
