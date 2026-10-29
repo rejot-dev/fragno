@@ -7,10 +7,10 @@ function print_usage() {
 Usage: land-on-main.sh [--push]
 
 Fast-forwards the local main branch to the current worktree's HEAD, then
-rebases the current branch on main. Refuses unless the worktree that has
-main checked out is clean, main is not behind origin/main, the current
-branch is rebased on main, and no merge, cherry-pick, or revert is in
-progress.
+rebases the current branch on main. Pulls main first when it is behind
+origin/main. Refuses unless the worktree that has main checked out is
+clean, main has not diverged from origin/main, the current branch is
+rebased on main, and no merge, cherry-pick, or revert is in progress.
 
   --push  Push main to origin right after landing, so origin/main cannot
           move in between.
@@ -83,8 +83,12 @@ fi
 
 git fetch --quiet origin main
 if ! git merge-base --is-ancestor origin/main main; then
-  echo "error: main is behind origin/main; pull in $main_worktree_path first." >&2
-  exit 1
+  # The main worktree is clean (checked above), so fast-forwarding it cannot lose work.
+  if ! git -C "$main_worktree_path" merge --ff-only --quiet origin/main; then
+    echo "error: main has diverged from origin/main; reconcile them in $main_worktree_path first." >&2
+    exit 1
+  fi
+  echo "Pulled main to origin/main ($(git rev-parse --short main))."
 fi
 
 main_sha="$(git rev-parse main)"
