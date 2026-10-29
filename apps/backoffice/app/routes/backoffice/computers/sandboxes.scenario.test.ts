@@ -23,6 +23,7 @@ import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-c
 import { ApiObject } from "../../../../workers/api-object";
 import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
+import { BillingObject } from "../../../../workers/billing-object";
 import { FormsObject } from "../../../../workers/forms-object";
 import { OtpObject } from "../../../../workers/otp-object";
 import { SandboxManagerObject } from "../../../../workers/sandbox-manager-object";
@@ -66,6 +67,7 @@ const scenarioObjects = {
   TELEGRAM: (input) => new TelegramObject(input),
   API: (input) => new ApiObject(input),
   AUTOMATIONS: (input) => new AutomationsObject(input),
+  BILLING: (input) => new BillingObject(input),
   UPLOAD: (input) => new UploadObject(input),
   FORMS: (input) => new FormsObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),

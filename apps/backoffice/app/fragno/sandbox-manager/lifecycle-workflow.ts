@@ -14,7 +14,9 @@ import { sleepAfterToMilliseconds } from "@/sandbox/sleep-after";
 
 import type { SandboxLifecycleWorkflowParams } from "./contracts";
 import type { SandboxManagerFragmentConfig, sandboxManagerFragmentDefinition } from "./definition";
+import type { SandboxManagerInternalHooks } from "./internal-hooks";
 import { sandboxManagerFragmentSchema } from "./schema";
+import { stopSandboxUsageMeter } from "./services";
 import { sandboxWorkspaceSnapshotExpiresAt } from "./workspace-snapshot";
 
 type SandboxManagerFragment = Pick<
@@ -37,11 +39,16 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       const sandboxId = params.id;
       const provider = requireSandboxProvider(config, params.provider);
       const runsUntilStopped = params.keepAlive || params.sleepAfter === null;
+      // The sandbox stops itself this long after starting, should its manager never stop it.
+      const leaseMs = runsUntilStopped
+        ? null
+        : sleepAfterToMilliseconds(params.sleepAfter ?? 0) + SANDBOX_LEASE_GRACE_MS;
 
       function recordStartupFailure(ctx: HandlerTxContext<HooksMap>, cause: unknown) {
         recordSandboxLifecycleFailure(ctx, {
           sandboxId,
           params,
+          workflowInstanceId: event.instanceId,
           eventId: `${event.instanceId}:failed:start`,
           message:
             params.source.kind === "snapshot"
@@ -62,7 +69,15 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
       await step.do("mark sandbox starting", (tx) => {
         const fragment = requireSandboxManagerFragment(config);
         tx.serviceCalls(
-          () => [fragment.services.markSandboxInstanceStarting({ id: sandboxId })] as const,
+          () =>
+            [
+              fragment.services.markSandboxInstanceStarting({
+                id: sandboxId,
+                workflowInstanceId: event.instanceId,
+                instanceType: params.instanceType,
+                leaseMs,
+              }),
+            ] as const,
         );
       });
 
@@ -81,11 +96,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
             const outcome = await sandbox.start({
               source: params.source,
               instanceType: params.instanceType,
-              leaseExpiresAt: runsUntilStopped
-                ? null
-                : Date.now() +
-                  sleepAfterToMilliseconds(params.sleepAfter ?? 0) +
-                  SANDBOX_LEASE_GRACE_MS,
+              leaseExpiresAt: leaseMs === null ? null : Date.now() + leaseMs,
             });
             const restoration = outcome.restoredSnapshot;
             if (restoration !== null) {
@@ -211,6 +222,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
             recordSandboxLifecycleFailure(ctx, {
               sandboxId,
               params,
+              workflowInstanceId: event.instanceId,
               eventId: `${event.instanceId}:failed:save`,
               message: "Sandbox workspace could not be saved after retries.",
               cause,
@@ -249,6 +261,7 @@ export const defineSandboxLifecycleWorkflow = (config: SandboxLifecycleWorkflowC
             recordSandboxLifecycleFailure(ctx, {
               sandboxId,
               params,
+              workflowInstanceId: event.instanceId,
               eventId: `${event.instanceId}:failed:stop`,
               message: "Sandbox stop reconciliation failed after retries.",
               cause,
@@ -315,12 +328,16 @@ function requireSandboxProvider(
   return runtimeProvider;
 }
 
-/** Marks the sandbox failed and tells Automations, committed only when a lifecycle step gives up. */
+/**
+ * Marks the sandbox failed, ends its billing, and tells Automations, committed only when a
+ * lifecycle step gives up. A failed start leaves no container: the sandbox destroys it.
+ */
 function recordSandboxLifecycleFailure(
   ctx: HandlerTxContext<HooksMap>,
   input: {
     sandboxId: string;
     params: SandboxLifecycleWorkflowParams;
+    workflowInstanceId: string;
     eventId: string;
     message: string;
     /** What the last attempt threw; null when the step failed outside the provider call. */
@@ -331,10 +348,14 @@ function recordSandboxLifecycleFailure(
     input.cause === null
       ? input.message
       : `${input.message} Cause: ${describeSandboxLifecycleCause(input.cause)}`;
-  const uow = ctx.forSchema(sandboxManagerFragmentSchema);
+  const uow = ctx.forSchema<typeof sandboxManagerFragmentSchema, SandboxManagerInternalHooks>(
+    sandboxManagerFragmentSchema,
+  );
   uow.update("sandbox_instance", input.sandboxId, (b) =>
     b.set({ status: "error", lastError: message, updatedAt: uow.now() }),
   );
+  // Stopping may fail as the start did, so billing cannot wait for the container to be stopped.
+  stopSandboxUsageMeter(uow, input.workflowInstanceId);
   uow.triggerHook(
     "deliverLifecycleEvent",
     {

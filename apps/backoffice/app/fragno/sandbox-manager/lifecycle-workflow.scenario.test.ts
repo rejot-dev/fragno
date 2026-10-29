@@ -18,6 +18,7 @@ import {
   type SandboxInstanceRecord,
   type SandboxInstanceStatus,
   type SandboxLifecycleEvent,
+  type SandboxUsage,
 } from "./contracts";
 import { sandboxManagerFragmentDefinition } from "./definition";
 import { defineSandboxLifecycleWorkflow } from "./lifecycle-workflow";
@@ -120,6 +121,7 @@ function createSandboxLifecycleScenarioConfig(
   ) => SandboxRuntimeProvider,
 ) {
   const lifecycleEvents: SandboxLifecycleEvent[] = [];
+  const usage: SandboxUsage[] = [];
   let sandboxManagerFragment: SandboxManagerFragment | undefined;
 
   function requireSandboxManagerFragment() {
@@ -141,6 +143,9 @@ function createSandboxLifecycleScenarioConfig(
     deliverLifecycleEvent: async (event: SandboxLifecycleEvent) => {
       lifecycleEvents.push(event);
     },
+    recordUsage: async (recorded: SandboxUsage) => {
+      usage.push(recorded);
+    },
   };
   const workflows = {
     SANDBOX_LIFECYCLE: defineSandboxLifecycleWorkflow({
@@ -151,6 +156,7 @@ function createSandboxLifecycleScenarioConfig(
 
   return {
     lifecycleEvents,
+    usage,
     workflows,
     sandboxManagerConfig,
     requireSandboxManagerFragment,
@@ -544,7 +550,7 @@ test("a saved workspace keeps its image until its snapshot expires", async () =>
   );
 });
 
-test("does not retry permanent sandbox provider startup failures", async () => {
+test("a permanently rejected start is not retried or billed", async () => {
   const sandboxId = "org_123::permanent-failure";
   let provider: PermanentFailureSandboxRuntimeProvider | undefined;
   const scenario = createSandboxLifecycleScenarioConfig(() => {
@@ -560,6 +566,9 @@ test("does not retry permanent sandbox provider startup failures", async () => {
       workflows: scenario.workflows,
       vars: (): { requested?: SandboxInstanceRecord } => ({}),
       harness: {
+        adapter: { type: "in-memory" },
+        clockStartAt: new Date("2026-03-10T12:00:00.000Z"),
+        fragmentConfig: { onWorkflowTerminal: scenario.onWorkflowTerminal },
         configureFragments: (harness) => ({
           sandboxManager: instantiate(sandboxManagerFragmentDefinition)
             .withConfig(scenario.sandboxManagerConfig)
@@ -625,6 +634,222 @@ test("does not retry permanent sandbox provider startup failures", async () => {
             });
             assert(failingProvider.handleAttempts === 1);
           },
+        }),
+        // Stopping the container fails as the start did, and keeps failing.
+        workflow.read({
+          read: async (ctx) => {
+            for (const at of ["12:00", "13:00", "14:00", "15:00"]) {
+              ctx.clock.set(new Date(`2026-03-10T${at}:00.000Z`));
+              await drainDurableHooks(
+                Object.values(ctx.harness.fragments).map((result) => result.fragment),
+              );
+            }
+          },
+        }),
+        workflow.assert(() => {
+          expect(failingProvider.handleAttempts).toBeGreaterThan(1);
+          expect(scenario.usage).toEqual([]);
+        }),
+      ],
+    }),
+  );
+});
+
+test("a running sandbox is billed hourly on its instance type, split at month starts, until it stops", async () => {
+  const sandboxId = "org_123::metered";
+  const scenario = createSandboxLifecycleScenarioConfig(
+    (readPersistedStatus) => new ScenarioSandboxProvider(readPersistedStatus),
+  );
+
+  await runScenario(
+    defineScenario({
+      name: "sandbox-manager-usage-metering",
+      workflows: scenario.workflows,
+      vars: (): SandboxLifecycleScenarioVars => ({}),
+      harness: {
+        // Database time is the scenario clock only in memory.
+        adapter: { type: "in-memory" },
+        clockStartAt: new Date("2026-01-31T23:30:00.000Z"),
+        fragmentConfig: { onWorkflowTerminal: scenario.onWorkflowTerminal },
+        configureFragments: (harness) => ({
+          sandboxManager: instantiate(sandboxManagerFragmentDefinition)
+            .withConfig(scenario.sandboxManagerConfig)
+            .withRoutes([])
+            .withServices({ workflows: harness.fragment.services }),
+        }),
+      },
+      steps: ({ workflow }) => {
+        const drainAt = (at: string) =>
+          workflow.read({
+            read: async (ctx) => {
+              ctx.clock.set(new Date(at));
+              await drainDurableHooks(
+                Object.values(ctx.harness.fragments).map((result) => result.fragment),
+              );
+            },
+          });
+        const run = (reason: "create" | "event") =>
+          workflow.read({
+            read: async (ctx) => {
+              assert(ctx.vars.requested?.workflowInstanceId);
+              return await ctx.harness.runUntilIdle({
+                workflowName: SANDBOX_LIFECYCLE_WORKFLOW_NAME,
+                instanceId: ctx.vars.requested.workflowInstanceId,
+                reason,
+              });
+            },
+          });
+        const usage = (from: string, through: string, seconds: number) => ({
+          sandboxId,
+          instanceType: "standard-1",
+          from,
+          through,
+          seconds,
+        });
+
+        return [
+          workflow.read({
+            read: async (ctx) => {
+              const fragment = ctx.harness.fragments.sandboxManager.fragment;
+              scenario.bindFragment(fragment);
+              return await fragment.callServices(() =>
+                fragment.services.requestSandboxInstance({
+                  id: sandboxId,
+                  provider: CLOUDFLARE_SANDBOX_PROVIDER,
+                  keepAlive: true,
+                  instanceType: "standard-1",
+                }),
+              );
+            },
+            storeAs: "requested",
+          }),
+          drainAt("2026-01-31T23:30:00.000Z"),
+          run("create"),
+          drainAt("2026-01-31T23:30:00.000Z"),
+          workflow.assert(() => {
+            expect(scenario.usage).toEqual([]);
+          }),
+
+          // The first hour ends in February, so January and February each get their half.
+          drainAt("2026-02-01T00:30:00.000Z"),
+          workflow.assert(() => {
+            expect(scenario.usage).toMatchObject([
+              usage("2026-01-31T23:30:00.000Z", "2026-02-01T00:00:00.000Z", 1800),
+              usage("2026-02-01T00:00:00.000Z", "2026-02-01T00:30:00.000Z", 1800),
+            ]);
+          }),
+
+          drainAt("2026-02-01T00:45:00.000Z"),
+          workflow.read({
+            read: async (ctx) => {
+              const workflowInstanceId = ctx.vars.requested?.workflowInstanceId;
+              assert(workflowInstanceId);
+              const fragment = scenario.requireSandboxManagerFragment();
+              await fragment.callServices(() =>
+                fragment.services.requestSandboxInstanceStop({ id: sandboxId, workflowInstanceId }),
+              );
+            },
+          }),
+          run("event"),
+          drainAt("2026-02-01T00:45:00.000Z"),
+          // The checkpoint queued for 01:30 finds nothing left to bill.
+          drainAt("2026-02-01T03:00:00.000Z"),
+          workflow.assert((ctx) => {
+            const workflowInstanceId = ctx.vars.requested?.workflowInstanceId;
+            expect(scenario.usage).toEqual([
+              {
+                ...usage("2026-01-31T23:30:00.000Z", "2026-02-01T00:00:00.000Z", 1800),
+                id: `sandbox-usage:${workflowInstanceId}:${Date.parse("2026-01-31T23:30:00.000Z")}`,
+                workflowInstanceId,
+              },
+              {
+                ...usage("2026-02-01T00:00:00.000Z", "2026-02-01T00:30:00.000Z", 1800),
+                id: `sandbox-usage:${workflowInstanceId}:${Date.parse("2026-02-01T00:00:00.000Z")}`,
+                workflowInstanceId,
+              },
+              {
+                ...usage("2026-02-01T00:30:00.000Z", "2026-02-01T00:45:00.000Z", 900),
+                id: `sandbox-usage:${workflowInstanceId}:${Date.parse("2026-02-01T00:30:00.000Z")}`,
+                workflowInstanceId,
+              },
+            ]);
+          }),
+        ];
+      },
+    }),
+  );
+});
+
+test("a sandbox its manager never stops is billed only until its lease ends", async () => {
+  const sandboxId = "org_123::abandoned";
+  const scenario = createSandboxLifecycleScenarioConfig(
+    (readPersistedStatus) => new ScenarioSandboxProvider(readPersistedStatus),
+  );
+
+  await runScenario(
+    defineScenario({
+      name: "sandbox-manager-usage-lease",
+      workflows: scenario.workflows,
+      vars: (): SandboxLifecycleScenarioVars => ({}),
+      harness: {
+        adapter: { type: "in-memory" },
+        clockStartAt: new Date("2026-03-10T12:00:00.000Z"),
+        configureFragments: (harness) => ({
+          sandboxManager: instantiate(sandboxManagerFragmentDefinition)
+            .withConfig(scenario.sandboxManagerConfig)
+            .withRoutes([])
+            .withServices({ workflows: harness.fragment.services }),
+        }),
+      },
+      steps: ({ workflow }) => [
+        workflow.read({
+          read: async (ctx) => {
+            const fragment = ctx.harness.fragments.sandboxManager.fragment;
+            scenario.bindFragment(fragment);
+            const requested = await fragment.callServices(() =>
+              fragment.services.requestSandboxInstance({
+                id: sandboxId,
+                provider: CLOUDFLARE_SANDBOX_PROVIDER,
+                sleepAfter: "10m",
+              }),
+            );
+            await drainDurableHooks(
+              Object.values(ctx.harness.fragments).map((result) => result.fragment),
+            );
+            assert(requested.workflowInstanceId);
+            await ctx.harness.runUntilIdle({
+              workflowName: SANDBOX_LIFECYCLE_WORKFLOW_NAME,
+              instanceId: requested.workflowInstanceId,
+              reason: "create",
+            });
+          },
+        }),
+        // Only the meter runs: the lifecycle workflow never wakes to stop the sandbox.
+        workflow.read({
+          read: async (ctx) => {
+            for (const at of ["12:00", "13:00", "14:00", "15:00"]) {
+              ctx.clock.set(new Date(`2026-03-10T${at}:00.000Z`));
+              await drainDurableHooks(ctx.harness.fragments.sandboxManager.fragment);
+            }
+          },
+        }),
+        workflow.assert(() => {
+          // Ten minutes of sleepAfter, then the hour the container waits before stopping itself.
+          expect(scenario.usage).toMatchObject([
+            {
+              from: "2026-03-10T12:00:00.000Z",
+              through: "2026-03-10T13:00:00.000Z",
+              seconds: 3600,
+              instanceType: "lite",
+            },
+            {
+              from: "2026-03-10T13:00:00.000Z",
+              through: "2026-03-10T13:10:00.000Z",
+              seconds: 600,
+              instanceType: "lite",
+            },
+          ]);
+          expect(scenario.usage).toHaveLength(2);
         }),
       ],
     }),

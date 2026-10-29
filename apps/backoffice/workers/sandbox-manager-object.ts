@@ -9,6 +9,7 @@ import {
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
+import { usageBillingForScope } from "@/fragno/billing/usage-billing";
 import type {
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
@@ -70,6 +71,7 @@ export class SandboxManagerObject extends RpcTarget implements SandboxManagerCom
     super();
     const runtimeServices = runtime;
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "SANDBOX_MANAGER");
+    const billing = usageBillingForScope(runtime, scope);
     this.#sandboxProviders = sandboxProviders;
     this.#sandboxContainers = runtime.config.sandboxContainers;
     this.#host = implementation.createFragmentHost({
@@ -83,6 +85,38 @@ export class SandboxManagerObject extends RpcTarget implements SandboxManagerCom
               await runtimeServices.objects.automations
                 .for(scope)
                 .commands.triggerIngestEvent(buildSandboxAutomationEvent(scope, event));
+            },
+            // Cloudflare bills a running container's memory and disk by its instance type's size, and
+            // its CPU by active use, which only the container could report and its user can forge.
+            // Instance time prices all three.
+            recordUsage: async (usage, hook) => {
+              if (billing.kind === "system") {
+                return;
+              }
+              await billing.recordEvent(
+                {
+                  id: usage.id,
+                  scope,
+                  source: "sandbox",
+                  eventType: "instance.usage",
+                  // Usage never spans months, so its start places it in its billing period.
+                  occurredAt: usage.from,
+                  measurements: [
+                    {
+                      meter: `sandbox.instance.${usage.instanceType}`,
+                      unit: "second",
+                      quantity: usage.seconds,
+                    },
+                  ],
+                  metadata: {
+                    sandboxId: usage.sandboxId,
+                    workflowInstanceId: usage.workflowInstanceId,
+                    from: usage.from,
+                    through: usage.through,
+                  },
+                },
+                { propagationContext: hook.capturePropagationContext() },
+              );
             },
           },
           implementation.hostTelemetry("SandboxManager"),
@@ -98,10 +132,9 @@ export class SandboxManagerObject extends RpcTarget implements SandboxManagerCom
         workflowsFragment: hostFragment(runtime.workflowsFragment),
         sandboxManagerFragment: hostFragment(runtime.sandboxManagerFragment),
       }),
-      mounts: [
-        { id: "sandbox-manager", target: (runtime) => runtime.sandboxManagerFragment },
-        { id: "workflows", target: (runtime) => runtime.workflowsFragment },
-      ],
+      // Lifecycle workflows stay unmounted: restarting one would replay its start for a sandbox
+      // whose container and usage meter may still be running.
+      mounts: [{ id: "sandbox-manager", target: (runtime) => runtime.sandboxManagerFragment }],
       onProcessError: (error) => {
         console.error("Sandbox manager hook processor error", error);
       },

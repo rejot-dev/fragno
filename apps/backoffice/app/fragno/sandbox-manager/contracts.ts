@@ -100,6 +100,10 @@ export const sandboxInstanceRequestInputSchema = z.object({
 
 export const sandboxInstanceMarkStartingInputSchema = z.object({
   id: sandboxInstanceIdSchema,
+  workflowInstanceId: z.string().trim().min(1),
+  instanceType: sandboxInstanceTypeSchema,
+  /** How long the container may outlive this start without its manager; null runs until stopped. */
+  leaseMs: z.number().int().positive().nullable(),
 });
 
 const sandboxInstanceLifecycleEventContextSchema = z.object({
@@ -122,6 +126,7 @@ export const sandboxInstanceMarkStoppingInputSchema =
 export const sandboxInstanceMarkStoppedInputSchema =
   sandboxInstanceLifecycleEventContextSchema.extend({
     id: sandboxInstanceIdSchema,
+    workflowInstanceId: z.string().trim().min(1),
   });
 
 export const sandboxInstanceMarkErrorInputSchema =
@@ -160,6 +165,18 @@ export type SandboxLifecycleWorkflowParams = {
   startupTimeoutMs: number;
   instanceType: SandboxInstanceType;
   source: SandboxStartSource;
+};
+
+/** Time one lifecycle run's container ran on its instance type, within one calendar month (UTC). */
+export type SandboxUsage = {
+  id: string;
+  sandboxId: string;
+  workflowInstanceId: string;
+  instanceType: SandboxInstanceType;
+  from: string;
+  through: string;
+  /** Partial seconds round up. */
+  seconds: number;
 };
 
 export type SandboxLifecycleEvent =

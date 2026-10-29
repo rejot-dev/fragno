@@ -62,5 +62,21 @@ export const sandboxManagerFragmentSchema = schema("sandbox-manager", (s) =>
             SandboxWorkspaceSnapshot | null
           >,
         ),
+    )
+    // One row per lifecycle run, keyed by its workflow instance, until its usage is fully billed.
+    .addTable("sandbox_usage_meter", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("sandboxId", column("string"))
+        .addColumn(
+          "instanceType",
+          column("string") as Column<"string", SandboxInstanceType, SandboxInstanceType>,
+        )
+        // Usage before this instant has been handed to Billing.
+        .addColumn("meteredThrough", column("timestamp"))
+        // Billing ends here even if the manager never stops the container, whose own lease expires
+        // no earlier. Null runs until stopped.
+        .addColumn("leaseEndsAt", column("timestamp").nullable())
+        .addColumn("stoppedAt", column("timestamp").nullable()),
     ),
 );

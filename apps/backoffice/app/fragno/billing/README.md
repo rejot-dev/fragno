@@ -23,10 +23,15 @@ Recorders have no optional callback or nullable payer. System work explicitly ha
 - Prerecorded Reson8 transcription awaits recording its request and reported duration. This
   synchronous producer has no durable outbox; provider success followed by a recording failure fails
   the call rather than pretending it was recorded.
+- Sandboxes record `sandbox.instance.<instance type>` seconds, from the attempt to start a container
+  until it stops. Each run's meter in the sandbox manager bills at least hourly through durable
+  hooks, splits usage at UTC month starts, and stops at the container's lease if the manager never
+  stops it. Instance time also prices CPU: Cloudflare bills CPU by active use, which only the
+  container could report, and its user could forge.
 
 Browser dictation streams directly to Reson8 and is not measured here. Workflow ticks do not yet
-record their own executions. These are measurement gaps, not exceptions allowing customer usage with
-a missing billing dependency.
+record their own executions. Sandbox network egress is not measured. These are measurement gaps, not
+exceptions allowing customer usage with a missing billing dependency.
 
 ## Statements
 

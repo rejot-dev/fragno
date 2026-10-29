@@ -1,12 +1,13 @@
 import { defineFragment } from "@fragno-dev/core";
-import { withDatabase } from "@fragno-dev/db";
+import { withDatabase, type HookContext } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
 
-import type { SandboxLifecycleEvent } from "./contracts";
+import type { SandboxLifecycleEvent, SandboxUsage } from "./contracts";
 import type {
   EnqueueSandboxLifecycleWorkflowPayload,
+  MeterSandboxUsagePayload,
   SandboxManagerInternalHooks,
 } from "./internal-hooks";
 import { sandboxManagerFragmentSchema } from "./schema";
@@ -20,6 +21,8 @@ export type SandboxManagerWorkflowsService = Pick<
 export type SandboxManagerFragmentConfig = {
   sandboxProviders: Record<string, SandboxRuntimeProvider>;
   deliverLifecycleEvent: (event: SandboxLifecycleEvent) => Promise<void>;
+  /** Must accept redelivery of the same usage ID, which follows a lost acknowledgement. */
+  recordUsage: (usage: SandboxUsage, hook: HookContext) => Promise<void>;
 };
 
 export const sandboxManagerFragmentDefinition = defineFragment<SandboxManagerFragmentConfig>(
@@ -34,7 +37,7 @@ export const sandboxManagerFragmentDefinition = defineFragment<SandboxManagerFra
     }),
   )
   .provideHooks(
-    ({ defineHook, config, serviceDeps }) =>
+    ({ defineHook, config, services, serviceDeps }) =>
       ({
         enqueueSandboxLifecycleWorkflow: defineHook(
           async function enqueueRequestedSandboxLifecycleWorkflow(
@@ -57,6 +60,16 @@ export const sandboxManagerFragmentDefinition = defineFragment<SandboxManagerFra
           event: SandboxLifecycleEvent,
         ) {
           await config.deliverLifecycleEvent(event);
+        }),
+        meterSandboxUsage: defineHook(async function meterSandboxUsage(
+          payload: MeterSandboxUsagePayload,
+        ) {
+          await this.handlerTx()
+            .withServiceCalls(() => [services.meterSandboxUsage(payload)] as const)
+            .execute();
+        }),
+        recordSandboxUsage: defineHook(async function recordSandboxUsage(usage: SandboxUsage) {
+          await config.recordUsage(usage, this);
         }),
       }) satisfies SandboxManagerInternalHooks,
   )

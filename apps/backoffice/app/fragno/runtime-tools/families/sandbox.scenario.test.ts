@@ -1,4 +1,4 @@
-import { expect, test, vi } from "vitest";
+import { expect, test, vi, assert } from "vitest";
 
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
@@ -100,6 +100,56 @@ test("a personal codemode run starts its own sandbox and runs commands in it", a
             code: "async () => await sandbox.listSandboxes()",
           });
           expect(listed.result).toEqual([]);
+        }),
+      ],
+    }),
+  );
+});
+
+test("a personal sandbox's running time is billed to its user by instance type", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "Personal sandbox usage billing",
+      createSandboxProviders: scenarioSandboxProviders,
+      steps: ({ when, then }) => [
+        then.assert("a sandbox that runs until stopped starts", async (ctx) => {
+          await ctx.runCodemode({
+            scope: PERSONAL_SCOPE,
+            code: 'async () => await sandbox.startSandbox({ id: "render", keepAlive: true, instanceType: "standard-2" })',
+            assertToolCalls: ["sandbox.startSandbox"],
+          });
+          await ctx.drain();
+        }),
+        when.time.advance("1h"),
+        then.assert("its first hour is on the user's ledger", async (ctx) => {
+          await ctx.drain();
+          const billing = ctx.runtime.objects.billing.for(PERSONAL_SCOPE);
+          // The hour may straddle a month start, which bills each month its part.
+          const periods = new Set(
+            [ctx.runtime.now() - 60 * 60 * 1000, ctx.runtime.now()].map((epochMs) =>
+              new Date(epochMs).toISOString().slice(0, 7),
+            ),
+          );
+          const trackers = await Promise.all(
+            [...periods].map(async (period) => {
+              const page = await billing.commands.getTrackers({
+                scope: PERSONAL_SCOPE,
+                period,
+                pageSize: 100,
+              });
+              return page.trackers.filter((tracker) => tracker.meter.startsWith("sandbox."));
+            }),
+          );
+          expect(trackers.flat()).toEqual(
+            Array.from({ length: periods.size }, () =>
+              expect.objectContaining({ meter: "sandbox.instance.standard-2", unit: "second" }),
+            ),
+          );
+          assert(
+            trackers.flat().reduce((total, tracker) => total + Number(tracker.quantity), 0) ===
+              3600,
+          );
         }),
       ],
     }),

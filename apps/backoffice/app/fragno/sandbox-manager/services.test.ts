@@ -29,6 +29,7 @@ function createSandboxManager(idSeed: string) {
     {
       sandboxProviders: {},
       deliverLifecycleEvent: async () => undefined,
+      recordUsage: async () => undefined,
     },
     {
       databaseAdapter,
@@ -133,7 +134,12 @@ describe("sandbox manager instance services", () => {
     expect(duplicate.updatedAt).toEqual(persistedCreated!.updatedAt);
 
     await fragment.callServices(() =>
-      fragment.services.markSandboxInstanceStarting({ id: "org_123::dev" }),
+      fragment.services.markSandboxInstanceStarting({
+        id: "org_123::dev",
+        workflowInstanceId: created.workflowInstanceId!,
+        instanceType: "lite",
+        leaseMs: null,
+      }),
     );
     await expect(
       fragment.callServices(() => fragment.services.getSandboxInstance({ id: "org_123::dev" })),

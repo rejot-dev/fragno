@@ -4,7 +4,7 @@ import type {
   SandboxStartSource,
 } from "@fragno-apps/cf-sandbox-bridge/sandbox/sandbox-container-contract";
 
-import type { DatabaseServiceContext } from "@fragno-dev/db";
+import type { DatabaseServiceContext, TypedUnitOfWork } from "@fragno-dev/db";
 import type { WorkflowsFragmentServices } from "@fragno-dev/workflows";
 
 import type { SandboxRuntimeProvider } from "@/sandbox/contracts";
@@ -37,8 +37,9 @@ import {
   type SandboxInstanceRenewWorkspaceSnapshotInput,
   type SandboxInstanceRequestInput,
   type SandboxInstanceStopRequestInput,
+  type SandboxUsage,
 } from "./contracts";
-import type { SandboxManagerInternalHooks } from "./internal-hooks";
+import type { MeterSandboxUsagePayload, SandboxManagerInternalHooks } from "./internal-hooks";
 import { sandboxManagerFragmentSchema, type SandboxWorkspaceSnapshot } from "./schema";
 import {
   isSandboxWorkspaceSnapshotResumable,
@@ -57,6 +58,16 @@ type SandboxManagerServicesOptions = {
   workflows: Pick<WorkflowsFragmentServices, "createInstance" | "getInstanceStatus" | "sendEvent">;
   sandboxProviders?: Record<string, SandboxRuntimeProvider>;
 };
+
+// Bills running sandboxes at least hourly, so usage statements stay current while they run.
+const SANDBOX_USAGE_CHECKPOINT_INTERVAL_MS = 60 * 60 * 1000;
+
+type SandboxManagerUnitOfWork = TypedUnitOfWork<
+  typeof sandboxManagerFragmentSchema,
+  [],
+  unknown,
+  SandboxManagerInternalHooks
+>;
 
 const ACTIVE_SANDBOX_INSTANCE_STATUSES = new Set(["requested", "starting", "running", "stopping"]);
 const TERMINAL_WORKFLOW_STATUSES = new Set(["complete", "errored", "terminated"]);
@@ -101,34 +112,57 @@ export function createSandboxManagerServices(
         .build();
     },
 
+    /**
+     * Ends billing and stops the container of a lifecycle that ended without stopping them, such
+     * as one that failed or was superseded. Billing ends even when the stop fails, whose error is
+     * thrown after the commit so the caller retries the stop.
+     */
     stopSandboxInstanceForTerminalWorkflow(args: SandboxInstanceWorkflowLookupInput) {
       const input = sandboxInstanceWorkflowLookupInputSchema.parse(args);
       return this.serviceTx(sandboxManagerFragmentSchema)
         .retrieve((uow) =>
-          uow.findFirst("sandbox_instance", (b) =>
-            b.whereIndex("idx_sandbox_instance_workflowInstanceId", (eb) =>
-              eb("workflowInstanceId", "=", input.workflowInstanceId),
+          uow
+            .findFirst("sandbox_instance", (b) =>
+              b.whereIndex("idx_sandbox_instance_workflowInstanceId", (eb) =>
+                eb("workflowInstanceId", "=", input.workflowInstanceId),
+              ),
+            )
+            .findFirst("sandbox_usage_meter", (b) =>
+              b
+                .whereIndex("primary", (eb) => eb("id", "=", input.workflowInstanceId))
+                .select(["id", "stoppedAt"]),
             ),
-          ),
         )
-        .transformRetrieve(async ([instance]) => {
-          if (!instance || instance.status === "stopped") {
-            return { instance, shouldRecordReconciliation: false };
+        .transformRetrieve(
+          async ([instance, meter]): Promise<{
+            instance: typeof instance;
+            meterRunning: boolean;
+            stop: { outcome: "skipped" | "stopped" } | { outcome: "failed"; error: unknown };
+          }> => {
+            const meterRunning = meter?.stoppedAt === null;
+            if (!instance || instance.status === "stopped") {
+              return { instance, meterRunning, stop: { outcome: "skipped" } };
+            }
+            try {
+              const provider = options.sandboxProviders?.[instance.provider];
+              if (!provider) {
+                throw new Error(`No sandbox provider configured for '${instance.provider}'.`);
+              }
+              await (await provider.getHandle(String(instance.id))).stop();
+              return { instance, meterRunning, stop: { outcome: "stopped" } };
+            } catch (error) {
+              return { instance, meterRunning, stop: { outcome: "failed", error } };
+            }
+          },
+        )
+        .mutate(({ uow, retrieveResult: { instance, meterRunning, stop } }) => {
+          if (meterRunning) {
+            stopSandboxUsageMeter(uow, input.workflowInstanceId);
           }
-
-          const provider = options.sandboxProviders?.[instance.provider];
-          if (!provider) {
-            throw new Error(`No sandbox provider configured for '${instance.provider}'.`);
-          }
-
-          await (await provider.getHandle(String(instance.id))).stop();
-          return { instance, shouldRecordReconciliation: true };
-        })
-        .mutate(({ uow, retrieveResult: { instance, shouldRecordReconciliation } }) => {
           if (!instance) {
             return null;
           }
-          if (!shouldRecordReconciliation) {
+          if (stop.outcome !== "stopped") {
             return instance;
           }
 
@@ -158,9 +192,12 @@ export function createSandboxManagerServices(
           }
           return next;
         })
-        .transform(({ mutateResult }) =>
-          mutateResult ? sandboxInstanceSchema.parse(mutateResult) : null,
-        )
+        .transform(({ retrieveResult: { stop }, mutateResult }) => {
+          if (stop.outcome === "failed") {
+            throw stop.error;
+          }
+          return mutateResult ? sandboxInstanceSchema.parse(mutateResult) : null;
+        })
         .build();
     },
 
@@ -334,9 +371,23 @@ export function createSandboxManagerServices(
       const input = sandboxInstanceMarkStartingInputSchema.parse(args);
       return this.serviceTx(sandboxManagerFragmentSchema)
         .mutate(({ uow }) => {
+          const now = uow.now();
           uow.update("sandbox_instance", input.id, (b) =>
-            b.set({ status: "starting", updatedAt: uow.now() }),
+            b.set({ status: "starting", updatedAt: now }),
           );
+          // Billing starts with the attempt to start, as a booting container already runs.
+          uow.create("sandbox_usage_meter", {
+            id: input.workflowInstanceId,
+            sandboxId: input.id,
+            instanceType: input.instanceType,
+            meteredThrough: now,
+            leaseEndsAt: input.leaseMs === null ? null : now.plus(input.leaseMs),
+            stoppedAt: null,
+          });
+          uow.triggerHook("meterSandboxUsage", {
+            workflowInstanceId: input.workflowInstanceId,
+            checkpointAt: null,
+          });
         })
         .build();
     },
@@ -399,6 +450,7 @@ export function createSandboxManagerServices(
               updatedAt: now,
             }),
           );
+          stopSandboxUsageMeter(uow, input.workflowInstanceId);
           uow.triggerHook(
             "deliverLifecycleEvent",
             {
@@ -455,6 +507,67 @@ export function createSandboxManagerServices(
         .build();
     },
 
+    /**
+     * Hands one run's usage to Billing up to its due checkpoint or its stop, never past its lease,
+     * then schedules the next checkpoint until the run has ended.
+     */
+    meterSandboxUsage(payload: MeterSandboxUsagePayload) {
+      return this.serviceTx(sandboxManagerFragmentSchema)
+        .retrieve((uow) =>
+          uow.findFirst("sandbox_usage_meter", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", payload.workflowInstanceId)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [meter] }) => {
+          // Fully billed meters are deleted, which settles every delivery still queued for them.
+          if (!meter) {
+            return;
+          }
+          const checkpointAt = nextSandboxUsageCheckpoint(meter);
+          // An earlier delivery already billed past the checkpoint this one was scheduled for.
+          if (
+            payload.checkpointAt !== null &&
+            Date.parse(payload.checkpointAt) !== checkpointAt.getTime()
+          ) {
+            return;
+          }
+          const endsAt = sandboxUsageEndsAt(meter);
+          // Only instants that have passed are billed: a stop, or a checkpoint whose delivery is due.
+          // A lease may still lie ahead.
+          const target =
+            payload.checkpointAt === null
+              ? (meter.stoppedAt ?? meter.meteredThrough)
+              : checkpointAt;
+          const through = endsAt !== null && endsAt < target ? endsAt : target;
+
+          for (const usage of sandboxUsageByMonth(payload.workflowInstanceId, meter, through)) {
+            uow.triggerHook("recordSandboxUsage", usage, { id: usage.id });
+          }
+          if (endsAt !== null && through >= endsAt) {
+            uow.delete("sandbox_usage_meter", meter.id, (b) => b.check());
+            return;
+          }
+          if (through > meter.meteredThrough) {
+            uow.update("sandbox_usage_meter", meter.id, (b) =>
+              b.set({ meteredThrough: through }).check(),
+            );
+          }
+          const nextCheckpointAt = nextSandboxUsageCheckpoint({
+            ...meter,
+            meteredThrough: through,
+          });
+          uow.triggerHook(
+            "meterSandboxUsage",
+            {
+              workflowInstanceId: payload.workflowInstanceId,
+              checkpointAt: nextCheckpointAt.toISOString(),
+            },
+            { processAt: nextCheckpointAt },
+          );
+        })
+        .build();
+    },
+
     markSandboxInstanceError(args: SandboxInstanceMarkErrorInput) {
       const input = sandboxInstanceMarkErrorInputSchema.parse(args);
       return this.serviceTx(sandboxManagerFragmentSchema)
@@ -471,6 +584,59 @@ export function createSandboxManagerServices(
         .build();
     },
   });
+}
+
+/** Ends a run's billing now; its meter then bills the remainder. */
+export function stopSandboxUsageMeter(uow: SandboxManagerUnitOfWork, workflowInstanceId: string) {
+  uow.update("sandbox_usage_meter", workflowInstanceId, (b) => b.set({ stoppedAt: uow.now() }));
+  uow.triggerHook("meterSandboxUsage", { workflowInstanceId, checkpointAt: null });
+}
+
+type SandboxUsageMeter = {
+  meteredThrough: Date;
+  leaseEndsAt: Date | null;
+  stoppedAt: Date | null;
+};
+
+/** The container cannot outlive its lease, even when its manager stops it later. */
+function sandboxUsageEndsAt({ leaseEndsAt, stoppedAt }: SandboxUsageMeter): Date | null {
+  if (leaseEndsAt === null || stoppedAt === null) {
+    return leaseEndsAt ?? stoppedAt;
+  }
+  return stoppedAt < leaseEndsAt ? stoppedAt : leaseEndsAt;
+}
+
+function nextSandboxUsageCheckpoint(meter: SandboxUsageMeter): Date {
+  const checkpointAt = new Date(
+    meter.meteredThrough.getTime() + SANDBOX_USAGE_CHECKPOINT_INTERVAL_MS,
+  );
+  const endsAt = sandboxUsageEndsAt(meter);
+  return endsAt !== null && endsAt < checkpointAt ? endsAt : checkpointAt;
+}
+
+/** Splits unbilled usage at UTC month starts, since Billing attributes each event to one month. */
+function sandboxUsageByMonth(
+  workflowInstanceId: string,
+  meter: SandboxUsageMeter & { sandboxId: string; instanceType: SandboxInstanceType },
+  through: Date,
+): SandboxUsage[] {
+  const usage: SandboxUsage[] = [];
+  let from = meter.meteredThrough;
+  while (from < through) {
+    const monthEnd = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
+    const until = monthEnd < through ? monthEnd : through;
+    usage.push({
+      id: `sandbox-usage:${workflowInstanceId}:${from.getTime()}`,
+      sandboxId: meter.sandboxId,
+      workflowInstanceId,
+      instanceType: meter.instanceType,
+      from: from.toISOString(),
+      through: until.toISOString(),
+      seconds: Math.ceil((until.getTime() - from.getTime()) / 1000),
+    });
+    from = until;
+  }
+  return usage;
 }
 
 /**
