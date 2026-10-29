@@ -10,13 +10,7 @@ import {
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
 import { Suspense, use, useState, type ReactNode } from "react";
-import {
-  Link,
-  Outlet,
-  useParams,
-  useSearchParams,
-  type ShouldRevalidateFunctionArgs,
-} from "react-router";
+import { Link, Outlet, useParams, useSearchParams } from "react-router";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
@@ -28,6 +22,7 @@ import type { IntegrationConnectionRecord } from "@/fragno/runtime-tools/familie
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
 import { formatTimestamp } from "../automations/formatting";
+import { shouldRevalidateWithinScope } from "../scope-revalidation";
 import type { Route } from "./+types/scope-layout";
 import { IntegrationConnectionStateLight, integrationAuthMethodLabels } from "./connection-display";
 import { integrationConnectionPath, integrationsScopeBasePath } from "./connection-paths";
@@ -40,17 +35,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 }
 
 /** Selecting a connection changes nothing the loader selects. */
-export function shouldRevalidate({
-  currentParams,
-  nextParams,
-  formMethod,
-  defaultShouldRevalidate,
-}: ShouldRevalidateFunctionArgs) {
-  const sameScope =
-    currentParams.scopeKind === nextParams.scopeKind &&
-    currentParams.scopeId === nextParams.scopeId;
-  return sameScope && formMethod === undefined ? false : defaultShouldRevalidate;
-}
+export const shouldRevalidate = shouldRevalidateWithinScope;
 
 export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `Integrations · ${loaderData?.selectedScope.label ?? "scope"}` }];

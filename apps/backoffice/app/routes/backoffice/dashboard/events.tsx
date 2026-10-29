@@ -19,7 +19,7 @@ import type { BackofficeStatusTone } from "@fragno-private/design-system/status-
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { formatWorkflowDuration } from "@fragno-private/design-system/workflow-run-timeline-model";
 import { Fragment, Suspense, use, useMemo, useState, type ReactNode } from "react";
-import { Link, useFetcher, useSearchParams, type ShouldRevalidateFunctionArgs } from "react-router";
+import { Link, useFetcher, useSearchParams } from "react-router";
 
 import {
   backofficeRouteScopeFromResolvedScope,
@@ -36,6 +36,7 @@ import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server
 
 import { formatTimestamp } from "../automations/formatting";
 import { loadPageSources } from "../pages/load.server";
+import { shouldRevalidateWithinScope } from "../scope-revalidation";
 import type { Route } from "./+types/events";
 import { DashboardTabs } from "./dashboard-tabs";
 import {
@@ -91,17 +92,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 /** Opening a trace only changes the URL. */
-export function shouldRevalidate({
-  currentParams,
-  nextParams,
-  formMethod,
-  defaultShouldRevalidate,
-}: ShouldRevalidateFunctionArgs) {
-  const sameScope =
-    currentParams.scopeKind === nextParams.scopeKind &&
-    currentParams.scopeId === nextParams.scopeId;
-  return sameScope && formMethod === undefined ? false : defaultShouldRevalidate;
-}
+export const shouldRevalidate = shouldRevalidateWithinScope;
 
 export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `Events · ${loaderData?.selectedScope.label ?? "scope"}` }];
