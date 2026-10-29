@@ -2566,7 +2566,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
         options: { drain: false, sqliteDataDirectory: directory },
         objects: { ...scenarioObjects, ...objectOverrides },
         piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
-        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
         vars: () => ({ session: "" }),
         steps: ({ when, then }) => [
           when.auth.signUp({ email: "analytics@example.test", captureSessionCookieAs: "session" }),

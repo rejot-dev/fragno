@@ -112,7 +112,7 @@ async function runHttpAuthorityScenario(check: (ctx: BackofficeScenarioContext) 
         objects: scenarioObjects,
         name: "fragment HTTP authority",
         options: { sqliteDataDirectory: directory },
-        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
         steps: ({ when, then }) => [
           when.auth.signUp({
             email: "http-authority@example.test",

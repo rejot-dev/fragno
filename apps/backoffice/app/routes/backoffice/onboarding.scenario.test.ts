@@ -51,7 +51,7 @@ const scenarioObjects = {
 } satisfies LocalBackofficeObjects;
 
 // As in local development: accounts sign in without verifying their email.
-const env = { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" };
+const env = { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" };
 
 /** The route arguments React Router passes for one signed-in browser request. */
 function routeRequest(

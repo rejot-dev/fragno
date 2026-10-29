@@ -86,7 +86,7 @@ test.each([
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: `password login preserves the organization slug for ${destination}`,
-        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
         vars: () => ({ session: "" }),
         steps: ({ when, then }) => [
           when.auth.signUp({

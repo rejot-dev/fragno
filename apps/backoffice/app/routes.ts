@@ -270,6 +270,8 @@ export default [
       route("internals/:scopeKind/:scopeId", "routes/backoffice/internals/layout.tsx", [
         index("routes/backoffice/internals/index.tsx"),
         route("users", "routes/backoffice/internals/users.tsx"),
+        route("access-codes", "routes/backoffice/internals/access-codes.tsx"),
+        route("access-codes/:code", "routes/backoffice/internals/access-code-redemptions.tsx"),
         route("github", "routes/backoffice/internals/github.tsx"),
         route("cloudflare/browser-run", "routes/backoffice/internals/cloudflare-browser-run.tsx"),
         route("generated-ui", "routes/backoffice/internals/generated-ui.tsx"),

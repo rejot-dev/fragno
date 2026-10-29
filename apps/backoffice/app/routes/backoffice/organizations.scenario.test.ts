@@ -9,10 +9,7 @@ vi.mock("cloudflare:workers", () => workers);
 
 import { z } from "zod";
 
-import {
-  createBackofficeSystemExecution,
-  createBackofficeUserExecution,
-} from "@/backoffice-runtime/context";
+import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import {
@@ -21,10 +18,7 @@ import {
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
-import {
-  createCodemodeRouteBackedRuntimeContext,
-  createRouteBackedRuntimeContext,
-} from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { AppsObject } from "../../../workers/apps-object";
@@ -108,25 +102,13 @@ async function createOrganizationFromPage(
   return { opens: response.headers.get("location") };
 }
 
-async function runInSystemTerminal(ctx: BackofficeScenarioContext, command: string) {
-  const { bash } = await createInteractiveBashHost({
-    context: createCodemodeRouteBackedRuntimeContext({
-      emitter: { kind: "caller" },
-      runtime: ctx.runtime.services,
-      kernel: new BackofficeKernel(ctx.runtime.services),
-      execution: createBackofficeSystemExecution({ kind: "system" }),
-    }),
-  });
-  return await bash.exec(command);
-}
-
-test("an unverified invitee sees their invitations, on the page and in their terminal, once an administrator verifies their email", async () => {
+test("without email verification, an invitee sees their invitations on the page and in their terminal as soon as they sign up", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
       objects: scenarioObjects,
-      name: "organizations page before and after administrator email verification",
-      // As in local development: accounts sign in without ever verifying their email.
-      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+      name: "organizations page for an invitee where email goes unverified",
+      // As in local development, where every address counts as verified.
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
       vars: () => ({ ownerCookie: "", inviteeCookie: "", organizationId: "", invitationId: "" }),
       steps: ({ when, then }) => [
         when.auth.signUp({ email: "owner@example.test", captureSessionCookieAs: "ownerCookie" }),
@@ -145,38 +127,6 @@ test("an unverified invitee sees their invitations, on the page and in their ter
         when.auth.signUp({
           email: "invitee@example.test",
           captureSessionCookieAs: "inviteeCookie",
-        }),
-        then.assert(
-          "invitations stay hidden until the invitee's email is verified",
-          async (ctx) => {
-            expect(await openOrganizationsPage(ctx, ctx.vars.inviteeCookie)).toEqual({
-              status: "email-unverified",
-            });
-            const listed = await runInUserTerminal(
-              ctx,
-              ctx.vars.inviteeCookie,
-              "account.invitations.list",
-            );
-            assert.notEqual(listed.exitCode, 0);
-            assert.include(
-              listed.stderr,
-              "Verify your email address to see invitations sent to it.",
-            );
-          },
-        ),
-        then.assert("an administrator verifies the invitee's email", async (ctx) => {
-          const verified = await runInSystemTerminal(
-            ctx,
-            "admin.users.verify-email --email invitee@example.test",
-          );
-          assert.equal(verified.exitCode, 0, verified.stderr);
-          assert.equal(verified.stdout, "Verified invitee@example.test.\n");
-          const repeated = await runInSystemTerminal(
-            ctx,
-            "admin.users.verify-email --email invitee@example.test",
-          );
-          assert.equal(repeated.exitCode, 0, repeated.stderr);
-          assert.equal(repeated.stdout, "invitee@example.test was already verified.\n");
         }),
         then.assert("the page and the terminal list the invitation", async (ctx) => {
           const listed = await runInUserTerminal(
@@ -208,7 +158,7 @@ test("users name their organizations, and Auth gives each a free slug", async ()
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "organization creation from the organizations page",
-      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
       vars: () => ({ firstCookie: "", secondCookie: "" }),
       steps: ({ when, then }) => [
         when.auth.signUp({ email: "first@example.test", captureSessionCookieAs: "firstCookie" }),
@@ -268,7 +218,7 @@ test("owners rename their organization, but cannot change its slug or delete it 
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "organization slugs and deletion",
-      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
       vars: () => ({ cookie: "" }),
       steps: ({ when, then }) => [
         when.auth.signUp({ email: "owner@example.test", captureSessionCookieAs: "cookie" }),

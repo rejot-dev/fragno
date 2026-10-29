@@ -44,6 +44,7 @@ export function loader({ context }: Route.LoaderArgs) {
 const INTERNALS_TABS = [
   { id: "overview", label: "Overview", path: "" },
   { id: "users", label: "Users", path: "/users" },
+  { id: "access-codes", label: "Access codes", path: "/access-codes" },
   { id: "github", label: "GitHub", path: "/github" },
   { id: "browser-run", label: "Browser Run", path: "/cloudflare/browser-run" },
   { id: "generated-ui", label: "Generated UI", path: "/generated-ui" },

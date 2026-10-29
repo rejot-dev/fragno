@@ -43,7 +43,8 @@ export type BackofficeRuntimeConfig = {
   /** Whether the sandbox host runs containers; local servers started without them do not. */
   sandboxContainers: boolean;
   authEmailVerification: AuthEmailVerificationRuntimeConfig;
-  signUpInvitationsEnabled: boolean;
+  /** Whether people need an access code to create their own accounts. */
+  signUpAccessCodesRequired: boolean;
   /** Print outgoing email to the terminal, and skip delivery while Resend is unconfigured. */
   localEmailLog: boolean;
   /** Whether PiManager runs Workers AI models, through the `AI` binding. */
@@ -125,20 +126,9 @@ const parsePublicHttpUrl = (name: string, value: string | undefined): string => 
   return url.toString();
 };
 
-export const parseSignUpInvitationsEnabled = (input: {
-  enabled: string | undefined;
-  publicBaseUrl: string | undefined;
-  accountCreationAvailable: boolean;
-}): boolean => {
-  const enabled =
-    input.enabled === undefined
-      ? true
-      : parseBooleanEnv("SIGN_UP_INVITATIONS_ENABLED", input.enabled);
-  if (enabled && input.accountCreationAvailable) {
-    parsePublicHttpUrl("DOCS_PUBLIC_BASE_URL", input.publicBaseUrl);
-  }
-  return enabled;
-};
+/** Deployments admit new accounts only with an access code unless they opt out. */
+export const parseSignUpAccessCodesRequired = (value: string | undefined): boolean =>
+  value === undefined ? true : parseBooleanEnv("SIGN_UP_ACCESS_CODES_REQUIRED", value);
 
 export const parseAuthEmailVerificationRuntimeConfig = (input: {
   enabled: string | undefined;
@@ -165,11 +155,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
     enabled: env.AUTH_EMAIL_VERIFICATION_ENABLED,
     publicBaseUrl: env.DOCS_PUBLIC_BASE_URL,
   }),
-  signUpInvitationsEnabled: parseSignUpInvitationsEnabled({
-    enabled: env.SIGN_UP_INVITATIONS_ENABLED,
-    publicBaseUrl: env.DOCS_PUBLIC_BASE_URL,
-    accountCreationAvailable: Boolean(env.AUTH),
-  }),
+  signUpAccessCodesRequired: parseSignUpAccessCodesRequired(env.SIGN_UP_ACCESS_CODES_REQUIRED),
   localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", env.LOCAL_EMAIL_LOG),
   workersAi: Boolean(env.AI),
   bindings: {

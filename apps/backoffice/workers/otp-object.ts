@@ -6,9 +6,10 @@ import {
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { z } from "zod";
 
-import type { HookContext } from "@fragno-dev/db";
+import { decodeCursor, type Cursor, type HookContext } from "@fragno-dev/db";
 import { otpSchema, type OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
+import type { BackofficeHostTelemetry } from "@/backoffice-runtime/backoffice-telemetry";
 import {
   createBackofficeServiceExecution,
   type BackofficeRequestExecution,
@@ -20,6 +21,31 @@ import {
   type OtpCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { generateAccessCode, normalizeAccessCode } from "@/fragno/access-codes/access-code";
+import {
+  ACCESS_CODE_MAX_PAGE_SIZE,
+  accessCodeInputSchema,
+  accessCodePageInputSchema,
+  accessCodeRedemptionsInputSchema,
+  createAccessCodeInputSchema,
+  redeemAccessCodeInputSchema,
+  revokeAccessCodeInputSchema,
+  type AccessCodeCheck,
+  type AccessCodePageInput,
+  type AccessCodePageResult,
+  type AccessCodeRecord,
+  type AccessCodeRedemptionsInput,
+  type AccessCodeRedemptionsResult,
+  type CreateAccessCodeInput,
+  type CreateAccessCodeResult,
+  type RedeemAccessCodeInput,
+  type RevokeAccessCodeInput,
+} from "@/fragno/access-codes/contracts";
+import {
+  ACCESS_CODE_ORDER_INDEX,
+  ACCESS_CODE_REDEMPTION_ORDER_INDEX,
+} from "@/fragno/access-codes/schema";
+import { createAccessCodesServer, type AccessCodesFragment } from "@/fragno/access-codes/server";
 import { canLinkExternalIdentity } from "@/fragno/automation/external-identities";
 import {
   loadDurableHook,
@@ -28,23 +54,18 @@ import {
 } from "@/fragno/durable-hooks";
 import {
   DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES,
-  DEFAULT_SIGN_UP_INVITATION_TTL_DAYS,
   EMAIL_VERIFICATION_EXPIRY_HOURS,
   EMAIL_VERIFICATION_EXPIRY_MINUTES,
   EMAIL_VERIFICATION_TYPE,
   IDENTITY_LINK_TYPE,
-  SIGN_UP_INVITATION_TYPE,
   buildEmailVerificationUrl,
   buildIdentityClaimCompletedAutomationEvent,
-  buildSignUpInvitationUrl,
   createOtpServer,
   emailVerificationPayloadSchema,
   identityClaimConfirmationPayloadSchema,
   identityClaimPayloadSchema,
-  signUpInvitationPayloadSchema,
   type OtpFragment,
 } from "@/fragno/otp";
-import { sha256Hex } from "@/lib/crypto";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
@@ -87,39 +108,6 @@ export type ConfirmEmailVerificationChallengeResult =
   | {
       status: "rejected";
       reason: "invalid_input" | "invalid" | "expired";
-    };
-
-export type IssueSignUpInvitationInput = {
-  email: string;
-  publicBaseUrl: string;
-  ttlDays?: number;
-};
-
-export type IssueSignUpInvitationResult = {
-  invitationId: string;
-  /** Identifies this issuance; reissuing for the same email rotates the code under a new id. */
-  issuanceId: string;
-  email: string;
-  url: string;
-  ttlDays: number;
-  type: typeof SIGN_UP_INVITATION_TYPE;
-};
-
-export type ConfirmSignUpInvitationInput = {
-  invitationId: string;
-  code: string;
-  email: string;
-};
-
-export type ConfirmSignUpInvitationResult =
-  | {
-      ok: true;
-      invitationId: string;
-      email: string;
-    }
-  | {
-      ok: false;
-      reason: "invalid_input" | "invalid" | "expired" | "email_mismatch";
     };
 
 /** Issues an identity claim in the OTP object's owning organization. */
@@ -165,24 +153,6 @@ const issueEmailVerificationInputSchema = z.object({
 const confirmEmailVerificationChallengeInputSchema = z.object({
   userId: z.string().trim().min(1),
   code: z.string().trim().min(1),
-});
-
-const signUpInvitationIdEncoder = new TextEncoder();
-
-async function signUpInvitationIdForEmail(email: string): Promise<string> {
-  return await sha256Hex(signUpInvitationIdEncoder.encode(`${SIGN_UP_INVITATION_TYPE}:${email}`));
-}
-
-const issueSignUpInvitationInputSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email()),
-  publicBaseUrl: publicHttpUrlSchema,
-  ttlDays: z.number().int().positive().optional(),
-});
-
-const confirmSignUpInvitationInputSchema = z.object({
-  invitationId: z.string().trim().min(1),
-  code: z.string().trim().min(1),
-  email: z.string().trim().toLowerCase().pipe(z.email()),
 });
 
 const issueIdentityClaimInputSchema = z.strictObject({
@@ -311,32 +281,71 @@ export async function handleIdentityClaimConfirmed(
   );
 }
 
+const DAY_MS = 24 * 60 * 60 * 1_000;
+
+/** Null for anything but a cursor from a previous page of access codes. */
+function decodeAccessCodeCursor(encoded: string, indexName: string): Cursor | null {
+  let cursor: Cursor;
+  try {
+    cursor = decodeCursor(encoded);
+  } catch {
+    return null;
+  }
+  return cursor.indexName === indexName &&
+    cursor.orderDirection === "desc" &&
+    cursor.pageSize >= 1 &&
+    cursor.pageSize <= ACCESS_CODE_MAX_PAGE_SIZE
+    ? cursor
+    : null;
+}
+
+type OtpRuntime = { otp: OtpFragment; accessCodes: AccessCodesFragment };
+
 export class OtpObject implements OtpCommands {
   readonly #runtime: BackofficeRuntimeServices;
   readonly #ownerScope: BackofficeContextScope;
-  readonly #host: FragmentDurableObjectHost<void, OtpFragment>;
-  #fragment: OtpFragment | null = null;
+  readonly #nowEpochMs: () => number;
+  readonly #telemetry: BackofficeHostTelemetry;
+  readonly #host: FragmentDurableObjectHost<void, OtpRuntime>;
+  #fragments: OtpRuntime | null = null;
 
   constructor({
     state,
     runtime,
     implementation,
+    nowEpochMs,
   }: {
     state: BackofficeObjectState;
     env?: unknown;
     runtime: BackofficeRuntimeServices;
     implementation: BackofficeObjectImplementation;
+    nowEpochMs: () => number;
   }) {
     this.#runtime = runtime;
     this.#ownerScope = requireBackofficeContextScopeFromDurableObjectId(state.id, "OTP");
+    this.#nowEpochMs = nowEpochMs;
+    this.#telemetry = implementation.hostTelemetry("OTP");
     this.#host = implementation.createFragmentHost({
       name: "OTP",
-      createRuntime: () =>
-        createOtpServer(implementation.fragmentDatabase, {
-          hooks: {
-            onOtpConfirmed: this.#handleOtpConfirmed.bind(this),
-          },
-        }),
+      createRuntime: (): OtpRuntime => {
+        const { adapters, transactionInstrumentation } = implementation.fragmentDatabase;
+        const databaseAdapter = adapters.createAdapter({ kind: "otp" });
+        return {
+          otp: createOtpServer(databaseAdapter, {
+            hooks: {
+              onOtpConfirmed: this.#handleOtpConfirmed.bind(this),
+            },
+          }),
+          // Organization OTP objects keep an empty table; only the singleton admits accounts.
+          accessCodes: createAccessCodesServer({ databaseAdapter, transactionInstrumentation }),
+        };
+      },
+      getMigrationFragments: (fragments) => [fragments.otp, fragments.accessCodes],
+      hostRuntime: (fragments, { hostFragment }) => ({
+        ...fragments,
+        otp: hostFragment(fragments.otp),
+      }),
+      mounts: [{ id: "otp", target: (fragments) => fragments.otp }],
       onProcessError: (error) => {
         console.error("OTP hook processor error", error);
       },
@@ -346,7 +355,7 @@ export class OtpObject implements OtpCommands {
     });
 
     void state.blockConcurrencyWhile(async () => {
-      this.#fragment = await this.#host.initialize(undefined);
+      this.#fragments = await this.#host.initialize(undefined);
     });
   }
 
@@ -360,17 +369,25 @@ export class OtpObject implements OtpCommands {
         await handleIdentityClaimConfirmed(this.#runtime, this.#ownerScope, payload, context);
         return;
       }
-      case SIGN_UP_INVITATION_TYPE: {
-        return;
-      }
     }
   }
 
-  #getFragment() {
-    if (!this.#fragment) {
+  #requireFragments(): OtpRuntime {
+    if (!this.#fragments) {
       throw new Error("OTP is unavailable.");
     }
-    return this.#fragment;
+    return this.#fragments;
+  }
+
+  #getFragment(): OtpFragment {
+    return this.#requireFragments().otp;
+  }
+
+  #getAccessCodesFragment(): AccessCodesFragment {
+    if (this.#ownerScope.kind !== "system") {
+      throw new Error("Access codes require the singleton OTP object.");
+    }
+    return this.#requireFragments().accessCodes;
   }
 
   #requireIdentityClaimScope(): Extract<BackofficeContextScope, { kind: "org" }> {
@@ -484,74 +501,6 @@ export class OtpObject implements OtpCommands {
           userId,
         }
       : { status: "already_confirmed" };
-  }
-
-  async issueSignUpInvitation(
-    input: IssueSignUpInvitationInput,
-  ): Promise<IssueSignUpInvitationResult> {
-    const parsed = issueSignUpInvitationInputSchema.parse(input);
-    const invitationId = await signUpInvitationIdForEmail(parsed.email);
-    const ttlDays = parsed.ttlDays ?? DEFAULT_SIGN_UP_INVITATION_TTL_DAYS;
-    const payload = {
-      email: parsed.email,
-      publicBaseUrl: parsed.publicBaseUrl,
-      ttlDays,
-    };
-    const fragment = this.#getFragment();
-    const issued = await fragment.callServices(() =>
-      fragment.services.otp.issueOtp({
-        externalId: invitationId,
-        type: SIGN_UP_INVITATION_TYPE,
-        durationMinutes: ttlDays * 24 * 60,
-        payload,
-      }),
-    );
-
-    return {
-      invitationId,
-      issuanceId: issued.id,
-      email: payload.email,
-      url: buildSignUpInvitationUrl(payload.publicBaseUrl, invitationId, issued.code),
-      ttlDays,
-      type: SIGN_UP_INVITATION_TYPE,
-    };
-  }
-
-  async confirmSignUpInvitation(
-    input: ConfirmSignUpInvitationInput,
-  ): Promise<ConfirmSignUpInvitationResult> {
-    const parsed = confirmSignUpInvitationInputSchema.safeParse(input);
-    if (!parsed.success) {
-      return { ok: false, reason: "invalid_input" };
-    }
-
-    const { invitationId, code, email } = parsed.data;
-    const fragment = this.#getFragment();
-    const confirmation = await fragment.callServices(() =>
-      fragment.services.otp.confirmOtp(invitationId, code, SIGN_UP_INVITATION_TYPE),
-    );
-    if (!confirmation.confirmed) {
-      return {
-        ok: false,
-        reason: confirmation.error === "OTP_EXPIRED" ? "expired" : "invalid",
-      };
-    }
-
-    // Repeated confirmation is valid for retries, so recover the invitation's trusted email from
-    // the persisted issuance payload instead of accepting it from the sign-up request.
-    const confirmedOtp = await fragment.callServices(() =>
-      fragment.services.otp.issueOtp({
-        externalId: invitationId,
-        type: SIGN_UP_INVITATION_TYPE,
-        requestId: confirmation.requestId,
-      }),
-    );
-    const invitation = signUpInvitationPayloadSchema.parse(confirmedOtp.payload);
-    if (invitation.email !== email) {
-      return { ok: false, reason: "email_mismatch" };
-    }
-
-    return { ok: true, invitationId, email: invitation.email };
   }
 
   async issueIdentityClaim(
@@ -676,6 +625,105 @@ export class OtpObject implements OtpCommands {
     };
   }
 
+  async createAccessCode(input: CreateAccessCodeInput): Promise<CreateAccessCodeResult> {
+    const { label, codeSource, expiresInDays } = createAccessCodeInputSchema.parse(input);
+    const fragment = this.#getAccessCodesFragment();
+    const now = new Date(this.#nowEpochMs());
+    const code = codeSource === "label" ? normalizeAccessCode(label) : generateAccessCode();
+    return await fragment.callServices(() =>
+      fragment.services.createAccessCode({
+        code,
+        label,
+        expiresAt: expiresInDays === null ? null : new Date(now.getTime() + expiresInDays * DAY_MS),
+        now,
+      }),
+    );
+  }
+
+  async listAccessCodes(input: AccessCodePageInput): Promise<AccessCodePageResult> {
+    const page = accessCodePageInputSchema.parse(input);
+    const fragment = this.#getAccessCodesFragment();
+    const now = new Date(this.#nowEpochMs());
+    if (page.page === "first") {
+      return {
+        ok: true,
+        page: await fragment.callServices(() =>
+          fragment.services.listAccessCodes({ ...page, now }),
+        ),
+      };
+    }
+    const cursor = decodeAccessCodeCursor(page.cursor, ACCESS_CODE_ORDER_INDEX);
+    if (cursor === null) {
+      return { ok: false, reason: "cursor_invalid" };
+    }
+    return {
+      ok: true,
+      page: await fragment.callServices(() =>
+        fragment.services.listAccessCodes({ page: "next", cursor, now }),
+      ),
+    };
+  }
+
+  async revokeAccessCode(input: RevokeAccessCodeInput): Promise<AccessCodeRecord | null> {
+    const { accessCodeId } = revokeAccessCodeInputSchema.parse(input);
+    const fragment = this.#getAccessCodesFragment();
+    const now = new Date(this.#nowEpochMs());
+    return await fragment.callServices(() =>
+      fragment.services.revokeAccessCode({ accessCodeId, now }),
+    );
+  }
+
+  async checkAccessCode(input: { code: string }): Promise<AccessCodeCheck> {
+    const { code } = accessCodeInputSchema.parse(input);
+    const fragment = this.#getAccessCodesFragment();
+    const now = new Date(this.#nowEpochMs());
+    return await fragment.callServices(() => fragment.services.checkAccessCode({ code, now }));
+  }
+
+  async redeemAccessCode(input: RedeemAccessCodeInput): Promise<AccessCodeCheck> {
+    const { code, email } = redeemAccessCodeInputSchema.parse(input);
+    const fragment = this.#getAccessCodesFragment();
+    const now = new Date(this.#nowEpochMs());
+    const redemption = await fragment.callServices(() =>
+      fragment.services.redeemAccessCode({ code, email, now }),
+    );
+    if (!redemption.ok) {
+      return redemption;
+    }
+    if (redemption.redemption === "new") {
+      this.#telemetry.record({
+        kind: "access-code-redeemed",
+        accessCodeId: redemption.accessCode.id,
+        accessCodeLabel: redemption.accessCode.label,
+      });
+    }
+    return { ok: true };
+  }
+
+  async listAccessCodeRedemptions(
+    input: AccessCodeRedemptionsInput,
+  ): Promise<AccessCodeRedemptionsResult> {
+    const { code, pagination } = accessCodeRedemptionsInputSchema.parse(input);
+    const fragment = this.#getAccessCodesFragment();
+    const now = new Date(this.#nowEpochMs());
+    if (pagination.page === "first") {
+      return await fragment.callServices(() =>
+        fragment.services.listAccessCodeRedemptions({ code, page: pagination, now }),
+      );
+    }
+    const cursor = decodeAccessCodeCursor(pagination.cursor, ACCESS_CODE_REDEMPTION_ORDER_INDEX);
+    if (cursor === null) {
+      return { ok: false, reason: "cursor_invalid" };
+    }
+    return await fragment.callServices(() =>
+      fragment.services.listAccessCodeRedemptions({
+        code,
+        page: { page: "next", cursor },
+        now,
+      }),
+    );
+  }
+
   async getDurableHookQueue(options?: DurableHookQueueOptions) {
     return await loadDurableHookQueue(this.#getFragment(), options);
   }
@@ -689,6 +737,6 @@ export class OtpObject implements OtpCommands {
   }
 
   async fetch(request: Request): Promise<Response> {
-    return await this.#host.fetch(this.#getFragment(), request);
+    return await this.#host.fetch(this.#requireFragments(), request);
   }
 }

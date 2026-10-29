@@ -5,6 +5,18 @@ import type {
   BackofficeRequestExecution,
 } from "@/backoffice-runtime/context";
 import type { OtpCommands } from "@/backoffice-runtime/object-registry";
+import type {
+  AccessCodeCheck,
+  AccessCodePageInput,
+  AccessCodePageResult,
+  AccessCodeRecord,
+  AccessCodeRedemptionsInput,
+  AccessCodeRedemptionsResult,
+  CreateAccessCodeInput,
+  CreateAccessCodeResult,
+  RedeemAccessCodeInput,
+  RevokeAccessCodeInput,
+} from "@/fragno/access-codes/contracts";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 
 import type {
@@ -13,10 +25,6 @@ import type {
   IssueEmailVerificationResult,
   ConfirmEmailVerificationChallengeInput,
   ConfirmEmailVerificationChallengeResult,
-  IssueSignUpInvitationInput,
-  IssueSignUpInvitationResult,
-  ConfirmSignUpInvitationInput,
-  ConfirmSignUpInvitationResult,
   IssueIdentityClaimInput,
   IssueIdentityClaimResult,
   ConfirmIdentityClaimInput,
@@ -49,16 +57,30 @@ export class Otp extends DurableObject<CloudflareEnv> implements OtpCommands {
     return await this.#object.confirmEmailVerificationChallenge(input);
   }
 
-  async issueSignUpInvitation(
-    input: IssueSignUpInvitationInput,
-  ): Promise<IssueSignUpInvitationResult> {
-    return await this.#object.issueSignUpInvitation(input);
+  async createAccessCode(input: CreateAccessCodeInput): Promise<CreateAccessCodeResult> {
+    return await this.#object.createAccessCode(input);
   }
 
-  async confirmSignUpInvitation(
-    input: ConfirmSignUpInvitationInput,
-  ): Promise<ConfirmSignUpInvitationResult> {
-    return await this.#object.confirmSignUpInvitation(input);
+  async listAccessCodes(input: AccessCodePageInput): Promise<AccessCodePageResult> {
+    return await this.#object.listAccessCodes(input);
+  }
+
+  async revokeAccessCode(input: RevokeAccessCodeInput): Promise<AccessCodeRecord | null> {
+    return await this.#object.revokeAccessCode(input);
+  }
+
+  async checkAccessCode(input: { code: string }): Promise<AccessCodeCheck> {
+    return await this.#object.checkAccessCode(input);
+  }
+
+  async redeemAccessCode(input: RedeemAccessCodeInput): Promise<AccessCodeCheck> {
+    return await this.#object.redeemAccessCode(input);
+  }
+
+  async listAccessCodeRedemptions(
+    input: AccessCodeRedemptionsInput,
+  ): Promise<AccessCodeRedemptionsResult> {
+    return await this.#object.listAccessCodeRedemptions(input);
   }
 
   async issueIdentityClaim(

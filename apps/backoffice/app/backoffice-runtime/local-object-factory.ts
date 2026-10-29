@@ -55,7 +55,7 @@ import { encodeBackofficeObjectAddress } from "./object-registry";
 import {
   parseAuthEmailVerificationRuntimeConfig,
   parseBooleanEnv,
-  parseSignUpInvitationsEnabled,
+  parseSignUpAccessCodesRequired,
   type BackofficeRuntimeConfig,
   type BackofficeRuntimeServices,
 } from "./runtime-services";
@@ -404,11 +404,9 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
         enabled: this.env.AUTH_EMAIL_VERIFICATION_ENABLED,
         publicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL,
       }),
-      signUpInvitationsEnabled: parseSignUpInvitationsEnabled({
-        enabled: this.env.SIGN_UP_INVITATIONS_ENABLED,
-        publicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL,
-        accountCreationAvailable: this.#isConfigured("AUTH"),
-      }),
+      signUpAccessCodesRequired: parseSignUpAccessCodesRequired(
+        this.env.SIGN_UP_ACCESS_CODES_REQUIRED,
+      ),
       localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", this.env.LOCAL_EMAIL_LOG),
       workersAi: this.#workersAi,
       bindings: {

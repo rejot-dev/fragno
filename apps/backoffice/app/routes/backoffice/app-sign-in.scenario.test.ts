@@ -177,7 +177,7 @@ test("people an app sends to Backoffice sign up with a code in the app's name, e
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "sign in to a first-party app with an email code",
-      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true", SIGN_UP_INVITATIONS_ENABLED: "true" },
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true", SIGN_UP_ACCESS_CODES_REQUIRED: "true" },
       fakes: ({ fake }) => ({ resend: fake.resend() }),
       setup: ({ given }) => [given.auth.user({ id: "platform-admin", role: "admin" })],
       steps: ({ then }) => [
@@ -279,13 +279,13 @@ test("people an app sends to Backoffice sign up with a code in the app's name, e
   );
 });
 
-test("where addresses go unverified, a code sign-in keeps the account's password and sessions", async () => {
+test("without email verification, a code sign-in keeps the account's password and sessions", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
       objects: scenarioObjects,
-      name: "code sign-in to an unverified password account",
-      // As in local development: accounts sign in without ever verifying their email.
-      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+      name: "code sign-in to a password account where email goes unverified",
+      // As in local development, where every address counts as verified.
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
       fakes: ({ fake }) => ({ resend: fake.resend() }),
       vars: () => ({ passwordCookie: "" }),
       setup: ({ given }) => [given.auth.user({ id: "platform-admin", role: "admin" })],
@@ -297,7 +297,7 @@ test("where addresses go unverified, a code sign-in keeps the account's password
         }),
         then.assert("the code signs in the same account", async (ctx) => {
           const existing = await sessionUser(ctx, ctx.vars.passwordCookie);
-          assert.isFalse(existing.emailVerified);
+          assert.isTrue(existing.emailVerified);
           const signIn = await openSignIn(
             ctx,
             await registerApp(ctx, "bookkeeping", "first-party"),
@@ -342,7 +342,7 @@ test("after their email, everyone an app sends here may use a code or a password
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "choose a code or a password on a first-party app's sign-in",
-      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
       fakes: ({ fake }) => ({ resend: fake.resend() }),
       vars: () => ({ signIn: "" }),
       setup: ({ given }) => [
@@ -407,7 +407,7 @@ test("only a first-party app's request can ask for a sign-in code", async () => 
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "email codes outside a first-party app",
-      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true", SIGN_UP_INVITATIONS_ENABLED: "true" },
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true", SIGN_UP_ACCESS_CODES_REQUIRED: "true" },
       fakes: ({ fake }) => ({ resend: fake.resend() }),
       setup: ({ given }) => [given.auth.user({ id: "platform-admin", role: "admin" })],
       steps: ({ then }) => [
@@ -438,7 +438,7 @@ test("each visitor has their own limit on sign-in codes", async () => {
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "sign-in code limits per visitor",
-      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true", SIGN_UP_INVITATIONS_ENABLED: "true" },
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true", SIGN_UP_ACCESS_CODES_REQUIRED: "true" },
       fakes: ({ fake }) => ({ resend: fake.resend() }),
       setup: ({ given }) => [given.auth.user({ id: "platform-admin", role: "admin" })],
       steps: ({ then }) => [

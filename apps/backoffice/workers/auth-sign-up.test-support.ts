@@ -2,19 +2,17 @@ import type { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-me
 
 type InMemoryBackofficeRuntime = Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>;
 
-/** Issues the real OTP credentials required by an in-memory Better Auth sign-up request. */
-export async function issueTestSignUpInvitation(
+/** Creates the real access code that an in-memory Better Auth sign-up request needs. */
+export async function issueTestAccessCode(
   runtime: InMemoryBackofficeRuntime,
-  email: string,
-): Promise<{ invitationId: string; invitationCode: string }> {
-  const invitation = await runtime.objects.otp.singleton().commands.issueSignUpInvitation({
-    email,
-    publicBaseUrl: "https://backoffice.example",
+): Promise<{ accessCode: string }> {
+  const created = await runtime.objects.otp.singleton().commands.createAccessCode({
+    label: "Test sign-up",
+    codeSource: "random",
+    expiresInDays: null,
   });
-  const invitationCode = new URL(invitation.url).searchParams.get("code");
-  if (!invitationCode) {
-    throw new Error("Test sign-up invitation URL is missing its code.");
+  if (!created.ok) {
+    throw new Error("A random test access code was already taken.");
   }
-
-  return { invitationId: invitation.invitationId, invitationCode };
+  return { accessCode: created.accessCode.code };
 }

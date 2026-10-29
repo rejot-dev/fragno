@@ -84,7 +84,7 @@ test("Node proxy accepts public HTTPS and direct localhost or 127.0.0.1 HTTP whi
         objects: scenarioObjects,
         name: "sign in through public HTTPS and direct loopback HTTP hosts",
         options: { sqliteDataDirectory: directory },
-        env: { SIGN_UP_INVITATIONS_ENABLED: "false", AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
+        env: { SIGN_UP_ACCESS_CODES_REQUIRED: "false", AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
         steps: ({ then }) => [
           {
             kind: "when",

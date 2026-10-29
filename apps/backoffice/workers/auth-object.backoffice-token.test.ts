@@ -33,7 +33,7 @@ import { getSetCookieHeaders } from "@/worker-runtime/http-headers";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { AuthObject } from "./auth-object";
-import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
+import { issueTestAccessCode } from "./auth-sign-up.test-support";
 import { AutomationsObject } from "./automations-object";
 import { OtpObject } from "./otp-object";
 
@@ -100,13 +100,13 @@ const signUp = async () => {
   runtimes.push(runtime);
   const auth = runtime.objects.auth.singleton();
   const email = "token-user@example.com";
-  const invitation = await issueTestSignUpInvitation(runtime, email);
+  const accessCode = await issueTestAccessCode(runtime);
   const response = await authRequest(auth, "/sign-up/email", {
     body: {
       name: "Token User",
       email,
       password: "password123",
-      ...invitation,
+      ...accessCode,
     },
   });
   if (!response.ok) {

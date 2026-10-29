@@ -17,10 +17,7 @@ export const BACKOFFICE_PERMISSION = {
     appsRead: { namespace: "admin", permission: "apps.read" },
     oauthClientsManage: { namespace: "admin", permission: "oauth-clients.manage" },
     oauthClientsRead: { namespace: "admin", permission: "oauth-clients.read" },
-    signUpInvitationsManage: {
-      namespace: "admin",
-      permission: "sign-up-invitations.manage",
-    },
+    accessCodesManage: { namespace: "admin", permission: "access-codes.manage" },
     organizationsManage: { namespace: "admin", permission: "organizations.manage" },
     usersManage: { namespace: "admin", permission: "users.manage" },
   },

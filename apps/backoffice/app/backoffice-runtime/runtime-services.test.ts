@@ -1,4 +1,4 @@
-import { assert, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class MockDurableObject {},
@@ -20,7 +20,6 @@ import {
 import {
   createCloudflareBackofficeRuntimeServices,
   parseAuthEmailVerificationRuntimeConfig,
-  parseSignUpInvitationsEnabled,
 } from "./runtime-services";
 
 const localObjects = {
@@ -157,58 +156,6 @@ describe("Backoffice authority runtime wiring", () => {
     } finally {
       await runtime.cleanup();
     }
-  });
-});
-
-describe("parseSignUpInvitationsEnabled", () => {
-  it("defaults to enabled so missing configuration fails closed", () => {
-    assert(
-      parseSignUpInvitationsEnabled({
-        enabled: undefined,
-        publicBaseUrl: "https://backoffice.example",
-        accountCreationAvailable: true,
-      }),
-    );
-  });
-
-  it("accepts an explicit local development opt-out without a public URL", () => {
-    assert(
-      !parseSignUpInvitationsEnabled({
-        enabled: "false",
-        publicBaseUrl: undefined,
-        accountCreationAvailable: true,
-      }),
-    );
-  });
-
-  it("requires a public URL when sign-up invitations guard account creation", () => {
-    expect(() =>
-      parseSignUpInvitationsEnabled({
-        enabled: "true",
-        publicBaseUrl: undefined,
-        accountCreationAvailable: true,
-      }),
-    ).toThrow("DOCS_PUBLIC_BASE_URL must be configured as an absolute http or https URL");
-  });
-
-  it("does not require an invitation URL in runtimes without account creation", () => {
-    assert(
-      parseSignUpInvitationsEnabled({
-        enabled: "true",
-        publicBaseUrl: undefined,
-        accountCreationAvailable: false,
-      }),
-    );
-  });
-
-  it("rejects invalid values", () => {
-    expect(() =>
-      parseSignUpInvitationsEnabled({
-        enabled: "sometimes",
-        publicBaseUrl: "https://backoffice.example",
-        accountCreationAvailable: true,
-      }),
-    ).toThrow("SIGN_UP_INVITATIONS_ENABLED must be one of: true, false, 1, 0.");
   });
 });
 

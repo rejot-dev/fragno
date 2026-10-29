@@ -4,42 +4,9 @@ import { createTrustedSystemBackofficeToolContext } from "../runtime-tools";
 import { adminRuntimeTools, type AdminRuntime } from "./admin";
 
 describe("admin runtime tools", () => {
-  test("parses sign-up invitation email and ttl days", () => {
-    const createInvitationCommand = adminRuntimeTools[0].adapters?.bash;
-    assert(createInvitationCommand);
-
-    expect(
-      adminRuntimeTools[0].inputSchema.parse(
-        createInvitationCommand.parse(["--email", " Person@Example.com ", "--ttl-days", "3"]),
-      ),
-    ).toEqual({ email: "person@example.com", ttlDays: 3 });
-  });
-
-  test("prints the invitation URL by default and preserves structured output options", () => {
-    const createInvitationCommand = adminRuntimeTools[0].adapters?.bash;
-    assert(createInvitationCommand?.format);
-    const invitation = {
-      invitationId: "invitation-1",
-      email: "person@example.com",
-      url: "https://backoffice.example/backoffice/sign-up?invitationId=invitation-1&code=ABC12345",
-      ttlDays: 3,
-    };
-
-    expect(createInvitationCommand.format(invitation, { format: "text" })).toEqual({
-      data: invitation,
-      stdout: `${invitation.url}\n`,
-    });
-    expect(createInvitationCommand.format(invitation, { format: "json" })).toEqual({
-      data: invitation,
-    });
-    expect(
-      createInvitationCommand.format(invitation, { format: "text", print: "invitation-id" }),
-    ).toEqual({ data: invitation });
-  });
-
   test("normalizes organization owner email before validation", () => {
     expect(
-      adminRuntimeTools[1].inputSchema.parse({
+      adminRuntimeTools[0].inputSchema.parse({
         name: "Acme",
         slug: "acme",
         ownerEmail: " Owner@Example.com ",
@@ -48,8 +15,8 @@ describe("admin runtime tools", () => {
   });
 
   test("parses organization member commands by slug and email", () => {
-    const addCommand = adminRuntimeTools[2].adapters?.bash;
-    const removeCommand = adminRuntimeTools[3].adapters?.bash;
+    const addCommand = adminRuntimeTools[1].adapters?.bash;
+    const removeCommand = adminRuntimeTools[2].adapters?.bash;
     assert(addCommand);
     assert(removeCommand);
 
@@ -98,12 +65,18 @@ describe("admin runtime tools", () => {
       listApps: async () => {
         throw new Error("App listing is not configured in this legacy fixture.");
       },
-      createSignUpInvitation: vi.fn(async (input) => ({
-        invitationId: "invitation-1",
-        email: input.email,
-        url: "https://backoffice.example/backoffice/sign-up?invitationId=invitation-1&code=ABC12345",
-        ttlDays: input.ttlDays ?? 7,
-      })),
+      createAccessCode: async () => {
+        throw new Error("Access code creation is not configured in this fixture.");
+      },
+      listAccessCodes: async () => {
+        throw new Error("Access code listing is not configured in this fixture.");
+      },
+      listAccessCodeRedemptions: async () => {
+        throw new Error("Access code redemption listing is not configured in this fixture.");
+      },
+      revokeAccessCode: async () => {
+        throw new Error("Access code revocation is not configured in this fixture.");
+      },
       verifyUserEmail: async () => {
         throw new Error("Email verification is not configured in this fixture.");
       },
@@ -139,15 +112,7 @@ describe("admin runtime tools", () => {
     const context = createTrustedSystemBackofficeToolContext({ runtimes: { admin: runtime } });
 
     await expect(
-      adminRuntimeTools[0].execute({ email: "person@example.com", ttlDays: 3 }, context),
-    ).resolves.toEqual({
-      invitationId: "invitation-1",
-      email: "person@example.com",
-      url: "https://backoffice.example/backoffice/sign-up?invitationId=invitation-1&code=ABC12345",
-      ttlDays: 3,
-    });
-    await expect(
-      adminRuntimeTools[1].execute(
+      adminRuntimeTools[0].execute(
         { name: "Acme", slug: "acme", ownerEmail: "owner@example.com" },
         context,
       ),
@@ -158,7 +123,7 @@ describe("admin runtime tools", () => {
       ownerUserId: "owner-1",
     });
     await expect(
-      adminRuntimeTools[2].execute(
+      adminRuntimeTools[1].execute(
         {
           organizationSlug: "acme",
           userEmail: "member@example.com",
@@ -168,7 +133,7 @@ describe("admin runtime tools", () => {
       ),
     ).resolves.toEqual({ organizationId: "org-1", userId: "user-1", roles: ["member"] });
     await expect(
-      adminRuntimeTools[3].execute(
+      adminRuntimeTools[2].execute(
         { organizationSlug: "acme", userEmail: "member@example.com" },
         context,
       ),

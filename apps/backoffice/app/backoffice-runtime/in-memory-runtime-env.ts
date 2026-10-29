@@ -112,7 +112,7 @@ export const defaultInMemoryBackofficeRuntimeEnv = (): BackofficeRuntimeEnv => (
   BACKOFFICE_INTERNAL_REQUEST_SECRET: "in-memory-backoffice-internal-request-secret",
   AUTH_ADMIN_GRANT_TOKEN: "in-memory-admin-grant-token",
   AUTH_EMAIL_VERIFICATION_ENABLED: "false",
-  SIGN_UP_INVITATIONS_ENABLED: "true",
+  SIGN_UP_ACCESS_CODES_REQUIRED: "true",
   GITHUB_APP_ID: "1",
   GITHUB_APP_SLUG: "in-memory-github-app",
   GITHUB_APP_CLIENT_ID: "in-memory-github-app-client-id",

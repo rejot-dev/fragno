@@ -19,6 +19,12 @@ import type {
   OrganizationManagerRecord,
 } from "@/backoffice-runtime/object-registry";
 import type {
+  AccessCodeRecord,
+  AccessCodeRedemptionPage,
+  CreateAccessCodeInput,
+  RevokeAccessCodeInput,
+} from "@/fragno/access-codes/contracts";
+import type {
   BackofficeAppPage,
   BackofficeAppPageInput,
   BackofficeAppActionsUpdateInput,
@@ -49,6 +55,7 @@ import {
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
+import { adminAccessCodesRuntimeTools } from "./admin-access-codes";
 import { adminAppsRuntimeTools } from "./admin-apps";
 import { adminOAuthClientsRuntimeTools } from "./admin-oauth-clients";
 import {
@@ -57,11 +64,17 @@ import {
   formatOrganizationText,
 } from "./organization";
 
-export type AdminSignUpInvitationRecord = {
-  invitationId: string;
-  email: string;
-  url: string;
-  ttlDays: number;
+/** An access code with the sign-up link that carries it. */
+export type AdminAccessCode = AccessCodeRecord & { url: string };
+
+export type AdminAccessCodePage = {
+  accessCodes: AdminAccessCode[];
+  cursor: string | null;
+  hasNextPage: boolean;
+};
+
+export type AdminAccessCodeRedemptions = AccessCodeRedemptionPage & {
+  accessCode: AdminAccessCode;
 };
 
 export type AdminRuntime = {
@@ -90,10 +103,14 @@ export type AdminRuntime = {
   ): Promise<BackofficeAppPermissionsUpdateResult>;
   updateAppTrust(input: BackofficeAppTrustUpdateInput): Promise<BackofficeAppTrustUpdateResult>;
   listApps(input: BackofficeAppPageInput): Promise<BackofficeAppPage>;
-  createSignUpInvitation(input: {
-    email: string;
-    ttlDays?: number;
-  }): Promise<AdminSignUpInvitationRecord>;
+  createAccessCode(input: CreateAccessCodeInput): Promise<AdminAccessCode>;
+  listAccessCodes(input: { pageSize: number; cursor: string | null }): Promise<AdminAccessCodePage>;
+  listAccessCodeRedemptions(input: {
+    code: string;
+    pageSize: number;
+    cursor: string | null;
+  }): Promise<AdminAccessCodeRedemptions>;
+  revokeAccessCode(input: RevokeAccessCodeInput): Promise<AccessCodeRecord>;
   verifyUserEmail(input: { email: string }): Promise<AdminUserEmailVerificationRecord>;
   createOrganization(input: {
     name: string;
@@ -124,13 +141,6 @@ export type AdminRuntime = {
 };
 
 type AdminToolContext = BackofficeToolContext<{ admin?: AdminRuntime }>;
-
-const signUpInvitationRecordSchema = z.strictObject({
-  invitationId: z.string().trim().min(1),
-  email: z.email(),
-  url: z.url(),
-  ttlDays: z.number().int().positive(),
-});
 
 const organizationCreatedRecordSchema = z.strictObject({
   organizationId: z.string().trim().min(1),
@@ -175,11 +185,6 @@ const organizationManagerRecordSchema = z.strictObject({
   managingOrganizationId: z.string().trim().min(1).nullable(),
 }) satisfies z.ZodType<OrganizationManagerRecord>;
 
-const createSignUpInvitationInputSchema = z.strictObject({
-  email: z.string().trim().toLowerCase().pipe(z.email()),
-  ttlDays: z.number().int().positive().optional(),
-});
-
 const createOrganizationInputSchema = z.strictObject({
   name: z.string().trim().min(1),
   slug: z.string().trim().min(1),
@@ -203,57 +208,6 @@ function getAdminRuntime(runtime: AdminToolContext["runtimes"]["admin"]): AdminR
   }
   return runtime;
 }
-
-const createSignUpInvitationTool = defineBackofficeRuntimeTool({
-  id: "admin.signup-invitations.create",
-  namespace: "admin",
-  name: "signupInvitationsCreate",
-  description:
-    "Create an email-bound link that authorizes one Backoffice account sign-up and email it to the invitee.",
-  requiredPermissions: [BACKOFFICE_PERMISSION.admin.signUpInvitationsManage],
-  inputSchema: createSignUpInvitationInputSchema,
-  outputSchema: signUpInvitationRecordSchema,
-  execute: async (input, context: AdminToolContext) =>
-    await getAdminRuntime(context.runtimes.admin).createSignUpInvitation(input),
-  adapters: {
-    bash: {
-      command: "admin.signup-invitations.create",
-      help: {
-        summary:
-          "admin.signup-invitations.create creates an email-bound sign-up link and emails it to the invitee.",
-        options: [
-          {
-            name: "email",
-            valueRequired: true,
-            valueName: "email",
-            description: "Email address authorized to create the account",
-          },
-          {
-            name: "ttl-days",
-            valueRequired: true,
-            valueName: "days",
-            description: "Optional invitation lifetime, in days",
-          },
-        ],
-        examples: [
-          "admin.signup-invitations.create --email person@example.com --ttl-days 7",
-          "admin.signup-invitations.create --email person@example.com --format json",
-        ],
-      },
-      parse: defineCliArgsParser<{ email: string; ttlDays?: number }>(
-        "admin.signup-invitations.create",
-        {
-          email: { kind: "string", required: true },
-          ttlDays: { kind: "positiveInteger" },
-        },
-      ),
-      format: (result, options) =>
-        options.format === "json" || options.print
-          ? { data: result }
-          : { data: result, stdout: `${result.url}\n` },
-    },
-  },
-});
 
 const verifyUserEmailTool = defineBackofficeRuntimeTool({
   id: "admin.users.verify-email",
@@ -634,7 +588,6 @@ const clearOrganizationManagerTool = defineBackofficeRuntimeTool({
 });
 
 export const adminRuntimeTools = [
-  createSignUpInvitationTool,
   createOrganizationTool,
   addOrganizationMemberTool,
   removeOrganizationMemberTool,
@@ -644,6 +597,7 @@ export const adminRuntimeTools = [
   getOrganizationTool,
   listOrganizationMembersTool,
   verifyUserEmailTool,
+  ...adminAccessCodesRuntimeTools,
   ...adminAppsRuntimeTools,
   ...adminOAuthClientsRuntimeTools,
 ] as const;

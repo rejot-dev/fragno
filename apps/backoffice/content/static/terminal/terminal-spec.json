@@ -300,43 +300,6 @@
     ]
   },
   {
-    "command": "admin.signup-invitations.create",
-    "summary": "admin.signup-invitations.create creates an email-bound sign-up link and emails it to the invitee.",
-    "options": [
-      {
-        "name": "email",
-        "valueRequired": true,
-        "valueName": "email",
-        "description": "Email address authorized to create the account"
-      },
-      {
-        "name": "ttl-days",
-        "valueRequired": true,
-        "valueName": "days",
-        "description": "Optional invitation lifetime, in days"
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
-  },
-  {
     "command": "admin.org.create",
     "summary": "admin.org.create creates an organization and assigns its owner.",
     "options": [
@@ -647,6 +610,163 @@
         "valueRequired": true,
         "valueName": "email",
         "description": "Email address of the existing user"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.access-codes.create",
+    "summary": "admin.access-codes.create creates an access code for signing up and prints its sign-up link.",
+    "options": [
+      {
+        "name": "label",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "label",
+        "description": "What the code is for, such as who it was given to"
+      },
+      {
+        "name": "code-source",
+        "valueRequired": true,
+        "valueName": "random|label",
+        "description": "random (default), or label to make the code from the label, such as LAUNCH-2026"
+      },
+      {
+        "name": "expires-in-days",
+        "valueRequired": true,
+        "valueName": "days",
+        "description": "Days until the code expires (default: never)"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.access-codes.list",
+    "summary": "admin.access-codes.list lists access codes for signing up, newest first.",
+    "options": [
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "Page size, 1–100 (default 25)"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor from the previous page"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.access-codes.redemptions",
+    "summary": "admin.access-codes.redemptions lists the accounts an access code admitted, newest first.",
+    "options": [
+      {
+        "name": "code",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "code",
+        "description": "The access code, from admin.access-codes.list"
+      },
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "Page size, 1–100 (default 25)"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor from the previous page"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.access-codes.revoke",
+    "summary": "admin.access-codes.revoke revokes an access code.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Access code ID, from admin.access-codes.list"
       },
       {
         "name": "help",

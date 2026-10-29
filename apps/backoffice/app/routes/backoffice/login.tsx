@@ -25,6 +25,7 @@ import { requestEmailVerificationResend } from "@/fragno/auth/email-verification
 import { BackofficeStandaloneLayout, BackToHomeLink } from "@/layouts/backoffice-standalone-layout";
 
 import type { Route } from "./+types/login";
+import { ACCESS_CODE_ERROR_CONTENT } from "./access-code-errors";
 import { AppSignIn } from "./app-sign-in";
 import {
   appSignInAction,
@@ -105,6 +106,9 @@ const betterAuthErrorCodeSchema = z.enum([
   "account_not_linked",
   "account_already_linked_to_different_user",
   "signup_disabled",
+  "access_code_required",
+  "access_code_invalid",
+  "access_code_expired",
 ]);
 
 type BetterAuthErrorCode = z.infer<typeof betterAuthErrorCodeSchema>;
@@ -164,7 +168,7 @@ const betterAuthErrorContent = {
   },
   unable_to_create_user: {
     title: "Your Backoffice account could not be created",
-    message: "Try again or use the sign-up link provided for your email address.",
+    message: "Try again or open your sign-up link again.",
   },
   unable_to_create_session: {
     title: "A Backoffice session could not be created",
@@ -180,8 +184,9 @@ const betterAuthErrorContent = {
   },
   signup_disabled: {
     title: "Account creation is not available",
-    message: "Use an existing Backoffice account or open the invitation created for your email.",
+    message: "Use an existing Backoffice account or open your sign-up link.",
   },
+  ...ACCESS_CODE_ERROR_CONTENT,
 } satisfies Record<BetterAuthErrorCode, BackofficeLoginAuthError>;
 
 function readBackofficeLoginAuthError(url: URL): BackofficeLoginAuthError | null {
@@ -346,7 +351,7 @@ function BackofficeLogin({
     setAuthErrorNotice(null);
 
     try {
-      await startGitHubSignIn({ returnTo, oauthQuery });
+      await startGitHubSignIn({ returnTo, oauthQuery, accessCode: null });
     } catch (error) {
       setAuthErrorNotice({
         title: "GitHub sign-in could not be started",

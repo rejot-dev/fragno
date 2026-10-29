@@ -110,7 +110,7 @@ describe("Backoffice codemode scenarios", () => {
 
         env: {
           DOCS_PUBLIC_BASE_URL: undefined,
-          SIGN_UP_INVITATIONS_ENABLED: "false",
+          SIGN_UP_ACCESS_CODES_REQUIRED: "false",
         },
         files: backofficeFiles.workspaceStarter(),
 
@@ -154,7 +154,7 @@ describe("Backoffice codemode scenarios", () => {
 
           env: {
             DOCS_PUBLIC_BASE_URL: publicOrigin,
-            SIGN_UP_INVITATIONS_ENABLED: "false",
+            SIGN_UP_ACCESS_CODES_REQUIRED: "false",
           },
           files: backofficeFiles.workspaceStarter(),
 

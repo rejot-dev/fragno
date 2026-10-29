@@ -2842,16 +2842,15 @@ const buildStepBuilders = <
     auth: {
       signUp: (input) =>
         createStep("when", "auth.signUp", `sign up ${input.email}`, async (ctx) => {
-          const invitation = await ctx.runtime.objects.otp
-            .singleton()
-            .commands.issueSignUpInvitation({
-              email: input.email,
-              publicBaseUrl: "https://backoffice.example",
-            });
-          const invitationCode = new URL(invitation.url).searchParams.get("code");
-          if (!invitationCode) {
-            throw new Error("Scenario sign-up invitation URL is missing its code.");
+          const created = await ctx.runtime.objects.otp.singleton().commands.createAccessCode({
+            label: `Scenario sign-up for ${input.email}`,
+            codeSource: "random",
+            expiresInDays: null,
+          });
+          if (!created.ok) {
+            throw new Error("A random scenario access code was already taken.");
           }
+          const accessCode = created.accessCode.code;
 
           const response = await scenarioAuthRequest(
             ctx,
@@ -2861,8 +2860,7 @@ const buildStepBuilders = <
                 name: input.email.split("@", 1)[0] || input.email,
                 email: input.email,
                 password: input.password ?? "password123",
-                invitationId: invitation.invitationId,
-                invitationCode,
+                accessCode,
               },
             },
             input.origin,

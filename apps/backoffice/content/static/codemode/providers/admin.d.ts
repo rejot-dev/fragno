@@ -1,13 +1,6 @@
 // System administration: organizations, sign-ups, app registrations, OAuth clients, Marketplace features. Read in System scope.
 type AdminCodemodeProvider = {
   /**
-   * Create an email-bound link that authorizes one Backoffice account sign-up and email it to the invitee.
-   * Requires `admin.sign-up-invitations.manage`.
-   */
-  signupInvitationsCreate(
-    input: AdminSignupInvitationsCreateInput,
-  ): Promise<AdminSignupInvitationsCreateOutput>;
-  /**
    * Create an organization and assign its owner.
    * Requires `admin.organizations.manage`.
    */
@@ -52,6 +45,28 @@ type AdminCodemodeProvider = {
    * Requires `admin.users.manage`.
    */
   usersVerifyEmail(input: AdminUsersVerifyEmailInput): Promise<AdminUsersVerifyEmailOutput>;
+  /**
+   * Create an access code that lets people create their own Backoffice accounts, with GitHub or a password, and return its sign-up link. The code is random, or made from the label with codeSource 'label'.
+   * Requires `admin.access-codes.manage`.
+   */
+  accessCodesCreate(input: AdminAccessCodesCreateInput): Promise<AdminAccessCodesCreateOutput>;
+  /**
+   * List access codes for signing up, newest first, with their codes and sign-up links, using cursor pagination.
+   * Requires `admin.access-codes.manage`.
+   */
+  accessCodesList(input: AdminAccessCodesListInput): Promise<AdminAccessCodesListOutput>;
+  /**
+   * List the accounts an access code admitted, by email, newest first, using cursor pagination.
+   * Requires `admin.access-codes.manage`.
+   */
+  accessCodesRedemptions(
+    input: AdminAccessCodesRedemptionsInput,
+  ): Promise<AdminAccessCodesRedemptionsOutput>;
+  /**
+   * Revoke an access code so it creates no more accounts. Accounts it already created stay.
+   * Requires `admin.access-codes.manage`.
+   */
+  accessCodesRevoke(input: AdminAccessCodesRevokeInput): Promise<AdminAccessCodesRevokeOutput>;
   /**
    * Register a Backoffice app for an existing Better Auth OAuth client. Does not provision OAuth credentials or install the app.
    * Requires `admin.apps.manage`.
@@ -165,7 +180,7 @@ type BackofficePermissionRequirement =
         | "apps.read"
         | "oauth-clients.manage"
         | "oauth-clients.read"
-        | "sign-up-invitations.manage"
+        | "access-codes.manage"
         | "organizations.manage"
         | "users.manage";
     }
@@ -383,16 +398,6 @@ type BackofficeOAuthClientRotateSecretResult = {
   clientId: string;
   clientSecret: string;
 };
-type AdminSignupInvitationsCreateInput = {
-  email: string;
-  ttlDays?: number;
-};
-type AdminSignupInvitationsCreateOutput = {
-  invitationId: string;
-  email: string;
-  url: string;
-  ttlDays: number;
-};
 type AdminOrgCreateInput = {
   name: string;
   slug: string;
@@ -469,6 +474,83 @@ type AdminUsersVerifyEmailOutput = {
   userId: string;
   email: string;
   status: "verified" | "already_verified";
+};
+type AdminAccessCodesCreateInput = {
+  label: string;
+  codeSource?: "random" | "label";
+  expiresInDays?: number | null;
+};
+type AdminAccessCodesCreateOutput = {
+  id: string;
+  code: string;
+  label: string;
+  status: "active" | "expired" | "revoked";
+  expiresAt: string | null;
+  redemptionCount: number;
+  revokedAt: string | null;
+  /** ISO 8601 datetime string. */
+  createdAt: string;
+  url: string;
+};
+type AdminAccessCodesListInput = {
+  pageSize?: number;
+  cursor?: string | null;
+};
+type AdminAccessCodesListOutput = {
+  accessCodes: {
+    id: string;
+    code: string;
+    label: string;
+    status: "active" | "expired" | "revoked";
+    expiresAt: string | null;
+    redemptionCount: number;
+    revokedAt: string | null;
+    /** ISO 8601 datetime string. */
+    createdAt: string;
+    url: string;
+  }[];
+  cursor: string | null;
+  hasNextPage: boolean;
+};
+type AdminAccessCodesRedemptionsInput = {
+  code: string;
+  pageSize?: number;
+  cursor?: string | null;
+};
+type AdminAccessCodesRedemptionsOutput = {
+  accessCode: {
+    id: string;
+    code: string;
+    label: string;
+    status: "active" | "expired" | "revoked";
+    expiresAt: string | null;
+    redemptionCount: number;
+    revokedAt: string | null;
+    /** ISO 8601 datetime string. */
+    createdAt: string;
+    url: string;
+  };
+  redemptions: {
+    email: string;
+    /** ISO 8601 datetime string. */
+    redeemedAt: string;
+  }[];
+  cursor: string | null;
+  hasNextPage: boolean;
+};
+type AdminAccessCodesRevokeInput = {
+  accessCodeId: string;
+};
+type AdminAccessCodesRevokeOutput = {
+  id: string;
+  code: string;
+  label: string;
+  status: "active" | "expired" | "revoked";
+  expiresAt: string | null;
+  redemptionCount: number;
+  revokedAt: string | null;
+  /** ISO 8601 datetime string. */
+  createdAt: string;
 };
 type AdminAppsCreateInput = {
   /** Unique, permanent name for the app; its integration connection is app#<slug>, e.g. app#bookkeeping. */

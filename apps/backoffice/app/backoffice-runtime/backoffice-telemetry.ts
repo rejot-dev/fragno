@@ -104,6 +104,12 @@ export type BackofficeHostSignal =
         | { status: "completed" }
         | { status: "failed"; error: CodemodeWireError }
         | { status: "suspended" };
+    }
+  | {
+      /** An access code admitted a new account; a retried sign-up is not reported again. */
+      kind: "access-code-redeemed";
+      accessCodeId: string;
+      accessCodeLabel: string;
     };
 
 export type BackofficeTelemetrySignal = BackofficeHostSignal & {

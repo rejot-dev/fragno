@@ -240,7 +240,10 @@ describe("local OAuth client server SQLite scenarios", () => {
             objects: scenarioObjects,
             name: "local OAuth callback against real Better Auth storage",
             options: { sqliteDataDirectory: directory },
-            env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+            env: {
+              AUTH_EMAIL_VERIFICATION_ENABLED: "false",
+              SIGN_UP_ACCESS_CODES_REQUIRED: "false",
+            },
             steps: ({ then }) => [
               then.assert(
                 "native client provisioning and browser approval complete the CLI flow",

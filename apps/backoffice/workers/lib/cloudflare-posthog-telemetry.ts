@@ -171,6 +171,17 @@ function sendSignal(
       });
       return;
     }
+    case "access-code-redeemed":
+      client.capture({
+        distinctId,
+        event: "access_code_redeemed",
+        properties: {
+          ...envelope,
+          access_code_id: signal.accessCodeId,
+          access_code_label: signal.accessCodeLabel,
+        },
+      });
+      return;
     default:
       throw new Error("Unsupported Backoffice telemetry signal.", {
         cause: signal satisfies never,

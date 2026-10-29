@@ -76,7 +76,7 @@ test("personal usage survives organization changes and statements stay private",
         name: "personal and organization usage statements",
         objects: allLocalObjects,
         options: { sqliteDataDirectory: directory },
-        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
         vars: () => ({ ada: "", grace: "", adaId: "", graceId: "", orgId: "" }),
         steps: ({ when, then }) => [
           when.auth.signUp({ email: "ada@example.test", captureSessionCookieAs: "ada" }),

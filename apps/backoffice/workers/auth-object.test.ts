@@ -37,7 +37,7 @@ import { AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED } from "@/fragno/backoffice-
 import { EMAIL_VERIFICATION_TYPE } from "@/fragno/otp";
 
 import { createOrganizationAutomationHooks, AuthObject } from "./auth-object";
-import { issueTestSignUpInvitation } from "./auth-sign-up.test-support";
+import { issueTestAccessCode } from "./auth-sign-up.test-support";
 import { AutomationsObject } from "./automations-object";
 import {
   OtpObject,
@@ -82,7 +82,7 @@ async function signUpUnverifiedBackofficeUser(
   runtime: Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>,
   email: string,
 ) {
-  const invitation = await issueTestSignUpInvitation(runtime, email);
+  const accessCode = await issueTestAccessCode(runtime);
   const response = await runtime.objects.auth.singleton().http.fetch(
     new Request("https://backoffice.example/api/auth/sign-up/email", {
       method: "POST",
@@ -91,7 +91,7 @@ async function signUpUnverifiedBackofficeUser(
         name: email.split("@", 1)[0],
         email,
         password: "password123",
-        ...invitation,
+        ...accessCode,
       }),
     }),
   );
@@ -232,7 +232,7 @@ describe("Auth Durable Object API errors", () => {
 });
 
 describe("Auth Durable Object account creation policy", () => {
-  test("rejects direct password registration without a sign-up invitation", async () => {
+  test("rejects direct password registration without an access code", async () => {
     const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
 
@@ -250,12 +250,12 @@ describe("Auth Durable Object account creation policy", () => {
 
     assert(response.status === 403);
     await expect(response.json()).resolves.toMatchObject({
-      code: "SIGN_UP_INVITATION_REQUIRED",
-      message: "A valid sign-up invitation is required.",
+      code: "access_code_required",
+      message: "An access code is required to create a Backoffice account.",
     });
   });
 
-  test("rejects explicit social sign-up while invitations are required", async () => {
+  test("rejects social sign-up without an access code", async () => {
     const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
     runtimes.push(runtime);
     const email = "uninvited-social@example.com";
@@ -323,37 +323,12 @@ describe("Auth Durable Object account creation policy", () => {
     assert(callbackResponse.status === 302);
     assert.equal(
       callbackResponse.headers.get("location"),
-      "https://backoffice.example/backoffice/login?error=signup_disabled",
+      "https://backoffice.example/backoffice/login?error=access_code_required&error_description=An+access+code+is+required+to+create+a+Backoffice+account.",
     );
     await expect(
       runtime.objects.auth.singleton().commands.grantBackofficeAdminByEmail({ email }),
     ).resolves.toEqual({ status: "user_not_found" });
     expect(githubFetch).toHaveBeenCalledTimes(3);
-  });
-
-  test("rejects an invitation used with a different email", async () => {
-    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
-    runtimes.push(runtime);
-    const invitation = await issueTestSignUpInvitation(runtime, "invited@example.com");
-
-    const response = await runtime.objects.auth.singleton().http.fetch(
-      new Request("https://backoffice.example/api/auth/sign-up/email", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          name: "Different User",
-          email: "different@example.com",
-          password: "password123",
-          ...invitation,
-        }),
-      }),
-    );
-
-    assert(response.status === 403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "SIGN_UP_INVITATION_REQUIRED",
-      message: "A valid sign-up invitation is required.",
-    });
   });
 
   test("creates rejot.dev accounts as users outside development", async () => {
@@ -362,7 +337,7 @@ describe("Auth Durable Object account creation policy", () => {
     runtimes.push(runtime);
 
     const email = "admin@rejot.dev";
-    const invitation = await issueTestSignUpInvitation(runtime, email);
+    const accessCode = await issueTestAccessCode(runtime);
     const response = await runtime.objects.auth.singleton().http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
@@ -371,7 +346,7 @@ describe("Auth Durable Object account creation policy", () => {
           name: "Admin",
           email,
           password: "password123",
-          ...invitation,
+          ...accessCode,
         }),
       }),
     );
@@ -388,7 +363,7 @@ describe("Auth Durable Object account creation policy", () => {
     runtimes.push(runtime);
 
     const email = "admin@rejot.dev";
-    const invitation = await issueTestSignUpInvitation(runtime, email);
+    const accessCode = await issueTestAccessCode(runtime);
     const response = await runtime.objects.auth.singleton().http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
@@ -397,7 +372,7 @@ describe("Auth Durable Object account creation policy", () => {
           name: "Admin",
           email,
           password: "password123",
-          ...invitation,
+          ...accessCode,
         }),
       }),
     );
@@ -412,7 +387,11 @@ describe("Auth Durable Object account creation policy", () => {
 describe("Auth Durable Object administrator granting", () => {
   test("allows an unverified account to become the first administrator", async () => {
     vi.stubEnv("MODE", "production");
-    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
+    const runtime = await createInMemoryBackofficeRuntime({
+      // Only with verification do accounts stay unverified.
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
+      objects: localObjects,
+    });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
     await signUpUnverifiedBackofficeUser(runtime, "first-admin@rejot.dev");
@@ -431,7 +410,11 @@ describe("Auth Durable Object administrator granting", () => {
 
   test("requires subsequent administrators to have verified their email", async () => {
     vi.stubEnv("MODE", "production");
-    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
+    const runtime = await createInMemoryBackofficeRuntime({
+      // Only with verification do accounts stay unverified.
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
+      objects: localObjects,
+    });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
     await auth.commands.applyScenarioFixture({
@@ -492,7 +475,11 @@ describe("Auth Durable Object administrator granting", () => {
 
   test("allows only one concurrent unverified grant to bootstrap administration", async () => {
     vi.stubEnv("MODE", "production");
-    const runtime = await createInMemoryBackofficeRuntime({ objects: localObjects });
+    const runtime = await createInMemoryBackofficeRuntime({
+      // Only with verification do accounts stay unverified.
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
+      objects: localObjects,
+    });
     runtimes.push(runtime);
     const auth = runtime.objects.auth.singleton();
     await signUpUnverifiedBackofficeUser(runtime, "first-admin@rejot.dev");
@@ -602,7 +589,7 @@ describe("Auth Durable Object email verification delivery", () => {
       env: { AUTH_EMAIL_VERIFICATION_ENABLED: "true" },
       objects: {
         ...localObjects,
-        OTP: ({ state, env, runtime: runtimeServices, implementation }) =>
+        OTP: ({ state, env, runtime: runtimeServices, implementation, nowEpochMs }) =>
           new (class extends OtpObject {
             override async issueEmailVerification(
               input: IssueEmailVerificationInput,
@@ -615,14 +602,14 @@ describe("Auth Durable Object email verification delivery", () => {
               }
               return issued;
             }
-          })({ state, env, runtime: runtimeServices, implementation }),
+          })({ state, env, runtime: runtimeServices, implementation, nowEpochMs }),
         RESEND: () => resend,
       },
     });
     runtimes.push(runtime);
 
     const email = "new-user@example.com";
-    const invitation = await issueTestSignUpInvitation(runtime, email);
+    const accessCode = await issueTestAccessCode(runtime);
     const response = await runtime.objects.auth.singleton().http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
@@ -631,7 +618,7 @@ describe("Auth Durable Object email verification delivery", () => {
           name: "New User",
           email,
           password: "password123",
-          ...invitation,
+          ...accessCode,
         }),
       }),
     );
@@ -695,7 +682,7 @@ describe("Auth Durable Object email verification delivery", () => {
     runtimes.push(runtime);
 
     const email = "new-user@example.com";
-    const invitation = await issueTestSignUpInvitation(runtime, email);
+    const accessCode = await issueTestAccessCode(runtime);
     const response = await runtime.objects.auth.singleton().http.fetch(
       new Request("https://backoffice.example/api/auth/sign-up/email", {
         method: "POST",
@@ -704,7 +691,7 @@ describe("Auth Durable Object email verification delivery", () => {
           name: "New User",
           email,
           password: "password123",
-          ...invitation,
+          ...accessCode,
         }),
       }),
     );

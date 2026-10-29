@@ -206,7 +206,7 @@ async function runConsentScenario(
         objects: scenarioObjects,
         name: "OAuth consent lifecycle",
         options: { sqliteDataDirectory: directory },
-        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
         vars: () => ({ session: "", otherSession: "" }),
         steps: ({ when, then }) => [
           when.auth.signUp({
@@ -893,7 +893,7 @@ test("consent paging is user-bound, rejects forged ownership and survives Auth r
         objects: scenarioObjects,
         name: "persisted OAuth consents",
         options: { sqliteDataDirectory: directory },
-        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
         vars: () => ({ session: "", otherSession: "", cursor: "" }),
         steps: ({ when, then, runner }) => [
           when.auth.signUp({
