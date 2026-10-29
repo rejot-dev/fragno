@@ -18,7 +18,7 @@ const DAY_S = 86_400;
 function Frame({ moments }: { moments: readonly number[] }) {
   const scale = timeScaleOverMoments(Math.min(...moments), Math.max(...moments), moments);
   const [cursor, setCursor] = useState<number | null>(null);
-  const replay = useTimelineReplay({ scale, cursor, onCursorChange: setCursor });
+  const replay = useTimelineReplay({ scale, cursor, onCursorChange: setCursor, initialSpeed: 2 });
   const horizon = cursor ?? scale.endedAt;
 
   return (

@@ -709,6 +709,8 @@ function TraceView({
         }}
         cursor={cursor}
         onCursorChange={setCursor}
+        replaySpeed={2}
+        playWhenVisible={false}
         surface="flush"
       />
       {record === null ? null : (

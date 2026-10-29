@@ -3,6 +3,7 @@ import {
   type CSSProperties,
   type PointerEvent,
   type ReactNode,
+  type RefObject,
   useEffect,
   useMemo,
   useRef,
@@ -33,7 +34,11 @@ import {
 } from "./causal-flame-graph-model";
 import { Icon } from "./icon";
 import { TimelineReplayControls, useTimelineReplay } from "./timeline-replay";
-import { formatWorkflowDuration, type WorkflowTimeScale } from "./workflow-run-timeline-model";
+import {
+  formatWorkflowDuration,
+  type WorkflowReplaySpeed,
+  type WorkflowTimeScale,
+} from "./workflow-run-timeline-model";
 
 const ROW_HEIGHT = 30;
 const LIVE_TICK_MS = 1_000;
@@ -102,6 +107,8 @@ export function CausalFlameGraph({
   onSelect,
   cursor,
   onCursorChange,
+  replaySpeed,
+  playWhenVisible,
   surface,
 }: {
   title: string;
@@ -114,6 +121,10 @@ export function CausalFlameGraph({
   /** The replayed moment, or `null` to show the tree as it is now. */
   cursor: number | null;
   onCursorChange: (cursor: number | null) => void;
+  /** The speed a replay starts at, before the reader changes it. */
+  replaySpeed: WorkflowReplaySpeed;
+  /** Plays the replay once, the first time the chart scrolls into view. */
+  playWhenVisible: boolean;
   /** A standalone padded card, or flush against the edges of a surface that already frames it. */
   surface: "card" | "flush";
 }) {
@@ -126,7 +137,12 @@ export function CausalFlameGraph({
   const now = useNow(root);
   const scale = useMemo(() => causalFlameScale(shown, now), [shown, now]);
   const layout = useMemo(() => layoutCausalFlame(shown, scale, now), [shown, scale, now]);
-  const timelineReplay = useTimelineReplay({ scale, cursor, onCursorChange });
+  const timelineReplay = useTimelineReplay({
+    scale,
+    cursor,
+    onCursorChange,
+    initialSpeed: replaySpeed,
+  });
   const [following, setFollowing] = useState(true);
   const replay = {
     ...timelineReplay,
@@ -135,6 +151,15 @@ export function CausalFlameGraph({
       timelineReplay.play();
     },
   };
+  const sectionRef = useRef<HTMLElement>(null);
+  usePlayOnceVisible(sectionRef, playWhenVisible, {
+    rewind() {
+      replay.seek(scale.startedAt);
+    },
+    play() {
+      replay.play();
+    },
+  });
   useFollowActiveNode({
     root: shown,
     at: cursor ?? now,
@@ -186,6 +211,7 @@ export function CausalFlameGraph({
 
   return (
     <section
+      ref={sectionRef}
       aria-label={`Causal flame graph ${title}`}
       className={
         surface === "card"
@@ -1103,6 +1129,41 @@ function useNow(root: CausalFlameNode): number {
  * Selects the node in progress at `at` whenever it changes. Moments where nothing is in progress,
  * such as the gap between two steps, keep the last selection.
  */
+function usePlayOnceVisible(
+  ref: RefObject<HTMLElement | null>,
+  enabled: boolean,
+  replay: { rewind: () => void; play: () => void },
+) {
+  const replayRef = useRef(replay);
+  useEffect(() => {
+    replayRef.current = replay;
+  });
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!enabled || element === null) {
+      return undefined;
+    }
+    // Until it plays, the chart waits at its first moment; the finished tree would spoil the replay
+    // for a reader scrolling toward it.
+    replayRef.current.rewind();
+    // Plays once the chart's top passes the middle of the screen, however tall the chart is.
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          observer.disconnect();
+          replayRef.current.play();
+        }
+      },
+      { rootMargin: "0px 0px -50% 0px" },
+    );
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, [ref, enabled]);
+}
+
 function useFollowActiveNode({
   root,
   at,

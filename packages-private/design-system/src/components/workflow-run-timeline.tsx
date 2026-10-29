@@ -133,7 +133,12 @@ export function WorkflowRunTimeline({
     [createdAt, end, startedAt, nodes, events],
   );
   const [ownCursor, setOwnCursor] = useState<number | null>(null);
-  const replay = useTimelineReplay({ scale, cursor: ownCursor, onCursorChange: setOwnCursor });
+  const replay = useTimelineReplay({
+    scale,
+    cursor: ownCursor,
+    onCursorChange: setOwnCursor,
+    initialSpeed: 2,
+  });
   const cursor = presentation.kind === "embedded" ? presentation.cursor : ownCursor;
   const columns: TimelineColumns =
     presentation.kind === "standalone"

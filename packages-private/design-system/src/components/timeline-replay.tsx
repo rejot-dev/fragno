@@ -21,7 +21,7 @@ export type TimelineReplay = {
   changeSpeed: () => void;
 };
 
-// Starts at the default and comes back to it after the fastest and the slowest speed.
+// Cycles through every speed, so any starting speed comes back around.
 const NEXT_SPEED: Record<WorkflowReplaySpeed, WorkflowReplaySpeed> = { 2: 3, 3: 1, 1: 2 };
 
 /** `from` is the time playback resumed at. */
@@ -35,14 +35,16 @@ export function useTimelineReplay({
   scale,
   cursor,
   onCursorChange,
+  initialSpeed,
 }: {
   scale: WorkflowTimeScale;
   cursor: number | null;
   onCursorChange: (cursor: number | null) => void;
+  initialSpeed: WorkflowReplaySpeed;
 }): TimelineReplay {
   // Captures the scale at play time, so a live run's moving end does not restart playback.
   const [playback, setPlayback] = useState<Playback | null>(null);
-  const [speed, setSpeed] = useState<WorkflowReplaySpeed>(2);
+  const [speed, setSpeed] = useState(initialSpeed);
   const onCursorChangeRef = useRef(onCursorChange);
   useEffect(() => {
     onCursorChangeRef.current = onCursorChange;

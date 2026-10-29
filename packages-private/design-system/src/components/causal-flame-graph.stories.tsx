@@ -65,6 +65,8 @@ function Frame({ title, root }: { title: string; root: CausalFlameNode }) {
         onSelect={setSelectedId}
         cursor={cursor}
         onCursorChange={setCursor}
+        replaySpeed={2}
+        playWhenVisible={false}
         surface="card"
       />
     </div>
@@ -393,6 +395,8 @@ export function TraceWithRunSteps() {
         onSelect={setSelectedId}
         cursor={cursor}
         onCursorChange={setCursor}
+        replaySpeed={2}
+        playWhenVisible={false}
         surface="flush"
       />
       <WorkflowRunTimeline
