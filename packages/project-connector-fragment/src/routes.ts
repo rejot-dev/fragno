@@ -18,6 +18,7 @@ import {
   projectConnectorProviderActionsSchema,
   projectConnectorConnectInputSchema,
   projectConnectorConnectionSchema,
+  projectConnectorConnectionRequestsSchema,
   projectConnectorProfileSchema,
   projectConnectorExecutionSchema,
   type ProjectConnectorConnectionState,
@@ -41,6 +42,8 @@ function serializeProjectConnectorRequest(
     state: saved.state,
   };
 }
+
+const REQUEST_PAGE_SIZE = 25;
 
 /** Authenticated routes never accept a product user ID or account binding from the browser. */
 export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefinition).create(
@@ -289,6 +292,57 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
         }
         const [saved] = page.items;
         return json({ request: saved ? serializeProjectConnectorRequest(saved) : null });
+      },
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/connection-requests/current",
+      queryParameters: ["cursor"],
+      outputSchema: projectConnectorConnectionRequestsSchema,
+      errorCodes: ["UNAUTHENTICATED", "INVALID_CURSOR"],
+      handler: async function ({ headers, query }, { json, error }) {
+        const externalUserId = await config.getExternalUserId(headers);
+        if (!externalUserId) {
+          return error({ code: "UNAUTHENTICATED", message: "Authentication required" }, 401);
+        }
+        let cursor: Cursor | null = null;
+        const rawCursor = query.get("cursor");
+        if (rawCursor) {
+          try {
+            cursor = decodeCursor(rawCursor);
+            const requestId = cursor.indexValues["id"];
+            if (
+              cursor.indexName !== "idx_request_external_user_id" ||
+              cursor.orderDirection !== "asc" ||
+              cursor.pageSize !== REQUEST_PAGE_SIZE ||
+              cursor.indexValues["externalUserId"] !== externalUserId ||
+              typeof requestId !== "string" ||
+              requestId.length === 0
+            ) {
+              throw new Error("Request cursor does not match this user or query");
+            }
+          } catch {
+            return error({ code: "INVALID_CURSOR", message: "Invalid request cursor" }, 400);
+          }
+        }
+        const [page] = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(projectConnectorSchema).findWithCursor("connectionRequest", (b) => {
+              const ordered = b
+                .whereIndex("idx_request_external_user_id", (eb) =>
+                  eb("externalUserId", "=", externalUserId),
+                )
+                .orderByIndex("idx_request_external_user_id", "asc")
+                .pageSize(REQUEST_PAGE_SIZE);
+              return cursor ? ordered.after(cursor) : ordered;
+            }),
+          )
+          .execute();
+        return json({
+          requests: page.items.map(serializeProjectConnectorRequest),
+          cursor: page.cursor?.encode() ?? null,
+          hasNextPage: page.hasNextPage,
+        });
       },
     }),
     defineRoute({

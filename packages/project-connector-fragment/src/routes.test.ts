@@ -1,5 +1,7 @@
 import { afterEach, assert, describe, expect, test, vi } from "vitest";
 
+import { Cursor } from "@fragno-dev/db/cursor";
+
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
@@ -834,6 +836,15 @@ describe("Project Connector connection scenarios", () => {
         data: route === "/connection-requests/by-name" ? { request: null } : { account: null },
       });
     }
+    expect(await scenario.call("alice", "GET", "/connection-requests/current")).toMatchObject({
+      status: 200,
+      data: {
+        requests: expect.arrayContaining([
+          expect.objectContaining({ id: first.id }),
+          expect.objectContaining({ id: second.id }),
+        ]),
+      },
+    });
     const accounts = await scenario.call("alice", "GET", "/accounts");
     expect(accounts).toMatchObject({
       status: 200,
@@ -1135,6 +1146,10 @@ describe("Project Connector connection scenarios", () => {
       status: 200,
       data: { request: replacement },
     });
+    expect(await scenario.call("alice", "GET", "/connection-requests/current")).toEqual({
+      status: 200,
+      data: { requests: [replacement], cursor: null, hasNextPage: false },
+    });
     // Consent through the abandoned link is never read or bound.
     scenario.gateway.authorize(pending.id, "stale-account");
     const reads = scenario.gateway.control.requestReads;
@@ -1223,6 +1238,60 @@ describe("Project Connector connection scenarios", () => {
     expect(await scenario.call("alice", "GET", "/accounts")).toMatchObject({
       status: 200,
       data: { accounts: accounts.toSorted().map((id) => ({ id, connectionName: "work" })) },
+    });
+  });
+
+  test("current requests page through one owner's requests, same-name attempts included", async () => {
+    const scenario = await connectorScenario();
+    // Additive attempts share every named index value, so pages must order by request ID.
+    const started: string[] = [];
+    for (let index = 0; index < 26; index++) {
+      started.push((await scenario.connect("alice", "work")).id);
+    }
+    await scenario.connect("bob", "bobs-name");
+    const first = await scenario.call("alice", "GET", "/connection-requests/current");
+    expect(first).toMatchObject({ status: 200, data: { hasNextPage: true } });
+    const page = first.data as { requests: { id: string }[]; cursor: string };
+    expect(page.requests).toHaveLength(25);
+    const cursor = encodeURIComponent(page.cursor);
+    const second = await scenario.call(
+      "alice",
+      "GET",
+      `/connection-requests/current?cursor=${cursor}`,
+    );
+    expect(second).toMatchObject({
+      status: 200,
+      data: { requests: [{ connectionName: "work" }], cursor: null, hasNextPage: false },
+    });
+    const listed = [
+      ...page.requests,
+      ...(second.data as { requests: { id: string }[] }).requests,
+    ].map((request) => request.id);
+    expect(listed.toSorted()).toEqual(started.toSorted());
+    expect(
+      await scenario.call("bob", "GET", `/connection-requests/current?cursor=${cursor}`),
+    ).toMatchObject({ status: 400, data: { code: "INVALID_CURSOR" } });
+    // A well-formed cursor missing an index value is rejected before the query runs.
+    const partial = new Cursor({
+      indexName: "idx_request_external_user_id",
+      orderDirection: "asc",
+      pageSize: 25,
+      indexValues: { externalUserId: "alice" },
+    }).encode();
+    expect(
+      await scenario.call(
+        "alice",
+        "GET",
+        `/connection-requests/current?cursor=${encodeURIComponent(partial)}`,
+      ),
+    ).toMatchObject({ status: 400, data: { code: "INVALID_CURSOR" } });
+    expect(await scenario.call("bob", "GET", "/connection-requests/current")).toMatchObject({
+      status: 200,
+      data: { requests: [{ connectionName: "bobs-name" }] },
+    });
+    expect(await scenario.call(null, "GET", "/connection-requests/current")).toMatchObject({
+      status: 401,
+      data: { code: "UNAUTHENTICATED" },
     });
   });
 
