@@ -4,8 +4,6 @@ import { DurableObject } from "cloudflare:workers";
 import type { PostHog } from "posthog-node";
 import type { z } from "zod";
 
-import type { SubmissionRecord } from "@earendil-works/pi-durable";
-
 import type {
   PiAgent,
   PiAgentTurn,
@@ -20,6 +18,7 @@ import type {
   PiAgentWaitingQueue,
   PiQueuedSubagent,
   PiSubagentRun,
+  PiAgentSubmission,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import type { PiAgentDependencies } from "@/fragno/pi/agent/pi-agent-harness";
 
@@ -128,7 +127,7 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   async recordSubagent(config: PiAgentConfig, requestId: string, subagent: PiQueuedSubagent) {
     await this.#object.recordSubagent(config, requestId, subagent);
   }
-  async getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null> {
+  async getSubmission(config: PiAgentConfig, requestId: string): Promise<PiAgentSubmission | null> {
     return await this.#object.getSubmission(config, requestId);
   }
   async getSubagentRuns(config: PiAgentConfig, requestIds: string[]): Promise<PiSubagentRun[]> {

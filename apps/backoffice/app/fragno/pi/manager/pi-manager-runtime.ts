@@ -15,7 +15,6 @@ import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shar
 import type { z } from "zod";
 
 import type { Context } from "@earendil-works/chord";
-import type { SubmissionRecord } from "@earendil-works/pi-durable";
 
 import {
   backofficeExecutionScopeRestriction,
@@ -31,12 +30,7 @@ import {
   backofficeOperationErrorKindForStatus,
 } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import {
-  piPromptStatusOf,
-  type PiAgentAddress,
-  type PiAgentNotification,
-  type PiAgentQueueSubmission,
-} from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentAddress, PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { backfillPiAgentEvents, type PiAgentBackfilledEvent } from "./pi-agent-change-events";
 
@@ -271,10 +265,9 @@ export function createPiManagerRuntime(input: {
       });
     },
     async getPrompt({ agentName, requestId }) {
-      let submission: PiAgentQueueSubmission | SubmissionRecord;
       try {
-        submission = await request(
-          `${agentRoute(agentName)}/submissions/${encodeURIComponent(requestId)}`,
+        return await request<PiPromptStatus>(
+          `${agentRoute(agentName)}/prompts/${encodeURIComponent(requestId)}`,
           null,
         );
       } catch (error) {
@@ -284,7 +277,6 @@ export function createPiManagerRuntime(input: {
         }
         throw error;
       }
-      return piPromptStatusOf(requestId, submission);
     },
     async notifyAgent({ agentName, ...notification }) {
       await request(`${agentRoute(agentName)}/notifications`, notification);

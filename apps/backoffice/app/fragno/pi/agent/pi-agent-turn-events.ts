@@ -42,7 +42,7 @@ const STARTED_TURN_EVENT: PiTurnEvent = {
 
 /**
  * Names the answer's entry without its text: event readers need only `events.read`, and the answer
- * stays behind `pi.read`, as `pi.listMessages` reads it.
+ * stays behind `pi.read`, as `pi.getPrompt` reads it.
  */
 function completedTurnEvent(answerEntryId: number): PiTurnEvent {
   return {

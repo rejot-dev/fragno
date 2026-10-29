@@ -75,7 +75,7 @@ slot. Then get their answers one of two ways, not both:
   It waits for subagents of yourself, also those still waiting for a slot, and returns each one's
   answer in the order given. Start them all first, then wait once.
 - **Later:** pass `notifyWhenDone` to be notified as each one ends, and read its answer with
-  `pi.listMessages({ agentName, subagent: requestId })`.
+  `pi.getPrompt({ agentName, requestId })`.
 
 Subagents cannot wait for subagents. Prompt a named agent without `subagent` instead when the work
 needs that agent's conversation.
@@ -83,21 +83,19 @@ needs that agent's conversation.
 ## Prompt an agent
 
 Use `pi.submitPrompt` with `agentName`; it returns once the prompt is queued. The prompt's `pi`
-events report how it ended: `turn.completed`, whose payload's `answerEntryId` names the answer,
-`turn.failed`, `turn.aborted`, or `queue.dropped`, each with the receipt's `requestId` in its
-subject. A workflow waits for them as `/static/skills/workflows/SKILL.md` shows. An agent hears back
-by passing `notifyWhenDone: true`, also to an agent of another scope through `context.org(...)` or
-`context.user(...)`: the event arrives as a notification that starts a later turn of yours, so end
-your turn instead of polling. You cannot be notified of prompts to yourself: check your own
-`agentName` and scope before asking another agent, since `assistant` exists in every scope. Read the
-answer in the prompted agent's scope with
-`pi.listMessages({ agentName, last: 1, before: answerEntryId + 1 })`. To look at a prompt once,
-`pi.getPrompt({ agentName, requestId })` says whether it is `queued`, `running`, `completed`, or
-`failed` with a reason, or null when the agent never received it. Prompts wait in the agent's queue
-and run one turn each, in arrival order (`whenBusy: "followUp"`, the default), under the agent's
-definition as it is when their turn starts. `steer` joins the running turn at its next tool boundary
-only when the running turn has the same authority; otherwise it is queued, and the receipt's
-`status` says `queued` instead of `steered`. `reject` fails with `409 AGENT_BUSY` while the agent
-runs a turn or has queued work. Event notifications wait in the same queue, and those from one
-sender share a turn. Aborting an agent pauses its queue: queued work, including yours, waits until a
-person resumes it.
+events report how it ended: `turn.completed`, `turn.failed`, `turn.aborted`, or `queue.dropped`,
+each with the receipt's `requestId` in its subject. A workflow waits for them as
+`/static/skills/workflows/SKILL.md` shows. An agent hears back by passing `notifyWhenDone: true`,
+also to an agent of another scope through `context.org(...)` or `context.user(...)`: the event
+arrives as a notification that starts a later turn of yours, so end your turn instead of polling.
+You cannot be notified of prompts to yourself: check your own `agentName` and scope before asking
+another agent, since `assistant` exists in every scope. Read the answer in the prompted agent's
+scope with `pi.getPrompt({ agentName, requestId })`, which also says whether a prompt is `queued`,
+`running`, `completed` with its `answer`, or `failed` with a reason, or null when the agent never
+received it. Prompts wait in the agent's queue and run one turn each, in arrival order
+(`whenBusy: "followUp"`, the default), under the agent's definition as it is when their turn starts.
+`steer` joins the running turn at its next tool boundary only when the running turn has the same
+authority; otherwise it is queued, and the receipt's `status` says `queued` instead of `steered`.
+`reject` fails with `409 AGENT_BUSY` while the agent runs a turn or has queued work. Event
+notifications wait in the same queue, and those from one sender share a turn. Aborting an agent
+pauses its queue: queued work, including yours, waits until a person resumes it.

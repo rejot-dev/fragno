@@ -588,7 +588,7 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
         status: 200,
         body: { document: id, review: "proposed" },
       });
-      scenario.backoffice.settlePrompt(prompt.requestId, { status: "completed" });
+      scenario.backoffice.settlePrompt(prompt.requestId, { status: "completed", answer: null });
     });
     const answered = await ada.navigate(`${BOOKS}/documents/${id}`);
     expect(answered.loaderData["documents/document"]).toMatchObject({

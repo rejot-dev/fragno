@@ -298,7 +298,8 @@ const promptGetTool = defineBackofficeRuntimeTool({
     bash: {
       command: "pi.prompt.get",
       help: {
-        summary: "pi.prompt.get tells where a prompt submitted with a request ID stands.",
+        summary:
+          "pi.prompt.get tells where a prompt submitted with a request ID stands, and its answer once completed.",
         options: [
           {
             name: "agent",

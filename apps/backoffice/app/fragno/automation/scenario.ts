@@ -89,6 +89,7 @@ import {
   piAgentObjectName,
   type PiAgent,
   type PiAgentPrompt,
+  type PiAgentSubmission,
   type PiAgentTurn,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
@@ -215,7 +216,7 @@ type FakePiAgent = {
   model: PiAgentTurn["agent"]["model"] | null;
   assistantText: string;
   answerEntryId: string | null;
-  submissions: Map<string, SubmissionRecord>;
+  submissions: Map<string, PiAgentSubmission>;
 };
 
 type PiProvisionedAgentCall = {
@@ -1243,14 +1244,17 @@ const createFakePiManagerApi = (
     fake.assistantText = reply;
     fake.answerEntryId = answerEntryId;
     fake.submissions.set(prompt.requestId, {
-      id: submissionId,
-      conversationId: 1,
-      requestId: prompt.requestId,
-      type: "input",
-      status: "done",
-      entry: `input-${submissionId}`,
-      answer: answerEntryId,
-    } as unknown as SubmissionRecord);
+      record: {
+        id: submissionId,
+        conversationId: 1,
+        requestId: prompt.requestId,
+        type: "input",
+        status: "done",
+        entry: `input-${submissionId}`,
+        answer: answerEntryId,
+      } as unknown as SubmissionRecord,
+      answer: reply || null,
+    });
     turns.push({
       agentName: config.agentName,
       requestId: prompt.requestId,
@@ -1308,7 +1312,7 @@ const createFakePiManagerApi = (
       const fake = requireAgent(config);
       return requestIds.map((requestId) => ({
         requestId,
-        submission: fake.submissions.get(requestId) ?? null,
+        submission: fake.submissions.get(requestId)?.record ?? null,
         startedAt: null,
         answeredAt: null,
         answer: null,

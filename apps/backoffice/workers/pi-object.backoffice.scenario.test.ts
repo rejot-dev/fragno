@@ -174,7 +174,7 @@ async function submission(
   agentName = "assistant",
 ) {
   return await (
-    await request(runtime, execution, `/agents/${agentName}/submissions/${requestId}`, null)
+    await request(runtime, execution, `/agents/${agentName}/prompts/${requestId}`, null)
   ).json<{ status: string } | { code: string }>();
 }
 
@@ -374,7 +374,7 @@ test("durable Pi refreshes workspace guidance between turns without leaking anot
             expect(
               await submission(runtime, execution, `workspace-guidance-${index}`),
             ).toMatchObject({
-              status: "done",
+              status: "completed",
             });
           }),
         ),
@@ -497,6 +497,7 @@ test("agents and users read another agent's messages and export its whole conver
           expect(JSON.parse(prompted.stdout)).toEqual({
             requestId: "research",
             status: "completed",
+            answer: "Read the assistant's conversation.",
           });
           const neverSent = await bash.exec(
             "pi.prompt.get --agent researcher --request-id never-sent --format json",
@@ -825,7 +826,7 @@ test("an agent's definition narrows every turn and an edited definition applies 
             await prompt(runtime, execution, { agentName: "reader", requestId: "narrowed" });
             await runtime.drain();
             expect(await submission(runtime, execution, "narrowed", "reader")).toMatchObject({
-              status: "done",
+              status: "completed",
             });
           },
         ),
@@ -955,7 +956,9 @@ test("an agent waits in its turn for the subagents it starts, also those waiting
             content: "Check every document.",
           });
           await runtime.drain();
-          expect(await submission(runtime, execution, "check")).toMatchObject({ status: "done" });
+          expect(await submission(runtime, execution, "check")).toMatchObject({
+            status: "completed",
+          });
         }),
         then.assert("it hears each answer in the order it asked, in the same turn", () => {
           expect(heard).toEqual([
@@ -1175,7 +1178,7 @@ test("subagents an app starts each answer one task in a conversation of their ow
           await runtime.drain();
           for (const requestId of ["own", "doc-1", "doc-2"]) {
             expect(await submission(runtime, execution, requestId, "reader")).toMatchObject({
-              status: "done",
+              status: "completed",
             });
           }
         }),
@@ -1207,20 +1210,22 @@ test("subagents an app starts each answer one task in a conversation of their ow
                 task: "Read document 2.",
                 askedAt: expect.any(String),
                 askedBy: { kind: "person" },
-                status: { requestId: "doc-2", status: "completed" },
+                status: { requestId: "doc-2", status: "completed", answer: "Document 2 read." },
                 startedAt: expect.any(String),
                 answeredAt: expect.any(String),
-                answer: "Document 2 read.",
               },
               {
                 requestId: "doc-1",
                 task: "Write the store.",
                 askedAt: expect.any(String),
                 askedBy: { kind: "person" },
-                status: { requestId: "doc-1", status: "completed" },
+                status: {
+                  requestId: "doc-1",
+                  status: "completed",
+                  answer: "I may not write the store.",
+                },
                 startedAt: expect.any(String),
                 answeredAt: expect.any(String),
-                answer: "I may not write the store.",
               },
             ],
           });
@@ -1297,7 +1302,7 @@ test("stopping an agent aborts its running subagents and its turn waiting for th
           await vi.waitFor(
             async () => {
               expect(await submission(runtime, execution, "doc-1")).toMatchObject({
-                status: "placed",
+                status: "running",
               });
               // The agent's turn waits in the tool.
               const live = (await view(runtime, execution)).docs["pi.live"];
@@ -1311,7 +1316,7 @@ test("stopping an agent aborts its running subagents and its turn waiting for th
           await runtime.drain();
           for (const requestId of ["lead", "doc-1"]) {
             expect(await submission(runtime, execution, requestId)).toMatchObject({
-              status: "unanswered",
+              status: "failed",
               reason: "aborted",
             });
           }
@@ -1478,7 +1483,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
               await prompt(runtime, execution, { requestId: "member-prompt" });
               await runtime.drain();
               expect(await submission(runtime, execution, "member-prompt")).toMatchObject({
-                status: "done",
+                status: "completed",
               });
               expect(JSON.stringify((await view(runtime, execution)).entries)).toContain(
                 "The member's own turn answered.",
@@ -1500,7 +1505,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
                         execution,
                         "linked-pi-restricted-pi-message:prompt",
                       ),
-                    ).toMatchObject({ code: "SUBMISSION_NOT_FOUND" });
+                    ).toMatchObject({ code: "PROMPT_NOT_FOUND" });
                     const workflow = createRouteBackedAutomationWorkflowRuntime({
                       object: runtime.objects.automations.for(scope),
                       execution: createBackofficeUserExecution({ scope, userId: "owner" }),
@@ -1621,7 +1626,7 @@ test("personal agents run without an organization and keep their usage after lea
           await prompt(runtime, execution, { requestId: "personal" });
           await runtime.drain();
           expect(await submission(runtime, execution, "personal")).toMatchObject({
-            status: "done",
+            status: "completed",
           });
           expect(modelCalls).toBe(1);
           await runtime.objects.auth.singleton().commands.addAdminOrganizationMember({
@@ -1636,7 +1641,7 @@ test("personal agents run without an organization and keep their usage after lea
             await prompt(runtime, execution, { requestId: "joined" });
             await runtime.drain();
             expect(await submission(runtime, execution, "joined")).toMatchObject({
-              status: "done",
+              status: "completed",
             });
           },
         ),
@@ -1646,7 +1651,9 @@ test("personal agents run without an organization and keep their usage after lea
           async ({ runtime }) => {
             await prompt(runtime, execution, { requestId: "left" });
             await runtime.drain();
-            expect(await submission(runtime, execution, "left")).toMatchObject({ status: "done" });
+            expect(await submission(runtime, execution, "left")).toMatchObject({
+              status: "completed",
+            });
             expect(modelCalls).toBe(3);
             const period = new Date(runtime.now()).toISOString().slice(0, 7);
             const personal = await runtime.objects.billing
@@ -1806,7 +1813,7 @@ for (const leaveOrganization of [false, true]) {
               // Personal work remains authorized after organization membership is removed.
               assert.equal((await workflow.getInstance({ instanceId })).details.status, "complete");
               expect(await submission(runtime, execution, `${instanceId}:sentence`)).toMatchObject({
-                status: "done",
+                status: "completed",
               });
             }
             const transcript = JSON.stringify((await view(runtime, execution)).entries);
@@ -2288,7 +2295,7 @@ test("an agent an app's installation prompts calls the app's actions as the inst
             await prompt(runtime, asInstallation(), { agentName: "counter", requestId: "count" });
             await runtime.drain();
             expect(await submission(runtime, asInstallation(), "count", "counter")).toMatchObject({
-              status: "done",
+              status: "completed",
             });
             expect(
               received
@@ -2351,15 +2358,15 @@ test("an agent hears back from same-named agents it prompts in two scopes and re
       return fauxAssistantMessage(`Read: ${JSON.stringify(result?.details)}`);
     }
     heard = heardEvents(context);
-    const reads = heard.map(({ subject, payload }) => {
+    const reads = heard.map(({ subject }) => {
       const scope = subject.scope as BackofficeContextScope;
       const handle = scope.kind === "user" ? `context.user("org-1")` : "context.current";
-      return `${handle}.pi.listMessages({ agentName: "assistant", last: 1, before: ${Number(payload.answerEntryId) + 1} })`;
+      return `${handle}.pi.getPrompt({ agentName: "assistant", requestId: ${JSON.stringify(subject.requestId)} })`;
     });
     return fauxAssistantMessage(
       [
         fauxToolCall("codemode", {
-          code: `async () => (await Promise.all([${reads.join(", ")}])).map((page) => page.messages[0].text)`,
+          code: `async () => (await Promise.all([${reads.join(", ")}])).map((prompt) => prompt.answer)`,
         }),
       ],
       { stopReason: "toolUse" },

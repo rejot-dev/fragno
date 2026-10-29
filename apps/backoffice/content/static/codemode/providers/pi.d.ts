@@ -36,12 +36,12 @@ type PiCodemodeProvider = {
    */
   deleteAgent(input: PiDeleteAgentInput): Promise<PiDeleteAgentOutput>;
   /**
-   * Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed event naming the answer's entry, or turn.failed, turn.aborted, or queue.dropped, each with the request ID in its subject. With `subagent`, the prompt runs in a new conversation of the agent instead of its own, and ends with it. With `notifyWhenDone`, that event is also delivered to the calling agent as a notification; read the answer with `pi.listMessages` in the prompted agent's scope, passing `before` one past the answer's entry ID and, for a subagent, its request ID as `subagent`. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.
+   * Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed, turn.failed, turn.aborted, or queue.dropped event, each with the request ID in its subject. With `subagent`, the prompt runs in a new conversation of the agent instead of its own, and ends with it. With `notifyWhenDone`, that event is also delivered to the calling agent as a notification; read the answer with `pi.getPrompt` in the prompted agent's scope. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.
    * Requires `pi.modify`.
    */
   submitPrompt(input: PiSubmitPromptInput): Promise<PiSubmitPromptOutput>;
   /**
-   * Where a prompt submitted with a request ID stands: queued, running, completed, or failed with the reason it will not be answered. Null when the agent never received the request.
+   * Where a prompt submitted with a request ID stands: queued, running, completed with the answer's text, or failed with the reason it will not be answered. Null when the agent never received the request. A subagent's prompt is found by its request ID too.
    * Requires `pi.read`.
    */
   getPrompt(input: PiGetPromptInput): Promise<PiGetPromptOutput>;
@@ -192,7 +192,12 @@ type PiGetPromptInput = {
 type PiGetPromptOutput =
   | {
       requestId: string;
-      status: "queued" | "running" | "completed";
+      status: "queued" | "running";
+    }
+  | {
+      requestId: string;
+      status: "completed";
+      answer: string | null;
     }
   | {
       requestId: string;

@@ -32,8 +32,8 @@ const piSubagentAskerSchema = z.discriminatedUnion("kind", [
 
 /**
  * An agent's latest subagents, newest first, and any running before them, so what runs is always
- * listed, as the agent's page lists them. `startedAt` and
- * `answeredAt` are null until it starts and answers, and `answer` until it answers.
+ * listed, as the agent's page lists them. `startedAt` and `answeredAt` are null until it starts
+ * and answers; a completed `status` holds the answer.
  */
 export const piAgentSubagentListSchema = z.object({
   subagents: z.array(
@@ -45,7 +45,6 @@ export const piAgentSubagentListSchema = z.object({
       status: piPromptStatusSchema,
       startedAt: z.string().nullable(),
       answeredAt: z.string().nullable(),
-      answer: z.string().nullable(),
     }),
   ),
 });
@@ -71,16 +70,17 @@ function subagentAsker(item: PiAgentSubagentItem): z.infer<typeof piSubagentAske
 function subagentStatus(item: PiAgentSubagentItem, run: PiSubagentRun) {
   const { requestId, state } = item;
   if (state.status === "queued" || state.status === "dropped") {
-    return piPromptStatusOf(requestId, {
-      type: "input",
+    return piPromptStatusOf(
       requestId,
-      ...(state.status === "queued" ? { status: "queued" } : state),
-    });
+      { type: "input", requestId, ...(state.status === "queued" ? { status: "queued" } : state) },
+      null,
+    );
   }
   // A dispatched subagent reads as queued until Pi has its submission.
   return piPromptStatusOf(
     requestId,
     run.submission ?? { type: "input", status: "queued", requestId },
+    run.answer,
   );
 }
 
@@ -170,7 +170,6 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
               status: subagentStatus(item, run),
               startedAt: isoTime(run.startedAt),
               answeredAt: isoTime(run.answeredAt),
-              answer: run.answer,
             };
           }),
         });

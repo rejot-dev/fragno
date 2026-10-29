@@ -153,10 +153,10 @@ async function expectSubmissionDone(organizationId: string, requestId: string) {
     .poll(
       async () =>
         await (
-          await managerRequest(organizationId, `/agents/assistant/submissions/${requestId}`)
+          await managerRequest(organizationId, `/agents/assistant/prompts/${requestId}`)
         ).json(),
     )
-    .toMatchObject({ requestId, status: "done" });
+    .toMatchObject({ requestId, status: "completed" });
 }
 
 describe("Pi durable agent scenarios", () => {
@@ -379,10 +379,9 @@ describe("Pi durable agent scenarios", () => {
       await runDurableObjectAlarm(agent);
       await expect
         .poll(
-          async () =>
-            await (await request(`/agents/assistant/submissions/${prompt.requestId}`)).json(),
+          async () => await (await request(`/agents/assistant/prompts/${prompt.requestId}`)).json(),
         )
-        .toMatchObject({ status: "done" });
+        .toMatchObject({ status: "completed" });
       const view = await (await request("/agents/assistant/view")).json<ConversationView>();
       expect(JSON.stringify(view.entries)).toContain("durable answer");
       expect(view.entries.filter((entry) => entry.kind === "pi.user")).toHaveLength(1);
@@ -513,7 +512,7 @@ describe("Pi durable agent scenarios", () => {
             "Recovered after startup.",
           );
           await expect(object.getSubmission(config, "startup-recovered")).resolves.toMatchObject({
-            status: "done",
+            record: { status: "done" },
           });
           expect(await state.storage.getAlarm()).toBeNull();
           expect(reports).toEqual([startupError]);

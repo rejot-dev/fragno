@@ -377,13 +377,12 @@ test("each scope's agents keep separate conversations and run real durable tool 
             expect(view.entries.map((entry) => entry.kind)).toContain("pi.tool-result");
             expect(JSON.stringify(view.entries)).toContain("durable answer");
             const submission = await (
-              await managerRequest(
-                runtime,
-                scope,
-                "/agents/assistant/submissions/shared-request-id",
-              )
+              await managerRequest(runtime, scope, "/agents/assistant/prompts/shared-request-id")
             ).json();
-            expect(submission).toMatchObject({ status: "done", requestId: "shared-request-id" });
+            expect(submission).toMatchObject({
+              status: "completed",
+              requestId: "shared-request-id",
+            });
             views.set(scope, view);
           }
         }),
@@ -532,7 +531,7 @@ test("a busy agent queues other principals' prompts, lets its own turn be steere
 
           // A rejected prompt is not queued and never runs.
           assert(
-            (await managerRequest(runtime, scope, "/agents/assistant/submissions/grace-reject"))
+            (await managerRequest(runtime, scope, "/agents/assistant/prompts/grace-reject"))
               .status === 404,
           );
 
@@ -543,12 +542,15 @@ test("a busy agent queues other principals' prompts, lets its own turn be steere
             "Ada steers her turn.",
             "Grace tries to steer.",
           ]);
-          const graceSubmission = await (
-            await managerRequest(runtime, scope, "/agents/assistant/submissions/grace-steer")
-          ).json<{ status: string; answer: number }>();
-          assert(graceSubmission.status === "done");
-          const graceAnswer = view.entries.find((entry) => entry.id === graceSubmission.answer);
-          expect(JSON.stringify(graceAnswer)).toContain("Follow-up turn answer.");
+          // The steer settles with the turn it joined, so that turn's answer is its answer.
+          expect(
+            await (
+              await managerRequest(runtime, scope, "/agents/assistant/prompts/grace-steer")
+            ).json(),
+          ).toMatchObject({
+            status: "completed",
+            answer: expect.stringContaining("Follow-up turn answer."),
+          });
 
           // Every admitted prompt reports its own settlement, including the steer that joined a turn.
           expect(
@@ -626,8 +628,8 @@ test("queued prompts each run a turn of their own, in arrival order, under the d
           }
           // Until the queue dispatches it, a prompt has no Pi submission of its own.
           expect(
-            await (await managerRequest(runtime, scope, "/agents/clerk/submissions/third")).json(),
-          ).toEqual({ type: "input", status: "queued", requestId: "third" });
+            await (await managerRequest(runtime, scope, "/agents/clerk/prompts/third")).json(),
+          ).toEqual({ requestId: "third", status: "queued" });
           const rejected = await managerRequest(runtime, scope, "/agents/clerk/prompts", {
             requestId: "rejected",
             content: "Only if idle.",
@@ -663,10 +665,8 @@ test("queued prompts each run a turn of their own, in arrival order, under the d
             expect(systemPrompts[1]).not.toContain("Version one.");
             expect(systemPrompts[2]).not.toContain("Version one.");
             expect(
-              await (
-                await managerRequest(runtime, scope, "/agents/clerk/submissions/third")
-              ).json(),
-            ).toMatchObject({ status: "done", requestId: "third" });
+              await (await managerRequest(runtime, scope, "/agents/clerk/prompts/third")).json(),
+            ).toMatchObject({ status: "completed", requestId: "third" });
           },
         ),
       ],
@@ -733,13 +733,12 @@ test("a prompt whose agent is deleted while it waits is dropped, and its submiss
 
           expect(userEntryTexts(await readView(runtime, scope, "clerk"))).toEqual(["First."]);
           const dropped = {
-            type: "input",
-            status: "dropped",
             requestId: "second",
+            status: "failed",
             reason: "Pi agent 'clerk' is not defined.",
           };
           expect(
-            await (await managerRequest(runtime, scope, "/agents/clerk/submissions/second")).json(),
+            await (await managerRequest(runtime, scope, "/agents/clerk/prompts/second")).json(),
           ).toEqual(dropped);
           // The queue records the work leaving it, so nothing reads as still waiting.
           expect(
@@ -812,7 +811,7 @@ test("a prompt whose handover to the agent fails is handed over again by the que
           assert.equal(queued.status, 202, await queued.clone().text());
           expect(
             await (
-              await managerRequest(runtime, scope, "/agents/assistant/submissions/retried")
+              await managerRequest(runtime, scope, "/agents/assistant/prompts/retried")
             ).json(),
           ).toMatchObject({ status: "queued" });
 
@@ -820,9 +819,9 @@ test("a prompt whose handover to the agent fails is handed over again by the que
           expect(userEntryTexts(await readView(runtime, scope))).toEqual(["Retry me."]);
           expect(
             await (
-              await managerRequest(runtime, scope, "/agents/assistant/submissions/retried")
+              await managerRequest(runtime, scope, "/agents/assistant/prompts/retried")
             ).json(),
-          ).toMatchObject({ status: "done", requestId: "retried" });
+          ).toMatchObject({ status: "completed", requestId: "retried" });
         }),
       ],
     }),
@@ -838,7 +837,7 @@ async function listedSubagent(
   const response = await managerRequest(runtime, scope, "/agents/assistant/subagents");
   assert.equal(response.status, 200, await response.clone().text());
   const { subagents } = await response.json<{
-    subagents: { requestId: string; status: { status: string }; answer: string | null }[];
+    subagents: { requestId: string; status: { status: string } }[];
   }>();
   return subagents.find((subagent) => subagent.requestId === requestId);
 }
@@ -901,8 +900,7 @@ test("a subagent whose start failed before a stop starts only once the agent res
           assert.equal(resumed.status, 204, await resumed.clone().text());
           await runtime.drain();
           expect(await listedSubagent(runtime, scope, "late")).toMatchObject({
-            status: { status: "completed" },
-            answer: "durable answer",
+            status: { status: "completed", answer: "durable answer" },
           });
         }),
       ],
@@ -979,8 +977,7 @@ test("a subagent start still on its way when the agent stops starts only once it
           assert.equal(resumed.status, 204, await resumed.clone().text());
           await runtime.drain();
           expect(await listedSubagent(runtime, scope, "racing")).toMatchObject({
-            status: { status: "completed" },
-            answer: "durable answer",
+            status: { status: "completed", answer: "durable answer" },
           });
         }),
       ],
@@ -1010,16 +1007,16 @@ test("each settled turn is recorded once as a pi Automations event", async () =>
           await runtime.drain();
 
           const submission = await (
-            await managerRequest(runtime, scope, "/agents/assistant/submissions/answered")
-          ).json<{ status: string; answer: number }>();
-          assert(submission.status === "done");
+            await managerRequest(runtime, scope, "/agents/assistant/prompts/answered")
+          ).json<{ status: string }>();
+          assert(submission.status === "completed");
           const [event, ...others] = await piTurnEvents(runtime, scope);
           expect(others).toEqual([]);
           expect(event).toMatchObject({
             id: "pi:assistant:ended:answered",
             scope,
             eventType: "turn.completed",
-            payload: { answerEntryId: submission.answer },
+            payload: { answerEntryId: expect.any(Number) },
             subject: {
               scope,
               agentName: "assistant",
@@ -1040,9 +1037,9 @@ test("each settled turn is recorded once as a pi Automations event", async () =>
           await runtime.drain();
 
           const unanswered = await (
-            await managerRequest(runtime, scope, "/agents/assistant/submissions/unanswered")
+            await managerRequest(runtime, scope, "/agents/assistant/prompts/unanswered")
           ).json<{ status: string }>();
-          assert.equal(unanswered.status, "unanswered");
+          assert.equal(unanswered.status, "failed");
           expect(
             (await piTurnEvents(runtime, scope)).map((event) => event.subject?.requestId),
           ).toEqual(["answered"]);
@@ -1171,9 +1168,9 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
             await runtime.drain();
 
             const submission = await (
-              await managerRequest(runtime, scope, "/agents/assistant/submissions/cut-off")
+              await managerRequest(runtime, scope, "/agents/assistant/prompts/cut-off")
             ).json<{ status: string; reason: string }>();
-            expect(submission).toMatchObject({ status: "unanswered", reason: "aborted" });
+            expect(submission).toMatchObject({ status: "failed", reason: "aborted" });
             const subject = { scope, agentName: "assistant" };
             expect(
               (await piEvents(runtime, "agent.")).filter(
@@ -1777,13 +1774,13 @@ test("a notify_agent route delivers events as turns but never the agent's own wo
             await managerRequest(
               runtime,
               scope,
-              "/agents/assistant/submissions/route:notify-on-order:order-1",
+              "/agents/assistant/prompts/route:notify-on-order:order-1",
             )
-          ).json<{ status: string; answer: number }>();
-          assert(followUp.status === "done");
-          expect(
-            JSON.stringify(view.entries.find((entry) => entry.id === followUp.answer)),
-          ).toContain("Order noted.");
+          ).json();
+          expect(followUp).toMatchObject({
+            status: "completed",
+            answer: expect.stringContaining("Order noted."),
+          });
 
           // Both turns completed, and neither completion was delivered back to the assistant.
           expect(
@@ -2487,13 +2484,9 @@ test("SQLite Pi directories and agent transcripts survive a complete local runti
                 await runtime.drain();
                 expect((await readView(runtime, scope)).entries).toEqual(view.entries);
                 const submission = await (
-                  await managerRequest(
-                    runtime,
-                    scope,
-                    "/agents/assistant/submissions/persisted-prompt",
-                  )
+                  await managerRequest(runtime, scope, "/agents/assistant/prompts/persisted-prompt")
                 ).json();
-                expect(submission).toMatchObject({ status: "done" });
+                expect(submission).toMatchObject({ status: "completed" });
               }
             },
           ),
@@ -2546,9 +2539,9 @@ test("a cold local agent alarm resumes unfinished SQLite work without duplicatin
             });
             assert.equal(submitted.status, 202, await submitted.clone().text());
             const submission = await (
-              await managerRequest(runtime, scope, "/agents/assistant/submissions/unfinished")
+              await managerRequest(runtime, scope, "/agents/assistant/prompts/unfinished")
             ).json();
-            expect(submission).not.toMatchObject({ status: "done" });
+            expect(submission).not.toMatchObject({ status: "completed" });
           }),
         ],
       }),
@@ -2565,9 +2558,9 @@ test("a cold local agent alarm resumes unfinished SQLite work without duplicatin
             async ({ runtime }) => {
               await runtime.drain();
               const submission = await (
-                await managerRequest(runtime, scope, "/agents/assistant/submissions/unfinished")
+                await managerRequest(runtime, scope, "/agents/assistant/prompts/unfinished")
               ).json();
-              expect(submission).toMatchObject({ status: "done", requestId: "unfinished" });
+              expect(submission).toMatchObject({ status: "completed", requestId: "unfinished" });
               const view = await readView(runtime, scope);
               expect(view.entries.filter((entry) => entry.kind === "pi.user")).toHaveLength(1);
               expect(JSON.stringify(view.entries)).toContain("durable answer");

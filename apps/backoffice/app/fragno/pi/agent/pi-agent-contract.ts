@@ -195,13 +195,17 @@ export type PiAgentQueueSubmission =
   | { type: "input"; status: "queued"; requestId: string }
   | { type: "input"; status: "dropped"; requestId: string; reason: string };
 
+/** Pi's submission of a prompt, and its answer's text once done; null when the answer said nothing. */
+export type PiAgentSubmission = { record: SubmissionRecord; answer: string | null };
+
 /**
  * A submission as the manager answers for it, Pi's own once a turn took it, and where it stands in
- * public terms.
+ * public terms, with `answer`, the text of a done submission's answer.
  */
 export function piPromptStatusOf(
   requestId: string,
   submission: PiAgentQueueSubmission | SubmissionRecord,
+  answer: string | null,
 ): PiPromptStatus {
   switch (submission.status) {
     case "queued":
@@ -209,7 +213,7 @@ export function piPromptStatusOf(
     case "placed":
       return { requestId, status: "running" };
     case "done":
-      return { requestId, status: "completed" };
+      return { requestId, status: "completed", answer };
     case "unanswered":
     case "dropped":
       return { requestId, status: "failed", reason: submission.reason };
@@ -332,7 +336,7 @@ export type PiAgent = {
    */
   publishQueue(queue: PiAgentWaitingQueue): Promise<void>;
   /** A request's submission, in the agent's conversation or the subagent it started. */
-  getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null>;
+  getSubmission(config: PiAgentConfig, requestId: string): Promise<PiAgentSubmission | null>;
   /** Where each of the subagents `requestIds` asked for stands, in the same order. */
   getSubagentRuns(config: PiAgentConfig, requestIds: string[]): Promise<PiSubagentRun[]>;
   listEntries(

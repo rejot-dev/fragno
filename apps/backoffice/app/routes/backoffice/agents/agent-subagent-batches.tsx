@@ -301,7 +301,7 @@ function runStatus(subagent: AgentSubagent, headline: string | null): ChatSubage
         kind: "completed",
         durationMs: startedAt === null || answeredAt === null ? null : answeredAt - startedAt,
         // The row shows the answer's start, which reads as text, not markup.
-        answer: plainText(subagent.answer ?? ""),
+        answer: plainText(status.answer ?? ""),
       };
     }
     case "failed":

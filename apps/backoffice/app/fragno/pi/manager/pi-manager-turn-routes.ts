@@ -2,6 +2,7 @@ import { automationEntityRefsEqual } from "@fragno-dev/backoffice-api/v0/automat
 import {
   piAgentConfigSchema,
   piPromptReceiptOutputSchema,
+  piPromptStatusSchema,
   piPromptWhenBusySchema,
   type PiAgentDefinition,
 } from "@fragno-dev/backoffice-api/v0/pi";
@@ -20,6 +21,7 @@ import {
   piAgentNotificationSchema,
   piAgentPromptSchema,
   piAgentTurnSchema,
+  piPromptStatusOf,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { handOverPiAgentWork, publishPiAgentQueue, type PiAgentHandover } from "./pi-agent-queue";
@@ -359,32 +361,30 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
       }),
       defineRoute({
         method: "GET",
-        path: "/agents/:agentName/submissions/:requestId",
-        outputSchema: z.unknown(),
-        errorCodes: ["AGENT_NOT_STARTED", "SUBMISSION_NOT_FOUND"],
+        path: "/agents/:agentName/prompts/:requestId",
+        outputSchema: piPromptStatusSchema,
+        errorCodes: ["AGENT_NOT_STARTED", "PROMPT_NOT_FOUND"],
         handler: async function ({ pathParams }, { json, error }) {
+          const { requestId } = pathParams;
           const { agent, record } = await findSubmission(() => this.handlerTx(), pathParams);
           if (!agent) {
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
           if (record?.type === "held") {
-            return json(record.submission);
+            return json(piPromptStatusOf(requestId, record.submission, null));
           }
           // A turn's submission answers for every item it handled.
           const submission = await config
             .agent(agent)
-            .getSubmission(agent, record ? record.turnRequestId : pathParams.requestId);
+            .getSubmission(agent, record ? record.turnRequestId : requestId);
           if (submission) {
-            return json(submission);
+            return json(piPromptStatusOf(requestId, submission.record, submission.answer));
           }
           // A dispatched turn reads as queued until Pi has its submission.
           if (record) {
-            return json({ type: "input", status: "queued", requestId: pathParams.requestId });
+            return json({ requestId, status: "queued" });
           }
-          return error(
-            { code: "SUBMISSION_NOT_FOUND", message: "Pi submission was not found." },
-            404,
-          );
+          return error({ code: "PROMPT_NOT_FOUND", message: "Pi prompt was not found." }, 404);
         },
       }),
       defineRoute({

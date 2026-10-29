@@ -306,7 +306,10 @@ export class FakeBackoffice {
   /** The agent gets as far as `status` with the prompt submitted as `requestId`. */
   settlePrompt(
     requestId: string,
-    status: { status: "running" | "completed" } | { status: "failed"; reason: string },
+    status:
+      | { status: "running" }
+      | { status: "completed"; answer: string | null }
+      | { status: "failed"; reason: string },
   ): void {
     const prompt = this.#prompts.find((candidate) => candidate.requestId === requestId);
     if (!prompt) {

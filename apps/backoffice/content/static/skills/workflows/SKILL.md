@@ -80,15 +80,10 @@ const classification = await step.do("read classification", async () => {
   if (settled.payload.eventType !== "turn.completed") {
     return null;
   }
-  // The event names the answer; reading its text needs pi.read.
-  const { answerEntryId } = settled.payload.payload;
-  const { messages } = await pi.listMessages({
-    agentName: "assistant",
-    before: answerEntryId + 1,
-    last: 1,
-  });
-  // An answer that said nothing is no message, so the page then holds an earlier one.
-  return messages[0]?.entryId === answerEntryId ? messages[0].text : null;
+  // The event carries no answer; reading it needs pi.read.
+  const prompt = await pi.getPrompt({ agentName: "assistant", requestId: event.instanceId });
+  // An answer that said nothing is null.
+  return prompt?.status === "completed" ? prompt.answer : null;
 });
 ```
 

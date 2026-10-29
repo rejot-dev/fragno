@@ -16,6 +16,7 @@ import { z } from "zod";
 import { copyJson } from "@earendil-works/chord";
 import {
   type Conversation,
+  type ConversationId,
   type ConversationView,
   type EntryId,
   type JsonObject,
@@ -48,6 +49,7 @@ import {
   type PiAgentNotification,
   type PiAgentPrompt,
   type PiAgentSteer,
+  type PiAgentSubmission,
   type PiQueuedSubagent,
   type PiSubagentRun,
   type PiAgentTurn,
@@ -123,6 +125,41 @@ type ProvisionedPiAgent = {
   /** Null for agents provisioned since owner attribution: none of their deliveries is legacy. */
   legacyBillingScope: BackofficeContextScope | null;
 };
+
+/** The model messages of an entry of the conversation; none for a missing entry. */
+async function entryMessages(
+  storage: Storage,
+  conversationId: ConversationId,
+  entryId: EntryId | undefined,
+) {
+  if (entryId === undefined) {
+    return [];
+  }
+  const stored = await storage.entry(conversationId, entryId, BACKGROUND_CONTEXT);
+  return stored?.entry.model ?? [];
+}
+
+/** The model responses that answered a done submission. */
+async function answerResponses(
+  storage: Storage,
+  conversationId: ConversationId,
+  submission: SubmissionRecord | null,
+) {
+  const answer =
+    submission?.type === "input" && submission.status === "done" ? submission.answer : undefined;
+  return (await entryMessages(storage, conversationId, answer)).filter(
+    (message) => message.role === "assistant",
+  );
+}
+
+/** What the responses said; null when they said nothing. */
+function answerText(responses: Awaited<ReturnType<typeof answerResponses>>) {
+  const text = responses
+    .flatMap((message) => message.content)
+    .flatMap((block) => (block.type === "text" ? [block.text] : []))
+    .join("\n");
+  return text === "" ? null : text;
+}
 
 /** Shared durable agent lifecycle; both runtimes persist an alarm before admitting work. */
 export class PiObject extends RpcTarget implements PiAgent {
@@ -592,14 +629,17 @@ export class PiObject extends RpcTarget implements PiAgent {
     }
   }
 
-  async getSubmission(config: PiAgentConfig, requestId: string): Promise<SubmissionRecord | null> {
+  async getSubmission(config: PiAgentConfig, requestId: string): Promise<PiAgentSubmission | null> {
     const { storage, harness } = await this.#requireAgent(config);
     const conversationId =
       (await piSubagentConversation(harness, requestId, BACKGROUND_CONTEXT)) ??
       (await harness.root(BACKGROUND_CONTEXT)).id;
-    return (
-      (await storage.submissionByRequest(conversationId, requestId, BACKGROUND_CONTEXT)) ?? null
-    );
+    const record = await storage.submissionByRequest(conversationId, requestId, BACKGROUND_CONTEXT);
+    if (record === undefined) {
+      return null;
+    }
+    // The answer is read by its entry, which a later compaction or reset leaves in place.
+    return { record, answer: answerText(await answerResponses(storage, conversationId, record)) };
   }
 
   async getSubagentRuns(config: PiAgentConfig, requestIds: string[]): Promise<PiSubagentRun[]> {
@@ -607,26 +647,15 @@ export class PiObject extends RpcTarget implements PiAgent {
     return await Promise.all(
       requestIds.map(async (requestId): Promise<PiSubagentRun> => {
         const conversationId = await piSubagentConversation(harness, requestId, BACKGROUND_CONTEXT);
-        const submission =
-          conversationId === null
-            ? null
-            : ((await storage.submissionByRequest(conversationId, requestId, BACKGROUND_CONTEXT)) ??
-              null);
-        async function entryMessages(entryId: EntryId | undefined) {
-          if (conversationId === null || entryId === undefined) {
-            return [];
-          }
-          const stored = await storage.entry(conversationId, entryId, BACKGROUND_CONTEXT);
-          return stored?.entry.model ?? [];
+        if (conversationId === null) {
+          return { requestId, submission: null, startedAt: null, answeredAt: null, answer: null };
         }
-        const prompt = await entryMessages(submission?.entry);
-        const answer = await entryMessages(
-          submission?.type === "input" && submission.status === "done"
-            ? submission.answer
-            : undefined,
-        );
-        const assistant = answer.filter((message) => message.role === "assistant");
-        const answered = assistant.at(-1);
+        const submission =
+          (await storage.submissionByRequest(conversationId, requestId, BACKGROUND_CONTEXT)) ??
+          null;
+        const prompt = await entryMessages(storage, conversationId, submission?.entry);
+        const responses = await answerResponses(storage, conversationId, submission);
+        const answered = responses.at(-1);
         return {
           requestId,
           submission,
@@ -634,13 +663,7 @@ export class PiObject extends RpcTarget implements PiAgent {
           // An assistant message is stamped when its generation starts.
           answeredAt:
             answered === undefined ? null : answered.timestamp + (answered.durationMs ?? 0),
-          answer:
-            assistant.length === 0
-              ? null
-              : assistant
-                  .flatMap((message) => message.content)
-                  .flatMap((block) => (block.type === "text" ? [block.text] : []))
-                  .join("\n"),
+          answer: answerText(responses),
         };
       }),
     );

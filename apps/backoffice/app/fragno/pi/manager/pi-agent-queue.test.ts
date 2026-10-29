@@ -180,7 +180,10 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
         events: notifications.map(({ event }) => event.id),
       });
     },
-    getSubmission: async (_config, requestId) => submissions.get(requestId) ?? null,
+    getSubmission: async (_config, requestId) => {
+      const record = submissions.get(requestId);
+      return record ? { record, answer: null } : null;
+    },
     getSubagentRuns: async (_config, requestIds) =>
       requestIds.map((requestId) => ({
         requestId,
@@ -343,11 +346,9 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       });
     },
     async submission(requestId: string, agentName = "assistant") {
-      const response = await fragment.callRoute(
-        "GET",
-        "/agents/:agentName/submissions/:requestId",
-        { pathParams: { agentName, requestId } },
-      );
+      const response = await fragment.callRoute("GET", "/agents/:agentName/prompts/:requestId", {
+        pathParams: { agentName, requestId },
+      });
       return response.type === "json" ? response.data : response.type;
     },
     /** The agent's subagents as its page lists them, as `<status> <requestId>` lines. */
@@ -381,11 +382,7 @@ test("an agent runs its queue one turn at a time, in arrival order", async () =>
     expect(await queue.receipt({ requestId })).toEqual({ requestId, status: "queued" });
   }
   expect(queue.requestIds()).toEqual(["dispatch first"]);
-  expect(await queue.submission("third")).toEqual({
-    type: "input",
-    status: "queued",
-    requestId: "third",
-  });
+  expect(await queue.submission("third")).toEqual({ requestId: "third", status: "queued" });
 
   await queue.settle("first");
   expect(queue.requestIds()).toEqual(["dispatch first", "dispatch second"]);
@@ -503,9 +500,8 @@ test("waiting prompts run under the definition as it is when their turn starts, 
   await queue.settle("second", "clerk");
   expect(queue.handovers).toHaveLength(2);
   expect(await queue.submission("third", "clerk")).toEqual({
-    type: "input",
-    status: "dropped",
     requestId: "third",
+    status: "failed",
     reason: "Pi agent 'clerk' is not defined.",
   });
 });
@@ -603,11 +599,7 @@ test("subagents run beside the agent's own turns, a few at a time, and wait whil
   ]);
   // A waiting subagent waits for a slot, not in the agent's conversation.
   expect(queue.publishedQueue()).toEqual([]);
-  expect(await queue.submission("doc-5")).toEqual({
-    type: "input",
-    status: "queued",
-    requestId: "doc-5",
-  });
+  expect(await queue.submission("doc-5")).toEqual({ requestId: "doc-5", status: "queued" });
   // A subagent's conversation is new, so it never steers or is refused as busy.
   const steering = await queue.prompt({
     requestId: "doc-steer",
@@ -753,11 +745,7 @@ test("stopping pauses the queue until someone sends a message, which joins its e
   await queue.control("stop");
   // The stopped turn settles unanswered, and nothing starts after it.
   await queue.settle("running");
-  expect(await queue.submission("waiting")).toEqual({
-    type: "input",
-    status: "queued",
-    requestId: "waiting",
-  });
+  expect(await queue.submission("waiting")).toEqual({ requestId: "waiting", status: "queued" });
   // Nothing runs, but work waits, so a rejectable prompt is refused.
   const rejected = await queue.prompt({ requestId: "impatient", whenBusy: "reject" });
   assert(rejected.type === "error" && rejected.error.code === "AGENT_BUSY");
@@ -892,9 +880,10 @@ test("events are written as they arrive, and a sender's waiting requests share o
     "dispatch route:orders:grace-1 (grace-1)",
     "dispatch second",
   ]);
-  // Each event's submission is the turn's that handled it.
-  expect(await queue.submission("route:orders:ada-2")).toMatchObject({
-    requestId: "route:orders:ada-1",
+  // Each event stands as the turn that handled it does.
+  expect(await queue.submission("route:orders:ada-2")).toEqual({
+    requestId: "route:orders:ada-2",
+    status: "running",
   });
 
   // An event handled before is not handled again; a workflow's reply has no route.
@@ -915,8 +904,9 @@ test("an event the running turn's sender caused joins that turn instead of waiti
     "write route:orders:grace-1 (grace-1)",
   ]);
   expect(queue.publishedQueue()).toEqual(["notification route:orders:grace-1"]);
-  expect(await queue.submission("route:orders:ada-1")).toMatchObject({
+  expect(await queue.submission("route:orders:ada-1")).toEqual({
     requestId: "route:orders:ada-1",
+    status: "running",
   });
 
   await queue.settle("route:orders:ada-1");
