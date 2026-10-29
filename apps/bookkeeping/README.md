@@ -346,17 +346,22 @@ its administration, and the firm's agent serves all its clients, so the mount's 
 administration's ID with the document's, and the prompt's request ID names both. Answering the
 review revokes the share, as does the document's page when it shows a document whose review was
 answered, or that was booked or dismissed, so the firm reads a client's file only while it is asked
-about it. Bookkeeping asks as its installation, not as the person, so the agent's calls to
-Bookkeeping arrive as the installation's: they read the books and answer reviews
-(`documents.propose` and `documents.decline`), and every other change is refused, whatever a
-document tells the agent. Bookkeeping defines the agent when the firm's project has none, granting
-it `upload.read`, `models.extract`, `integrations.read` (to read the actions' input schemas), and
-`integrations.execute`; a definition the firm's members changed in Backoffice is left as it is. So
-is one Bookkeeping defined before its definition changed: members update or delete it to get the new
-one. It then submits the prompt, naming the administration and where the file is shared, with
-`pi.prompt.submit` as a `subagent`: each document runs in a new conversation of the agent, beside
-the others, so documents uploaded together are read side by side and no document sees another's
-text. Backoffice bills the turn to the firm.
+about it. Each request records that the file may be shared, and a revocation records that it is not,
+so revoking asks Backoffice only while the file may be shared. A request asked while a revocation
+runs may reuse the share it revokes, so a revocation that finds a request awaiting an answer shares
+the file again. An answer may also come while the file is being shared for its request, before the
+share exists, so sharing records the file shared again afterwards, and revokes it again, without
+asking the agent, when the request no longer awaits an answer. Bookkeeping asks as its installation,
+not as the person, so the agent's calls to Bookkeeping arrive as the installation's: they read the
+books and answer reviews (`documents.propose` and `documents.decline`), and every other change is
+refused, whatever a document tells the agent. Bookkeeping defines the agent when the firm's project
+has none, granting it `upload.read`, `models.extract`, `integrations.read` (to read the actions'
+input schemas), and `integrations.execute`; a definition the firm's members changed in Backoffice is
+left as it is. So is one Bookkeeping defined before its definition changed: members update or delete
+it to get the new one. It then submits the prompt, naming the administration and where the file is
+shared, with `pi.prompt.submit` as a `subagent`: each document runs in a new conversation of the
+agent, beside the others, so documents uploaded together are read side by side and no document sees
+another's text. Backoffice bills the turn to the firm.
 
 The agent reads the document with `documents.get` and `models.extract`, the books with
 `books.describe` and `entries.list`, and answers with `documents.propose`, an entry as

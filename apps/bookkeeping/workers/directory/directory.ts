@@ -457,6 +457,18 @@ export class Directory extends DurableObject<CloudflareEnv> {
     return row?.projectId ?? null;
   }
 
+  /** The project holding the bookkeeping agent of the firm managing the client, once set up. */
+  findClientsFirmAgent(clientId: string): { firmId: string; projectId: string } | null {
+    const [row] = this.ctx.storage.sql
+      .exec<{ firmId: string; projectId: string }>(
+        `SELECT a."firmId", a."projectId" FROM "organization" o
+         JOIN "firm_agent" a ON a."firmId" = o."firmId" WHERE o."id" = ?`,
+        clientId,
+      )
+      .toArray();
+    return row ?? null;
+  }
+
   #renameOrganization(organization: Pick<Organization, "id" | "slug" | "name">): void {
     this.ctx.storage.sql.exec(
       `UPDATE "organization" SET "slug" = ?, "name" = ? WHERE "id" = ?`,

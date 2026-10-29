@@ -68,6 +68,8 @@ export type DocumentState =
 export type DocumentView = NewDocument & {
   uploadedAt: Date;
   review: Review | null;
+  /** Whether its file may still be shared with a firm's bookkeeping agent. */
+  shared: boolean;
   /** The ledger's source document, once an entry recorded it, with every entry recording it. */
   source: SourceDocument | null;
   state: DocumentState;
@@ -101,6 +103,18 @@ function documentState(dismissal: Dismissal | null, source: SourceDocument | nul
   return inEffect ? { status: "booked", entryId: inEffect.id } : { status: "to-book" };
 }
 
+/** The request a document to book awaits an answer to, if any. */
+function awaitedRequest(
+  document: { dismissal: Dismissal | null; review: Review | null },
+  source: SourceDocument | null,
+): string | null {
+  const { review } = document;
+  return review?.status === "requested" &&
+    documentState(document.dismissal, source).status === "to-book"
+    ? review.requestId
+    : null;
+}
+
 /** Refuses booking a document that is booked or dismissed. */
 function assertToBook(state: DocumentState) {
   if (state.status === "dismissed") {
@@ -128,6 +142,7 @@ function toRow(document: {
   uploadedBy: string;
   dismissal: Dismissal | null;
   review: Review | null;
+  shared: boolean;
 }): DocumentRow {
   return {
     id: document.id.valueOf(),
@@ -140,6 +155,7 @@ function toRow(document: {
     uploadedBy: document.uploadedBy,
     dismissal: document.dismissal,
     review: document.review,
+    shared: document.shared,
   };
 }
 
@@ -169,7 +185,14 @@ const documentsFragmentDefinition = defineFragment("documents")
             }
             uow.create(
               "document",
-              { ...document, uploadedAt: uow.now(), bookings: 0, dismissal: null, review: null },
+              {
+                ...document,
+                uploadedAt: uow.now(),
+                bookings: 0,
+                dismissal: null,
+                review: null,
+                shared: false,
+              },
               // A concurrent upload recorded it: retrying reads it and compares the files. Its ID is
               // the table's only unique key.
               { retryOnUniqueConflict: () => true },
@@ -289,9 +312,10 @@ const documentsFragmentDefinition = defineFragment("documents")
       },
 
       /**
-       * Records that the bookkeeping agent was asked to review a document to book. Asking again
-       * replaces an earlier answer, and recording a request again does nothing; with `first`, so does
-       * a request for a document that has a review. Returns the review in effect.
+       * Records that the bookkeeping agent was asked to review a document to book, and that its file
+       * may be shared with it. Asking again replaces an earlier answer, and recording a request again
+       * does nothing; with `first`, so does a request for a document that has a review. Returns the
+       * review in effect.
        */
       requestReview: function (input: {
         documentId: string;
@@ -320,7 +344,9 @@ const documentsFragmentDefinition = defineFragment("documents")
             ) {
               return current;
             }
-            uow.update("document", document.id, (b) => b.set({ review: request }).check());
+            uow.update("document", document.id, (b) =>
+              b.set({ review: request, shared: true }).check(),
+            );
             return request;
           })
           .build();
@@ -360,6 +386,61 @@ const documentsFragmentDefinition = defineFragment("documents")
             }
             uow.update("document", document.id, (b) => b.set({ review: answer }).check());
             return answer;
+          })
+          .build();
+      },
+
+      /**
+       * Records that the document's shares were revoked, unless a request awaits an answer, which
+       * may have reused a share the revoker revoked. Returns that request, for the revoker to share
+       * the file again for it, or null.
+       */
+      recordSharesRevoked: function (input: { documentId: string }) {
+        const { documentId } = input;
+        return this.serviceTx(documentsSchema)
+          .withServiceCalls(
+            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("document", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [document], serviceIntermediateResult: [sources] }) => {
+            if (!document) {
+              throw new DocumentError("DOCUMENT_NOT_FOUND");
+            }
+            const awaited = awaitedRequest(document, sources[0] ?? null);
+            if (awaited === null) {
+              uow.update("document", document.id, (b) => b.set({ shared: false }).check());
+            }
+            return awaited;
+          })
+          .build();
+      },
+
+      /**
+       * Records that the document's file is shared for `requestId`, after sharing it: a revocation
+       * may have recorded it unshared meanwhile. Returns whether the request still awaits an answer;
+       * when it does not, its sharer revokes the share again.
+       */
+      recordShared: function (input: { documentId: string; requestId: string }) {
+        const { documentId, requestId } = input;
+        return this.serviceTx(documentsSchema)
+          .withServiceCalls(
+            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("document", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [document], serviceIntermediateResult: [sources] }) => {
+            if (!document) {
+              throw new DocumentError("DOCUMENT_NOT_FOUND");
+            }
+            uow.update("document", document.id, (b) => b.set({ shared: true }).check());
+            return awaitedRequest(document, sources[0] ?? null) === requestId;
           })
           .build();
       },

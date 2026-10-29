@@ -115,23 +115,100 @@ async function revokeShares(administration: InstalledProject, document: Document
   );
 }
 
+/** Bookkeeping's installation in the agent project of the firm managing the administration's client. */
+async function connectToFirmAgent(
+  env: CloudflareEnv,
+  administration: Administration,
+): Promise<InstalledProject | null> {
+  const agent = await env.DIRECTORY.getByName("directory").findClientsFirmAgent(
+    administration.clientId,
+  );
+  if (!agent) {
+    return null;
+  }
+  const scope = {
+    kind: "project" as const,
+    owner: { kind: "org" as const, orgId: agent.firmId, jurisdiction: null },
+    projectId: agent.projectId,
+  };
+  const backoffice = await connectAsInstallation(env, scope);
+  return backoffice && { scope, backoffice };
+}
+
+/**
+ * Shares the document's file with the firm's agent for the request `requestId`, without the share
+ * outliving the request. Answering revokes the document's shares, but an answer meanwhile may come
+ * before this share exists and record the file unshared: once shared, it is recorded shared again,
+ * and revoked again unless the request still awaits an answer, even when sharing failed partway.
+ * Returns whether it does.
+ */
+export async function shareForRequest(
+  env: CloudflareEnv,
+  input: {
+    administration: Administration;
+    projects: { administration: InstalledProject; agent: InstalledProject };
+    document: Document;
+    requestId: string;
+  },
+): Promise<boolean> {
+  const { administration, projects, document, requestId } = input;
+  // Sharing failing partway, e.g. after the share was made but before it was accepted, may leave a
+  // share standing, so it is recorded as for one that succeeded before the failure is thrown.
+  const shared = await shareDocument({ ...projects, document }).then(
+    () => ({ ok: true as const }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  const recorded = await env.BOOKS.getByName(administration.id).recordShared({
+    documentId: document.id,
+    requestId,
+  });
+  const awaited = recorded.ok && recorded.value;
+  if (!awaited) {
+    await releaseDocument(env, administration, document.id);
+  }
+  if (!shared.ok) {
+    throw shared.error;
+  }
+  return awaited;
+}
+
 /**
  * Revokes the document's shares as Bookkeeping's installation in its administration's project, so
- * the firm's agent no longer reads its file.
+ * the firm's agent no longer reads its file. A document whose file is shared with no one is left
+ * alone, without asking Backoffice. Someone may ask about the document again meanwhile, and that
+ * request may reuse a share this revokes, so the file is shared again while a request awaits.
  */
 export async function releaseDocument(
   env: CloudflareEnv,
   administration: Administration,
   documentId: string,
 ): Promise<void> {
-  const document = await env.BOOKS.getByName(administration.id).getDocument(documentId);
+  const books = env.BOOKS.getByName(administration.id);
+  const document = await books.getDocument(documentId);
+  if (!document?.shared) {
+    return;
+  }
   const scope = {
     kind: "project" as const,
     owner: { kind: "org" as const, orgId: administration.clientId, jurisdiction: null },
     projectId: administration.id,
   };
   const backoffice = await connectAsInstallation(env, scope);
-  if (document && backoffice) {
-    await revokeShares({ scope, backoffice }, document);
+  if (!backoffice) {
+    return;
+  }
+  await revokeShares({ scope, backoffice }, document);
+  const revoked = await books.recordSharesRevoked({ documentId });
+  if (!revoked.ok || revoked.value === null) {
+    return;
+  }
+  const agent = await connectToFirmAgent(env, administration);
+  if (agent) {
+    await shareForRequest(env, {
+      administration,
+      projects: { administration: { scope, backoffice }, agent },
+      document,
+      requestId: revoked.value,
+    });
   }
 }

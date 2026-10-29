@@ -232,6 +232,16 @@ export class Books extends DurableObject<CloudflareEnv> {
     return attempt(this.documents.callServices(() => this.documents.services.answerReview(input)));
   }
 
+  recordSharesRevoked(input: { documentId: string }) {
+    return attempt(
+      this.documents.callServices(() => this.documents.services.recordSharesRevoked(input)),
+    );
+  }
+
+  recordShared(input: { documentId: string; requestId: string }) {
+    return attempt(this.documents.callServices(() => this.documents.services.recordShared(input)));
+  }
+
   dismissDocument(input: { documentId: string; dismissedBy: string }) {
     return attempt(
       this.documents.callServices(() => this.documents.services.dismissDocument(input)),
