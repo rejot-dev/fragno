@@ -36,6 +36,14 @@ export type WorkflowRetryFailedStepArgs = {
   delayMs?: number;
 };
 
+export type WorkflowTerminateInstanceArgs = {
+  instanceId: string;
+};
+
+export type WorkflowTerminateInstanceResult = {
+  terminated: true;
+};
+
 export type WorkflowSendEventArgs = {
   instanceId: string;
   type: string;
@@ -151,6 +159,9 @@ export type AutomationWorkflowRuntime = {
   listInstances: (input: WorkflowListInstancesArgs) => Promise<WorkflowListInstancesResult>;
   getInstance: (input: WorkflowGetInstanceArgs) => Promise<WorkflowInstanceDetails>;
   retryFailedStep: (input: WorkflowRetryFailedStepArgs) => Promise<WorkflowRetryFailedStepResult>;
+  terminateInstance: (
+    input: WorkflowTerminateInstanceArgs,
+  ) => Promise<WorkflowTerminateInstanceResult>;
   sendEvent: (input: WorkflowSendEventArgs) => Promise<WorkflowSendEventResult>;
   getHistory: (input: WorkflowGetInstanceArgs) => Promise<WorkflowHistory>;
 };
@@ -387,6 +398,41 @@ const workflowRetryFailedStepTool = defineAutomationWorkflowTool({
   },
 });
 
+const workflowTerminateInstanceTool = defineAutomationWorkflowTool({
+  ...backofficeApiOperationToolFields("workflow.instances.terminate"),
+  namespace: "workflow",
+  name: "terminateInstance",
+  execute: async (input, context) =>
+    await getAutomationWorkflowRuntime(context.runtimes.workflow).terminateInstance(input),
+  reference: {
+    codemode: {
+      description:
+        "Terminate a saved workflow's run that has not ended, such as one left waiting for an event that will never come. A terminated run cannot resume.",
+    },
+  },
+  adapters: {
+    bash: {
+      command: "workflow.instances.terminate",
+      help: {
+        summary: "workflow.instances.terminate terminates a durable workflow instance.",
+        options: [
+          {
+            name: "instance-id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Workflow instance id.",
+          },
+        ],
+        examples: ["workflow.instances.terminate --instance-id run-1"],
+      },
+      parse: parseWorkflowGetInstanceArgs("workflow.instances.terminate"),
+      format: (result, options) =>
+        options.format === "json" ? { data: result } : { stdout: "instance terminated\n" },
+    },
+  },
+});
+
 const workflowListInstancesTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.list"),
   namespace: "workflow",
@@ -528,6 +574,7 @@ export const automationWorkflowRuntimeTools = [
   workflowHistoryTool,
   workflowInstanceSendEventTool,
   workflowRetryFailedStepTool,
+  workflowTerminateInstanceTool,
 ] as const;
 
 export const automationWorkflowToolFamily = defineBackofficeRuntimeToolFamily({

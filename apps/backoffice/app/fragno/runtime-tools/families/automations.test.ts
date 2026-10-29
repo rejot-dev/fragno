@@ -45,6 +45,7 @@ const createWorkflowRuntime = (
       scheduledAt: "2026-08-11T00:00:00.000Z",
     },
   }),
+  terminateInstance: async () => ({ terminated: true }),
   sendEvent: async () => ({ accepted: true }),
   getHistory: async () => ({ steps: [], events: [], emissions: [] }),
   ...overrides,
@@ -75,6 +76,7 @@ describe("automation runtime tools", () => {
       "workflow.instances.history",
       "workflow.instances.send-event",
       "workflow.instances.retry-failed-step",
+      "workflow.instances.terminate",
     ]);
     expect(hooksRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "hooks.list",
