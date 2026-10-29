@@ -111,7 +111,7 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "models";
-      permission: "classify" | "generateImage" | "extract";
+      permission: "classify" | "generateImage" | "extract" | "run";
     }
   | {
       namespace: "marketplace";

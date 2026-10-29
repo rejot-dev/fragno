@@ -22,6 +22,7 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
         createPiClassifier,
         createPiImageGenerator,
         createPiExtractor,
+        createPiWorkersAi,
       } = await import("@/fragno/pi/agent/pi-models");
       const { createCloudflareBackofficeObjectContext } =
         await import("./lib/cloudflare-backoffice-object-implementation");
@@ -36,6 +37,7 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
         classifier: createPiClassifier(env, fetch),
         imageGenerator: createPiImageGenerator(env, fetch),
         extractor: createPiExtractor(env, fetch),
+        workersAi: createPiWorkersAi(env.AI, fetch),
         nowEpochMs: Date.now,
       });
     });
@@ -75,6 +77,18 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
     input: Parameters<PiManagerCommands["extract"]>[0],
   ): ReturnType<PiManagerCommands["extract"]> {
     return await this.#object.extract(input);
+  }
+
+  async describeWorkersAiModel(
+    input: Parameters<PiManagerCommands["describeWorkersAiModel"]>[0],
+  ): ReturnType<PiManagerCommands["describeWorkersAiModel"]> {
+    return await this.#object.describeWorkersAiModel(input);
+  }
+
+  async runWorkersAi(
+    input: Parameters<PiManagerCommands["runWorkersAi"]>[0],
+  ): ReturnType<PiManagerCommands["runWorkersAi"]> {
+    return await this.#object.runWorkersAi(input);
   }
 
   async checkPackageAgents(input: Omit<PackageAgentsInput, "actors">) {

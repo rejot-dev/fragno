@@ -17,6 +17,9 @@ Pick the tool by what you need from the file:
 - `models.extract` gets values out: fields, tables, or text.
 - `models.classify` decides something about it: a category, a score, or yes or no.
 - `state.viewImage` shows an image to you, to judge layout or appearance.
+- Clairic, the `@cf/cloudflare/clairic` action of `backoffice#workers-ai`, gets named fields out of
+  text and images with a confidence for each; see
+  `/static/skills/configuring-integrations/SKILL.md`.
 
 Text files are read with `state.readFile`. HEIC and GIF images are refused, as are any other file
 types.

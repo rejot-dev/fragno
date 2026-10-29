@@ -2,9 +2,9 @@
 name: configuring-integrations
 description: >
   Integrations: any service the user names, whether an MCP server, an HTTP API, an inbound webhook,
-  an Open Connector account, or Telegram, Resend, or GitHub. Use to connect one, change its auth,
-  credentials, or endpoint, verify, disconnect, call it, generate a typed client for it, or react to
-  its connection changes.
+  an Open Connector account, or Telegram, Resend, GitHub, or Workers AI. Use to connect one, change
+  its auth, credentials, or endpoint, verify, disconnect, call it, generate a typed client for it,
+  or react to its connection changes.
 ---
 
 # Configuring Integrations
@@ -22,11 +22,12 @@ description: >
 
 These are all the native Backoffice integrations:
 
-| Service  | Address               | Owning scope                                       | Provides                              |
-| -------- | --------------------- | -------------------------------------------------- | ------------------------------------- |
-| Telegram | `backoffice#telegram` | every scope, each with its own bot                 | bot messages, `message.received`      |
-| Resend   | `backoffice#resend`   | organization; system is the platform email account | email threads and replies             |
-| GitHub   | `github#owner/repo`   | organization or user, one per repository           | repository API through the GitHub App |
+| Service    | Address                 | Owning scope                                       | Provides                                  |
+| ---------- | ----------------------- | -------------------------------------------------- | ----------------------------------------- |
+| Telegram   | `backoffice#telegram`   | every scope, each with its own bot                 | bot messages, `message.received`          |
+| Resend     | `backoffice#resend`     | organization; system is the platform email account | email threads and replies                 |
+| GitHub     | `github#owner/repo`     | organization or user, one per repository           | repository API through the GitHub App     |
+| Workers AI | `backoffice#workers-ai` | every scope; Backoffice provides it                | Cloudflare-hosted models, such as Clairic |
 
 Receiving a provider's webhooks is not a rung but its own source: `webhook#<endpointId>`, owned by
 an organization, user, or project. It needs no outbound connection; when a provider is used in both
@@ -256,6 +257,20 @@ schema, so a generated client narrows it after checking `isError`.
 When an `mcp#` OAuth connection loses its authorization, start consent again without waiting to be
 asked (submit `{ start: true }` when the setup check asks for it, otherwise `{ reauthorize: true }`
 through `integrations.reconfigure`) and give the user the returned `authorizationUrl` as a link.
+
+### Workers AI
+
+`backoffice#workers-ai` runs Cloudflare-hosted models on Backoffice's own account, so there is
+nothing to set up. Each run is billed to the scope's owner by the neurons it used, and needs
+`models.run` besides `integrations.execute`. When the connection is unavailable, report its
+`nextSteps`: the deployment's operator fixes it, not the user.
+
+Each action is a model, such as `@cf/cloudflare/clairic`. Clairic answers named `fields` from
+`state` text and up to four PNG, JPEG, or WebP `images`, each
+`{ content_type, base64: (await state.readFileBytes({ path })).toBase64() }`. Each answer has its
+field's `type`; check it to narrow the answer. Values, such as `number` or `date`, carry `value`,
+null when the input does not determine it, a `guess`, and its `confidence`; `estimate` and
+`forecast` carry a distribution.
 
 ### Installed apps
 

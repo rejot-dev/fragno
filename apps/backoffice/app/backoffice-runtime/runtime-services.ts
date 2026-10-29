@@ -46,6 +46,8 @@ export type BackofficeRuntimeConfig = {
   signUpInvitationsEnabled: boolean;
   /** Print outgoing email to the terminal, and skip delivery while Resend is unconfigured. */
   localEmailLog: boolean;
+  /** Whether PiManager runs Workers AI models, through the `AI` binding. */
+  workersAi: boolean;
   bindings: {
     api: boolean;
     auth: boolean;
@@ -169,6 +171,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
     accountCreationAvailable: Boolean(env.AUTH),
   }),
   localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", env.LOCAL_EMAIL_LOG),
+  workersAi: Boolean(env.AI),
   bindings: {
     api: Boolean(env.API),
     auth: Boolean(env.AUTH),

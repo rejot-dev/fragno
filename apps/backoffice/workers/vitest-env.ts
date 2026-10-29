@@ -43,6 +43,7 @@ export class PiScenarioManager extends DurableObject<CloudflareEnv> {
       classifier: null,
       imageGenerator: null,
       extractor: null,
+      workersAi: null,
       nowEpochMs: Date.now,
     });
   }
@@ -93,6 +94,7 @@ export class AuthSqlHarnessDurableObject extends DurableObject<CloudflareEnv> {
         sandboxContainers: true,
         signUpInvitationsEnabled: true,
         localEmailLog: false,
+        workersAi: false,
       },
       objects: {
         auth: {

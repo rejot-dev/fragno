@@ -820,6 +820,7 @@ const createScopedMcpRuntimeServices = (
       sandboxContainers: true,
       signUpInvitationsEnabled: true,
       localEmailLog: false,
+      workersAi: false,
       bindings: {
         api: false,
         auth: false,
