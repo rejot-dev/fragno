@@ -297,21 +297,35 @@ function isBackofficeHealthResponse(status: number, body: unknown): boolean {
   );
 }
 
-export async function findBackofficeServers(): Promise<BackofficeServerCandidate[]> {
-  const candidates = [];
-  for (const port of backofficeDevServerPorts(process.cwd())) {
-    const baseUrl = resolveSecureBackofficeBaseUrl(`http://localhost:${port}`);
-    try {
-      const response = await fetchBackofficeWithoutRedirect(`${baseUrl}/api/auth/ok`, {});
-      const body = await readJsonResponse(response);
-      if (isBackofficeHealthResponse(response.status, body)) {
-        candidates.push({ baseUrl });
-      }
-    } catch {
-      // Try the next worktree's port.
-    }
+// Another program can hold a worktree's port without answering HTTP (VS Code's extension host
+// listens on 5173), so an unanswered probe must not stall discovery.
+const BACKOFFICE_PROBE_TIMEOUT_MS = 2_000;
+
+async function isBackofficeServer(baseUrl: string): Promise<boolean> {
+  try {
+    const response = await fetchBackofficeWithoutRedirect(`${baseUrl}/api/auth/ok`, {
+      signal: AbortSignal.timeout(BACKOFFICE_PROBE_TIMEOUT_MS),
+    });
+    return isBackofficeHealthResponse(response.status, await readJsonResponse(response));
+  } catch {
+    return false;
   }
-  return candidates;
+}
+
+/**
+ * Probes every worktree's dev-server port at once. The probes settle independently, so callers can
+ * show servers as they answer; they are in preference order, the current worktree's port first.
+ */
+export function probeBackofficeDevServers(): Array<Promise<BackofficeServerCandidate | null>> {
+  return backofficeDevServerPorts(process.cwd()).map(async (port) => {
+    const baseUrl = resolveSecureBackofficeBaseUrl(`http://localhost:${port}`);
+    return (await isBackofficeServer(baseUrl)) ? { baseUrl } : null;
+  });
+}
+
+async function findBackofficeServers(): Promise<BackofficeServerCandidate[]> {
+  const candidates = await Promise.all(probeBackofficeDevServers());
+  return candidates.filter((candidate) => candidate !== null);
 }
 
 export function warnForMultipleBackofficeServers(candidates: BackofficeServerCandidate[]): void {

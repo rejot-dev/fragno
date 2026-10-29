@@ -11,10 +11,11 @@ import {
   downloadBackofficeFile,
   executeBackofficeCodemode,
   fetchBackofficeSystemPrompt,
-  findBackofficeServers,
   parseBackofficeScope,
+  probeBackofficeDevServers,
   uploadBackofficeWorkspaceFile,
   type BackofficeCliScope,
+  type BackofficeServerCandidate,
 } from "@rejot-dev/backoffice-local";
 
 import type { JsonValue } from "@earendil-works/pi-ai";
@@ -30,14 +31,29 @@ import {
   createWriteToolDefinition,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
+  DynamicBorder,
   formatSize,
   getMarkdownTheme,
+  keyHint,
+  rawKeyHint,
   SettingsManager,
   truncateHead,
   withFileMutationQueue,
 } from "@earendil-works/pi-coding-agent";
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
-import { Container, Markdown, Text } from "@earendil-works/pi-tui";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionContext,
+  Theme,
+} from "@earendil-works/pi-coding-agent";
+import {
+  Container,
+  Markdown,
+  Spacer,
+  Text,
+  type KeybindingsManager,
+  type TUI,
+} from "@earendil-works/pi-tui";
 
 import { CLOUDFLARE_OBSERVABILITY_SERVER } from "../cloudflare-mcp/observability.js";
 
@@ -61,7 +77,6 @@ const BACKOFFICE_TOOL_NAMES = [
 const CLOUD_BACKOFFICE_URL = "https://backoffice.rejot.dev";
 // Matches Backoffice's own search tool: tuning knobs only invited unhelpful variations.
 const SEARCH_OPTIONS = { contextBefore: 2, contextAfter: 2, maxMatches: 30 };
-const BACKOFFICE_EXIT_OPTION = "Exit Backoffice (restore normal Pi)";
 const BACKOFFICE_TOOL_NAMESPACE = {
   name: "backoffice",
   description: "Remote execution and file operations in the active Backoffice scope",
@@ -121,15 +136,167 @@ function configuredNormalPiTools(pi: ExtensionAPI, ctx: ExtensionContext): strin
   );
 }
 
-async function discoverBackofficeRemotes(): Promise<Array<{ label: string; value: string }>> {
-  const localServers = await findBackofficeServers();
-  return [
-    { label: "Backoffice Cloud (backoffice.rejot.dev)", value: CLOUD_BACKOFFICE_URL },
-    ...localServers.map(({ baseUrl }) => ({
-      label: `Local Backoffice (${baseUrl})`,
-      value: baseUrl,
-    })),
-  ];
+type BackofficeMenuChoice =
+  | { kind: "exit"; label: string }
+  | { kind: "remote"; label: string; baseUrl: string };
+
+const EXIT_CHOICE: BackofficeMenuChoice = {
+  kind: "exit",
+  label: "Exit Backoffice (restore normal Pi)",
+};
+const CLOUD_CHOICE: BackofficeMenuChoice = {
+  kind: "remote",
+  label: "Backoffice Cloud (backoffice.rejot.dev)",
+  baseUrl: CLOUD_BACKOFFICE_URL,
+};
+
+function localBackofficeChoice({ baseUrl }: BackofficeServerCandidate): BackofficeMenuChoice {
+  return { kind: "remote", label: `Local Backoffice (${baseUrl})`, baseUrl };
+}
+
+/**
+ * Pi's select, except that local servers join the list as their probes answer, in preference
+ * order. A silent port then never holds back Cloud or the servers already found.
+ */
+class BackofficeRemoteSelector extends Container {
+  private readonly fixedChoices: BackofficeMenuChoice[];
+  // One slot per probe: undefined while it runs, null when nothing answered.
+  private readonly localChoices: Array<BackofficeMenuChoice | null | undefined>;
+  private readonly theme: Theme;
+  private readonly keybindings: KeybindingsManager;
+  private readonly done: (choice: BackofficeMenuChoice | undefined) => void;
+  private readonly list = new Container();
+  private readonly discoveryStatus = new Text("", 1, 0);
+  private selectedIndex = 0;
+  private disposed = false;
+
+  constructor(
+    title: string,
+    fixedChoices: BackofficeMenuChoice[],
+    probes: Array<Promise<BackofficeServerCandidate | null>>,
+    ui: {
+      tui: TUI;
+      theme: Theme;
+      keybindings: KeybindingsManager;
+      done: (choice: BackofficeMenuChoice | undefined) => void;
+    },
+  ) {
+    super();
+    this.fixedChoices = fixedChoices;
+    this.localChoices = probes.map(() => undefined);
+    this.theme = ui.theme;
+    this.keybindings = ui.keybindings;
+    this.done = ui.done;
+
+    this.addChild(new DynamicBorder());
+    this.addChild(new Spacer(1));
+    this.addChild(new Text(this.theme.fg("accent", this.theme.bold(title)), 1, 0));
+    this.addChild(new Spacer(1));
+    this.addChild(this.list);
+    this.addChild(this.discoveryStatus);
+    this.addChild(new Spacer(1));
+    this.addChild(
+      new Text(
+        `${rawKeyHint("↑↓", "navigate")}  ${keyHint("tui.select.confirm", "select")}  ${keyHint("tui.select.cancel", "cancel")}`,
+        1,
+        0,
+      ),
+    );
+    this.addChild(new Spacer(1));
+    this.addChild(new DynamicBorder());
+    this.update();
+
+    probes.forEach((probe, index) => {
+      void probe.then((candidate) => {
+        if (this.disposed) {
+          return;
+        }
+        // Keep the highlight on the same choice when a server joins above it.
+        const selected = this.choices()[this.selectedIndex];
+        this.localChoices[index] = candidate && localBackofficeChoice(candidate);
+        this.selectedIndex = this.choices().indexOf(selected);
+        this.update();
+        ui.tui.requestRender();
+      });
+    });
+  }
+
+  private choices(): BackofficeMenuChoice[] {
+    return [
+      ...this.fixedChoices,
+      ...this.localChoices.filter((choice) => choice !== null && choice !== undefined),
+    ];
+  }
+
+  private update() {
+    this.list.clear();
+    this.choices().forEach((choice, index) => {
+      this.list.addChild(
+        new Text(
+          index === this.selectedIndex
+            ? this.theme.fg("accent", `→ ${choice.label}`)
+            : `  ${this.theme.fg("text", choice.label)}`,
+          1,
+          0,
+        ),
+      );
+    });
+    if (this.localChoices.includes(undefined)) {
+      this.discoveryStatus.setText(
+        this.theme.fg("muted", "  Looking for local Backoffice servers…"),
+      );
+    } else if (this.localChoices.every((choice) => choice === null)) {
+      this.discoveryStatus.setText(this.theme.fg("muted", "  No local Backoffice server found."));
+    } else {
+      this.discoveryStatus.setText("");
+    }
+  }
+
+  handleInput(data: string) {
+    const choices = this.choices();
+    if (this.keybindings.matches(data, "tui.select.up")) {
+      this.selectedIndex = Math.max(0, this.selectedIndex - 1);
+      this.update();
+    } else if (this.keybindings.matches(data, "tui.select.down")) {
+      this.selectedIndex = Math.min(choices.length - 1, this.selectedIndex + 1);
+      this.update();
+    } else if (this.keybindings.matches(data, "tui.select.confirm")) {
+      this.done(choices[this.selectedIndex]);
+    } else if (this.keybindings.matches(data, "tui.select.cancel")) {
+      this.done(undefined);
+    }
+  }
+
+  dispose() {
+    this.disposed = true;
+  }
+}
+
+async function chooseBackofficeRemote(
+  ctx: ExtensionCommandContext,
+  title: string,
+  fixedChoices: BackofficeMenuChoice[],
+): Promise<BackofficeMenuChoice | undefined> {
+  const probes = probeBackofficeDevServers();
+  if (ctx.mode !== "tui") {
+    // Only Pi's TUI renders custom components; other UIs pick from the finished list.
+    const candidates = await Promise.all(probes);
+    const choices = [
+      ...fixedChoices,
+      ...candidates
+        .filter((candidate) => candidate !== null)
+        .map((candidate) => localBackofficeChoice(candidate)),
+    ];
+    const label = await ctx.ui.select(
+      title,
+      choices.map((choice) => choice.label),
+    );
+    return choices.find((choice) => choice.label === label);
+  }
+  return await ctx.ui.custom<BackofficeMenuChoice | undefined>(
+    (tui, theme, keybindings, done) =>
+      new BackofficeRemoteSelector(title, fixedChoices, probes, { tui, theme, keybindings, done }),
+  );
 }
 
 function unwrapCodemodeResult(response: unknown): unknown {
@@ -700,25 +867,22 @@ export default function registerBackofficeExtension(pi: ExtensionAPI) {
       }
       try {
         const backofficeEnabled = findBackofficeSession(ctx) !== null;
-        const remotes = await discoverBackofficeRemotes();
-        const remoteLabel = await ctx.ui.select(
+        const choice = await chooseBackofficeRemote(
+          ctx,
           backofficeEnabled ? "Backoffice session" : "Choose a Backoffice remote",
-          [
-            ...(backofficeEnabled ? [BACKOFFICE_EXIT_OPTION] : []),
-            ...remotes.map((remote) => remote.label),
-          ],
+          backofficeEnabled ? [EXIT_CHOICE, CLOUD_CHOICE] : [CLOUD_CHOICE],
         );
-        if (backofficeEnabled && remoteLabel === BACKOFFICE_EXIT_OPTION) {
+        if (!choice) {
+          return;
+        }
+        if (choice.kind === "exit") {
           // The exit marker belongs to this branch; the conversation and session stay intact.
           pi.appendEntry(BACKOFFICE_SESSION_ENTRY, null);
           synchronizeBackofficeMode(ctx);
           ctx.ui.notify("Exited Backoffice. Normal Pi tools restored in this session.", "info");
           return;
         }
-        const baseUrl = remotes.find((remote) => remote.label === remoteLabel)?.value;
-        if (!baseUrl) {
-          return;
-        }
+        const { baseUrl } = choice;
 
         ctx.ui.notify("Checking stored Backoffice authentication…", "info");
         const connection = await connectToBackoffice({

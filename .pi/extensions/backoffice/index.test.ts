@@ -14,6 +14,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { runInNewContext } from "node:vm";
 
 import {
@@ -37,14 +38,18 @@ import {
   createCodemodeExtension,
   createMcpExtension,
   DefaultResourceLoader,
+  initTheme,
   ModelRuntime,
   SessionManager,
   SettingsManager,
   type AgentSession,
   type CreateAgentSessionRuntimeFactory,
   type ExtensionUIContext,
+  type KeybindingsManager,
   type McpTransportFactory,
+  type Theme,
 } from "@earendil-works/pi-coding-agent";
+import { getKeybindings, type Component, type TUI } from "@earendil-works/pi-tui";
 
 import registerCloudflareMcpCommand from "../cloudflare-mcp/index.js";
 
@@ -193,12 +198,52 @@ async function executeBackofficeProgram(code: string) {
   return result;
 }
 
+/** Drives a `ctx.ui.custom` menu through its rendering and arrow keys, as a person would. */
+async function openCustomMenu<T>(
+  factory: (
+    tui: TUI,
+    theme: Theme,
+    keybindings: KeybindingsManager,
+    done: (result: T) => void,
+  ) => Component | Promise<Component>,
+  theme: Theme,
+) {
+  const result = Promise.withResolvers<T>();
+  const component = await factory(
+    { requestRender: () => {} } as unknown as TUI,
+    theme,
+    getKeybindings() as KeybindingsManager,
+    result.resolve,
+  );
+  const handleInput = component.handleInput;
+  assert(handleInput);
+  const lines = () => component.render(120).map((line) => stripVTControlCharacters(line).trim());
+  return {
+    lines,
+    result: result.promise,
+    choose(label: string) {
+      const target = lines().findIndex((line) => line.includes(label));
+      const highlighted = lines().findIndex((line) => line.startsWith("→"));
+      assert(target >= highlighted, `Menu has no choice below the highlight matching ${label}`);
+      for (let step = highlighted; step < target; step++) {
+        handleInput.call(component, "\x1b[B");
+      }
+      handleInput.call(component, "\r");
+    },
+    cancel() {
+      handleInput.call(component, "\x1b");
+    },
+  };
+}
+
 describe("Backoffice extension scenarios", () => {
   beforeAll(async () => {
     directory = await mkdtemp(join(tmpdir(), "pi-backoffice-codemode-"));
     process.env["BACKOFFICE_AUTH_FILE"] = join(directory, "backoffice-auth.json");
     // The MCP extension reads mcp.json from this variable, not from the session's agentDir.
     process.env["PI_CODING_AGENT_DIR"] = directory;
+    // Pi's TUI initializes the theme before any custom component renders.
+    initTheme();
     ({ default: registerBackofficeExtension } = await import("./index.js"));
   });
 
@@ -207,6 +252,16 @@ describe("Backoffice extension scenarios", () => {
     await writeFile(join(directory, "remote", "document.txt"), remoteText);
     await writeFile(join(directory, "document.txt"), "local-only content");
     baseUrl = await startBackofficeScenarioServer();
+    // `/backoffice` probes this repository's worktree dev-server ports; scenarios must not reach
+    // whatever the developer has running there.
+    const realFetch = globalThis.fetch;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      if (url.pathname === "/api/auth/ok" && url.origin !== new URL(baseUrl).origin) {
+        return Promise.reject(new TypeError("fetch failed"));
+      }
+      return realFetch(input, init);
+    });
     const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
     await writeFile(
       join(directory, "backoffice-auth.json"),
@@ -336,6 +391,7 @@ describe("Backoffice extension scenarios", () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
     session.dispose();
     server.closeAllConnections();
@@ -575,6 +631,47 @@ describe("Backoffice extension scenarios", () => {
     }
   });
 
+  test("offers Cloud at once and lists a local server when its probe answers", async () => {
+    const probedOrigins: string[] = [];
+    const answerProbe = Promise.withResolvers<void>();
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      const { origin } = new URL(String(input));
+      probedOrigins.push(origin);
+      // The current worktree's server answers last; every other port is closed.
+      if (probedOrigins.length > 1) {
+        throw new TypeError("fetch failed");
+      }
+      await answerProbe.promise;
+      return Response.json({ ok: true });
+    });
+    const opened = Promise.withResolvers<Awaited<ReturnType<typeof openCustomMenu>>>();
+    const defaultUiContext = session.extensionRunner.getUIContext();
+    await session.bindExtensions({
+      mode: "tui",
+      uiContext: {
+        ...defaultUiContext,
+        custom: async (factory) => {
+          const menu = await openCustomMenu(factory, defaultUiContext.theme);
+          opened.resolve(menu);
+          return await menu.result;
+        },
+      },
+    });
+
+    const command = session.prompt("/backoffice");
+    const menu = await opened.promise;
+    expect(menu.lines()).toContain("→ Exit Backoffice (restore normal Pi)");
+    expect(menu.lines()).toContain("Backoffice Cloud (backoffice.rejot.dev)");
+    expect(menu.lines()).toContain("Looking for local Backoffice servers…");
+
+    answerProbe.resolve();
+    const localServer = `Local Backoffice (${probedOrigins[0]})`;
+    await expect.poll(() => menu.lines()).toContain(localServer);
+    expect(menu.lines()).not.toContain("Looking for local Backoffice servers…");
+    menu.cancel();
+    await command;
+  });
+
   test("propagates remote execution failures through backofficeCodemode", async () => {
     const result = await executeBackofficeProgram(
       'async () => { throw new Error("remote scenario failure"); }',
@@ -640,8 +737,20 @@ describe("Backoffice extension scenarios", () => {
     const menus: string[][] = [];
     const notifications: string[] = [];
     const statuses = new Map<string, string>();
+    const defaultUiContext = runtime.session.extensionRunner.getUIContext();
     const uiContext: ExtensionUIContext = {
-      ...runtime.session.extensionRunner.getUIContext(),
+      ...defaultUiContext,
+      custom: async (factory) => {
+        const menu = await openCustomMenu(factory, defaultUiContext.theme);
+        menus.push(menu.lines());
+        const selection = selections.shift();
+        if (selection === undefined) {
+          menu.cancel();
+        } else {
+          menu.choose(selection);
+        }
+        return await menu.result;
+      },
       select: async (_title, options) => {
         menus.push([...options]);
         const selection = selections.shift();
@@ -701,8 +810,8 @@ describe("Backoffice extension scenarios", () => {
       expect(runtime.session).toBe(originalSession);
       assert(runtime.session.sessionId === backofficeSessionId);
       expect(runtime.session.messages).toEqual(historyBeforeExit);
-      assert(menus[0]?.[0] === "Exit Backoffice (restore normal Pi)");
-      assert(menus[1]?.[0] === "Exit Backoffice (restore normal Pi)");
+      expect(menus[0]).toContain("→ Exit Backoffice (restore normal Pi)");
+      expect(menus[1]).toContain("→ Exit Backoffice (restore normal Pi)");
       expect(new Set(runtime.session.getActiveToolNames())).toEqual(
         new Set(["read", "bash", "edit", "write", "codemode"]),
       );
@@ -775,7 +884,7 @@ describe("Backoffice extension scenarios", () => {
       );
       const normalSessionId = runtime.session.sessionId;
       await runtime.session.prompt("/backoffice");
-      expect(menus[2]).not.toContain("Exit Backoffice (restore normal Pi)");
+      expect(menus[2]?.join("\n")).not.toContain("Exit Backoffice (restore normal Pi)");
       assert(runtime.session.sessionId === normalSessionId);
 
       const normalLeafId = runtime.session.sessionManager.getLeafId();
