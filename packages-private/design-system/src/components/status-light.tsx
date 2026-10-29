@@ -23,8 +23,9 @@ export function BackofficeStatusLight({
       data-tone={tone}
       role={role}
       className={cn(
-        "bo-status-tone bo-status-light inline-flex min-h-6 items-center gap-1.5 rounded-[4px] px-2 text-xs font-semibold",
-        wrap ? "w-fit max-w-full py-1 [overflow-wrap:anywhere]" : "shrink-0 whitespace-nowrap",
+        // w-fit keeps the light its label's width where flex columns and grids stretch children.
+        "bo-status-tone bo-status-light inline-flex w-fit min-h-6 items-center gap-1.5 rounded-[4px] px-2 text-xs font-semibold",
+        wrap ? "max-w-full py-1 [overflow-wrap:anywhere]" : "shrink-0 whitespace-nowrap",
       )}
     >
       {dot ? <span className="bo-status-light-dot size-1.5 shrink-0" aria-hidden="true" /> : null}
