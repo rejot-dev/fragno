@@ -20,7 +20,7 @@ export function LandingFooter() {
               Backoffice by ReJot
             </Link>
             <p className="max-w-xs text-[11px] leading-6 text-pretty text-[var(--bo-muted)]">
-              A controlled workspace for AI workflows.
+              AI that shows its work.
             </p>
           </div>
 
