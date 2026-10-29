@@ -24,7 +24,7 @@ export function RowList({ empty, children }: { empty: ReactNode; children: React
   );
 }
 
-const rowClassName = "group flex items-center gap-3 py-2.5";
+const rowClassName = "group flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5";
 
 /** What an expandable row shows below itself once opened, and the toggle that opens it. */
 export type ListRowExpansion = { label: string; content: ReactNode };
@@ -56,13 +56,15 @@ export function ListRow({
   const content = (titleElement: ReactNode, end: ReactNode) => (
     <>
       {leading}
-      <span className="min-w-0 flex-1">
+      {/* In a narrow column the trailing content wraps under the title rather than truncating
+          it to a few letters. */}
+      <span className="min-w-[min(100%,12rem)] flex-1">
         {titleElement}
         {detail === null ? null : (
           <span className="block truncate text-xs text-[var(--bo-muted-2)]">{detail}</span>
         )}
       </span>
-      <span className="flex shrink-0 items-center gap-3 text-xs">
+      <span className="ml-auto flex shrink-0 items-center gap-3 text-xs">
         {trailing}
         {end}
       </span>
