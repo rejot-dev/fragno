@@ -54,6 +54,10 @@
     "./script-name": {
       "types": "./dist/node/script-name.d.ts",
       "default": "./dist/node/script-name.js"
+    },
+    "./workers-ai": {
+      "types": "./dist/node/workers-ai.d.ts",
+      "default": "./dist/node/workers-ai.js"
     }
   },
   "scripts": {

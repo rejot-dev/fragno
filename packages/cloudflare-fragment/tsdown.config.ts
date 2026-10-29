@@ -31,7 +31,7 @@ export default defineConfig([
   },
   {
     ignoreWatch: ["./dist"],
-    entry: ["./src/index.ts", "./src/script-name.ts"],
+    entry: ["./src/index.ts", "./src/script-name.ts", "./src/workers-ai.ts"],
     dts: true,
     failOnWarn: true,
     platform: "node",
