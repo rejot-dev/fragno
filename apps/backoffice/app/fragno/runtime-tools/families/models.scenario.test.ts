@@ -3,6 +3,7 @@ import { assert, expect, test, vi } from "vitest";
 import { MODELS_CLASSIFY_IMAGE_LIMITS } from "@fragno-dev/backoffice-api/v0/models";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { STATE_FILE_MAX_BYTES } from "@fragno-dev/backoffice-api/v0/state";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
@@ -22,13 +23,17 @@ import {
   backofficeFiles,
   defineBackofficeScenario,
   runBackofficeScenario,
+  type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import { createFakeR2, requestFromOutside, type FakeR2 } from "@/fragno/blobs-r2.test-utils";
+import { blobsR2BucketsFromEnv } from "@/fragno/blobs-server";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { base64ToBytes } from "@/lib/base64";
 
 import { BillingObject } from "../../../../workers/billing-object";
+import { BlobsObject } from "../../../../workers/blobs-object";
 import { modelsToolFamily } from "./models";
 
 const scope: BackofficeContextScope = { kind: "org", orgId: "org-1", jurisdiction: null };
@@ -277,7 +282,7 @@ const reviewedImageWorkflow = `export default defineWorkflow({ name: "reviewed-i
   const { answers } = await step.do("review image", async () =>
     await models.classify({
       state: { brief: event.payload.brief },
-      images: [path],
+      images: [{ path }],
       questions: ${JSON.stringify(reviewQuestion)},
     }),
   );
@@ -442,7 +447,7 @@ test("image read permission is checked before accessing files without restrictin
                 modelsToolFamily.tools[0],
                 {
                   ...input,
-                  images: ["/workspace/missing.png"],
+                  images: [{ path: "/workspace/missing.png" }],
                 },
                 context,
               ),
@@ -492,10 +497,10 @@ test("invalid image evidence never reaches Decisions and corrected files preserv
               }),
             );
             const input = { state: { brief: "A lamp" }, questions: reviewQuestion };
-            const classify = (images: string[]) =>
+            const classify = (paths: string[]) =>
               executeBackofficeRuntimeTool(
                 modelsToolFamily.tools[0],
-                { ...input, images },
+                { ...input, images: paths.map((path) => ({ path })) },
                 context,
               );
             assert(context.runtimes.state);
@@ -696,7 +701,7 @@ const invoicePdf = "%PDF-1.7\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n";
 const bookInvoiceWorkflow = `export default defineWorkflow({ name: "book-invoice" }, async (event, step) => {
   const { output } = await step.do("read invoice", async () =>
     await models.extract({
-      files: [event.payload.path],
+      files: [{ path: event.payload.path }],
       instructions: "Read the supplier, invoice number, and total of this invoice.",
       schema: ${JSON.stringify(invoiceSchema)},
     }),
@@ -817,7 +822,7 @@ test("a workflow reads an invoice PDF into typed fields and bills the extraction
           await ctx.runCodemode({
             scope,
             code: `async () => await models.extract({
-              files: ["/workspace/inbox/invoice-2026-114.pdf"],
+              files: [{ path: "/workspace/inbox/invoice-2026-114.pdf" }],
               instructions: "Read the supplier, invoice number, and total of this invoice.",
               schema: ${JSON.stringify(invoiceSchema)},
               model: "openai/gpt-6.1-sol",
@@ -836,7 +841,7 @@ test("a workflow reads an invoice PDF into typed fields and bills the extraction
               ctx.runCodemode({
                 scope,
                 code: `async () => await models.extract({
-                files: ["/workspace/inbox/notes.txt"],
+                files: [{ path: "/workspace/inbox/notes.txt" }],
                 instructions: "Read the note.",
                 schema: { type: "object", properties: {}, required: [], additionalProperties: false },
               })`,
@@ -869,6 +874,157 @@ test("a workflow reads an invoice PDF into typed fields and bills the extraction
           meter: "ai.cost.total",
           quantity: "8400000",
           eventCount: "2",
+        }),
+      ],
+    }),
+  );
+});
+
+const blobBuckets = blobsR2BucketsFromEnv(
+  {
+    BLOBS_R2_ENDPOINT: "/cdn-cgi/local/r2/s3",
+    BLOBS_R2_BUCKET: "backoffice-blobs",
+    BLOBS_R2_ACCESS_KEY_ID: "access-key-1",
+    BLOBS_R2_SECRET_ACCESS_KEY: "secret-key-1",
+    DOCS_PUBLIC_BASE_URL: "https://backoffice.example/",
+  },
+  "local",
+);
+assert(blobBuckets);
+
+/** Stores a blob as a person would: Backoffice starts the upload, the bytes go straight to R2. */
+async function storeBlob(
+  ctx: BackofficeScenarioContext,
+  r2: FakeR2,
+  blob: { key: string; contentType: string; bytes: Uint8Array<ArrayBuffer> },
+) {
+  const { result: upload } = await ctx.runCodemode({
+    scope,
+    code: `async () => await blobs.createUpload(${JSON.stringify({ key: blob.key, contentType: blob.contentType })})`,
+  });
+  const { uploadId, url, headers } = upload as {
+    uploadId: string;
+    url: string;
+    headers: Record<string, string>;
+  };
+  const response = await requestFromOutside(r2, url, { method: "PUT", headers, body: blob.bytes });
+  assert(response.ok, `PUT failed with ${response.status}`);
+  await ctx.runCodemode({
+    scope,
+    code: `async () => await blobs.completeUpload({ uploadId: ${JSON.stringify(uploadId)} })`,
+  });
+}
+
+test("models read a scan and a photo kept as blobs, too large for the workspace", async () => {
+  const r2 = createFakeR2(blobBuckets);
+  // Larger than one range read of the blobs route, so the scan arrives in several.
+  const scan = new Uint8Array(9 * 1024 ** 2);
+  scan.set(new TextEncoder().encode(invoicePdf));
+  scan.fill(0x20, invoicePdf.length);
+  const photo = new Uint8Array(STATE_FILE_MAX_BYTES + 1);
+  photo.set(base64ToBytes(pngBase64));
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "models.extract and models.classify read blobs",
+      objects: {
+        ...allLocalObjects,
+        BLOBS: (input) =>
+          new BlobsObject({ ...input, storage: { buckets: blobBuckets, fetch: r2.fetch } }),
+      },
+      fakes: ({ fake }) => ({
+        openaiResponses: fake.openaiResponses({
+          output: { supplier: "Brass & Co", invoiceNumber: "2026-114", total: 1250.5 },
+          inputTokens: 3000,
+          outputTokens: 200,
+        }),
+        openaiDecisions: fake.openaiDecisions({ answers: reviewAnswers, inputTokens: 1200 }),
+      }),
+      setup: ({ given }) => [given.organization.exists({ id: scope.orgId, name: "Ada Labs" })],
+      steps: ({ then }) => [
+        then.assert("a person uploads a scanned invoice and a receipt photo", async (ctx) => {
+          await storeBlob(ctx, r2, {
+            key: "scans/invoice-2026-114.pdf",
+            contentType: "application/pdf",
+            bytes: scan,
+          });
+          await storeBlob(ctx, r2, {
+            key: "photos/receipt.png",
+            contentType: "image/png",
+            bytes: photo,
+          });
+        }),
+        then.assert("models.extract sends the whole scan to the model", async (ctx) => {
+          const { result } = await ctx.runCodemode({
+            scope,
+            code: `async () => await models.extract({
+              files: [{ blob: "scans/invoice-2026-114.pdf" }],
+              instructions: "Read the supplier, invoice number, and total of this invoice.",
+              schema: ${JSON.stringify(invoiceSchema)},
+            })`,
+          });
+          expect(result).toEqual({
+            output: { supplier: "Brass & Co", invoiceNumber: "2026-114", total: 1250.5 },
+          });
+          const [request] = ctx.fakes.openaiResponses?.requests ?? [];
+          expect(request?.body).toMatchObject({
+            input: [
+              {
+                content: [
+                  {
+                    type: "input_file",
+                    filename: "invoice-2026-114.pdf",
+                    file_data: `data:application/pdf;base64,${Buffer.from(scan).toString("base64")}`,
+                  },
+                  { type: "input_text" },
+                ],
+              },
+            ],
+          });
+          expect(ctx.kernelActions).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({
+                operation: BACKOFFICE_PERMISSION.upload.read,
+                resource: { kind: "blob", key: "scans/invoice-2026-114.pdf" },
+              }),
+            ]),
+          );
+        }),
+        then.assert("models.classify judges the photo", async (ctx) => {
+          const { result } = await ctx.runCodemode({
+            scope,
+            code: `async () => await models.classify({
+              state: { brief: "A receipt" },
+              images: [{ blob: "photos/receipt.png" }],
+              questions: ${JSON.stringify(reviewQuestion)},
+            })`,
+          });
+          expect(result).toEqual({ answers: reviewAnswers });
+          expect(ctx.fakes.openaiDecisions?.requests[0]?.body).toMatchObject({
+            input: [
+              {
+                content: [
+                  { type: "input_text" },
+                  {
+                    type: "input_image",
+                    image_url: `data:image/png;base64,${Buffer.from(photo).toString("base64")}`,
+                  },
+                ],
+              },
+            ],
+          });
+        }),
+        then.assert("a missing blob never reaches the model", async (ctx) => {
+          await expect(
+            ctx.runCodemode({
+              scope,
+              code: `async () => await models.extract({
+                files: [{ blob: "scans/missing.pdf" }],
+                instructions: "Read the total.",
+                schema: { type: "object", properties: { total: { type: "number" } } },
+              })`,
+            }),
+          ).rejects.toThrow("BLOB_NOT_FOUND: blob scans/missing.pdf does not exist.");
+          expect(ctx.fakes.openaiResponses?.requests).toHaveLength(1);
         }),
       ],
     }),

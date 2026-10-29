@@ -8,9 +8,10 @@ description:
 
 # Extraction
 
-`models.extract` sends workspace PDFs and PNG, JPEG, or WebP images to a model and returns its
-answer as JSON that matches your schema. The files never enter the conversation, so only the answer
-costs context.
+`models.extract` sends PDFs and PNG, JPEG, or WebP images to a model and returns its answer as JSON
+that matches your schema. The files never enter the conversation, so only the answer costs context.
+Name each file by where it is kept: `{ path }` for a workspace file, `{ blob }` for a blob's key, as
+files too large for the workspace are kept.
 
 Pick the tool by what you need from the file:
 
@@ -67,7 +68,7 @@ types.
        "read invoice",
        async () =>
          await models.extract({
-           files: [event.payload.path],
+           files: [{ path: event.payload.path }],
            instructions:
              "Read this supplier invoice for bookkeeping. Use null for anything not printed.",
            schema: {

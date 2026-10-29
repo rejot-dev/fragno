@@ -68,15 +68,16 @@ roughly 600K input tokens time out.
 
 ## Image evidence
 
-Pass an ordered `images` array of absolute workspace paths alongside `state`. The classifier sees
-those images together with the JSON evidence. Describe each image's role in the state or question
-instructions using its position, such as "the first image is the reference, the second is the
-draft". Putting a path in `state` alone does not attach an image.
+Pass an ordered `images` array alongside `state`, each image a workspace file `{ path }` or a blob
+`{ blob }` by key. The classifier sees those images together with the JSON evidence. Describe each
+image's role in the state or question instructions using its position, such as "the first image is
+the reference, the second is the draft". Putting a path in `state` alone does not attach an image.
 
 Use PNG, JPEG, or WebP files already stored under `/workspace/`, including paths returned by
-`models.generateImage`. File reads require `upload.read`; text-only calls need only
-`models.classify`. The generated models declaration lists image count and byte limits. Image bytes
-contribute to billed input tokens. URLs, traversal paths, SVG, and GIF are not accepted.
+`models.generateImage`, or blobs, which hold images too large for the workspace. File reads require
+`upload.read`; text-only calls need only `models.classify`. The generated models declaration lists
+image count and byte limits. Image bytes contribute to billed input tokens. URLs, traversal paths,
+SVG, and GIF are not accepted.
 
 To judge generated work, keep generation and review in separate workflow steps, so a review failure
 does not repeat a completed generation:
@@ -92,7 +93,7 @@ const review = await step.do(
   async () =>
     await models.classify({
       state: { brief: event.payload.brief },
-      images: [path],
+      images: [{ path }],
       questions: {
         matchesBrief: {
           type: "bool",

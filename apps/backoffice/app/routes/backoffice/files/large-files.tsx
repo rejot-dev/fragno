@@ -5,10 +5,9 @@ import { useState } from "react";
 import { useFetcher, useOutletContext, useRevalidator } from "react-router";
 
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
-import { backofficeFetch } from "@/fragno/auth/browser-auth.client";
-import type { LargeFileUploadResult } from "@/routes/api/large-files-uploads";
 
 import type { Route } from "./+types/large-files";
+import { uploadLargeFile } from "./large-file-upload";
 import {
   blobsFailure,
   openSelectedLargeFiles,
@@ -168,10 +167,6 @@ function LargeFiles({
   );
 }
 
-/**
- * Uploads each file in three steps: Backoffice starts the upload, the browser PUTs the bytes
- * straight to storage, and Backoffice completes it once storage holds them.
- */
 function useLargeFileTransfers(uploadsPath: string) {
   const [transfers, setTransfers] = useState<readonly LargeFileTransfer[]>([]);
   const revalidator = useRevalidator();
@@ -189,25 +184,14 @@ function useLargeFileTransfers(uploadsPath: string) {
       { id, key, phase: "uploading", sentBytes: 0, totalBytes },
     ]);
     try {
-      const started = await postUploadStep(uploadsPath, {
-        intent: "start",
+      await uploadLargeFile({
+        uploadsPath,
+        file,
         key,
-        contentType: file.type || "application/octet-stream",
+        onProgress: (progress) => {
+          replace({ id, key, totalBytes, ...progress });
+        },
       });
-      if (!started.ok || started.step !== "start") {
-        throw new Error(started.ok ? "The upload did not start." : started.error);
-      }
-      await putToStorage(started.upload, file, (sentBytes) => {
-        replace({ id, key, phase: "uploading", sentBytes, totalBytes });
-      });
-      replace({ id, key, phase: "completing", totalBytes });
-      const completed = await postUploadStep(uploadsPath, {
-        intent: "complete",
-        uploadId: started.upload.uploadId,
-      });
-      if (!completed.ok) {
-        throw new Error(completed.error);
-      }
       setTransfers((current) => current.filter((transfer) => transfer.id !== id));
       await revalidator.revalidate();
     } catch (error) {
@@ -227,54 +211,6 @@ function useLargeFileTransfers(uploadsPath: string) {
       setTransfers((current) => current.filter((transfer) => transfer.id !== id));
     },
   };
-}
-
-/** Refreshes an expiring credential and retries, so a long upload still completes. */
-async function postUploadStep(
-  uploadsPath: string,
-  step: Record<string, string>,
-): Promise<LargeFileUploadResult> {
-  const response = await backofficeFetch(uploadsPath, {
-    method: "POST",
-    body: new URLSearchParams(step),
-  });
-  // The route answers each step in JSON; authentication and authorization answer in text.
-  if (!response.headers.get("content-type")?.includes("application/json")) {
-    return {
-      ok: false,
-      error: (await response.text()) || `Backoffice answered ${response.status}.`,
-    };
-  }
-  return (await response.json()) as LargeFileUploadResult;
-}
-
-/** XHR rather than fetch, because only XHR reports how much of a request body was sent. */
-function putToStorage(
-  upload: Extract<LargeFileUploadResult, { step: "start" }>["upload"],
-  file: File,
-  onProgress: (sentBytes: number) => void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const request = new XMLHttpRequest();
-    request.open("PUT", upload.url);
-    for (const [name, value] of Object.entries(upload.headers)) {
-      request.setRequestHeader(name, value);
-    }
-    request.upload.addEventListener("progress", (event) => {
-      onProgress(event.loaded);
-    });
-    request.addEventListener("load", () => {
-      if (request.status >= 200 && request.status < 300) {
-        resolve();
-      } else {
-        reject(new Error(`Storage rejected the upload (${request.status}).`));
-      }
-    });
-    request.addEventListener("error", () => {
-      reject(new Error("The upload could not reach storage."));
-    });
-    request.send(file);
-  });
 }
 
 function pageSearch(prefix: string, cursor: string | null): string {

@@ -8,9 +8,8 @@ description:
 
 # Classification
 
-`models.classify` grades JSON state and workspace images against the rubric each question defines,
-in one call, and returns probabilities, not prose. Use a Pi agent when the result must be generated
-text.
+`models.classify` grades JSON state and images against the rubric each question defines, in one
+call, and returns probabilities, not prose. Use a Pi agent when the result must be generated text.
 
 1. Read "/static/codemode/providers/models.d.ts" and
    "/static/skills/classification/reference/classification.md". When the request names a goal rather
@@ -18,7 +17,7 @@ text.
    when** the input and answer shapes are known and every decision the code must make is named.
 
 2. Write one question per decision, following the reference's "Design the judgments" section. For
-   visual evidence, also follow its "Image evidence" section: pass workspace paths in `images`.
+   visual evidence, also follow its "Image evidence" section: pass the images in `images`.
    **Complete when** every decision maps to exactly one question whose evidence, instructions, and
    criteria carry its complete meaning.
 

@@ -430,7 +430,7 @@ test("a model reads an invoice another organization shared", async () => {
 
             await expect(
               firm.call("models.extract", {
-                files: ["/shared/client-d1/invoice.pdf"],
+                files: [{ path: "/shared/client-d1/invoice.pdf" }],
                 instructions: "Read the total.",
                 schema: { type: "object", properties: { total: { type: "number" } } },
               }),

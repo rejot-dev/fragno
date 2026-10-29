@@ -1,9 +1,12 @@
+import { BLOB_MAX_SIZE_BYTES } from "@fragno-dev/backoffice-api/v0/blobs";
 import { piAgentPermissionGrantRequirements } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { STATE_FILE_MAX_BYTES } from "@fragno-dev/backoffice-api/v0/state";
 import type {
   ChatComposerAttachmentItem,
   ChatMessageAttachmentItem,
 } from "@fragno-private/design-system/chat-attachment";
+import { formatBytes } from "@fragno-private/design-system/units";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -12,15 +15,19 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import {
   PI_AGENT_MAX_ATTACHMENTS,
-  piAgentAttachmentsFolder,
+  piAgentAttachmentsKeyPrefix,
   type PiAgentAttachment,
+  type PiAgentAttachmentLocation,
 } from "@/fragno/pi/agent/pi-agent-attachments";
 import { createScopedUploadHelpers } from "@/fragno/upload-client";
 import { workspaceFileName } from "@/lib/workspace-file-name";
+import { discardLargeFile, uploadLargeFile } from "@/routes/backoffice/files/large-file-upload";
 import {
   filesExplorerPathFromScopePath,
   filesPreviewPath,
   filesScopeBasePath,
+  largeFileDownloadPath,
+  largeFileUploadsPath,
 } from "@/routes/backoffice/files/scope";
 
 /** Whether an agent with these permission grants can read the files a message carries. */
@@ -34,7 +41,7 @@ function piAgentReadsUploads(permissions: readonly string[]) {
 
 type Upload =
   | { kind: "uploading"; fraction: number | null }
-  | { kind: "uploaded"; path: string }
+  | { kind: "uploaded"; location: PiAgentAttachmentLocation }
   | { kind: "failed"; message: string };
 
 type Attachment = { id: string; file: File; previewUrl: string | null; upload: Upload };
@@ -47,10 +54,10 @@ export type AgentAttachments = {
   items: ChatComposerAttachmentItem[];
   add: (files: File[]) => void;
   /**
-   * Empties the composer and resolves once its uploads settle, with the paths of the files that
-   * uploaded and the names of those that did not.
+   * Empties the composer and resolves once its uploads settle, with where the files that uploaded
+   * are kept and the names of those that did not.
    */
-  take: () => Promise<{ paths: string[]; failed: string[] }>;
+  take: () => Promise<{ locations: PiAgentAttachmentLocation[]; failed: string[] }>;
   /** A taken set of files is still uploading. */
   sending: boolean;
   /** Which added files were left out for exceeding the limit, until files are added or taken. */
@@ -68,14 +75,36 @@ export function agentAttachmentTarget(
     : { scope: backofficeRuntimeScopeFromResolvedScope(resolvedScope), agentName };
 }
 
+/** Uploads the file to the workspace, or as a blob when the workspace cannot hold it. */
 async function uploadAttachment(
   { scope, agentName }: AgentAttachmentTarget,
   file: File,
   onProgress: (fraction: number | null) => void,
-): Promise<string> {
-  const folder = piAgentAttachmentsFolder(agentName).slice("/workspace/".length);
+): Promise<PiAgentAttachmentLocation> {
+  const key = `${piAgentAttachmentsKeyPrefix(agentName)}${crypto.randomUUID()}/${workspaceFileName(file.name)}`;
+  if (file.size > BLOB_MAX_SIZE_BYTES) {
+    throw new Error(`Files hold at most ${formatBytes(BLOB_MAX_SIZE_BYTES)}.`);
+  }
+  if (file.size > STATE_FILE_MAX_BYTES) {
+    try {
+      await uploadLargeFile({
+        uploadsPath: largeFileUploadsPath(scope),
+        file,
+        key,
+        onProgress: (progress) => {
+          onProgress(progress.phase === "uploading" ? progress.sentBytes / file.size : 1);
+        },
+      });
+    } catch (error) {
+      throw new Error(
+        `Over ${formatBytes(STATE_FILE_MAX_BYTES)}, too large for the workspace, and not kept as a large file: ${error instanceof Error ? error.message : "the upload failed."}`,
+        { cause: error },
+      );
+    }
+    return { kind: "blob", key };
+  }
   const result = await createScopedUploadHelpers(scope).createUploadAndTransfer(file, {
-    fileKey: `${folder}${crypto.randomUUID()}/${workspaceFileName(file.name)}`,
+    fileKey: key,
     onProgress: ({ bytesUploaded, totalBytes }) => {
       onProgress(totalBytes > 0 ? bytesUploaded / totalBytes : null);
     },
@@ -83,14 +112,21 @@ async function uploadAttachment(
   if (result.kind !== "published") {
     throw new Error("The upload was not saved to the workspace.");
   }
-  return `/workspace/${result.file.fileKey}`;
+  return { kind: "workspace", path: `/workspace/${result.file.fileKey}` };
 }
 
-async function deleteAttachment(scope: BackofficeRoutableScope, path: string) {
+async function deleteAttachment(
+  scope: BackofficeRoutableScope,
+  location: PiAgentAttachmentLocation,
+) {
   try {
-    await createScopedUploadHelpers(scope).deleteFile(path.slice("/workspace/".length));
+    if (location.kind === "workspace") {
+      await createScopedUploadHelpers(scope).deleteFile(location.path.slice("/workspace/".length));
+    } else {
+      await discardLargeFile(largeFileUploadsPath(scope), location.key);
+    }
   } catch (error) {
-    // The file only stays behind in the workspace; the composer no longer holds it.
+    // The file only stays behind where it was uploaded; the composer no longer holds it.
     console.error("Could not delete a removed attachment.", error);
   }
 }
@@ -105,8 +141,8 @@ export function useAgentAttachments(target: AgentAttachmentTarget | null): Agent
   useEffect(() => {
     latest.current = attachments;
   }, [attachments]);
-  // Each upload's path once it settles, or null when it failed or was removed meanwhile.
-  const settled = useRef(new Map<string, Promise<string | null>>());
+  // Where each upload is kept once it settles, or null when it failed or was removed meanwhile.
+  const settled = useRef(new Map<string, Promise<PiAgentAttachmentLocation | null>>());
   const removed = useRef(new Set<string>());
 
   useEffect(
@@ -137,13 +173,13 @@ export function useAgentAttachments(target: AgentAttachmentTarget | null): Agent
         uploadAttachment(target, file, (fraction) => {
           setUpload(id, { kind: "uploading", fraction });
         }).then(
-          (path) => {
+          (location) => {
             if (removed.current.has(id)) {
-              void deleteAttachment(target.scope, path);
+              void deleteAttachment(target.scope, location);
               return null;
             }
-            setUpload(id, { kind: "uploaded", path });
-            return path;
+            setUpload(id, { kind: "uploaded", location });
+            return location;
           },
           (error: unknown) => {
             setUpload(id, {
@@ -189,7 +225,7 @@ export function useAgentAttachments(target: AgentAttachmentTarget | null): Agent
         URL.revokeObjectURL(attachment.previewUrl);
       }
       if (attachment.upload.kind === "uploaded" && target !== null) {
-        void deleteAttachment(target.scope, attachment.upload.path);
+        void deleteAttachment(target.scope, attachment.upload.location);
       } else if (attachment.upload.kind === "uploading") {
         removed.current.add(attachment.id);
       }
@@ -200,7 +236,7 @@ export function useAgentAttachments(target: AgentAttachmentTarget | null): Agent
   const take = useCallback(async () => {
     const taken = latest.current;
     if (taken.length === 0) {
-      return { paths: [], failed: [] };
+      return { locations: [], failed: [] };
     }
     setAttachments([]);
     setRefusal(null);
@@ -208,7 +244,7 @@ export function useAgentAttachments(target: AgentAttachmentTarget | null): Agent
     const results = await Promise.all(
       taken.map(async ({ id, file }) => ({
         name: file.name,
-        path: (await settled.current.get(id)) ?? null,
+        location: (await settled.current.get(id)) ?? null,
       })),
     );
     setSending(false);
@@ -219,8 +255,8 @@ export function useAgentAttachments(target: AgentAttachmentTarget | null): Agent
       }
     }
     return {
-      paths: results.flatMap(({ path }) => (path === null ? [] : [path])),
-      failed: results.flatMap(({ name, path }) => (path === null ? [name] : [])),
+      locations: results.flatMap(({ location }) => (location === null ? [] : [location])),
+      failed: results.flatMap(({ name, location }) => (location === null ? [name] : [])),
     };
   }, []);
 
@@ -253,19 +289,38 @@ export function useAgentAttachments(target: AgentAttachmentTarget | null): Agent
   return target === null ? null : { items, add, take, sending, refusal };
 }
 
-/** A sent message's files, each opening in Files; images show through the preview route. */
+/**
+ * A sent message's files: workspace files open in Files, with images shown through the preview
+ * route, and blobs download, as large files have no preview.
+ */
 export function sentAttachmentItems(
   scope: BackofficeResolvedScope,
   attachments: readonly PiAgentAttachment[],
 ): ChatMessageAttachmentItem[] {
-  return attachments.map(({ path, contentType, sizeBytes }) => ({
-    id: path,
-    file: {
-      name: path.split("/").at(-1)!,
-      contentType,
-      sizeBytes,
-      previewUrl: contentType.startsWith("image/") ? filesPreviewPath(scope, path) : null,
-    },
-    href: filesExplorerPathFromScopePath(filesScopeBasePath(scope), path),
-  }));
+  return attachments.map((attachment) => {
+    const { contentType, sizeBytes } = attachment;
+    if (attachment.kind === "blob") {
+      return {
+        id: attachment.key,
+        file: {
+          name: attachment.key.split("/").at(-1)!,
+          contentType,
+          sizeBytes,
+          previewUrl: null,
+        },
+        href: largeFileDownloadPath(scope, attachment.key),
+      };
+    }
+    const { path } = attachment;
+    return {
+      id: path,
+      file: {
+        name: path.split("/").at(-1)!,
+        contentType,
+        sizeBytes,
+        previewUrl: contentType.startsWith("image/") ? filesPreviewPath(scope, path) : null,
+      },
+      href: filesExplorerPathFromScopePath(filesScopeBasePath(scope), path),
+    };
+  });
 }

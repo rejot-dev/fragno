@@ -1,7 +1,7 @@
 // Classifiers for typed questions about data and images, typed extraction from PDFs and images, and image generation. Read to classify, read a PDF, or generate images.
 type ModelsCodemodeProvider = {
   /**
-   * Answer typed questions about JSON state and workspace images with a fast classifier model. A `choice` question picks one option with probabilities, a `score` question rates against ordered levels, and a `bool` question returns the probability that a condition holds. Use it for routing, triage, and filtering; it does not generate text. Independent questions about the same state and images belong in one call. Image paths require upload.read; text-only calls do not. Each call is billed by input tokens, including image tokens.
+   * Answer typed questions about JSON state and images with a fast classifier model. A `choice` question picks one option with probabilities, a `score` question rates against ordered levels, and a `bool` question returns the probability that a condition holds. Use it for routing, triage, and filtering; it does not generate text. Independent questions about the same state and images belong in one call. Images require upload.read; text-only calls do not. Each call is billed by input tokens, including image tokens.
    * Requires `models.classify`.
    */
   classify(input: ModelsClassifyInput): Promise<ModelsClassifyOutput>;
@@ -11,7 +11,7 @@ type ModelsCodemodeProvider = {
    */
   generateImage(input: ModelsGenerateImageInput): Promise<ModelsGenerateImageOutput>;
   /**
-   * Read PDFs and images from the workspace with a model and answer in JSON that matches a schema: invoice fields, a contract's parties, a statement's transactions, or a page as Markdown. The files go to the model, not into the conversation, so only the answer costs context. A long document can take longer than an immediate codemode run is allowed, so call it inside a workflow step. Each call is billed by input and output tokens, including every page and image.
+   * Read PDFs and images from the workspace or blobs with a model and answer in JSON that matches a schema: invoice fields, a contract's parties, a statement's transactions, or a page as Markdown. The files go to the model, not into the conversation, so only the answer costs context. A long document can take longer than an immediate codemode run is allowed, so call it inside a workflow step. Each call is billed by input and output tokens, including every page and image.
    * Requires `models.extract`.
    */
   extract(input: ModelsExtractInput): Promise<ModelsExtractOutput>;
@@ -32,8 +32,16 @@ type ModelsClassifyInput = {
   state: {
     [key: string]: JsonValue;
   };
-  /** Ordered workspace image paths judged together with state; requires upload.read for each file. Up to 128 PNG, JPEG, or WebP images; at most 10 MiB per image and 20 MiB total. */
-  images?: string[];
+  /** Ordered images judged together with state, each a workspace file `{ path }` or a blob `{ blob }` by key; requires upload.read for each. Blobs hold images too large for the workspace. Up to 128 PNG, JPEG, or WebP images; at most 10 MiB per image and 20 MiB total. */
+  images?: (
+    | {
+        path: string;
+      }
+    | {
+        /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */
+        blob: string;
+      }
+  )[];
   questions: {
     [key: string]:
       | {
@@ -100,8 +108,16 @@ type ModelsGenerateImageOutput = {
   path: string;
 };
 type ModelsExtractInput = {
-  /** Ordered workspace paths of the PDFs and PNG, JPEG, or WebP images to read; requires upload.read for each file. Up to 16 files and 20 MiB together. */
-  files: string[];
+  /** Ordered PDFs and PNG, JPEG, or WebP images to read, each a workspace file `{ path }` or a blob `{ blob }` by key; requires upload.read for each. Blobs hold documents too large for the workspace. Up to 16 files and 20 MiB together. */
+  files: (
+    | {
+        path: string;
+      }
+    | {
+        /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */
+        blob: string;
+      }
+  )[];
   /** What to read from the files and how to fill in the answer. */
   instructions: string;
   /** JSON Schema of the answer, in OpenAI's strict structured-output subset: the root is an object, every object is closed and requires all its properties, which the call sets itself, and a field that may be absent has a type such as `["string", "null"]`. */

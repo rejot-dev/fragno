@@ -106,12 +106,12 @@ export function AgentStartComposer({
                   `Not attached, because the upload failed: ${files.failed.join(", ")}.`,
                 );
               }
-              const paths = files?.paths ?? [];
-              if (!draftPrompt.trim() && paths.length === 0) {
+              const locations = files?.locations ?? [];
+              if (!draftPrompt.trim() && locations.length === 0) {
                 return;
               }
-              if (paths.length > 0) {
-                formData.set("attachments", JSON.stringify(paths));
+              if (locations.length > 0) {
+                formData.set("attachments", JSON.stringify(locations));
               }
               await fetcher.submit(formData, { method: "post", action });
             })();

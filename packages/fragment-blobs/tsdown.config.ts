@@ -4,7 +4,7 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
   fixedExtension: false,
   ignoreWatch: ["./dist"],
-  entry: ["./src/index.ts"],
+  entry: ["./src/index.ts", "./src/routes.ts"],
   dts: true,
   platform: "node",
   outDir: "./dist",

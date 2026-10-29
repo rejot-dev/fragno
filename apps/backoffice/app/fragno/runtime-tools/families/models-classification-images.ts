@@ -1,48 +1,42 @@
-import { MODELS_CLASSIFY_IMAGE_LIMITS } from "@fragno-dev/backoffice-api/v0/models";
+import {
+  MODELS_CLASSIFY_IMAGE_LIMITS,
+  type ModelsFile,
+} from "@fragno-dev/backoffice-api/v0/models";
 
 import type { ImageContent } from "@earendil-works/pi-ai";
 
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
-import {
-  StateFileReadLimitError,
-  type BackofficeStateBackend,
-} from "@/fragno/codemode/state-backend";
 import { bytesToBase64 } from "@/lib/base64";
 import { rasterImageContentType } from "@/lib/raster-image-content-type";
 
-/** Reads already-authorized paths within a shared byte budget, preserving caller order. */
+import { modelsFileLabel, readModelsFileBytes, type ModelsFileStores } from "./models-file-bytes";
+
+/** Reads already-authorized images within a shared byte budget, preserving caller order. */
 export async function readClassificationImages(
-  state: BackofficeStateBackend,
-  paths: readonly string[],
+  stores: ModelsFileStores,
+  files: readonly ModelsFile[],
 ): Promise<ImageContent[]> {
   const images: ImageContent[] = [];
   let remainingBytes = MODELS_CLASSIFY_IMAGE_LIMITS.totalBytes;
-  for (const path of paths) {
+  for (const file of files) {
     // Sequential reads bound memory and apply the remaining budget even if a file changes size.
-    let bytes: Uint8Array;
-    try {
-      bytes = await state.readFileBytes(
-        path,
-        Math.min(MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes, remainingBytes),
+    const maxBytes = Math.min(MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes, remainingBytes);
+    const read = await readModelsFileBytes(stores, file, maxBytes);
+    if (read.kind === "too-large") {
+      throw new BackofficeOperationError(
+        "invalid_request",
+        `MODELS_CLASSIFY_IMAGE_TOO_LARGE: ${modelsFileLabel(file)} exceeds the ${maxBytes} bytes left to read; images hold at most ${MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes} bytes each and ${MODELS_CLASSIFY_IMAGE_LIMITS.totalBytes} together.`,
       );
-    } catch (error) {
-      if (error instanceof StateFileReadLimitError) {
-        throw new BackofficeOperationError(
-          "invalid_request",
-          `MODELS_CLASSIFY_IMAGE_TOO_LARGE: ${path}: ${error.message}`,
-        );
-      }
-      throw error;
     }
-    const mimeType = rasterImageContentType(bytes);
+    const mimeType = rasterImageContentType(read.bytes);
     if (mimeType === null || mimeType === "image/gif") {
       throw new BackofficeOperationError(
         "invalid_request",
-        `MODELS_CLASSIFY_INVALID_IMAGE: ${path} must contain a PNG, JPEG, or WebP image.`,
+        `MODELS_CLASSIFY_INVALID_IMAGE: ${modelsFileLabel(file)} must contain a PNG, JPEG, or WebP image.`,
       );
     }
-    remainingBytes -= bytes.byteLength;
-    images.push({ type: "image", data: bytesToBase64(bytes), mimeType });
+    remainingBytes -= read.bytes.byteLength;
+    images.push({ type: "image", data: bytesToBase64(read.bytes), mimeType });
   }
   return images;
 }

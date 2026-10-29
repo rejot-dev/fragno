@@ -14,6 +14,7 @@ import type { Route } from "./+types/large-files-uploads";
 const uploadStepSchema = z.discriminatedUnion("intent", [
   z.object({ intent: z.literal("start"), key: z.string(), contentType: z.string() }),
   z.object({ intent: z.literal("complete"), uploadId: z.string() }),
+  z.object({ intent: z.literal("discard"), key: z.string() }),
 ]);
 
 /** What the Large files page reads back from each step of an upload. */
@@ -24,11 +25,12 @@ export type LargeFileUploadResult =
       upload: { uploadId: string; url: string; headers: Record<string, string> };
     }
   | { ok: true; step: "complete" }
+  | { ok: true; step: "discard" }
   | { ok: false; error: string };
 
 /**
  * Starts an upload, handing the browser a presigned URL to PUT the file's bytes to, and completes
- * it once they are stored. An API route rather than a page action: an expired credential is a 401
+ * it once they are stored; discarding deletes a blob its uploader no longer wants. An API route rather than a page action: an expired credential is a 401
  * the page refreshes and retries, where page middleware would redirect the submission away.
  */
 export async function action({ request, context, params }: Route.ActionArgs) {
@@ -72,6 +74,13 @@ export async function action({ request, context, params }: Route.ActionArgs) {
           });
           return response.type === "json"
             ? respond({ ok: true, step: "complete" })
+            : fail(blobsFailure(response));
+        });
+      case "discard":
+        return await largeFiles.files.modify(async (blobs) => {
+          const response = await blobs("DELETE", "/blobs/by-key", { query: { key: upload.key } });
+          return response.type === "json"
+            ? respond({ ok: true, step: "discard" })
             : fail(blobsFailure(response));
         });
       default:

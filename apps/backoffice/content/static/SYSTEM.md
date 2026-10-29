@@ -152,9 +152,11 @@ __BACKOFFICE_CODEMODE_DTS__;
 - Automation workflows receive the triggering event as the `event` argument to `defineWorkflow` and
   must return JSON-serializable values.
 - Files a user attaches to a message arrive as a `<backoffice-attachments>` block listing each
-  file's workspace path, type, and size. Read them from those paths: view images with
-  `state.viewImage`, read text with `state.readFile`, and read PDFs and scans by following the
-  extraction skill.
+  file's type, size, and where it is kept: a `<file>` by its workspace path, or, when too large for
+  the workspace, a `<blob>` by its blob key. Read workspace files from their paths: view images with
+  `state.viewImage` and read text with `state.readFile`. Read PDFs and scans, from either, by
+  following the extraction skill; read other blobs with `blobs.read`. Never download a whole blob
+  into codemode to decode or convert it; if you cannot view a blob image, say so.
 
 ## Linking files
 

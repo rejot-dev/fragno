@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { blobKeySchema } from "./blobs";
 import { jsonValueSchema } from "./shared/json";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
 
@@ -62,18 +63,29 @@ const workspaceFilePathSchema = z
     },
   );
 
+/** A file a model reads: a workspace file by its path, or one of the scope's blobs by its key. */
+const modelsFileSchema = z.lazy(() =>
+  z.union([
+    z.strictObject({ path: workspaceFilePathSchema }),
+    z.strictObject({ blob: blobKeySchema }),
+  ]),
+);
+
+export type ModelsFile = z.output<typeof modelsFileSchema>;
+
 const modelsClassifyInputSchema = z.lazy(() =>
   z.strictObject({
     state: z
       .record(z.string(), jsonValueSchema)
       .describe("The evidence every question is answered about."),
     images: z
-      .array(workspaceFilePathSchema)
+      .array(modelsFileSchema)
       .max(MODELS_CLASSIFY_IMAGE_LIMITS.count)
       .default([])
       .describe(
-        "Ordered workspace image paths judged together with state; requires upload.read for each " +
-          `file. Up to ${MODELS_CLASSIFY_IMAGE_LIMITS.count} PNG, JPEG, or WebP images; at most ` +
+        "Ordered images judged together with state, each a workspace file `{ path }` or a blob " +
+          "`{ blob }` by key; requires upload.read for each. Blobs hold images too large for " +
+          `the workspace. Up to ${MODELS_CLASSIFY_IMAGE_LIMITS.count} PNG, JPEG, or WebP images; at most ` +
           `${MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes / 1024 ** 2} MiB ` +
           `per image and ${MODELS_CLASSIFY_IMAGE_LIMITS.totalBytes / 1024 ** 2} MiB total.`,
       ),
@@ -159,12 +171,13 @@ export type ModelsExtractThinkingLevel = (typeof MODELS_EXTRACT_THINKING_LEVELS)
 const modelsExtractInputSchema = z.lazy(() =>
   z.strictObject({
     files: z
-      .array(workspaceFilePathSchema)
+      .array(modelsFileSchema)
       .min(1)
       .max(MODELS_EXTRACT_FILE_LIMITS.count)
       .describe(
-        "Ordered workspace paths of the PDFs and PNG, JPEG, or WebP images to read; requires " +
-          `upload.read for each file. Up to ${MODELS_EXTRACT_FILE_LIMITS.count} files and ` +
+        "Ordered PDFs and PNG, JPEG, or WebP images to read, each a workspace file `{ path }` or " +
+          "a blob `{ blob }` by key; requires upload.read for each. Blobs hold documents too " +
+          `large for the workspace. Up to ${MODELS_EXTRACT_FILE_LIMITS.count} files and ` +
           `${MODELS_EXTRACT_FILE_LIMITS.totalBytes / 1024 ** 2} MiB together.`,
       ),
     instructions: z
@@ -205,11 +218,11 @@ const modelsExtractOutputSchema = z.lazy(() =>
 export const modelsOperations = {
   "models.classify": {
     description:
-      "Answer typed questions about JSON state and workspace images with a fast classifier model. A `choice` question " +
+      "Answer typed questions about JSON state and images with a fast classifier model. A `choice` question " +
       "picks one option with probabilities, a `score` question rates against ordered levels, and " +
       "a `bool` question returns the probability that a condition holds. Use it for routing, " +
       "triage, and filtering; it does not generate text. Independent questions about the same " +
-      "state and images belong in one call. Image paths require upload.read; text-only calls do not. " +
+      "state and images belong in one call. Images require upload.read; text-only calls do not. " +
       "Each call is billed by input tokens, including image tokens.",
     permissions: [BACKOFFICE_PERMISSION.models.classify],
     input: modelsClassifyInputSchema,
@@ -227,7 +240,7 @@ export const modelsOperations = {
   },
   "models.extract": {
     description:
-      "Read PDFs and images from the workspace with a model and answer in JSON that matches a " +
+      "Read PDFs and images from the workspace or blobs with a model and answer in JSON that matches a " +
       "schema: invoice fields, a contract's parties, a statement's transactions, or a page as " +
       "Markdown. The files go to the model, not into the conversation, so only the answer costs " +
       "context. A long document can take longer than an immediate codemode run is allowed, so " +
