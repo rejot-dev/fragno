@@ -20,7 +20,10 @@ import {
   createProjectConnectorServer,
   type ProjectConnectorFragment,
 } from "@/fragno/project-connector";
-import { encodeConnectorConnectionId } from "@/fragno/runtime-tools/families/integrations/connector-connection-id";
+import {
+  encodeConnectorConnectionId,
+  isConnectorOAuthReturnSegment,
+} from "@/fragno/runtime-tools/families/integrations/connector-connection-id";
 import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
 import {
   isScopedPublicOAuthRedirectUriAllowed,
@@ -142,6 +145,8 @@ export class ProjectConnectorObject extends RpcTarget implements ProjectConnecto
               publicOrigin: runtime.config.docsPublicBaseUrl,
               publicPrefix: PROJECT_CONNECTOR_PUBLIC_PREFIX,
               redirectUri,
+              // Every return names its connection, so the return confirms that one alone.
+              returnSegment: isConnectorOAuthReturnSegment,
             }),
         };
       },

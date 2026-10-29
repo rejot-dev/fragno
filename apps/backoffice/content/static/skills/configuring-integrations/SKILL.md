@@ -200,8 +200,9 @@ and can repeat. Route one connection with
 `$.subject.service`. An OAuth access token without a refresh token fires `connection.unavailable`
 when it expires.
 
-Open Connector learns about consent only when setup is checked, so its `connection.ready` follows
-the next check rather than the browser consent, and revocation is never reported.
+Open Connector learns about consent when the signed-in user returns from the provider or when setup
+is checked, so its `connection.ready` follows one of those rather than the consent itself, and
+revocation is never reported.
 
 ## Use the connection
 

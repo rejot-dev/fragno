@@ -36,8 +36,11 @@ export type PublicFragmentRoute<TCommands> = {
             kind: "redirect";
             redirect(input: {
               request: Request;
+              context: Readonly<RouterContextProvider>;
+              scope: BackofficeRoutableScope;
               pageScope: BackofficeRoutableRouteScope;
-            }): Response;
+              suffix: string;
+            }): Promise<Response>;
           }
       ) & { matches(request: Request, scope: BackofficeRoutableScope, suffix: string): boolean })
     | null;
@@ -270,9 +273,12 @@ export async function forwardPublicFragmentRequest<TCommands>({
   const ingress = route.publicIngress;
   const isPublicIngress = ingress?.matches(request, scope, publicPathSuffix) ?? false;
   if (isPublicIngress && ingress?.kind === "redirect") {
-    return ingress.redirect({
+    return await ingress.redirect({
       request,
+      context,
+      scope,
       pageScope: await pageScopeForPublicRoute(context, parsed.routeScope),
+      suffix: publicPathSuffix,
     });
   }
   const auth = isPublicIngress

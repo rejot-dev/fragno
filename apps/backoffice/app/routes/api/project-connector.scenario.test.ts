@@ -394,7 +394,8 @@ test("public routes authenticate access tokens and reject foreign or non-user sc
             accessCookie,
           );
           assert(foreignOrg.status === 404);
-          const returnUri = `https://backoffice.example/api/connector/${encodeURIComponent(scope)}/oauth/callback`;
+          const callback = `https://backoffice.example/api/connector/${encodeURIComponent(scope)}/oauth/callback`;
+          const returnUri = `${callback}/${encodeConnectorConnectionId(["named", "project-1", "gmail-provider", "personal"]).slice("connector#".length)}`;
           const started = await callPublicProjectConnector(
             ctx,
             scope,
@@ -434,6 +435,18 @@ test("public routes authenticate access tokens and reject foreign or non-user sc
             },
           );
           assert(injectedReturn.status === 400);
+          // Every return must name a connection, so the bare callback is not a return URL.
+          for (const unnamed of [callback, `${callback}/n_forged`]) {
+            const rejected = await callPublicProjectConnector(
+              ctx,
+              scope,
+              "/connection-requests",
+              "POST",
+              accessCookie,
+              { service: "gmail", connectionName: "personal", returnUri: unnamed },
+            );
+            assert(rejected.status === 400);
+          }
           expect(gateway.links).toHaveLength(1);
           gateway.authorize(connection.id, "personal-account");
           const refreshed = await callPublicProjectConnector(
@@ -462,6 +475,139 @@ test("public routes authenticate access tokens and reject foreign or non-user sc
           expect(gateway.executions).toEqual([]);
         },
       ),
+    ],
+  }));
+});
+
+test("a signed-in owner's return confirms the consent its path names and lands on that connection", async () => {
+  await runProjectConnectorScenario((gateway) => ({
+    objects: scenarioObjects,
+    name: "Connector returns confirm the named consent",
+    env: { DOCS_PUBLIC_BASE_URL: "https://backoffice.example" },
+    fakes: ({ fake }) => ({ resend: fake.resend() }),
+    setup: ({ given }) => [
+      given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
+    ],
+    steps: ({ when, then }) => [
+      when.auth.signUp({
+        email: "connector-return@example.test",
+        captureSessionCookieAs: "sessionCookie",
+      }),
+      then.assert("each return confirms only its own connection's consent", async (ctx) => {
+        const sessionCookie = ctx.vars.sessionCookie as string;
+        const session = await ctx.runtime.objects.auth.singleton().http.fetch(
+          new Request("https://backoffice.example/api/auth/get-session", {
+            headers: { cookie: sessionCookie },
+          }),
+        );
+        const userId = z.object({ user: z.object({ id: z.string() }) }).parse(await session.json())
+          .user.id;
+        const accessCookie = await issueBackofficeAccessCookie(ctx, sessionCookie, null);
+        const scope = `user:${userId}`;
+        const scopePath = `/backoffice/integrations/user/${userId}`;
+        const mount = `/api/connector/${encodeURIComponent(scope)}`;
+        /** Follows a return as the gateway sends it: the start's return URL plus its own query. */
+        async function returnFromProvider(returnUri: string, cookie: string | null = accessCookie) {
+          const { pathname } = new URL(returnUri);
+          assert(pathname.startsWith(mount));
+          const reads = gateway.control.requestReads;
+          const response = await callPublicProjectConnector(
+            ctx,
+            scope,
+            `${pathname.slice(mount.length)}?status=success&connectedAccountId=forged-account`,
+            "GET",
+            cookie,
+          );
+          assert(response.status === 302);
+          const location = new URL(response.headers.get("location") ?? "");
+          return {
+            path: decodeURIComponent(location.pathname),
+            oauth: location.searchParams.get("oauth"),
+            message: location.searchParams.get("message"),
+            gatewayReads: gateway.control.requestReads - reads,
+          };
+        }
+        async function start(connectionName: string) {
+          const progress = integrationSetupProgressSchema.parse(
+            await runUserIntegrations(
+              ctx,
+              userId,
+              `setup({ kind: "input", connectionId: ${JSON.stringify(workConnectionId)}, input: { start: true, connectionName: ${JSON.stringify(connectionName)} } })`,
+            ),
+          );
+          assert(progress.status === "needs-authorization");
+          const requestId = new URL(progress.authorizationUrl).pathname.split("/").at(-1);
+          const link = gateway.links.at(-1);
+          assert(requestId && link);
+          return { connectionId: progress.connectionId, requestId, returnUri: link.returnUri };
+        }
+
+        const work = await start("work");
+        expect(work.returnUri).toBe(
+          `https://backoffice.example${mount}/oauth/callback/${workConnectionId.slice("connector#".length)}`,
+        );
+        // Another name's pending consent is never read by this name's return.
+        const other = await start("other");
+
+        // Pending consent, and anonymous returns, only navigate to the named connection.
+        gateway.authorize(work.requestId, "returned-account");
+        expect(await returnFromProvider(work.returnUri, null)).toEqual({
+          path: `${scopePath}/${workConnectionId}`,
+          oauth: "returned",
+          message: null,
+          gatewayReads: 0,
+        });
+        expect(await returnFromProvider(other.returnUri)).toEqual({
+          path: `${scopePath}/${other.connectionId}`,
+          oauth: "returned",
+          message: null,
+          gatewayReads: 1,
+        });
+        expect(await listConnectionIds(ctx, userId)).toEqual([]);
+
+        // The bare callback of links issued before returns named connections only navigates.
+        expect(
+          await returnFromProvider(`https://backoffice.example${mount}/oauth/callback`),
+        ).toEqual({
+          path: scopePath,
+          oauth: "returned",
+          message: null,
+          gatewayReads: 0,
+        });
+        // So does a segment that names no connection.
+        expect(
+          await returnFromProvider(`https://backoffice.example${mount}/oauth/callback/n_forged`),
+        ).toEqual({ path: scopePath, oauth: "returned", message: null, gatewayReads: 0 });
+
+        expect(await returnFromProvider(work.returnUri)).toEqual({
+          path: `${scopePath}/${workConnectionId}`,
+          oauth: "success",
+          message: null,
+          gatewayReads: 1,
+        });
+        expect(await listConnectionIds(ctx, userId)).toEqual([workConnectionId]);
+
+        const personal = await start("personal");
+        const personalRequest = gateway.requests.get(personal.requestId);
+        assert(personalRequest);
+        personalRequest.status = "failed";
+        personalRequest.errorMessage = "Consent was rejected";
+        expect(await returnFromProvider(personal.returnUri)).toEqual({
+          path: `${scopePath}/${personal.connectionId}`,
+          oauth: "error",
+          message: "Consent was rejected",
+          gatewayReads: 1,
+        });
+
+        // A confirmation that fails reports an error, never a request to finish authorizing.
+        gateway.requests.delete(other.requestId);
+        expect(await returnFromProvider(other.returnUri)).toMatchObject({
+          path: `${scopePath}/${other.connectionId}`,
+          oauth: "error",
+          message: "Backoffice could not confirm this connection. Check its setup again.",
+        });
+        expect(await listConnectionIds(ctx, userId)).toEqual([workConnectionId]);
+      }),
     ],
   }));
 });

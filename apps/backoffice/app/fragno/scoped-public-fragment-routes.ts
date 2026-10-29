@@ -159,15 +159,21 @@ export function projectConnectorPublicAddress(
   });
 }
 
-/** Allows only one scoped OAuth callback path on the configured Backoffice public origin. */
+/**
+ * Allows only one scoped OAuth callback path on the configured Backoffice public origin. A route
+ * that names its return passes `returnSegment`, which then requires exactly one more path segment
+ * after the callback and accepts only the segments it approves.
+ */
 export function isScopedPublicOAuthRedirectUriAllowed({
   publicOrigin,
   publicPrefix,
   redirectUri,
+  returnSegment,
 }: {
   publicOrigin: string | undefined;
   publicPrefix: string;
   redirectUri: URL;
+  returnSegment?: (segment: string) => boolean;
 }): boolean {
   let configuredPublicUrl: URL;
   try {
@@ -189,20 +195,23 @@ export function isScopedPublicOAuthRedirectUriAllowed({
     return false;
   }
 
+  let callbackPath = redirectUri.pathname;
+  if (returnSegment) {
+    const separator = callbackPath.lastIndexOf("/");
+    if (!returnSegment(callbackPath.slice(separator + 1))) {
+      return false;
+    }
+    callbackPath = callbackPath.slice(0, separator);
+  }
+
   const configuredPath = configuredPublicUrl.pathname.replace(/\/+$/, "");
   const callbackPrefix = `${configuredPath}${publicPrefix}/`.replace(/\/+/g, "/");
   const callbackSuffix = "/oauth/callback";
-  if (
-    !redirectUri.pathname.startsWith(callbackPrefix) ||
-    !redirectUri.pathname.endsWith(callbackSuffix)
-  ) {
+  if (!callbackPath.startsWith(callbackPrefix) || !callbackPath.endsWith(callbackSuffix)) {
     return false;
   }
 
-  const scopePathSegment = redirectUri.pathname.slice(
-    callbackPrefix.length,
-    -callbackSuffix.length,
-  );
+  const scopePathSegment = callbackPath.slice(callbackPrefix.length, -callbackSuffix.length);
   return scopePathSegment.length > 0 && !scopePathSegment.includes("/");
 }
 
