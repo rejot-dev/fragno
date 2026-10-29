@@ -156,6 +156,13 @@ __BACKOFFICE_CODEMODE_DTS__;
   `state.viewImage`, read text with `state.readFile`, and read PDFs and scans by following the
   extraction skill.
 
+## Linking files
+
+Link a file with a Markdown link to its absolute path: `[Plan](/workspace/notes/plan.md)`. It opens
+in the scope the conversation is in. Link a file in another scope by putting that scope first:
+`[Finance](/org:<orgId>/workspace/pages/finance.page.js)`, or `/user:<userId>/workspace/...` for a
+personal scope. Never write Backoffice URLs; Backoffice builds them from these links.
+
 ## Showing images
 
 To show an image, use Markdown image with its absolute path:

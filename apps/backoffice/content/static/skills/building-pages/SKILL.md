@@ -45,11 +45,11 @@ browser keeps it, and re-renders as the data changes.
    viewers. Complete when it returns `{ status: "built" }`; a `failed` result's `message` is what
    the page would show, such as SQLite's error for a query, named by the query:
    `queries.q2: no such column: statsu`.
-6. **Hand off.** Give the user the source path. Selecting it in Files links to the live page; the
-   dashboard's "+" tab lists every page, and a page opens as a dashboard tab at
-   `/backoffice/dashboard/<scope>/pages/<path>`, where `<scope>` is the scope segment of their Files
-   URL and `<path>` is the source's path under `/workspace` without `.page.js`. Complete when the
-   user has the path.
+6. **Hand off.** Link the source path, such as `[Finance](/workspace/pages/finance.page.js)`, or,
+   for a page in another scope, the path after that scope, such as
+   `[Finance](/org:<orgId>/workspace/pages/finance.page.js)`. The link opens the file in Files,
+   which links to the live page, and the dashboard's "+" tab lists every page. Complete when the
+   user has the link.
 
 ## Branches
 

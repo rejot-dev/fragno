@@ -1,7 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { CurrentBackofficeContext } from "./current-context-state";
-import { FileScopeProvider } from "./file-scope";
+import { FileScopeProvider, LinkableScopesProvider } from "./file-scope";
 
 const CurrentBackofficeReactContext = createContext<CurrentBackofficeContext | null>(null);
 
@@ -14,7 +14,9 @@ export function CurrentBackofficeProvider({
 }) {
   return (
     <CurrentBackofficeReactContext.Provider value={value}>
-      <FileScopeProvider scope={value.resolvedScope}>{children}</FileScopeProvider>
+      <LinkableScopesProvider resolveScope={value.resolveScope}>
+        <FileScopeProvider scope={value.resolvedScope}>{children}</FileScopeProvider>
+      </LinkableScopesProvider>
     </CurrentBackofficeReactContext.Provider>
   );
 }

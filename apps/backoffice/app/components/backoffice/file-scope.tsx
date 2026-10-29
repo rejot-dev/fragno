@@ -1,3 +1,7 @@
+import {
+  type BackofficeContextScope,
+  parseBackofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { absoluteFilePathSchema } from "@fragno-private/backoffice-ui/absolute-file-path";
 import { FileImageProvider } from "@fragno-private/backoffice-ui/file-image";
 import { ButtonLink } from "@fragno-private/design-system/button";
@@ -15,6 +19,11 @@ import {
 } from "@/routes/backoffice/files/scope";
 
 const FileScopeContext = createContext<BackofficeResolvedScope | null>(null);
+// Outside the Backoffice layout no other scope is known, so links into one stay plain text.
+const LinkableScopesContext = createContext<LinkableScopes>(() => null);
+
+/** Names a scope as this page's links need it, or null when the page cannot link to it. */
+type LinkableScopes = (scope: BackofficeContextScope) => BackofficeResolvedScope | null;
 
 /**
  * Resolves file paths in rendered content against a scope's files. Null leaves images as
@@ -32,6 +41,19 @@ export function FileScopeProvider({
     <FileScopeContext.Provider value={scope}>
       <FileImageProvider component={FileImage}>{children}</FileImageProvider>
     </FileScopeContext.Provider>
+  );
+}
+
+/** The scopes that links to files in another scope, such as an agent's, can open. */
+export function LinkableScopesProvider({
+  resolveScope,
+  children,
+}: {
+  resolveScope: LinkableScopes;
+  children: ReactNode;
+}) {
+  return (
+    <LinkableScopesContext.Provider value={resolveScope}>{children}</LinkableScopesContext.Provider>
   );
 }
 
@@ -78,5 +100,23 @@ export function FileLink({ path, children }: { path: string; children: ReactNode
     <Link to={filesExplorerPathFromScopePath(filesScopeBasePath(scope), path)} title={path}>
       {children}
     </Link>
+  );
+}
+
+/** Opens a file in the scope a link names; a scope this page cannot link to leaves it plain. */
+export function ScopedFileLink({
+  scope,
+  path,
+  children,
+}: {
+  scope: string;
+  path: string;
+  children: ReactNode;
+}) {
+  const resolveScope = useContext(LinkableScopesContext);
+  return (
+    <FileScopeProvider scope={resolveScope(parseBackofficeScopePathSegment(scope))}>
+      <FileLink path={path}>{children}</FileLink>
+    </FileScopeProvider>
   );
 }

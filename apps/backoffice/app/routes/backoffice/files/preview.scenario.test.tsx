@@ -7,6 +7,7 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { BackofficeUiRenderer } from "@fragno-private/backoffice-ui/renderer";
 import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -15,7 +16,7 @@ import { MemoryRouter } from "react-router";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { FileScopeProvider } from "@/components/backoffice/file-scope";
+import { FileScopeProvider, LinkableScopesProvider } from "@/components/backoffice/file-scope";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import { action as uploadWorkspaceFile } from "@/routes/api/files-scoped-workspace";
@@ -382,6 +383,41 @@ test("private workspace files flow through session Markdown and generated UI wit
           const unscoped = renderToStaticMarkup(<MarkdownText text={message} />);
           assert.notInclude(unscoped, "/backoffice/files");
           assert.include(unscoped, "/workspace/notes/plan.md:12");
+
+          // A link names another scope before the path; it opens there when the page can link to it.
+          const crossScope = [
+            "[Finance](/org:org-finance/workspace/pages/finance.page.js)",
+            "[Elsewhere](/org:org-unknown/workspace/pages/finance.page.js)",
+            "[Traversal](/org:org-finance/workspace/../logout)",
+          ].join("\n\n");
+          const resolveScope = (target: BackofficeContextScope): BackofficeResolvedScope | null =>
+            target.kind === "org" && target.orgId === "org-finance"
+              ? {
+                  kind: "org",
+                  organization: { id: "org-finance", slug: "finance", jurisdiction: null },
+                }
+              : null;
+          const scoped = renderToStaticMarkup(
+            <MemoryRouter>
+              <LinkableScopesProvider resolveScope={resolveScope}>
+                <FileScopeProvider scope={scope}>
+                  <MarkdownText text={crossScope} />
+                </FileScopeProvider>
+              </LinkableScopesProvider>
+            </MemoryRouter>,
+          );
+          expect(
+            [...scoped.matchAll(/<a [^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/g)].map(
+              ([, href, content]) => ({ href, content }),
+            ),
+          ).toEqual([
+            {
+              href: "/backoffice/files/org/finance/workspace/pages/finance.page.js",
+              content: "Finance",
+            },
+          ]);
+          assert.include(scoped, "Elsewhere");
+          assert.notInclude(scoped, "logout");
         }),
         then.assert(
           "sandbox declared SVGs and deny anonymous and cross-scope reads, traversal, and other markup",

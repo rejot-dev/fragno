@@ -2,14 +2,15 @@ import { ImagePreview } from "@fragno-private/design-system/image-preview";
 import type { ComponentProps, ComponentType } from "react";
 import { Streamdown } from "streamdown";
 
-import { FileImage, FileLink } from "@/components/backoffice/file-scope";
+import { FileImage, FileLink, ScopedFileLink } from "@/components/backoffice/file-scope";
 
 import { rehypePlugins, remarkPlugins } from "./file-path-links";
 
 const markdownComponents = {
   img: MarkdownImage,
-  // Only rehypeFileDestinations creates these elements, and only with a validated path.
+  // Only rehypeFileDestinations creates these elements, and only with a validated path and scope.
   "file-link": FileLink as ComponentType,
+  "scoped-file-link": ScopedFileLink as ComponentType,
   "file-image": FileImage as ComponentType,
   "unavailable-image": MarkdownImage,
 };
