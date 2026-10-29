@@ -28,6 +28,13 @@ export function encodeConnectorConnectionId(
   return `connector#n_${payload}`;
 }
 
+/** The OAuth return path segment naming a connection: its local ID, which is URL-safe. */
+export function connectorOAuthReturnSegment(
+  address: z.output<typeof connectorAddressSchema>,
+): string {
+  return encodeConnectorConnectionId(address).slice("connector#".length);
+}
+
 /** Decodes canonical local addresses; encoded identities never supply user scope or authority. */
 export function decodeConnectorConnectionLocalId(localId: string) {
   try {
@@ -71,5 +78,15 @@ export function decodeConnectorConnectionLocalId(localId: string) {
     return address;
   } catch {
     throw new Error("Connector integration connection ID is invalid.");
+  }
+}
+
+/** Whether an OAuth return path segment names a canonical connection. */
+export function isConnectorOAuthReturnSegment(segment: string): boolean {
+  try {
+    decodeConnectorConnectionLocalId(segment);
+    return true;
+  } catch {
+    return false;
   }
 }

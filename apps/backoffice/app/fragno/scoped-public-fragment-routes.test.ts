@@ -8,6 +8,7 @@ import {
   apiWebhookPublicUrl,
   isScopedPublicOAuthRedirectUriAllowed,
   MCP_PUBLIC_PREFIX,
+  PROJECT_CONNECTOR_PUBLIC_PREFIX,
   mcpPublicAddress,
   scopedPublicMountPath,
 } from "./scoped-public-fragment-routes";
@@ -117,6 +118,38 @@ describe("scoped public fragment routes", () => {
         publicOrigin: "https://backoffice.example",
         publicPrefix: MCP_PUBLIC_PREFIX,
         redirectUri: new URL("https://backoffice.example/api/mcp/org%3Aacme/not-oauth/callback"),
+      }),
+    );
+  });
+
+  test("a named return requires exactly one approved segment after the callback", () => {
+    const allowed = (redirectUri: string) =>
+      isScopedPublicOAuthRedirectUriAllowed({
+        publicOrigin: "https://backoffice.example",
+        publicPrefix: PROJECT_CONNECTOR_PUBLIC_PREFIX,
+        redirectUri: new URL(redirectUri),
+        returnSegment: (segment) => segment === "n_named",
+      });
+    const callback = "https://backoffice.example/api/connector/user%3Aada/oauth/callback";
+    assert(allowed(`${callback}/n_named`));
+    for (const rejected of [
+      callback,
+      `${callback}/`,
+      `${callback}/n_other`,
+      `${callback}/n_named/n_named`,
+      `${callback}/n_named?next=attacker`,
+      "https://backoffice.example/api/connector/user%3Aada/n_named",
+      "https://backoffice.example/api/connector/user%3Aada/extra/oauth/callback/n_named",
+      "https://attacker.example/api/connector/user%3Aada/oauth/callback/n_named",
+    ]) {
+      assert(!allowed(rejected), rejected);
+    }
+    // Routes that pass no segment rule keep the bare callback only.
+    assert(
+      !isScopedPublicOAuthRedirectUriAllowed({
+        publicOrigin: "https://backoffice.example",
+        publicPrefix: PROJECT_CONNECTOR_PUBLIC_PREFIX,
+        redirectUri: new URL(`${callback}/n_named`),
       }),
     );
   });

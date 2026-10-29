@@ -259,8 +259,8 @@ function ProviderReturnNotice() {
   if (outcome === "returned") {
     return (
       <p className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-3 text-sm text-[var(--bo-muted)]">
-        You’re back from the provider. This doesn’t confirm the connection; ask your agent to finish
-        setting it up.
+        You’re back from the provider, but the connection isn’t confirmed yet. Ask your agent to
+        check it once you’ve finished authorizing.
       </p>
     );
   }

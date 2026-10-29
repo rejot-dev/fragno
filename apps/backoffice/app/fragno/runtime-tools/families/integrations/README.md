@@ -272,6 +272,17 @@ Connector reconfigure runs the same flow for a name that has an account: a check
 working. Setup checks report the pending replacement as `needs-authorization` until it confirms or
 ends; an ended replacement leaves the name `ready` with its old account.
 
+Every start's return URL names its connection: `<scope>/oauth/callback/<local connection ID>`.
+Connector's return-URL allowlist requires that one segment to decode as a canonical connection ID,
+and the shared callback rule for API and MCP is unchanged. The gateway returns to that exact path
+and appends its own query, which is not authenticated, so neither the path nor the query binds an
+account. When the browser carries the owner's Backoffice session, the return refreshes that one
+name's pending request, exactly as its setup check would, and lands on the connection with
+`oauth=success`, or `oauth=error` and the gateway's message for a failed or expired attempt. A
+confirmation that fails lands on `oauth=error` with a generic message, never on a request to finish
+authorizing. An anonymous return, one whose consent is still pending, and the bare callback of links
+issued before returns named connections only navigate with `oauth=returned`.
+
 Concurrent starts can still create multiple remote links and saved requests: alias is not an
 idempotency key, and no lock, cleanup, or exactly-once promise is introduced. A lost upstream
 response or unsuccessful local save is not claimed to be recoverable by name. Account-ID setup

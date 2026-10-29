@@ -10,6 +10,7 @@ import {
 import { createRouteCaller } from "@fragno-dev/core/api";
 import {
   projectConnectorNamedConnectionSchema,
+  type ProjectConnectorConnectionState,
   type projectConnectorAccountSchema,
   type projectConnectorConnectionSchema,
 } from "@fragno-dev/project-connector-fragment/contracts";
@@ -32,6 +33,7 @@ import {
   throwOnRouteRuntimeError,
 } from "../../runtime-errors";
 import {
+  connectorOAuthReturnSegment,
   decodeConnectorConnectionLocalId,
   encodeConnectorConnectionId,
 } from "./connector-connection-id";
@@ -236,6 +238,43 @@ function createConnectorAccess(runtime: ConnectorRuntime, context: IntegrationCo
   };
 }
 
+/**
+ * Confirms a name's pending consent with the gateway, as a setup check would, so that returning
+ * from the provider binds the account without another check. Returns the name's attempt state, or
+ * null when the name has no single attempt.
+ */
+export async function confirmConnectorConsent({
+  runtime,
+  context,
+  address,
+}: {
+  runtime: ConnectorRuntime;
+  context: IntegrationContext;
+  address: ConnectorAddress;
+}): Promise<ProjectConnectorConnectionState | null> {
+  if (context.execution.scope.kind !== "user" || !runtime.config.bindings.projectConnector) {
+    return null;
+  }
+  const access = createConnectorAccess(runtime, context);
+  const [, projectId, providerConfigId, connectionName] = address;
+  const saved = await access.namedRequest({ projectId, providerConfigId, connectionName });
+  if (access.isNotConfigured(saved) || access.isAmbiguous(saved)) {
+    return null;
+  }
+  if (saved.type !== "json" || !isSuccessStatus(saved.status)) {
+    return access.fail(saved);
+  }
+  const { request } = saved.data;
+  if (request?.state.status !== "initiated") {
+    return request?.state ?? null;
+  }
+  const refreshed = await access.refresh(request.id);
+  if (refreshed.type !== "json" || !isSuccessStatus(refreshed.status)) {
+    return access.fail(refreshed);
+  }
+  return refreshed.data.state;
+}
+
 /** Projects user-owned OAuth requests and accounts without owning credentials or current-selection state. */
 export function createConnectorIntegration({
   runtime,
@@ -368,10 +407,13 @@ export function createConnectorIntegration({
         secretFields: [],
       };
     }
-    const returnUri = projectConnectorPublicAddress(
-      runtime.config.docsPublicBaseUrl,
-      backofficePublicScopePathSegment(context.execution.scope),
-    ).oauthRedirectUri;
+    // The return names this connection, so it confirms this attempt alone.
+    const returnUri = `${
+      projectConnectorPublicAddress(
+        runtime.config.docsPublicBaseUrl,
+        backofficePublicScopePathSegment(context.execution.scope),
+      ).oauthRedirectUri
+    }/${connectorOAuthReturnSegment(address)}`;
     const started = await access.invoke(BACKOFFICE_PERMISSION.connections.manage, selector, () =>
       access.callRoute("POST", "/connection-requests", {
         body: {
