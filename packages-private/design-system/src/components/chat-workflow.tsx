@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "../cn";
 import { Button } from "./button";
@@ -10,26 +10,21 @@ import type { BackofficeStatusTone } from "./status-tone";
 import { UnderlineToggleButton } from "./underline-tabs";
 
 // A workflow the agent started, shown in the turn that started it. The card holds the whole run:
-// every interface its steps produced, such as a form it waits on, and the output it ended with.
-// The reader acts on the run and reads its result here; the rest of the thread only points at it.
+// where it is in its steps, every interface its steps produced, such as a form it waits on, and
+// the output it ended with. An interface takes the card over, so the steps fold away beside one. The reader acts on the run and reads its result here; the rest of the
+// thread only points at it.
 
 export type ChatWorkflowStatus =
   | { kind: "synchronizing" }
-  | {
-      kind: "running";
-      /** The step running now; null when the run has not recorded which. */
-      step: string | null;
-    }
+  | { kind: "running" }
   | {
       kind: "waiting-for-input";
       /** The step whose interface the reader is asked to complete. */
       step: string;
     }
-  | {
-      kind: "waiting";
-      /** The step waiting on something other than the reader, such as a timer or an event. */
-      step: string | null;
-    }
+  /** Waiting on something other than the reader, such as a timer or an event. */
+  | { kind: "waiting" }
+  | { kind: "paused" }
   | { kind: "complete" }
   | { kind: "stopped" }
   | {
@@ -45,6 +40,7 @@ const STATUS_LIGHTS: Record<ChatWorkflowStatus["kind"], [BackofficeStatusTone, s
   running: ["info", "Running"],
   "waiting-for-input": ["waiting", "Needs your input"],
   waiting: ["muted", "Waiting"],
+  paused: ["muted", "Paused"],
   complete: ["live", "Complete"],
   stopped: ["muted", "Stopped"],
   failed: ["failed", "Failed"],
@@ -64,18 +60,21 @@ export type ChatWorkflowElement = {
   content: ReactNode;
 };
 
-/** What the run is doing after its newest element, shown in that element's place. */
-function pendingWork(status: ChatWorkflowStatus): { label: string; active: boolean } | null {
+/**
+ * What follows the run's newest element while the run is underway. Its steps already show the
+ * run's progress, so following it shows no element.
+ */
+type PendingWork = { kind: "loading" } | { kind: "now"; active: boolean };
+
+function pendingWork(status: ChatWorkflowStatus): PendingWork | null {
   switch (status.kind) {
     case "synchronizing":
-      return { label: "Loading the run", active: true };
+      return { kind: "loading" };
     case "running":
-      return { label: status.step ?? "Working", active: true };
+      return { kind: "now", active: true };
     case "waiting":
-      return {
-        label: status.step === null ? "Waiting" : `Waiting · ${status.step}`,
-        active: false,
-      };
+    case "paused":
+      return { kind: "now", active: false };
     case "waiting-for-input":
     case "complete":
     case "stopped":
@@ -96,6 +95,7 @@ function statusError(status: ChatWorkflowStatus) {
     case "running":
     case "waiting-for-input":
     case "waiting":
+    case "paused":
     case "complete":
     case "stopped":
       return null;
@@ -104,8 +104,9 @@ function statusError(status: ChatWorkflowStatus) {
 }
 
 /**
- * A workflow run in the conversation: its name and status over one element at a time. It shows
- * the newest element, or what the run is working on after it, and a strip jumps between them all.
+ * A workflow run in the conversation: its name, status, and steps over one element at a time. It
+ * shows the newest element, or only the steps while the run works past it, and a strip jumps
+ * between them all.
  * Earlier interfaces stay locked, showing what the reader entered. The card stands out while the
  * run waits for the reader. Spreads its props so the reader can be brought to it, such as from a
  * ChatWorkflowInputRequest.
@@ -116,6 +117,7 @@ export function ChatWorkflow({
   elements,
   selectedId,
   onSelect,
+  steps,
   onStop,
   ...props
 }: Omit<ComponentProps<"section">, "className" | "children" | "onSelect"> & {
@@ -123,6 +125,11 @@ export function ChatWorkflow({
   status: ChatWorkflowStatus;
   /** Oldest first. */
   elements: readonly ChatWorkflowElement[];
+  /**
+   * Where the run is in its steps; null until the run is known. Shown while no element is, and
+   * folded into a toggle beside one.
+   */
+  steps: ReactNode;
   /** The element the reader picked; null follows the run, showing what it is on now. */
   selectedId: string | null;
   onSelect: (id: string | null) => void;
@@ -139,6 +146,11 @@ export function ChatWorkflow({
   const entryCount = elements.length + (pending === null ? 0 : 1);
   const shownIndex = selectedIndex !== -1 ? selectedIndex : entryCount - 1;
   const shown = shownIndex >= 0 && shownIndex < elements.length ? elements[shownIndex] : null;
+
+  // Opening the steps beside an element holds for that element only, so the next one, such as a
+  // form the run just produced, folds them away again.
+  const [stepsOpenFor, setStepsOpenFor] = useState<string | null>(null);
+  const stepsOpen = shown === null || stepsOpenFor === shown.id;
 
   const select = (index: number) => {
     onSelect(index === entryCount - 1 ? null : (elements[index]?.id ?? null));
@@ -165,6 +177,27 @@ export function ChatWorkflow({
         </BackofficeStatusLight>
         {onStop === null ? null : <RunStopControl onStop={onStop} />}
       </header>
+      {steps === null ? null : (
+        <div className="border-t border-[color:var(--bo-border)]">
+          {shown === null ? null : (
+            <button
+              type="button"
+              aria-expanded={stepsOpen}
+              onClick={() => {
+                setStepsOpenFor(stepsOpen ? null : shown.id);
+              }}
+              className="flex min-h-8 w-full items-center gap-1.5 px-3 text-xs text-[var(--bo-muted)] hover:text-[var(--bo-fg)] focus-visible:text-[var(--bo-fg)] focus-visible:outline-none"
+            >
+              <Icon
+                name="chevron-right"
+                className={cn("size-3 transition-transform duration-150", stepsOpen && "rotate-90")}
+              />
+              Steps
+            </button>
+          )}
+          {stepsOpen ? <div className="px-1.5">{steps}</div> : null}
+        </div>
+      )}
       {entryCount > 1 ? (
         <nav
           aria-label={`${name} steps`}
@@ -196,10 +229,10 @@ export function ChatWorkflow({
                 className="min-h-9 text-xs"
               >
                 <span className="max-w-48 truncate">
-                  {pending.active ? (
-                    <span className="bo-shimmer-text">{pending.label}</span>
+                  {pending.kind === "loading" || pending.active ? (
+                    <span className="bo-shimmer-text">{PENDING_LABEL[pending.kind]}</span>
                   ) : (
-                    pending.label
+                    PENDING_LABEL[pending.kind]
                   )}
                 </span>
               </UnderlineToggleButton>
@@ -237,18 +270,12 @@ export function ChatWorkflow({
             shown.content
           )}
         </div>
-      ) : pending !== null ? (
+      ) : pending?.kind === "loading" ? (
         <p
           aria-live="polite"
           className="flex min-h-20 items-center border-t border-[color:var(--bo-border)] px-3 text-xs text-[var(--bo-muted)]"
         >
-          {pending.active ? (
-            <span key={pending.label} className="bo-headline-enter">
-              <span className="bo-shimmer-text">{pending.label}</span>
-            </span>
-          ) : (
-            pending.label
-          )}
+          <span className="bo-shimmer-text">{PENDING_LABEL.loading}</span>
         </p>
       ) : null}
       {error === null ? null : (
@@ -262,6 +289,11 @@ export function ChatWorkflow({
     </section>
   );
 }
+
+const PENDING_LABEL: Record<PendingWork["kind"], string> = {
+  loading: "Loading the run",
+  now: "Now",
+};
 
 /** Scrolls itself so the shown step's tab stays in view as the run adds steps. */
 function StepStrip({ shownIndex, children }: { shownIndex: number; children: ReactNode }) {

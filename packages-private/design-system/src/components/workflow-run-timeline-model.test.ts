@@ -7,6 +7,7 @@ import {
   replayTimeAfter,
   WORKFLOW_RUN_START_ROW_ID,
   timeAtScalePosition,
+  workflowRunExcerpt,
   workflowStepStatusAt,
   workflowTimeScale,
   type WorkflowRunNode,
@@ -286,6 +287,109 @@ describe("workflow run layout with ends, loops, and try", () => {
         .sort(),
       ["discard", "transcribe"],
     );
+  });
+});
+
+describe("workflow run excerpt", () => {
+  const mirror = (download: WorkflowRunStep["status"], publish: WorkflowRunStep["status"]) =>
+    [
+      node("fetch", { status: "completed" }),
+      node("pin", { status: "completed" }),
+      {
+        kind: "loop",
+        id: "loop",
+        label: "for (batch)",
+        nodes: [node("download", { status: download })],
+      },
+      node("publish", { status: publish }),
+      node("notify"),
+      end("return"),
+    ] satisfies WorkflowRunNode[];
+  const rowIds = (nodes: WorkflowRunNode[], status: Parameters<typeof workflowRunExcerpt>[1]) => {
+    const placed = layout(nodes);
+    const excerpt = workflowRunExcerpt(placed, status);
+    return excerpt.kind === "summary"
+      ? excerpt
+      : {
+          rows: placed.rows.slice(excerpt.from, excerpt.to + 1).map((row) => row.id),
+          earlier: excerpt.earlierSteps,
+          later: excerpt.laterSteps,
+        };
+  };
+
+  test("shows the step before the running one, its loop's header, and the step after", () => {
+    assert.deepEqual(rowIds(mirror("running", "pending"), "active"), {
+      rows: ["pin", "loop", "download", "publish"],
+      earlier: 1,
+      later: 1,
+    });
+  });
+
+  test("centres on the last step that ran while nothing runs between ticks", () => {
+    assert.deepEqual(rowIds(mirror("completed", "pending"), "waiting"), {
+      rows: ["pin", "loop", "download", "publish"],
+      earlier: 1,
+      later: 1,
+    });
+  });
+
+  test("centres on the failed step of a failed run", () => {
+    assert.deepEqual(rowIds(mirror("completed", "failed"), "errored"), {
+      rows: ["download", "publish", "notify"],
+      earlier: 2,
+      later: 0,
+    });
+  });
+
+  test("takes in the rest of the run after the last step", () => {
+    const nodes = mirror("completed", "completed");
+    nodes[4] = node("notify", { status: "waiting" });
+    assert.deepEqual(rowIds(nodes, "waiting"), {
+      rows: ["publish", "notify", "return"],
+      earlier: 3,
+      later: 0,
+    });
+  });
+
+  test("leads into a first step inside a loop from the loop's header, not the start", () => {
+    assert.deepEqual(
+      rowIds(
+        [
+          {
+            kind: "loop",
+            id: "loop",
+            label: "for (batch)",
+            nodes: [node("a", { status: "running" })],
+          },
+          node("b"),
+        ],
+        "active",
+      ),
+      { rows: ["loop", "a", "b"], earlier: 0, later: 0 },
+    );
+  });
+
+  test("takes in the rows the reader expanded under the step after", () => {
+    const nodes = [
+      node("current", { status: "running" }),
+      node("next", { children: [makeStep("nested")] }),
+      node("later"),
+    ] satisfies WorkflowRunNode[];
+    const placed = layout(nodes, ["next"]);
+    const excerpt = workflowRunExcerpt(placed, "active");
+    assert(excerpt.kind === "window");
+    assert.deepEqual(
+      placed.rows.slice(excerpt.from, excerpt.to + 1).map((row) => row.id),
+      ["current", "next", "nested"],
+    );
+    assert.equal(excerpt.laterSteps, 1);
+  });
+
+  test("sums a completed run up as its step count", () => {
+    assert.deepEqual(rowIds(mirror("completed", "completed"), "complete"), {
+      kind: "summary",
+      steps: 5,
+    });
   });
 });
 

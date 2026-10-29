@@ -320,6 +320,64 @@ export function layoutWorkflowRun(
 }
 
 /**
+ * The part of a run's rows worth showing where little room is left, such as in a conversation.
+ * A run that completed sums up as its step count. Otherwise the window runs from the step before
+ * where the run is to the step after it, with everything between, such as a loop's header, and
+ * the rows the reader expanded under that last step. The run is at its running, waiting, and
+ * failed steps, or else at the last step that ran. `from` and `to` are inclusive row indices.
+ */
+export type WorkflowRunExcerpt =
+  | { kind: "summary"; steps: number }
+  | { kind: "window"; from: number; to: number; earlierSteps: number; laterSteps: number };
+
+export function workflowRunExcerpt(
+  layout: WorkflowRunLayout,
+  status: WorkflowRunStatus,
+): WorkflowRunExcerpt {
+  // Rows nested under a step stay with it, so only the outermost rows bound the window.
+  const steps = layout.rows.flatMap((row, index) =>
+    row.kind === "step" && row.depth === 0 ? [{ step: row.step, index }] : [],
+  );
+  if (status === "complete") {
+    return { kind: "summary", steps: steps.length };
+  }
+  const current = steps.filter(({ step }) => CURRENT_STEP_STATUSES.has(step.status));
+  const ran = steps.filter(({ step }) => step.status !== "pending" && step.status !== "skipped");
+  const anchors = current.length > 0 ? current : ran.slice(-1);
+  const first = anchors[0]?.index ?? steps[0]?.index;
+  const last = anchors.at(-1)?.index ?? first;
+  if (first === undefined || last === undefined) {
+    return { kind: "window", from: 0, to: layout.rows.length - 1, earlierSteps: 0, laterSteps: 0 };
+  }
+
+  // Without a step before, the window still takes in what leads to the first, such as a loop's
+  // header; the start row only repeats the run's own status.
+  const before = steps.filter(({ index }) => index < first).at(-1);
+  const from =
+    before?.index ??
+    layout.rows.findIndex(
+      (row, index) => index <= first && row.depth === 0 && row.kind !== "start",
+    );
+  const after = steps.find(({ index }) => index > last);
+  // The step after ends where the next outermost row starts, past its children and iterations.
+  const nextOutermost =
+    after === undefined
+      ? -1
+      : layout.rows.findIndex((row, index) => index > after.index && row.depth === 0);
+  const to =
+    after === undefined || nextOutermost === -1 ? layout.rows.length - 1 : nextOutermost - 1;
+  return {
+    kind: "window",
+    from,
+    to,
+    earlierSteps: steps.filter(({ index }) => index < from).length,
+    laterSteps: steps.filter(({ index }) => index > to).length,
+  };
+}
+
+const CURRENT_STEP_STATUSES = new Set<WorkflowRunStepStatus>(["running", "waiting", "failed"]);
+
+/**
  * Ends the finished run provably stopped at. An end counts only when everything leading into it
  * finished and nothing it competes with ran. Two matching ends that compete, like consecutive
  * guards with no step between them, stay unmarked because the records cannot tell them apart.

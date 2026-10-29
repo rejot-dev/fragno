@@ -6,6 +6,7 @@ import {
   type ChatWorkflowElement,
   type ChatWorkflowStatus,
 } from "@fragno-private/design-system/chat-workflow";
+import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-run-timeline";
 import {
   createContext,
   useCallback,
@@ -31,6 +32,10 @@ import {
   type WorkflowRunReference,
   type WorkflowRunStep,
 } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
+import {
+  useWorkflowRunTimelineProjection,
+  type WorkflowRunTimelineProjection,
+} from "@/routes/backoffice/automations/script-view/workflow-run-timeline-presentation";
 
 // The workflows an agent starts show in the conversation, each as one card in the turn that
 // started it. The rest of the thread points at the card: a run waiting for the reader out of view
@@ -98,7 +103,10 @@ export function useSessionRun(instanceId: string | null): SessionRun | null {
   return instanceId === null ? null : (runs.get(instanceId) ?? null);
 }
 
-/** A run the agent started: every interface its steps produced, and the output it ended with. */
+/**
+ * A run the agent started: where it is in its steps, drawn as the dashboard draws them, every
+ * interface its steps produced, and the output it ended with.
+ */
 export function SessionWorkflow({ run: reference }: { run: WorkflowRunReference }) {
   const { replica, replicaError, setRun } = useSessionWorkflows();
   const { resolvedScope } = useCurrentBackofficeContext();
@@ -118,6 +126,7 @@ export function SessionWorkflow({ run: reference }: { run: WorkflowRunReference 
           ),
     [run],
   );
+  const timeline = useWorkflowRunTimelineProjection(run);
   const syncError = records.error ?? (replica === null ? replicaError : null);
   const status: ChatWorkflowStatus =
     syncError !== null
@@ -178,6 +187,7 @@ export function SessionWorkflow({ run: reference }: { run: WorkflowRunReference 
       name={name}
       status={status}
       elements={elements}
+      steps={timeline === null ? null : <SessionWorkflowSteps timeline={timeline} />}
       selectedId={selectedId}
       onSelect={(id) => {
         setSelection(id === null ? null : { id, newestId });
@@ -192,6 +202,27 @@ export function SessionWorkflow({ run: reference }: { run: WorkflowRunReference 
               })
           : null
       }
+    />
+  );
+}
+
+function SessionWorkflowSteps({ timeline }: { timeline: WorkflowRunTimelineProjection }) {
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  return (
+    <WorkflowRunTimeline
+      title={timeline.title}
+      status={timeline.status}
+      trigger={timeline.trigger}
+      createdAt={timeline.createdAt}
+      startedAt={timeline.startedAt}
+      endedAt={timeline.endedAt}
+      nodes={timeline.nodes}
+      events={timeline.events}
+      selectedStepId={selectedStepId}
+      onSelectStep={(stepId) => {
+        setSelectedStepId((current) => (current === stepId ? null : stepId));
+      }}
+      presentation={{ kind: "compact" }}
     />
   );
 }
@@ -247,17 +278,16 @@ function workflowStatus(
 ): ChatWorkflowStatus {
   switch (run.status) {
     case "active":
-      // A step is recorded once it settles, so the one running now has no record yet.
-      return { kind: "running", step: null };
+      return { kind: "running" };
     case "waiting": {
       const generatedUi = latestWorkflowRunGeneratedUi({ output: run.output, steps });
       if (currentWorkflowWaitingEventTypes(steps).length > 0 && generatedUi?.type === "step") {
         return { kind: "waiting-for-input", step: generatedUi.step.name };
       }
-      return { kind: "waiting", step: latestStepName(steps, "waiting") };
+      return { kind: "waiting" };
     }
     case "paused":
-      return { kind: "waiting", step: "Paused" };
+      return { kind: "paused" };
     case "complete":
       return { kind: "complete" };
     case "errored":

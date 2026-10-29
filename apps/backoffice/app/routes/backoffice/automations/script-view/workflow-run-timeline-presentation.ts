@@ -69,18 +69,25 @@ export function useWorkflowRunTimeline({
     },
   });
   const instance = records.instances.at(0) ?? null;
+  const timeline = useWorkflowRunTimelineProjection(instance);
+
+  return { instance, timeline, error: records.error, isLoading: records.isLoading };
+}
+
+/** The run on the timeline; its program is only parsed again when it changes. */
+export function useWorkflowRunTimelineProjection(
+  instance: AutomationWorkflowRun | null,
+): WorkflowRunTimelineProjection | null {
   const filename = instance?.codemode?.filename ?? null;
   const code = instance?.codemode?.code ?? null;
   const visualization = useMemo(
     () => (filename === null || code === null ? null : visualizeWorkflowSource(filename, code)),
     [filename, code],
   );
-  const timeline = useMemo(
+  return useMemo(
     () => (instance ? projectWorkflowRunTimeline({ instance, visualization }) : null),
     [instance, visualization],
   );
-
-  return { instance, timeline, error: records.error, isLoading: records.isLoading };
 }
 
 /**

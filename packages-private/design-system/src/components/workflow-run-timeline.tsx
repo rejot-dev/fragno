@@ -8,6 +8,7 @@ import {
   layoutWorkflowRun,
   newestWorkflowMoment,
   reachedWorkflowEndIds,
+  workflowRunExcerpt,
   workflowStepIterationsAt,
   workflowStepMarkAt,
   positionOnScale,
@@ -69,7 +70,9 @@ const STEP_STATUS_COLOR: Record<WorkflowRunStepStatus, string> = {
 /**
  * How the timeline sits on its page. On its own, it draws a header, its own time axis, and replay
  * controls. Embedded in a view that already draws the run on a time axis, such as a causal flame
- * graph, it is a list of steps that follows that view's replay cursor.
+ * graph, it is a list of steps that follows that view's replay cursor. Compact, inside a frame
+ * that already names the run and its status, such as a run in a conversation, it is a live list
+ * of steps.
  */
 export type WorkflowRunTimelinePresentation =
   | {
@@ -85,7 +88,8 @@ export type WorkflowRunTimelinePresentation =
       /** `null` follows the run live. */
       cursor: number | null;
       onHoverStep: (stepId: string | null) => void;
-    };
+    }
+  | { kind: "compact" };
 
 export function WorkflowRunTimeline({
   title,
@@ -131,8 +135,21 @@ export function WorkflowRunTimeline({
   const [ownCursor, setOwnCursor] = useState<number | null>(null);
   const replay = useTimelineReplay({ scale, cursor: ownCursor, onCursorChange: setOwnCursor });
   const cursor = presentation.kind === "embedded" ? presentation.cursor : ownCursor;
-  const timed = presentation.kind === "standalone";
+  const columns: TimelineColumns =
+    presentation.kind === "standalone"
+      ? "timed"
+      : presentation.kind === "embedded"
+        ? "untimed"
+        : "compact";
   const horizon = cursor ?? end;
+  // A compact timeline shows an excerpt until the reader asks for every step.
+  const [showsAllSteps, setShowsAllSteps] = useState(false);
+  const excerpt =
+    presentation.kind === "compact" && !showsAllSteps ? workflowRunExcerpt(layout, status) : null;
+  const shownRows =
+    excerpt?.kind === "window"
+      ? excerpt
+      : { from: 0, to: layout.rows.length - 1, earlierSteps: 0, laterSteps: 0 };
   const railWidth = RAIL_INSET * 2 + (layout.laneCount - 1) * LANE_GAP;
   // Events are oldest first.
   const latestEvent = events.filter((event) => event.at <= horizon).at(-1) ?? null;
@@ -186,21 +203,46 @@ export function WorkflowRunTimeline({
         role="table"
         aria-label="Workflow steps"
         className={cn(
-          "overflow-x-auto pb-2",
+          "overflow-x-auto",
+          columns === "compact" ? "py-1" : "pb-2",
           presentation.kind === "standalone" && presentation.surface === "card" && "px-2",
         )}
         style={
           {
             "--wf-rail": `${railWidth}px`,
-            "--wf-columns": timed ? TIMED_COLUMNS : UNTIMED_COLUMNS,
+            "--wf-columns": COLUMNS[columns].template,
           } as CSSProperties
         }
       >
-        <div className={timed ? "min-w-[44rem]" : "min-w-[28rem]"}>
-          <TimelineHeader scale={scale} timed={timed} />
+        <div className={COLUMNS[columns].minWidth}>
+          {columns === "compact" ? null : <TimelineHeader scale={scale} columns={columns} />}
+          {excerpt?.kind === "summary" ? (
+            <ExcerptToggle
+              label={`${excerpt.steps} ${excerpt.steps === 1 ? "step" : "steps"} · ${formatWorkflowDuration(end - (startedAt ?? createdAt), "coarse")}`}
+              action="Show steps"
+              railWidth={railWidth}
+              continues={false}
+              onToggle={() => {
+                setShowsAllSteps(true);
+              }}
+            />
+          ) : null}
+          {shownRows.earlierSteps > 0 ? (
+            <ExcerptToggle
+              label={`${shownRows.earlierSteps} earlier ${shownRows.earlierSteps === 1 ? "step" : "steps"}`}
+              action="Show all"
+              railWidth={railWidth}
+              continues
+              onToggle={() => {
+                setShowsAllSteps(true);
+              }}
+            />
+          ) : null}
           <div
             role="rowgroup"
-            className="relative"
+            // Rails between shown and hidden rows run on past the excerpt's edges, so they clip.
+            className={cn("relative", excerpt !== null && "overflow-hidden")}
+            hidden={excerpt?.kind === "summary"}
             onMouseLeave={
               presentation.kind === "embedded"
                 ? () => {
@@ -212,13 +254,14 @@ export function WorkflowRunTimeline({
             <RailGraph
               rows={layout.rows}
               rails={layout.rails}
+              firstRow={shownRows.from}
               width={railWidth}
               cursor={cursor}
               queued={queued}
               reachedEndIds={reachedEndIds}
               selectedStepId={selectedStepId}
             />
-            {layout.rows.map((row) =>
+            {layout.rows.slice(shownRows.from, shownRows.to + 1).map((row) =>
               row.kind === "start" ? (
                 <StartRow
                   key={row.id}
@@ -227,7 +270,7 @@ export function WorkflowRunTimeline({
                   startedAt={startedAt}
                   scale={scale}
                   horizon={horizon}
-                  timed={timed}
+                  columns={columns}
                 />
               ) : row.kind === "end" ? (
                 <EndRow
@@ -235,7 +278,7 @@ export function WorkflowRunTimeline({
                   row={row}
                   reached={reachedEndIds.has(row.id)}
                   finished={cursor === null && endedAt !== null}
-                  timed={timed}
+                  columns={columns}
                 />
               ) : row.kind === "loop" ? (
                 <LoopRow
@@ -244,7 +287,7 @@ export function WorkflowRunTimeline({
                   cursor={cursor}
                   scale={scale}
                   horizon={horizon}
-                  timed={timed}
+                  columns={columns}
                 />
               ) : (
                 <StepRow
@@ -255,7 +298,7 @@ export function WorkflowRunTimeline({
                   selected={row.step.id === selectedStepId}
                   scale={scale}
                   horizon={horizon}
-                  timed={timed}
+                  columns={columns}
                   onSelect={() => {
                     onSelectStep(row.step.id);
                   }}
@@ -271,10 +314,32 @@ export function WorkflowRunTimeline({
               ),
             )}
           </div>
+          {shownRows.laterSteps > 0 ? (
+            <ExcerptToggle
+              label={`${shownRows.laterSteps} later ${shownRows.laterSteps === 1 ? "step" : "steps"}`}
+              action="Show all"
+              railWidth={railWidth}
+              continues
+              onToggle={() => {
+                setShowsAllSteps(true);
+              }}
+            />
+          ) : null}
+          {presentation.kind === "compact" && showsAllSteps ? (
+            <ExcerptToggle
+              label={null}
+              action="Show fewer steps"
+              railWidth={railWidth}
+              continues={false}
+              onToggle={() => {
+                setShowsAllSteps(false);
+              }}
+            />
+          ) : null}
         </div>
       </div>
 
-      <LatestEvent event={latestEvent} createdAt={createdAt} />
+      {columns === "compact" ? null : <LatestEvent event={latestEvent} createdAt={createdAt} />}
     </section>
   );
 }
@@ -304,11 +369,29 @@ function RunStatusLabel({ status }: { status: RunDisplayStatus }) {
 }
 
 // Embedded timelines leave the time axis to the view around them and only keep each step's span.
-const TIMED_COLUMNS = "var(--wf-rail) minmax(10rem,1.5fr) 6rem 5rem minmax(10rem,1.6fr) 4rem";
-const UNTIMED_COLUMNS = "var(--wf-rail) minmax(10rem,1fr) 6rem 5rem 4rem";
+// Compact timelines keep only what reads at a glance: where each step is, and its state.
+type TimelineColumns = "timed" | "untimed" | "compact";
+
+const COLUMNS: Record<TimelineColumns, { template: string; minWidth: string }> = {
+  timed: {
+    template: "var(--wf-rail) minmax(10rem,1.5fr) 6rem 5rem minmax(10rem,1.6fr) 4rem",
+    minWidth: "min-w-[44rem]",
+  },
+  untimed: {
+    template: "var(--wf-rail) minmax(10rem,1fr) 6rem 5rem 4rem",
+    minWidth: "min-w-[28rem]",
+  },
+  compact: { template: "var(--wf-rail) minmax(8rem,1fr) 7.5rem", minWidth: "min-w-0" },
+};
 const ROW_GRID = "grid grid-cols-[var(--wf-columns)] items-center gap-x-3";
 
-function TimelineHeader({ scale, timed }: { scale: WorkflowTimeScale; timed: boolean }) {
+function TimelineHeader({
+  scale,
+  columns,
+}: {
+  scale: WorkflowTimeScale;
+  columns: TimelineColumns;
+}) {
   return (
     <div
       role="row"
@@ -321,7 +404,7 @@ function TimelineHeader({ scale, timed }: { scale: WorkflowTimeScale; timed: boo
       <span role="columnheader">Step</span>
       <span role="columnheader">State</span>
       <span role="columnheader">Attempt</span>
-      {timed ? (
+      {columns === "timed" ? (
         <span role="columnheader" className="relative h-full">
           <AxisLabels scale={scale} />
         </span>
@@ -375,14 +458,14 @@ function StartRow({
   startedAt,
   scale,
   horizon,
-  timed,
+  columns,
 }: {
   row: StartRowModel;
   createdAt: number;
   startedAt: number | null;
   scale: WorkflowTimeScale;
   horizon: number;
-  timed: boolean;
+  columns: TimelineColumns;
 }) {
   const queuedUntil = Math.min(startedAt ?? horizon, horizon);
   const queued = startedAt === null || horizon < startedAt;
@@ -399,8 +482,8 @@ function StartRow({
       <span role="cell" className="text-xs whitespace-nowrap text-[var(--bo-muted)]">
         {queued ? "Queued" : "Started"}
       </span>
-      <span role="cell" />
-      {timed ? (
+      {columns === "compact" ? null : <span role="cell" />}
+      {columns === "timed" ? (
         <span role="cell" className="relative h-full">
           <TimelineTrack
             marks={[
@@ -414,9 +497,11 @@ function StartRow({
           />
         </span>
       ) : null}
-      <span role="cell" className="text-right text-xs text-[var(--bo-muted)] tabular-nums">
-        {formatWorkflowDuration(queuedUntil - createdAt, "coarse")}
-      </span>
+      {columns === "compact" ? null : (
+        <span role="cell" className="text-right text-xs text-[var(--bo-muted)] tabular-nums">
+          {formatWorkflowDuration(queuedUntil - createdAt, "coarse")}
+        </span>
+      )}
     </div>
   );
 }
@@ -432,12 +517,12 @@ function EndRow({
   row,
   reached,
   finished,
-  timed,
+  columns,
 }: {
   row: EndRowModel;
   reached: boolean;
   finished: boolean;
-  timed: boolean;
+  columns: TimelineColumns;
 }) {
   const labels = END_LABEL[row.end.reason];
   const tone = reached
@@ -458,9 +543,9 @@ function EndRow({
       <span role="cell" className="text-xs whitespace-nowrap">
         {reached ? labels.reached : labels.pending}
       </span>
-      <span role="cell" />
-      {timed ? <span role="cell" /> : null}
-      <span role="cell" />
+      {columns === "compact" ? null : <span role="cell" />}
+      {columns === "timed" ? <span role="cell" /> : null}
+      {columns === "compact" ? null : <span role="cell" />}
     </div>
   );
 }
@@ -475,13 +560,13 @@ function LoopRow({
   cursor,
   scale,
   horizon,
-  timed,
+  columns,
 }: {
   row: LoopRowModel;
   cursor: number | null;
   scale: WorkflowTimeScale;
   horizon: number;
-  timed: boolean;
+  columns: TimelineColumns;
 }) {
   const iterations = Math.max(
     0,
@@ -526,8 +611,8 @@ function LoopRow({
       <span role="cell" className="text-xs whitespace-nowrap tabular-nums">
         {activity}
       </span>
-      <span role="cell" />
-      {timed ? (
+      {columns === "compact" ? null : <span role="cell" />}
+      {columns === "timed" ? (
         <span role="cell" className="relative h-full">
           <TimelineTrack
             marks={[{ mark, color: "var(--bo-muted-2)" }]}
@@ -536,10 +621,73 @@ function LoopRow({
           />
         </span>
       ) : null}
-      <span role="cell" className="text-right text-xs tabular-nums">
-        {mark.kind === "bar"
-          ? formatWorkflowDuration(mark.endedAt - mark.startedAt, "coarse")
-          : "—"}
+      {columns === "compact" ? null : (
+        <span role="cell" className="text-right text-xs tabular-nums">
+          {mark.kind === "bar"
+            ? formatWorkflowDuration(mark.endedAt - mark.startedAt, "coarse")
+            : "—"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+const EXCERPT_TOGGLE_HEIGHT = 24;
+
+/**
+ * Opens or closes a compact timeline's excerpt. Where it stands for hidden steps, a dotted rail
+ * shows the path running on past the excerpt.
+ */
+function ExcerptToggle({
+  label,
+  action,
+  railWidth,
+  continues,
+  onToggle,
+}: {
+  label: string | null;
+  action: string;
+  railWidth: number;
+  continues: boolean;
+  onToggle: () => void;
+}) {
+  const x = railWidth - RAIL_INSET;
+  return (
+    <div
+      role="row"
+      className={cn(ROW_GRID, "pr-2 text-xs text-[var(--bo-muted)]")}
+      style={{ height: EXCERPT_TOGGLE_HEIGHT }}
+    >
+      <span role="cell" className="h-full">
+        {continues ? (
+          <svg aria-hidden="true" width={railWidth} height={EXCERPT_TOGGLE_HEIGHT}>
+            <line
+              x1={x}
+              x2={x}
+              y1={2}
+              y2={EXCERPT_TOGGLE_HEIGHT - 2}
+              stroke="var(--bo-muted-2)"
+              strokeOpacity={0.6}
+              strokeWidth={1.25}
+              strokeDasharray="1 3"
+              strokeLinecap="round"
+            />
+          </svg>
+        ) : null}
+      </span>
+      <span
+        role="cell"
+        className="flex min-w-0 items-center gap-2"
+        style={{ gridColumn: "2 / -1" }}
+      >
+        {label === null ? null : <span className="truncate">{label}</span>}
+        <button
+          type="button"
+          onClick={onToggle}
+          className="shrink-0 rounded-[3px] text-[var(--bo-accent)] hover:underline focus-visible:underline focus-visible:outline-none"
+        >
+          {action}
+        </button>
       </span>
     </div>
   );
@@ -564,7 +712,7 @@ function StepRow({
   selected,
   scale,
   horizon,
-  timed,
+  columns,
   onSelect,
   onHover,
   onToggleExpanded,
@@ -575,7 +723,7 @@ function StepRow({
   selected: boolean;
   scale: WorkflowTimeScale;
   horizon: number;
-  timed: boolean;
+  columns: TimelineColumns;
   onSelect: () => void;
   onHover: () => void;
   onToggleExpanded: () => void;
@@ -668,26 +816,38 @@ function StepRow({
           </span>
         )}
       </span>
-      <span role="cell" className="flex items-center">
+      <span role="cell" className="flex items-center gap-1.5">
         <StepStatusLabel status={status} />
+        {columns === "compact" && showsOutcome && current.attempts.count > 1 ? (
+          <span
+            className="text-xs text-[var(--bo-muted)] tabular-nums"
+            title={`Attempt ${current.attempts.count} of ${current.attempts.max}`}
+          >
+            {current.attempts.count}/{current.attempts.max}
+          </span>
+        ) : null}
       </span>
-      <span role="cell" className="flex items-center">
-        {showsOutcome ? (
-          <AttemptMeter attempts={current.attempts} status={status} />
-        ) : (
-          <span className="text-xs text-[var(--bo-muted-2)]">—</span>
-        )}
-      </span>
-      {timed ? (
+      {columns === "compact" ? null : (
+        <span role="cell" className="flex items-center">
+          {showsOutcome ? (
+            <AttemptMeter attempts={current.attempts} status={status} />
+          ) : (
+            <span className="text-xs text-[var(--bo-muted-2)]">—</span>
+          )}
+        </span>
+      )}
+      {columns === "timed" ? (
         <span role="cell" className="relative h-full">
           <TimelineTrack marks={marks} scale={scale} horizon={horizon} />
         </span>
       ) : null}
-      <span role="cell" className="text-right text-xs text-[var(--bo-muted)] tabular-nums">
-        {mark.kind === "bar"
-          ? formatWorkflowDuration(mark.endedAt - mark.startedAt, "coarse")
-          : "—"}
-      </span>
+      {columns === "compact" ? null : (
+        <span role="cell" className="text-right text-xs text-[var(--bo-muted)] tabular-nums">
+          {mark.kind === "bar"
+            ? formatWorkflowDuration(mark.endedAt - mark.startedAt, "coarse")
+            : "—"}
+        </span>
+      )}
     </div>
   );
 }
@@ -809,6 +969,7 @@ function TimelineTrack({
 function RailGraph({
   rows,
   rails,
+  firstRow,
   width,
   cursor,
   queued,
@@ -817,6 +978,8 @@ function RailGraph({
 }: {
   rows: readonly WorkflowRunRow[];
   rails: readonly WorkflowRunRail[];
+  /** The first row shown; the graph is drawn whole and moved up past the rows above it. */
+  firstRow: number;
   width: number;
   cursor: number | null;
   queued: boolean;
@@ -839,7 +1002,8 @@ function RailGraph({
       aria-hidden="true"
       width={width}
       height={rows.length * ROW_HEIGHT}
-      className="pointer-events-none absolute top-0 left-0 overflow-visible"
+      className="pointer-events-none absolute left-0 overflow-visible"
+      style={{ top: -firstRow * ROW_HEIGHT }}
     >
       <defs>
         {Object.entries(tones).map(([tone, style]) => (

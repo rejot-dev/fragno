@@ -24,6 +24,12 @@ import { ScrollablePre } from "./scrollable-pre";
 import { Select } from "./select";
 import { TextArea } from "./text-area";
 import { TonedPanel } from "./toned-panel";
+import { WorkflowRunTimeline } from "./workflow-run-timeline";
+import type {
+  WorkflowRunNode,
+  WorkflowRunStatus,
+  WorkflowRunStep,
+} from "./workflow-run-timeline-model";
 
 export default { title: "Agents/Chat workflow" };
 
@@ -109,6 +115,210 @@ function RemindersSentInterface() {
   );
 }
 
+/**
+ * Where the sample run is in its program: load the unpaid invoices, have the reader review Acme's
+ * reminder, send a reminder per invoice, have the reader pick a follow-up, and schedule it.
+ */
+type Phase =
+  | "review"
+  | "sending"
+  | "retrying"
+  | "follow-up"
+  | "scheduling"
+  | "complete"
+  | "failed"
+  | "stopped";
+
+const PHASE_RUN_STATUS: Record<Phase, WorkflowRunStatus> = {
+  review: "waiting",
+  sending: "active",
+  retrying: "waiting",
+  "follow-up": "waiting",
+  scheduling: "active",
+  complete: "complete",
+  failed: "errored",
+  stopped: "terminated",
+};
+
+/**
+ * The step each phase is at, in program order: load, review, send, follow-up, schedule. Steps
+ * before it are done; past the last, the run has finished.
+ */
+const PHASE_STEP: Record<Phase, number> = {
+  review: 1,
+  sending: 2,
+  retrying: 2,
+  failed: 2,
+  stopped: 1,
+  "follow-up": 3,
+  scheduling: 4,
+  complete: 5,
+};
+
+// The run is live, so its steps are laid out relative to when the stories load.
+const SAMPLE_START = Date.now() - 30_000;
+const at = (seconds: number) => SAMPLE_START + seconds * 1_000;
+
+function sampleStep(
+  id: string,
+  label: string,
+  fields: Partial<Omit<WorkflowRunStep, "id" | "label">>,
+): WorkflowRunStep {
+  return {
+    id,
+    label,
+    detail: null,
+    status: "pending",
+    activity: "work",
+    attempts: { count: 0, max: 1 },
+    timing: { kind: "unstarted" },
+    children: [],
+    iterations: [],
+    ...fields,
+  };
+}
+
+function ran(startedAt: number, endedAt: number | null) {
+  return {
+    kind: "span",
+    startedAt: at(startedAt),
+    endedAt: endedAt === null ? null : at(endedAt),
+  } as const;
+}
+
+/** One reminder per invoice; while the run sends, the third is still going, retrying, or failed. */
+function reminders(phase: Phase): WorkflowRunStep[] {
+  const invoices = ["INV-4182", "INV-4190", "INV-4203"];
+  return invoices.map((invoice, index) => {
+    const step = sampleStep(`send-${invoice}`, `send reminder ${invoice}`, {
+      status: "completed",
+      attempts: { count: 1, max: 3 },
+      timing: ran(6 + index * 3, 8 + index * 3),
+    });
+    if (index < invoices.length - 1 || PHASE_STEP[phase] > 2) {
+      return step;
+    }
+    switch (phase) {
+      case "retrying":
+        return {
+          ...step,
+          status: "waiting",
+          attempts: { count: 2, max: 3 },
+          detail: "MailboxBusy: retrying in 4 seconds",
+          timing: ran(12, null),
+        };
+      case "failed":
+        return {
+          ...step,
+          status: "failed",
+          attempts: { count: 3, max: 3 },
+          detail: "MailboxUnavailable: billing@initech.example",
+          timing: ran(12, 21),
+        };
+      case "review":
+      case "sending":
+      case "follow-up":
+      case "scheduling":
+      case "complete":
+      case "stopped":
+        return { ...step, status: "running", timing: ran(12, null) };
+    }
+    throw new Error("Unsupported sample phase.", { cause: phase satisfies never });
+  });
+}
+
+function sampleNodes(phase: Phase): WorkflowRunNode[] {
+  const reached = PHASE_STEP[phase];
+  // A step the run is at has started; one it passed finished.
+  const progress = (
+    point: number,
+    from: number,
+    to: number,
+    activity: WorkflowRunStep["activity"],
+  ): Partial<WorkflowRunStep> =>
+    point < reached
+      ? { status: "completed", timing: ran(from, to) }
+      : point === reached
+        ? { status: activity === "wait" ? "waiting" : "running", timing: ran(from, null) }
+        : {};
+  const sent = reached >= 2 ? reminders(phase) : [];
+  const latest = sent.at(-1);
+  return [
+    {
+      kind: "step",
+      step: sampleStep("load", "load unpaid invoices", progress(0, 0, 1, "work")),
+    },
+    {
+      kind: "step",
+      step: sampleStep("review", "Review the Acme reminder", {
+        activity: "wait",
+        ...progress(1, 1, 6, "wait"),
+      }),
+    },
+    {
+      kind: "loop",
+      id: "invoices",
+      label: "for (const invoice of invoices)",
+      nodes: [
+        {
+          kind: "step",
+          step: sampleStep("send", "send reminder …", {
+            ...(latest === undefined
+              ? { attempts: { count: 0, max: 3 } }
+              : {
+                  status: latest.status,
+                  attempts: latest.attempts,
+                  detail: latest.detail,
+                  timing: {
+                    kind: "span",
+                    startedAt: at(6),
+                    endedAt: latest.timing.kind === "span" ? latest.timing.endedAt : null,
+                  },
+                }),
+            iterations: sent,
+          }),
+        },
+      ],
+    },
+    {
+      kind: "step",
+      step: sampleStep("follow-up", "Schedule a follow-up", {
+        activity: "wait",
+        ...progress(3, 15, 24, "wait"),
+      }),
+    },
+    {
+      kind: "step",
+      step: sampleStep("schedule", "schedule the follow-up", progress(4, 24, 26, "work")),
+    },
+    { kind: "end", end: { id: "return", label: "return", reason: "return" } },
+  ];
+}
+
+/** The run's steps as the card shows them. */
+function SampleSteps({ phase }: { phase: Phase }) {
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const status = PHASE_RUN_STATUS[phase];
+  const ended = status === "complete" || status === "errored" || status === "terminated";
+  return (
+    <WorkflowRunTimeline
+      title={WORKFLOW}
+      status={status}
+      trigger="pi · tool call"
+      createdAt={at(-0.4)}
+      startedAt={at(0)}
+      endedAt={ended ? at(phase === "failed" ? 21 : 26) : null}
+      nodes={sampleNodes(phase)}
+      events={[]}
+      selectedStepId={selectedStepId}
+      onSelectStep={(stepId) => {
+        setSelectedStepId((current) => (current === stepId ? null : stepId));
+      }}
+      presentation={{ kind: "compact" }}
+    />
+  );
+}
+
 // The pane a chat window fills in Backoffice, below the page's tab header.
 function Frame({ children }: { children: ReactNode }) {
   return (
@@ -168,17 +378,26 @@ function sampleStatus(run: Run, stopped: boolean): ChatWorkflowStatus {
     case "review":
       return { kind: "waiting-for-input", step: "Review the Acme reminder" };
     case "sending":
-      return { kind: "running", step: "Sending reminders" };
+      return { kind: "running" };
     case "follow-up":
       return { kind: "waiting-for-input", step: "Schedule a follow-up" };
     case "scheduling":
-      return { kind: "running", step: "Scheduling the follow-up" };
+      return { kind: "running" };
     case "complete":
     case "answered":
       return { kind: "complete" };
   }
   throw new Error("Unsupported sample run.", { cause: run satisfies never });
 }
+
+const RUN_PHASE: Record<Run, Phase> = {
+  review: "review",
+  sending: "sending",
+  "follow-up": "follow-up",
+  scheduling: "scheduling",
+  complete: "complete",
+  answered: "complete",
+};
 
 function minutesAfterStart(minutes: number) {
   return new Date(SAMPLE_TIME.getTime() + minutes * 60_000);
@@ -291,6 +510,7 @@ export function InConversation() {
                 name={WORKFLOW}
                 status={status}
                 elements={elements}
+                steps={<SampleSteps phase={stopped ? "stopped" : RUN_PHASE[run]} />}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
                 onStop={
@@ -382,9 +602,16 @@ const RESULT: ChatWorkflowElement = {
 };
 
 /** A card whose strip the reader can use, as Backoffice keeps the selection per run. */
-function Workflow(
-  props: Omit<ComponentProps<typeof ChatWorkflow>, "name" | "selectedId" | "onSelect" | "onStop">,
-) {
+function Workflow({
+  phase,
+  ...props
+}: Omit<
+  ComponentProps<typeof ChatWorkflow>,
+  "name" | "selectedId" | "onSelect" | "onStop" | "steps"
+> & {
+  /** Where the run is in its steps; null while they are not known. */
+  phase: Phase | null;
+}) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   return (
     <ChatWorkflow
@@ -392,6 +619,7 @@ function Workflow(
       selectedId={selectedId}
       onSelect={setSelectedId}
       onStop={null}
+      steps={phase === null ? null : <SampleSteps phase={phase} />}
       {...props}
     />
   );
@@ -400,37 +628,124 @@ function Workflow(
 export function States() {
   return (
     <Column>
-      <Workflow status={{ kind: "synchronizing" }} elements={[]} />
-      <Workflow status={{ kind: "running", step: "Loading unpaid invoices" }} elements={[]} />
+      <Workflow phase={null} status={{ kind: "synchronizing" }} elements={[]} />
       <Workflow
+        phase="review"
         status={{ kind: "waiting-for-input", step: "Review the Acme reminder" }}
         elements={[REVIEW]}
       />
-      <Workflow status={{ kind: "running", step: "Sending reminders" }} elements={[REVIEW]} />
+      <Workflow phase="sending" status={{ kind: "running" }} elements={[REVIEW]} />
+      <Workflow phase="retrying" status={{ kind: "waiting" }} elements={[REVIEW]} />
       <Workflow
+        phase="follow-up"
         status={{ kind: "waiting-for-input", step: "Schedule a follow-up" }}
         elements={[REVIEW, FOLLOW_UP]}
       />
+      <Workflow phase="scheduling" status={{ kind: "running" }} elements={[REVIEW, FOLLOW_UP]} />
       <Workflow
-        status={{ kind: "waiting", step: "Wait until Monday" }}
-        elements={[REVIEW, FOLLOW_UP]}
+        phase="complete"
+        status={{ kind: "complete" }}
+        elements={[REVIEW, FOLLOW_UP, RESULT]}
       />
-      <Workflow status={{ kind: "complete" }} elements={[REVIEW, FOLLOW_UP, RESULT]} />
-      <Workflow status={{ kind: "stopped" }} elements={[REVIEW]} />
+      <Workflow phase="stopped" status={{ kind: "stopped" }} elements={[REVIEW]} />
       <Workflow
+        phase="failed"
         status={{
           kind: "failed",
-          step: "Sending reminders",
-          error: "Email provider rejected billing@acme.example: mailbox unavailable.",
+          step: "send reminder INV-4203",
+          error: "MailboxUnavailable: billing@initech.example",
         }}
         elements={[REVIEW]}
       />
       <Workflow
+        phase={null}
         status={{
           kind: "synchronization-failed",
           error: "Workflow synchronization failed: the run's durable object is unreachable.",
         }}
         elements={[]}
+      />
+    </Column>
+  );
+}
+
+// A batched mirror part way through its downloads: the steps before and after its loop only
+// show once the reader asks for them.
+const MIRROR_BATCHES = 7;
+
+function mirrorStep(id: string, label: string, from: number, to: number | null): WorkflowRunNode {
+  return {
+    kind: "step",
+    step: sampleStep(id, label, to === null ? {} : { status: "completed", timing: ran(from, to) }),
+  };
+}
+
+function mirrorNodes(): WorkflowRunNode[] {
+  const batches = Array.from({ length: MIRROR_BATCHES }, (_, index) => {
+    const running = index === MIRROR_BATCHES - 1;
+    return sampleStep(`download-${index}`, `download files ${index * 8}`, {
+      status: running ? "running" : "completed",
+      attempts: { count: index === 2 ? 2 : 1, max: 3 },
+      timing: ran(3 + index * 3.5, running ? null : 6 + index * 3.5),
+    });
+  });
+  const latest = batches.at(-1);
+  return [
+    mirrorStep("fetch", "fetch repository", 0, 1),
+    mirrorStep("list", "list files", 1, 2),
+    mirrorStep("pin", "pin main snapshot", 2, 3),
+    {
+      kind: "loop",
+      id: "batches",
+      label: "for (let i = 0; i < plan.count; i += 8)",
+      nodes: [
+        {
+          kind: "step",
+          step: sampleStep("download", "download files …", {
+            status: "running",
+            attempts: latest?.attempts ?? { count: 1, max: 3 },
+            timing: { kind: "span", startedAt: at(3), endedAt: null },
+            iterations: batches,
+          }),
+        },
+      ],
+    },
+    mirrorStep("verify", "verify checksums", 0, null),
+    mirrorStep("manifest", "write manifest", 0, null),
+    mirrorStep("publish", "publish verified snapshot", 0, null),
+    { kind: "end", end: { id: "return", label: "return", reason: "return" } },
+  ];
+}
+
+/** A long run keeps the card short: it shows where the run is, and the rest on request. */
+export function LongRun() {
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  return (
+    <Column>
+      <ChatWorkflow
+        name="kc-initial-mirror"
+        status={{ kind: "running" }}
+        elements={[]}
+        steps={
+          <WorkflowRunTimeline
+            title="kc-initial-mirror"
+            status="active"
+            trigger="manual"
+            createdAt={at(-0.2)}
+            startedAt={at(0)}
+            endedAt={null}
+            nodes={mirrorNodes()}
+            events={[]}
+            selectedStepId={selectedStepId}
+            onSelectStep={(stepId) => {
+              setSelectedStepId((current) => (current === stepId ? null : stepId));
+            }}
+            presentation={{ kind: "compact" }}
+          />
+        }
+        selectedId={null}
+        onSelect={() => undefined}
+        onStop={async () => undefined}
       />
     </Column>
   );
@@ -450,6 +765,7 @@ export function Stop() {
             : { kind: "waiting-for-input", step: "Review the Acme reminder" }
         }
         elements={[REVIEW]}
+        steps={<SampleSteps phase={stopped ? "stopped" : "review"} />}
         selectedId={selectedId}
         onSelect={setSelectedId}
         onStop={
@@ -465,8 +781,9 @@ export function Stop() {
       />
       <ChatWorkflow
         name="Archive old invoices"
-        status={{ kind: "running", step: "Moving invoices to the archive" }}
+        status={{ kind: "running" }}
         elements={[]}
+        steps={<SampleSteps phase="sending" />}
         selectedId={null}
         onSelect={() => undefined}
         onStop={async () => {
