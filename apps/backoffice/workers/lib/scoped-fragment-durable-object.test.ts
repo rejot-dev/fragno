@@ -36,6 +36,7 @@ function createHost() {
       initialize,
       resolveMount: () => null,
       fetch: async () => new Response(null, { status: 404 }),
+      wake: async () => {},
     } satisfies FragmentDurableObjectHost<{ scopeId: string }, { scopeId: string }>,
   };
 }

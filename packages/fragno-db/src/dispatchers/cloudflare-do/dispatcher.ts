@@ -5,6 +5,22 @@ import type {
 } from "../../hooks/durable-hooks-processor";
 import type { HookNotifyContext, HookNotifySource } from "../../hooks/hooks";
 
+/**
+ * Cloudflare retries a failing alarm for about two and a half minutes. An alarm still reported this
+ * long after its time is not going to fire, and keeping it would leave every hook of its object
+ * pending, as an alarm that ran out of retries once did.
+ */
+const LOST_ALARM_AGE_MS = 5 * 60_000;
+
+/**
+ * An alarm the Durable Object still reported long after its time, which the dispatcher replaced. The
+ * object has one alarm, so a lost alarm stalls every fragment whose hooks it hosts.
+ */
+export type DurableHooksLostAlarm = {
+  /** When the lost alarm was due. */
+  scheduledAt: Date;
+};
+
 type AlarmStorage = {
   getAlarm?: () => Promise<number | null>;
   setAlarm?: (timestamp: number | Date) => Promise<void>;
@@ -39,6 +55,8 @@ export type DurableHooksDispatcherDurableObjectOptions<TEnv = unknown> = {
     env: TEnv;
   }) => DurableHooksProcessor;
   onProcessError?: DurableHooksErrorObserver;
+  /** Called after the dispatcher replaced an alarm that never fired. */
+  onLostAlarm?: (alarm: DurableHooksLostAlarm) => void;
 };
 
 export function createDurableHooksDispatcherDurableObject<TEnv>(
@@ -68,6 +86,20 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
         });
       }
     };
+    const reportLostAlarm = (scheduledAt: Date) => {
+      DurableHooksLogger.warn("Durable hooks replaced a lost alarm", {
+        namespace: processor.namespace,
+        fields: { scheduledAt: scheduledAt.toISOString() },
+      });
+      try {
+        options.onLostAlarm?.({ scheduledAt });
+      } catch (callbackError) {
+        DurableHooksLogger.error("Durable hooks dispatcher onLostAlarm callback failed", {
+          namespace: processor.namespace,
+          fields: { error: DurableHooksLogger.toErrorMessage(callbackError) },
+        });
+      }
+    };
     const rawGetAlarm = state.storage.getAlarm;
     const rawSetAlarm = state.storage.setAlarm;
     const rawDeleteAlarm = state.storage.deleteAlarm;
@@ -88,6 +120,9 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     let alarmRefreshPromise: Promise<void> | undefined;
     let latestAlarmRefreshSource: HookNotifySource = "request";
     let scheduledHookAlarm: number | null = null;
+    // Cloudflare runs one alarm handler at a time and holds back alarms set during it, so while this
+    // handler runs, an overdue alarm is waiting rather than lost.
+    let activeAlarmHandlers = 0;
 
     const runProcess = () => {
       if (processing) {
@@ -165,13 +200,26 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       const now = Date.now();
       const scheduledAt = new Date(Math.max(nextWakeAt.getTime(), now));
       const existingAlarm = await getAlarm?.();
+      const lostAlarm =
+        activeAlarmHandlers === 0 &&
+        existingAlarm !== undefined &&
+        existingAlarm !== null &&
+        existingAlarm <= now - LOST_ALARM_AGE_MS;
       if (
         existingAlarm === undefined ||
         existingAlarm === null ||
-        existingAlarm > scheduledAt.getTime()
+        existingAlarm > scheduledAt.getTime() ||
+        lostAlarm
       ) {
         await setAlarm(scheduledAt);
-        scheduledHookAlarm = scheduledAt.getTime();
+        // The object shares its alarm with other work, such as an outbox retry. A lost alarm this
+        // dispatcher did not schedule is replaced but not claimed, so going idle never deletes it:
+        // an extra alarm finds nothing to do, while a deleted one strands its owner's work.
+        scheduledHookAlarm =
+          lostAlarm && existingAlarm !== scheduledHookAlarm ? null : scheduledAt.getTime();
+      }
+      if (lostAlarm) {
+        reportLostAlarm(new Date(existingAlarm));
       }
       DurableHooksLogger.debug("Durable hooks alarm scheduled", {
         namespace: processor.namespace,
@@ -226,8 +274,13 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
         await reconcileHookAlarm(context.source);
       },
       alarm: async () => {
-        await runProcess();
-        await reconcileHookAlarm("alarm");
+        activeAlarmHandlers += 1;
+        try {
+          await runProcess();
+          await reconcileHookAlarm("alarm");
+        } finally {
+          activeAlarmHandlers -= 1;
+        }
       },
       drain: async () => {
         await processor.drain();

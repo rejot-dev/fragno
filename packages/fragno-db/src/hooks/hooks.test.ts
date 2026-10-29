@@ -1099,6 +1099,7 @@ describe("Hook System", () => {
         onStuck: defineDurableHook(hookFn),
       };
       const onStuckProcessingHooks = vi.fn();
+      const observeStuckProcessingHooks = vi.fn();
 
       let eventId: FragnoId;
 
@@ -1130,6 +1131,11 @@ describe("Hook System", () => {
         handlerTx,
         stuckProcessingTimeoutMinutes: 1,
         onStuckProcessingHooks,
+        instrumentation: {
+          captureContext: () => null,
+          runAttempt: (_attempt, execute) => execute(),
+          observeStuckProcessingHooks,
+        },
       });
 
       expect(hookFn).toHaveBeenCalledOnce();
@@ -1140,6 +1146,9 @@ describe("Hook System", () => {
           timeoutMinutes: 1,
           events: [expect.objectContaining({ hookName: "onStuck" })],
         }),
+      );
+      expect(observeStuckProcessingHooks).toHaveBeenCalledExactlyOnceWith(
+        onStuckProcessingHooks.mock.calls[0]?.[0],
       );
 
       const result = await internalFragment.inContext(async function () {

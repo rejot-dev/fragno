@@ -9,6 +9,7 @@ import {
   createDurableHooksProcessor,
   type DurableHooksDispatcherDurableObjectHandler,
   type DurableHooksDispatcherDurableObjectState,
+  type DurableHooksLostAlarm,
 } from "./index";
 
 type CreateDispatcherContext<TEnv> = {
@@ -17,6 +18,7 @@ type CreateDispatcherContext<TEnv> = {
   env: TEnv;
   instrumentation?: DurableHooksInstrumentation;
   onProcessError?: DurableHooksErrorObserver;
+  onLostAlarm?: (alarm: DurableHooksLostAlarm) => void;
 };
 
 export type FragmentDurableObjectInitializationContext =
@@ -78,6 +80,11 @@ type CommonFragmentDurableObjectHostDefinition<TEnv, TSource, TRuntime> = {
   onDispatcherError?: DurableHooksErrorObserver;
   /** Called by the durable hook dispatcher when processing or alarm scheduling fails. */
   onProcessError?: DurableHooksErrorObserver;
+  /**
+   * Called after the durable hook dispatcher replaced this object's lost alarm: until then, none of
+   * its hooks ran.
+   */
+  onLostAlarm?: (alarm: DurableHooksLostAlarm) => void;
 };
 
 type SingleFragmentHostDefinition<
@@ -253,6 +260,11 @@ export type FragmentDurableObjectHost<TSource, TRuntime> = {
   ) => Promise<Response>;
   /** Runs the durable-hook alarm handler for the current dispatcher, if hooks are enabled. */
   alarm: () => Promise<void>;
+  /**
+   * Fires the Durable Object's alarm now, replacing any alarm it has: the alarm runs due hooks and
+   * schedules the next one. Recovers an object whose alarm was lost, leaving its hooks pending.
+   */
+  wake: () => Promise<void>;
 };
 
 /**
@@ -349,10 +361,12 @@ export function createFragmentDurableObjectHost<TEnv, TSource, TRuntime>(
             env: options.env,
             instrumentation: options.durableHooksInstrumentation,
             onProcessError: options.onProcessError,
+            onLostAlarm: options.onLostAlarm,
           })
         : createDurableHooksProcessor<TEnv>(hookFragments, {
             instrumentation: options.durableHooksInstrumentation,
             onProcessError: options.onProcessError,
+            onLostAlarm: options.onLostAlarm,
           })(options.state, options.env);
 
       await nextDispatcher.initialize?.();
@@ -484,6 +498,13 @@ export function createFragmentDurableObjectHost<TEnv, TSource, TRuntime>(
     },
     alarm: async () => {
       await dispatcher?.alarm?.();
+    },
+    wake: async () => {
+      const { setAlarm } = options.state.storage;
+      if (!setAlarm) {
+        throw new Error(`${hostName} cannot wake without state.storage.setAlarm.`);
+      }
+      await setAlarm.call(options.state.storage, Date.now());
     },
   };
 }

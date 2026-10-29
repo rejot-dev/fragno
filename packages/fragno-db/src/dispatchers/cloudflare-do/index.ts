@@ -11,10 +11,13 @@ import {
   type DurableHooksDispatcherDurableObjectFactory,
   type DurableHooksDispatcherDurableObjectHandler,
   type DurableHooksDispatcherDurableObjectState,
+  type DurableHooksLostAlarm,
 } from "./dispatcher";
 
 export type DurableHooksProcessorOptions = {
   onProcessError?: DurableHooksErrorObserver;
+  /** Called after the dispatcher replaced the Durable Object's lost alarm. */
+  onLostAlarm?: (alarm: DurableHooksLostAlarm) => void;
   /**
    * Overrides each fragment's durable-hook instrumentation before the fragments are exposed.
    */
@@ -25,6 +28,7 @@ export type {
   DurableHooksDispatcherDurableObjectFactory,
   DurableHooksDispatcherDurableObjectHandler,
   DurableHooksDispatcherDurableObjectState,
+  DurableHooksLostAlarm,
 };
 
 export function createDurableHooksProcessor<TEnv>(
@@ -38,6 +42,7 @@ export function createDurableHooksProcessor<TEnv>(
   const factory = createDurableHooksDispatcherDurableObject<TEnv>({
     createProcessor: () => processor,
     onProcessError: options.onProcessError,
+    onLostAlarm: options.onLostAlarm,
   });
 
   return (state, env) => {

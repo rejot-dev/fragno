@@ -189,6 +189,12 @@ export interface DurableHooksInstrumentation {
    * a concurrent writer overruled. Errors thrown here are logged and do not change the outcome.
    */
   observeAttemptOutcome?(attempt: DurableHookAttempt, outcome: DurableHookAttemptOutcome): void;
+  /**
+   * Observe hooks that sat in `processing` past the stuck-processing timeout, after they are moved
+   * back to `pending`: their attempt died with its runtime, such as an alarm that ran out of memory.
+   * Errors thrown here are logged and do not change the recovery.
+   */
+  observeStuckProcessingHooks?(info: StuckHookProcessingInfo): void;
 }
 
 /**
@@ -667,14 +673,25 @@ export async function processHooks<THooks extends HooksMap>(
   stuckEvents = result.stuckEvents;
 
   if (includeStuckProcessing && stuckEvents.length > 0) {
+    const info = {
+      namespace,
+      timeoutMinutes: stuckProcessingTimeoutMinutes,
+      events: stuckEvents,
+    };
     try {
-      config.onStuckProcessingHooks?.({
-        namespace,
-        timeoutMinutes: stuckProcessingTimeoutMinutes,
-        events: stuckEvents,
-      });
+      config.onStuckProcessingHooks?.(info);
     } catch (error) {
       DurableHooksLogger.error("Error calling onStuckProcessingHooks", {
+        namespace,
+        fields: {
+          error: DurableHooksLogger.toErrorMessage(error),
+        },
+      });
+    }
+    try {
+      config.instrumentation?.observeStuckProcessingHooks?.(info);
+    } catch (error) {
+      DurableHooksLogger.error("Error calling observeStuckProcessingHooks", {
         namespace,
         fields: {
           error: DurableHooksLogger.toErrorMessage(error),

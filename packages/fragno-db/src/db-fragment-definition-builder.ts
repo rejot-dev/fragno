@@ -376,6 +376,8 @@ function createDurableHooksRequestContextInstrumentation(config: {
       ),
     observeAttemptOutcome: (attempt, outcome) =>
       config.instrumentation?.observeAttemptOutcome?.(attempt, outcome),
+    observeStuckProcessingHooks: (info) =>
+      config.instrumentation?.observeStuckProcessingHooks?.(info),
   };
 }
 

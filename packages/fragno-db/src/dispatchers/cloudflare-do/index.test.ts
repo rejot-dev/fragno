@@ -174,6 +174,102 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     expect(setAlarm).not.toHaveBeenCalled();
   });
 
+  it("should replace and report a lost alarm without claiming it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = new Date("2024-01-01T00:00:00Z");
+    vi.setSystemTime(now);
+    // Scheduled by other work sharing the object's alarm, before the dispatcher existed.
+    const lostAlarmAt = now.getTime() - 10 * 60_000;
+    let alarmTimestamp: number | null = lostAlarmAt;
+    let nextWakeAt: Date | null = now;
+    const setAlarm = vi.fn(async (timestamp: number | Date) => {
+      alarmTimestamp = timestamp instanceof Date ? timestamp.getTime() : timestamp;
+    });
+    const deleteAlarm = vi.fn(async () => {
+      alarmTimestamp = null;
+    });
+    const onLostAlarm = vi.fn();
+
+    const handlerFactory = createDurableHooksDispatcherDurableObject({
+      createProcessor: () => ({
+        processDue: vi.fn().mockResolvedValue(completedRun()),
+        getNextWakeAt: async () => nextWakeAt,
+        drain: vi.fn().mockResolvedValue(undefined),
+        namespace: "test",
+      }),
+      onLostAlarm,
+    });
+    const handler = handlerFactory(
+      { storage: { getAlarm: async () => alarmTimestamp, setAlarm, deleteAlarm } },
+      {},
+    );
+
+    await handler.notify?.({ source: "request" });
+
+    assert(alarmTimestamp === now.getTime());
+    expect(onLostAlarm).toHaveBeenCalledExactlyOnceWith({ scheduledAt: new Date(lostAlarmAt) });
+
+    nextWakeAt = null;
+    await handler.notify?.({ source: "request" });
+
+    expect(deleteAlarm).not.toHaveBeenCalled();
+    assert(alarmTimestamp === now.getTime());
+  });
+
+  it("should keep an alarm held back by its running alarm handler", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = new Date("2024-01-01T00:00:00Z");
+    vi.setSystemTime(start);
+    const completion = Promise.withResolvers<number>();
+    const processDue = vi
+      .fn()
+      .mockResolvedValue({ claimedCount: 1, completion: completion.promise });
+    let nextWakeAt: Date | null = null;
+    // An outbox retry the host scheduled before handing its alarm to the dispatcher.
+    const retryAt = start.getTime() + 30_000;
+    let alarmTimestamp: number | null = retryAt;
+    const setAlarm = vi.fn(async (timestamp: number | Date) => {
+      alarmTimestamp = timestamp instanceof Date ? timestamp.getTime() : timestamp;
+    });
+    const deleteAlarm = vi.fn(async () => {
+      alarmTimestamp = null;
+    });
+    const onLostAlarm = vi.fn();
+
+    const handlerFactory = createDurableHooksDispatcherDurableObject({
+      createProcessor: () => ({
+        processDue,
+        getNextWakeAt: async () => nextWakeAt,
+        drain: vi.fn().mockResolvedValue(undefined),
+        namespace: "test",
+      }),
+      onLostAlarm,
+    });
+    const handler = handlerFactory(
+      { storage: { getAlarm: async () => alarmTimestamp, setAlarm, deleteAlarm } },
+      {},
+    );
+
+    const alarm = handler.alarm?.();
+    assert(alarm);
+    await vi.waitFor(() => expect(processDue).toHaveBeenCalledOnce());
+
+    // A request queues a hook while the alarm's hooks still run, long after the retry was due.
+    vi.setSystemTime(start.getTime() + 10 * 60_000);
+    nextWakeAt = new Date();
+    await handler.notify?.({ source: "request" });
+
+    expect(setAlarm).not.toHaveBeenCalled();
+    expect(onLostAlarm).not.toHaveBeenCalled();
+
+    nextWakeAt = null;
+    completion.resolve(1);
+    await alarm;
+
+    expect(deleteAlarm).not.toHaveBeenCalled();
+    assert(alarmTimestamp === retryAt);
+  });
+
   it("should serialize concurrent alarms behind active hook completion", async () => {
     const firstCompletion = Promise.withResolvers<number>();
     const processDue = vi
