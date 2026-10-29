@@ -1,5 +1,3 @@
-import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-
 import type { PiManagerCommands } from "@/backoffice-runtime/object-registry";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type { PiExtractionRequest } from "@/fragno/pi/agent/openai-extraction";
@@ -14,8 +12,10 @@ import {
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../runtime-tools";
+import type { BlobsRuntime } from "./blobs-runtime";
 import { readClassificationImages } from "./models-classification-images";
 import { readExtractionFiles } from "./models-extraction-files";
+import { assertModelsFilesReadable } from "./models-file-bytes";
 
 export type ModelsRuntime = {
   classify(request: PiClassificationRequest): ReturnType<PiManagerCommands["classify"]>;
@@ -26,6 +26,7 @@ export type ModelsRuntime = {
 type ModelsToolContext = BackofficeToolContext<{
   models?: ModelsRuntime;
   state: BackofficeStateBackend | undefined;
+  blobs?: BlobsRuntime;
 }>;
 
 const OUTPUT_FORMAT_BY_EXTENSION = {
@@ -52,22 +53,13 @@ const classifyTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("models.classify"),
   namespace: "models",
   name: "classify",
-  execute: async ({ state, images: paths, questions }, context: ModelsToolContext) => {
+  execute: async ({ state, images: files, questions }, context: ModelsToolContext) => {
     const models = requireModelsRuntime(context.runtimes.models);
-    let images: PiClassificationRequest["images"] = [];
-    if (paths.length > 0) {
-      await context.kernel.assertAuthorizedAll({
-        execution: context.execution,
-        requirements: paths.map((path) => ({
-          operation: BACKOFFICE_PERMISSION.upload.read,
-          resource: { path },
-        })),
-      });
-      if (!context.runtimes.state) {
-        throw new Error("Classifying images requires the workspace filesystem.");
-      }
-      images = await readClassificationImages(context.runtimes.state, paths);
-    }
+    await assertModelsFilesReadable(context, files);
+    const images = await readClassificationImages(
+      { state: context.runtimes.state, blobs: context.runtimes.blobs },
+      files,
+    );
     const { answers } = await models.classify({ state, images, questions });
     return { answers };
   },
@@ -99,22 +91,21 @@ const extractTool = defineBackofficeRuntimeTool({
   namespace: "models",
   name: "extract",
   execute: async (
-    { files: paths, instructions, schema, model, thinkingLevel },
+    { files, instructions, schema, model, thinkingLevel },
     context: ModelsToolContext,
   ) => {
     const models = requireModelsRuntime(context.runtimes.models);
-    await context.kernel.assertAuthorizedAll({
-      execution: context.execution,
-      requirements: paths.map((path) => ({
-        operation: BACKOFFICE_PERMISSION.upload.read,
-        resource: { path },
-      })),
+    await assertModelsFilesReadable(context, files);
+    return await models.extract({
+      files: await readExtractionFiles(
+        { state: context.runtimes.state, blobs: context.runtimes.blobs },
+        files,
+      ),
+      instructions,
+      schema,
+      model,
+      thinkingLevel,
     });
-    if (!context.runtimes.state) {
-      throw new Error("Extracting from files requires the workspace filesystem.");
-    }
-    const files = await readExtractionFiles(context.runtimes.state, paths);
-    return await models.extract({ files, instructions, schema, model, thinkingLevel });
   },
 });
 

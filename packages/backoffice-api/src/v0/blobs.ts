@@ -11,7 +11,7 @@ export const BLOB_MAX_SIZE_BYTES = 5 * 1024 ** 3 - 5 * 1024 ** 2;
 /** Bounds one read, whose bytes return inside the result. */
 export const BLOB_READ_MAX_BYTES = 1024 ** 2;
 
-const blobKeySchema = z.lazy(() =>
+export const blobKeySchema = z.lazy(() =>
   z
     .string()
     .trim()

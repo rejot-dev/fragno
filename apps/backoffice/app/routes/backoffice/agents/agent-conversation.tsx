@@ -544,8 +544,8 @@ function AgentConversationThread({
       if (files !== null && files.failed.length > 0) {
         setAttachmentError(`Not attached, because the upload failed: ${files.failed.join(", ")}.`);
       }
-      const paths = files?.paths ?? [];
-      if (!text && paths.length === 0) {
+      const locations = files?.locations ?? [];
+      if (!text && locations.length === 0) {
         return;
       }
       if (posthog) {
@@ -558,7 +558,7 @@ function AgentConversationThread({
       const error = await postPiAgentMessage(`${agentPath}/messages`, {
         requestId,
         content: text,
-        ...(paths.length === 0 ? {} : { attachments: JSON.stringify(paths) }),
+        ...(locations.length === 0 ? {} : { attachments: JSON.stringify(locations) }),
         ...(model.sent ? agentModelChoiceFormFields(model.sent) : {}),
       }).then(
         (result) => (result.ok ? null : result.error),

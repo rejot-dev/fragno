@@ -6,16 +6,27 @@ import { z } from "zod";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import {
   PI_AGENT_MAX_ATTACHMENTS,
-  piAgentAttachmentsFolder,
+  piAgentAttachmentsKeyPrefix,
   type PiAgentAttachment,
 } from "@/fragno/pi/agent/pi-agent-attachments";
+import { throwOnRouteRuntimeError } from "@/fragno/runtime-tools/runtime-errors";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
+import { openLargeFiles } from "@/routes/backoffice/files/large-files.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+
+const attachmentLocationsSchema = z
+  .array(
+    z.discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("workspace"), path: absoluteFilePathSchema }),
+      z.strictObject({ kind: z.literal("blob"), key: z.string().min(1) }),
+    ]),
+  )
+  .max(PI_AGENT_MAX_ATTACHMENTS);
 
 /**
  * The files a message to `agentName` carries, from the `attachments` form field: a JSON array of
- * the paths the chat uploaded them to. Their type and size are read from the workspace, since the
- * browser's would reach the agent unchecked.
+ * where the chat uploaded them, in the workspace or as blobs. Their type and size are read from
+ * where they are kept, since the browser's would reach the agent unchecked.
  */
 export async function readPiAgentAttachments({
   request,
@@ -33,20 +44,25 @@ export async function readPiAgentAttachments({
   if (field === null) {
     return { attachments: [] };
   }
-  let paths: string[];
+  let locations: z.output<typeof attachmentLocationsSchema>;
   try {
-    paths = z
-      .array(absoluteFilePathSchema)
-      .max(PI_AGENT_MAX_ATTACHMENTS)
-      .parse(JSON.parse(String(field)));
+    locations = attachmentLocationsSchema.parse(JSON.parse(String(field)));
   } catch {
-    return { error: `Attach at most ${PI_AGENT_MAX_ATTACHMENTS} files by their workspace paths.` };
+    return {
+      error: `Attach at most ${PI_AGENT_MAX_ATTACHMENTS} files by where they were uploaded.`,
+    };
   }
-  const folder = piAgentAttachmentsFolder(agentName);
-  if (paths.some((path) => !path.startsWith(folder))) {
+  const prefix = piAgentAttachmentsKeyPrefix(agentName);
+  if (
+    locations.some((location) =>
+      location.kind === "workspace"
+        ? !location.path.startsWith(`/workspace/${prefix}`)
+        : !location.key.startsWith(prefix),
+    )
+  ) {
     return { error: "Attach only files uploaded in this conversation." };
   }
-  if (paths.length === 0) {
+  if (locations.length === 0) {
     return { attachments: [] };
   }
   if (scope.kind === "system") {
@@ -57,15 +73,49 @@ export async function readPiAgentAttachments({
   const execution = await requireBackofficeContext(request, context, scope);
   const uploadObject = kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload);
   const routes = createUploadRouteCaller(uploadObject.http, request);
+  const largeFiles = openLargeFiles(context, execution);
   const attachments: PiAgentAttachment[] = [];
-  for (const path of paths) {
-    const file = await routes("GET", "/files/by-key", {
-      query: { key: path.slice("/workspace/".length) },
-    });
-    if (file.type !== "json" || file.data.status === "deleted") {
-      return { error: `${path.split("/").at(-1)} is no longer in the workspace.` };
+  for (const location of locations) {
+    if (location.kind === "workspace") {
+      const file = await routes("GET", "/files/by-key", {
+        query: { key: location.path.slice("/workspace/".length) },
+      });
+      if (
+        (file.type === "error" && file.error.code === "FILE_NOT_FOUND") ||
+        (file.type === "json" && file.data.status === "deleted")
+      ) {
+        return { error: `${location.path.split("/").at(-1)} is no longer in the workspace.` };
+      }
+      if (file.type !== "json") {
+        return throwOnRouteRuntimeError(file, {
+          runtimeLabel: "Upload",
+          label: "attachment lookup",
+        });
+      }
+      attachments.push({
+        ...location,
+        contentType: file.data.contentType,
+        sizeBytes: file.data.sizeBytes,
+      });
+      continue;
     }
-    attachments.push({ path, contentType: file.data.contentType, sizeBytes: file.data.sizeBytes });
+    if (largeFiles.status !== "available") {
+      return { error: "This scope keeps no large files." };
+    }
+    const blob = await largeFiles.files.read(
+      async (blobs) => await blobs("GET", "/blobs/by-key", { query: { key: location.key } }),
+    );
+    if (blob.type === "error" && blob.error.code === "BLOB_NOT_FOUND") {
+      return { error: `${location.key.split("/").at(-1)} is no longer among the large files.` };
+    }
+    if (blob.type !== "json") {
+      return throwOnRouteRuntimeError(blob, { runtimeLabel: "Blobs", label: "attachment lookup" });
+    }
+    attachments.push({
+      ...location,
+      contentType: blob.data.contentType,
+      sizeBytes: blob.data.sizeBytes,
+    });
   }
   return { attachments };
 }

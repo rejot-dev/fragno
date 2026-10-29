@@ -13,8 +13,8 @@ const DOWNLOAD_URL_EXPIRES_IN_SECONDS = 60 * 60;
 const UNFINISHED_UPLOAD_DISCARD_GRACE_MS = 60 * 60 * 1000;
 // S3's limit on object key length.
 const MAX_OBJECT_KEY_BYTES = 1024;
-// Bounds what one range read holds in memory.
-const MAX_RANGE_BYTES = 8 * 1024 * 1024;
+/** The most bytes one range read returns; it bounds what the read holds in memory. */
+export const BLOBS_MAX_RANGE_BYTES = 8 * 1024 * 1024;
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_PAGE_SIZE = 1000;
 
@@ -357,10 +357,10 @@ export const blobsRoutesFactory = defineRoutes(blobsFragmentDefinition).create(
           }
           const offset = integerQuery(query, "offset");
           const length = integerQuery(query, "length");
-          if (offset === null || length === null || length < 1 || length > MAX_RANGE_BYTES) {
+          if (offset === null || length === null || length < 1 || length > BLOBS_MAX_RANGE_BYTES) {
             return error(
               {
-                message: `Ranges start at a byte offset and span 1 to ${MAX_RANGE_BYTES} bytes.`,
+                message: `Ranges start at a byte offset and span 1 to ${BLOBS_MAX_RANGE_BYTES} bytes.`,
                 code: "INVALID_RANGE",
               },
               400,
