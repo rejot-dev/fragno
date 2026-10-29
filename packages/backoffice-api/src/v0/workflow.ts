@@ -113,6 +113,16 @@ export const workflowOperations = {
     ),
     output: workflowRetryFailedStepResultSchema,
   },
+  "workflow.instances.terminate": {
+    description: "Terminate a durable workflow instance that has not ended yet.",
+    permissions: [BACKOFFICE_PERMISSION.workflow.modify],
+    input: z.lazy(() =>
+      z.strictObject({
+        instanceId: z.string().trim().min(1),
+      }),
+    ),
+    output: z.lazy(() => z.strictObject({ terminated: z.literal(true) })),
+  },
   "workflow.instances.list": {
     description: "List durable saved-workflow instances.",
     permissions: [BACKOFFICE_PERMISSION.workflow.read],

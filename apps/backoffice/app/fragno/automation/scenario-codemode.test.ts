@@ -292,6 +292,51 @@ describe("Backoffice codemode scenarios", () => {
     );
   });
 
+  test("terminates a waiting saved workflow run from codemode", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "codemode terminates a dormant workflow run",
+
+        files: backofficeFiles.workspaceStarter(),
+
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+
+        steps: ({ when, then }) => [
+          when.codemode.run({
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+            label: "start the dormant workflow",
+            code: `async () => {
+  const path = "/workspace/automations/dormant.workflow.js";
+  await state.writeFile({
+    path,
+    content: 'export default defineWorkflow({ name: "dormant" }, async (_event, step) => { await step.waitForEvent("never", { type: "never" }); });',
+  });
+  return await workflow.createInstance({ path, instanceId: "dormant-1" });
+}`,
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "dormant",
+            instanceId: "dormant-1",
+            status: "waiting",
+            waitingFor: "never",
+          }),
+          when.codemode.run({
+            scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+            label: "terminate the dormant workflow",
+            code: `async () => await workflow.terminateInstance({ instanceId: "dormant-1" })`,
+            assertToolCalls: ["workflow.instances.terminate"],
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "dormant",
+            instanceId: "dormant-1",
+            status: "terminated",
+          }),
+        ],
+      }),
+    );
+  });
+
   test("uses file setup helper for multiple workspace files", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({

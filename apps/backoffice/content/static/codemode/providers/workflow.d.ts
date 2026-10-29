@@ -1,4 +1,4 @@
-// Workflow instances: start saved workflows, check status and history, show a run to the user, send events, retry steps. Read to run or follow a workflow.
+// Workflow instances: start saved workflows, check status and history, show a run to the user, send events, retry steps, terminate runs. Read to run or follow a workflow.
 type WorkflowCodemodeProvider = {
   /**
    * Start a saved .workflow.js file by path. Inline defineWorkflow declarations start automatically.
@@ -35,6 +35,13 @@ type WorkflowCodemodeProvider = {
    * Requires `workflow.modify`.
    */
   retryFailedStep(input: WorkflowRetryFailedStepInput): Promise<WorkflowRetryFailedStepOutput>;
+  /**
+   * Terminate a saved workflow's run that has not ended, such as one left waiting for an event that will never come. A terminated run cannot resume.
+   * Requires `workflow.modify`.
+   */
+  terminateInstance(
+    input: WorkflowTerminateInstanceInput,
+  ): Promise<WorkflowTerminateInstanceOutput>;
 };
 declare const workflow: WorkflowCodemodeProvider;
 
@@ -154,4 +161,10 @@ type WorkflowRetryFailedStepOutput = {
     maxAttempts: number;
     scheduledAt: string;
   };
+};
+type WorkflowTerminateInstanceInput = {
+  instanceId: string;
+};
+type WorkflowTerminateInstanceOutput = {
+  terminated: true;
 };

@@ -125,6 +125,7 @@ const createPiWorkflowRuntime = (
       scheduledAt: "2026-08-11T00:00:00.000Z",
     },
   }),
+  terminateInstance: async () => ({ terminated: true }),
   sendEvent: async () => ({ accepted: true }),
   getHistory: async () => ({ steps: [], events: [], emissions: [] }),
   ...overrides,

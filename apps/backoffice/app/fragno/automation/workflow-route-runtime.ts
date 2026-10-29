@@ -318,6 +318,15 @@ export const createRouteBackedAutomationWorkflowRuntime = ({
     },
     retryFailedStep: async (input) =>
       await retryFailedInternalStep({ ...input, workflowName: CODEMODE_WORKFLOW }),
+    terminateInstance: async ({ instanceId }) => {
+      const response = await callRoute("POST", "/:workflowName/instances/:instanceId/terminate", {
+        pathParams: { workflowName: CODEMODE_WORKFLOW, instanceId },
+      });
+      if (response.type === "json") {
+        return { terminated: true };
+      }
+      throw backendError(response);
+    },
     sendEvent: async (input) =>
       await sendInternalEvent({ ...input, workflowName: CODEMODE_WORKFLOW }),
     getHistory: async (input) =>
