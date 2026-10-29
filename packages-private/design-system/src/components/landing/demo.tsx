@@ -145,6 +145,8 @@ export function LandingDemo() {
             name="qualify-lead"
             status={workflowStatus(run)}
             elements={elements}
+            // The demo's run has no recorded steps to show.
+            steps={null}
             selectedId={selectedId}
             onSelect={setSelectedId}
             onStop={null}
@@ -160,7 +162,7 @@ function workflowStatus(run: Run): ChatWorkflowStatus {
     case "review":
       return { kind: "waiting-for-input", step: "Review reply to Maya Chen" };
     case "sending":
-      return { kind: "running", step: "Sending reply" };
+      return { kind: "running" };
     case "sent":
     case "skipped":
       return { kind: "complete" };

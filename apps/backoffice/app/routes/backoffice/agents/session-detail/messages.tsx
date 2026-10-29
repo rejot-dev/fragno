@@ -116,7 +116,7 @@ export function AssistantMessage({
   );
   const tools = turn.flatMap((segment) => (segment.kind === "work" ? segment.tools : []));
   const works = segments.filter((segment) => segment.kind === "work").length;
-  const lastWorkKey = segments.findLast((segment) => segment.kind === "work")?.key;
+  const lastWorkKey = segments.filter((segment) => segment.kind === "work").at(-1)?.key;
   const toolsById = new Map(tools.map((tool) => [tool.part.toolCallId, tool]));
   const lastShowing = runsLastShowing(tools);
   // The turn's result is what its newest tool call that made something produced.

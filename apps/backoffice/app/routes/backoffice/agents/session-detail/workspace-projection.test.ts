@@ -73,8 +73,6 @@ describe("projectSessionWorkspaceItems", () => {
       ],
       draftAgentMessage: {
         activity: "running_tools",
-        startedAt: 1,
-        updatedAt: 2,
         assistant: undefined,
         tools: {
           "shared-call": {
