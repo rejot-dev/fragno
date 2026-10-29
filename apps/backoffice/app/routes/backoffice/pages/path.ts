@@ -1,4 +1,4 @@
-import { artifactName, artifactSourcePath } from "@/artifacts/kinds";
+import { artifactKind, artifactName, artifactSourcePath } from "@/artifacts/kinds";
 import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
@@ -14,6 +14,11 @@ export const PAGE_SOURCES_GLOB = `${WORKSPACE}**/${artifactSourcePath("*", "page
 /** What a page is called in routes and menus: `/workspace/reports/operations.page.js` is `reports/operations`. */
 export function pageName(sourcePath: string): string {
   return artifactName(sourcePath.slice(WORKSPACE.length), "page");
+}
+
+/** The page a file path is the source of, or null for any other file; only workspace pages open. */
+export function sourcePageName(path: string): string | null {
+  return path.startsWith(WORKSPACE) && artifactKind(path) === "page" ? pageName(path) : null;
 }
 
 /** Pages open as a dashboard tab: `reports/operations` at `…/dashboard/<scope>/pages/reports/operations`. */

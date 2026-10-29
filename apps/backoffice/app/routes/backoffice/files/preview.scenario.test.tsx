@@ -359,6 +359,8 @@ test("private workspace files flow through session Markdown and generated UI wit
                     '<file-link path="/workspace/../../logout">Raw tag</file-link>',
                     "[Traversal](/workspace/../logout)",
                     "![Traversal](/workspace/../logout) ![Malformed](/workspace/bad%FF.png)",
+                    // A page's source opens as the rendered page; only workspace sources are pages.
+                    "[Report](/workspace/reports/ops.page.js) `/static/examples/demo.page.js`",
                   ].join("\n\n")}
                 />
               </FileScopeProvider>
@@ -371,6 +373,14 @@ test("private workspace files flow through session Markdown and generated UI wit
           assert.include(
             destinations,
             'href="/backoffice/files/org/image-team/workspace/notes/plan.md"',
+          );
+          assert.include(
+            destinations,
+            'href="/backoffice/dashboard/org/image-team/pages/reports/ops"',
+          );
+          assert.include(
+            destinations,
+            'href="/backoffice/files/org/image-team/static/examples/demo.page.js"',
           );
           assert.include(destinations, "Raw tag");
           assert.notInclude(destinations, "logout");
@@ -414,7 +424,7 @@ test("private workspace files flow through session Markdown and generated UI wit
             ),
           ).toEqual([
             {
-              href: "/backoffice/files/org/finance/workspace/pages/finance.page.js",
+              href: "/backoffice/dashboard/org/finance/pages/pages/finance",
               content: "Finance",
             },
             {

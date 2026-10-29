@@ -17,6 +17,7 @@ import {
   filesPreviewPath,
   filesScopeBasePath,
 } from "@/routes/backoffice/files/scope";
+import { pagePath, sourcePageName } from "@/routes/backoffice/pages/path";
 
 const FileScopeContext = createContext<BackofficeResolvedScope | null>(null);
 // Outside the Backoffice layout no other scope is known, so links into one stay plain text.
@@ -90,14 +91,25 @@ export function FileImage({ path, alt }: { path: string; alt: string }) {
   );
 }
 
-/** Opens a file in the scope's Files explorer; outside a scope, the mention stays plain content. */
+/**
+ * Opens a file in the scope's Files explorer, or a page's source as the rendered page; outside a
+ * scope, the mention stays plain content.
+ */
 export function FileLink({ path, children }: { path: string; children: ReactNode }) {
   const scope = useFileScope();
   if (!scope) {
     return children;
   }
+  const page = sourcePageName(path);
   return (
-    <Link to={filesExplorerPathFromScopePath(filesScopeBasePath(scope), path)} title={path}>
+    <Link
+      to={
+        page === null
+          ? filesExplorerPathFromScopePath(filesScopeBasePath(scope), path)
+          : pagePath(scope, page)
+      }
+      title={path}
+    >
       {children}
     </Link>
   );
