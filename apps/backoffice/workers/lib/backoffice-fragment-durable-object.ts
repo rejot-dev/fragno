@@ -259,6 +259,8 @@ export type BackofficeFragmentDurableObject<
   dispatch: (item: TOutbox) => Promise<void>;
   /** Process outbox first, then forward the Durable Object alarm to the current durable-hooks dispatcher. */
   alarm: () => Promise<void>;
+  /** Fires the Durable Object alarm now; see `FragmentDurableObjectHost.wake`. */
+  wake: () => Promise<void>;
   /** Fetch through the configured runtime/mounts, including not-configured and scope-bound checks. */
   fetch: (request: Request, context?: FragnoRequestLifecycleContext<unknown>) => Promise<Response>;
   /** Read one page of durable hooks from a selected hosted fragment. */
@@ -699,6 +701,9 @@ export function createBackofficeFragmentDurableObject<
           ? fragmentAlarmError
           : new Error(String(fragmentAlarmError));
       }
+    },
+    wake: async () => {
+      await fragmentHost.wake();
     },
     async fetch(request, context) {
       if (!current.configured) {

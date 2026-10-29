@@ -82,6 +82,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthCommands {
     return await this.#object.getDurableHook(hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#object.wakeDurableHooks();
+  }
+
   async enqueueEmailVerificationHook(
     input: { userId: string; email: string },
     propagationContext?: Readonly<Record<string, string>> | null,

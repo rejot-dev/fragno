@@ -1430,6 +1430,10 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     );
   }
 
+  async wakeDurableHooks() {
+    await this.#host.wake();
+  }
+
   async checkPageQueries(queries: SqlQuery[]): Promise<SqlQueryCheck[]> {
     return await this.#checkSqlQueries(AUTOMATION_PAGE_DATABASE_SCHEMA, queries);
   }

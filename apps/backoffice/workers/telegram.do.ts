@@ -54,6 +54,10 @@ export class Telegram extends DurableObject<CloudflareEnv> implements TelegramCo
     return await this.#object.getDurableHook(hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#object.wakeDurableHooks();
+  }
+
   async fetch(request: Request): Promise<Response> {
     return await this.#object.fetch(request);
   }

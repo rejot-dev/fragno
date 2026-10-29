@@ -318,6 +318,15 @@ export class LocalDurableObjectNamespace<TObject> {
     });
   }
 
+  /** Deletes an object's alarm behind its back, as Cloudflare drops an alarm that kept failing. */
+  async dropAlarm(id: DurableObjectId): Promise<void> {
+    const instance = this.#instances.get(String(id));
+    if (!instance) {
+      throw new Error(`Local Durable Object ${String(id)} has no instance whose alarm could drop.`);
+    }
+    await instance.state.storage.deleteAlarm();
+  }
+
   instances(): LocalDurableObjectInstance<TObject>[] {
     return [...this.#instances.values()];
   }

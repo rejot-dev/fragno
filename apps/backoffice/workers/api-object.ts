@@ -245,6 +245,10 @@ export class ApiObject extends RpcTarget implements ApiCommands {
     return await loadDurableHook(await this.#scopedRuntime.getRuntime(), hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#host.wake();
+  }
+
   async alarm(): Promise<void> {
     await this.#scopedRuntime.alarm();
   }

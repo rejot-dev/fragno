@@ -636,6 +636,10 @@ export class TelegramObject extends RpcTarget implements TelegramCommands {
     return await this.#host.getDurableHook(({ runtime }) => runtime, hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#host.wake();
+  }
+
   async fetch(request: Request): Promise<Response> {
     const scope = this.#requireScope();
     const forwardHttpRequest = createBackofficeFragmentHttpTransport({

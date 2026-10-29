@@ -39,6 +39,10 @@ export class Blobs extends DurableObject<CloudflareEnv> implements BlobsCommands
     return await this.#object.getDurableHook(hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#object.wakeDurableHooks();
+  }
+
   async alarm(): Promise<void> {
     await this.#object.alarm();
   }

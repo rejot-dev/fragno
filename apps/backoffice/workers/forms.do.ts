@@ -27,6 +27,10 @@ export class Forms extends DurableObject<CloudflareEnv> implements FormsCommands
     return await this.#object.getDurableHook(hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#object.wakeDurableHooks();
+  }
+
   async alarm(): Promise<void> {
     await this.#object.alarm();
   }

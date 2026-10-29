@@ -102,6 +102,10 @@ export class BlobsObject implements BlobsCommands {
     return await loadDurableHook(this.#getFragment(), hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#host?.wake();
+  }
+
   async alarm(): Promise<void> {
     await this.#initialization;
     await this.#host?.alarm();

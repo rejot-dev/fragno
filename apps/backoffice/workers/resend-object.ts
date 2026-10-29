@@ -585,6 +585,10 @@ export class ResendObject implements ResendCommands {
     return await this.#host.getDurableHook(({ runtime }) => runtime, hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#host.wake();
+  }
+
   async fetch(request: Request): Promise<Response> {
     return await this.#httpTransport(request, (verifiedRequest, options) =>
       this.#host.fetch(verifiedRequest, options),

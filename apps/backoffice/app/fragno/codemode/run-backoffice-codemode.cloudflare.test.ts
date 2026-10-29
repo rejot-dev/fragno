@@ -761,6 +761,7 @@ const createScopedMcpRuntimeServices = (
       commands: {
         getDurableHookQueue: async () => ({}) as never,
         getDurableHook: async () => null,
+        wakeDurableHooks: async () => {},
       },
       http: {
         fetch,

@@ -44,6 +44,8 @@ export type LocalBackofficeRuntime = {
   drainWaitUntil(): Promise<void>;
   hasObjectInstance(address: BackofficeObjectAddress): boolean;
   restartObject(address: BackofficeObjectAddress): Promise<void>;
+  /** Deletes an object's alarm behind its back, as Cloudflare drops an alarm that kept failing. */
+  dropObjectAlarm(address: BackofficeObjectAddress): Promise<void>;
   cleanup(): Promise<void>;
 };
 
@@ -230,6 +232,7 @@ export async function createLocalBackofficeRuntime(
     drainWaitUntil: () => objectFactory.drainWaitUntil(),
     hasObjectInstance: (address) => objectFactory.hasInstance(address),
     restartObject: (address) => objectFactory.restart(address),
+    dropObjectAlarm: (address) => objectFactory.dropAlarm(address),
     async cleanup() {
       const failures: Array<{ step: string; cause: unknown }> = [];
       async function runCleanupStep(step: string, cleanup: () => void | Promise<void>) {

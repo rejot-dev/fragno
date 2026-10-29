@@ -59,6 +59,10 @@ export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeCo
     return this.#object.getDurableHook(hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#object.wakeDurableHooks();
+  }
+
   async alarm(): Promise<void> {
     await this.#object.alarm();
   }

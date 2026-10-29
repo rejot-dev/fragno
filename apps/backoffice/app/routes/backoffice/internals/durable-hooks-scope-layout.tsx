@@ -1,5 +1,5 @@
 import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { ButtonLink } from "@fragno-private/design-system/button";
+import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { InlineAlert } from "@fragno-private/design-system/inline-alert";
 import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
@@ -13,8 +13,17 @@ import {
 } from "@fragno-private/design-system/surface-panel";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useEffect } from "react";
-import { Link, Outlet, useLocation, useNavigate, useParams } from "react-router";
+import {
+  Form,
+  Link,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useNavigation,
+  useParams,
+} from "react-router";
 
+import type { DurableHookCommands } from "@/backoffice-runtime/object-registry";
 import {
   backofficeRouteScopeFromResolvedScope,
   backofficeRuntimeScopeFromResolvedScope,
@@ -67,59 +76,67 @@ const parsePageSize = (value: string | null) => {
   return Number.isFinite(parsed) ? parsed : undefined;
 };
 
-const loadDurableHookQueue = async ({
+/** The hook commands of the object a selection names; Workflows' hooks live in Automations. */
+function durableHookObjectCommands({
   context,
   selection,
-  cursor,
-  pageSize,
 }: {
   context: Route.LoaderArgs["context"];
   selection: DurableHooksScopeSelection;
-  cursor?: string;
-  pageSize?: number;
-}): Promise<DurableHookQueueResponse> => {
+}): DurableHookCommands {
   const objects = getBackofficeObjects(context);
   const runtimeScope = backofficeRuntimeScopeFromResolvedScope(selection.resolvedScope);
-  const queueOptions = { cursor, pageSize };
 
   switch (selection.objectId) {
     case "api":
-      return await objects.api.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+      return objects.api.for(runtimeScope).commands;
     case "auth":
-      return await objects.auth.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+      return objects.auth.for(runtimeScope).commands;
     case "forms":
-      return await objects.forms.singleton().commands.getDurableHookQueue(queueOptions);
-    case "automations":
-      return await objects.automations
-        .for(runtimeScope)
-        .commands.getDurableHookQueue("automation", queueOptions);
+      return objects.forms.singleton().commands;
     case "telegram":
-      return await objects.telegram.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+      return objects.telegram.for(runtimeScope).commands;
     case "otp":
-      return await objects.otp.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+      return objects.otp.for(runtimeScope).commands;
     case "resend":
-      return await objects.resend.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+      return objects.resend.for(runtimeScope).commands;
     case "mcp":
-      return await objects.mcp.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+      return objects.mcp.for(runtimeScope).commands;
     case "upload":
-      return await objects.upload.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
+      return objects.upload.for(runtimeScope).commands;
     case "github":
-      return await objects.github.for(runtimeScope).commands.getDurableHookQueue(queueOptions);
-    case "workflows":
-      return await objects.automations
-        .for(runtimeScope)
-        .commands.getDurableHookQueue("workflows", queueOptions);
+      return objects.github.for(runtimeScope).commands;
+    case "automations":
+    case "workflows": {
+      const automations = objects.automations.for(runtimeScope).commands;
+      const fragment = selection.objectId === "automations" ? "automation" : "workflows";
+      return {
+        getDurableHookQueue: async (options) =>
+          await automations.getDurableHookQueue(fragment, options),
+        getDurableHook: async (hookId) => await automations.getDurableHook(fragment, hookId),
+        wakeDurableHooks: async () => {
+          await automations.wakeDurableHooks();
+        },
+      };
+    }
   }
 
   throw new Error("Unsupported durable hooks object.");
-};
+}
+
+function resolveRequestedSelection(
+  context: Route.LoaderArgs["context"],
+  objectId: string | undefined,
+) {
+  const scope = requireScopeSelection(context);
+  return {
+    scope,
+    requestedSelection: resolveDurableHooksScopeSelection({ scope, objectId }),
+  };
+}
 
 export async function loader({ params, context, url }: Route.LoaderArgs) {
-  const scope = requireScopeSelection(context);
-  const requestedSelection = resolveDurableHooksScopeSelection({
-    scope,
-    objectId: params.objectId,
-  });
+  const { scope, requestedSelection } = resolveRequestedSelection(context, params.objectId);
   const selection =
     requestedSelection ??
     resolveDurableHooksScopeSelection({
@@ -152,7 +169,10 @@ export async function loader({ params, context, url }: Route.LoaderArgs) {
   }
 
   try {
-    const queue = await loadDurableHookQueue({ context, selection, cursor, pageSize });
+    const queue = await durableHookObjectCommands({ context, selection }).getDurableHookQueue({
+      cursor,
+      pageSize,
+    });
     return {
       ...queue,
       error: null,
@@ -170,6 +190,19 @@ export async function loader({ params, context, url }: Route.LoaderArgs) {
       ...inspectorData,
     } satisfies DurableHooksScopeLoaderData;
   }
+}
+
+/**
+ * Wakes the selected object's hooks: its alarm fires now, so the hooks it left pending run even when
+ * the alarm that should have run them was lost.
+ */
+export async function action({ params, context }: Route.ActionArgs) {
+  const { requestedSelection } = resolveRequestedSelection(context, params.objectId);
+  if (!requestedSelection) {
+    throw new Response("Not Found", { status: 404 });
+  }
+  await durableHookObjectCommands({ context, selection: requestedSelection }).wakeDurableHooks();
+  return { woke: true };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -218,6 +251,7 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
   } = loaderData;
   const location = useLocation();
   const navigate = useNavigate();
+  const waking = useNavigation().state === "submitting";
   const params = useParams();
   const selectedHookId = params.hookId ?? null;
   const objectBasePath = durableHooksSelectionPath(selection);
@@ -274,9 +308,19 @@ export default function BackofficeDurableHooksScopeLayout({ loaderData }: Route.
             <SurfacePanel
               caption={`${objectLabel} queue · ${queueCount} shown`}
               actions={
-                namespace ? (
-                  <span className="font-mono text-xs text-[var(--bo-muted-2)]">{namespace}</span>
-                ) : null
+                <div className="flex items-center gap-3">
+                  {namespace ? (
+                    <span className="font-mono text-xs text-[var(--bo-muted-2)]">{namespace}</span>
+                  ) : null}
+                  {configured && hooksEnabled ? (
+                    // Recovers hooks left pending by a lost alarm; firing it early is harmless.
+                    <Form method="post">
+                      <Button type="submit" variant="secondary" disabled={waking}>
+                        {waking ? "Waking…" : "Wake hooks"}
+                      </Button>
+                    </Form>
+                  ) : null}
+                </div>
               }
             >
               {error ? (

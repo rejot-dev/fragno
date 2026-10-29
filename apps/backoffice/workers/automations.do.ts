@@ -244,6 +244,10 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
     return await this.#object.getDurableHook(fragment, hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#object.wakeDurableHooks();
+  }
+
   async checkPageQueries(queries: SqlQuery[]) {
     return await this.#object.checkPageQueries(queries);
   }

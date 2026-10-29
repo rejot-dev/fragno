@@ -1006,6 +1006,8 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
   runner: {
     drain(): BackofficeScenarioStep;
     restartObject(address: BackofficeObjectAddress): BackofficeScenarioStep;
+    /** Deletes the object's alarm behind its back, as Cloudflare drops an alarm that kept failing. */
+    dropObjectAlarm(address: BackofficeObjectAddress): BackofficeScenarioStep;
   };
 };
 
@@ -4489,6 +4491,14 @@ const buildStepBuilders = <
         (ctx) => ctx.runtime.restartObject(address),
         { drain: false },
       ),
+    dropObjectAlarm: (address) =>
+      createStep(
+        "runner",
+        "runner.dropObjectAlarm",
+        `drop ${address.binding} Backoffice object alarm`,
+        (ctx) => ctx.runtime.dropObjectAlarm(address),
+        { drain: false },
+      ),
   },
 });
 
@@ -4675,6 +4685,7 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
         hasNextPage: false,
       }),
       getDurableHook: async () => null,
+      wakeDurableHooks: async () => {},
     });
   }
 

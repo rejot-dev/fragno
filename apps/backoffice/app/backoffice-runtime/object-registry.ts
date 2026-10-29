@@ -260,10 +260,15 @@ type AwaitedMethodReturn<TObject, TKey extends keyof TObject> = TObject[TKey] ex
   ? TResult
   : never;
 
-/** Exposes durable hook inspection as finite serializable Durable Object commands. */
+/** Exposes durable hook inspection and recovery as finite serializable Durable Object commands. */
 export type DurableHookCommands = {
   getDurableHookQueue(options?: DurableHookQueueOptions): Promise<DurableHookQueueResponse>;
   getDurableHook(hookId: string): Promise<DurableHookQueueEntry | null>;
+  /**
+   * Fires the object's alarm now, which runs its due hooks and schedules the next alarm: recovers
+   * an object whose alarm was lost.
+   */
+  wakeDurableHooks(): Promise<void>;
 };
 
 export type AutomationsDurableHookFragment = "automation" | "workflows";
@@ -830,6 +835,8 @@ export type AutomationsCommands = {
     fragment: AutomationsDurableHookFragment,
     hookId: string,
   ): Promise<DurableHookQueueEntry | null>;
+  /** Both fragments' hooks share the object's alarm, so one wake runs either's. */
+  wakeDurableHooks: DurableHookCommands["wakeDurableHooks"];
   /** Runs each of a page's queries on an empty database of the relations pages read. */
   checkPageQueries(queries: SqlQuery[]): Promise<SqlQueryCheck[]>;
 };

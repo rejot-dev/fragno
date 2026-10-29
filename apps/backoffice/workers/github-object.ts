@@ -224,6 +224,10 @@ export class GitHubObject implements GitHubCommands {
     return await this.#host.getDurableHook(({ runtime }) => runtime, hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#host.wake();
+  }
+
   async redeliverFailedInstallationWebhooks(installationId: string): Promise<void> {
     const normalizedInstallationId = installationId.trim();
     if (!normalizedInstallationId) {

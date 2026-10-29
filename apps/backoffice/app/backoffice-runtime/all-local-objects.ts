@@ -71,6 +71,8 @@ class UnavailableLocalDurableObject {
     return null;
   }
 
+  async wakeDurableHooks() {}
+
   async getUserAuthorityFacts() {
     return {
       active: false,

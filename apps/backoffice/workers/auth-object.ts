@@ -1478,6 +1478,11 @@ export class AuthObject implements AuthCommands {
     return hook ? deserializeBetterAuthDurableHook(hook) : null;
   }
 
+  async wakeDurableHooks() {
+    // Better Auth hooks run in this object's own alarm, not a Fragno dispatcher.
+    await this.#state.storage.setAlarm(Date.now());
+  }
+
   async #authContext(baseURL = "http://localhost") {
     await this.#ready;
     return await getAuthContext(this.#getAuth(baseURL));

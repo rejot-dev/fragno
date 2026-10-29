@@ -732,6 +732,10 @@ export class OtpObject implements OtpCommands {
     return await loadDurableHook(this.#getFragment(), hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#host.wake();
+  }
+
   async alarm(): Promise<void> {
     await this.#host.alarm();
   }

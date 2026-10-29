@@ -31,6 +31,10 @@ export class Mcp extends DurableObject<CloudflareEnv> implements McpCommands {
     return await this.#object.getDurableHook(hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#object.wakeDurableHooks();
+  }
+
   async fetch(request: Request): Promise<Response> {
     return await this.#object.fetch(request);
   }

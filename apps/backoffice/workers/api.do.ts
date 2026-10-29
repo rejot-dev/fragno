@@ -35,6 +35,10 @@ export class Api extends DurableObject<CloudflareEnv> implements ApiCommands {
     return await this.#object.getDurableHook(hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#object.wakeDurableHooks();
+  }
+
   async fetch(request: Request): Promise<Response> {
     return await this.#object.fetch(request);
   }

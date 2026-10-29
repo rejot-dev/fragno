@@ -206,6 +206,15 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
     await namespace.restart(id);
   }
 
+  async dropAlarm(address: BackofficeObjectAddress): Promise<void> {
+    assertBackofficeObjectAddressAllowed(address);
+    const namespace = this.#namespaces[address.binding];
+    if (!namespace) {
+      throw this.#missingBindingError(address.binding);
+    }
+    await namespace.dropAlarm(namespace.idFromName(encodeBackofficeObjectAddress(address)));
+  }
+
   get<TCommands>(
     binding: BackofficeObjectBinding<TCommands>,
     address: BackofficeObjectAddress,

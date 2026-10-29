@@ -35,6 +35,10 @@ export class GitHub extends DurableObject<CloudflareEnv> implements GitHubComman
     return await this.#object.getDurableHook(hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#object.wakeDurableHooks();
+  }
+
   async redeliverFailedInstallationWebhooks(installationId: string): Promise<void> {
     await this.#object.redeliverFailedInstallationWebhooks(installationId);
   }

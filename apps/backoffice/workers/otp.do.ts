@@ -109,6 +109,10 @@ export class Otp extends DurableObject<CloudflareEnv> implements OtpCommands {
     return await this.#object.getDurableHook(hookId);
   }
 
+  async wakeDurableHooks() {
+    await this.#object.wakeDurableHooks();
+  }
+
   async alarm(): Promise<void> {
     await this.#object.alarm();
   }
