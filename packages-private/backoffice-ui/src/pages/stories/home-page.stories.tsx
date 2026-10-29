@@ -3,7 +3,7 @@ import homePageSource from "@backoffice-static/skills/building-pages/examples/ho
 import { BUSY_SCOPE, EMPTY_SCOPE } from "./backoffice-scope.fixture";
 import { StoryPage } from "./story-page";
 
-export default { title: "Pages/Home page" };
+export default { title: "Pages/Examples/Home page" };
 
 export function Busy() {
   return <StoryPage source={homePageSource} scope={BUSY_SCOPE} />;
