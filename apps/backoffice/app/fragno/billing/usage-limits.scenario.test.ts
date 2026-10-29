@@ -212,6 +212,20 @@ test("an organization out of allowance cannot start model work until an administ
           );
           expect(ctx.fakes.workersAi?.runs).toHaveLength(1);
         }),
+        then.assert("monitoring hears once that the organization reached its limit", (ctx) => {
+          expect(ctx.telemetry.filter((signal) => signal.kind === "usage-limit-reached")).toEqual([
+            expect.objectContaining({
+              object: { host: "Billing", scope },
+              period: expect.stringMatching(/^\d{4}-\d{2}$/u),
+              status: expect.objectContaining({
+                meter: "ai.cost.total",
+                setting: "custom",
+                limit: { kind: "limited", quantity: "10000" },
+                used: "12870",
+              }),
+            }),
+          ]);
+        }),
         then.assert("agent prompts are refused before they queue", async (ctx) => {
           await expect(
             ctx.runCodemode({
@@ -272,6 +286,11 @@ test("an organization out of allowance cannot start model work until an administ
             });
           },
         ),
+        then.assert("an administrator lowering a limit below usage is not reaching it", (ctx) => {
+          expect(
+            ctx.telemetry.filter((signal) => signal.kind === "usage-limit-reached"),
+          ).toHaveLength(1);
+        }),
       ],
     }),
   );

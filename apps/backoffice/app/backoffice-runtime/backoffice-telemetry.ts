@@ -14,6 +14,7 @@ import type { WorkflowTerminalHookPayload } from "@fragno-dev/workflows/workflow
 
 import type { HookContext } from "@fragno-dev/db";
 
+import type { ExhaustedUsageLimit } from "@/fragno/billing/usage-limits";
 import type {
   CodemodeRunFinishedHookPayload,
   CodemodeRunOrigin,
@@ -128,6 +129,12 @@ export type BackofficeHostSignal =
       kind: "access-code-redeemed";
       accessCodeId: string;
       accessCodeLabel: string;
+    }
+  | {
+      /** Recorded usage used up an owner's monthly limit; usage past it is not reported again. */
+      kind: "usage-limit-reached";
+      period: string;
+      status: ExhaustedUsageLimit;
     };
 
 export type BackofficeTelemetrySignal = BackofficeHostSignal & {

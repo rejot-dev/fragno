@@ -2,6 +2,7 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { RpcTarget } from "cloudflare:workers";
 
+import type { BackofficeHostTelemetry } from "@/backoffice-runtime/backoffice-telemetry";
 import {
   requireBackofficeContextScopeFromDurableObjectId,
   type BackofficeRpcContext,
@@ -33,6 +34,7 @@ export class BillingObject extends RpcTarget implements BillingCommands {
   readonly #host: FragmentDurableObjectHost<void, BillingFragment>;
   readonly #ownerScope: BillingOwnerScope;
   readonly #nowEpochMs: () => number;
+  readonly #telemetry: BackofficeHostTelemetry;
   #fragment: BillingFragment | null = null;
 
   constructor({
@@ -53,6 +55,7 @@ export class BillingObject extends RpcTarget implements BillingCommands {
       throw new Error("Billing objects require an organization or user scope.");
     }
     this.#ownerScope = ownerScope;
+    this.#telemetry = implementation.hostTelemetry("Billing");
     this.#host = implementation.createFragmentHost({
       name: "Billing",
       createRuntime: () => createBillingServer(implementation.fragmentDatabase),
@@ -87,7 +90,14 @@ export class BillingObject extends RpcTarget implements BillingCommands {
     context?: BackofficeRpcContext,
   ): Promise<BillingRecordEventResult> {
     const fragment = this.#getFragment();
-    return await fragment.callServices(() => fragment.services.recordEvent(input), context);
+    const { period, reachedLimits, ...result } = await fragment.callServices(
+      () => fragment.services.recordEvent(input),
+      context,
+    );
+    for (const status of reachedLimits) {
+      this.#telemetry.record({ kind: "usage-limit-reached", period, status });
+    }
+    return result;
   }
 
   async getStatement(input: BillingStatementInput): Promise<BillingStatement> {

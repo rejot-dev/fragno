@@ -25,11 +25,19 @@ import {
 } from "./schema";
 import {
   usageLimitedMeterSchema,
+  usageLimitsReachedBy,
   usageLimitStatuses,
+  type ExhaustedUsageLimit,
   type UsageLimitSetting,
   type UsageLimitedMeter,
   type UsageLimits,
 } from "./usage-limits";
+
+/** A recorded event, with the limits it used up in its period for its owner's monitoring. */
+type RecordedBillingEvent = BillingRecordEventResult & {
+  period: string;
+  reachedLimits: ExhaustedUsageLimit[];
+};
 
 const billingPeriodForDate = (date: Date) => date.toISOString().slice(0, 7);
 
@@ -183,91 +191,118 @@ export const billingFragmentDefinition = defineFragment("billing")
                 b.whereIndex(BILLING_TRACKER_INDEX_NAME, (eb) =>
                   eb.and(eb("scopeKey", "=", scopeKey), eb("period", "=", period)),
                 ),
+              )
+              .find("billing_limit", (b) => b.whereIndex(BILLING_LIMIT_METER_INDEX_NAME))
+              .find("billing_tracker", (b) =>
+                b.whereIndex(BILLING_STATEMENT_TRACKER_INDEX_NAME, (eb) =>
+                  eb.and(
+                    eb("period", "=", period),
+                    eb("meter", "in", usageLimitedMeterSchema.options),
+                  ),
+                ),
               ),
           )
-          .mutate(({ uow, retrieveResult: [existingEvent, existingTrackers] }) => {
-            if (existingEvent) {
-              assertIdempotentEventMatches(existingEvent, input, scopeKey, period, occurredAt);
-              return { accepted: false, eventId: input.id } satisfies BillingRecordEventResult;
-            }
-
-            const now = uow.now();
-            // Concurrent writers race to create the same event or a meter's first tracker; the loser
-            // retries against the winner's row instead of failing.
-            const retryOnUniqueConflict = { retryOnUniqueConflict: () => true };
-            uow.create(
-              "billing_event",
-              {
-                id: input.id,
-                scopeKey,
-                scope: input.scope,
-                source: input.source,
-                eventType: input.eventType,
-                period,
-                occurredAt,
-                measurements: input.measurements,
-                metadata: input.metadata ?? null,
-                createdAt: now,
-              },
-              retryOnUniqueConflict,
-            );
-
-            const trackersByMeter = new Map(
-              existingTrackers.map((tracker) => [tracker.meter, tracker] as const),
-            );
-
-            for (const measurement of input.measurements) {
-              const existingTracker = trackersByMeter.get(measurement.meter);
-              if (existingTracker) {
-                if (existingTracker.unit !== measurement.unit) {
-                  throw new Error(
-                    `BILLING_METER_UNIT_CONFLICT:${measurement.meter}:${existingTracker.unit}:${measurement.unit}`,
-                  );
-                }
-
-                const existingFirstOccurredAt = new Date(existingTracker.firstOccurredAt);
-                const existingLastOccurredAt = new Date(existingTracker.lastOccurredAt);
-                uow.update("billing_tracker", existingTracker.id, (b) =>
-                  b
-                    .set({
-                      quantity: existingTracker.quantity + BigInt(measurement.quantity),
-                      eventCount: existingTracker.eventCount + 1n,
-                      firstOccurredAt:
-                        existingFirstOccurredAt.getTime() > occurredAt.getTime()
-                          ? occurredAt
-                          : existingTracker.firstOccurredAt,
-                      lastOccurredAt:
-                        existingLastOccurredAt.getTime() < occurredAt.getTime()
-                          ? occurredAt
-                          : existingTracker.lastOccurredAt,
-                      updatedAt: now,
-                    })
-                    .check(),
-                );
-                continue;
+          .mutate(
+            ({
+              uow,
+              retrieveResult: [existingEvent, existingTrackers, customLimits, limitedTrackers],
+            }) => {
+              if (existingEvent) {
+                assertIdempotentEventMatches(existingEvent, input, scopeKey, period, occurredAt);
+                return {
+                  accepted: false,
+                  eventId: input.id,
+                  period,
+                  reachedLimits: [],
+                } satisfies RecordedBillingEvent;
               }
 
+              const now = uow.now();
+              // Concurrent writers race to create the same event or a meter's first tracker; the loser
+              // retries against the winner's row instead of failing.
+              const retryOnUniqueConflict = { retryOnUniqueConflict: () => true };
               uow.create(
-                "billing_tracker",
+                "billing_event",
                 {
+                  id: input.id,
                   scopeKey,
                   scope: input.scope,
+                  source: input.source,
+                  eventType: input.eventType,
                   period,
-                  meter: measurement.meter,
-                  unit: measurement.unit,
-                  quantity: BigInt(measurement.quantity),
-                  eventCount: 1n,
-                  firstOccurredAt: occurredAt,
-                  lastOccurredAt: occurredAt,
+                  occurredAt,
+                  measurements: input.measurements,
+                  metadata: input.metadata ?? null,
                   createdAt: now,
-                  updatedAt: now,
                 },
                 retryOnUniqueConflict,
               );
-            }
 
-            return { accepted: true, eventId: input.id } satisfies BillingRecordEventResult;
-          })
+              const trackersByMeter = new Map(
+                existingTrackers.map((tracker) => [tracker.meter, tracker] as const),
+              );
+
+              for (const measurement of input.measurements) {
+                const existingTracker = trackersByMeter.get(measurement.meter);
+                if (existingTracker) {
+                  if (existingTracker.unit !== measurement.unit) {
+                    throw new Error(
+                      `BILLING_METER_UNIT_CONFLICT:${measurement.meter}:${existingTracker.unit}:${measurement.unit}`,
+                    );
+                  }
+
+                  const existingFirstOccurredAt = new Date(existingTracker.firstOccurredAt);
+                  const existingLastOccurredAt = new Date(existingTracker.lastOccurredAt);
+                  uow.update("billing_tracker", existingTracker.id, (b) =>
+                    b
+                      .set({
+                        quantity: existingTracker.quantity + BigInt(measurement.quantity),
+                        eventCount: existingTracker.eventCount + 1n,
+                        firstOccurredAt:
+                          existingFirstOccurredAt.getTime() > occurredAt.getTime()
+                            ? occurredAt
+                            : existingTracker.firstOccurredAt,
+                        lastOccurredAt:
+                          existingLastOccurredAt.getTime() < occurredAt.getTime()
+                            ? occurredAt
+                            : existingTracker.lastOccurredAt,
+                        updatedAt: now,
+                      })
+                      .check(),
+                  );
+                  continue;
+                }
+
+                uow.create(
+                  "billing_tracker",
+                  {
+                    scopeKey,
+                    scope: input.scope,
+                    period,
+                    meter: measurement.meter,
+                    unit: measurement.unit,
+                    quantity: BigInt(measurement.quantity),
+                    eventCount: 1n,
+                    firstOccurredAt: occurredAt,
+                    lastOccurredAt: occurredAt,
+                    createdAt: now,
+                    updatedAt: now,
+                  },
+                  retryOnUniqueConflict,
+                );
+              }
+
+              return {
+                accepted: true,
+                eventId: input.id,
+                period,
+                reachedLimits: usageLimitsReachedBy(
+                  usageLimitStatuses({ customLimits, trackers: limitedTrackers }),
+                  input.measurements,
+                ),
+              } satisfies RecordedBillingEvent;
+            },
+          )
           .build();
       },
 

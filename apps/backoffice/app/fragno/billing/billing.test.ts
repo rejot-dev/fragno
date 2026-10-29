@@ -49,8 +49,18 @@ describe("billing fragment", async () => {
     const first = await callServices(() => billing.services.recordEvent(usageEvent()));
     const duplicate = await callServices(() => billing.services.recordEvent(usageEvent()));
 
-    expect(first).toEqual({ accepted: true, eventId: "pi:org-1:hook-1" });
-    expect(duplicate).toEqual({ accepted: false, eventId: "pi:org-1:hook-1" });
+    expect(first).toEqual({
+      accepted: true,
+      eventId: "pi:org-1:hook-1",
+      period: "2026-07",
+      reachedLimits: [],
+    });
+    expect(duplicate).toEqual({
+      accepted: false,
+      eventId: "pi:org-1:hook-1",
+      period: "2026-07",
+      reachedLimits: [],
+    });
 
     await callServices(() =>
       billing.services.recordEvent(

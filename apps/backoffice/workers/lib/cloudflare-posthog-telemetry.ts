@@ -6,6 +6,7 @@ import {
   type BackofficeTelemetryObject,
   type BackofficeTelemetrySignal,
 } from "@/backoffice-runtime/backoffice-telemetry";
+import { formatUsageQuantity } from "@/fragno/billing/usage-limits";
 
 import { createCloudflarePostHog, shutdownCloudflarePostHog } from "./cloudflare-posthog";
 
@@ -205,6 +206,25 @@ function sendSignal(
         },
       });
       return;
+    case "usage-limit-reached": {
+      const { status } = signal;
+      client.capture({
+        distinctId,
+        event: "usage_limit_reached",
+        properties: {
+          ...envelope,
+          period: signal.period,
+          meter: status.meter,
+          unit: status.unit,
+          limit_setting: status.setting,
+          limit_quantity: status.limit.quantity,
+          used_quantity: status.used,
+          limit_display: formatUsageQuantity(status.meter, status.limit.quantity),
+          used_display: formatUsageQuantity(status.meter, status.used),
+        },
+      });
+      return;
+    }
     default:
       throw new Error("Unsupported Backoffice telemetry signal.", {
         cause: signal satisfies never,

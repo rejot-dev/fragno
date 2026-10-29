@@ -43,6 +43,9 @@ export type UsageLimitStatus = {
   used: string;
 };
 
+/** A finite limit and usage that has reached it. */
+export type ExhaustedUsageLimit = UsageLimitStatus & { limit: FiniteUsageLimit };
+
 /** An owner's limits and usage in the current UTC month, formatted YYYY-MM. */
 export type UsageLimits = {
   period: string;
@@ -78,15 +81,37 @@ export function usageLimitStatuses(input: {
 export function exhaustedUsageLimit(
   limits: UsageLimits,
   meters: readonly UsageLimitedMeter[],
-): (UsageLimitStatus & { limit: FiniteUsageLimit }) | null {
+): ExhaustedUsageLimit | null {
   return (
     limits.limits.find(
-      (status): status is UsageLimitStatus & { limit: FiniteUsageLimit } =>
+      (status): status is ExhaustedUsageLimit =>
         meters.includes(status.meter) &&
         status.limit.kind === "limited" &&
         BigInt(status.used) >= BigInt(status.limit.quantity),
     ) ?? null
   );
+}
+
+/**
+ * The limits that recording `measurements` on top of `statuses` uses up, with usage after them. A
+ * limit used up already is not reached again, even when an administrator lowers it below usage.
+ */
+export function usageLimitsReachedBy(
+  statuses: readonly UsageLimitStatus[],
+  measurements: readonly { meter: string; quantity: number }[],
+): ExhaustedUsageLimit[] {
+  return statuses.flatMap((status) => {
+    const measurement = measurements.find(({ meter }) => meter === status.meter);
+    if (!measurement || status.limit.kind !== "limited") {
+      return [];
+    }
+    const limit = BigInt(status.limit.quantity);
+    const before = BigInt(status.used);
+    const after = before + BigInt(measurement.quantity);
+    return before < limit && after >= limit
+      ? [{ ...status, limit: status.limit, used: after.toString() }]
+      : [];
+  });
 }
 
 /**
@@ -135,7 +160,7 @@ export function usageLimitResetAt(period: string): Date {
 export function usageLimitExhaustedMessage(
   owner: "org" | "user",
   period: string,
-  status: UsageLimitStatus & { limit: FiniteUsageLimit },
+  status: ExhaustedUsageLimit,
 ): string {
   const ownerName = owner === "org" ? "This organization" : "This personal account";
   const resetsOn = usageLimitResetAt(period).toISOString().slice(0, 10);
