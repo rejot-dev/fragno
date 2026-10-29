@@ -26,7 +26,10 @@ browser keeps it, and re-renders as the data changes.
    - `bank-accounts.page.js`: figures projected from a synced system's versioned events;
    - `delivery-tracker.page.js`: one value a workflow keeps checking, with its history.
 
-   Complete when every column you plan to read belongs to its relation in `PageRelations`.
+   Complete when every value the page shows has a column in `PageRelations` to come from. A
+   connected service's data, such as bank balances or an order's status, comes from the events its
+   feed fires: build the feed first with
+   `/static/skills/building-automations/references/syncing-external-data.md`.
 
 2. **Design.** Name the question the user opens the page to answer, such as "how much money do we
    have?" or "when does my order arrive?", and the states its data can be in, such as empty,
@@ -229,5 +232,6 @@ The title heads the page. Return the root element from the callback; `page.defin
 Pages show the synchronized relations and what Backoffice derives from them: `connections` holds
 each connection's current state, `agents` each agent's activity and queue, `agent_turns` the turns
 agents ended, and `workflow_waits` what waiting runs wait for and whether they ask a person. The
-home page example reads all four. When the user asks for forms or data the relations do not hold,
-build the closest page and tell them which part pages cannot express yet.
+home page example reads all four. Data from outside Backoffice arrives through a feed, as step 1
+describes. When the user asks for forms, build the closest page and tell them which part pages
+cannot express yet.

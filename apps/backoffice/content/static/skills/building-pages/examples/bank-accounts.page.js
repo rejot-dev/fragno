@@ -1,12 +1,14 @@
-// Bank accounts kept current by a sync: an hourly workflow emits each record it reads from the
-// bank as a versioned event, and the page shows the latest version of each. Totals lead, then
-// accounts and transactions; the sync's health and activity sit in the side column. Copy it into
-// /workspace as a <name>.page.js file to open it or start from it.
+// Bank accounts kept current by a feed: each hourly run of the bank-feed workflow emits every
+// record that changed as a versioned event, as
+// /static/skills/building-automations/references/syncing-external-data.md describes, and the page
+// shows the latest version of each. Totals lead, then accounts and transactions; the sync's health
+// and activity sit in the side column. Copy it into /workspace as a <name>.page.js file to open it
+// or start from it.
 export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
   // The latest version of every transaction, account and card alike.
   const transactions = sql`
     WITH versioned AS (
-      SELECT payload, occurredAt, id,
+      SELECT payload, payload ->> '$.record.status' AS status,
         row_number() OVER (
           PARTITION BY payload ->> '$.record.kind', payload ->> '$.entityId'
           ORDER BY CAST(payload ->> '$.version' AS INTEGER) DESC, occurredAt DESC, id DESC
@@ -21,13 +23,15 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
       -- The bank's dates are calendar days; as times, ui.relativeTime shows them.
       CAST(strftime('%s', payload ->> '$.record.date') AS INTEGER) * 1000 AS dateAt,
       payload ->> '$.record.description' AS description,
-      CAST(payload ->> '$.record.amount' AS REAL) AS amount,
+      CAST(payload ->> '$.record.amountCents' AS INTEGER) AS amountCents,
+      CAST(payload ->> '$.record.amountCents' AS INTEGER) / 100.0 AS amount,
       payload ->> '$.record.currency' AS currency,
-      payload ->> '$.record.status' AS status,
-      payload ->> '$.record.statusLabel' AS label,
-      payload ->> '$.record.tone' AS tone,
+      status,
+      -- The bank's status codes, such as SCHEDULED, read as Scheduled.
+      upper(substr(status, 1, 1)) || lower(replace(substr(status, 2), '_', ' ')) AS label,
+      CASE WHEN status IN ('FAILED', 'DECLINED') THEN 'failed' ELSE 'waiting' END AS tone,
       -- Completed and posted transactions are the norm, so only other statuses show a badge.
-      payload ->> '$.record.status' NOT IN ('PROCESSED', 'POSTED') AS unsettled,
+      status NOT IN ('PROCESSED', 'POSTED') AS unsettled,
       coalesce(payload ->> '$.record.card', '') AS card,
       coalesce(payload ->> '$.record.owner', '') AS owner,
       coalesce(payload ->> '$.record.source', '') AS fromName,
@@ -47,7 +51,7 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
     ),
     tx AS (${transactions}),
     movement AS (
-      SELECT accountId, currency, sum(CAST(round(amount * 100) AS INTEGER)) AS cents FROM tx
+      SELECT accountId, currency, sum(amountCents) AS cents FROM tx
       WHERE kind = 'account' AND status = 'PROCESSED'
         AND substr(date, 1, 7) = strftime('%Y-%m', ${now} / 1000, 'unixepoch')
         AND date <= strftime('%Y-%m-%dT%H:%M:%S', ${now} / 1000, 'unixepoch')
@@ -107,7 +111,7 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
     currency: "string",
     unsettled: "boolean",
     label: "string",
-    tone: ["live", "failed", "waiting"],
+    tone: ["failed", "waiting"],
     fromName: "string",
     toName: "string",
   });
@@ -121,40 +125,44 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
     currency: "string",
     unsettled: "boolean",
     label: "string",
-    tone: ["live", "failed", "waiting"],
+    tone: ["failed", "waiting"],
     card: "string",
     owner: "string",
   });
 
+  // Each occurrence of the schedule starts its own run, so health is the latest completed one.
   const health = sql`
-    SELECT value ->> '$.at' AS at,
-      CASE WHEN (value ->> '$.at') < ${now.minus("2 hours")} THEN 'Sync overdue' ELSE 'Syncing hourly' END
-        AS label,
-      CASE WHEN (value ->> '$.at') < ${now.minus("2 hours")} THEN 'waiting' ELSE 'live' END AS tone,
-      CASE WHEN (value ->> '$.at') < ${now.minus("2 hours")} THEN 'alert-triangle' ELSE 'check' END
-        AS icon
-    FROM kv_store WHERE key = 'bank:sync-health'
+    WITH synced AS (
+      SELECT max(completedAt) AS at FROM runs
+      WHERE remoteWorkflowName = 'bank-feed' AND status = 'complete'
+    )
+    SELECT at,
+      CASE WHEN at IS NULL THEN 'First sync running'
+        WHEN at < ${now.minus("2 hours")} THEN 'Sync overdue' ELSE 'Syncing hourly' END AS label,
+      CASE WHEN at >= ${now.minus("2 hours")} THEN 'live' ELSE 'waiting' END AS tone,
+      CASE WHEN at IS NULL THEN 'clock'
+        WHEN at < ${now.minus("2 hours")} THEN 'alert-triangle' ELSE 'check' END AS icon
+    FROM synced
   `.columns({
     at: "time?",
     label: "string",
     tone: ["waiting", "live"],
-    // clock is the icon before the first sync records its health.
     icon: ["alert-triangle", "check", "clock"],
   });
   const schedule = sql`
     SELECT route.enabled, next.nextOccurrenceAt AS at
     FROM routes route LEFT JOIN route_schedules next ON next.id = route.id
-    WHERE route.id = 'bank-sync-hourly'
+    WHERE route.id = 'bank-feed-hourly'
   `.columns({ enabled: "boolean", at: "time?" });
-  const worker = sql`
+  const latestRun = sql`
     SELECT workflowName, instanceId, status,
       CASE status
-        WHEN 'waiting' THEN 'Waiting for the next hourly poll'
-        WHEN 'active' THEN 'Polling the bank now'
+        WHEN 'active' THEN 'Syncing the bank now'
+        WHEN 'complete' THEN 'Synced'
         ELSE coalesce(errorMessage, 'Stopped')
       END AS detail
-    FROM runs WHERE instanceId = 'bank-sync-worker'
-    ORDER BY updatedAt DESC LIMIT 1
+    FROM runs WHERE remoteWorkflowName = 'bank-feed'
+    ORDER BY createdAt DESC, id DESC LIMIT 1
   `.columns({
     workflowName: "string",
     instanceId: "string",
@@ -163,7 +171,11 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
   });
   const activity = sql`
     WITH e AS (
-      SELECT *, row_number() OVER (PARTITION BY payload ->> '$.eventKey' ORDER BY occurredAt DESC, id DESC) AS n
+      SELECT *,
+        row_number() OVER (
+          PARTITION BY payload ->> '$.record.kind', payload ->> '$.entityId', payload ->> '$.version'
+          ORDER BY occurredAt DESC, id DESC
+        ) AS n
       FROM events WHERE source = 'bank'
     )
     SELECT id,
@@ -173,7 +185,7 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
         WHEN 'transaction.updated' THEN 'Transaction updated'
         WHEN 'balance.updated' THEN 'Balance updated'
         ELSE eventType
-      END || CASE WHEN payload ->> '$.backfill' = 1 THEN ' · initial import' ELSE '' END AS detail,
+      END AS detail,
       occurredAt AS at
     FROM e WHERE n = 1
     ORDER BY occurredAt DESC, id DESC LIMIT 8
@@ -281,7 +293,7 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
     ui.panel(
       {
         title: "Sync",
-        link: { label: "View hourly schedule", to: { kind: "route", id: "bank-sync-hourly" } },
+        link: { label: "View hourly schedule", to: { kind: "route", id: "bank-feed-hourly" } },
       },
       [
         ui.when(
@@ -308,10 +320,10 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
         ]),
         ui.rowList(
           {},
-          ui.each(worker, (run) =>
+          ui.each(latestRun, (run) =>
             ui.listRow(
               {
-                title: "Sync worker",
+                title: "Latest sync",
                 detail: run.detail,
                 icon: "zap",
                 to: { kind: "run", workflowName: run.workflowName, instanceId: run.instanceId },

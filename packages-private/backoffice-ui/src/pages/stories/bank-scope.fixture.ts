@@ -4,7 +4,8 @@ import { days, hours, minutes, storyScope, withoutRows, type StoryRow } from "./
  * The events an hourly bank sync emits, shaped as the bank pages read them: each record is an
  * entity whose newer versions replace older ones, and the first sync imports the existing history
  * as backfill. The production Brex page and the bank-accounts example read the same data under
- * different names, so scopes take the names their page reads.
+ * different names, so scopes take the names their page reads. Records hold both the values the
+ * example reads, such as amountCents, and the display text the production page reads.
  */
 
 const ACCOUNTS = {
@@ -103,6 +104,7 @@ function accountTransaction({
         date,
         description,
         amount: amount.toFixed(2),
+        amountCents: Math.round(amount * 100),
         currency,
         displayAmount: money(amount, currency),
         status,
@@ -144,6 +146,7 @@ function cardTransaction({
         date,
         description,
         amount: amount.toFixed(2),
+        amountCents: Math.round(amount * 100),
         currency: "USD",
         displayAmount: money(amount, "USD"),
         status,
@@ -165,6 +168,7 @@ function balances(accountId: AccountId, versions: [cents: number, seenAt: Date][
       accountId,
       index + 1,
       {
+        kind: "balance",
         ...account,
         balance: money(cents / 100, account.currency).replace(/^\+/u, ""),
         balanceCents: cents,
@@ -381,17 +385,36 @@ const events: StoryRow[] = [
   }),
 ];
 
-/** The names a bank page reads: its events' source and the sync's stored health, route, and run. */
-type SyncNames = { source: string; healthKey: string; routeId: string; workerInstanceId: string };
+/**
+ * The names a bank page reads: its events' source, the sync's route, and how its runs are found.
+ * A sync that starts a run per occurrence names its workflow; a sync that signals one long-lived
+ * worker names the worker's instance and the store key where it records its health.
+ */
+type SyncNames = { source: string; routeId: string } & (
+  | { workflowName: string }
+  | { healthKey: string; workerInstanceId: string }
+);
+
+type RunStatus = "active" | "waiting" | "complete" | "errored";
 
 /** A sync's scopes: synced since its import nine days ago, failing and paused, and first sync. */
-export function bankScopes({ source, healthKey, routeId, workerInstanceId }: SyncNames) {
-  const syncHealth = (at: Date): StoryRow => ({
-    id: `kv-${healthKey}`,
-    key: healthKey,
-    value: { at: at.getTime(), records: events.length, emitted: 1 },
-    updatedAt: at,
-  });
+export function bankScopes(names: SyncNames) {
+  const { source, routeId } = names;
+  const healthKey = "healthKey" in names ? names.healthKey : null;
+  // A table without rows has no columns to create, so a sync without stored health leaves it out.
+  const syncHealth = (at: Date): Record<string, StoryRow[]> =>
+    healthKey
+      ? {
+          kv_store: [
+            {
+              id: `kv-${healthKey}`,
+              key: healthKey,
+              value: { at: at.getTime(), records: events.length, emitted: 1 },
+              updatedAt: at,
+            },
+          ],
+        }
+      : {};
   const hourlyRoute = (enabled: boolean): StoryRow => ({
     id: routeId,
     name: "Hourly bank sync",
@@ -399,26 +422,56 @@ export function bankScopes({ source, healthKey, routeId, workerInstanceId }: Syn
     trigger: { kind: "schedule", cron: "0 * * * *" },
   });
   const nextSync = { id: routeId, nextOccurrenceAt: hours(-1) };
-  const syncWorker = (
-    status: "active" | "waiting" | "errored",
-    errorMessage: string | null,
-    updatedAt: Date,
-  ): StoryRow => ({
-    id: `run-${workerInstanceId}`,
-    workflowName: "codemode-script",
-    remoteWorkflowName: "bank-sync-worker",
-    instanceId: workerInstanceId,
-    status,
-    errorMessage,
-    updatedAt,
-  });
+  /**
+   * The sync's runs, newest first: one run started at each time when the sync starts a run per
+   * occurrence, or the worker's single run, as the newest of them left it.
+   */
+  const syncRuns = (
+    runs: [status: RunStatus, startedAt: Date, errorMessage?: string][],
+  ): StoryRow[] => {
+    const run = (status: RunStatus, startedAt: Date, errorMessage: string | null) => {
+      const endedAt = new Date(startedAt.getTime() + 2 * 60_000);
+      return {
+        workflowName: "codemode-script",
+        status,
+        errorMessage,
+        createdAt: startedAt,
+        startedAt,
+        completedAt: status === "complete" ? endedAt : null,
+        updatedAt: status === "active" ? startedAt : endedAt,
+      };
+    };
+    if ("workflowName" in names) {
+      return runs.map(([status, startedAt, errorMessage], index) => ({
+        id: `run-${names.workflowName}-${index}`,
+        remoteWorkflowName: names.workflowName,
+        instanceId: `${names.workflowName}-${startedAt.getTime()}`,
+        ...run(status, startedAt, errorMessage ?? null),
+      }));
+    }
+    // A worker waits for the next signal after each poll it completes.
+    const [status, startedAt, errorMessage] = runs[0];
+    return [
+      {
+        id: `run-${names.workerInstanceId}`,
+        remoteWorkflowName: "bank-sync-worker",
+        instanceId: names.workerInstanceId,
+        ...run(status === "complete" ? "waiting" : status, startedAt, errorMessage ?? null),
+      },
+    ];
+  };
+  const revoked = "The bank API returned 401 Unauthorized: the API token was revoked.";
 
   const synced = storyScope({
     events: events.map((event) => ({ ...event, source })),
-    kv_store: [syncHealth(minutes(58))],
+    ...syncHealth(minutes(58)),
     routes: [hourlyRoute(true)],
     route_schedules: [nextSync],
-    runs: [syncWorker("waiting", null, minutes(58))],
+    runs: syncRuns([
+      ["complete", minutes(60)],
+      ["complete", minutes(120)],
+      ["complete", minutes(180)],
+    ]),
   });
   return {
     synced,
@@ -426,16 +479,13 @@ export function bankScopes({ source, healthKey, routeId, workerInstanceId }: Syn
     failing: {
       ...synced,
       ...storyScope({
-        kv_store: [syncHealth(hours(7))],
+        ...syncHealth(hours(7)),
         routes: [hourlyRoute(false)],
         route_schedules: [{ id: routeId, nextOccurrenceAt: null }],
-        runs: [
-          syncWorker(
-            "errored",
-            "The bank API returned 401 Unauthorized: the API token was revoked.",
-            hours(6),
-          ),
-        ],
+        runs: syncRuns([
+          ["errored", hours(6), revoked],
+          ["complete", hours(7)],
+        ]),
       }),
     },
     // The first sync is still importing, so nothing has been emitted yet.
@@ -444,7 +494,7 @@ export function bankScopes({ source, healthKey, routeId, workerInstanceId }: Syn
       ...storyScope({
         routes: [hourlyRoute(true)],
         route_schedules: [nextSync],
-        runs: [syncWorker("active", null, minutes(1))],
+        runs: syncRuns([["active", minutes(1)]]),
       }),
     },
   };

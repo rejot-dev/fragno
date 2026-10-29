@@ -7,9 +7,8 @@ export default { title: "Pages/Examples/Bank accounts" };
 
 const scopes = bankScopes({
   source: "bank",
-  healthKey: "bank:sync-health",
-  routeId: "bank-sync-hourly",
-  workerInstanceId: "bank-sync-worker",
+  routeId: "bank-feed-hourly",
+  workflowName: "bank-feed",
 });
 
 export function Synced() {

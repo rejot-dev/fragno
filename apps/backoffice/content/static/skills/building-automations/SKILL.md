@@ -3,8 +3,8 @@ name: building-automations
 description:
   "Automate persistent Backoffice behavior from events or schedules. Use when the user explicitly
   asks to create or change an automation, event-triggered route, scheduled route, or saved workflow
-  that should run later, or asks why an automation did not act on an event or to retry one that
-  failed."
+  that should run later, when a page or automation needs a connected service's data kept current, or
+  when the user asks why an automation did not act on an event or to retry one that failed."
 ---
 
 # Building Automations
@@ -44,7 +44,11 @@ reclassifies the event, or forwards it to another scope.
 2. Choose the smallest topology that satisfies the request:
    - External or product event: route with an `event` trigger.
    - Time-based trigger: route with a `schedule` trigger. Each occurrence fires the route once, so a
-     scheduled `start_workflow` starts a new run per occurrence that does that occurrence's work.
+     scheduled `start_workflow` starts a new run per occurrence that does that occurrence's work,
+     and a failed run leaves the next occurrence unaffected.
+   - A connected service's data kept current, such as for a page: a **feed**, a scheduled
+     `start_workflow` whose run fires an event per changed record. Read
+     `/static/skills/building-automations/references/syncing-external-data.md`.
    - New work: `start_workflow`.
    - Resume waiting work: `send_workflow_event`.
    - Domain event classification: `reclassify_event`.
@@ -120,7 +124,7 @@ reclassifies the event, or forwards it to another scope.
    principal and its grant policy is either inherited user authority or the smallest explicit
    automation grant set.
 
-   Signal an existing durable workflow on a schedule, with an explicit IANA time zone:
+   Start a run per occurrence on a schedule, with an explicit IANA time zone:
 
    ```js
    async () =>
@@ -136,12 +140,20 @@ reclassifies the event, or forwards it to another scope.
          },
        },
        action: {
-         kind: "send_workflow_event",
-         target: { kind: "instance_id", template: "daily-digest" },
-         eventType: "scheduled",
+         kind: "start_workflow",
+         authority: {
+           kind: "organization-automation",
+           grants: [{ namespace: "integrations", permission: "execute" }],
+         },
+         workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
+         instanceIdTemplate: "daily-digest-${event.id}",
        },
      });
    ```
+
+   A run carries what the next one needs in the automation store. Signal one long-lived run with
+   `send_workflow_event` only when the run itself waits for the occurrence, such as a reminder
+   inside an approval; once that run ends or errors, the signals have nothing to resume.
 
    Create event-triggered routes with the `router` provider:
 
