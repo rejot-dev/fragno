@@ -224,10 +224,12 @@ export class Books extends DurableObject<CloudflareEnv> {
     return attempt(this.documents.callServices(() => this.documents.services.bookDocument(input)));
   }
 
-  reviewDocument(input: Parameters<Documents["services"]["reviewDocument"]>[0]) {
-    return attempt(
-      this.documents.callServices(() => this.documents.services.reviewDocument(input)),
-    );
+  requestReview(input: Parameters<Documents["services"]["requestReview"]>[0]) {
+    return attempt(this.documents.callServices(() => this.documents.services.requestReview(input)));
+  }
+
+  answerReview(input: Parameters<Documents["services"]["answerReview"]>[0]) {
+    return attempt(this.documents.callServices(() => this.documents.services.answerReview(input)));
   }
 
   dismissDocument(input: { documentId: string; dismissedBy: string }) {

@@ -373,10 +373,13 @@ received; or that Backoffice cannot say, e.g. while it cannot be reached. The ag
 its turn ends, so the page reads the document again before showing a finished turn without an
 answer. While waiting or running, the page asks again every 5 seconds while it is in view, since
 nothing tells Bookkeeping when the agent's turn ends. Any but the first two offer **Ask again**,
-which sends a new request; a later answer replaces an earlier one. The upload asks under one request
-ID, and only while the document has no review, so sending it again, even twice at once, asks once
-and never undoes an answer. Booking or dismissing a document ends its review: the agent's actions
-refuse documents that are not to book.
+which sends a new request. The prompt names its request, and the agent's answer names it back: an
+answer counts only while the document awaits that request, so an earlier request's subagent still
+running, or one that can no longer read the file once the first answer stopped sharing it, cannot
+replace the answer. A person's agent may answer without a request, replacing any answer. The upload
+asks under one request ID, and only while the document has no review, so sending it again, even
+twice at once, asks once and never undoes an answer. Booking or dismissing a document ends its
+review: the agent's actions refuse documents that are not to book.
 
 Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
 administration is created, and administrations from before a storage change do not open. Delete

@@ -491,10 +491,11 @@ async function firmAgent(scenario: BookkeepingScenario, browser: ScenarioBrowser
   };
 }
 
-/** The fixture invoice's entry, as the agent proposes it, with these amounts. */
-function proposal(id: string, debit: string, credit: string) {
+/** The fixture invoice's entry, as the agent proposes it answering `request`, with these amounts. */
+function proposal(id: string, request: string | null, debit: string, credit: string) {
   return {
     document: id,
+    request,
     documentDate: INVOICE.invoiceDate,
     entry: {
       journal: "PUR",
@@ -556,7 +557,7 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     // Bookkeeping prompts the agent as its installation, so its calls change nothing but reviews,
     // whatever a document tells it.
     expect(
-      await agent.call("entries.post", proposal(id, INVOICE_TOTAL, INVOICE_TOTAL).entry),
+      await agent.call("entries.post", proposal(id, null, INVOICE_TOTAL, INVOICE_TOTAL).entry),
     ).toEqual({
       status: 403,
       body: {
@@ -574,7 +575,12 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
         review: "requested",
       }),
     });
-    expect(await agent.call("documents.propose", proposal(id, INVOICE_TOTAL, "776.00"))).toEqual({
+    expect(
+      await agent.call(
+        "documents.propose",
+        proposal(id, prompt.requestId, INVOICE_TOTAL, "776.00"),
+      ),
+    ).toEqual({
       status: 422,
       body: {
         message: `The entry does not balance: debits ${INVOICE_TOTAL} and credits 776.00 EUR.`,
@@ -583,7 +589,10 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     // The agent answers, and its turn ends, while the page asks how far it got.
     scenario.backoffice.beforeNextAnswer("pi.prompt.get", async () => {
       expect(
-        await agent.call("documents.propose", proposal(id, INVOICE_TOTAL, INVOICE_TOTAL)),
+        await agent.call(
+          "documents.propose",
+          proposal(id, prompt.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
+        ),
       ).toEqual({
         status: 200,
         body: { document: id, review: "proposed" },
@@ -651,10 +660,83 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     });
     // A booked document takes no more proposals.
     expect(
-      await agent.call("documents.propose", proposal(id, INVOICE_TOTAL, INVOICE_TOTAL)),
+      await agent.call(
+        "documents.propose",
+        proposal(id, prompt.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
+      ),
     ).toEqual({
       status: 422,
       body: { message: "This document is booked. Reverse its entry first." },
+    });
+  });
+});
+
+test("the agent's answer counts only while the document awaits the request it answers", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    const id = await uploaded(ada, invoiceFixture);
+    const [first] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
+    // Asked again, e.g. when the page could not tell where the first request stood, two subagents
+    // read the document. Each prompt names its request.
+    await ada.submit(`${BOOKS}/documents/${id}`, { intent: "ask" });
+    const second = scenario.backoffice.prompts(FIRM, FIRM_AGENT).at(-1)!;
+    expect(first.content).toContain(first.requestId);
+    expect(second.content).toContain(second.requestId);
+    const agent = await firmAgent(scenario, ada);
+    const notAwaited = {
+      status: 422,
+      body: {
+        message:
+          "This request no longer awaits an answer: the document was answered, or asked about again, since.",
+      },
+    };
+
+    // The first request was asked again, so its answer is not used.
+    expect(
+      await agent.call(
+        "documents.propose",
+        proposal(id, first.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
+      ),
+    ).toEqual(notAwaited);
+    expect(
+      await agent.call(
+        "documents.propose",
+        proposal(id, second.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
+      ),
+    ).toEqual({ status: 200, body: { document: id, review: "proposed" } });
+    // Answering stopped sharing the file, so a subagent still reading it can no longer, and may
+    // decline: neither request awaits an answer now, and the agent answers no request but its own.
+    const late = { document: id, reason: "I cannot read the file." };
+    expect(await agent.call("documents.decline", { ...late, request: first.requestId })).toEqual(
+      notAwaited,
+    );
+    expect(await agent.call("documents.decline", { ...late, request: second.requestId })).toEqual(
+      notAwaited,
+    );
+    expect(await agent.call("documents.decline", { ...late, request: null })).toEqual({
+      status: 422,
+      body: {
+        message: "Give the ID of the request you answer as `request`: the request names it.",
+      },
+    });
+    expect(await readDocument(ada, id)).toMatchObject({
+      review: { status: "proposed", by: "the bookkeeping agent" },
+    });
+
+    // A person answers whether asked or not, replacing the agent's answer.
+    const adaAgent = scenario.agent(
+      { email: "ada@example.test" },
+      { organization: CLIENT, project: ADMINISTRATION },
+    );
+    expect(
+      await adaAgent.call("documents.decline", {
+        document: id,
+        request: null,
+        reason: "A duplicate of invoice 6.",
+      }),
+    ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+    expect(await readDocument(ada, id)).toMatchObject({
+      review: { status: "declined", by: "Ada Lovelace via Backoffice" },
     });
   });
 });
@@ -752,7 +834,11 @@ test("a request the agent never received, or failed, is asked again from the doc
     expect(otherMounts).toEqual([]);
     const agent = await firmAgent(scenario, ada);
     expect(
-      await agent.call("documents.decline", { document: id, reason: "This is a price list." }),
+      await agent.call("documents.decline", {
+        document: id,
+        request: second.requestId,
+        reason: "This is a price list.",
+      }),
     ).toEqual({ status: 200, body: { document: id, review: "declined" } });
     // Having answered, the agent no longer reads the document's file.
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
@@ -770,7 +856,10 @@ test("a request the agent never received, or failed, is asked again from the doc
     await ada.submit(`${BOOKS}/documents/${id}`, { intent: "dismiss", resultIntent: "dismiss" });
     await readDocument(ada, id);
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
-    expect(await agent.call("documents.propose", proposal(id, "1.00", "1.00"))).toEqual({
+    const last = scenario.backoffice.prompts(FIRM, FIRM_AGENT).at(-1)!;
+    expect(
+      await agent.call("documents.propose", proposal(id, last.requestId, "1.00", "1.00")),
+    ).toEqual({
       status: 422,
       body: { message: "This document was dismissed." },
     });

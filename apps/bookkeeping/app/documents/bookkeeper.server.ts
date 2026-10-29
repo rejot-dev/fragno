@@ -41,7 +41,7 @@ When asked about a document:
 4. Look at recent entries in the journal you would book it in (\`entries.list\`), and book it as the books booked similar documents.
 5. Propose the entry with \`documents.propose\`: purchases in the purchase journal and sales in the sales journal, posted on the document's date when its period is open, with the document's number as the reference. Lines on a supplier's or customer's account name them; leave the party null when the books lack them. In \`note\`, tell the person what the document is, how you chose the accounts, and what to check.
 
-If the file is no invoice or receipt, or you cannot read it, call \`documents.decline\` with the reason instead. When an action refuses your proposal, fix what it names and propose again.`,
+If the file is no invoice or receipt, or you cannot read it, call \`documents.decline\` with the reason instead. Both answers take the ID of the request asking you as \`request\`; the request names it. When an action refuses your proposal, fix what it names and propose again; when it says the request no longer awaits an answer, stop.`,
   permissions: ["upload.read", "models.extract", "integrations.read", "integrations.execute"],
   model: null,
 };
@@ -159,9 +159,9 @@ export async function askBookkeeper(
   // The firm's agent answers every administration of its clients, where a document's ID is unique
   // only in its own.
   const requestId = `document:${context.administration.id}:${document.id}:${ask === "first" ? "upload" : crypto.randomUUID()}`;
-  const recorded = await context.books.reviewDocument({
+  const recorded = await context.books.requestReview({
     documentId: document.id,
-    review: {
+    request: {
       status: "requested",
       requestId,
       by: context.user.name,
@@ -200,7 +200,7 @@ export async function askBookkeeper(
       agentName: BOOKKEEPER.agentName,
       requestId,
       subagent: true,
-      content: `Propose the entry for document ${document.id} (${document.filename}) of administration ${administration.id}, ${organization.name}'s ${administration.name}. Its file is at ${await sharedDocumentPath(administration.id, document)}.`,
+      content: `Propose the entry for document ${document.id} (${document.filename}) of administration ${administration.id}, ${organization.name}'s ${administration.name}. Its file is at ${await sharedDocumentPath(administration.id, document)}. This is request ${requestId}: give it as \`request\` when you answer with documents.propose or documents.decline.`,
     });
   } catch (error) {
     return { ok: false, error: `Backoffice did not ask the agent: ${backofficeProblem(error)}` };

@@ -42,10 +42,13 @@ export type ProposedEntry = {
  * entry it proposes, or why it proposes none. Asking again replaces its answer. Times are ISO
  * timestamps; `by` names the person the agent acted for.
  */
-export type Review =
-  | { status: "requested"; requestId: string; by: string; at: string }
+export type ReviewRequest = { status: "requested"; requestId: string; by: string; at: string };
+
+export type ReviewAnswer =
   | { status: "proposed"; entry: ProposedEntry; note: string; by: string; at: string }
   | { status: "declined"; reason: string; by: string; at: string };
+
+export type Review = ReviewRequest | ReviewAnswer;
 
 function stringColumn<T extends string>() {
   return column("string") as unknown as Column<"string", T, T>;
