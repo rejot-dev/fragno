@@ -4,7 +4,7 @@ set -euo pipefail
 
 function print_usage() {
   cat <<'EOF'
-Usage: land-on-main.sh [--push]
+Usage: land-on-main.sh [--push | --pull]
 
 Fast-forwards the local main branch to the current worktree's HEAD, then
 rebases the current branch on main. Pulls main first when it is behind
@@ -14,6 +14,8 @@ rebased on main, and no merge, cherry-pick, or revert is in progress.
 
   --push  Push main to origin right after landing, so origin/main cannot
           move in between.
+  --pull  Do not land: pull main from origin/main and rebase the current
+          branch on it.
 EOF
 }
 
@@ -35,9 +37,11 @@ function find_main_worktree_path() {
 }
 
 push=false
+pull=false
 for arg in "$@"; do
   case "$arg" in
     --push) push=true ;;
+    --pull) pull=true ;;
     -h | --help)
       print_usage
       exit 0
@@ -48,6 +52,11 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+if [[ "$push" == true && "$pull" == true ]]; then
+  echo "error: --pull does not land, so there is nothing to push." >&2
+  exit 1
+fi
 
 current_branch="$(git branch --show-current)"
 if [[ -z "$current_branch" ]]; then
@@ -89,6 +98,12 @@ if ! git merge-base --is-ancestor origin/main main; then
     exit 1
   fi
   echo "Pulled main to origin/main ($(git rev-parse --short main))."
+fi
+
+if [[ "$pull" == true ]]; then
+  git rebase --quiet --autostash main
+  echo "Rebased $current_branch on main ($(git rev-parse --short main))."
+  exit 0
 fi
 
 main_sha="$(git rev-parse main)"
