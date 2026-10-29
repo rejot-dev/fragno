@@ -1,7 +1,7 @@
 # @fragno-dev/cloudflare-fragment
 
-Fragno fragment for Cloudflare platform primitives, including Workers for Platforms deployments and
-Browser Run Quick Actions.
+Fragno fragment for Cloudflare platform primitives, including Workers for Platforms deployments,
+Browser Run Quick Actions, and metered Workers AI runs.
 
 ## Scope
 
@@ -13,6 +13,8 @@ Browser Run Quick Actions.
 - Builds the official `cloudflare` SDK client and exposes it through
   `fragment.services.cloudflare.getClient()`
 - Exposes Browser Run Quick Actions through `fragment.services.browserRun`
+- Runs Workers AI models with the neurons each run cost, through
+  `@fragno-dev/cloudflare-fragment/workers-ai`
 - Exposes typed routes and client hooks for queueing and status reads
 
 ## Server Setup
@@ -149,6 +151,38 @@ await fragment.services.browserRunSessions.close(session.sessionId);
 
 Session methods are `create`, `list`, `get`, and `close`. Target methods are `createTarget`,
 `listTargets`, `getTarget`, `activateTarget`, and `closeTarget`.
+
+## Workers AI
+
+`createWorkersAi` runs models through a Worker's `AI` binding and reads their input and output JSON
+Schemas from Cloudflare's public model documentation, which the binding cannot. It needs no
+credentials, fragment instance, database, or routes.
+
+```ts
+import { createWorkersAi } from "@fragno-dev/cloudflare-fragment/workers-ai";
+
+const workersAi = createWorkersAi({ binding: env.AI });
+
+const schemas = await workersAi.modelSchemas("@cf/cloudflare/clairic");
+const run = await workersAi.run("@cf/cloudflare/clairic", {
+  model: "clairic",
+  state: "Invoice INV-2291, total due $1,080.00.",
+  fields: { total: { type: "number" } },
+});
+if (run.status === "completed") {
+  console.log(run.output, run.neurons);
+}
+```
+
+A completed run reports `neurons` from Cloudflare's `cf-ai-neurons` response header, the unit
+Workers AI bills in, so callers can meter any model without its prices. A run without the header
+fails, since its cost is unknown. Errors meaning the account cannot run the model, such as an
+unknown model or a plan that excludes it, are `unavailable`; other errors are `failed`, with
+Cloudflare's code and description.
+
+`modelSchemas` reads `https://developers.cloudflare.com/workers-ai/models/<name>/schema-input.json`
+and its `schema-output.json`, where `<name>` is the model ID's last segment, and returns `missing`
+when the documentation has no such model.
 
 ## Routes
 
