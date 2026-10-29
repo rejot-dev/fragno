@@ -15,7 +15,11 @@ import { emitWaSqliteWasmAssetPlugin } from "./scripts/node-server/vite-wa-sqlit
 
 // Warm the public Worker entry during dev-server boot instead of on the first SSR request.
 const workerWarmupFiles = ["./workers/app.ts"];
-const localViteHost = "127.0.0.1";
+// A boxd VM serves its dev servers through HTTPS proxies (`<name>.<vm>.boxd.sh` -> port), which
+// connect over the VM's network interface rather than loopback. Elsewhere, stay on loopback.
+const boxdVmHost = process.env.BOXD_VM_HOST;
+const viteHost = boxdVmHost ? "0.0.0.0" : "127.0.0.1";
+const boxdAllowedHosts = boxdVmHost ? [`.${boxdVmHost}`] : [];
 
 function emitWorkerLocalDevVarsPlugin(): Plugin {
   const localDevVarsPath = path.resolve(__dirname, ".dev.vars");
@@ -222,17 +226,17 @@ export default defineConfig(({ command }) => {
     },
     environments,
     preview: {
-      host: localViteHost,
+      host: viteHost,
       port,
       strictPort: true,
-      allowedHosts: [".trycloudflare.com", "local-wilco.recivo.email"],
+      allowedHosts: [".trycloudflare.com", "local-wilco.recivo.email", ...boxdAllowedHosts],
     },
     server: {
-      host: localViteHost,
+      host: viteHost,
       port,
       strictPort: true,
       hmr: false,
-      allowedHosts: ["local-wilco.recivo.email"],
+      allowedHosts: ["local-wilco.recivo.email", ...boxdAllowedHosts],
       // Tunnel/proxy layers were caching /@fs workspace modules and preserving stale
       // Vite dep hashes across restarts, which can split React between old/new chunks.
       headers: isDevServer
