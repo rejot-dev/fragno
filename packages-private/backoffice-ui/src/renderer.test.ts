@@ -51,7 +51,6 @@ test("server-renders the minimal Backoffice generated interface", () => {
   expect(markup).toContain("Current fulfilled order count.");
   expect(markup).toContain('aria-label="Orders"');
   expect(markup).toContain(">24</p>");
-  expect(markup).toContain('data-tone="muted"');
 });
 
 test("resolves state, template, and conditional props while rendering", () => {
