@@ -387,7 +387,7 @@ export default page.define({ title: "Home" }, ({ sql, now, intervals, bucket }) 
           ),
           ui.when(
             ui.is(eventVolume.value("source", ""), { not: true }),
-            ui.text({ text: "No events arrived in the last 24 hours." }),
+            ui.text({ text: "No events arrived in the last 24 hours.", tone: "muted" }),
           ),
         ]),
       ]),
