@@ -9,7 +9,8 @@ export type CodemodeResultDetails = {
   hasResult: boolean;
   logs: string[];
   result: unknown;
-  run: WorkflowRunReference | null;
+  /** The run an inline workflow started, then the saved runs the program showed. */
+  runs: WorkflowRunReference[];
   /** Null for results recorded before calls were kept with them. */
   calls: CodemodeCallsDetail | null;
 };
@@ -21,7 +22,7 @@ export function isCodemodeTool(name: string) {
 
 export function getCodemodeResultDetails(details: unknown): CodemodeResultDetails {
   if (!details || typeof details !== "object" || Array.isArray(details)) {
-    return { hasResult: false, logs: [], result: undefined, run: null, calls: null };
+    return { hasResult: false, logs: [], result: undefined, runs: [], calls: null };
   }
 
   const resultDetails = details as Record<string, unknown>;
@@ -31,7 +32,10 @@ export function getCodemodeResultDetails(details: unknown): CodemodeResultDetail
       ? resultDetails.logs.filter((line): line is string => typeof line === "string")
       : [],
     result: resultDetails.result,
-    run: resultDetails.run == null ? null : parseWorkflowRunReference(resultDetails.run),
+    runs: [
+      ...(resultDetails.run == null ? [] : [parseWorkflowRunReference(resultDetails.run, "run")]),
+      ...parseShownRuns(resultDetails.shownRuns),
+    ],
     calls: getCodemodeCallsDetail(details),
   };
 }
@@ -45,21 +49,32 @@ export function getCodemodeCallsDetail(details: unknown): CodemodeCallsDetail | 
   return parsed.success ? parsed.data : null;
 }
 
-function parseWorkflowRunReference(value: unknown): WorkflowRunReference {
+function parseShownRuns(value: unknown): WorkflowRunReference[] {
+  if (value == null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw invalidWorkflowRunReferenceError("shownRuns");
+  }
+  return value.map((run: unknown) => parseWorkflowRunReference(run, "shownRuns"));
+}
+
+// Saved and inline workflows run on the same codemode host, so a handle is only its instance.
+function parseWorkflowRunReference(value: unknown, field: string): WorkflowRunReference {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw invalidWorkflowRunReferenceError();
+    throw invalidWorkflowRunReferenceError(field);
   }
 
   const candidate = value as Record<string, unknown>;
   if (typeof candidate.instanceId !== "string" || candidate.instanceId.trim().length === 0) {
-    throw invalidWorkflowRunReferenceError();
+    throw invalidWorkflowRunReferenceError(field);
   }
 
   return { workflowName: CODEMODE_WORKFLOW, instanceId: candidate.instanceId };
 }
 
-function invalidWorkflowRunReferenceError() {
+function invalidWorkflowRunReferenceError(field: string) {
   return new TypeError(
-    "Invalid codemode result details.run: expected a non-empty instanceId string",
+    `Invalid codemode result details.${field}: expected a non-empty instanceId string`,
   );
 }

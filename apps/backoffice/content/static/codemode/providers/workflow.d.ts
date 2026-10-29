@@ -1,4 +1,4 @@
-// Workflow instances: start saved workflows, check status and history, send events, retry steps. Read to run or follow a workflow.
+// Workflow instances: start saved workflows, check status and history, show a run to the user, send events, retry steps. Read to run or follow a workflow.
 type WorkflowCodemodeProvider = {
   /**
    * Start a saved .workflow.js file by path. Inline defineWorkflow declarations start automatically.
@@ -15,6 +15,11 @@ type WorkflowCodemodeProvider = {
    * Requires `workflow.read`.
    */
   getInstance(input: WorkflowGetInstanceInput): Promise<WorkflowGetInstanceOutput>;
+  /**
+   * Show a run of a saved workflow in this scope as a card in your reply: its steps, every interface they return, such as a form it waits on, and its output, live, as an inline workflow shows. Only from an agent's turn, for a run in its own scope.
+   * Requires `workflow.read`.
+   */
+  showInstance(input: WorkflowShowInstanceInput): Promise<WorkflowShowInstanceOutput>;
   /**
    * Get durable workflow step, event, and emission history.
    * Requires `workflow.read`.
@@ -70,6 +75,28 @@ type WorkflowGetInstanceInput = {
   instanceId: string;
 };
 type WorkflowGetInstanceOutput = {
+  id: string;
+  details: {
+    status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";
+    error?: {
+      name: string;
+      message: string;
+    };
+    output?: unknown;
+  };
+  meta: {
+    name: string;
+    path: string;
+    createdAt: string;
+    updatedAt: string;
+    startedAt: string | null;
+    completedAt: string | null;
+  };
+};
+type WorkflowShowInstanceInput = {
+  instanceId: string;
+};
+type WorkflowShowInstanceOutput = {
   id: string;
   details: {
     status: "active" | "paused" | "errored" | "terminated" | "complete" | "waiting";

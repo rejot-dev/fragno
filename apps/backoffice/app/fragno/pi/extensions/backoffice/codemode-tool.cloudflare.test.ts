@@ -703,6 +703,51 @@ describe("Pi codemode tool", () => {
     });
   });
 
+  test("shows saved runs in its own scope as cards in the tool result", async () => {
+    const tool = await createCodemodeTool({
+      workflowRuntime: createPiWorkflowRuntime({
+        getInstance: async ({ instanceId }) => {
+          if (instanceId === "missing") {
+            throw new Error("Workflow instance missing not found.");
+          }
+          return {
+            id: instanceId,
+            details: { status: "waiting" },
+            meta: {
+              name: "nightly-sync",
+              path: "/workspace/automations/nightly-sync.workflow.js",
+              createdAt: "2026-08-10T00:00:00.000Z",
+              updatedAt: "2026-08-10T00:00:00.000Z",
+              startedAt: null,
+              completedAt: null,
+            },
+          };
+        },
+      }),
+    });
+
+    const result = await tool.execute(
+      {
+        code: `async () => {
+          await workflow.showInstance({ instanceId: "nightly" });
+          await workflow.showInstance({ instanceId: "mirror" });
+          await workflow.showInstance({ instanceId: "nightly" });
+          const missing = await workflow.showInstance({ instanceId: "missing" }).catch((error) => error.message);
+          const status = await workflow.getInstance({ instanceId: "read-only" });
+          return { missing, status: status.details.status };
+        }`,
+      },
+      toolApi("tool-call-show"),
+      BACKGROUND_CONTEXT,
+    );
+
+    expect(result.details).toMatchObject({
+      result: { missing: expect.stringContaining("missing not found"), status: "waiting" },
+      shownRuns: [{ instanceId: "nightly" }, { instanceId: "mirror" }],
+    });
+    expect(result.details).not.toHaveProperty("run");
+  });
+
   test("calls automation identity domain tools through codemode", async () => {
     const calls: unknown[] = [];
     const automationsRuntime: RegisteredAutomationsRuntime = {

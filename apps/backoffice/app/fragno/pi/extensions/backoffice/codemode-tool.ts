@@ -1,4 +1,5 @@
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { formatCodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
 import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import { Type } from "typebox";
@@ -23,6 +24,7 @@ import {
 import type {
   InternalAutomationWorkflowRuntime,
   WorkflowCreateInstanceResult,
+  WorkflowRunPresenter,
 } from "@/fragno/runtime-tools/families/automations-workflow";
 import { createViewedImages, type ImageViewer } from "@/fragno/runtime-tools/families/image-viewer";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
@@ -57,6 +59,39 @@ function withImageViewer(
     ...context,
     runtimes: { ...context.runtimes, imageViewer: viewer },
     createScopedContext: (scope) => withImageViewer(context.createScopedContext(scope), viewer),
+  };
+}
+
+/**
+ * The context with `presenter` in the run's own scope, however the program reaches it. The
+ * conversation reads its runs from that scope, so a run elsewhere could not show.
+ */
+function withWorkflowRunPresenter(
+  context: CoreBackofficeToolContext,
+  presenter: WorkflowRunPresenter,
+): CoreBackofficeToolContext {
+  return {
+    ...context,
+    runtimes: { ...context.runtimes, workflowRunPresenter: presenter },
+    createScopedContext: (scope) => {
+      const scoped = context.createScopedContext(scope);
+      return backofficeContextScopesEqual(scope, context.execution.scope)
+        ? withWorkflowRunPresenter(scoped, presenter)
+        : scoped;
+    },
+  };
+}
+
+/** The runs a program shows, in the order it first showed them. */
+function createShownWorkflowRuns() {
+  const instanceIds = new Set<string>();
+  return {
+    presenter: {
+      show: (instanceId: string) => {
+        instanceIds.add(instanceId);
+      },
+    } satisfies WorkflowRunPresenter,
+    runs: () => [...instanceIds].map((instanceId) => ({ instanceId })),
   };
 }
 
@@ -154,11 +189,15 @@ export function createCodemodeTool(agent: BackofficeAgentContext) {
           ? (workflowRuntime as Pick<InternalAutomationWorkflowRuntime, "createInternalInstance">)
           : undefined;
       const viewedImages = createViewedImages();
+      const shownRuns = createShownWorkflowRuns();
       const toolContext = withImageViewer(
-        createBackofficeToolContext({
-          ...runtimeToolContext,
-          workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
-        }),
+        withWorkflowRunPresenter(
+          createBackofficeToolContext({
+            ...runtimeToolContext,
+            workflow: workflowRuntime ? { runtime: workflowRuntime } : null,
+          }),
+          shownRuns.presenter,
+        ),
         viewedImages.viewer,
       );
 
@@ -265,6 +304,9 @@ export function createCodemodeTool(agent: BackofficeAgentContext) {
             // The live run handle so the client can
             // subscribe to realtime progress. Absent when scheduling failed.
             ...(runHandle ? { run: runHandle } : {}),
+            // Runs of saved workflows the program showed, each a card like the inline run's. A
+            // program that failed after showing one still shows it.
+            ...(shownRuns.runs().length > 0 ? { shownRuns: shownRuns.runs() } : {}),
             ...(scheduleError ? { scheduleError } : {}),
           },
           { omitUndefinedProperties: true },

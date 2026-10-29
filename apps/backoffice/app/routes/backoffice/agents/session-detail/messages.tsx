@@ -31,6 +31,7 @@ import { FileScopeProvider, useFileScope } from "@/components/backoffice/file-sc
 import { workflowCompletionFromNotification } from "@/fragno/automation/workflow-reply";
 import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
 import type { PiNotificationReference } from "@/fragno/pi/agent/pi-agent-notification-entry";
+import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
 import { sentAttachmentItems } from "../agent-attachments";
 import {
@@ -123,7 +124,9 @@ export function AssistantMessage({
     ];
   });
   const toolsById = new Map(tools.map((tool) => [tool.part.toolCallId, tool]));
-  const workflowRuns = tools.flatMap((tool) => tool.presentation.codemodeDetails?.run ?? []);
+  const workflowRuns = lastShownRuns(
+    tools.flatMap((tool) => tool.presentation.codemodeDetails?.runs ?? []),
+  );
   // The turn's result is what its newest tool call that made something produced.
   const artifactTool = tools.filter((tool) => tool.workspaceOptions.length > 0).at(-1) ?? null;
   const visibleSteps = steps.filter((step) =>
@@ -265,6 +268,16 @@ export function AssistantMessage({
       </MessagePrimitive.Root>
     </>
   );
+}
+
+/** A run shown more than once in a turn is one card, where it was shown last. */
+function lastShownRuns(runs: readonly WorkflowRunReference[]) {
+  const last = new Map<string, WorkflowRunReference>();
+  for (const run of runs) {
+    last.delete(run.instanceId);
+    last.set(run.instanceId, run);
+  }
+  return [...last.values()];
 }
 
 function count(amount: number, noun: string) {

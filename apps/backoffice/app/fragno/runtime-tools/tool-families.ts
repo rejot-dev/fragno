@@ -29,6 +29,7 @@ import {
 import {
   automationWorkflowToolFamily,
   type AutomationWorkflowRuntime,
+  type WorkflowRunPresenter,
 } from "./families/automations-workflow";
 import {
   backofficeCapabilitiesToolFamily,
@@ -80,6 +81,7 @@ export type CoreBackofficeRuntimeMap = {
   state?: BackofficeStateBackend;
   /** Only an agent's codemode call has one: its images go to the model. */
   imageViewer?: ImageViewer;
+  workflowRunPresenter?: WorkflowRunPresenter;
   fileLinks?: FileLinkRuntime;
   fileShares?: FileShareRuntime;
   blobs?: BlobsRuntime;

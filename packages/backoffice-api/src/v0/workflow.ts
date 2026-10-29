@@ -135,6 +135,16 @@ export const workflowOperations = {
     ),
     output: workflowInstanceDetailsSchema,
   },
+  "workflow.instances.show": {
+    description: "Show a durable workflow instance to the user as a card in the conversation.",
+    permissions: [BACKOFFICE_PERMISSION.workflow.read],
+    input: z.lazy(() =>
+      z.strictObject({
+        instanceId: z.string().trim().min(1),
+      }),
+    ),
+    output: workflowInstanceDetailsSchema,
+  },
   "workflow.instances.history": {
     description: "Get durable workflow step, event, and emission history.",
     permissions: [BACKOFFICE_PERMISSION.workflow.read],

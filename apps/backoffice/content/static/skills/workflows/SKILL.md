@@ -118,6 +118,10 @@ Read "/static/codemode/providers/workflow.d.ts" for exact inputs:
   Inline `defineWorkflow` runs do not need this call, and always notify the agent that defined them.
 - `workflow.listInstances({ status, pageSize, cursor })` lists codemode workflow instances.
 - `workflow.getInstance({ instanceId })` reads status, output, error, and source path.
+- `workflow.showInstance({ instanceId })` shows a run in this scope to the user as a card in your
+  reply, live as an inline run's card: its steps, every interface they return, and its output. Show
+  a saved run the user should follow or answer, such as one waiting on a form, instead of relaying
+  its state; reading a run with `getInstance` shows nothing.
 - `workflow.getHistory({ instanceId })` exposes steps, events, and emissions for diagnosis.
 - `workflow.sendEvent({ instanceId, type, payload })` resumes a waiting instance.
 - `workflow.retryFailedStep({ instanceId, delayMs })` retries the latest failed top-level step.

@@ -57,7 +57,7 @@ const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
   router:
     "Automation routes: event or schedule triggers that start or signal workflows, forward events, or notify agents. Read to automate anything later or recurring.",
   workflow:
-    "Workflow instances: start saved workflows, check status and history, send events, retry steps. Read to run or follow a workflow.",
+    "Workflow instances: start saved workflows, check status and history, show a run to the user, send events, retry steps. Read to run or follow a workflow.",
   events:
     "Automation events: catalog, stored events and the routes they matched, firing, retries. Read to see what can trigger automations or why one did not act.",
   forms: "Schema-backed forms and their submissions. Read to create a form or read responses.",

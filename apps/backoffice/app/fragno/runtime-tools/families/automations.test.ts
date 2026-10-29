@@ -70,6 +70,8 @@ describe("automation runtime tools", () => {
       "workflow.instances.create",
       "workflow.instances.list",
       "workflow.instances.get",
+      // Showing a run is for an agent's codemode call; a terminal has no conversation.
+      undefined,
       "workflow.instances.history",
       "workflow.instances.send-event",
       "workflow.instances.retry-failed-step",
@@ -355,7 +357,7 @@ describe("automation runtime tools", () => {
   });
 
   test("workflow failed-step retry tool parses input and calls the runtime", async () => {
-    const retryTool = automationWorkflowRuntimeTools[5];
+    const retryTool = automationWorkflowRuntimeTools[6];
     assert(retryTool.id === "workflow.instances.retry-failed-step");
 
     const calls: unknown[] = [];

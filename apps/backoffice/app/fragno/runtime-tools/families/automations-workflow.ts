@@ -155,8 +155,17 @@ export type AutomationWorkflowRuntime = {
   getHistory: (input: WorkflowGetInstanceArgs) => Promise<WorkflowHistory>;
 };
 
+/**
+ * Only an agent's codemode call has one, and only in the agent's own scope: the runs it shows go
+ * to the conversation as cards in the call's result.
+ */
+export type WorkflowRunPresenter = {
+  show: (instanceId: string) => void;
+};
+
 type AutomationWorkflowToolContext = BackofficeToolContext<{
   workflow?: AutomationWorkflowRuntime;
+  workflowRunPresenter?: WorkflowRunPresenter;
 }>;
 
 const defineAutomationWorkflowTool = <
@@ -453,6 +462,30 @@ const workflowGetInstanceTool = defineAutomationWorkflowTool({
   },
 });
 
+const workflowShowInstanceTool = defineAutomationWorkflowTool({
+  ...backofficeApiOperationToolFields("workflow.instances.show"),
+  namespace: "workflow",
+  name: "showInstance",
+  execute: async (input, context) => {
+    const { workflow, workflowRunPresenter } = context.runtimes;
+    if (!workflowRunPresenter) {
+      throw new Error(
+        "Only an agent's codemode call can show a workflow run, and only a run in the agent's own scope.",
+      );
+    }
+    // A run that does not exist fails here rather than leaving an empty card.
+    const instance = await getAutomationWorkflowRuntime(workflow).getInstance(input);
+    workflowRunPresenter.show(instance.id);
+    return instance;
+  },
+  reference: {
+    codemode: {
+      description:
+        "Show a run of a saved workflow in this scope as a card in your reply: its steps, every interface they return, such as a form it waits on, and its output, live, as an inline workflow shows. Only from an agent's turn, for a run in its own scope.",
+    },
+  },
+});
+
 const workflowHistoryTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.history"),
   namespace: "workflow",
@@ -491,6 +524,7 @@ export const automationWorkflowRuntimeTools = [
   workflowInstanceCreateTool,
   workflowListInstancesTool,
   workflowGetInstanceTool,
+  workflowShowInstanceTool,
   workflowHistoryTool,
   workflowInstanceSendEventTool,
   workflowRetryFailedStepTool,

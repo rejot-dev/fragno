@@ -1,5 +1,6 @@
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
+import { ChatEventLink } from "@fragno-private/design-system/chat-divider";
 import {
   ChatWorkflow,
   ChatWorkflowInputRequest,
@@ -12,6 +13,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useState,
   type ReactNode,
@@ -37,12 +39,16 @@ import {
   type WorkflowRunTimelineProjection,
 } from "@/routes/backoffice/automations/script-view/workflow-run-timeline-presentation";
 
-// The workflows an agent starts show in the conversation, each as one card in the turn that
-// started it. The rest of the thread points at the card: a run waiting for the reader out of view
-// asks for them above the composer, and the run's completion event leads back to it.
+// The workflows an agent starts or shows appear in the conversation as cards in the turn that
+// started or showed them. A run shown again lives on in its newest card; the older ones lead to
+// it. The rest of the thread points at that card: a run waiting for the reader out of view asks
+// for them above the composer, and the run's completion event leads back to it.
 
-/** A run whose card is in the thread. */
+/** A run's card in the thread. */
 type SessionRun = {
+  /** Stays with the card while its element changes, such as when it turns into a link. */
+  cardId: string;
+  instanceId: string;
   name: string;
   /** The step whose interface waits for the reader; null while the run does not ask. */
   inputStep: string | null;
@@ -56,37 +62,54 @@ type SessionWorkflows = {
   /** The scope's Automations replica, which runs are read from; null until it opens. */
   replica: LofiSqliteClient | null;
   replicaError: string | null;
-  /** Keyed by instance id. */
+  /** Each run's newest card, keyed by instance id. */
   runs: ReadonlyMap<string, SessionRun>;
-  setRun: (instanceId: string, run: SessionRun | null) => void;
+  /** Puts a card in the thread, or takes it out with null. */
+  setCard: (cardId: string, run: SessionRun | null) => void;
 };
 
 const SessionWorkflowsContext = createContext<SessionWorkflows | null>(null);
 
 export function SessionWorkflowsProvider({ children }: { children: ReactNode }) {
   const { replica, error } = useCurrentAutomationReplica();
-  const [runs, setRuns] = useState<ReadonlyMap<string, SessionRun>>(() => new Map());
-  const setRun = useCallback((instanceId: string, run: SessionRun | null) => {
-    setRuns((current) => {
-      if (run === null && !current.has(instanceId)) {
+  const [cards, setCards] = useState<ReadonlyMap<string, SessionRun>>(() => new Map());
+  const setCard = useCallback((cardId: string, run: SessionRun | null) => {
+    setCards((current) => {
+      if (run === null && !current.has(cardId)) {
         return current;
       }
       const next = new Map(current);
       if (run === null) {
-        next.delete(instanceId);
+        next.delete(cardId);
       } else {
-        next.set(instanceId, run);
+        next.set(cardId, run);
       }
       return next;
     });
   }, []);
+  const runs = useMemo(() => newestCards(cards), [cards]);
   const value = useMemo(
-    () => ({ replica, replicaError: error, runs, setRun }),
-    [replica, error, runs, setRun],
+    () => ({ replica, replicaError: error, runs, setCard }),
+    [replica, error, runs, setCard],
   );
   return (
     <SessionWorkflowsContext.Provider value={value}>{children}</SessionWorkflowsContext.Provider>
   );
+}
+
+/** Each run's card furthest down the thread. */
+function newestCards(cards: ReadonlyMap<string, SessionRun>) {
+  const newest = new Map<string, SessionRun>();
+  for (const run of cards.values()) {
+    const current = newest.get(run.instanceId);
+    if (
+      current === undefined ||
+      current.card.compareDocumentPosition(run.card) & Node.DOCUMENT_POSITION_FOLLOWING
+    ) {
+      newest.set(run.instanceId, run);
+    }
+  }
+  return newest;
 }
 
 function useSessionWorkflows() {
@@ -104,11 +127,13 @@ export function useSessionRun(instanceId: string | null): SessionRun | null {
 }
 
 /**
- * A run the agent started: where it is in its steps, drawn as the dashboard draws them, every
- * interface its steps produced, and the output it ended with.
+ * A run the agent started or showed: where it is in its steps, drawn as the dashboard draws them,
+ * every interface its steps produced, and the output it ended with. Once the run is shown again
+ * further down, this card leads there instead.
  */
 export function SessionWorkflow({ run: reference }: { run: WorkflowRunReference }) {
-  const { replica, replicaError, setRun } = useSessionWorkflows();
+  const cardId = useId();
+  const { replica, replicaError, runs, setCard: putCard } = useSessionWorkflows();
   const { resolvedScope } = useCurrentBackofficeContext();
   const records = useWorkflowRunRecords({
     replica,
@@ -159,7 +184,9 @@ export function SessionWorkflow({ run: reference }: { run: WorkflowRunReference 
     if (card === null) {
       return undefined;
     }
-    setRun(reference.instanceId, {
+    putCard(cardId, {
+      cardId,
+      instanceId: reference.instanceId,
       name,
       inputStep,
       visible,
@@ -171,13 +198,30 @@ export function SessionWorkflow({ run: reference }: { run: WorkflowRunReference 
       },
     });
     return () => {
-      setRun(reference.instanceId, null);
+      putCard(cardId, null);
     };
-  }, [card, inputStep, name, reference.instanceId, setRun, visible]);
+  }, [card, cardId, inputStep, name, putCard, reference.instanceId, visible]);
 
   // The run's row arrives after the tool call returns; until then there is nothing to show.
   if (run === null && syncError === null && !records.isLoading && replica !== null) {
     return null;
+  }
+
+  // Which card is newest goes by the card rather than its element: turning into a link or back
+  // replaces the element before the card registers the new one.
+  const newest = runs.get(reference.instanceId);
+  if (newest !== undefined && newest.cardId !== cardId) {
+    return (
+      <ChatEventLink
+        ref={setCard}
+        marker="accent"
+        title={name}
+        note="Shown again further down"
+        time={null}
+        action="View run"
+        onShow={newest.show}
+      />
+    );
   }
 
   const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
