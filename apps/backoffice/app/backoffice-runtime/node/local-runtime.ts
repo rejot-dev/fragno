@@ -58,6 +58,8 @@ export type CreateLocalBackofficeRuntimeOptions = {
   readAutomationSource?: AutomationSourceReader;
   objects: LocalBackofficeObjects;
   piAvailableModels?: readonly PiAvailableModel[];
+  /** Whether the PI_MANAGER object runs Workers AI, as a scenario's fake does. */
+  workersAi?: boolean;
   createSandboxProviders?: CreateSandboxRuntimeProviders;
   authorityResolver?: BackofficeAuthorityResolver;
   kernelObserver?: BackofficeKernelObserver;
@@ -100,6 +102,7 @@ export async function createLocalBackofficeRuntime(
     readAutomationSource: options.readAutomationSource,
     objects: options.objects,
     piAvailableModels: options.piAvailableModels,
+    workersAi: options.workersAi,
     createSandboxProviders: options.createSandboxProviders,
   });
   const config = objectFactory.createRuntimeConfig();

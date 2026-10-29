@@ -215,6 +215,8 @@ export const allLocalObjects = {
       classifier: createPiClassifier(input.env, fetch),
       imageGenerator: createPiImageGenerator(input.env, fetch),
       extractor: createPiExtractor(input.env, fetch),
+      // Workers AI runs only through a Worker's `AI` binding.
+      workersAi: null,
     });
   },
   BILLING: (input) => new BillingObject(input),

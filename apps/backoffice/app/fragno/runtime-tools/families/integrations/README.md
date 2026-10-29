@@ -4,11 +4,11 @@ The registered `integrations` tools provide scope-bound discovery, setup, and ex
 existing service-owned configuration. They do not own credentials, binding records, or setup-attempt
 history.
 
-API, inbound webhooks, MCP, GitHub, Telegram, Resend, and Connector are implemented sources.
-Codemode and terminal commands use the same contracts, runtime, and permissions. Every source's
-connections are exposed only through `integrations.*`; the former standalone tool families and the
-generated `mcp_<server>` codemode providers have been removed. Typed access is a generated client
-module instead (see below). All sources retain their underlying Fragments, Durable Objects,
+API, inbound webhooks, MCP, GitHub, Telegram, Resend, Workers AI, and Connector are implemented
+sources. Codemode and terminal commands use the same contracts, runtime, and permissions. Every
+source's connections are exposed only through `integrations.*`; the former standalone tool families
+and the generated `mcp_<server>` codemode providers have been removed. Typed access is a generated
+client module instead (see below). All sources retain their underlying Fragments, Durable Objects,
 ownership, and configuration controls.
 
 ## Public surface
@@ -132,6 +132,34 @@ such as email verification. Each keeps its native configuration page.
 Telegram and Resend have no permissions of their own. Their object routes, which serve both the
 integration actions and the native pages, require `integrations.execute`; configuration reads and
 the read-only live checks require `connections.read`.
+
+### Workers AI address
+
+`backoffice#workers-ai` names the platform's Workers AI. Backoffice runs it on its own Cloudflare
+account, so setup, reconfigure, and disconnect are unsupported. The connection is configured when
+the deployment has the `AI` binding, which the runtime config's `workersAi` reports, so discovery,
+listing, inspection, and actions never wake PiManager; Node has no binding. PiManager runs and bills
+it, so it exists only in PiManager's scopes: organization, user, project, and system, not an app
+workspace. Discovery reports it unavailable otherwise, with the reason, and listing omits it.
+
+The source's curated models, now only `@cf/cloudflare/clairic`, are its actions, each named by its
+model. Their contracts are written in `workers-ai-clairic.ts`, not taken from Cloudflare: Cloudflare
+publishes every answer value as an untyped `{}`, since its type depends on the field's `type`, which
+only a union keyed on it can express. The contract follows Clairic's live answers, which also carry
+properties its published schema omits, such as `confidences` on number and date lists. Owning the
+contract means it can fall behind Clairic, so `verify` reads the schema Cloudflare's public model
+documentation publishes for each model, without credentials and once per PiManager object, and fails
+naming every field type or field option Clairic accepts that the contract lacks.
+
+Invocation validates the input against the contract, then runs the model through PiManager under
+`models.run`, which spends the organization's money, so integration access alone does not allow it.
+PiManager records each run on the scope owner's ledger by the `cf-ai-neurons` header, Cloudflare's
+unit of billing: `ai.neurons` in milli-neurons, `ai.cost.total` at Cloudflare's list price of $0.011
+per thousand neurons, and a `workers-ai.runs` count. A run without the header fails unbilled rather
+than guess its cost. A model the account cannot run fails as `WORKERS_AI_UNAVAILABLE`, other errors
+as `WORKERS_AI_FAILED`, and an output that fails its contract fails after the run was billed.
+Parsing the output drops properties the contract does not name, so callers always get its exact
+shape.
 
 ### Connector addresses
 
@@ -340,6 +368,9 @@ in a public token, or add an integrations-owned attempt store to fit it into nam
 - `integrations-runtime.ts`: production source assembly and public operation dispatch.
 - `telegram-integration.ts`, `resend-integration.ts`: existing scope configuration, webhook checks,
   and actions over internal clients.
+- `workers-ai-integration.ts`: the platform's curated Workers AI models as checked actions, run and
+  billed through PiManager.
+- `workers-ai-clairic.ts`: Clairic's typed contract and its drift check against Cloudflare's schema.
 - `connector-connection-id.ts`: canonical, lossless base64url encoding of native Connector
   selectors.
 - `connector-integration.ts`: user-owned native requests/accounts, source-qualified addresses,
@@ -402,12 +433,12 @@ and unsupported dynamic-reference/vocabulary semantics fail before actions are p
 Self-contained ordinary references are supported; no remote schema fetch or inferred output contract
 is introduced.
 
-The registry reads sources in registration order (API, MCP, GitHub, Telegram, Resend, then Connector
-in user scope) and combines every source that finishes into the same page. A page ends only at a
-source that returns its own next cursor, so each source's page size still bounds the result and
-nothing is materialized beyond those pages. The opaque cursor identifies that source and its
-unchanged cursor. An unknown source or malformed cursor fails rather than silently restarting.
-Pagination never changes execution scope or grants access.
+The registry reads sources in registration order (API, webhooks, MCP, GitHub, Telegram, Resend,
+Workers AI, apps, then Connector in user scope) and combines every source that finishes into the
+same page. A page ends only at a source that returns its own next cursor, so each source's page size
+still bounds the result and nothing is materialized beyond those pages. The opaque cursor identifies
+that source and its unchanged cursor. An unknown source or malformed cursor fails rather than
+silently restarting. Pagination never changes execution scope or grants access.
 
 ## Codemode usage
 

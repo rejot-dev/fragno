@@ -21,6 +21,7 @@ import {
   backofficeScopePathSegment,
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { WorkersAiBinding } from "@fragno-dev/cloudflare-fragment/workers-ai";
 import { sanitizeToolName } from "@fragno-dev/codemode/runtime-api";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
@@ -101,6 +102,7 @@ import {
   createPiClassifier,
   createPiExtractor,
   createPiImageGenerator,
+  createPiWorkersAi,
   type PiClassifier,
 } from "@/fragno/pi/agent/pi-models";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -307,6 +309,15 @@ export type FakeOpenAIModelApi = {
   fetch: FetchFunction;
 };
 
+/** One Cloudflare account's Workers AI: the binding that runs models and the API that describes them. */
+export type FakeWorkersAi = {
+  /** Every run, in order, with the model it named. */
+  runs: { model: string; input: Record<string, unknown> }[];
+  binding: WorkersAiBinding;
+  /** Cloudflare's model documentation, which serves each model's schemas. */
+  fetch: FetchFunction;
+};
+
 /** Websites the runtime downloads from, keyed by URL. */
 type FakeWebApi = {
   /** Every request, in order, with the headers it carried. */
@@ -323,6 +334,7 @@ export type ScenarioFakes = {
   openaiImages?: FakeOpenAIModelApi;
   openaiDecisions?: FakeOpenAIModelApi;
   openaiResponses?: FakeOpenAIModelApi;
+  workersAi?: FakeWorkersAi;
 };
 
 type ScenarioFakeFactory = {
@@ -355,6 +367,19 @@ type ScenarioFakeFactory = {
     inputTokens: number;
     outputTokens: number;
   }): FakeOpenAIModelApi;
+  /**
+   * An account that runs these models, publishing their schemas. Each run answers with `output`
+   * and bills `neurons`; null leaves the usage header out. Other models do not exist.
+   */
+  workersAi(input: {
+    models: Record<
+      string,
+      {
+        schemas: { input: Record<string, unknown>; output: Record<string, unknown> };
+        run: (input: Record<string, unknown>) => { output: unknown; neurons: number | null };
+      }
+    >;
+  }): FakeWorkersAi;
 };
 
 type FileDiffStatus = "added" | "changed" | "removed";
@@ -1644,6 +1669,41 @@ function createFakeOpenAIResponsesApi({
   };
 }
 
+function createFakeWorkersAi({
+  models,
+}: Parameters<ScenarioFakeFactory["workersAi"]>[0]): FakeWorkersAi {
+  const runs: FakeWorkersAi["runs"] = [];
+  return {
+    runs,
+    binding: {
+      async run(model, input) {
+        runs.push({ model, input });
+        const known = models[model];
+        if (!known) {
+          const description = `No such model ${model} or task`;
+          return Response.json(
+            { name: "AiError", internalCode: 5007, httpCode: 400, description },
+            { status: 400 },
+          );
+        }
+        const { output, neurons } = known.run(input);
+        return Response.json(output, {
+          headers: neurons === null ? {} : { "cf-ai-neurons": neurons.toFixed(2) },
+        });
+      },
+    },
+    fetch: async (input, init) => {
+      const path = new URL(new Request(input, init).url).pathname;
+      const [, name, direction] =
+        /^\/workers-ai\/models\/([^/]+)\/schema-(input|output)\.json$/u.exec(path) ?? [];
+      const known = Object.entries(models).find(([model]) => model.split("/").at(-1) === name);
+      return known && (direction === "input" || direction === "output")
+        ? Response.json(known[1].schemas[direction])
+        : new Response("Not Found", { status: 404 });
+    },
+  };
+}
+
 function createFakeWebApi({ responses }: Parameters<ScenarioFakeFactory["web"]>[0]): FakeWebApi {
   const requests: FakeWebApi["requests"] = [];
   return {
@@ -1664,6 +1724,7 @@ const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   openaiImages: createFakeOpenAIImagesApi,
   openaiDecisions: createFakeOpenAIDecisionsApi,
   openaiResponses: createFakeOpenAIResponsesApi,
+  workersAi: createFakeWorkersAi,
   web: createFakeWebApi,
 });
 
@@ -4493,7 +4554,8 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
     fakes.classifier ||
     fakes.openaiImages ||
     fakes.openaiDecisions ||
-    fakes.openaiResponses
+    fakes.openaiResponses ||
+    fakes.workersAi
   ) {
     const { PiManagerObject } = await import("../../../workers/pi-manager-object");
     overrides.PI_MANAGER = ({
@@ -4586,6 +4648,9 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
               { OPENAI_API_KEY: "scenario-openai-api-key" },
               fakes.openaiResponses.fetch,
             )
+          : null,
+        workersAi: fakes.workersAi
+          ? createPiWorkersAi(fakes.workersAi.binding, fakes.workersAi.fetch)
           : null,
         nowEpochMs,
       });
@@ -4805,6 +4870,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
       ).readFile(path, "utf-8"),
     objects: { ...scenario.objects, ...(await createFakeObjectOverrides(fakes)) },
     piAvailableModels: scenario.piAvailableModels,
+    workersAi: fakes.workersAi !== undefined,
     ...(fakes.web ? { webFetch: fakes.web.fetch } : {}),
     ...(scenario.durableHooks ? { durableHooks: scenario.durableHooks } : {}),
   });

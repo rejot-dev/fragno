@@ -20,6 +20,7 @@ import { createMcpIntegration } from "./mcp-integration";
 import { createResendIntegration } from "./resend-integration";
 import { createTelegramIntegration } from "./telegram-integration";
 import { createWebhookIntegration } from "./webhook-integration";
+import { createWorkersAiIntegration } from "./workers-ai-integration";
 
 /** Every request resolves deterministic addresses against the selected scope's authoritative source. */
 export function createIntegrationsRuntime({
@@ -40,6 +41,7 @@ export function createIntegrationsRuntime({
     createGitHubIntegration({ runtime, nowEpochMs }),
     createTelegramIntegration({ runtime, nowEpochMs }),
     createResendIntegration({ runtime, nowEpochMs }),
+    createWorkersAiIntegration({ runtime, nowEpochMs }),
     createAppIntegration({ runtime, nowEpochMs }),
     ...(execution.scope.kind === "user"
       ? [createConnectorIntegration({ runtime, nowEpochMs })]

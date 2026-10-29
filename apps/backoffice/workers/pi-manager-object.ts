@@ -1,10 +1,12 @@
 import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
+import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { WorkersAi } from "@fragno-dev/cloudflare-fragment/workers-ai";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { RpcTarget } from "cloudflare:workers";
 
@@ -21,6 +23,7 @@ import {
   backofficeContextScopeFromDurableObjectId,
   backofficeObjectScopeFromContextScope,
   type PiManagerCommands,
+  type WorkersAiModelDescription,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { PackageInstallationOutcome } from "@/fragno/automation/package-installations";
@@ -40,7 +43,6 @@ import {
 } from "@/fragno/pi/agent/pi-models";
 import {
   createPiBillingMeasurements,
-  hasPiBillingUsage,
   piBillingCountersFromUsage,
 } from "@/fragno/pi/extensions/billing/usage-counters";
 import {
@@ -71,7 +73,11 @@ const MODEL_CALL_COUNTS = {
   classify: { meter: "models.classifications", unit: "classification", quantity: 1 },
   generateImage: { meter: "models.images", unit: "image", quantity: 1 },
   extract: { meter: "models.extractions", unit: "extraction", quantity: 1 },
+  runWorkersAi: { meter: "workers-ai.runs", unit: "run", quantity: 1 },
 } as const satisfies Record<string, BillingMeasurementInput>;
+
+/** Cloudflare bills Workers AI at $0.011 per thousand neurons, 11 nano-USD per milli-neuron. */
+const WORKERS_AI_NANO_USD_PER_MILLI_NEURON = 11;
 
 /** Shared scoped agent directory; agent execution is handed to the runtime's agent namespace. */
 export class PiManagerObject extends RpcTarget implements PiManagerCommands {
@@ -88,6 +94,9 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
   readonly #classifier: PiClassifier | null;
   readonly #imageGenerator: PiImageGenerator | null;
   readonly #extractor: PiExtractor | null;
+  readonly #workersAi: WorkersAi | null;
+  /** Cloudflare's schemas change only with a model's release, so each object reads them once. */
+  readonly #workersAiModels = new Map<string, WorkersAiModelDescription>();
 
   constructor({
     state,
@@ -99,6 +108,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     classifier,
     imageGenerator,
     extractor,
+    workersAi,
     nowEpochMs,
   }: {
     state: BackofficeObjectState;
@@ -113,6 +123,8 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     imageGenerator: PiImageGenerator | null;
     /** Null without extraction credentials, so `extract` rejects. */
     extractor: PiExtractor | null;
+    /** Null without the `AI` binding, so Workers AI is unavailable. */
+    workersAi: WorkersAi | null;
     nowEpochMs: () => number;
   }) {
     super();
@@ -122,6 +134,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     this.#classifier = classifier;
     this.#imageGenerator = imageGenerator;
     this.#extractor = extractor;
+    this.#workersAi = workersAi;
     const kernel = new BackofficeKernel(runtime);
     this.#kernel = kernel;
     this.#config = {
@@ -266,7 +279,9 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     await this.#recordModelUsage(billing, {
       operation: "classify",
       succeeded: result.stopReason === "stop",
-      ...result,
+      provider: result.provider,
+      model: result.model,
+      charged: tokenMeasurements(result.usage),
     });
     if (result.stopReason !== "stop") {
       throw new Error(`MODELS_CLASSIFY_FAILED: ${result.errorMessage ?? result.stopReason}`);
@@ -286,7 +301,13 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     const result = await this.#imageGenerator(request);
     const image = result.output.find((part) => part.type === "image");
     const succeeded = result.stopReason === "stop" && image !== undefined;
-    await this.#recordModelUsage(billing, { operation: "generateImage", succeeded, ...result });
+    await this.#recordModelUsage(billing, {
+      operation: "generateImage",
+      succeeded,
+      provider: result.provider,
+      model: result.model,
+      charged: tokenMeasurements(result.usage),
+    });
     if (!succeeded) {
       throw new Error(
         `MODELS_GENERATE_IMAGE_FAILED: ${result.errorMessage ?? (image ? result.stopReason : "the model returned no image")}`,
@@ -308,12 +329,81 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
       succeeded: result.stopReason === "stop",
       provider: result.provider,
       model: result.model,
-      usage: result.usage ?? undefined,
+      charged: tokenMeasurements(result.usage ?? undefined),
     });
     if (result.stopReason !== "stop") {
       throw new Error(`MODELS_EXTRACT_FAILED: ${result.errorMessage}`);
     }
     return { output: result.output };
+  }
+
+  async describeWorkersAiModel({
+    model,
+  }: Parameters<
+    PiManagerCommands["describeWorkersAiModel"]
+  >[0]): Promise<WorkersAiModelDescription> {
+    if (!this.#workersAi) {
+      return { status: "unavailable", reason: "Workers AI is not configured on this deployment." };
+    }
+    const known = this.#workersAiModels.get(model);
+    if (known) {
+      return known;
+    }
+    let schemas: Awaited<ReturnType<WorkersAi["modelSchemas"]>>;
+    try {
+      schemas = await this.#workersAi.modelSchemas(model);
+    } catch (error) {
+      return {
+        status: "unavailable",
+        reason: `Cloudflare's documentation did not describe ${model}: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    if (schemas.status === "missing") {
+      return { status: "unavailable", reason: `Cloudflare documents no model ${model}.` };
+    }
+    const description = {
+      status: "available",
+      inputSchema: schemas.input,
+      outputSchema: schemas.output,
+    } as const;
+    this.#workersAiModels.set(model, description);
+    return description;
+  }
+
+  async runWorkersAi({
+    model,
+    input,
+  }: Parameters<PiManagerCommands["runWorkersAi"]>[0]): ReturnType<
+    PiManagerCommands["runWorkersAi"]
+  > {
+    if (!this.#workersAi) {
+      throw new Error("WORKERS_AI_UNAVAILABLE: Workers AI is not configured on this deployment.");
+    }
+    const billing = usageBillingForScope(this.#runtime, this.#scoped.requireOwnerScope());
+    const run = await this.#workersAi.run(model, input);
+    if (run.status === "unavailable") {
+      throw new Error(`WORKERS_AI_UNAVAILABLE: ${run.message}`);
+    }
+    if (run.status === "failed") {
+      throw new Error(`WORKERS_AI_FAILED: ${run.message}`);
+    }
+    const milliNeurons = Math.round(run.neurons * 1000);
+    await this.#recordModelUsage(billing, {
+      operation: "runWorkersAi",
+      succeeded: true,
+      provider: "workers-ai",
+      model,
+      charged: [
+        { meter: "ai.neurons", unit: "milli-neuron", quantity: milliNeurons },
+        {
+          meter: "ai.cost.total",
+          unit: "nano-usd",
+          quantity: milliNeurons * WORKERS_AI_NANO_USD_PER_MILLI_NEURON,
+        },
+      ],
+    });
+    // The binding parsed the output from JSON.
+    return { output: run.output as JsonValue };
   }
 
   async checkPackageAgents(
@@ -330,7 +420,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     return await removePackageAgents(await this.#scoped.getRuntime(), input);
   }
 
-  /** Commits the usage for durable delivery; a failed call can still report tokens it was charged. */
+  /** Commits the usage for durable delivery; a failed call can still report what it was charged. */
   async #recordModelUsage(
     billing: UsageBilling,
     call: {
@@ -338,11 +428,11 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
       succeeded: boolean;
       provider: string;
       model: string;
-      usage?: Usage;
+      charged: BillingMeasurementInput[];
     },
   ): Promise<void> {
-    const counters = piBillingCountersFromUsage(call.usage ? [call.usage] : []);
-    if (billing.kind === "system" || (!call.succeeded && !hasPiBillingUsage(counters))) {
+    const charged = call.charged.some(({ quantity }) => quantity > 0);
+    if (billing.kind === "system" || (!call.succeeded && !charged)) {
       return;
     }
     const fragment = await this.#scoped.getRuntime();
@@ -355,7 +445,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
           eventType: `${call.operation}.${call.succeeded ? "completed" : "failed"}`,
           occurredAt: new Date(this.#nowEpochMs()).toISOString(),
           measurements: [
-            ...createPiBillingMeasurements(counters),
+            ...call.charged,
             ...(call.succeeded ? [MODEL_CALL_COUNTS[call.operation]] : []),
           ],
           metadata: { provider: call.provider, model: call.model },
@@ -367,4 +457,8 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
   async alarm(): Promise<void> {
     await this.#scoped.alarm();
   }
+}
+
+function tokenMeasurements(usage: Usage | undefined): BillingMeasurementInput[] {
+  return createPiBillingMeasurements(piBillingCountersFromUsage(usage ? [usage] : []));
 }

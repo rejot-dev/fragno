@@ -107,6 +107,8 @@ export type LocalObjectFactoryOptions = {
   readAutomationSource?: AutomationSourceReader;
   objects: LocalBackofficeObjects;
   piAvailableModels?: readonly PiAvailableModel[];
+  /** Whether the PI_MANAGER factory runs Workers AI; local runtimes have no `AI` binding. */
+  workersAi?: boolean;
   createSandboxProviders?: CreateSandboxRuntimeProviders;
   sqlite?: { directory: string; storage: SqliteBackofficeObjectStorage };
 };
@@ -150,6 +152,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
   readonly #readAutomationSource?: LocalObjectFactoryOptions["readAutomationSource"];
   readonly #objects: LocalBackofficeObjects;
   readonly #piAvailableModels: readonly PiAvailableModel[] | null;
+  readonly #workersAi: boolean;
   readonly #createSandboxProviders: CreateSandboxRuntimeProviders;
   readonly #sqlite?: LocalObjectFactoryOptions["sqlite"];
   readonly #executionCoordinator: BackofficeObjectExecutionCoordinator;
@@ -176,6 +179,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
     this.#readAutomationSource = options.readAutomationSource;
     this.#objects = options.objects;
     this.#piAvailableModels = options.piAvailableModels ?? null;
+    this.#workersAi = options.workersAi ?? false;
     this.#createSandboxProviders = options.createSandboxProviders ?? (() => ({}));
     this.#sqlite = options.sqlite;
     this.#sqliteCoordination = options.sqlite
@@ -406,6 +410,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
         accountCreationAvailable: this.#isConfigured("AUTH"),
       }),
       localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", this.env.LOCAL_EMAIL_LOG),
+      workersAi: this.#workersAi,
       bindings: {
         api: this.#isConfigured("API"),
         auth: this.#isConfigured("AUTH"),

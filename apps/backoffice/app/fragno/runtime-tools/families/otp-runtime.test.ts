@@ -46,6 +46,7 @@ describe("createOtpRuntime", () => {
         sandboxContainers: true,
         signUpInvitationsEnabled: true,
         localEmailLog: false,
+        workersAi: false,
         bindings: {
           api: false,
           auth: false,
@@ -90,6 +91,7 @@ describe("createOtpRuntime", () => {
         sandboxContainers: true,
         signUpInvitationsEnabled: true,
         localEmailLog: false,
+        workersAi: false,
         bindings: {
           api: false,
           auth: false,

@@ -553,6 +553,14 @@ export type WarmableCommands = {
 
 export type ApiCommands = WarmableCommands & DurableHookCommands;
 
+export type WorkersAiModelDescription =
+  | {
+      status: "available";
+      inputSchema: Record<string, unknown>;
+      outputSchema: Record<string, unknown>;
+    }
+  | { status: "unavailable"; reason: string };
+
 export type PiManagerCommands = WarmableCommands & {
   /**
    * An agent reports each settled turn, so its queue can hand the agent its next item, with the
@@ -575,6 +583,13 @@ export type PiManagerCommands = WarmableCommands & {
   generateImage(input: { request: PiImageGenerationRequest }): Promise<{ bytes: Uint8Array }>;
   /** Reads files into an answer that matches a JSON Schema, recorded like `classify`. */
   extract(input: { request: PiExtractionRequest }): Promise<{ output: JsonValue }>;
+  /** A Workers AI model's input and output JSON Schemas as Cloudflare publishes them. */
+  describeWorkersAiModel(input: { model: string }): Promise<WorkersAiModelDescription>;
+  /** Runs a Workers AI model and records the neurons it cost, like `classify`. */
+  runWorkersAi(input: {
+    model: string;
+    input: Record<string, JsonValue>;
+  }): Promise<{ output: JsonValue }>;
   /** Whether `applyPackageAgents` would accept a package's agents, checked before installing. */
   checkPackageAgents(
     input: Omit<PackageAgentsInput, "actors">,

@@ -12,6 +12,11 @@ import {
   MODELS_EXTRACT_MODELS,
   type ModelsExtractModel,
 } from "@fragno-dev/backoffice-api/v0/models";
+import {
+  createWorkersAi,
+  type WorkersAi,
+  type WorkersAiBinding,
+} from "@fragno-dev/cloudflare-fragment/workers-ai";
 
 import type {
   AssistantImages,
@@ -143,6 +148,14 @@ export function createPiExtractor(
     const effort = model.thinkingLevelMap?.[request.thinkingLevel] ?? request.thinkingLevel;
     return await extractWithOpenAI({ model, effort, apiKey, fetch, request });
   };
+}
+
+/** Runs Workers AI models on the account of this deployment's `AI` binding. */
+export function createPiWorkersAi(
+  binding: WorkersAiBinding | null,
+  fetch: FetchFunction,
+): WorkersAi | null {
+  return binding ? createWorkersAi({ binding, fetch }) : null;
 }
 
 function createOpenAIModels(apiKey: string): MutableModels {
