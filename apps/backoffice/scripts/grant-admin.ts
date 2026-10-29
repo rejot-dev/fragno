@@ -10,9 +10,10 @@ type GrantAdminResponse =
   | { status: "user_not_found" | "user_not_active" };
 
 const USAGE =
-  "Usage: pnpm --filter @fragno-apps/backoffice-rr admin:grant -- [--local] [--port PORT] EMAIL\n" +
-  "--local targets this worktree's dev server; --port targets a local server on PORT.";
-const DEPLOYED_BACKOFFICE_URL = "https://backoffice.rejot.dev";
+  "Usage: pnpm --filter @fragno-apps/backoffice-rr admin:grant -- [--port PORT] [EMAIL]\n" +
+  "EMAIL defaults to $USER@rejot.dev, the account dev-account:create makes.\n" +
+  "Defaults to this worktree's dev server. Set BACKOFFICE_URL to target another origin, such as\n" +
+  "https://backoffice.rejot.dev.";
 
 function fail(message: string): never {
   console.error(message);
@@ -36,7 +37,6 @@ const { values, positionals } = parseArgs({
   args: process.argv.slice(2).filter((arg, index) => index > 0 || arg !== "--"),
   allowPositionals: true,
   options: {
-    local: { type: "boolean" },
     port: { type: "string", short: "p" },
     help: { type: "boolean", short: "h" },
   },
@@ -45,20 +45,23 @@ if (values.help) {
   console.log(USAGE);
   process.exit(0);
 }
-if (positionals.length !== 1) {
+if (positionals.length > 1) {
   fail(USAGE);
 }
 if (values.port !== undefined && !/^\d+$/.test(values.port)) {
   fail(`--port requires a numeric port.\n${USAGE}`);
 }
 
-const [email] = positionals;
-const localPort =
-  values.port ?? (values.local ? backofficeDevServerPort(import.meta.dirname) : undefined);
-const baseUrl =
-  localPort === undefined
-    ? (process.env.BACKOFFICE_URL ?? DEPLOYED_BACKOFFICE_URL)
-    : `http://127.0.0.1:${localPort}`;
+const email =
+  positionals[0] ??
+  (process.env.USER ? `${process.env.USER}@rejot.dev` : undefined) ??
+  fail(`USER is not set. Pass EMAIL explicitly.\n${USAGE}`);
+const baseUrl = new URL(
+  process.env.BACKOFFICE_URL ?? `http://127.0.0.1:${backofficeDevServerPort(import.meta.dirname)}`,
+);
+if (values.port !== undefined) {
+  baseUrl.port = values.port;
+}
 const token =
   readAdminGrantToken() ??
   fail("AUTH_ADMIN_GRANT_TOKEN is not set in the environment or .dev.vars.");
