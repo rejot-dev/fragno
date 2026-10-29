@@ -246,7 +246,8 @@ export type PiAgentEntryPage = {
 
 /**
  * The `last` messages said before entry `before`, or the latest ones when it is null, in the
- * agent's conversation or, by the request ID that started it, one of its subagents'.
+ * agent's conversation or, by the request ID that started it, one of its subagents', from the
+ * newest compaction or reset on.
  */
 export const piAgentMessagePageRequestSchema = z.object({
   last: z.number().int().min(1).max(100),
@@ -347,7 +348,8 @@ export type PiAgent = {
     config: PiAgentConfig,
     request: z.infer<typeof piAgentMessagePageRequestSchema>,
   ): Promise<PiAgentMessagePage>;
-  exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>>;
+  /** The conversation as JSONL; only `history` reaches past the newest compaction or reset. */
+  exportEntries(config: PiAgentConfig, history: boolean): Promise<ReadableStream<Uint8Array>>;
   compact(
     config: PiAgentConfig,
     turn: PiAgentTurn,

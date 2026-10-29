@@ -2188,8 +2188,9 @@ test("durable Pi paginates history, streams exports, and compacts without deleti
             .map((line) => JSON.parse(line) as Record<string, unknown>);
           expect(exportLines[0]).toMatchObject({
             type: "pi-durable-agent",
-            version: 2,
+            version: 3,
             order: "oldest-first",
+            history: false,
             agent: { agentName: "assistant", scope },
           });
           expect(exportLines.filter((line) => line.type === "entry").length).toBeGreaterThan(1);

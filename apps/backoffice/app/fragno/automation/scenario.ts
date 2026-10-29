@@ -1344,10 +1344,10 @@ const createFakePiManagerApi = (
         before: said.length > messages.length ? (messages[0]?.entryId ?? null) : null,
       };
     },
-    async exportEntries(config) {
+    async exportEntries(config, history) {
       const fake = requireAgent(config);
       const bytes = new TextEncoder().encode(
-        `${JSON.stringify({ type: "pi-durable-agent", version: 2, order: "oldest-first" })}\n${conversationView(
+        `${JSON.stringify({ type: "pi-durable-agent", version: 3, order: "oldest-first", history })}\n${conversationView(
           fake,
         )
           .entries.map((entry) => JSON.stringify({ type: "entry", entry }))

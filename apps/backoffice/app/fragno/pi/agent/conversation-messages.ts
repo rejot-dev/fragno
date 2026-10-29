@@ -4,6 +4,7 @@ import type { z } from "zod";
 
 import {
   AssistantEntry,
+  CompactionEntry,
   UserEntry,
   type Conversation,
   type Cursor,
@@ -11,6 +12,8 @@ import {
   type EntryRecord,
 } from "@earendil-works/pi-durable";
 
+import { piCompactionSummary } from "./compaction-summary";
+import { piConversationReachQuery, readPiConversationReach } from "./conversation-reach";
 import type { piAgentMessagePageRequestSchema } from "./pi-agent-contract";
 import { parsePiNotificationRequest } from "./pi-agent-notification-entry";
 
@@ -18,9 +21,9 @@ const ENTRY_SCAN_PAGE_SIZE = 64;
 
 /** What one entry said, or null for thinking, tool calls, results, and bookkeeping. */
 function entryMessage(entry: EntryRecord): PiAgentMessage | null {
-  // User and assistant entries each carry exactly one message.
+  // User, assistant, and compaction entries each carry exactly one message.
   const [message] = entry.model ?? [];
-  if (UserEntry.is(entry) && message?.role === "user") {
+  if (message?.role === "user" && (UserEntry.is(entry) || CompactionEntry.is(entry))) {
     const sentAt = new Date(message.timestamp).toISOString();
     const text =
       typeof message.content === "string"
@@ -28,6 +31,9 @@ function entryMessage(entry: EntryRecord): PiAgentMessage | null {
         : message.content
             .flatMap((block) => (block.type === "text" ? [block.text] : []))
             .join("\n");
+    if (CompactionEntry.is(entry)) {
+      return { entryId: entry.id, role: "compaction", text: piCompactionSummary(text), sentAt };
+    }
     const notifications = parsePiNotificationRequest(text);
     if (notifications) {
       return { entryId: entry.id, role: "notification", notifications, sentAt };
@@ -52,13 +58,17 @@ function entryMessage(entry: EntryRecord): PiAgentMessage | null {
 
 /**
  * Scans newest-first until it holds one message more than asked for, which tells whether earlier
- * messages exist, and returns the asked-for ones oldest-first. History before compactions and
- * resets is included.
+ * messages exist, and returns the asked-for ones oldest-first, from the newest compaction or reset
+ * on, as the chat shows them.
  */
 export async function listPiConversationMessages(
   root: Conversation,
   { last, before }: z.infer<typeof piAgentMessagePageRequestSchema>,
 ): Promise<PiAgentMessagePage> {
+  const reach = await readPiConversationReach(root, { history: false });
+  if (reach === null) {
+    return { messages: [], before: null };
+  }
   const newestFirst: PiAgentMessage[] = [];
   // Recovery can keep an aborted response that a newer one in its task repeats. The newer one is
   // scanned first, so only the repeat is skipped. A repeat whose original fell on a previous page
@@ -67,13 +77,13 @@ export async function listPiConversationMessages(
   let cursor: Cursor | undefined;
   do {
     const page = await root.entries(
-      before === null ? {} : { maxEntryId: (before - 1) as EntryId },
+      piConversationReachQuery(reach, before as EntryId | null),
       ENTRY_SCAN_PAGE_SIZE,
       cursor,
       BACKGROUND_CONTEXT,
     );
     for (const entry of page.items) {
-      const message = entryMessage(entry);
+      const message = reach.includes(entry) ? entryMessage(entry) : null;
       if (message === null) {
         continue;
       }

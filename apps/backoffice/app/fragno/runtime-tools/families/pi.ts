@@ -86,11 +86,12 @@ const parseAgentMessages = defineCliArgsParser<{
   before: { kind: "positiveInteger" },
   subagent: {},
 });
-const parseAgentExport = defineCliArgsParser<{ agentName: string; out: string }>(
+const parseAgentExport = defineCliArgsParser<{ agentName: string; out: string; history: boolean }>(
   "pi.agent.export",
   {
     agentName: { option: "agent", required: true },
     out: { option: "output", required: true },
+    history: { kind: "boolean", defaultValue: false },
   },
 );
 
@@ -460,7 +461,7 @@ const agentMessagesTool = defineBackofficeRuntimeTool({
       command: "pi.agent.messages",
       help: {
         summary:
-          "pi.agent.messages prints an agent's most recent messages, oldest first, without thinking or tool calls.",
+          "pi.agent.messages prints an agent's most recent messages since its newest clear, oldest first, without thinking or tool calls; a compaction's summary stands where it happened.",
         options: [
           {
             name: "agent",
@@ -507,13 +508,14 @@ const agentExportTool = defineBackofficeRuntimeTool({
   namespace: "pi",
   name: "exportConversation",
   getResource: ({ out }) => ({ path: out }),
-  execute: async ({ agentName, out }, context: PiToolContext) => {
+  execute: async ({ agentName, out, history }, context: PiToolContext) => {
     const state = context.runtimes.state;
     if (!state) {
       throw new Error("Exporting a conversation requires the workspace filesystem.");
     }
     const jsonl = await requirePiManagerRuntime(context.runtimes.pi).exportConversation({
       agentName,
+      history,
     });
     await state.writeFile(out, jsonl);
     // Every line after the header is one entry.
@@ -524,7 +526,7 @@ const agentExportTool = defineBackofficeRuntimeTool({
       command: "pi.agent.export",
       help: {
         summary:
-          "pi.agent.export writes an agent's whole conversation history, tool calls included, to a JSONL file, oldest entry first.",
+          "pi.agent.export writes an agent's conversation since its newest compaction or clear, tool calls included, to a JSONL file, oldest entry first.",
         options: [
           {
             name: "agent",
@@ -540,8 +542,15 @@ const agentExportTool = defineBackofficeRuntimeTool({
             valueName: "path",
             description: "Absolute path of the JSONL file to write under /workspace",
           },
+          {
+            name: "history",
+            description: "Also write what came before the newest compaction or clear",
+          },
         ],
-        examples: ["pi.agent.export --agent assistant --output /workspace/assistant.jsonl"],
+        examples: [
+          "pi.agent.export --agent assistant --output /workspace/assistant.jsonl",
+          "pi.agent.export --agent assistant --output /workspace/assistant.jsonl --history",
+        ],
       },
       parse: parseAgentExport,
       format: (data, options) =>

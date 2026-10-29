@@ -142,8 +142,11 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   ) {
     return await this.#object.listMessages(config, request);
   }
-  async exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>> {
-    return await this.#object.exportEntries(config);
+  async exportEntries(
+    config: PiAgentConfig,
+    history: boolean,
+  ): Promise<ReadableStream<Uint8Array>> {
+    return await this.#object.exportEntries(config, history);
   }
   async compact(
     config: PiAgentConfig,

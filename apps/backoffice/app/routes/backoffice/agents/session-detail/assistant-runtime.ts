@@ -10,6 +10,7 @@ import type {
   LiveState,
 } from "@earendil-works/pi-durable";
 
+import { piCompactionSummary } from "@/fragno/pi/agent/compaction-summary";
 import { parsePiAgentPrompt, type PiAgentAttachment } from "@/fragno/pi/agent/pi-agent-attachments";
 import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
 import {
@@ -231,7 +232,6 @@ const COMPACTION_ENTRY_KIND = "pi.compaction";
 const RESET_ENTRY_KIND = "pi.reset";
 const USER_ENTRY_KIND = "pi.user";
 
-/** Pi wraps the summary in model-facing framing; only the summary itself is worth reading. */
 function compactionMessage(entry: EntryRecord): PiCompactionMessage {
   // Compaction entries always carry one user message with the wrapped summary and a reason.
   const [message] = entry.model as [Extract<PiDurableMessage, { role: "user" }>];
@@ -241,7 +241,7 @@ function compactionMessage(entry: EntryRecord): PiCompactionMessage {
   return {
     role: "compaction",
     reason: (entry.data as { reason: CompactionReason }).reason,
-    summary: /<summary>\n([\s\S]*)\n<\/summary>$/.exec(text)?.[1] ?? text,
+    summary: piCompactionSummary(text),
     timestamp: message.timestamp,
   };
 }

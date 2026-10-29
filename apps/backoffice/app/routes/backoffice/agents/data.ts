@@ -349,8 +349,9 @@ export async function fetchPiManagerAgentExport(
   agentName: string,
 ): Promise<Response> {
   const { execution, manager } = await createPiManagerAuthorizedAccess(request, context, scope);
+  // The download is the whole history, which the chat also reaches by loading earlier entries.
   const url = new URL(
-    `/api/pi-manager/agents/${encodeURIComponent(agentName)}/export`,
+    `/api/pi-manager/agents/${encodeURIComponent(agentName)}/export?history=true`,
     request.url,
   );
   return await manager.http.fetchAuthorized(

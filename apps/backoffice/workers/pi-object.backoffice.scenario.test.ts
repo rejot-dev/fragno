@@ -382,7 +382,7 @@ test("durable Pi refreshes workspace guidance between turns without leaking anot
   );
 });
 
-test("agents and users read another agent's messages and export its whole conversation", async () => {
+test("agents and users read another agent's messages and export its conversation", async () => {
   const execution = createBackofficeServiceExecution({
     scope: { kind: "org", orgId: "org-1", jurisdiction: null },
     service: { type: "automation", id: "agent-messages-scenario" },
@@ -520,7 +520,7 @@ test("agents and users read another agent's messages and export its whole conver
             .trim()
             .split("\n")
             .map((line) => JSON.parse(line) as { type: string; entry: { id: number } });
-          expect(header).toMatchObject({ type: "pi-durable-agent", version: 2 });
+          expect(header).toMatchObject({ type: "pi-durable-agent", version: 3 });
           const ids = entries.map(({ entry }) => entry.id);
           expect(ids).toEqual([...ids].sort((a, b) => a - b));
           const lines = JSON.stringify(entries);
@@ -530,6 +530,167 @@ test("agents and users read another agent's messages and export its whole conver
             lines.indexOf("The notes say: Durable marker."),
           );
         }),
+      ],
+    }),
+  );
+});
+
+test("messages and exports start at the newest compaction or clear, as the chat does, unlike answers", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "agent-context-reach-scenario" },
+  });
+  async function bashIn(runtime: InMemoryBackofficeRuntime) {
+    const context = createRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
+      runtime: runtime.services,
+      kernel: new BackofficeKernel(runtime.services),
+      execution,
+    });
+    assert(context.stateBackend);
+    const { bash } = await createInteractiveBashHost({
+      context: { ...context, stateBackend: context.stateBackend },
+    });
+    return bash;
+  }
+  async function said(runtime: InMemoryBackofficeRuntime) {
+    const printed = await (
+      await bashIn(runtime)
+    ).exec("pi.agent.messages --agent assistant --format json");
+    assert.equal(printed.exitCode, 0, printed.stderr);
+    const page = JSON.parse(printed.stdout) as {
+      messages: { role: string; text: string }[];
+      before: number | null;
+    };
+    return { said: page.messages.map(({ role, text }) => [role, text]), before: page.before };
+  }
+  async function exported(runtime: InMemoryBackofficeRuntime, options = "") {
+    const bash = await bashIn(runtime);
+    const written = await bash.exec(
+      `pi.agent.export --agent assistant --output /workspace/assistant.jsonl ${options}`,
+    );
+    assert.equal(written.exitCode, 0, written.stderr);
+    const file = await bash.exec("cat /workspace/assistant.jsonl");
+    const [header, ...entries] = file.stdout
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { entry: { kind: string } });
+    return { header, kinds: entries.map(({ entry }) => entry.kind), text: JSON.stringify(entries) };
+  }
+  async function promptStatus(runtime: InMemoryBackofficeRuntime, requestId: string) {
+    const printed = await (
+      await bashIn(runtime)
+    ).exec(`pi.prompt.get --agent assistant --request-id ${requestId} --format json`);
+    assert.equal(printed.exitCode, 0, printed.stderr);
+    return JSON.parse(printed.stdout) as unknown;
+  }
+  async function ask(runtime: InMemoryBackofficeRuntime, requestId: string, content: string) {
+    await prompt(runtime, execution, { requestId, content });
+    await runtime.drain();
+  }
+  const { PI: createAgent } = scriptedAgents(
+    [
+      fauxAssistantMessage("First answer."),
+      fauxAssistantMessage("Second answer."),
+      fauxAssistantMessage("Both answers were given."),
+      fauxAssistantMessage("Third answer."),
+      fauxAssistantMessage("Fourth answer."),
+    ],
+    { compaction: { keepRecentTokens: 1 } },
+  );
+  assert(createAgent);
+  let assistantObject: PiObject | null = null;
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi messages and export from the active context",
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        // The scenario's only agent object, to read an export as it streams.
+        PI: (input) => {
+          assistantObject = createAgent(input) as PiObject;
+          return assistantObject;
+        },
+      },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("a compaction's summary stands where it was made", async ({ runtime }) => {
+          await ask(runtime, "first", "First question?");
+          await ask(runtime, "second", "Second question?");
+          const compacted = await request(runtime, execution, "/agents/assistant/compact", {
+            instructions: "Keep the answers.",
+          });
+          assert.equal(compacted.status, 202, await compacted.clone().text());
+          await runtime.drain();
+          await ask(runtime, "third", "Third question?");
+
+          // Pi keeps the newest answer verbatim, before the summary that replaced the rest.
+          expect(await said(runtime)).toEqual({
+            said: [
+              ["assistant", "Second answer."],
+              ["compaction", "Both answers were given."],
+              ["user", "Third question?"],
+              ["assistant", "Third answer."],
+            ],
+            before: null,
+          });
+          const active = await exported(runtime);
+          expect(active.header).toMatchObject({ version: 3, history: false });
+          expect(active.kinds.slice(0, 2)).toEqual(["pi.assistant", "pi.compaction"]);
+          expect(active.text).not.toContain("First question?");
+        }),
+        then.assert(
+          "a clear hides what came before it, but not its answers",
+          async ({ runtime }) => {
+            // An export already under way when the clear lands keeps the context it started in.
+            assert(assistantObject);
+            const reader = (
+              await assistantObject.exportEntries(
+                { scope: execution.scope, agentName: "assistant" },
+                false,
+              )
+            ).getReader();
+            const chunks = [(await reader.read()).value];
+
+            const reset = await request(runtime, execution, "/agents/assistant/reset", {});
+            assert.equal(reset.status, 204, await reset.clone().text());
+            await runtime.drain();
+            await ask(runtime, "fourth", "Fourth question?");
+
+            for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+              chunks.push(chunk.value);
+            }
+            const decoder = new TextDecoder();
+            const started = chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("");
+            expect(started).toContain("Third answer.");
+            expect(started).not.toContain("Fourth question?");
+            expect(started).not.toContain('"kind":"pi.reset"');
+
+            expect(await said(runtime)).toEqual({
+              said: [
+                ["user", "Fourth question?"],
+                ["assistant", "Fourth answer."],
+              ],
+              before: null,
+            });
+            // A prompt's answer is read by its request ID, wherever the context now starts.
+            expect(await promptStatus(runtime, "first")).toEqual({
+              requestId: "first",
+              status: "completed",
+              answer: "First answer.",
+            });
+
+            const active = await exported(runtime);
+            assert(active.kinds[0] === "pi.reset");
+            expect(active.text).not.toContain("Third question?");
+            const whole = await exported(runtime, "--history");
+            expect(whole.header).toMatchObject({ version: 3, history: true });
+            expect(whole.text).toContain("First question?");
+            expect(whole.text).toContain("Fourth answer.");
+          },
+        ),
       ],
     }),
   );

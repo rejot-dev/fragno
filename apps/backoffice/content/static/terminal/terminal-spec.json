@@ -3745,7 +3745,7 @@
   },
   {
     "command": "pi.agent.messages",
-    "summary": "pi.agent.messages prints an agent's most recent messages, oldest first, without thinking or tool calls.",
+    "summary": "pi.agent.messages prints an agent's most recent messages since its newest clear, oldest first, without thinking or tool calls; a compaction's summary stands where it happened.",
     "options": [
       {
         "name": "agent",
@@ -3795,7 +3795,7 @@
   },
   {
     "command": "pi.agent.export",
-    "summary": "pi.agent.export writes an agent's whole conversation history, tool calls included, to a JSONL file, oldest entry first.",
+    "summary": "pi.agent.export writes an agent's conversation since its newest compaction or clear, tool calls included, to a JSONL file, oldest entry first.",
     "options": [
       {
         "name": "agent",
@@ -3810,6 +3810,10 @@
         "valueRequired": true,
         "valueName": "path",
         "description": "Absolute path of the JSONL file to write under /workspace"
+      },
+      {
+        "name": "history",
+        "description": "Also write what came before the newest compaction or clear"
       },
       {
         "name": "help",

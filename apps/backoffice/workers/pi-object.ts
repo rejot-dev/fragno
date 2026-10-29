@@ -699,9 +699,16 @@ export class PiObject extends RpcTarget implements PiAgent {
       : { messages: [], before: null };
   }
 
-  async exportEntries(config: PiAgentConfig): Promise<ReadableStream<Uint8Array>> {
+  async exportEntries(
+    config: PiAgentConfig,
+    history: boolean,
+  ): Promise<ReadableStream<Uint8Array>> {
     const { harness } = await this.#requireAgent(config);
-    return createPiConversationExportStream(await harness.root(BACKGROUND_CONTEXT), config);
+    return createPiConversationExportStream(
+      await harness.root(BACKGROUND_CONTEXT),
+      config,
+      z.boolean().parse(history),
+    );
   }
 
   async compact(

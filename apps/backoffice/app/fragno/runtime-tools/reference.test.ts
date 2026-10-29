@@ -287,7 +287,7 @@ describe("runtime tool reference generation", () => {
           inputType: "PiExportConversationInput",
           outputType: "PiExportConversationOutput",
           bashCommand: "pi.agent.export",
-          bashOptions: ["agent", "output"],
+          bashOptions: ["agent", "output", "history"],
         },
         ...(["create", "update"] as const).map((operation) => ({
           id: `pi.agent.${operation}`,

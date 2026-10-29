@@ -314,7 +314,7 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
       method: "GET",
       path: "/agents/:agentName/export",
       errorCodes: ["AGENT_NOT_FOUND", "AGENT_NOT_STARTED"],
-      handler: async function ({ pathParams }, { error }) {
+      handler: async function ({ pathParams, query }, { error }) {
         const { definition, config: agent } = await this.handlerTx()
           .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
           .transform(({ serviceResult: [found] }) => found)
@@ -328,7 +328,8 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
                 404,
               );
         }
-        return new Response(await config.agent(agent).exportEntries(agent), {
+        const history = query.get("history") === "true";
+        return new Response(await config.agent(agent).exportEntries(agent, history), {
           headers: {
             "cache-control": "no-store",
             "content-disposition": `attachment; filename="pi-agent-${agent.agentName}.jsonl"`,

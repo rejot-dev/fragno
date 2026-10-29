@@ -269,13 +269,14 @@ const messagesListInputSchema = z.lazy(() =>
 /**
  * What was said in an agent's conversation, without thinking, tool calls, or tool results. A
  * `notification` marks where the agent was asked to handle delivered events, which explains an
- * answer no one prompted.
+ * answer no one prompted. A `compaction` holds the summary that replaced earlier messages in the
+ * agent's context, where it was made.
  */
 const piAgentMessageSchema = z.lazy(() =>
   z.union([
     z.object({
       entryId: z.number().int().positive(),
-      role: z.enum(["user", "assistant"]),
+      role: z.enum(["user", "assistant", "compaction"]),
       text: z.string(),
       sentAt: z.string(),
     }),
@@ -292,7 +293,7 @@ export type PiAgentMessage = z.infer<typeof piAgentMessageSchema>;
 export const piAgentMessagePageSchema = z.lazy(() =>
   z.object({
     messages: z.array(piAgentMessageSchema),
-    // The oldest message's entry ID while earlier messages exist; null at the conversation's start.
+    // The oldest message's entry ID while earlier messages exist; null at the start of what is read.
     before: z.number().int().positive().nullable(),
   }),
 );
@@ -309,6 +310,12 @@ const exportInputSchema = z.lazy(() =>
           "Write the export to a .jsonl file under /workspace, such as /workspace/agent.jsonl.",
       })
       .describe("Absolute path of the .jsonl file to write under /workspace."),
+    history: z
+      .boolean()
+      .default(false)
+      .describe(
+        "Also write what came before the agent's newest compaction or clear, which are left out by default, as in the chat.",
+      ),
   }),
 );
 
@@ -348,14 +355,14 @@ export const piOperations = {
   },
   "pi.agent.messages": {
     description:
-      "Read the most recent messages of a started agent's conversation, oldest first, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you: what users said and the agent answered, without thinking, tool calls, or tool results. Pass the returned `before` to read further back; it is null at the conversation's start. Includes history before compactions and resets. Pass `subagent` to read one of the agent's subagents instead.",
+      "Read the most recent messages of a started agent's conversation, oldest first, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you: what users said and the agent answered, without thinking, tool calls, or tool results. Like the chat, it reads from the agent's newest compaction or clear on, with the compaction's summary where it was made. Pass the returned `before` to read further back; it is null at the newest compaction or clear, or the conversation's start. To read a prompt's answer, use `pi.getPrompt`. Pass `subagent` to read one of the agent's subagents instead.",
     permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: messagesListInputSchema,
     output: piAgentMessagePageSchema,
   },
   "pi.agent.export": {
     description:
-      "Write a started agent's whole conversation history to a JSONL file, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you. The file holds a header line, then every durable entry oldest first, including thinking, tool calls, tool results, and history before compactions and resets.",
+      "Write a started agent's conversation to a JSONL file, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you. The file holds a header line, then the durable entries oldest first, including thinking, tool calls, and tool results. Like the chat, it holds the entries from the agent's newest compaction or clear on, with that compaction or clear; pass `history` for every entry.",
     permissions: [BACKOFFICE_PERMISSION.pi.read, BACKOFFICE_PERMISSION.upload.modify],
     input: exportInputSchema,
     output: z.lazy(() =>

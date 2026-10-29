@@ -367,8 +367,9 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   history (maximum 256 entries per page).
 - `GET /agents/:agentName/messages?last=...&before=...`: the `last` (default 20, at most 100)
   messages said before entry `before`, or the latest ones, oldest first; see Reading conversations.
-- `GET /agents/:agentName/export`: streaming JSONL export of every durable entry, oldest first,
-  after a `{ type: "pi-durable-agent", version: 2, order: "oldest-first" }` header line.
+- `GET /agents/:agentName/export?history=true`: streaming JSONL export of the durable entries,
+  oldest first, after a `{ type: "pi-durable-agent", version: 3, order: "oldest-first", history }`
+  header line; see Reading conversations.
 - `POST /agents/:agentName/compact`: admits manual durable compaction with optional instructions.
 - `GET /agents/:agentName/compactions/:taskId`: public running/completed/failed compaction state.
 - `POST /agents/:agentName/stop`: aborts the agent's current work, including background work, and
@@ -448,15 +449,22 @@ and `code` fields, which codemode preserves for workflow recovery decisions.
 Users and agents with `pi.read` read any started agent of a scope, as the agents UI does. A reader
 sees every tool result, including data the agent fetched with permissions the reader lacks.
 
+Both read what the chat shows: the active context, from the newest compaction's first kept entry, or
+the newest clear, on. A compaction's summary stands where it was made, after the entries it kept;
+compactions it replaced do not. Only the export reads every entry, with `history` (`--history`), as
+the chat does once it loads earlier history; a prompt's answer is read with `pi.getPrompt` instead.
+The agent reads the newest head marker in its own commit, so finding the active context costs no
+scan.
+
 `pi.listMessages` (`pi.agent.messages`) returns what was said: each user input's text, the text of
-each model response, including narration between tool calls, and a `notification` marker where a
-turn handled delivered events, which explains an answer no one prompted. Thinking, tool calls, tool
-results, notification cards, and compaction summaries are left out. The agent scans entries
+each model response, including narration between tool calls, a `notification` marker where a turn
+handled delivered events, which explains an answer no one prompted, and each `compaction` summary.
+Thinking, tool calls, tool results, and notification cards are left out. The agent scans entries
 newest-first until it holds one message more than asked for, so `before`, the oldest returned
-message's entry ID, is null exactly when no earlier message exists. An aborted response that a newer
-one in its task repeats is a recovery partial and is skipped, as the chat skips it, unless the two
-fall on different pages. `pi.agent.messages --agent assistant --last 1` prints only the latest
-message; `--format json` prints the page.
+message's entry ID, is null exactly when no earlier message is in the active context. An aborted
+response that a newer one in its task repeats is a recovery partial and is skipped, as the chat
+skips it, unless the two fall on different pages. `pi.agent.messages --agent assistant --last 1`
+prints only the latest message; `--format json` prints the page.
 
 `pi.exportConversation` (`pi.agent.export`) writes the export route's JSONL to a `.jsonl` file under
 `/workspace` and also needs `upload.modify`. It holds the whole export in memory to write it in one
@@ -479,10 +487,11 @@ conversation with its first message (no organization is required for personal ag
 sender's own running turn and queues messages otherwise, shows what waits in the composer (the input
 Pi holds in `pi.inbox` as steering or up next, then the agent's queue as queued prompts and
 notifications), estimates the active context against the conversation's model, runs and monitors
-manual compaction, paginates inactive transcript history, downloads streaming JSONL exports, and
-stops active work. Messages resume a stopped agent's queue, and while it is paused with items
-waiting, the composer's empty send button resumes it. A scoped resource route upgrades the browser
-to the agent's view socket, which reconnects with backoff until the agent refuses it.
+manual compaction, paginates inactive transcript history, downloads streaming JSONL exports of the
+whole history, and stops active work. Messages resume a stopped agent's queue, and while it is
+paused with items waiting, the composer's empty send button resumes it. A scoped resource route
+upgrades the browser to the agent's view socket, which reconnects with backoff until the agent
+refuses it.
 
 ## Recovery
 

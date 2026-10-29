@@ -54,6 +54,7 @@ export type PiManagerListMessagesInput = {
   /** The request ID of the subagent whose conversation to read; null reads the agent's. */
   subagent: string | null;
 };
+export type PiManagerExportInput = { agentName: string; history: boolean };
 
 /** Structured manager failures survive runtime-tool and codemode boundaries. */
 export class PiManagerRuntimeRequestError extends BackofficeOperationError {
@@ -117,8 +118,8 @@ export type PiManagerRuntime = {
   backfillAgentEvents(): Promise<{ agents: PiAgentBackfilledEvent[] }>;
   /** What users and the agent said, oldest first; see `pi.agent.messages`. */
   listMessages(input: PiManagerListMessagesInput): Promise<PiAgentMessagePage>;
-  /** The agent's whole history as JSONL, newest entry last; see `pi.agent.export`. */
-  exportConversation(input: PiManagerAgentInput): Promise<string>;
+  /** The agent's conversation as JSONL, newest entry last; see `pi.agent.export`. */
+  exportConversation(input: PiManagerExportInput): Promise<string>;
 };
 
 /**
@@ -294,8 +295,9 @@ export function createPiManagerRuntime(input: {
       }
       return await request<PiAgentMessagePage>(`${agentRoute(agentName)}/messages?${query}`, null);
     },
-    async exportConversation({ agentName }) {
-      const response = await fetchManager(`${agentRoute(agentName)}/export`, null, "GET");
+    async exportConversation({ agentName, history }) {
+      const query = new URLSearchParams({ history: String(history) });
+      const response = await fetchManager(`${agentRoute(agentName)}/export?${query}`, null, "GET");
       return await awaitRequest(response.text());
     },
   };
