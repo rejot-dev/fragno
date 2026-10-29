@@ -173,7 +173,7 @@ if (!telegramTestCommandEntry) {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
   slug: "telegram-channel",
-  version: "2.1.0",
+  version: "2.1.1",
   // The Marketplace page's suggested folder, so nothing depends on where a package lands.
   installationRoot: "/workspace/telegram-channel",
 } as const;

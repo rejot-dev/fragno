@@ -36,5 +36,8 @@ Version 2.1.0 declares the `telegram` agent too, and has no install workflow. In
 each linked user's own permissions. Upgrading from 2.0.0 takes over the agent 2.0.0 defined, and
 uninstalling deletes it.
 
+Version 2.1.1 reads a completed turn's answer with `pi.getPrompt`, which keeps it however the
+agent's context changes later. Earlier versions look it up by its entry in the agent's messages.
+
 Install this item into an organization, project, or personal automation scope. Telegram connection
 availability is configured separately.
