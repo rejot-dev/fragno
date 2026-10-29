@@ -33,9 +33,11 @@ export function createProjectConnectorFragmentClients(fragnoConfig: FragnoPublic
     useAccounts: builder.createHook("/accounts"),
     useNamedAccount: builder.createHook("/accounts/by-name"),
     useNamedConnectionRequest: builder.createHook("/connection-requests/by-name"),
+    useCurrentConnectionRequests: builder.createHook("/connection-requests/current"),
     useProfile: builder.createHook("/accounts/:accountId/profile"),
     connect: builder.createMutator("POST", "/connection-requests", (invalidate) => {
       invalidate("GET", "/connection-requests/by-name", {});
+      invalidate("GET", "/connection-requests/current", {});
     }),
     refreshConnection: builder.createMutator(
       "POST",
@@ -44,6 +46,7 @@ export function createProjectConnectorFragmentClients(fragnoConfig: FragnoPublic
         invalidate("GET", "/accounts", {});
         invalidate("GET", "/accounts/by-name", {});
         invalidate("GET", "/connection-requests/by-name", {});
+        invalidate("GET", "/connection-requests/current", {});
       },
     ),
     executeAction: builder.createMutator("POST", "/accounts/:accountId/actions/:actionId"),

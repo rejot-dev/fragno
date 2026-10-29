@@ -88,6 +88,13 @@ export const projectConnectorNamedRequestSchema = z.strictObject({
   request: projectConnectorConnectionSchema.nullable(),
 });
 
+/** One page of a user's saved requests, across all names. */
+export const projectConnectorConnectionRequestsSchema = z.object({
+  requests: z.array(projectConnectorConnectionSchema),
+  cursor: z.string().nullable(),
+  hasNextPage: z.boolean(),
+});
+
 /** Missing named accounts remain JSON results rather than empty HTTP responses. */
 export const projectConnectorNamedAccountSchema = z.strictObject({
   account: projectConnectorAccountSchema.nullable(),

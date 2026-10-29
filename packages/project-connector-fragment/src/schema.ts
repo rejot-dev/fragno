@@ -52,5 +52,9 @@ export const projectConnectorSchema = schema("project-connector-fragment", (s) =
     )
     // Every start has required a name, so no stored row is expected to hold null.
     .alterTable("connectionRequest", (t) => t.alterColumn("connectionName").nullable(false))
-    .alterTable("connectedAccount", (t) => t.alterColumn("connectionName").nullable(false)),
+    .alterTable("connectedAccount", (t) => t.alterColumn("connectionName").nullable(false))
+    // Listing a user's requests across names needs a total order, which the named index lacks.
+    .alterTable("connectionRequest", (t) =>
+      t.createIndex("idx_request_external_user_id", ["externalUserId", "id"]),
+    ),
 );

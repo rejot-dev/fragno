@@ -142,6 +142,9 @@ hyphens, starting with a letter or digit. Every request and account has a name.
 
 - `GET /connection-requests/by-name?projectId=...&providerConfigId=...&connectionName=...` returns
   the single matching saved OAuth request as `{ request }`, with `request: null` when absent.
+- `GET /connection-requests/current?cursor=...` lists the user's saved requests across names,
+  pending, ended, and confirmed alike, 25 per page in request ID order. It is how a UI finds names
+  started elsewhere.
 - `GET /accounts/by-name` with the same query returns `{ account }`, with `account: null` when
   absent.
 
@@ -207,8 +210,9 @@ machinery. Repeating a start is not a way to resume an existing attempt.
 **Schema migration:** version 4 adds non-unique named lookup indexes; databases keep duplicate names
 without reconciliation or a reset. Version 6 makes `connectionName` non-null on requests and
 accounts. Every start has required a name, so stored rows are expected to have one; the migration
-fails on a database that holds a null name. Existing duplicate names stay ambiguous until a
-replacing start.
+fails on a database that holds a null name. Version 7 adds `idx_request_external_user_id`
+(`externalUserId`, `id`), which gives the cross-name request listing a total order; it adds no
+columns. Existing duplicate names stay ambiguous until a replacing start.
 
 ### Readiness hook
 
@@ -254,10 +258,10 @@ entrypoints also export `createProjectConnectorFragmentClient` with their native
 conventions.
 
 Client operations: `useProviderConfigs`, `useProviderActions`, `useStatus`, `useAccounts`,
-`useNamedAccount`, `useNamedConnectionRequest`, `useProfile`, `connect`, `refreshConnection`, and
-`executeAction`. Refreshing a connection invalidates account and named-request stores. The account
-list is cursor-paginated (25 items per page); it lists local verified bindings, not live provider
-availability.
+`useNamedAccount`, `useNamedConnectionRequest`, `useCurrentConnectionRequests`, `useProfile`,
+`connect`, `refreshConnection`, and `executeAction`. Refreshing a connection invalidates account and
+request stores. The account list is cursor-paginated (25 items per page); it lists local verified
+bindings, not live provider availability.
 
 ## Routes
 
@@ -267,6 +271,7 @@ availability.
 | GET    | `/provider-configs/:providerConfigId/actions`                                        | List allowed action contracts for one exact OAuth configuration |
 | GET    | `/status`                                                                            | Check project-key authentication                                |
 | GET    | `/connection-requests/by-name?projectId=...&providerConfigId=...&connectionName=...` | Read an unambiguous request by exact name                       |
+| GET    | `/connection-requests/current?cursor=...`                                            | List this user's requests across names                          |
 | POST   | `/connection-requests`                                                               | Start a fresh OAuth request, or replace the name's requests     |
 | POST   | `/connection-requests/:requestId/refresh`                                            | Verify gateway status and bind a completed account              |
 | GET    | `/accounts?cursor=...`                                                               | List this user's locally verified account bindings              |
