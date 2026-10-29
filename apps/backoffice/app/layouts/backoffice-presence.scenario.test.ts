@@ -77,6 +77,11 @@ async function openPage(
   await Promise.all(waitUntil);
 }
 
+/** The browser drops the access token cookie when the token expires, keeping only the session. */
+function withoutAccessToken(cookie: string) {
+  return cookie.replace(/; fragno-backoffice\.access_token=[^;]+/u, "");
+}
+
 /** The members a user's top bar shows, read as its presence indicator reads them. */
 async function presenceSeenBy(ctx: Ctx, cookie: string) {
   const url = new URL("/backoffice/presence", origin);
@@ -186,6 +191,25 @@ test("members see who in their organization was recently active, and where", asy
         then.assert("five quiet minutes later, Ada is no longer around", async (ctx) => {
           expect(await presenceSeenBy(ctx, ctx.vars.graceCookie)).toEqual([]);
         }),
+        then.assert(
+          "Grace's tab sleeps past her token, so its poll sees nobody until the tab refreshes it",
+          async (ctx) => {
+            await openPage(ctx, ctx.vars.adaCookie, "/backoffice/dashboard/org/acme", {
+              scopeKind: "org",
+              scopeId: "acme",
+            });
+            const graceSession = withoutAccessToken(ctx.vars.graceCookie);
+            expect(await presenceSeenBy(ctx, graceSession)).toEqual([]);
+            ctx.vars.graceCookie = await withBackofficeAccessToken(
+              ctx,
+              graceSession,
+              ctx.vars.orgId,
+            );
+            expect(await presenceSeenBy(ctx, ctx.vars.graceCookie)).toEqual([
+              { email: "ada@acme.test", path: "/backoffice/dashboard/org/acme" },
+            ]);
+          },
+        ),
       ],
     }),
   );
