@@ -99,7 +99,10 @@ export function createIntegrationRegistry(implementations: readonly IntegrationI
     const { implementation, localId } = resolveConnectionOwner(connectionId);
     const capability = requireCapability(implementation[operationName]);
     const progress = await capability.run(context, { localId, operation });
-    if (progress.connectionId !== connectionId) {
+    // Setup input may choose another address of the same source, such as a new connection name.
+    const movedSetup =
+      operationName === "setup" && findConnectionOwner(progress.connectionId) === implementation;
+    if (progress.connectionId !== connectionId && !movedSetup) {
       throw new Error(
         `Integrations source returned ${operationName} for a different connection ID.`,
       );

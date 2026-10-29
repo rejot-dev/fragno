@@ -61,10 +61,13 @@ Take the highest rung that offers the requested service:
    casing since addresses are case-sensitive; when the GitHub App cannot reach it yet, submitting
    `{ link: true }` returns the GitHub link that grants access.
 2. **Open Connector**: a service whose `id` names the provider, such as `gmail`, with
-   `connector#n_…` targets. Use the target unchanged; it preassigns the connection name. Several
-   targets mean several provider configurations: use the user's choice. Its gateway credentials are
-   server configuration: when setup reports Connector as unconfigured, report that rather than
-   asking the user for keys.
+   `connector#n_…` targets. Use a target unchanged; each names one connection. The first target of a
+   provider configuration is its default name, and every name already started follows it, so a
+   connection the user mentions by name is among the targets. To connect another account, submit
+   `{ start: true, connectionName }` to the default target's setup; the progress names the new
+   connection's ID. Targets of several provider configurations: use the user's choice. Its gateway
+   credentials are server configuration: when setup reports Connector as unconfigured, report that
+   rather than asking the user for keys.
 3. **MCP server**: the `mcp` service, chosen when the provider publishes a streamable HTTP MCP
    endpoint or the user supplies one. Choose a slug of lowercase letters, digits, and `-`, such as
    `mcp#cloudflare`. Take the endpoint URL from provider documentation.
@@ -171,7 +174,10 @@ Both operations replace or delete live credentials, so run them on the user's in
   configuration and credentials. `not-configured` means nothing was stored. The address stays valid
   for a later setup. Then delete its client with `state.rm({ path })`.
 
-Open Connector supports neither; to consent again, set up a fresh connection name. GitHub does not
+Open Connector reconfigure takes `{ start: true }` and consents again under the same name: the
+current account keeps working until the new consent confirms and replaces it. Open Connector has no
+disconnect. A failed or expired Open Connector attempt needs no reconfigure: its setup check returns
+`needs-input` with the gateway's reason, and `{ start: true }` replaces the attempt. GitHub does not
 support reconfigure, since repository access is changed in the GitHub App's installation settings;
 its disconnect unlinks the repository from this organization.
 

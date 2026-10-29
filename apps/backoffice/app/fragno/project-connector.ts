@@ -33,6 +33,9 @@ export function createProjectConnectorServer(
     await ifMatchesRoute("GET", "/connection-requests/by-name", () => {
       access = BACKOFFICE_PERMISSION.connections.manage;
     });
+    await ifMatchesRoute("GET", "/connection-requests/current", () => {
+      access = BACKOFFICE_PERMISSION.connections.manage;
+    });
     await ifMatchesRoute("POST", "/connection-requests", () => {
       access = BACKOFFICE_PERMISSION.connections.manage;
     });

@@ -168,9 +168,9 @@ encodings of source selectors, not encoded setup state:
 
 `connector#n_<token>` selects the exact project ID, provider configuration ID, and connection name.
 The address works before OAuth assigns an account ID and resumes through the Fragment's named
-lookups. A name matching multiple accounts or requests fails explicitly and asks for a fresh name;
-integration setup never starts a second request for a name, so only concurrent setups create such
-duplicates.
+lookups. Setup starts replace the name's earlier requests, so a name matches several accounts or
+requests only after concurrent starts or starts from before replacement existed; setup offers a
+replacing start for such a name, and ordinary resolution fails rather than guessing.
 
 Copy opaque addresses from discovery and listing; do not base64-encode the old JSON array. The
 canonical encoder in `connector-connection-id.ts` packs lowercase canonical UUIDs into 16 bytes and
@@ -188,10 +188,15 @@ in another user's scope selects that user's source, not the original user's data
 
 Discovery groups provider configurations by their authoritative service IDs, such as `gmail`, rather
 than publishing `connector` as a service. It offers the service ID as a preassigned name for each
-provider as a concrete setup target. This is a source alias, not a reservation, generated account
-ID, or facade-owned binding. Advanced callers can select another exact name. Configured listing
-publishes each account under its named address. The integrations overview titles a Connector
-connection by its service, adding the name only when it differs from the service.
+provider as a concrete setup target, followed by every name with a saved request, pending and ended
+ones included, so a connection started elsewhere stays reachable before its account is confirmed.
+Reading requests needs `connections.manage`; without it, discovery offers only the preassigned
+names. The service ID is a source alias, not a reservation, generated account ID, or facade-owned
+binding. Setup input `{ start: true, connectionName }` on any target of a provider starts that name
+instead, and its progress names the other address; the registry accepts setup progress for another
+address only when the same source owns it. Configured listing publishes each account under its named
+address. The integrations overview titles a Connector connection by its service, adding the name
+only when it differs from the service.
 
 Listing always forwards exactly one native page and its cursor.
 
@@ -245,21 +250,27 @@ object restarts by reading the source again. Resetting configuration makes the s
 input again. Concurrent submissions retain the existing store's write semantics; the facade does not
 promise reservations, exactly-once setup, or permanently retained terminal outcomes.
 
-Connector named setup first reads the exact account and saved request. An unconfigured name returns
-`needs-input` with the source-owned schema `{ start: true }` and no secret fields. Explicit input
-starts the existing native OAuth route with a server-selected return URL. Serial repeat submissions
-reuse the saved pending request instead of starting another one. Checks of an existing pending
-request call native refresh: they may persist gateway-confirmed consent in the Fragment, but never
-start consent, trust caller confirmation, execute a provider action, or write facade state.
+Connector named setup first reads the exact account and saved request. A pending request is
+refreshed: native refresh may persist gateway-confirmed consent in the Fragment, but never starts
+consent, trusts caller confirmation, executes a provider action, or writes facade state. A pending
+request returns `needs-authorization` with its link, and serial repeat submissions reuse it instead
+of starting another one. A request the refresh confirms makes the name `ready`, as does an existing
+account.
 
-Saved `failed` and `expired` requests remain terminal. The facade does not create a replacement that
-would make future named lookup ambiguous. Use a fresh exact name for another attempt, or use the
-native request-ID tools for retained history. Multiple matching requests or accounts return
-`blocked` during setup; ordinary named resolution fails rather than guessing a current record. A
-single confirmed account makes its name ready even when request history is ambiguous. A retained
-connected request without a current matching account is blocked: native reauthorization may have
-moved that same account ID to another name, and historical consent cannot make the old selector
-ready.
+A name without an account returns `needs-input` with the source-owned schema `{ start: true }` and
+no secret fields. When the name's latest request ended, the instructions give the reason: the
+gateway's error for `failed`, expiry for `expired`, or, for a `connected` request whose account
+reauthorization moved to another name, that the name has no account now. Names matching several
+accounts or requests say so. Explicit input starts the native OAuth route with a server-selected
+return URL and `replace: true`: the Fragment deletes the name's earlier requests, and when the new
+consent confirms, its account replaces the name's others. A deleted request never binds, so consent
+through an abandoned link cannot add an account beside the replacement's. The ended attempt's reason
+reaches the caller in the check before the start, not afterwards.
+
+Connector reconfigure runs the same flow for a name that has an account: a check returns
+`needs-input`, and `{ start: true }` starts replacing consent while the current account keeps
+working. Setup checks report the pending replacement as `needs-authorization` until it confirms or
+ends; an ended replacement leaves the name `ready` with its old account.
 
 Concurrent starts can still create multiple remote links and saved requests: alias is not an
 idempotency key, and no lock, cleanup, or exactly-once promise is introduced. A lost upstream
@@ -316,9 +327,9 @@ is set through the native page. Verify asks each provider where it delivers even
 that is this deployment.
 
 Telegram and Resend reconfigure replace the stored configuration through the same command setup
-uses, and disconnect resets that configuration. Connector declares both unsupported: the gateway
-owns credentials, and the source has no account removal. Consenting again uses a fresh connection
-name.
+uses, and disconnect resets that configuration. Connector reconfigure consents again under the same
+name, as described in service-owned setup; its disconnect is unsupported, since the gateway owns
+credentials and the source has no account removal.
 
 MCP setup follows API setup with the MCP Fragment's auth modes: `type` selects `none`, `bearer`,
 `client_credentials`, or `oauth` beside `endpointUrl` and an optional `name`, and `secretFields`
