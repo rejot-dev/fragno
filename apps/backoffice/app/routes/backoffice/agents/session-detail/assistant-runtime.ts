@@ -69,10 +69,9 @@ export type PiDraftAgentActivity =
 
 export type PiDraftAgentMessage = {
   activity: PiDraftAgentActivity;
+  /** The response being generated; its timestamp is when the response started. */
   assistant?: Extract<PiConversationMessage, { role: "assistant" }>;
   tools: Record<string, PiDraftTool>;
-  startedAt: number;
-  updatedAt: number;
   appendAssistant?: boolean;
 };
 
@@ -418,13 +417,10 @@ export function piConversationDraftAgentMessage(
         : partialContent.some((block) => block.type === "thinking" && block.thinking.length > 0)
           ? "thinking"
           : "starting";
-  const timestamp = assistant?.timestamp ?? 0;
   return {
     activity,
     ...(assistant === undefined ? {} : { assistant }),
     tools,
-    startedAt: timestamp,
-    updatedAt: timestamp,
     appendAssistant: assistant !== undefined,
   };
 }
@@ -486,9 +482,6 @@ function convertDraftTool(
   };
 }
 
-const messageDate = (timestamp: number | undefined, fallbackIndex: number) =>
-  new Date(timestamp ?? fallbackIndex);
-
 /** `activeContextStartMessageId` is the first rendered message of `activeContextStartIndex` on. */
 export function createAssistantUiMessages({
   draftAgentMessage,
@@ -548,7 +541,7 @@ export function createAssistantUiMessages({
             }),
           },
         ],
-        createdAt: messageDate(message.timestamp, index),
+        createdAt: new Date(message.timestamp),
         metadata: {
           custom: { kind: "notification", notification } satisfies PiNotificationMessageMetadata,
         },
@@ -560,7 +553,7 @@ export function createAssistantUiMessages({
         id: `pi-notification-request-${message.timestamp}-${index}`,
         role: "system",
         content: [{ type: "text", text: notificationRequestLabel(message.notifications, "asked") }],
-        createdAt: messageDate(message.timestamp, index),
+        createdAt: new Date(message.timestamp),
         metadata: {
           custom: {
             kind: "notification-request",
@@ -584,7 +577,7 @@ export function createAssistantUiMessages({
         id: `pi-compaction-${message.timestamp}-${index}`,
         role: "system",
         content: [{ type: "text", text: message.summary }],
-        createdAt: messageDate(message.timestamp, index),
+        createdAt: new Date(message.timestamp),
         metadata: {
           custom: {
             kind: "compaction",
@@ -614,7 +607,7 @@ export function createAssistantUiMessages({
         id: `pi-user-${message.timestamp ?? index}-${index}`,
         role: "user",
         content: text,
-        createdAt: messageDate(message.timestamp, index),
+        createdAt: new Date(message.timestamp),
         metadata: { custom: { kind: "user", attachments } satisfies PiUserMessageMetadata },
       });
       return;
@@ -644,7 +637,7 @@ export function createAssistantUiMessages({
       id: `pi-assistant-${message.timestamp ?? index}-${index}`,
       role: "assistant",
       content,
-      createdAt: messageDate(message.timestamp, index),
+      createdAt: new Date(message.timestamp),
       status: shouldStream
         ? { type: "running" }
         : message.stopReason === "aborted"
@@ -703,11 +696,13 @@ export function createAssistantUiMessages({
       }
     }
 
+    // Until the response starts, when the turn started is unknown, so it shows no time.
+    const startedAt = draftAgentMessage?.assistant?.timestamp;
     converted.push({
-      id: `pi-assistant-draft-${draftAgentMessage?.startedAt ?? messages.length}`,
+      id: `pi-assistant-draft-${startedAt ?? messages.length}`,
       role: "assistant",
       content: draftContent,
-      createdAt: messageDate(draftAgentMessage?.startedAt, messages.length),
+      createdAt: startedAt === undefined ? undefined : new Date(startedAt),
       status: { type: "running" },
       metadata: {
         custom: {
@@ -835,7 +830,8 @@ function joinAgentTurns(
       const metadata = message.metadata?.custom as PiAssistantMessageMetadata;
       joined.push({
         ...message,
-        id: `pi-turn-${message.createdAt?.getTime()}`,
+        // Only a turn that has not started responding has no start; there is at most one.
+        id: `pi-turn-${message.createdAt?.getTime() ?? "pending"}`,
         metadata: {
           custom: {
             ...metadata,

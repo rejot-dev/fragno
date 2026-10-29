@@ -358,8 +358,6 @@ describe("createAssistantUiMessages", () => {
           usage,
           stopReason: "toolUse",
         },
-        startedAt: 2,
-        updatedAt: 3,
         tools: {
           "tool-bash": {
             id: "tool-bash",
@@ -418,8 +416,6 @@ describe("createAssistantUiMessages", () => {
           usage,
           stopReason: "toolUse",
         },
-        startedAt: 2,
-        updatedAt: 3,
         tools: {},
       },
     });
