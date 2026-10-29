@@ -378,9 +378,11 @@ export function workflowRunExcerpt(
 const CURRENT_STEP_STATUSES = new Set<WorkflowRunStepStatus>(["running", "waiting", "failed"]);
 
 /**
- * Ends the finished run provably stopped at. An end counts only when everything leading into it
- * finished and nothing it competes with ran. Two matching ends that compete, like consecutive
- * guards with no step between them, stay unmarked because the records cannot tell them apart.
+ * Ends the finished run provably stopped at. An end counts when something leading into it
+ * finished and nothing else that thing leads to ran. Only one path into an end has to be taken:
+ * a skipped `if` body still leads into the `return` after it. Two matching ends that compete,
+ * like consecutive guards with no step between them, stay unmarked because the records cannot
+ * tell them apart.
  */
 export function reachedWorkflowEndIds(
   layout: WorkflowRunLayout,
@@ -412,16 +414,15 @@ export function reachedWorkflowEndIds(
       if (!isCandidate(row)) {
         return [];
       }
-      const sourceIds = flows
+      const reached = flows
         .filter((rail) => rail.toRowId === row.id)
-        .map((rail) => rail.fromRowId);
-      const competitors = flows.filter(
-        (rail) => sourceIds.includes(rail.fromRowId) && rail.toRowId !== row.id,
-      );
-      const reached =
-        sourceIds.length > 0 &&
-        sourceIds.every((id) => finished(rowsById.get(id))) &&
-        competitors.every((rail) => didNotRun(rowsById.get(rail.toRowId)));
+        .some(
+          ({ fromRowId }) =>
+            finished(rowsById.get(fromRowId)) &&
+            flows
+              .filter((rail) => rail.fromRowId === fromRowId && rail.toRowId !== row.id)
+              .every((rail) => didNotRun(rowsById.get(rail.toRowId))),
+        );
       return reached ? [row.id] : [];
     }),
   );

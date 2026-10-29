@@ -418,6 +418,30 @@ describe("reached workflow ends", () => {
     assert.deepEqual([...reachedWorkflowEndIds(placed, "active")], []);
   });
 
+  test("marks the return after an if whose body was skipped or ran", () => {
+    const placed = (body: "completed" | "skipped") =>
+      layout([
+        node("compare", { status: "completed" }),
+        {
+          kind: "fork",
+          id: "pending",
+          runs: "one",
+          branches: [
+            {
+              id: "then",
+              label: "if pending",
+              nodes: [node("send", { status: body }), node("mark", { status: body })],
+            },
+            { id: "fallthrough", label: null, nodes: [] },
+          ],
+        },
+        end("return"),
+      ]);
+
+    assert.deepEqual([...reachedWorkflowEndIds(placed("skipped"), "complete")], ["return"]);
+    assert.deepEqual([...reachedWorkflowEndIds(placed("completed"), "complete")], ["return"]);
+  });
+
   test("counts an outer loop as run when only its inner loop's steps ran", () => {
     const placed = layout([
       {
