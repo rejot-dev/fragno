@@ -74,6 +74,12 @@ reclassifies the event, or forwards it to another scope.
    workflow is a module: it imports saved modules, such as integration clients, with static `import`
    statements, and `js.check` checks it as the runner loads it.
 
+   Record what a workflow learns as values: its step results, the events it emits, and the values it
+   stores hold numbers as numbers, times as milliseconds since the epoch, and statuses as codes,
+   such as `{ amountCents: -125000, currency: "USD", status: "PROCESSED" }`. Pages and agents that
+   read them choose the labels, colors, and formatting, so the record leaves out display text such
+   as `"-$1,250.00"` or a tone.
+
    ```js
    async () => {
      const path = "/workspace/automations/telegram-hello.workflow.js";

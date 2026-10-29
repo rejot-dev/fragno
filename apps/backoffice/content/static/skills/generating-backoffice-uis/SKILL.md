@@ -50,10 +50,9 @@ async () => {
     $ui: ui.render(
       ui.stack({ gap: "md" }, [
         ui.heading({ text: "Event catalog" }),
-        ui.text({ text: "Live capabilities retrieved from Backoffice." }),
         ui.grid({ columns: 2, gap: "md" }, [
-          ui.metric({ label: "Event types", value: String(eventCatalog.length) }),
-          ui.metric({ label: "Sources", value: String(sourceCount) }),
+          ui.metric({ label: "Event types", value: eventCatalog.length, format: "integer" }),
+          ui.metric({ label: "Sources", value: sourceCount, format: "integer" }),
         ]),
       ]),
     ),
