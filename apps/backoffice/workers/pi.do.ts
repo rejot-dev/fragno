@@ -67,6 +67,7 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
           state.waitUntil(shutdownCloudflarePostHog(client));
         }
       }
+      const runtime = createCloudflareDurableObjectRuntimeServices(env, state);
       this.#object = new PiObject({
         state,
         dependencies: analyticsEnabled
@@ -74,11 +75,16 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
               ...dependencies,
               extensions: (config, agent) => [
                 ...dependencies.extensions(config, agent),
-                createPiPostHogExtension({ config, agent, capture: queuePiGenerationEvent }),
+                createPiPostHogExtension({
+                  config,
+                  agent,
+                  auth: runtime.objects.auth.singleton().commands,
+                  capture: queuePiGenerationEvent,
+                }),
               ],
             }
           : dependencies,
-        runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+        runtime,
         openStorage: () => openPiAgentStorage(state.storage),
         idFromConfig: (config) => piAgentDurableObjectId(env, config),
         nowEpochMs: Date.now,

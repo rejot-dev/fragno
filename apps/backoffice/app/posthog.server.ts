@@ -1,4 +1,4 @@
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { PostHog } from "posthog-node";
 import {
   createContext,
@@ -11,6 +11,10 @@ import {
   backofficeScopeFields,
   type BackofficeScopeFields,
 } from "./backoffice-runtime/backoffice-telemetry";
+import {
+  backofficeRuntimeScopeFromResolvedScope,
+  type BackofficeResolvedScope,
+} from "./backoffice-runtime/resolved-scope";
 
 type BackofficePostHogRequest = {
   client: PostHog;
@@ -18,8 +22,8 @@ type BackofficePostHogRequest = {
   userId: string | null;
   /** The matched route pattern, such as `/backoffice/dashboard/:scopeKind/:scopeId`. */
   route: string | null;
-  /** The authenticated scope the request's URL names. */
-  scope: BackofficeScopeFields | null;
+  /** The authenticated scope the request's URL names, with its organization's readable slug. */
+  scope: (BackofficeScopeFields & { orgSlug: string | null }) | null;
   capturedErrors: WeakSet<Error>;
   waitUntil(promise: Promise<unknown>): void;
 };
@@ -35,11 +39,14 @@ export const BackofficePostHogContext = ((globalThis as Record<symbol, unknown>)
 /** Call once the scope a request's URL names is authenticated. */
 export function recordBackofficeRequestScope(
   context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
+  scope: BackofficeResolvedScope,
 ): void {
   const analytics = context.get(BackofficePostHogContext);
   if (analytics) {
-    analytics.scope = backofficeScopeFields(scope);
+    analytics.scope = {
+      ...backofficeScopeFields(backofficeRuntimeScopeFromResolvedScope(scope)),
+      orgSlug: backofficeScopeOrganization(scope)?.organization.slug ?? null,
+    };
   }
 }
 

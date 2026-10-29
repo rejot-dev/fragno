@@ -82,12 +82,15 @@ export default {
               event: "backoffice_request_completed",
               properties: {
                 request_id: requestId,
+                // Null when the request carried no verified Backoffice credential.
+                user_id: analytics.userId,
                 source: "cloudflare-worker",
                 release: env.CF_VERSION_METADATA.id,
                 route: analytics.route,
                 scope: analytics.scope?.scope ?? null,
                 scope_kind: analytics.scope?.scopeKind ?? null,
                 organization_id: analytics.scope?.orgId ?? null,
+                organization_slug: analytics.scope?.orgSlug ?? null,
                 ...(analytics.scope?.orgId
                   ? { $groups: { organization: analytics.scope.orgId } }
                   : {}),

@@ -1,10 +1,11 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
-import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { PostHog } from "posthog-node";
 
 import { defineExtension, GenerationTask, hook } from "@earendil-works/pi-durable";
 
+import { backofficeScopeFields } from "@/backoffice-runtime/backoffice-telemetry";
+import type { AuthCommands } from "@/backoffice-runtime/object-registry";
 import type { BackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
 import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
 
@@ -21,10 +22,27 @@ async function generationEventUuid(key: string): Promise<string> {
 export function createPiPostHogExtension(input: {
   config: PiAgentConfig;
   agent: BackofficeAgentContext;
+  auth: Pick<AuthCommands, "getOrganization">;
   capture(event: Parameters<PostHog["capture"]>[0]): Promise<void>;
 }) {
   const { config, agent } = input;
   const agentId = piAgentObjectName(config);
+  // The agent's scope is fixed when it is created, so it names the owner at execution time.
+  const scope = backofficeScopeFields(config.scope);
+  const { orgId } = scope;
+  // Renaming an organization keeps its slug, so one lookup serves the agent's lifetime. A failed
+  // lookup is retried by the next generation, which meanwhile reports the ID alone.
+  let organizationSlug: Promise<string | null> | null = null;
+  function readOrganizationSlug(organizationId: string) {
+    organizationSlug ??= input.auth.getOrganization({ organizationId }).then(
+      (organization) => organization?.slug ?? null,
+      () => {
+        organizationSlug = null;
+        return null;
+      },
+    );
+    return organizationSlug;
+  }
   return defineExtension({
     name: "posthog",
     hooks: [
@@ -39,13 +57,11 @@ export function createPiPostHogExtension(input: {
             const principal = (await agent.activeTurn(api.conversationId, BACKGROUND_CONTEXT))
               .execution.actors.principal;
             const userId =
-              principal?.scope === "internal" && principal.type === "user"
-                ? principal.id
-                : `pi-agent:${agentId}`;
+              principal?.scope === "internal" && principal.type === "user" ? principal.id : null;
 
             await input.capture({
               event: "$ai_generation",
-              distinctId: userId,
+              distinctId: userId ?? `pi-agent:${agentId}`,
               uuid,
               timestamp: new Date(message.timestamp),
               properties: {
@@ -53,8 +69,13 @@ export function createPiPostHogExtension(input: {
                 agent_name: config.agentName,
                 conversation_id: api.conversationId,
                 task_id: api.taskId,
-                scope_kind: config.scope.kind,
-                organization_id: backofficeScopeOrganization(config.scope)?.orgId ?? null,
+                // Null for generations no person prompted, such as automation and app turns.
+                user_id: userId,
+                scope: scope.scope,
+                scope_kind: scope.scopeKind,
+                organization_id: orgId,
+                organization_slug: orgId === null ? null : await readOrganizationSlug(orgId),
+                ...(orgId === null ? {} : { $groups: { organization: orgId } }),
                 stop_reason: message.stopReason,
                 $ai_trace_id: `${agentId}:${api.conversationId}:${api.taskId}`,
                 $ai_session_id: agentId,
@@ -65,6 +86,9 @@ export function createPiPostHogExtension(input: {
                 $ai_output_tokens: message.usage.output,
                 $ai_cache_read_input_tokens: message.usage.cacheRead,
                 $ai_cache_creation_input_tokens: message.usage.cacheWrite,
+                // pi-ai reports input without cached tokens for every provider, while PostHog
+                // assumes OpenAI-compatible input includes them.
+                $ai_cache_reporting_exclusive: true,
                 $ai_total_cost_usd: message.usage.cost.total,
                 $ai_cost_passthrough: true,
                 $ai_is_error: message.stopReason === "error" || message.stopReason === "aborted",

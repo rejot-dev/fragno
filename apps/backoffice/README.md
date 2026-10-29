@@ -126,20 +126,48 @@ out of PostHog. Do not copy this binding into `.dev.vars`. Both Wrangler configs
 to the EU ingestion host. Missing or invalid backend configuration disables capture without breaking
 the application; frontend `VITE_*` values do not enable backend capture.
 
-The public Worker records `backoffice_request_completed` with method, status, handler duration, and
-request ID, without URLs, headers, query strings, or bodies. Server product events record successful
-session creation, prompt/compaction admission, completed aborts, and marketplace ingestion
-admission. These are separate from browser submission events; admission does not mean an agent or
-ingestion workflow has finished. Product identity comes from verified request authority, never a
-client-supplied analytics ID. Request IDs match the existing `backoffice-request-id` response
-header.
+The public Worker records `backoffice_request_completed` with method, status, handler duration,
+request ID, the verified `user_id` (null without a credential), and the scope a page names, without
+URLs, headers, query strings, or bodies. Server product events record successful session creation,
+prompt/compaction admission, completed aborts, and marketplace ingestion admission. These are
+separate from browser submission events; admission does not mean an agent or ingestion workflow has
+finished. Product identity comes from verified request authority, never a client-supplied analytics
+ID. Request IDs match the existing `backoffice-request-id` response header.
 
 The Pi Durable Object emits `$ai_generation` for terminal provider responses, with model/provider,
-token/cache usage, cost, stop reason, and session/conversation/task identifiers. Internal user
-principals use the same user ID as browser analytics; service-originated sessions use a
-session-scoped identity without creating person profiles. No prompts, instructions, model outputs,
-or tool arguments are included. Deterministic generation UUIDs preserve ingestion identity when a
-response is replayed.
+token/cache usage, cost, stop reason, and agent/conversation/task identifiers. No prompts,
+instructions, model outputs, or tool arguments are included.
+
+- **Person:** `user_id` and the distinct ID are the prompting user, the same ID as browser
+  analytics. Turns no person prompted (automations, apps, system work) have a null `user_id` and the
+  agent-scoped distinct ID `pi-agent:<agent>`, without creating person profiles.
+- **Owner:** `scope`, `scope_kind`, and `organization_id` describe the agent's scope, which is fixed
+  when the agent is created, so they name the owner at execution time rather than anyone's current
+  membership. `organization_id` is the scope's root organization; it is null for personal scopes (a
+  user's own scope, projects, and apps) and for `system`. `organization_slug` names it readably; the
+  agent looks it up from Auth once, as renaming keeps the slug. Before 2026-10-23 09:20 UTC,
+  user-scope generations carried the then-active billing organization instead, so personal
+  attribution starts there.
+- **Tokens:** pi-ai reports `input` without cached tokens for every provider, which
+  `$ai_cache_reporting_exclusive: true` tells PostHog. Input, cache-read, cache-write, and output
+  tokens therefore add up to the request's total. Cost is pi-ai's estimate from its model prices
+  (`$ai_cost_passthrough`), not an amount billed to customers.
+- **Replays:** a response replayed after a restart (a deferred poll that restarts) is reported again
+  with the same UUID, timestamp, and properties, which PostHog deduplicates. Billing records it
+  once.
+
+The usage ledger (`app/fragno/billing/README.md`) is authoritative for customer usage. PostHog
+reports provider responses, so it also counts responses a restart cut off before they were
+committed, and it can lose events whose delivery was cut off.
+`app/fragno/pi/extensions/posthog/posthog-extension.scenario.test.ts` reconciles the two per owner.
+
+Events carry `$groups.organization`, but the project is on PostHog's free plan without Group
+Analytics, so PostHog ignores it. Break down by the `organization_slug` property instead, which
+request and generation events carry beside `organization_id`; earlier events have only the ID.
+
+Active users in a period are the distinct `user_id`s of `backoffice_request_completed`; active
+organizations are the distinct `organization_id`s of those requests, which name an organization's
+workspace or one of its projects. Neither is a registered total, which only Auth knows.
 
 Each Worker request or Pi response owns its own server client. Batches flush through the owner's
 `waitUntil`, and streaming exceptions use immediate delivery through that same lifetime boundary.

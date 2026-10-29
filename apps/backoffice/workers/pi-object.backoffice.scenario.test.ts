@@ -2546,6 +2546,7 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
             createPiPostHogExtension({
               config: agentConfig,
               agent,
+              auth: runtime.objects.auth.singleton().commands,
               capture: async (event) => {
                 client.capture(event);
               },
@@ -2661,6 +2662,8 @@ test("Cloudflare backend analytics delivers verified outcomes and Pi usage witho
               const agentId = piAgentObjectName({ scope, agentName: "assistant" });
               expect(generation[0].properties).toMatchObject({
                 agent_name: "assistant",
+                organization_id: organization.id,
+                organization_slug: "analytics",
                 $ai_session_id: agentId,
                 $ai_provider: "faux",
                 $ai_model: "faux-1",

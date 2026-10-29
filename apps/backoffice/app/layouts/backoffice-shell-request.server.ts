@@ -241,7 +241,7 @@ export async function establishBackofficeShellRequest(
       }
       throw error;
     }
-    recordBackofficeRequestScope(context, backofficeRuntimeScopeFromResolvedScope(routeScope));
+    recordBackofficeRequestScope(context, routeScope);
     route = {
       status: "resolved",
       resolvedScope: routeScope,
