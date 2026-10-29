@@ -8,7 +8,9 @@ import { CONTINUE, SKIP, visit } from "unist-util-visit";
 const FILE_ROOT = /^\/(?:workspace|static|system)\//u;
 const SCOPED_FILE_DESTINATION = /^\/([^/]+)(\/(?:workspace|static|system)\/.*)$/u;
 // The lookbehind keeps URLs (`https://host/workspace/…`) and relative paths (`./workspace/…`) out.
-const BARE_FILE_PATH = /(?<![\w/.~-])\/(?:workspace|static|system)\/[^\s`'"<>()[\]{}]+/gu;
+// A mention may name another scope first, as links do; `system` is left out as it is a file root.
+const BARE_FILE_PATH =
+  /(?<![\w/.~-])(?:\/(?:org|user|project|app):[^\s/`'"<>()[\]{}]+)?\/(?:workspace|static|system)\/[^\s`'"<>()[\]{}]+/gu;
 const TRAILING_PUNCTUATION = /[.,;:!?]+$/u;
 const LINE_SUFFIX = /:\d+(?::\d+)?$/u;
 
@@ -40,9 +42,9 @@ function remarkFileMentions() {
       // Text and inline code only sit in phrasing parents.
       const siblings = parent.children as PhrasingContent[];
       if (node.type === "inlineCode") {
-        const path = readMention(node.value.trim());
-        if (path) {
-          siblings[index] = fileLink(path, [node]);
+        const file = readMention(node.value.trim());
+        if (file) {
+          siblings[index] = fileLink(file, [node]);
         }
         return SKIP;
       }
@@ -58,26 +60,38 @@ function remarkFileMentions() {
 
 /**
  * Turns links and images to file paths into elements that resolve against the viewer's scope, and
- * links to a path after a scope, as in `/org:<orgId>/workspace/report.md`, into ones that resolve
- * against that scope. A file destination that is not a valid path never becomes a URL: its link is
- * plain text and its image shows as unavailable.
+ * ones to a path after a scope, as in `/org:<orgId>/workspace/report.md`, into elements that
+ * resolve against that scope. A file destination that is not a valid path never becomes a URL: its
+ * link is plain text and its image shows as unavailable.
  */
 function rehypeFileDestinations() {
   return (tree: HastRoot) => {
     visit(tree, "element", (node: Element) => {
-      const scoped = node.tagName === "a" ? readScopedDestination(node.properties.href) : null;
-      if (scoped) {
-        node.tagName = "scoped-file-link";
-        node.properties = scoped;
-      } else if (node.tagName === "a" && isFileDestination(node.properties.href)) {
-        const path = readDestination(node.properties.href);
-        node.tagName = path ? "file-link" : "span";
-        node.properties = path ? { path } : {};
-      } else if (node.tagName === "img" && isFileDestination(node.properties.src)) {
-        const path = readDestination(node.properties.src);
-        const alt = String(node.properties.alt ?? "");
-        node.tagName = path ? "file-image" : "unavailable-image";
-        node.properties = path ? { path, alt } : { alt };
+      if (node.tagName === "a") {
+        const destination = readFileDestination(node.properties.href);
+        if (destination) {
+          node.tagName =
+            destination.path === null
+              ? "span"
+              : destination.scope === null
+                ? "file-link"
+                : "scoped-file-link";
+          node.properties = fileProperties(destination);
+        }
+      } else if (node.tagName === "img") {
+        const destination = readFileDestination(node.properties.src);
+        if (destination) {
+          node.tagName =
+            destination.path === null
+              ? "unavailable-image"
+              : destination.scope === null
+                ? "file-image"
+                : "scoped-file-image";
+          node.properties = {
+            ...fileProperties(destination),
+            alt: String(node.properties.alt ?? ""),
+          };
+        }
       }
     });
   };
@@ -88,14 +102,14 @@ function linkBareMentions(text: Text): PhrasingContent[] {
   let consumed = 0;
   for (const match of text.value.matchAll(BARE_FILE_PATH)) {
     const mention = match[0].replace(TRAILING_PUNCTUATION, "");
-    const path = readMention(mention);
-    if (!path) {
+    const file = readMention(mention);
+    if (!file) {
       continue;
     }
     if (match.index > consumed) {
       nodes.push({ type: "text", value: text.value.slice(consumed, match.index) });
     }
-    nodes.push(fileLink(path, [{ type: "text", value: mention }]));
+    nodes.push(fileLink(file, [{ type: "text", value: mention }]));
     consumed = match.index + mention.length;
   }
   if (consumed === 0) {
@@ -107,19 +121,34 @@ function linkBareMentions(text: Text): PhrasingContent[] {
   return nodes;
 }
 
+/** A file a destination or mention names, in another scope when `scope` is not null. */
+type FileDestination = { scope: string | null; path: string | null };
+
 /** A mention may point at a line, as in `/workspace/notes.md:12`; the file is what opens. */
-function readMention(mention: string) {
-  return readFilePath(mention.replace(LINE_SUFFIX, ""));
+function readMention(mention: string): { scope: string | null; path: string } | null {
+  const candidate = mention.replace(LINE_SUFFIX, "");
+  if (FILE_ROOT.test(candidate)) {
+    const path = readFilePath(candidate);
+    return path === null ? null : { scope: null, path };
+  }
+  const [, scope, rest] = SCOPED_FILE_DESTINATION.exec(candidate) ?? [];
+  if (scope === undefined || rest === undefined || !isScopeSegment(scope)) {
+    return null;
+  }
+  const path = readFilePath(rest);
+  return path === null ? null : { scope, path };
 }
 
-function isFileDestination(url: unknown): url is string {
-  return typeof url === "string" && FILE_ROOT.test(url);
-}
-
-/** A link to a file in another scope names the scope as its first segment. */
-function readScopedDestination(url: unknown): { scope: string; path: string } | null {
+/**
+ * Reads a destination to a file path, or to one after the scope it is in; null when the URL names
+ * no file. A path under a file root is always the viewer's, so `/system/workspace/…` stays a path.
+ */
+function readFileDestination(url: unknown): FileDestination | null {
   if (typeof url !== "string") {
     return null;
+  }
+  if (FILE_ROOT.test(url)) {
+    return { scope: null, path: readDestination(url) };
   }
   const [, encodedScope, destination] = SCOPED_FILE_DESTINATION.exec(url) ?? [];
   if (encodedScope === undefined || destination === undefined) {
@@ -128,12 +157,23 @@ function readScopedDestination(url: unknown): { scope: string; path: string } | 
   let scope: string;
   try {
     scope = decodeURIComponent(encodedScope);
-    parseBackofficeScopePathSegment(scope);
   } catch {
     return null;
   }
-  const path = readDestination(destination);
-  return path === null ? null : { scope, path };
+  return isScopeSegment(scope) ? { scope, path: readDestination(destination) } : null;
+}
+
+function isScopeSegment(segment: string) {
+  try {
+    parseBackofficeScopePathSegment(segment);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function fileProperties({ scope, path }: FileDestination) {
+  return path === null ? {} : scope === null ? { path } : { scope, path };
 }
 
 /** Markdown destinations are URI-encoded; file paths are literal. */
@@ -150,7 +190,16 @@ function readFilePath(candidate: string) {
   return FILE_ROOT.test(path) && absoluteFilePathSchema.safeParse(path).success ? path : null;
 }
 
-function fileLink(path: string, children: Link["children"]): Link {
-  // Encoded per segment so readDestination recovers the literal path, `#` and `%` included.
-  return { type: "link", url: path.split("/").map(encodeURIComponent).join("/"), children };
+function fileLink(
+  { scope, path }: { scope: string | null; path: string },
+  children: Link["children"],
+): Link {
+  // Encoded per segment so readFileDestination recovers the literal scope and path, `#` and `%`
+  // included.
+  const url = path.split("/").map(encodeURIComponent).join("/");
+  return {
+    type: "link",
+    url: scope === null ? url : `/${encodeURIComponent(scope)}${url}`,
+    children,
+  };
 }

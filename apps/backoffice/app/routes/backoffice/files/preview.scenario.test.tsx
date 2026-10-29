@@ -389,6 +389,8 @@ test("private workspace files flow through session Markdown and generated UI wit
             "[Finance](/org:org-finance/workspace/pages/finance.page.js)",
             "[Elsewhere](/org:org-unknown/workspace/pages/finance.page.js)",
             "[Traversal](/org:org-finance/workspace/../logout)",
+            "Bare /org:org-finance/workspace/notes/bare.md:3 and `/org:org-finance/workspace/notes/code.md`.",
+            "![Chart](/org:org-finance/workspace/charts/q3.png) ![Hidden](/org:org-unknown/workspace/a.png)",
           ].join("\n\n");
           const resolveScope = (target: BackofficeContextScope): BackofficeResolvedScope | null =>
             target.kind === "org" && target.orgId === "org-finance"
@@ -415,9 +417,27 @@ test("private workspace files flow through session Markdown and generated UI wit
               href: "/backoffice/files/org/finance/workspace/pages/finance.page.js",
               content: "Finance",
             },
+            {
+              href: "/backoffice/files/org/finance/workspace/notes/bare.md",
+              content: "/org:org-finance/workspace/notes/bare.md:3",
+            },
+            {
+              href: "/backoffice/files/org/finance/workspace/notes/code.md",
+              content: expect.stringContaining("/org:org-finance/workspace/notes/code.md</code>"),
+            },
+            {
+              href: "/backoffice/files/org/finance/workspace/charts/q3.png",
+              content: expect.stringContaining("Open in Files"),
+            },
           ]);
           assert.include(scoped, "Elsewhere");
           assert.notInclude(scoped, "logout");
+          // Images resolve in the scope they name, and never request the scoped path itself.
+          assert.include(
+            scoped,
+            'src="/backoffice/files/org/finance/preview?path=%2Fworkspace%2Fcharts%2Fq3.png"',
+          );
+          assert.notInclude(scoped, 'src="/org:');
         }),
         then.assert(
           "sandbox declared SVGs and deny anonymous and cross-scope reads, traversal, and other markup",

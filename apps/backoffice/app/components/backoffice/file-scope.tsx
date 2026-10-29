@@ -113,10 +113,35 @@ export function ScopedFileLink({
   path: string;
   children: ReactNode;
 }) {
+  return (
+    <NamedFileScope scope={scope}>
+      <FileLink path={path}>{children}</FileLink>
+    </NamedFileScope>
+  );
+}
+
+/** Shows an image from the scope it names; a scope this page cannot link to shows unavailable. */
+export function ScopedFileImage({
+  scope,
+  path,
+  alt,
+}: {
+  scope: string;
+  path: string;
+  alt: string;
+}) {
+  return (
+    <NamedFileScope scope={scope}>
+      <FileImage path={path} alt={alt} />
+    </NamedFileScope>
+  );
+}
+
+function NamedFileScope({ scope, children }: { scope: string; children: ReactNode }) {
   const resolveScope = useContext(LinkableScopesContext);
   return (
     <FileScopeProvider scope={resolveScope(parseBackofficeScopePathSegment(scope))}>
-      <FileLink path={path}>{children}</FileLink>
+      {children}
     </FileScopeProvider>
   );
 }
