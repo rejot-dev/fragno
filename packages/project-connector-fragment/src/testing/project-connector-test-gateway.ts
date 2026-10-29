@@ -44,6 +44,8 @@ type ConnectionRequest = {
 /** Stateful local SaaS gateway: real HTTP, OAuth completion, account ownership, and action failures. */
 export async function startProjectConnectorTestGateway() {
   const requests = new Map<string, ConnectionRequest>();
+  // Purged requests leave the map, so IDs come from a counter rather than its size.
+  let requestCount = 0;
   const links: z.infer<typeof connectSchema>[] = [];
   const accounts = new Map<string, ConnectionRequest>();
   const providerConfigs: GatewayProviderConfig[] = [
@@ -259,7 +261,8 @@ export async function startProjectConnectorTestGateway() {
     if (route === "connected-accounts" && id === "link") {
       const input = connectSchema.parse(payload);
       links.push(input);
-      const requestId = `request-${requests.size + 1}`;
+      requestCount += 1;
+      const requestId = `request-${requestCount}`;
       const connection: ConnectionRequest = {
         id: requestId,
         projectId: "project-1",

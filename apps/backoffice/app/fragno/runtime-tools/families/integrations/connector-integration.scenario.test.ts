@@ -250,6 +250,20 @@ test("Connector setup replaces an ended attempt, offers started names, and start
           expect(ctx.vars.requestIds).toHaveLength(2);
           expect(gateway.links).toHaveLength(2);
         }),
+        then.assert("an attempt the gateway purged asks for a start too", async (ctx) => {
+          gateway.requests.delete(ctx.vars.requestIds[1]!);
+          const checked = await setup(ctx, check(target));
+          assert(checked.status === "needs-input");
+          expect(checked.instructions).toContain(
+            "The last OAuth attempt expired before consent completed.",
+          );
+          const restarted = await setup(ctx, start(target));
+          expect(restarted).toMatchObject({ status: "needs-authorization", connectionId: target });
+          expect(ctx.vars.requestIds).toHaveLength(3);
+          expect(gateway.links).toHaveLength(3);
+          // Later steps follow the live replacement, not the purged attempt.
+          ctx.vars.requestIds.splice(1, 1);
+        }),
         then.assert("only the replacement's consent binds the name", async (ctx) => {
           const [first, replacement] = ctx.vars.requestIds;
           assert(first && replacement);

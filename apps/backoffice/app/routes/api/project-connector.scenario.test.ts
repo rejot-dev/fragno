@@ -600,11 +600,20 @@ test("a signed-in owner's return confirms the consent its path names and lands o
         });
 
         // A confirmation that fails reports an error, never a request to finish authorizing.
-        gateway.requests.delete(other.requestId);
+        const otherRequest = gateway.requests.get(other.requestId);
+        assert(otherRequest);
+        otherRequest.alias = "mismatched";
         expect(await returnFromProvider(other.returnUri)).toMatchObject({
           path: `${scopePath}/${other.connectionId}`,
           oauth: "error",
           message: "Backoffice could not confirm this connection. Check its setup again.",
+        });
+        // A request the gateway no longer knows has expired.
+        gateway.requests.delete(other.requestId);
+        expect(await returnFromProvider(other.returnUri)).toMatchObject({
+          path: `${scopePath}/${other.connectionId}`,
+          oauth: "error",
+          message: "The authorization link expired.",
         });
         expect(await listConnectionIds(ctx, userId)).toEqual([workConnectionId]);
       }),

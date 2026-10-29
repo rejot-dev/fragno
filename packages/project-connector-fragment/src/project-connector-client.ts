@@ -330,10 +330,23 @@ export function createProjectConnectorClient(
       );
       return parseProjectConnectorResponse(projectConnectorConnectionRequestSchema, request);
     },
+    /** Null when the gateway no longer knows the request, e.g. after it purged an abandoned one. */
     async getConnectionRequest(requestId: string) {
-      const request = await callProjectConnector(() =>
-        client.getConnectionRequest(requestId, projectConnectorCallOptions),
-      );
+      let request: unknown;
+      try {
+        request = await callProjectConnector(() =>
+          client.getConnectionRequest(requestId, projectConnectorCallOptions),
+        );
+      } catch (error) {
+        if (
+          error instanceof ProjectConnectorClientError &&
+          error.status === 404 &&
+          error.code === "connection_request_not_found"
+        ) {
+          return null;
+        }
+        throw error;
+      }
       return parseProjectConnectorResponse(projectConnectorConnectionRequestSchema, request);
     },
     async getProfile(accountId: string) {
@@ -363,7 +376,10 @@ export function createProjectConnectorClient(
   };
 }
 
-/** Pins the SDK response to the saved project, provider, user, and request identity. */
+/**
+ * Pins the SDK response to the saved project, provider, user, and request identity. A request the
+ * gateway no longer knows can never complete, so it confirms as expired.
+ */
 export function confirmProjectConnectorRequest(
   expected: {
     id: string;
@@ -377,6 +393,9 @@ export function confirmProjectConnectorRequest(
     ReturnType<ReturnType<typeof createProjectConnectorClient>["getConnectionRequest"]>
   >,
 ): ProjectConnectorConnectionState {
+  if (actual === null) {
+    return { status: "expired" };
+  }
   if (
     actual.id !== expected.id ||
     actual.projectId !== expected.projectId ||

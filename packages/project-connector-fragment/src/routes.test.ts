@@ -647,6 +647,39 @@ describe("Project Connector connection scenarios", () => {
     },
   );
 
+  test("a request the gateway no longer knows expires, and a replacing start recovers its name", async () => {
+    const scenario = await connectorScenario();
+    const query = new URLSearchParams({
+      projectId: "project-1",
+      providerConfigId: "gmail-provider",
+      connectionName: "work",
+    }).toString();
+    const purged = await scenario.connect("alice");
+    scenario.gateway.requests.delete(purged.id);
+    expect(
+      await scenario.call("alice", "POST", `/connection-requests/${purged.id}/refresh`),
+    ).toMatchObject({ status: 200, data: { id: purged.id, state: { status: "expired" } } });
+    expect((await scenario.storedRequest(purged.id)).state).toEqual({ status: "expired" });
+
+    const started = await scenario.call("alice", "POST", "/connection-requests", {
+      service: "gmail",
+      connectionName: "work",
+      returnUri,
+      replace: true,
+    });
+    const replacement = projectConnectorConnectionSchema.parse(started.data);
+    expect(await scenario.call("alice", "GET", `/connection-requests/by-name?${query}`)).toEqual({
+      status: 200,
+      data: { request: replacement },
+    });
+    scenario.gateway.authorize(replacement.id, "work-account");
+    await scenario.call("alice", "POST", `/connection-requests/${replacement.id}/refresh`);
+    expect(await scenario.call("alice", "GET", `/accounts/by-name?${query}`)).toMatchObject({
+      status: 200,
+      data: { account: { id: "work-account" } },
+    });
+  });
+
   test("OAuth links reject unapproved destinations, gateway-invalid connection names, and ambiguous or browser-controlled user selectors", async () => {
     const scenario = await connectorScenario();
     assert(
