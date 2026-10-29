@@ -174,6 +174,7 @@ const TRUST = {
     "organizations.provision",
     "organizations.provisionForInvitee",
     "organizations.provisionManaged",
+    "organizations.listManaged",
     "projects.provision",
     "invitations.create",
     "invitations.send",

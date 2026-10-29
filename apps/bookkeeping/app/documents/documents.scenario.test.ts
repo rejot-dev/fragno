@@ -744,6 +744,50 @@ test("the agent's answer counts only while the document awaits the request it an
   });
 });
 
+test("once no firm manages the client, its documents reach no firm's agent", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, clientPath } = await openBooks(scenario);
+    const invitation = await scenario.invite(ada, clientPath, "charles@example.test", "member");
+    const { browser: charles } = await scenario.acceptInvitation(
+      "charles@example.test",
+      "Charles Babbage",
+      { path: invitation },
+    );
+    const agent = await firmAgent(scenario, ada);
+    expect(await agent.call("books.describe", {})).toMatchObject({ status: 200 });
+
+    // A Backoffice administrator ends the firm's management. Bookkeeping learns of it once Backoffice
+    // next confirms one of the client's people, here when Charles uploads a document, which his
+    // own people keep, with no agent to ask.
+    scenario.backoffice.admin.setManager(CLIENT, null);
+    scenario.advanceTime(61_000);
+    const id = await uploaded(charles, pdf("Babbage Instruments, invoice 13"));
+    expect(await readProgress(charles, id)).toEqual({
+      status: "unknown",
+      message: "No firm keeps these books, so there is no bookkeeping agent to ask.",
+    });
+    expect(scenario.backoffice.prompts(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(await agent.call("books.describe", {})).toEqual({
+      status: 403,
+      body: {
+        message: `The firm keeps the books of no administration ${agent.administration.id}.`,
+      },
+    });
+
+    // Once the firm manages it again, Bookkeeping learns of it as well when Charles's agent tries
+    // to change the books.
+    scenario.backoffice.admin.setManager(CLIENT, FIRM);
+    scenario.advanceTime(61_000);
+    const charlesAgent = scenario.agent(
+      { email: "charles@example.test" },
+      { organization: CLIENT, project: ADMINISTRATION },
+    );
+    expect(await charlesAgent.call("entries.post", {})).toMatchObject({ status: 400 });
+    expect(await agent.call("books.describe", {})).toMatchObject({ status: 200 });
+  });
+});
+
 test("a document's page revokes the shares answering could not, then asks Backoffice nothing", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { ada } = await openBooks(scenario);
@@ -898,6 +942,156 @@ test("a request answered by a person while it is shared is neither left shared n
     expect(await readDocument(ada, id)).toMatchObject({
       review: { status: "declined", by: "Ada Lovelace via Backoffice" },
       shared: false,
+    });
+  });
+});
+
+/** Charles joins Analytical Engines as its own member, invited by Ada from the firm. */
+async function inviteCharles(scenario: BookkeepingScenario, ada: ScenarioBrowser) {
+  const path = await scenario.invite(
+    ada,
+    "/w/analytical-engines",
+    "charles@example.test",
+    "member",
+  );
+  const { browser } = await scenario.acceptInvitation("charles@example.test", "Charles Babbage", {
+    path,
+  });
+  return browser;
+}
+
+const WITHDRAWN = { status: "withdrawn", reason: "The firm asked no longer keeps these books." };
+
+test("ending a client's management withdraws what its firm's agent was asked, and its shares", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    const charles = await inviteCharles(scenario, ada);
+    const agent = await firmAgent(scenario, ada);
+    // The agent answered about one document, and is asked about another.
+    const answered = await uploaded(ada, pdf("Babbage Instruments, invoice 14"));
+    const [first] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
+    await agent.call("documents.decline", {
+      document: answered,
+      request: first.requestId,
+      reason: "This is a price list.",
+    });
+    const id = await uploaded(ada, invoiceFixture);
+    const prompt = scenario.backoffice.prompts(FIRM, FIRM_AGENT).at(-1)!;
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toHaveLength(1);
+
+    // Once Backoffice confirms Charles after the firm's management ended, the firm's agent reads
+    // the document no more, and the page says why it will not answer.
+    scenario.backoffice.admin.setManager(CLIENT, null);
+    scenario.advanceTime(61_000);
+    expect(await readDocument(charles, id)).toMatchObject({ review: WITHDRAWN, shared: false });
+    expect(await readDocument(charles, answered)).toMatchObject({
+      review: { status: "declined", reason: "This is a price list." },
+    });
+    expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(
+      await agent.call(
+        "documents.propose",
+        proposal(id, prompt.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
+      ),
+    ).toMatchObject({ status: 403 });
+    expect(await charles.submit(`${BOOKS}/documents/${id}`, { intent: "ask" })).toMatchObject({
+      actionData: {
+        intent: "ask",
+        error: "No firm keeps these books, so there is no bookkeeping agent to ask.",
+      },
+    });
+  });
+});
+
+test("a firm's dashboard withdraws what it asked about a client it no longer manages", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, firmPath } = await openBooks(scenario);
+    const charles = await inviteCharles(scenario, ada);
+    const ids = [
+      await uploaded(ada, pdf("Babbage Instruments, invoice 15")),
+      await uploaded(ada, pdf("Babbage Instruments, invoice 16")),
+    ];
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toHaveLength(2);
+
+    // The firm's dashboard learns that the firm no longer manages the client before anyone of the
+    // client's does. It revokes the documents' shares, but cannot reach Backoffice for one of them.
+    scenario.backoffice.admin.setManager(CLIENT, null);
+    scenario.backoffice.failNextRequest("state.listShares");
+    expect(await ada.navigate(firmPath)).toMatchObject({
+      loaderData: { "firms/dashboard": { clients: [] } },
+    });
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toHaveLength(1);
+
+    // Their requests are withdrawn, so the documents' pages revoke what is left.
+    for (const id of ids) {
+      await readDocument(charles, id);
+    }
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
+    for (const id of ids) {
+      expect(await readDocument(charles, id)).toMatchObject({ review: WITHDRAWN, shared: false });
+    }
+  });
+});
+
+test("ending management revokes an answered document's shares that answering could not", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, firmPath } = await openBooks(scenario);
+    const id = await uploaded(ada, invoiceFixture);
+    const [prompt] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
+    const agent = await firmAgent(scenario, ada);
+    scenario.backoffice.failNextRequest("state.listShares");
+    expect(
+      await agent.call("documents.decline", {
+        document: id,
+        request: prompt.requestId,
+        reason: "This is a price list.",
+      }),
+    ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toHaveLength(1);
+
+    // Nobody opens the document's page, but the firm's dashboard learns that management ended.
+    scenario.backoffice.admin.setManager(CLIENT, null);
+    await ada.navigate(firmPath);
+    expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
+  });
+});
+
+test("an answer from before the firm's management ended does not give the firm the books again", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, firmPath } = await openBooks(scenario);
+    const charles = await inviteCharles(scenario, ada);
+    const agent = await firmAgent(scenario, ada);
+    scenario.advanceTime(61_000);
+    // Backoffice confirms Charles while the firm manages the client, but its answer arrives only
+    // after management ended and the firm's dashboard recorded that.
+    scenario.backoffice.beforeNextDelivery("org.get", async () => {
+      scenario.backoffice.admin.setManager(CLIENT, null);
+      await ada.navigate(firmPath);
+      expect(await agent.call("books.describe", {})).toMatchObject({ status: 403 });
+    });
+    expect(await charles.navigate(BOOKS)).toMatchObject({ status: 200 });
+    expect(await agent.call("books.describe", {})).toMatchObject({ status: 403 });
+  });
+});
+
+test("an upload under way when the firm's management ends is not shared with the firm", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, firmPath } = await openBooks(scenario);
+    const charles = await inviteCharles(scenario, ada);
+    // Management ends, and the firm's dashboard records it, while Charles's file is being written.
+    scenario.backoffice.beforeNextAnswer("state.writeFileBytes", async () => {
+      scenario.backoffice.admin.setManager(CLIENT, null);
+      await ada.navigate(firmPath);
+    });
+    const id = await uploaded(charles, invoiceFixture);
+    expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(scenario.backoffice.prompts(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(await readProgress(charles, id)).toEqual({
+      status: "unknown",
+      message: "No firm keeps these books, so there is no bookkeeping agent to ask.",
     });
   });
 });

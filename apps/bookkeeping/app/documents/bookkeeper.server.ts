@@ -107,10 +107,19 @@ async function connectToAgent(
   | { ok: false; error: string }
 > {
   const { organization, administration } = context;
-  const firmId = organization.kind === "client" ? organization.firmId : null;
-  const projectId =
-    firmId === null ? null : await env.DIRECTORY.getByName("directory").findFirmAgent(firmId);
-  if (firmId === null || projectId === null) {
+  const directory = env.DIRECTORY.getByName("directory");
+  // Read now, after the request was recorded, not when the page started: a change of firm records
+  // the new firm before it withdraws the former firm's requests, so this sees the new firm, or the
+  // request is withdrawn and its share revoked.
+  const firmId = (await directory.findClient(organization.id))?.firmId ?? null;
+  if (firmId === null) {
+    return {
+      ok: false,
+      error: "No firm keeps these books, so there is no bookkeeping agent to ask.",
+    };
+  }
+  const projectId = await directory.findFirmAgent(firmId);
+  if (projectId === null) {
     return {
       ok: false,
       error:

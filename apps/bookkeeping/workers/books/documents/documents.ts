@@ -391,6 +391,35 @@ const documentsFragmentDefinition = defineFragment("documents")
       },
 
       /**
+       * Withdraws every request awaiting an answer, so no answer to it counts, and returns the IDs of
+       * the documents whose files may still be shared: theirs, and answered ones whose shares were
+       * not revoked yet.
+       */
+      withdrawRequests: function (input: { reason: string }) {
+        return this.serviceTx(documentsSchema)
+          .retrieve((uow) => uow.find("document", (b) => b.whereIndex("primary")))
+          .mutate(({ uow, retrieveResult: [documents] }) => {
+            const requested = documents.filter(({ review }) => review?.status === "requested");
+            for (const document of requested) {
+              uow.update("document", document.id, (b) =>
+                b
+                  .set({
+                    review: {
+                      status: "withdrawn",
+                      reason: input.reason,
+                      at: new Date().toISOString(),
+                    },
+                  })
+                  .check(),
+              );
+            }
+            // A request records its file shared, and nothing records it unshared while it awaits.
+            return documents.filter(({ shared }) => shared).map(({ id }) => id.valueOf());
+          })
+          .build();
+      },
+
+      /**
        * Records that the document's shares were revoked, unless a request awaits an answer, which
        * may have reused a share the revoker revoked. Returns that request, for the revoker to share
        * the file again for it, or null.
