@@ -159,6 +159,8 @@ export class FakeBackoffice {
   readonly #failNextResponse = new Set<string>();
   /** Operations whose next request is lost before it reaches Backoffice. */
   readonly #failNextRequest = new Set<string>();
+  /** How many requests for each scoped operation reached Backoffice. */
+  readonly #operationCounts = new Map<string, number>();
   /** What happens elsewhere while Backoffice works on the next request for an operation. */
   readonly #beforeNextAnswer = new Map<string, () => Promise<void>>();
 
@@ -253,6 +255,11 @@ export class FakeBackoffice {
   /** Backoffice does the next `operationId` it is asked to, but Bookkeeping never hears the answer. */
   failNextResponse(operationId: string): void {
     this.#failNextResponse.add(operationId);
+  }
+
+  /** How many requests for the scoped operation `operationId` reached Backoffice. */
+  operationCount(operationId: string): number {
+    return this.#operationCounts.get(operationId) ?? 0;
   }
 
   /** The next request for `operationId` fails as a network failure does, before Backoffice sees it. */
@@ -525,6 +532,7 @@ export class FakeBackoffice {
         if (this.#failNextRequest.delete(operation[2])) {
           throw new TypeError("fetch failed");
         }
+        this.#operationCounts.set(operation[2], this.operationCount(operation[2]) + 1);
         const happen = this.#beforeNextAnswer.get(operation[2]);
         this.#beforeNextAnswer.delete(operation[2]);
         await happen?.();

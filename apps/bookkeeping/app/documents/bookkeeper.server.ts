@@ -5,7 +5,7 @@ import { env } from "cloudflare:workers";
 import { connectAsInstallation, createProvisioningClient } from "../../workers/backoffice/client";
 import {
   releaseDocument,
-  shareDocument,
+  shareForRequest,
   sharedDocumentPath,
   type InstalledProject,
 } from "../../workers/backoffice/document-shares";
@@ -192,8 +192,17 @@ export async function askBookkeeper(
         throw error;
       }
     }
-    await shareDocument({ administration: connected.administration, agent, document });
     const { organization, administration } = context;
+    const awaited = await shareForRequest(env, {
+      administration,
+      projects: { administration: connected.administration, agent },
+      document,
+      requestId,
+    });
+    // Answered meanwhile, e.g. by a person: the agent has nothing to answer.
+    if (!awaited) {
+      return { ok: true };
+    }
     // Each document is a subagent of its own: documents are read side by side, and no document
     // sees another's text.
     await agent.backoffice.call(agent.scope, "pi.prompt.submit", {
@@ -239,14 +248,15 @@ export async function readBookkeeperProgress(
 
 /**
  * Revokes the shares of a document the agent no longer needs: its review was answered, or it is
- * booked or dismissed. Answering revokes them already; this catches what that could not.
+ * booked or dismissed, which its page shows next. Answering revokes them already; this catches
+ * what that could not.
  */
 export async function releaseDocumentIfDone(
   context: BooksContext,
   document: DocumentView,
 ): Promise<void> {
   const { review } = document;
-  if (!review || (review.status === "requested" && document.state.status === "to-book")) {
+  if (review?.status === "requested" && document.state.status === "to-book") {
     return;
   }
   try {
