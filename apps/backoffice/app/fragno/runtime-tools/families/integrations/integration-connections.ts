@@ -47,18 +47,6 @@ export function readIntegrationConnectionStateChange(
     : null;
 }
 
-/** Connection state changes, newest first. */
-export function integrationConnectionStateChanges(
-  events: readonly StoredEvent[],
-): IntegrationConnectionStateChange[] {
-  return events
-    .flatMap((event) => {
-      const change = readIntegrationConnectionStateChange(event);
-      return change ? [change] : [];
-    })
-    .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
-}
-
 /**
  * A connection as it stands: the state of its latest change, named by its latest labeled change.
  * `name` and `authMethod` are null until a change carries a label.

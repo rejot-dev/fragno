@@ -101,6 +101,21 @@ export const automationViewsSchema = schema("automation_views", (s) =>
         .addColumn("labelAt", column("timestamp").nullable())
         .addColumn("displayName", column("string"))
         .addColumn("kindLabel", column("string")),
+    )
+    // Keyed by the event that reported the change: every connection's state history.
+    .addTable("integration_connection_change", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("connectionId", column("string"))
+        .addColumn("service", column("string"))
+        .addColumn("kind", column("string"))
+        .addColumn("state", column("string"))
+        .addColumn("label", jsonColumn<IntegrationConnectionLabel>().nullable())
+        .addColumn("occurredAt", column("timestamp"))
+        .createIndex("idx_integration_connection_change_connection", [
+          "connectionId",
+          "occurredAt",
+        ]),
     ),
 );
 
@@ -309,13 +324,16 @@ const piAgents = defineLocalProjection({
   },
 });
 
-/** Connections, by `applyIntegrationConnectionChange`. */
+/** Connections, by `applyIntegrationConnectionChange`, and the changes that led there. */
 const integrationConnections = defineLocalProjection({
   name: "integration-connections",
   rebuild: {
     version: 1,
     from: fromEvents,
-    writes: [{ schema: automationViewsSchema, table: "integration_connection" }],
+    writes: (["integration_connection", "integration_connection_change"] as const).map((table) => ({
+      schema: automationViewsSchema,
+      table,
+    })),
   },
   retrieve: ({ match, read }) => {
     const changes = eventsOf(match).connectionChanges;
@@ -358,14 +376,23 @@ const integrationConnections = defineLocalProjection({
         return [item, { latest, label, labelAt: row.labelAt }];
       }),
     );
+    const views = tx.forSchema(automationViewsSchema);
     for (const change of eventsOf(match).connectionChanges) {
       connections.set(
         change.connectionId,
         applyIntegrationConnectionChange(connections.get(change.connectionId) ?? null, change),
       );
+      views.create("integration_connection_change", {
+        id: change.eventId,
+        connectionId: change.connectionId,
+        service: change.service,
+        kind: change.kind,
+        state: change.state,
+        label: change.label,
+        occurredAt: change.occurredAt,
+      });
     }
 
-    const views = tx.forSchema(automationViewsSchema);
     for (const [connectionId, connection] of connections) {
       if (!connection) {
         continue;
@@ -482,6 +509,36 @@ export function readIntegrationConnections(
   });
   // Only the projection writes these rows, from `IntegrationConnectionRecord`.
   return rows as IntegrationConnectionRecord[];
+}
+
+/**
+ * The state changes a connection's events reported, newest first. Of changes made in the same
+ * instant, the first applied comes first, as it is the one `applyIntegrationConnectionChange` keeps.
+ */
+export function readIntegrationConnectionHistory(
+  reader: LofiSqliteReader,
+  { connectionId }: { connectionId: string },
+): IntegrationConnectionStateChange[] {
+  const change = views.integration_connection_change;
+  const rows = reader.query({
+    sql: `SELECT "id" AS "eventId", "connectionId", "service", "kind", "state", "label",
+            "occurredAt"
+          FROM ${table("integration_connection_change")}
+          WHERE "connectionId" = ?
+          ORDER BY "occurredAt" DESC, "${change.getInternalIdColumn().name}"`,
+    params: [connectionId],
+    columns: {
+      eventId: "text",
+      connectionId: change.columns.connectionId,
+      service: change.columns.service,
+      kind: change.columns.kind,
+      state: change.columns.state,
+      label: change.columns.label,
+      occurredAt: change.columns.occurredAt,
+    },
+  });
+  // Only the projection writes these rows, from `IntegrationConnectionStateChange`.
+  return rows as IntegrationConnectionStateChange[];
 }
 
 /** The connections that are not disconnected, by service and then connection ID. */

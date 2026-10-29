@@ -6,10 +6,7 @@ import {
   readEventTraceSummaries,
 } from "@/routes/backoffice/dashboard/event-traces-replica";
 import { readDashboardOverview } from "@/routes/backoffice/dashboard/overview-replica";
-import {
-  readIntegrationConnectionHistory,
-  readWebhookDeliveries,
-} from "@/routes/backoffice/integrations/integrations-replica";
+import { readWebhookDeliveries } from "@/routes/backoffice/integrations/integrations-replica";
 
 import { AUTOMATION_PAGE_DERIVED_RELATIONS, AUTOMATION_PAGE_VIEWS_SQL } from "./page-relations";
 import {
@@ -25,7 +22,11 @@ import {
   AUTOMATION_READ_VIEWS,
   AUTOMATION_REPLICA_SCHEMAS,
 } from "./replica-schemas";
-import { automationViews, readIntegrationConnections } from "./views";
+import {
+  automationViews,
+  readIntegrationConnectionHistory,
+  readIntegrationConnections,
+} from "./views";
 
 /**
  * The reads pages ask the replica worker for by name, with `automationReadView`. The worker runs

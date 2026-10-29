@@ -95,11 +95,12 @@ suspending, and show the directory as loading until the replica first catches up
 
 Integrations (`routes/backoffice/integrations/`) lists every connection, disconnected ones too, from
 the `integration_connection` projection, and filters them on the page, so showing disconnected
-connections opens no new read. A connection's state history reads its `integrations` events and
-folds them with `integrationConnectionStateChanges`; a webhook endpoint's recent deliveries are its
-latest `api/webhook.received` events and those routes reclassified under the endpoint ID
-(`integrations-replica.ts`). Both narrow by a field of the event's subject with `json_extract`, the
-history before `integrationConnectionStateChanges` validates the subject.
+connections opens no new read. A connection's state history reads the
+`integration_connection_change` projection by connection ID. A webhook endpoint's recent deliveries
+are its latest `api/webhook.received` events and those routes reclassified under the endpoint ID
+(`integrations-replica.ts`), narrowed by the subject's endpoint with `json_extract`. They stay a
+read of events, not a projection: `webhook.received` events can be deleted, and a deletion reaches
+the replica as a truncate notification, which projections do not see.
 
 The project menu in the top bar reads no synchronized data: the layout's loader lists the owner's
 projects through the Automations object's `GET /projects` (`../automation/project-list.server.ts`)
@@ -118,7 +119,8 @@ Backoffice's own functions:
   and steering requests change by what each event did to its request, so a request's row keeps what
   its earlier events recorded.
 - `integration_connection`, by `applyIntegrationConnectionChange`
-  (`../runtime-tools/families/integrations/integration-connections.ts`).
+  (`../runtime-tools/families/integrations/integration-connections.ts`), and
+  `integration_connection_change`, every change that led there.
 
 Both readers (`readPiAgentEvent`, `readIntegrationConnectionStateChange`) validate each event once,
 when it arrives. Folding events as they arrive relies on nothing deleting them: `deleteEventsOfType`

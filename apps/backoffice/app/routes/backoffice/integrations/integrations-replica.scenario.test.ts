@@ -21,7 +21,7 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
-import { integrationConnectionStateChanges } from "@/fragno/runtime-tools/families/integrations/integration-connections";
+import { readIntegrationConnectionStateChange } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 
 const orgId = "org-1";
 const scope = { kind: "org" as const, orgId, jurisdiction: null };
@@ -106,9 +106,10 @@ async function assertIntegrationReads(ctx: BackofficeScenarioContext) {
     ["api#billing: ready", "mcp#agensi: disconnected", "webhook#orders: unavailable"],
   );
 
-  const changes = integrationConnectionStateChanges(
-    storedEvents.filter(({ source }) => source === "integrations"),
-  );
+  const changes = storedEvents
+    .filter(({ source }) => source === "integrations")
+    .flatMap((event) => readIntegrationConnectionStateChange(event) ?? [])
+    .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
   for (const connectionId of ["api#billing", "mcp#agensi", "webhook#orders", "missing"]) {
     assert.deepEqual(
       await readAutomationReplica(replica, "integrationConnectionHistory", { connectionId }),
@@ -198,6 +199,7 @@ describe("integrations replica", () => {
             async (ctx) => {
               await assertAutomationProjectionsRebuild(ctx.lofi.automations.forOrg(orgId), [
                 "integration_connection",
+                "integration_connection_change",
               ]);
             },
           ),
