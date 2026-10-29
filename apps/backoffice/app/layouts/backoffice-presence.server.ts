@@ -1,5 +1,6 @@
 import {
   backofficeScopeOrganization,
+  backofficeScopeRootOwner,
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
@@ -7,7 +8,6 @@ import type { RouterContextProvider } from "react-router";
 import {
   type BackofficeObjectBindingName,
   type BackofficeObjectHandle,
-  type BackofficeObjectRegistry,
   isBackofficeObjectAvailableInContext,
   type WarmableCommands,
 } from "@/backoffice-runtime/object-registry";
@@ -15,6 +15,7 @@ import {
   backofficeOrganizationContextScope,
   backofficeRuntimeScopeFromResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { getBackofficeShellRequest } from "./backoffice-shell-request.server";
@@ -48,7 +49,7 @@ export async function recordBackofficePresence(
       })
       .then(async ({ enteredScope }) => {
         if (enteredScope) {
-          await warmScopeObjects(runtime.objects, scope);
+          await warmScopeObjects(runtime, scope);
         }
       })
       .catch((error: unknown) => {
@@ -58,7 +59,10 @@ export async function recordBackofficePresence(
   return await next();
 }
 
-async function warmScopeObjects(objects: BackofficeObjectRegistry, scope: BackofficeContextScope) {
+async function warmScopeObjects(
+  { objects, config }: BackofficeRuntimeServices,
+  scope: BackofficeContextScope,
+) {
   // The objects behind the section pages. The layout itself already reaches Automations.
   const warmable: Array<
     [
@@ -72,9 +76,12 @@ async function warmScopeObjects(objects: BackofficeObjectRegistry, scope: Backof
     ["SANDBOX_MANAGER", objects.sandboxManager],
     ["UPLOAD", objects.upload],
   ];
-  await Promise.all(
-    warmable
+  // Prompts and model calls check usage limits on the owner's ledger before they start.
+  const owner = backofficeScopeRootOwner(scope);
+  await Promise.all([
+    ...warmable
       .filter(([binding]) => isBackofficeObjectAvailableInContext(binding, scope))
       .map(([, scoped]) => scoped.for(scope).commands.warm()),
-  );
+    ...(owner && config.bindings.billing ? [objects.billing.for(owner).commands.warm()] : []),
+  ]);
 }

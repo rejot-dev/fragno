@@ -11,6 +11,7 @@ import { z } from "zod";
 import { defineRoutes } from "@fragno-dev/core";
 import type { HookHandlerTx } from "@fragno-dev/db";
 
+import { checkUsageLimits } from "@/fragno/billing/usage-billing";
 import { admitPiAgentTurn } from "@/fragno/pi/agent/agent-definitions";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import {
@@ -136,6 +137,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
           "SUBAGENT_NOT_BUSY",
           "AGENT_UNAVAILABLE",
           "ASKING_TOOL_CALL_NOT_ALLOWED",
+          "USAGE_LIMIT_EXCEEDED",
         ],
         handler: async function ({ pathParams, input }, { json, error }) {
           const {
@@ -201,7 +203,11 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
               400,
             );
           }
-          const availableModels = await config.supportedAvailableModels();
+          // Turns already admitted run to completion, so usage can end a little past the limit.
+          const [allowance, availableModels] = await Promise.all([
+            checkUsageLimits(config.billing(config.scope), ["ai.cost.total"]),
+            config.supportedAvailableModels(),
+          ]);
           const submitted = await this.handlerTx()
             .withServiceCalls(
               () =>
@@ -217,6 +223,7 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
                     provenance,
                     replyTo,
                     availableModels,
+                    allowance,
                   }),
                 ] as const,
             )
@@ -224,6 +231,9 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
             .execute();
           if (submitted.type === "error") {
             return error({ code: submitted.code, message: submitted.message }, submitted.status);
+          }
+          if (submitted.type === "limited") {
+            return error({ code: "USAGE_LIMIT_EXCEEDED", message: submitted.message }, 403);
           }
           if (submitted.type === "busy") {
             return error(
@@ -302,15 +312,27 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
         path: "/agents/:agentName/compact",
         inputSchema: compactionSchema,
         outputSchema: z.object({ taskId: z.number().int().positive() }),
-        errorCodes: ["AGENT_NOT_STARTED", "AGENT_NOT_FOUND", "MODEL_UNAVAILABLE"],
+        errorCodes: [
+          "AGENT_NOT_STARTED",
+          "AGENT_NOT_FOUND",
+          "MODEL_UNAVAILABLE",
+          "USAGE_LIMIT_EXCEEDED",
+        ],
         handler: async function ({ pathParams, input }, { json, error }) {
           const { provenance, ...request } = await input.valid();
-          const { definition, config: agent } = await this.handlerTx()
-            .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
-            .transform(({ serviceResult: [agent] }) => agent)
-            .execute();
+          // A manual compaction is a new model call; compactions within a turn are not checked.
+          const [allowance, { definition, config: agent }] = await Promise.all([
+            checkUsageLimits(config.billing(config.scope), ["ai.cost.total"]),
+            this.handlerTx()
+              .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
+              .transform(({ serviceResult: [agent] }) => agent)
+              .execute(),
+          ]);
           if (!agent) {
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          }
+          if (allowance.kind === "exhausted") {
+            return error({ code: "USAGE_LIMIT_EXCEEDED", message: allowance.message }, 403);
           }
           const admitted = await admitTurn(definition, pathParams.agentName, provenance);
           if (admitted.type === "error") {

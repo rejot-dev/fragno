@@ -92,6 +92,10 @@ function callerProvenance(execution: BackofficeExecutionContext) {
 }
 
 function throwPiManagerAuthorizationFailure(response: PiRouteErrorResponse) {
+  // A spent usage limit refuses the work, not the person, so the page says why where it was asked.
+  if (response.error.code === "USAGE_LIMIT_EXCEEDED") {
+    return;
+  }
   if (response.status === 401 || response.status === 403 || response.status === 503) {
     throw Response.json(response.error, { status: response.status });
   }

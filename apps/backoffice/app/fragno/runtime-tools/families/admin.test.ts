@@ -62,6 +62,9 @@ describe("admin runtime tools", () => {
       deleteOrganizationEventsOfType: async () => {
         throw new Error("unexpected event deletion");
       },
+      setUsageLimit: async () => {
+        throw new Error("unexpected usage limit change");
+      },
       listApps: async () => {
         throw new Error("App listing is not configured in this legacy fixture.");
       },

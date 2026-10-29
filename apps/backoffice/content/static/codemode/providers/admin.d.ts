@@ -117,6 +117,11 @@ type AdminCodemodeProvider = {
     input: AdminOauthClientsRotateSecretInput,
   ): Promise<AdminOauthClientsRotateSecretOutput>;
   /**
+   * Set an organization's or a user's monthly limit on a metered resource: ai.cost.total, the cost of models and Workers AI in USD. Once the owner's usage this UTC month reaches it, new agent prompts and model calls are refused; work already running finishes. `default` restores the deployment's limit.
+   * Requires `admin.organizations.manage` and `admin.users.manage`.
+   */
+  usageLimitsSet(input: AdminUsageLimitsSetInput): Promise<AdminUsageLimitsSetOutput>;
+  /**
    * Feature a published Marketplace listing, optionally scheduled with startsAt and ending at until, ordered by priority (higher first) with an optional curator note. Featuring an already featured listing replaces its settings. Expired and unpublished entries are removed to make room. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins).
    * Requires `marketplace.read`.
    */
@@ -605,6 +610,29 @@ type AdminOauthClientsUpdateInput = BackofficeOAuthClientUpdateInput;
 type AdminOauthClientsUpdateOutput = BackofficeOAuthClientUpdateResult;
 type AdminOauthClientsRotateSecretInput = BackofficeOAuthClientRotateSecretInput;
 type AdminOauthClientsRotateSecretOutput = BackofficeOAuthClientRotateSecretResult;
+type AdminUsageLimitsSetInput = {
+  organizationSlug?: string;
+  userId?: string;
+  meter: "ai.cost.total";
+  limit: string;
+};
+type AdminUsageLimitsSetOutput = {
+  period: string;
+  limits: {
+    meter: "ai.cost.total";
+    unit: string;
+    setting: "default" | "custom";
+    limit:
+      | {
+          kind: "limited";
+          quantity: string;
+        }
+      | {
+          kind: "unlimited";
+        };
+    used: string;
+  }[];
+};
 type AdminMarketplaceFeatureInput = {
   listingId: string;
   startsAt?: string | null;

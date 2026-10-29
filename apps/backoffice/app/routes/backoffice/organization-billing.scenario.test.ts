@@ -99,10 +99,23 @@ test("personal usage survives organization changes and statements stay private",
                 null,
               );
               assert.equal(response.status, 200);
+              // A personal account has limits of its own, which start at the deployment's.
               expect(await response.json()).toEqual({
                 period,
                 ownerName: "Personal",
                 trackers: [],
+                limits: {
+                  period: expect.any(String),
+                  limits: [
+                    {
+                      meter: "ai.cost.total",
+                      unit: "nano-usd",
+                      setting: "default",
+                      limit: { kind: "limited", quantity: "10000000000" },
+                      used: "0",
+                    },
+                  ],
+                },
               });
             },
           ),

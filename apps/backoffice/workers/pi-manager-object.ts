@@ -28,7 +28,12 @@ import {
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { PackageInstallationOutcome } from "@/fragno/automation/package-installations";
 import type { BillingMeasurementInput } from "@/fragno/billing/contracts";
-import { usageBillingForScope, type UsageBilling } from "@/fragno/billing/usage-billing";
+import {
+  checkUsageLimits,
+  usageBillingForScope,
+  type UsageBilling,
+} from "@/fragno/billing/usage-billing";
+import type { UsageLimitedMeter } from "@/fragno/billing/usage-limits";
 import {
   type PiAgent,
   type PiAgentAddress,
@@ -273,8 +278,8 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     if (!this.#classifier) {
       throw new Error("MODELS_CLASSIFY_UNAVAILABLE: no classifier is configured.");
     }
-    // A customer scope without Billing fails here, before the provider charges for the call.
-    const billing = usageBillingForScope(this.#runtime, this.#scoped.requireOwnerScope());
+    // A customer without Billing or allowance fails here, before the provider charges for the call.
+    const billing = await this.#admitModelCall(["ai.cost.total"]);
     const result = await this.#classifier(request);
     await this.#recordModelUsage(billing, {
       operation: "classify",
@@ -297,7 +302,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     if (!this.#imageGenerator) {
       throw new Error("MODELS_GENERATE_IMAGE_UNAVAILABLE: no image generator is configured.");
     }
-    const billing = usageBillingForScope(this.#runtime, this.#scoped.requireOwnerScope());
+    const billing = await this.#admitModelCall(["ai.cost.total"]);
     const result = await this.#imageGenerator(request);
     const image = result.output.find((part) => part.type === "image");
     const succeeded = result.stopReason === "stop" && image !== undefined;
@@ -322,7 +327,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     if (!this.#extractor) {
       throw new Error("MODELS_EXTRACT_UNAVAILABLE: no extractor is configured.");
     }
-    const billing = usageBillingForScope(this.#runtime, this.#scoped.requireOwnerScope());
+    const billing = await this.#admitModelCall(["ai.cost.total"]);
     const result = await this.#extractor(request);
     await this.#recordModelUsage(billing, {
       operation: "extract",
@@ -379,7 +384,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     if (!this.#workersAi) {
       throw new Error("WORKERS_AI_UNAVAILABLE: Workers AI is not configured on this deployment.");
     }
-    const billing = usageBillingForScope(this.#runtime, this.#scoped.requireOwnerScope());
+    const billing = await this.#admitModelCall(["ai.cost.total"]);
     const run = await this.#workersAi.run(model, input);
     if (run.status === "unavailable") {
       throw new Error(`WORKERS_AI_UNAVAILABLE: ${run.message}`);
@@ -418,6 +423,16 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
 
   async removePackageAgents(input: { listingId: string; actors: AutomationActors }) {
     return await removePackageAgents(await this.#scoped.getRuntime(), input);
+  }
+
+  /** Refuses a model call whose owner has used up its limit on a meter the call records. */
+  async #admitModelCall(meters: readonly UsageLimitedMeter[]): Promise<UsageBilling> {
+    const billing = usageBillingForScope(this.#runtime, this.#scoped.requireOwnerScope());
+    const allowance = await checkUsageLimits(billing, meters);
+    if (allowance.kind === "exhausted") {
+      throw new Error(`USAGE_LIMIT_EXCEEDED: ${allowance.message}`);
+    }
+    return billing;
   }
 
   /** Commits the usage for durable delivery; a failed call can still report what it was charged. */

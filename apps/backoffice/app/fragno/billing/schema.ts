@@ -2,10 +2,12 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 import type { BillingMeasurementInput } from "./contracts";
+import type { UsageLimit } from "./usage-limits";
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
 export const BILLING_STATEMENT_TRACKER_INDEX_NAME = "idx_billing_tracker_period_meter_scopeKey";
+export const BILLING_LIMIT_METER_INDEX_NAME = "idx_billing_limit_meter";
 
 export const billingFragmentSchema = schema("billing", (s) =>
   s
@@ -83,5 +85,19 @@ export const billingFragmentSchema = schema("billing", (s) =>
           unique: true,
         })
         .createIndex(BILLING_STATEMENT_TRACKER_INDEX_NAME, ["period", "meter", "scopeKey"]),
+    )
+    // Limits an administrator set for this owner; a meter without a row has the default limit.
+    .addTable("billing_limit", (t) =>
+      t
+        .addColumn("id", idColumn())
+        // A limited meter, such as ai.cost.total.
+        .addColumn("meter", column("string"))
+        // The owner's monthly limit on the meter, in the meter's unit.
+        .addColumn("limit", jsonColumn<UsageLimit>())
+        .addColumn(
+          "updatedAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex(BILLING_LIMIT_METER_INDEX_NAME, ["meter"], { unique: true }),
     ),
 );

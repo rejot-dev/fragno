@@ -56,11 +56,13 @@ function createAdminRuntimeDependencies() {
       setOrganizationManager: async () => {
         throw new Error("Organization management is not configured in this fixture.");
       },
+      findRootOwnerScope: async () => null,
     },
     otp: null,
     automationsFor: () => {
       throw new Error("These tests do not reach an organization's automations.");
     },
+    billingFor: null,
     publicBaseUrl: "https://backoffice.example/",
   } satisfies Parameters<typeof createAdminRuntime>[0];
 }

@@ -1,5 +1,6 @@
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { Input } from "@fragno-private/design-system/input";
+import { ProgressMeter } from "@fragno-private/design-system/progress-meter";
 import {
   SurfaceFacts,
   SurfacePanel,
@@ -13,6 +14,14 @@ import { Form, useParams } from "react-router";
 import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { billingPeriodSchema, type BillingStatementTracker } from "@/fragno/billing";
+import { formatNanoUsd } from "@/fragno/billing/nano-usd";
+import {
+  formatUsageLimit,
+  formatUsageQuantity,
+  usageLimitResetAt,
+  type UsageLimitStatus,
+  type UsageLimits,
+} from "@/fragno/billing/usage-limits";
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -28,12 +37,6 @@ const BILLING_PERIOD_FORMATTER = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 });
 const BILLING_INTEGER_FORMATTER = new Intl.NumberFormat("en-US");
-const BILLING_USD_FORMATTER = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 6,
-});
 const BILLING_TIMESTAMP_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
@@ -59,11 +62,8 @@ const formatPeriod = (period: string) =>
 const formatInteger = (quantity: string | undefined) =>
   BILLING_INTEGER_FORMATTER.format(BigInt(quantity ?? "0"));
 
-const formatUsd = (quantity: string | undefined) =>
-  BILLING_USD_FORMATTER.format(Number(BigInt(quantity ?? "0")) / 1_000_000_000);
-
 const formatTrackerQuantity = (tracker: BillingStatementTracker) =>
-  tracker.unit === "nano-usd" ? formatUsd(tracker.quantity) : formatInteger(tracker.quantity);
+  tracker.unit === "nano-usd" ? formatNanoUsd(tracker.quantity) : formatInteger(tracker.quantity);
 
 const formatTimestamp = (value: string) => BILLING_TIMESTAMP_FORMATTER.format(new Date(value));
 
@@ -96,9 +96,17 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         ? backofficeOrganizationContextScope(organization)
         : { kind: "user", userId: me.user.id, jurisdiction: me.user.jurisdiction },
     ).commands;
-  const statement = await billing.getStatement({ period });
+  const [statement, limits] = await Promise.all([
+    billing.getStatement({ period }),
+    billing.getUsageLimits(),
+  ]);
 
-  return { period, trackers: statement.trackers, ownerName: organization?.name ?? "Personal" };
+  return {
+    period,
+    trackers: statement.trackers,
+    limits,
+    ownerName: organization?.name ?? "Personal",
+  };
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -130,7 +138,7 @@ const LEDGER_COLUMNS: readonly SurfaceTableColumn[] = [
   { label: "Last seen", align: "start" },
 ];
 
-function BillingUsage({ period, trackers, ownerName }: Route.ComponentProps["loaderData"]) {
+function BillingUsage({ period, trackers, limits, ownerName }: Route.ComponentProps["loaderData"]) {
   const totalCost = trackers.find((tracker) => tracker.meter === TOTAL_COST_METER)?.quantity;
   const previousPeriod = shiftPeriod(period, -1);
   const nextPeriod = shiftPeriod(period, 1);
@@ -174,7 +182,7 @@ function BillingUsage({ period, trackers, ownerName }: Route.ComponentProps["loa
               value: (
                 <>
                   <span className="text-2xl tracking-[-0.02em] tabular-nums">
-                    {formatUsd(totalCost)}
+                    {formatNanoUsd(totalCost ?? "0")}
                   </span>
                   <span className="block text-xs font-normal text-[var(--bo-muted)]">
                     Recorded by UTC month. Not an invoice.
@@ -190,6 +198,9 @@ function BillingUsage({ period, trackers, ownerName }: Route.ComponentProps["loa
           ]}
         />
       </SurfacePanel>
+
+      {/* Limits apply to the current month only, so past months show none. */}
+      {limits.period === period ? <UsageLimitsPanel limits={limits} /> : null}
 
       <SurfacePanel caption="Usage ledger" actions={null}>
         {trackers.length === 0 ? (
@@ -232,4 +243,48 @@ function BillingUsage({ period, trackers, ownerName }: Route.ComponentProps["loa
       </SurfacePanel>
     </>
   );
+}
+
+const USAGE_LIMIT_LABELS = {
+  "ai.cost.total": "Model cost",
+} as const satisfies Record<UsageLimitStatus["meter"], string>;
+
+function UsageLimitsPanel({ limits }: { limits: UsageLimits }) {
+  const resetsOn = formatTimestamp(usageLimitResetAt(limits.period).toISOString());
+  return (
+    <SurfacePanel caption="Monthly limits" actions={null}>
+      <div className="grid gap-3 p-3 sm:grid-cols-2">
+        {limits.limits.map((status) => {
+          const percent = usageLimitPercent(status);
+          return (
+            <ProgressMeter
+              key={status.meter}
+              label={USAGE_LIMIT_LABELS[status.meter]}
+              percent={percent}
+              tone={
+                status.limit.kind === "unlimited"
+                  ? "muted"
+                  : percent >= 100
+                    ? "failed"
+                    : percent >= 80
+                      ? "waiting"
+                      : "info"
+              }
+              detail={`${formatUsageQuantity(status.meter, status.used)} of ${formatUsageLimit(status.meter, status.limit)}${
+                percent >= 100 ? " · New agent prompts and model calls are refused" : ""
+              } · Resets ${resetsOn}`}
+            />
+          );
+        })}
+      </div>
+    </SurfacePanel>
+  );
+}
+
+function usageLimitPercent({ limit, used }: UsageLimitStatus): number {
+  if (limit.kind === "unlimited") {
+    return 0;
+  }
+  const quantity = BigInt(limit.quantity);
+  return quantity === 0n ? 100 : Number((BigInt(used) * 100n) / quantity);
 }

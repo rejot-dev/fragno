@@ -5,6 +5,7 @@ import type { FragnoId } from "@fragno-dev/db/schema";
 
 import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-dev/db";
 
+import type { UsageLimitCheck } from "@/fragno/billing/usage-billing";
 import {
   admitPiAgentTurn,
   builtInPiAgentDefinition,
@@ -647,7 +648,8 @@ export function piAgentQueueServices(
      * for the prompt's turn; null keeps the conversation's. `replyTo`, an agent whose turn sent the
      * prompt, hears how it ends. A `subagent` prompt runs in a new conversation of the agent,
      * beside its other work, once fewer than the limit run; `whenBusy` concerns only the agent's
-     * own conversation.
+     * own conversation. `allowance` refuses only new prompts: a seen request ID was already
+     * admitted, and its retry recovers its receipt.
      */
     submitPrompt: function (input: {
       agentName: string;
@@ -661,6 +663,7 @@ export function piAgentQueueServices(
       provenance: PiAgentTurnProvenance;
       replyTo: PiAgentConfig | null;
       availableModels: readonly PiAvailableModel[];
+      allowance: UsageLimitCheck;
     }) {
       const { agentName, prompt } = input;
       return this.serviceTx(piAgentDirectorySchema)
@@ -679,6 +682,7 @@ export function piAgentQueueServices(
             | Extract<PiAgentAdmission, { type: "error" }>
             | Extract<ReturnType<typeof piPromptModel>, { type: "error" }>
             | { type: "busy" }
+            | { type: "limited"; message: string }
             | ({ type: "placed" } & PiAgentPlacement) => {
             if (submitted) {
               return {
@@ -700,6 +704,9 @@ export function piAgentQueueServices(
                   : [],
                 queue: waitingQueue(agent?.id.version ?? 0, agent?.paused ?? false, queued),
               };
+            }
+            if (input.allowance.kind === "exhausted") {
+              return { type: "limited", message: input.allowance.message };
             }
             const [dispatched] = dispatchedItems.filter(isRootItem);
             const definition = definitionOf(agentName, definitionRow);

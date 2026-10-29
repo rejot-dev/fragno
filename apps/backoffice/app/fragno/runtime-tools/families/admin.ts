@@ -48,6 +48,11 @@ import type {
   BackofficeOAuthClientUpdateResult,
 } from "@/fragno/auth/oauth-client";
 import type { EventDeletionPass } from "@/fragno/automation/events-storage-runtime";
+import type {
+  UsageLimitSetting,
+  UsageLimitedMeter,
+  UsageLimits,
+} from "@/fragno/billing/usage-limits";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
@@ -58,6 +63,7 @@ import {
 import { adminAccessCodesRuntimeTools } from "./admin-access-codes";
 import { adminAppsRuntimeTools } from "./admin-apps";
 import { adminOAuthClientsRuntimeTools } from "./admin-oauth-clients";
+import { adminUsageLimitsRuntimeTools, type AdminUsageLimitOwner } from "./admin-usage-limits";
 import {
   formatOrganizationMemberPageText,
   formatOrganizationPageText,
@@ -138,6 +144,11 @@ export type AdminRuntime = {
   deleteOrganizationEventsOfType(
     input: { organizationSlug: string } & EventDeletionPass,
   ): Promise<{ scanned: number; deleted: number; cursor: string | null }>;
+  setUsageLimit(input: {
+    owner: AdminUsageLimitOwner;
+    meter: UsageLimitedMeter;
+    setting: UsageLimitSetting;
+  }): Promise<UsageLimits>;
 };
 
 type AdminToolContext = BackofficeToolContext<{ admin?: AdminRuntime }>;
@@ -600,6 +611,7 @@ export const adminRuntimeTools = [
   ...adminAccessCodesRuntimeTools,
   ...adminAppsRuntimeTools,
   ...adminOAuthClientsRuntimeTools,
+  ...adminUsageLimitsRuntimeTools,
 ] as const;
 
 export const adminToolFamily = defineBackofficeRuntimeToolFamily({

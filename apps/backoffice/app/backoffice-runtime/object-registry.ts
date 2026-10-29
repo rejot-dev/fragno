@@ -141,6 +141,11 @@ import type {
   BillingTrackerPageInput,
 } from "@/fragno/billing";
 import type {
+  UsageLimitSetting,
+  UsageLimitedMeter,
+  UsageLimits,
+} from "@/fragno/billing/usage-limits";
+import type {
   CodemodeExecution,
   CodemodeRunActivation,
   CodemodeRunContext,
@@ -606,13 +611,19 @@ export type PiManagerCommands = WarmableCommands & {
   removePackageAgents(input: { listingId: string; actors: AutomationActors }): Promise<string[]>;
 };
 
-export type BillingCommands = {
+export type BillingCommands = WarmableCommands & {
   recordEvent(
     input: BillingEventInput,
     context?: BackofficeRpcContext,
   ): Promise<BillingRecordEventResult>;
   getStatement(input: BillingStatementInput): Promise<BillingStatement>;
   getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage>;
+  /** The owner's limits and usage in the current UTC month. */
+  getUsageLimits(): Promise<UsageLimits>;
+  setUsageLimit(input: {
+    meter: UsageLimitedMeter;
+    setting: UsageLimitSetting;
+  }): Promise<UsageLimits>;
 };
 
 /**

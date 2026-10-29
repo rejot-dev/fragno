@@ -18,7 +18,18 @@ import {
   type BillingTrackerPageInput,
 } from "./contracts";
 import { BILLING_TRACKER_INDEX_NAME, decodeBillingTrackerCursor } from "./pagination";
-import { BILLING_STATEMENT_TRACKER_INDEX_NAME, billingFragmentSchema } from "./schema";
+import {
+  BILLING_LIMIT_METER_INDEX_NAME,
+  BILLING_STATEMENT_TRACKER_INDEX_NAME,
+  billingFragmentSchema,
+} from "./schema";
+import {
+  usageLimitedMeterSchema,
+  usageLimitStatuses,
+  type UsageLimitSetting,
+  type UsageLimitedMeter,
+  type UsageLimits,
+} from "./usage-limits";
 
 const billingPeriodForDate = (date: Date) => date.toISOString().slice(0, 7);
 
@@ -280,6 +291,82 @@ export const billingFragmentDefinition = defineFragment("billing")
                 trackers: aggregateStatementTrackers(trackers),
               }) satisfies BillingStatement,
           )
+          .build();
+      },
+
+      /** The owner's limits and what it used of them in `period`, across all of its scopes. */
+      getUsageLimits: function ({ period }: { period: string }) {
+        return this.serviceTx(billingFragmentSchema)
+          .retrieve((uow) =>
+            uow
+              .find("billing_limit", (b) => b.whereIndex(BILLING_LIMIT_METER_INDEX_NAME))
+              .find("billing_tracker", (b) =>
+                b.whereIndex(BILLING_STATEMENT_TRACKER_INDEX_NAME, (eb) =>
+                  eb.and(
+                    eb("period", "=", period),
+                    eb("meter", "in", usageLimitedMeterSchema.options),
+                  ),
+                ),
+              ),
+          )
+          .transformRetrieve(
+            ([customLimits, trackers]) =>
+              ({
+                period,
+                limits: usageLimitStatuses({ customLimits, trackers }),
+              }) satisfies UsageLimits,
+          )
+          .build();
+      },
+
+      /** Sets the owner's limit on `meter`, answering its limits as they are afterwards. */
+      setUsageLimit: function ({
+        meter,
+        setting,
+        period,
+      }: {
+        meter: UsageLimitedMeter;
+        setting: UsageLimitSetting;
+        period: string;
+      }) {
+        return this.serviceTx(billingFragmentSchema)
+          .retrieve((uow) =>
+            uow
+              .find("billing_limit", (b) => b.whereIndex(BILLING_LIMIT_METER_INDEX_NAME))
+              .find("billing_tracker", (b) =>
+                b.whereIndex(BILLING_STATEMENT_TRACKER_INDEX_NAME, (eb) =>
+                  eb.and(
+                    eb("period", "=", period),
+                    eb("meter", "in", usageLimitedMeterSchema.options),
+                  ),
+                ),
+              ),
+          )
+          .mutate(({ uow, retrieveResult: [customLimits, trackers] }) => {
+            const existing = customLimits.find((limit) => limit.meter === meter);
+            if (setting.kind === "default") {
+              if (existing) {
+                uow.delete("billing_limit", existing.id, (b) => b.check());
+              }
+            } else if (existing) {
+              uow.update("billing_limit", existing.id, (b) =>
+                b.set({ limit: setting, updatedAt: uow.now() }).check(),
+              );
+            } else {
+              uow.create("billing_limit", { meter, limit: setting, updatedAt: uow.now() });
+            }
+            const otherLimits = customLimits.filter((limit) => limit.meter !== meter);
+            return {
+              period,
+              limits: usageLimitStatuses({
+                customLimits:
+                  setting.kind === "default"
+                    ? otherLimits
+                    : [...otherLimits, { meter, limit: setting }],
+                trackers,
+              }),
+            } satisfies UsageLimits;
+          })
           .build();
       },
 

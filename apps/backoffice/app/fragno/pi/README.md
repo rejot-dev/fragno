@@ -347,8 +347,10 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   `model`, the first available model for null, or null when that model is unavailable.
 - `GET /agents/:agentName`: one definition and whether it is provisioned.
 - `POST /agents/:agentName/prompts`: `{ requestId, content, whenBusy, whenPaused, model, replyTo }`,
-  answering `{ requestId, status }` or `409 AGENT_BUSY` for a refused `reject`; see Queue. `model`
-  is `{ provider, modelId, thinkingLevel }` or `null`; only built-in agents choose one, and others
+  answering `{ requestId, status }`, `409 AGENT_BUSY` for a refused `reject` (see Queue), or
+  `403 USAGE_LIMIT_EXCEEDED` once the root owner used up its monthly `ai.cost.total` limit (see
+  [Usage limits](../billing/README.md#usage-limits)). `model` is
+  `{ provider, modelId, thinkingLevel }` or `null`; only built-in agents choose one, and others
   answer `400 MODEL_NOT_CHOOSABLE`; see Agent definitions. `replyTo` is `{ scope, agentName }` or
   `null`; naming an agent the requester does not act through answers `400 REPLY_NOT_ALLOWED`; see
   Notifications. The first prompt provisions the agent. Usage belongs to its scope's root owner, an

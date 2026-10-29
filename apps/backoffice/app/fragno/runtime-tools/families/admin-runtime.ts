@@ -1,9 +1,14 @@
 import type { AppActionsDeclaration } from "@fragno-dev/backoffice-api/v0/apps";
 import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeRootOwner,
+  BackofficeScopeIdNames,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type {
   AuthCommands,
   AutomationsCommands,
+  BillingCommands,
   OtpCommands,
 } from "@/backoffice-runtime/object-registry";
 import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
@@ -57,6 +62,7 @@ type AdminAuthCommands = Pick<
   | "addAdminOrganizationMember"
   | "removeAdminOrganizationMember"
   | "setOrganizationManager"
+  | "findRootOwnerScope"
 >;
 
 type AdminOtpCommands = Pick<
@@ -71,6 +77,12 @@ type AdminRuntimeDependencies = {
   automationsFor: (
     organization: BackofficeOrganizationContextScope,
   ) => Pick<AutomationsCommands, "deleteEventsOfType">;
+  /** An owner's usage ledger; null without the Billing binding. */
+  billingFor:
+    | ((
+        owner: BackofficeRootOwner<BackofficeScopeIdNames>,
+      ) => Pick<BillingCommands, "setUsageLimit">)
+    | null;
   publicBaseUrl: string | null;
 };
 
@@ -82,6 +94,14 @@ async function requireAdminOrganization(auth: AdminAuthCommands, organizationSlu
     );
   }
   return organization;
+}
+
+async function requireAdminUserScope(auth: AdminAuthCommands, userId: string) {
+  const scope = await auth.findRootOwnerScope({ kind: "user", userId });
+  if (!scope) {
+    throw new Error(`Admin user command could not find user '${userId}'.`);
+  }
+  return scope;
 }
 
 function withSignUpUrl(publicBaseUrl: string, accessCode: AccessCodeRecord): AdminAccessCode {
@@ -98,6 +118,7 @@ export function createAdminRuntime({
   apps,
   otp,
   automationsFor,
+  billingFor,
   publicBaseUrl,
 }: AdminRuntimeDependencies): AdminRuntime {
   /** Access codes are shared as sign-up links, which need the public origin. */
@@ -261,6 +282,18 @@ export function createAdminRuntime({
         ...input,
         organizationId: await requireAdminOrganizationId(auth, organizationSlug),
       }),
+    setUsageLimit: async ({ owner, ...limit }) => {
+      if (!billingFor) {
+        throw new Error("Admin usage limits require the BILLING binding.");
+      }
+      const ownerScope =
+        owner.kind === "org"
+          ? backofficeOrganizationContextScope(
+              await requireAdminOrganization(auth, owner.organizationSlug),
+            )
+          : await requireAdminUserScope(auth, owner.userId);
+      return await billingFor(ownerScope).setUsageLimit(limit);
+    },
     setOrganizationManager: async ({ organizationSlug, managingOrganizationSlug }) =>
       await auth.setOrganizationManager({
         organizationId: await requireAdminOrganizationId(auth, organizationSlug),

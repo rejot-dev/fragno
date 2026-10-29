@@ -33,11 +33,33 @@ Browser dictation streams directly to Reson8 and is not measured here. Workflow 
 record their own executions. Sandbox network egress is not measured. These are measurement gaps, not
 exceptions allowing customer usage with a missing billing dependency.
 
+## Usage limits
+
+Each root owner, an organization or a user's personal account, has a limit on its `ai.cost.total`
+per UTC month. `usage-limits.ts` holds the deployment default, $10. Workers AI counts toward it by
+its neurons, so they have no limit of their own. The owner's Billing object keeps limits an
+administrator set in `billing_limit`; a meter without a row has the default.
+`admin.usage-limits.set --org <slug> | --user <id> --meter <meter> --limit <amount | unlimited | default>`
+sets them, in USD.
+
+Work that records usage on a limited meter checks the owner's limits before it starts, through
+`checkUsageLimits`: Pi prompts, manual compactions, `models.classify`, `models.generateImage`,
+`models.extract`, and Workers AI runs. Once usage reaches a limit, they are refused with
+`USAGE_LIMIT_EXCEEDED`; prompts and compactions answer `403`, so automations do not retry them.
+Resending a prompt's request ID is not new work: it recovers the receipt of the prompt it first
+admitted. System work is never limited, and a customer whose Billing cannot answer is refused like
+one without the binding.
+
+Nothing is reserved. Admitted turns run to completion, and usage arrives after the work that
+recorded it, so an owner can end a month somewhat past its limit. Notifications, queued items, and
+compactions within a turn continue work that was already admitted, and are not checked. Codemode
+executions, transcription, and sandbox instance time are not limited.
+
 ## Statements
 
 `/backoffice/usage` reads only the authenticated user's ledger. There is no caller-selected user ID.
 `/backoffice/organizations/:orgSlug/billing` retains its organization membership check. Both pages
-show usage, not an amount due.
+show usage, not an amount due, and the current month's limits.
 
 Future invoicing may combine an organization's ledger with eligible users' ledgers according to a
 primary-organization policy. Do not move or duplicate events to implement that policy. Which

@@ -206,9 +206,8 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       publishQueue: async (queue) => await publishQueue(agentName, queue),
     }),
     supportedAvailableModels: async () => AVAILABLE_MODELS,
-    billing: () => {
-      throw new Error("Queue tests classify nothing.");
-    },
+    // Queue tests record no usage, so nothing limits their prompts.
+    billing: () => ({ kind: "system" as const }),
     automations: null,
     notifyAgent: async ({
       agent,

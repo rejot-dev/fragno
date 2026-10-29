@@ -9,6 +9,11 @@ import type {
   BillingTrackerPageInput,
   BillingTrackerPage,
 } from "@/fragno/billing";
+import type {
+  UsageLimitSetting,
+  UsageLimitedMeter,
+  UsageLimits,
+} from "@/fragno/billing/usage-limits";
 
 import type { BillingObject } from "./billing-object";
 
@@ -26,6 +31,10 @@ export class Billing extends DurableObject<CloudflareEnv> implements BillingComm
     });
   }
 
+  async warm(): Promise<void> {
+    await this.#object.warm();
+  }
+
   async recordEvent(
     input: BillingEventInput,
     context?: BackofficeRpcContext,
@@ -39,6 +48,17 @@ export class Billing extends DurableObject<CloudflareEnv> implements BillingComm
 
   async getTrackers(input: BillingTrackerPageInput): Promise<BillingTrackerPage> {
     return await this.#object.getTrackers(input);
+  }
+
+  async getUsageLimits(): Promise<UsageLimits> {
+    return await this.#object.getUsageLimits();
+  }
+
+  async setUsageLimit(input: {
+    meter: UsageLimitedMeter;
+    setting: UsageLimitSetting;
+  }): Promise<UsageLimits> {
+    return await this.#object.setUsageLimit(input);
   }
 
   async alarm(): Promise<void> {
