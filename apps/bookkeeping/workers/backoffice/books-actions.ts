@@ -21,6 +21,7 @@ import {
 } from "../directory/membership";
 import { exchangeForScope, isBackofficeUnavailable } from "./client";
 import { releaseDocument, sharedDocumentPath } from "./document-shares";
+import { followManager } from "./management";
 
 /**
  * The actions Backoffice agents keep an administration's books with. They run in the
@@ -799,10 +800,10 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
         .nullable()
         .describe("The date it was first booked with, which booking it again keeps."),
       review: z
-        .enum(["requested", "proposed", "declined"])
+        .enum(["requested", "proposed", "declined", "withdrawn"])
         .nullable()
         .describe(
-          "Whether the bookkeeping agent was asked about it, proposed an entry, or proposed none.",
+          "Whether the bookkeeping agent was asked about it, proposed an entry, or proposed none, or whether the request was withdrawn unanswered.",
         ),
     }),
     async run(books, input, workplace) {
@@ -1481,6 +1482,8 @@ async function confirmPerson(env: CloudflareEnv, organizationId: string, userId:
   if (known && Date.now() - known.confirmedAt < MEMBERSHIP_CONFIRMATION_LIFETIME_MS) {
     return { name, roles: known.roles };
   }
+  // Read before asking Backoffice, so an answer arriving after a newer one changes nothing.
+  const client = await directory.findClient(organizationId);
   const token = await auth.getBackofficeAccessTokenOf(userId);
   if (token === null) {
     throw new ActionFailure(403, signInFirst);
@@ -1521,6 +1524,11 @@ async function confirmPerson(env: CloudflareEnv, organizationId: string, userId:
     through: membershipThrough(confirmed.through),
     confirmedAt: Date.now(),
     userId,
+  });
+  await followManager(env, {
+    clientId: organizationId,
+    expectedFirmId: client?.firmId ?? null,
+    managingOrganizationId: confirmed.managingOrganization?.organizationId ?? null,
   });
   return { name, roles };
 }

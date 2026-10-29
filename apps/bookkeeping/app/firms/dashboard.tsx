@@ -8,6 +8,7 @@ import { requireOrganization } from "../organizations/access.server";
 import { organizationPath } from "../organizations/paths";
 import { PlaceList } from "../shell/place-list";
 import type { Route } from "./+types/dashboard";
+import { confirmClients } from "./clients.server";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `Clients · ${loaderData?.firmName ?? "Firm"}` }];
@@ -19,6 +20,7 @@ export function meta({ loaderData }: Route.MetaArgs) {
  */
 export async function loader({ request, params }: Route.LoaderArgs) {
   const { organization, roles } = await requireOrganization(request, params.slug, "firm");
+  await confirmClients(request, organization.id);
   const clients = await env.DIRECTORY.getByName("directory").listClients(organization.id);
   return {
     firmName: organization.name,

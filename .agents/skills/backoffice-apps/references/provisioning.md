@@ -36,9 +36,12 @@ admins create its clients.
 A managed organization's managing organization's members act in it with their role there, owners as
 admins, without becoming its members: a firm's members open every client, and `org.get` says whether
 someone acts `through` membership or the `managing-organization`. Record that, so lists of someone's
-own organizations and an organization's members leave the managers out. Management does not chain
-and never reaches installations. Operators are the members of an operator organization, which
-Backoffice's administrator creates with
+own organizations and an organization's members leave the managers out. Backoffice's administrator
+may end management or change the manager, and Backoffice tells apps nothing when it does: follow
+`org.get`'s `managingOrganization` whenever you confirm someone, and list a manager's organizations
+with `organizations.listManaged`, which reaches those with no member of their own. Management does
+not chain and never reaches installations. Operators are the members of an operator organization,
+which Backoffice's administrator creates with
 [the setup script](../../../../apps/bookkeeping/scripts/connect-backoffice.ts) and the app confirms
 like any other membership. Don't keep an allowlist of user IDs in configuration: it can't be audited
 in Backoffice, and changing it needs a deployment. Bookkeeping's operators manage no firms, because
