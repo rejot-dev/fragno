@@ -234,22 +234,37 @@ type BackofficeUiComponents = {
       tone: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
   ): BackofficeUiElement;
-  /** Builds Metric. Displays one labeled operational metric with optional context and status tone. */
+  /** Builds Metric. Displays one labeled figure large, with optional context below it. A number value shows in format, as ui.number does, such as { currency: "EUR" }; decimal when omitted. A tone colors the figure, such as a loss in failed; info leaves it plain. */
   metric(
     props: BackofficeUiProps<{
       /** 1-120 characters */
       label: string;
       value: string | number;
+      format?:
+        | "integer"
+        | "decimal"
+        | "percent"
+        | {
+            currency: string;
+          };
+      signed?: boolean;
       /** at most 240 characters */
       detail?: string;
       tone?: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
   ): BackofficeUiElement;
-  /** Builds Number. Displays a number rounded for reading: integer, decimal with up to two fraction digits, or percent of a ratio, so 0.92 shows 92%; null shows a dash. */
+  /** Builds Number. Displays a number rounded for reading: integer, decimal with up to two fraction digits, percent of a ratio, so 0.92 shows 92%, or an amount in a currency, such as { currency: "USD" } for $1,250.00; null shows a dash. signed shows + before gains, for changes. */
   number(
     props: BackofficeUiProps<{
       value: number | null;
-      format: "integer" | "decimal" | "percent";
+      format:
+        | "integer"
+        | "decimal"
+        | "percent"
+        | {
+            currency: string;
+          };
+      signed?: boolean;
       tone?: "info" | "live" | "waiting" | "failed" | "muted";
     }>,
   ): BackofficeUiElement;

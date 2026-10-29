@@ -1,19 +1,14 @@
 import type { ComponentFn } from "@json-render/react";
 
 import type { backofficeUiCatalog } from "../catalog";
+import { formatNumber } from "./number-format";
 
 // Numbers round as they show, so a page passes the value it computed, such as a ratio.
-const numberFormats = {
-  integer: new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }),
-  decimal: new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }),
-  percent: new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 }),
-} as const;
-
 export const NumberValue: ComponentFn<typeof backofficeUiCatalog, "Number"> = ({ props }) => {
   if (props.value === null) {
     return <span className="text-xs text-[var(--bo-muted-2)]">—</span>;
   }
-  const text = numberFormats[props.format].format(props.value);
+  const text = formatNumber(props.value, props.format, props.signed ?? false);
   return props.tone ? (
     <span
       data-tone={props.tone}
