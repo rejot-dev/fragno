@@ -1,45 +1,41 @@
 import { formatActivityDuration } from "@fragno-private/design-system/chat-activity";
 
-import type { AgentTurnAnswerPart, AgentTurnStep, ToolCallPart } from "./agent-turn";
+import type { AgentTurnSegment, ToolCallPart } from "./agent-turn";
 import { normalizePiContent } from "./assistant-runtime";
 import { formatJson, formatResultValue, getCodeArgument } from "./tool-arguments";
 import { toolCallPresentation } from "./tool-call";
 
 /**
  * A settled turn as Markdown, for pasting into an issue or another chat: every thought, tool
- * call, and result, whether or not the view shows them, then the answer.
+ * call, and result, whether or not the view shows them, and what it said along the way. What it
+ * said last is the answer.
  */
 export function turnTranscript({
-  steps,
-  answer,
+  segments,
   stopped,
   failure,
 }: {
-  steps: readonly AgentTurnStep[];
-  answer: readonly AgentTurnAnswerPart[];
+  segments: readonly AgentTurnSegment[];
   stopped: boolean;
   failure: string | null;
 }) {
-  const sections = steps.map((step) => {
-    if (step.kind === "thought") {
-      return section("Thinking", step.written ? `**${step.headline}**\n\n${step.text}` : step.text);
+  const sections = segments.flatMap((segment, index) => {
+    if (segment.kind === "said") {
+      return [
+        section(
+          index === segments.length - 1 ? "Answer" : "Note",
+          segment.parts
+            .map((part) => (part.kind === "text" ? part.text : image(part.image)))
+            .join("\n\n"),
+        ),
+      ];
     }
-    if (step.kind === "note") {
-      return section("Note", step.text);
-    }
-    if (step.kind === "image") {
-      return section("Image", image(step.image));
-    }
-    return toolSection(step.part);
-  });
-  if (answer.length > 0) {
-    sections.push(
-      section(
-        "Answer",
-        answer.map((part) => (part.kind === "text" ? part.text : image(part.image))).join("\n\n"),
-      ),
+    return segment.steps.map((step) =>
+      step.kind === "thought"
+        ? section("Thinking", step.written ? `**${step.headline}**\n\n${step.text}` : step.text)
+        : toolSection(step.part),
     );
-  }
+  });
   if (stopped) {
     sections.push(section("Stopped", "The response was stopped before it finished."));
   }

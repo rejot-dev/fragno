@@ -4,9 +4,9 @@ import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "../cn";
 import { Icon, type IconName } from "./icon";
 
-// An agent's work in one turn — its thoughts and tool calls — gathered into one card above the
-// answer. The card stays open while the agent works, so steps appear as they happen, and folds
-// into a one-line summary once the turn ends.
+// An agent's work — its thoughts and tool calls — gathered into a card between what it says. The
+// card stays open while the agent works, so steps appear as they happen, and folds into a one-line
+// summary once the agent moves on.
 
 /** Progress pulses while work runs; the others name what kind of activity settled. */
 export type ActivityMarker = "progress" | "live" | "failed" | "accent" | "notification";
@@ -125,9 +125,9 @@ function settledTitle(outcome: "done" | "stopped" | "failed", durationMs: number
 }
 
 /**
- * One card for everything the agent did in a turn. While it runs, the header shows the agent's
- * newest headline and the card stays open; once the turn settles it folds to a summary unless
- * the reader opened or closed it themselves.
+ * One card for a stretch of the agent's work. While it runs, the header shows the agent's newest
+ * headline and the card stays open; once it settles it folds to a summary unless the reader
+ * opened or closed it themselves.
  */
 export function ChatActivity({
   status,
@@ -137,7 +137,7 @@ export function ChatActivity({
   status: ChatActivityStatus;
   /** Always-visible controls for what the turn produced, such as side panel views. */
   artifacts: ReactNode | null;
-  /** ChatActivityStep and ChatActivityNote rows, oldest first. */
+  /** ChatActivityStep rows, oldest first. */
   children: ReactNode;
 }) {
   const running = status.kind === "running";
@@ -369,17 +369,6 @@ export function ChatActivityStep({
           </Collapsible.Panel>
         </Collapsible.Root>
       )}
-    </ChatActivityItem>
-  );
-}
-
-/** Something the agent said between steps, such as what it is about to try. */
-export function ChatActivityNote({ children }: { children: ReactNode }) {
-  return (
-    <ChatActivityItem icon="message-square" state="done">
-      <div className="min-w-0 py-2 text-xs leading-5 text-pretty text-[var(--bo-muted)]">
-        {children}
-      </div>
     </ChatActivityItem>
   );
 }

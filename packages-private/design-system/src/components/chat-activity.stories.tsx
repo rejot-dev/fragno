@@ -1,11 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 
-import {
-  ChatActivity,
-  ChatActivityNote,
-  ChatActivityStep,
-  ChatArtifactToggle,
-} from "./chat-activity";
+import { ChatActivity, ChatActivityStep, ChatArtifactToggle } from "./chat-activity";
 import {
   ChatCodemodeStep,
   codemodeCallHeadline,
@@ -25,7 +20,6 @@ function Thought({ children }: { children: string }) {
 
 type SampleStep =
   | { kind: "thought"; title: string; body: string; durationMs: number }
-  | { kind: "note"; text: string }
   | {
       kind: "codemode";
       calls: ChatCodemodeCall[];
@@ -68,7 +62,6 @@ const STEPS: SampleStep[] = [
     durationMs: 1_240,
     failed: false,
   },
-  { kind: "note", text: "Three invoices are open. Drafting a reminder for each customer now." },
   {
     kind: "thought",
     title: "Drafting one reminder per customer",
@@ -116,9 +109,6 @@ const STEPS: SampleStep[] = [
 ];
 
 function renderStep(step: SampleStep, index: number, running: boolean) {
-  if (step.kind === "note") {
-    return <ChatActivityNote key={index}>{step.text}</ChatActivityNote>;
-  }
   if (step.kind === "thought") {
     return (
       <ChatActivityStep
@@ -172,9 +162,6 @@ function headlineOf(step: SampleStep) {
   if (step.kind === "thought") {
     return step.title;
   }
-  if (step.kind === "note") {
-    return step.text;
-  }
   return codemodeCallHeadline(step.calls[0].subject);
 }
 
@@ -220,7 +207,7 @@ export function Live() {
                 kind: "settled",
                 outcome: "done",
                 durationMs: 11_400,
-                note: "4 tools · 2 thoughts",
+                note: "3 tools · 2 thoughts",
                 failedSteps: 1,
               }
             : { kind: "running", headline: headlineOf(current), startedAt }
@@ -241,7 +228,7 @@ export function Settled() {
           kind: "settled",
           outcome: "done",
           durationMs: 42_000,
-          note: "4 tools · 2 thoughts",
+          note: "3 tools · 2 thoughts",
           failedSteps: 1,
         }}
         artifacts={ARTIFACTS}
@@ -284,7 +271,7 @@ export function Running() {
         status={{ kind: "running", headline: "Drafting one reminder per customer", startedAt }}
         artifacts={null}
       >
-        {STEPS.slice(0, 5).map((step, index) => renderStep(step, index, index === 4))}
+        {STEPS.slice(0, 4).map((step, index) => renderStep(step, index, index === 3))}
       </ChatActivity>
     </Column>
   );

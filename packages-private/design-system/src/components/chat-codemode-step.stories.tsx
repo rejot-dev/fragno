@@ -1,11 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 
-import {
-  ChatActivity,
-  ChatActivityNote,
-  ChatActivityStep,
-  ChatArtifactToggle,
-} from "./chat-activity";
+import { ChatActivity, ChatActivityStep, ChatArtifactToggle } from "./chat-activity";
 import {
   ChatCodemodeStep,
   codemodeCallHeadline,
@@ -232,7 +227,7 @@ export function Turn() {
   return (
     <Column>
       <ChatActivity
-        status={{ kind: "running", headline: "Writing the summary", startedAt }}
+        status={{ kind: "running", headline: "Sending one reminder per invoice", startedAt }}
         artifacts={null}
       >
         <Thought title="Finding the reminder skill">
@@ -262,7 +257,6 @@ export function Turn() {
           views={views(REMINDER_CODE, REMINDER_RESULT, REMINDER_LOGS)}
           actions={<InterfaceToggle />}
         />
-        <ChatActivityNote>Two reminders went out; one address bounced.</ChatActivityNote>
       </ChatActivity>
     </Column>
   );

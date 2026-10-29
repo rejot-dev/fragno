@@ -2,7 +2,6 @@ import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shar
 import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import {
   ChatActivity,
-  ChatActivityNote,
   ChatActivityStep,
   type ChatActivityStatus,
 } from "@fragno-private/design-system/chat-activity";
@@ -22,6 +21,7 @@ import {
 import { CopyButton } from "@fragno-private/design-system/copy-button";
 import { InlineAlert } from "@fragno-private/design-system/inline-alert";
 import { WorkingIndicator } from "@fragno-private/design-system/working-indicator";
+import { Fragment } from "react";
 
 import { MessagePrimitive, useAuiState } from "@assistant-ui/react";
 
@@ -89,8 +89,9 @@ export function UserMessage() {
 }
 
 /**
- * The agent's whole turn: one activity card for its thoughts and tool calls, the workflows they
- * started, then its answer. The view options hide thoughts or tool calls from the card.
+ * The agent's whole turn, in the order it happened: an activity card for each stretch of thoughts
+ * and tool calls, followed by the workflows they started, and what the agent said between them.
+ * The view options hide thoughts or tool calls from the cards.
  */
 export function AssistantMessage({
   showThinking,
@@ -109,41 +110,30 @@ export function AssistantMessage({
   const running = useAuiState((state) => state.message.status?.type === "running");
   const navigation = useSessionWorkspaceNavigation();
 
-  const { steps, answer } = agentTurn(parts, running);
-  const tools = steps.flatMap((step): TurnTool[] => {
-    if (step.kind !== "tool") {
-      return [];
-    }
-    const presentation = toolCallPresentation(step.part);
-    return [
-      {
-        part: step.part,
-        presentation,
-        workspaceOptions: toolWorkspaceOptions(step.part, presentation, navigation),
-      },
-    ];
-  });
-  const toolsById = new Map(tools.map((tool) => [tool.part.toolCallId, tool]));
-  const workflowRuns = lastShownRuns(
-    tools.flatMap((tool) => tool.presentation.codemodeDetails?.runs ?? []),
+  const segments = agentTurn(parts, running);
+  const turn = segments.map((segment) =>
+    segment.kind === "work" ? { ...segment, tools: turnTools(segment.steps, navigation) } : segment,
   );
+  const tools = turn.flatMap((segment) => (segment.kind === "work" ? segment.tools : []));
+  const works = segments.filter((segment) => segment.kind === "work").length;
+  const lastWorkKey = segments.findLast((segment) => segment.kind === "work")?.key;
+  const toolsById = new Map(tools.map((tool) => [tool.part.toolCallId, tool]));
+  const lastShowing = runsLastShowing(tools);
   // The turn's result is what its newest tool call that made something produced.
   const artifactTool = tools.filter((tool) => tool.workspaceOptions.length > 0).at(-1) ?? null;
-  const visibleSteps = steps.filter((step) =>
-    step.kind === "thought" ? showThinking : step.kind === "tool" ? showToolCalls : true,
-  );
+  const lastSegment = segments.at(-1);
+  const answer = lastSegment?.kind === "said" ? lastSegment.parts : [];
   const answerText = answer
     .flatMap((part) => (part.kind === "text" ? [part.text] : []))
     .join("\n")
     .trim();
-  const answering = running && answerText.length > 0;
 
   const stopped = metadata.stopReason === "aborted";
   const failure = stopped ? null : metadata.errorMessage;
   const usage = showUsage ? metadata.usage : null;
   const copyable = answerText.length > 0 && !running;
-  // Without steps the full turn is just the response.
-  const turnCopyable = steps.length > 0 && !running;
+  // Without work the full turn is just the response.
+  const turnCopyable = works > 0 && !running;
   const footer =
     stopped || failure !== null || usage !== null || copyable || turnCopyable ? (
       <>
@@ -168,7 +158,7 @@ export function AssistantMessage({
             ) : null}
             {turnCopyable ? (
               <CopyButton
-                value={() => turnTranscript({ steps, answer, stopped, failure })}
+                value={() => turnTranscript({ segments, stopped, failure })}
                 label="Copy full turn"
                 text="Copy full turn"
               />
@@ -178,29 +168,67 @@ export function AssistantMessage({
       </>
     ) : null;
 
-  const thoughts = steps.filter((step) => step.kind === "thought").length;
-  const status: ChatActivityStatus = running
-    ? {
-        kind: "running",
-        headline: liveHeadline(steps, answering, (part) =>
-          toolHeadline(toolCallPresentation(part)),
-        ),
-        startedAt: createdAt ?? new Date(),
-      }
-    : {
-        kind: "settled",
-        outcome: stopped ? "stopped" : failure !== null ? "failed" : "done",
-        durationMs:
-          metadata.finishedAt === null || createdAt === undefined
-            ? null
-            : metadata.finishedAt.getTime() - createdAt.getTime(),
-        note: [count(tools.length, "tool"), count(thoughts, "thought")]
-          .filter((part) => part !== null)
-          .join(" · "),
-        failedSteps: tools.filter((tool) => tool.presentation.failed).length,
-      };
-
-  const shown = visibleSteps.length > 0 || workflowRuns.length > 0 || answer.length > 0;
+  const shownTurn = turn.map((segment) => {
+    if (segment.kind === "said") {
+      return segment;
+    }
+    const callIds = new Set(segment.tools.map((tool) => tool.part.toolCallId));
+    // Work the agent has moved on from, by speaking or ending its turn, is done; only the turn's
+    // last work stopped or failed with it. Only work that spans the whole turn was timed.
+    const status: ChatActivityStatus =
+      running && segment.key === lastSegment?.key
+        ? {
+            kind: "running",
+            headline: liveHeadline(segment.steps, (part) =>
+              toolHeadline(toolCallPresentation(part)),
+            ),
+            startedAt: createdAt ?? new Date(),
+          }
+        : {
+            kind: "settled",
+            outcome:
+              running || segment.key !== lastWorkKey
+                ? "done"
+                : stopped
+                  ? "stopped"
+                  : failure !== null
+                    ? "failed"
+                    : "done",
+            durationMs:
+              running || works > 1 || metadata.finishedAt === null || createdAt === undefined
+                ? null
+                : metadata.finishedAt.getTime() - createdAt.getTime(),
+            note: [
+              count(segment.tools.length, "tool"),
+              count(segment.steps.filter((step) => step.kind === "thought").length, "thought"),
+            ]
+              .filter((part) => part !== null)
+              .join(" · "),
+            failedSteps: segment.tools.filter((tool) => tool.presentation.failed).length,
+          };
+    return {
+      ...segment,
+      status,
+      visibleSteps: segment.steps.filter((step) =>
+        step.kind === "thought" ? showThinking : showToolCalls,
+      ),
+      artifactTool:
+        artifactTool !== null && callIds.has(artifactTool.part.toolCallId) ? artifactTool : null,
+      // A run shown more than once in a turn is one card, after the work that showed it last.
+      workflowRuns: lastShownRuns(
+        segment.tools.flatMap((tool) => tool.presentation.codemodeDetails?.runs ?? []),
+      ).filter((run) => callIds.has(lastShowing.get(run.instanceId) ?? "")),
+    };
+  });
+  const lastShown = shownTurn.at(-1);
+  // What the agent says shows it at work, as does a card it works in.
+  const working =
+    running &&
+    (lastShown === undefined || (lastShown.kind === "work" && lastShown.visibleSteps.length === 0));
+  const shown = shownTurn.some(
+    (segment) =>
+      segment.kind === "said" || segment.visibleSteps.length > 0 || segment.workflowRuns.length > 0,
+  );
   const { notificationRequest, notifications } = metadata;
   // A turn can end without saying anything, such as one that acknowledged a finished workflow
   // whose card already shows the result; an author with nothing under it reads as a stuck reply.
@@ -231,46 +259,85 @@ export function AssistantMessage({
       {requestLine}
       <MessagePrimitive.Root asChild>
         <ChatAssistantMessage author={{ name: "Pi", time: createdAt ?? null }} footer={footer}>
-          {visibleSteps.length > 0 ? (
-            <ChatActivity
-              status={status}
-              artifacts={
-                artifactTool === null ? null : (
-                  <ToolWorkspaceSelector
-                    options={artifactTool.workspaceOptions}
-                    toolLabel={artifactTool.presentation.label}
-                    labelled
-                  />
-                )
-              }
-            >
-              {visibleSteps.map((step) => (
-                <TurnStep key={step.key} step={step} tools={toolsById} />
-              ))}
-            </ChatActivity>
-          ) : running && !answering ? (
+          {shownTurn.map((segment) => {
+            if (segment.kind === "said") {
+              return segment.parts.map((part) =>
+                part.kind === "text" ? (
+                  <MarkdownText key={part.key} text={part.text} />
+                ) : (
+                  <MessageImage key={part.key} image={part.image} />
+                ),
+              );
+            }
+            return (
+              <Fragment key={segment.key}>
+                {segment.visibleSteps.length === 0 ? null : (
+                  <ChatActivity
+                    status={segment.status}
+                    artifacts={
+                      segment.artifactTool === null ? null : (
+                        <ToolWorkspaceSelector
+                          options={segment.artifactTool.workspaceOptions}
+                          toolLabel={segment.artifactTool.presentation.label}
+                          labelled
+                        />
+                      )
+                    }
+                  >
+                    {segment.visibleSteps.map((step) => (
+                      <TurnStep key={step.key} step={step} tools={toolsById} />
+                    ))}
+                  </ChatActivity>
+                )}
+                {segment.workflowRuns.map((run) => (
+                  <SessionWorkflow key={run.instanceId} run={run} />
+                ))}
+                {segment.tools.map((tool) => (
+                  <ToolCallSubagents key={tool.part.toolCallId} toolCallId={tool.part.toolCallId} />
+                ))}
+              </Fragment>
+            );
+          })}
+          {working ? (
             <WorkingIndicator>{metadata.statusText ?? "Working…"}</WorkingIndicator>
           ) : null}
-          {workflowRuns.map((run) => (
-            <SessionWorkflow key={run.instanceId} run={run} />
-          ))}
-          {tools.map((tool) => (
-            <ToolCallSubagents key={tool.part.toolCallId} toolCallId={tool.part.toolCallId} />
-          ))}
-          {answer.map((part) =>
-            part.kind === "text" ? (
-              <MarkdownText key={part.key} text={part.text} />
-            ) : (
-              <MessageImage key={part.key} image={part.image} />
-            ),
-          )}
         </ChatAssistantMessage>
       </MessagePrimitive.Root>
     </>
   );
 }
 
-/** A run shown more than once in a turn is one card, where it was shown last. */
+function turnTools(
+  steps: readonly AgentTurnStep[],
+  navigation: ReturnType<typeof useSessionWorkspaceNavigation>,
+) {
+  return steps.flatMap((step): TurnTool[] => {
+    if (step.kind !== "tool") {
+      return [];
+    }
+    const presentation = toolCallPresentation(step.part);
+    return [
+      {
+        part: step.part,
+        presentation,
+        workspaceOptions: toolWorkspaceOptions(step.part, presentation, navigation),
+      },
+    ];
+  });
+}
+
+/** The tool call that showed each run last, by run instance. */
+function runsLastShowing(tools: readonly TurnTool[]) {
+  const last = new Map<string, string>();
+  for (const tool of tools) {
+    for (const run of tool.presentation.codemodeDetails?.runs ?? []) {
+      last.set(run.instanceId, tool.part.toolCallId);
+    }
+  }
+  return last;
+}
+
+/** A run shown more than once in a list is one card, where it was shown last. */
 function lastShownRuns(runs: readonly WorkflowRunReference[]) {
   const last = new Map<string, WorkflowRunReference>();
   for (const run of runs) {
@@ -308,20 +375,6 @@ function TurnStep({ step, tools }: { step: AgentTurnStep; tools: ReadonlyMap<str
           />
         )}
       </ChatActivityStep>
-    );
-  }
-  if (step.kind === "note") {
-    return (
-      <ChatActivityNote>
-        <MarkdownText text={step.text} className="text-xs leading-5" />
-      </ChatActivityNote>
-    );
-  }
-  if (step.kind === "image") {
-    return (
-      <ChatActivityNote>
-        <MessageImage image={step.image} />
-      </ChatActivityNote>
     );
   }
   const tool = tools.get(step.part.toolCallId);

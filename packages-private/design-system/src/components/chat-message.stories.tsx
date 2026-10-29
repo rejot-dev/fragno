@@ -67,6 +67,72 @@ export function Working() {
   );
 }
 
+/**
+ * What the agent says between its steps stays between their cards: the work before it folds to a
+ * summary, and the work after it opens a new card below.
+ */
+export function Interleaved() {
+  const [startedAt] = useState(() => new Date(Date.now() - 9_000));
+  return (
+    <Column>
+      <ChatUserMessage time={SAMPLE_TIME} attachments={null}>
+        <p>Send a reminder for every unpaid invoice.</p>
+      </ChatUserMessage>
+      <ChatAssistantMessage author={{ name: "Pi", time: SAMPLE_TIME }} footer={null}>
+        <ChatActivity
+          status={{
+            kind: "settled",
+            outcome: "done",
+            durationMs: null,
+            note: "1 tool · 1 thought",
+            failedSteps: 0,
+          }}
+          artifacts={null}
+        >
+          <ChatActivityStep
+            icon={null}
+            state="done"
+            title="Finding the unpaid invoices"
+            detail={null}
+            durationMs={null}
+            actions={null}
+          >
+            <p className="text-xs leading-6">Load the open invoices, then check which are due.</p>
+          </ChatActivityStep>
+          <ChatActivityStep
+            icon="code"
+            state="done"
+            title="invoices.unpaid"
+            detail={null}
+            durationMs={1_180}
+            actions={null}
+          >
+            {null}
+          </ChatActivityStep>
+        </ChatActivity>
+        <p>Three invoices are open. Drafting a reminder for each customer now.</p>
+        <ChatActivity
+          status={{ kind: "running", headline: "Drafting one reminder per customer", startedAt }}
+          artifacts={null}
+        >
+          <ChatActivityStep
+            icon={null}
+            state="running"
+            title="Drafting one reminder per customer"
+            detail={null}
+            durationMs={null}
+            actions={null}
+          >
+            <p className="text-xs leading-6">
+              Acme is 32 days overdue, so their reminder should be firmer than the others.
+            </p>
+          </ChatActivityStep>
+        </ChatActivity>
+      </ChatAssistantMessage>
+    </Column>
+  );
+}
+
 export function StoppedAndFailed() {
   return (
     <Column>

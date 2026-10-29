@@ -2,7 +2,7 @@ import type { PartState } from "@assistant-ui/react";
 
 export type ToolCallPart = Extract<PartState, { type: "tool-call" }>;
 
-/** One row in a turn's activity card. */
+/** One row in an activity card. */
 export type AgentTurnStep =
   | {
       kind: "thought";
@@ -13,39 +13,55 @@ export type AgentTurnStep =
       text: string;
       running: boolean;
     }
-  | { kind: "note"; key: string; text: string }
-  | { kind: "image"; key: string; image: string }
   | { kind: "tool"; key: string; part: ToolCallPart };
 
-/** What the agent ended its turn by saying. */
-export type AgentTurnAnswerPart =
+/** Something the agent said to the reader. */
+export type AgentTurnSaidPart =
   | { kind: "text"; key: string; text: string }
   | { kind: "image"; key: string; image: string };
 
 /**
- * A turn's parts, split into the work that led to its answer and the answer itself. The answer
- * is the text after the agent's last thought or tool call; text before that is narration, such
- * as "Let me check the invoices", and reads as a step.
+ * A stretch of a turn: work, the thoughts and tool calls in one activity card, or what the agent
+ * said between them. Each is keyed by its first part, so it keeps its identity as it grows.
  */
-export function agentTurn(
-  parts: readonly PartState[],
-  running: boolean,
-): { steps: AgentTurnStep[]; answer: AgentTurnAnswerPart[] } {
-  let answerStart = parts.length;
-  while (answerStart > 0) {
-    const type = parts[answerStart - 1]?.type;
-    if (type !== "text" && type !== "image") {
-      break;
+export type AgentTurnSegment =
+  | { kind: "work"; key: string; steps: AgentTurnStep[] }
+  | { kind: "said"; key: string; parts: AgentTurnSaidPart[] };
+
+/**
+ * A turn's parts, in the order they happened, as alternating work and speech. What the agent says
+ * between tool calls, such as "Let me check the invoices", stays where it was said, so text that
+ * streamed in does not move once the agent's next step arrives.
+ */
+export function agentTurn(parts: readonly PartState[], running: boolean): AgentTurnSegment[] {
+  const segments: AgentTurnSegment[] = [];
+  function work(key: string) {
+    const last = segments.at(-1);
+    if (last?.kind === "work") {
+      return last.steps;
     }
-    answerStart--;
+    const steps: AgentTurnStep[] = [];
+    segments.push({ kind: "work", key: `work:${key}`, steps });
+    return steps;
+  }
+  function said(part: AgentTurnSaidPart) {
+    const last = segments.at(-1);
+    if (last?.kind === "said") {
+      last.parts.push(part);
+    } else {
+      segments.push({ kind: "said", key: `said:${part.key}`, parts: [part] });
+    }
   }
 
-  const steps: AgentTurnStep[] = [];
-  parts.slice(0, answerStart).forEach((part, index) => {
+  parts.forEach((part, index) => {
     const key = String(index);
     switch (part.type) {
       case "reasoning": {
         const sections = thoughtSections(part.text);
+        if (sections.length === 0) {
+          return;
+        }
+        const steps = work(key);
         sections.forEach((section, sectionIndex) => {
           steps.push({
             kind: "thought",
@@ -53,21 +69,22 @@ export function agentTurn(
             headline: section.headline,
             written: section.written,
             text: section.text,
-            running: running && index === answerStart - 1 && sectionIndex === sections.length - 1,
+            running: running && index === parts.length - 1 && sectionIndex === sections.length - 1,
           });
         });
         return;
       }
       case "text":
+        // Blank text between steps would split their card in two.
         if (part.text.trim().length > 0) {
-          steps.push({ kind: "note", key, text: part.text });
+          said({ kind: "text", key, text: part.text });
         }
         return;
       case "image":
-        steps.push({ kind: "image", key, image: part.image });
+        said({ kind: "image", key, image: part.image });
         return;
       case "tool-call":
-        steps.push({ kind: "tool", key: part.toolCallId, part });
+        work(key).push({ kind: "tool", key: part.toolCallId, part });
         return;
       case "audio":
       case "data":
@@ -77,18 +94,7 @@ export function agentTurn(
         return;
     }
   });
-
-  const answer = parts.slice(answerStart).flatMap((part, index): AgentTurnAnswerPart[] => {
-    const key = String(answerStart + index);
-    if (part.type === "text") {
-      return [{ kind: "text", key, text: part.text }];
-    }
-    if (part.type === "image") {
-      return [{ kind: "image", key, image: part.image }];
-    }
-    return [];
-  });
-  return { steps, answer };
+  return segments;
 }
 
 // A line that is only bold text or a heading opens a new section of a thought. OpenAI reasoning
@@ -139,19 +145,15 @@ export function liveThoughtHeadline(text: string): string {
 }
 
 /**
- * What the agent is doing now, for the header of a running turn: the newest thought's headline,
- * or for prose its newest finished sentence, the tool it runs, or that it is writing its answer.
+ * What the agent is doing now, for the header of a running activity card: the newest thought's
+ * headline, or for prose its newest finished sentence, or the tool it runs.
  */
 export function liveHeadline(
   steps: readonly AgentTurnStep[],
-  answering: boolean,
   toolHeadline: (part: ToolCallPart) => string,
 ): string {
-  if (answering) {
-    return "Writing the answer";
-  }
   const step = steps.at(-1);
-  if (step === undefined || step.kind === "image") {
+  if (step === undefined) {
     return "Working";
   }
   if (step.kind === "thought") {
@@ -159,7 +161,7 @@ export function liveHeadline(
       ? clip(latestSentence(step.text) ?? step.headline)
       : step.headline;
   }
-  return step.kind === "note" ? clip(firstSentence(step.text)) : toolHeadline(step.part);
+  return toolHeadline(step.part);
 }
 
 /** Markdown as one line of plain text, for a preview of it. */
