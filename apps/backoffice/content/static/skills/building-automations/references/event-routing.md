@@ -66,8 +66,14 @@ including wildcard triggers; the runtime rejects repeated source/type pairs in a
 ## Forward events
 
 Use `forward_event` to deliver the same domain event to another scope. Create the route in the
-source scope and choose a target allowed by that route owner's scope policy. Scope templates resolve
-identifiers; they do not grant access.
+source scope and choose a target it may reach:
+
+- an organization reaches its own projects and its members' personal scopes;
+- a personal scope reaches its projects and the organizations, and their projects, where its owner
+  may emit events. That is checked on every forward, so once the owner leaves an organization, its
+  forwards fail.
+
+Scope templates resolve identifiers; they do not grant access.
 
 To deliver an event to the scope it is about, target its subject. Backoffice names that scope in
 full in `subject.scope`, so match on it:

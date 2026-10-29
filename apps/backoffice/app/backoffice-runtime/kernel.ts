@@ -17,6 +17,7 @@ import { resolveBackofficeInternalServiceAuthorityRole } from "./authority-roles
 import {
   backofficeExecutionContextSchema,
   backofficeExecutionScopeRestriction,
+  createBackofficeUserExecution,
   type BackofficeExecutionContext,
 } from "./context";
 import type { BackofficeObjectBindingName } from "./object-registry";
@@ -439,6 +440,25 @@ export class BackofficeKernel {
     }
   }
 
+  /** Resolves the user's current permissions in the scope, as deferred work does. */
+  async #userMayEmitEvents(userId: string, scope: BackofficeContextScope): Promise<boolean> {
+    try {
+      await this.assertAuthorized({
+        execution: createBackofficeUserExecution({ scope, userId }),
+        operation: BACKOFFICE_PERMISSION.events.emit,
+      });
+      return true;
+    } catch (error) {
+      if (
+        error instanceof BackofficeForbiddenError &&
+        error.reason === "principal-permission-denied"
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
   #isTrustedSystemExecution(execution: BackofficeExecutionContext) {
     const { initiator, principal, delegation } = execution.actors;
     return (
@@ -557,13 +577,13 @@ export class BackofficeKernel {
     targetScope: BackofficeContextScope;
     operation: BackofficeScopeOperation;
   }) {
-    const deny = () => {
+    const deny = (reason = "") => {
       const ownerLabel =
         ownerScope.kind === "system" ? "system" : backofficeScopePathSegment(ownerScope);
       const targetLabel =
         targetScope.kind === "system" ? "system" : backofficeScopePathSegment(targetScope);
       throw new BackofficeForbiddenError(
-        `${operation} cannot use ${targetLabel} within ${ownerLabel}.`,
+        `${operation} cannot use ${targetLabel} within ${ownerLabel}${reason}.`,
       );
     };
 
@@ -585,9 +605,22 @@ export class BackofficeKernel {
       // A scope reaches itself and the projects it owns.
       case "app":
       case "project":
+        if (backofficeScopeContains(ownerScope, targetScope)) {
+          return;
+        }
+        deny();
+        return;
       case "user":
         if (backofficeScopeContains(ownerScope, targetScope)) {
           return;
+        }
+        // A person's scope also reaches their organizations, for as long as they may emit events
+        // there themselves. Checking on every use stops a stored route once they leave.
+        if (backofficeScopeRootOwner(targetScope)?.kind === "org") {
+          if (await this.#userMayEmitEvents(ownerScope.userId, targetScope)) {
+            return;
+          }
+          deny(", whose owner may not emit events there");
         }
         deny();
         return;

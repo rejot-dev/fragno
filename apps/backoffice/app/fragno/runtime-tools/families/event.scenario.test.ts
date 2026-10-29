@@ -5,6 +5,7 @@ import {
   type AutomationEventRouting,
   automationEventRoutesListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
@@ -17,7 +18,11 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
-import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
+import {
+  type BackofficeScenarioContext,
+  defineBackofficeScenario,
+  runBackofficeScenario,
+} from "@/fragno/automation/scenario";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
@@ -26,6 +31,7 @@ import { AppInstallationsObject } from "../../../../workers/app-installations-ob
 import { AppsObject } from "../../../../workers/apps-object";
 import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
+import { BillingObject } from "../../../../workers/billing-object";
 import { CodemodeObject } from "../../../../workers/codemode-object";
 import { FormsObject } from "../../../../workers/forms-object";
 import { McpObject } from "../../../../workers/mcp-object";
@@ -37,6 +43,7 @@ const scenarioObjects = {
   APPS: (input) => new AppsObject(input),
   APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
+  BILLING: (input) => new BillingObject(input),
   AUTOMATIONS: (input) => new AutomationsObject(input),
   CODEMODE: (input) => new CodemodeObject(input),
   FORMS: (input) => new FormsObject(input),
@@ -207,7 +214,13 @@ test("an agent reads where each route its event matched stands", async () => {
       options: { allowFailedDurableHooks: true },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1", slug: "event-tools", name: "Event tools" }),
-        given.organization.exists({ id: "org-2", slug: "elsewhere", name: "Elsewhere" }),
+        // Someone else's organization, which user-1's routes cannot reach.
+        given.organization.exists({
+          id: "org-2",
+          slug: "elsewhere",
+          name: "Elsewhere",
+          ownerUserId: "user-2",
+        }),
       ],
       steps: ({ then }) => [
         then.assert(
@@ -296,7 +309,8 @@ test("an agent reads where each route its event matched stands", async () => {
                   matchedAt,
                   status: "failed",
                   failedAttempts: 1,
-                  error: "automation.forward-event cannot use org:org-2 within user:user-1.",
+                  error:
+                    "automation.forward-event cannot use org:org-2 within user:user-1, whose owner may not emit events there.",
                 },
                 {
                   routeId: "reclassify",
@@ -315,7 +329,7 @@ test("an agent reads where each route its event matched stands", async () => {
               [
                 "routes",
                 "deliver (Deliver to a run that does not exist): retrying after 1 failed attempt, last error: INSTANCE_NOT_FOUND",
-                "forward (Forward to another organization): failed for good after 1 failed attempt: automation.forward-event cannot use org:org-2 within user:user-1.",
+                "forward (Forward to another organization): failed for good after 1 failed attempt: automation.forward-event cannot use org:org-2 within user:user-1, whose owner may not emit events there.",
                 "reclassify (Reclassify the check): completed, event_reclassified",
               ].join("\n"),
             );
@@ -396,6 +410,84 @@ test("an agent reads where each route its event matched stands", async () => {
             ).toMatchObject({ status: "failed", failedAttempts: 1 });
           },
         ),
+      ],
+    }),
+  );
+});
+
+test("a personal route forwards to its owner's organization until they leave it", async () => {
+  const personal = { kind: "user", userId: "user-1", jurisdiction: null } as const;
+  const organization = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
+  const fireBalance = async (ctx: BackofficeScenarioContext, balanceCents: number) => {
+    const fired = await ctx.runCodemode({
+      scope: personal,
+      code: `async () => await events.fire({ source: "bank", eventType: "balance.updated", payload: { balanceCents: ${balanceCents} } })`,
+    });
+    const { eventId } = fired.result as { eventId: string };
+    await ctx.drain();
+    return eventId;
+  };
+  const readEvent = async (
+    ctx: BackofficeScenarioContext,
+    scope: BackofficeContextScope,
+    id: string,
+  ) =>
+    (await ctx.runCodemode({ scope, code: `async () => await events.get({ id: "${id}" })` }))
+      .result as { payload: unknown; routing: AutomationEventRouting } | null;
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "Forwarding from a personal scope to an organization",
+      // The forward after user-1 leaves the organization fails for good.
+      options: { allowFailedDurableHooks: true },
+      setup: ({ given }) => [
+        given.organization.exists({ id: "org-1", name: "ReJot", ownerUserId: "owner-1" }),
+        given.auth.user({ id: "user-1" }),
+        given.auth.member({ orgId: "org-1", userId: "user-1" }),
+        given.codemode.run({
+          scope: personal,
+          code: `async () => await router.create({
+            id: "balances-to-org",
+            name: "Balances to ReJot",
+            trigger: { kind: "event", source: "bank", eventType: "balance.updated" },
+            action: { kind: "forward_event", targetScope: { kind: "org", orgIdTemplate: "org-1" } },
+          })`,
+        }),
+      ],
+      steps: ({ when, then }) => [
+        then.assert("a member's balance arrives in the organization", async (ctx) => {
+          const eventId = await fireBalance(ctx, 8709);
+          expect((await readEvent(ctx, personal, eventId))?.routing).toMatchObject({
+            status: "matched",
+            routes: [
+              {
+                routeId: "balances-to-org",
+                status: "completed",
+                outcome: { kind: "event_forwarded", eventId, scope: organization },
+              },
+            ],
+          });
+          expect((await readEvent(ctx, organization, eventId))?.payload).toEqual({
+            balanceCents: 8709,
+          });
+        }),
+        when.auth.removeMember({ orgId: "org-1", userId: "user-1" }),
+        then.assert("after leaving, the next balance stays home", async (ctx) => {
+          const eventId = await fireBalance(ctx, 1200);
+          expect((await readEvent(ctx, personal, eventId))?.routing).toMatchObject({
+            status: "matched",
+            routes: [
+              {
+                routeId: "balances-to-org",
+                status: "failed",
+                error:
+                  "automation.forward-event cannot use org:org-1 within user:user-1, whose owner may not emit events there.",
+              },
+            ],
+          });
+          expect(await readEvent(ctx, organization, eventId)).toBeNull();
+        }),
       ],
     }),
   );
