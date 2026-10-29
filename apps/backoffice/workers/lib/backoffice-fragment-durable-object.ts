@@ -4,6 +4,7 @@ import {
   backofficeContextScopesEqual,
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { DurableHooksLostAlarm } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import {
   createFragmentDurableObjectHost,
   type FragmentDurableObjectHost,
@@ -394,6 +395,9 @@ export function createBackofficeFragmentDurableObject<
     },
     onMigrationError: (error: unknown) => {
       options.telemetry.record({ kind: "host-error", stage: "migration", error });
+    },
+    onLostAlarm: (alarm: DurableHooksLostAlarm) => {
+      options.telemetry.record({ kind: "durable-hooks-lost-alarm", alarm });
     },
   } as never) as unknown as FragmentDurableObjectHost<TSource, TRuntime>;
 

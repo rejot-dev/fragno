@@ -103,6 +103,29 @@ function sendSignal(
       });
       return;
     }
+    case "durable-hooks-lost-alarm":
+      client.capture({
+        distinctId,
+        event: "durable_hooks_lost_alarm",
+        properties: {
+          ...envelope,
+          lost_alarm_scheduled_at: signal.alarm.scheduledAt.toISOString(),
+        },
+      });
+      return;
+    case "durable-hooks-stuck-requeued":
+      client.capture({
+        distinctId,
+        event: "durable_hooks_stuck_requeued",
+        properties: {
+          ...envelope,
+          hook_namespace: signal.stuck.namespace,
+          hook_names: [...new Set(signal.stuck.events.map((event) => event.hookName))],
+          hook_count: signal.stuck.events.length,
+          stuck_timeout_minutes: signal.stuck.timeoutMinutes,
+        },
+      });
+      return;
     case "host-error":
       client.metrics.count("object.host_errors", 1, {
         attributes: { ...series, stage: signal.stage },

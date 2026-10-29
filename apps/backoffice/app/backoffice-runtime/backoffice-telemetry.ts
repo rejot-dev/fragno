@@ -4,7 +4,12 @@ import {
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
-import type { DurableHookAttempt, DurableHookAttemptOutcome } from "@fragno-dev/db/hooks";
+import type { DurableHooksLostAlarm } from "@fragno-dev/db/dispatchers/cloudflare-do";
+import type {
+  DurableHookAttempt,
+  DurableHookAttemptOutcome,
+  StuckHookProcessingInfo,
+} from "@fragno-dev/db/hooks";
 import type { WorkflowTerminalHookPayload } from "@fragno-dev/workflows/workflow";
 
 import type { HookContext } from "@fragno-dev/db";
@@ -75,6 +80,19 @@ export type BackofficeHostSignal =
       kind: "durable-hook-attempt";
       attempt: DurableHookAttempt;
       outcome: DurableHookAttemptOutcome;
+    }
+  | {
+      /**
+       * The host replaced an alarm that never fired. Until then, none of its hooks ran, and nothing
+       * else reports that: a stalled queue is silent.
+       */
+      kind: "durable-hooks-lost-alarm";
+      alarm: DurableHooksLostAlarm;
+    }
+  | {
+      /** Hooks whose attempt died with its runtime went back to the queue. */
+      kind: "durable-hooks-stuck-requeued";
+      stuck: StuckHookProcessingInfo;
     }
   | {
       /** Failures outside any one hook, which the host would otherwise only log. */

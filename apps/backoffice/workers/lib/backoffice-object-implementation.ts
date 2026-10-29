@@ -1,3 +1,4 @@
+import type { DurableHooksLostAlarm } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import {
   createFragmentDurableObjectHost,
   type FragmentDurableObjectHost,
@@ -126,13 +127,10 @@ export function createBackofficeObjectImplementation<TEnv>(
       const telemetry = hostTelemetry(definition.name);
       return createFragmentDurableObjectHost({
         ...definition,
-        ...reportHostErrors(definition, telemetry),
+        ...reportHostObservations(definition, telemetry),
         state: options.state,
         env: options.env,
-        durableHooksInstrumentation: reportDurableHookAttempts(
-          instrumentation.durableHooks,
-          telemetry,
-        ),
+        durableHooksInstrumentation: reportDurableHooks(instrumentation.durableHooks, telemetry),
         initializationInstrumentation: instrumentation.fragmentInitialization,
         operations: options.fragmentHostOperations,
       } as never) as unknown as FragmentDurableObjectHost<TSource, TRuntime>;
@@ -158,10 +156,7 @@ export function createBackofficeObjectImplementation<TEnv>(
         env: options.env,
         configuredObjectLifecycle: options.configuredObjectLifecycle,
         telemetry,
-        durableHooksInstrumentation: reportDurableHookAttempts(
-          instrumentation.durableHooks,
-          telemetry,
-        ),
+        durableHooksInstrumentation: reportDurableHooks(instrumentation.durableHooks, telemetry),
         initializationInstrumentation: instrumentation.fragmentInitialization,
         fragmentHostOperations: options.fragmentHostOperations,
       });
@@ -174,17 +169,21 @@ export function createBackofficeObjectImplementation<TEnv>(
   };
 }
 
-type HostErrorObservers = Record<
+type HostObservers = Record<
   "onMigrationError" | "onDispatcherError" | "onProcessError",
   (error: unknown) => void | Promise<void>
->;
+> & { onLostAlarm: (alarm: DurableHooksLostAlarm) => void };
 
-/** Reports the failures a host sees, then hands them to the host's own observers. */
-function reportHostErrors(
-  definition: Partial<HostErrorObservers>,
+/** Reports the failures and lost alarms a host sees, then hands them to its own observers. */
+function reportHostObservations(
+  definition: Partial<HostObservers>,
   telemetry: BackofficeHostTelemetry,
-): HostErrorObservers {
+): HostObservers {
   return {
+    onLostAlarm: (alarm) => {
+      telemetry.record({ kind: "durable-hooks-lost-alarm", alarm });
+      definition.onLostAlarm?.(alarm);
+    },
     onMigrationError: async (error) => {
       telemetry.record({ kind: "host-error", stage: "migration", error });
       await definition.onMigrationError?.(error);
@@ -200,8 +199,11 @@ function reportHostErrors(
   };
 }
 
-/** Records every committed hook attempt outcome on top of the runtime's own instrumentation. */
-function reportDurableHookAttempts(
+/**
+ * Records every committed hook attempt outcome, and every hook re-queued after its attempt died, on
+ * top of the runtime's own instrumentation.
+ */
+function reportDurableHooks(
   instrumentation: DurableHooksInstrumentation,
   telemetry: BackofficeHostTelemetry,
 ): DurableHooksInstrumentation {
@@ -210,6 +212,10 @@ function reportDurableHookAttempts(
     observeAttemptOutcome(attempt, outcome) {
       instrumentation.observeAttemptOutcome?.(attempt, outcome);
       telemetry.record({ kind: "durable-hook-attempt", attempt, outcome });
+    },
+    observeStuckProcessingHooks(stuck) {
+      instrumentation.observeStuckProcessingHooks?.(stuck);
+      telemetry.record({ kind: "durable-hooks-stuck-requeued", stuck });
     },
   };
 }
