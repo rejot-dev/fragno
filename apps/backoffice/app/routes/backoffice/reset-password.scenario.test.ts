@@ -140,7 +140,7 @@ test("password recovery delivers a reset link, changes the password, and revokes
       name: "password recovery through public forms and durable email delivery",
       env: {
         AUTH_EMAIL_VERIFICATION_ENABLED: "false",
-        SIGN_UP_INVITATIONS_ENABLED: "false",
+        SIGN_UP_ACCESS_CODES_REQUIRED: "false",
         DOCS_PUBLIC_BASE_URL: publicOrigin,
       },
       fakes: ({ fake }) => ({ resend: fake.resend() }),
@@ -167,7 +167,7 @@ test("password recovery delivers a reset link, changes the password, and revokes
             assert((await signIn(ctx, "password123")).status === 401);
             const signedIn = await signIn(ctx, newPassword);
             assert(signedIn.ok, await signedIn.clone().text());
-            expect(await signedIn.json()).toMatchObject({ user: { email, emailVerified: false } });
+            expect(await signedIn.json()).toMatchObject({ user: { email, emailVerified: true } });
             expect(ctx.fakes.resend?.queueEmailCalls).toHaveLength(1);
             const hooks = await ctx.runtime.objects.auth.singleton().commands.getDurableHookQueue();
             expect(
@@ -187,7 +187,7 @@ test("password recovery adds a password to an account that has none", async () =
       name: "password recovery for a user without a credential account",
       env: {
         AUTH_EMAIL_VERIFICATION_ENABLED: "false",
-        SIGN_UP_INVITATIONS_ENABLED: "false",
+        SIGN_UP_ACCESS_CODES_REQUIRED: "false",
         DOCS_PUBLIC_BASE_URL: publicOrigin,
       },
       fakes: ({ fake }) => ({ resend: fake.resend() }),

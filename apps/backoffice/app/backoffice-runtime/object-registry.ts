@@ -61,6 +61,7 @@ import type { ClassifierResult } from "@earendil-works/pi-ai";
 
 import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { TelegramAutomationFileMetadata } from "@/backoffice-runtime/telegram-file-response";
+import type { AccessCodeCommands } from "@/fragno/access-codes/contracts";
 import type {
   AppInstallationOwner,
   BackofficeAppInstallationsCommands,
@@ -824,32 +825,27 @@ export type TelegramCommands = DurableHookCommands &
     checkWebhook(): Promise<WebhookRegistrationCheck>;
   };
 
-export type OtpCommands = DurableHookCommands & {
-  issueEmailVerification(
-    input: Parameters<Otp["issueEmailVerification"]>[0],
-  ): Promise<AwaitedMethodReturn<Otp, "issueEmailVerification">>;
-  confirmEmailVerificationChallenge(
-    input: Parameters<Otp["confirmEmailVerificationChallenge"]>[0],
-  ): Promise<AwaitedMethodReturn<Otp, "confirmEmailVerificationChallenge">>;
-  issueSignUpInvitation(
-    input: Parameters<Otp["issueSignUpInvitation"]>[0],
-  ): Promise<AwaitedMethodReturn<Otp, "issueSignUpInvitation">>;
-  confirmSignUpInvitation(
-    input: Parameters<Otp["confirmSignUpInvitation"]>[0],
-  ): Promise<AwaitedMethodReturn<Otp, "confirmSignUpInvitation">>;
-  issueIdentityClaim(
-    input: IssueIdentityClaimInput,
-    execution: BackofficeDeferredExecution,
-  ): Promise<IssueIdentityClaimResult>;
-  getIdentityClaim(input: {
-    externalId: string;
-    code: string;
-  }): Promise<AwaitedMethodReturn<Otp, "getIdentityClaim">>;
-  confirmIdentityClaim(
-    input: { externalId: string; code: string },
-    execution: BackofficeRequestExecution,
-  ): Promise<AwaitedMethodReturn<Otp, "confirmIdentityClaim">>;
-};
+export type OtpCommands = DurableHookCommands &
+  AccessCodeCommands & {
+    issueEmailVerification(
+      input: Parameters<Otp["issueEmailVerification"]>[0],
+    ): Promise<AwaitedMethodReturn<Otp, "issueEmailVerification">>;
+    confirmEmailVerificationChallenge(
+      input: Parameters<Otp["confirmEmailVerificationChallenge"]>[0],
+    ): Promise<AwaitedMethodReturn<Otp, "confirmEmailVerificationChallenge">>;
+    issueIdentityClaim(
+      input: IssueIdentityClaimInput,
+      execution: BackofficeDeferredExecution,
+    ): Promise<IssueIdentityClaimResult>;
+    getIdentityClaim(input: {
+      externalId: string;
+      code: string;
+    }): Promise<AwaitedMethodReturn<Otp, "getIdentityClaim">>;
+    confirmIdentityClaim(
+      input: { externalId: string; code: string },
+      execution: BackofficeRequestExecution,
+    ): Promise<AwaitedMethodReturn<Otp, "confirmIdentityClaim">>;
+  };
 
 export type ResendCommands = DurableHookCommands &
   AdminConfigurableCommands<AwaitedMethodReturn<Resend, "getAdminConfig">> & {

@@ -65,7 +65,7 @@ type BackofficePermissionRequirement =
         | "apps.read"
         | "oauth-clients.manage"
         | "oauth-clients.read"
-        | "sign-up-invitations.manage"
+        | "access-codes.manage"
         | "organizations.manage"
         | "users.manage";
     }

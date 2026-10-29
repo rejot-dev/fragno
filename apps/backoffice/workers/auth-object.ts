@@ -146,6 +146,10 @@ import {
   type BackofficeUserTokenAuthority,
 } from "./auth/backoffice-user-token-grant";
 import {
+  createAccessCodeGate,
+  createPasswordSignUpAccessCodeCheck,
+} from "./auth/better-auth-access-codes";
+import {
   createBackofficeAppSignInPlugins,
   UNUSED_EMAIL_CODE_PATHS,
 } from "./auth/better-auth-app-sign-in";
@@ -171,7 +175,6 @@ import {
   BACKOFFICE_ORGANIZATION_OWNER_ROLE,
   createBackofficeBetterAuthSchemaPlugins,
 } from "./auth/better-auth-schema-plugins";
-import { createBackofficeSignUpInvitationPlugin } from "./auth/better-auth-sign-up-invitation";
 import {
   readAccountInvitations,
   readAccountProfile,
@@ -888,6 +891,16 @@ export class AuthObject implements AuthCommands {
         );
       }
 
+      if (!runtime.config.authEmailVerification.enabled) {
+        // New users arrive verified while verification is off; this covers those who signed up
+        // while it was on, so none is left waiting for an email that will never come.
+        await this.#database
+          .updateTable("user")
+          .set({ emailVerified: 1 })
+          .where("emailVerified", "=", 0)
+          .execute();
+      }
+
       const nextHookWakeAt = await findNextBetterAuthDurableHookWakeAt(this.#database, {
         wakeImmediately: false,
       });
@@ -971,16 +984,15 @@ export class AuthObject implements AuthCommands {
       resolveBackofficeUserTokenGrant: async (adapter, input) =>
         await resolveBackofficeUserTokenGrant(adapter, this.#database, input),
     });
-    const signUpInvitationPlugins = runtime.config.signUpInvitationsEnabled
+    const accessCodePlugins = runtime.config.signUpAccessCodesRequired
       ? [
-          createBackofficeSignUpInvitationPlugin({
-            confirmSignUpInvitation: async (input) =>
-              await runtime.objects.otp.singleton().commands.confirmSignUpInvitation(input),
+          createPasswordSignUpAccessCodeCheck({
+            checkAccessCode: async (code) =>
+              await runtime.objects.otp.singleton().commands.checkAccessCode({ code }),
           }),
         ]
       : [];
     const appSignInPlugins = createBackofficeAppSignInPlugins({
-      emailVerificationEnabled: emailVerification.enabled,
       findFirstPartyBranding: async (clientId) => {
         const app = await runtime.objects.apps
           .singleton()
@@ -1021,6 +1033,14 @@ export class AuthObject implements AuthCommands {
           // records delivery atomically; a callback enqueue would leave a crash window after issuance.
         },
       },
+      user: runtime.config.signUpAccessCodesRequired
+        ? {
+            validateUserInfo: createAccessCodeGate({
+              redeemAccessCode: async (redemption) =>
+                await runtime.objects.otp.singleton().commands.redeemAccessCode(redemption),
+            }),
+          }
+        : {},
       emailVerification: {
         // User creation is observed transactionally by the SQLite trigger. The resulting durable
         // hook requests verification delivery; Better Auth must not start it as a background task.
@@ -1046,7 +1066,6 @@ export class AuthObject implements AuthCommands {
               github: {
                 clientId: this.#env.GITHUB_CLIENT_ID,
                 clientSecret: this.#env.GITHUB_CLIENT_SECRET,
-                disableSignUp: runtime.config.signUpInvitationsEnabled,
               },
             }
           : {},
@@ -1091,6 +1110,9 @@ export class AuthObject implements AuthCommands {
             before: async (user: Record<string, unknown> & { email: string }) => ({
               data: {
                 ...user,
+                // Without verification nothing would ever verify an address, so every address
+                // counts as verified and no feature waits for a proof that cannot come.
+                ...(emailVerification.enabled ? {} : { emailVerified: true }),
                 role:
                   isRejotEmail(user.email) && import.meta.env.MODE === "development"
                     ? "admin"
@@ -1103,8 +1125,8 @@ export class AuthObject implements AuthCommands {
       plugins: [
         ...schemaPlugins,
         backofficeTokenPlugin,
-        ...signUpInvitationPlugins,
         // After the OAuth Provider, which verifies the app's request this needs.
+        ...accessCodePlugins,
         ...appSignInPlugins,
         createBackofficePasswordResetPlugin({
           publicBaseUrl: this.#passwordResetPublicBaseUrl,

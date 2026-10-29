@@ -276,7 +276,7 @@ async function runFirstPartyScenario(
         name,
         objects: scenarioObjects,
         options: { sqliteDataDirectory: directory },
-        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_INVITATIONS_ENABLED: "false" },
+        env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
         fakes: ({ fake }) => ({ resend: fake.resend() }),
         vars: () => ({
           existingCookie: "",
@@ -463,7 +463,6 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
     then(
       "an invited colleague joins once they sign in to Bookkeeping with the invited address",
       async (ctx) => {
-        const auth = ctx.runtime.objects.auth.singleton().commands;
         const client = provisioning(ctx);
         // The owner invites on Bookkeeping's members page, and Bookkeeping invites as them.
         const invite: CreateInvitationInput = {
@@ -533,10 +532,7 @@ test("Bookkeeping provisions its organization and project, and brings invited pe
           }),
           "forbidden",
         );
-        // Signing in with a code proves the address; a password sign-up has not.
-        await expectApiError(client.call("invitations.accept", accept), "forbidden");
-        await auth.verifyAdminUserEmail({ email: "colleague@bookkeeping.test" });
-
+        // Without email verification, the colleague's password sign-up counts as verified.
         const membership = await client.call("invitations.accept", accept);
         expect(membership).toMatchObject({
           organization: { organizationId: ctx.vars.orgId, name: "Acme Books" },

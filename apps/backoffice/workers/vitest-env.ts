@@ -92,7 +92,7 @@ export class AuthSqlHarnessDurableObject extends DurableObject<CloudflareEnv> {
         authEmailVerification: { enabled: false },
         sandboxBackofficeBaseUrl: null,
         sandboxContainers: true,
-        signUpInvitationsEnabled: true,
+        signUpAccessCodesRequired: true,
         localEmailLog: false,
         workersAi: false,
       },
@@ -111,13 +111,13 @@ export class AuthSqlHarnessDurableObject extends DurableObject<CloudflareEnv> {
         otp: {
           singleton: () => ({
             commands: {
-              confirmSignUpInvitation: async (input: {
-                invitationId: string;
-                code: string;
-                email: string;
-              }) =>
-                input.invitationId === "auth-sql-harness" && input.code === "AUTHSQL1"
-                  ? { ok: true as const, invitationId: input.invitationId, email: input.email }
+              checkAccessCode: async (input: { code: string }) =>
+                input.code === "AUTHSQL1"
+                  ? { ok: true as const }
+                  : { ok: false as const, reason: "invalid" as const },
+              redeemAccessCode: async (input: { code: string }) =>
+                input.code === "AUTHSQL1"
+                  ? { ok: true as const }
                   : { ok: false as const, reason: "invalid" as const },
             },
           }),

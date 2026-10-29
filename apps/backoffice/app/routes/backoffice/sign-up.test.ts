@@ -17,10 +17,10 @@ vi.mock("@/fragno/auth/email-verification.server", () => ({
   requestEmailVerificationResend: vi.fn(),
 }));
 
-function createRouterContext(signUpInvitationsEnabled: boolean) {
+function createRouterContext(signUpAccessCodesRequired: boolean) {
   const context = new RouterContextProvider();
   context.set(BackofficeWorkerContext, {
-    runtime: { config: { signUpInvitationsEnabled } },
+    runtime: { config: { signUpAccessCodesRequired } },
   } as never);
   return context;
 }
@@ -28,7 +28,7 @@ function createRouterContext(signUpInvitationsEnabled: boolean) {
 const createActionArgs = (
   body: Record<string, string>,
   url = "https://example.com/backoffice/sign-up",
-  signUpInvitationsEnabled = true,
+  signUpAccessCodesRequired = true,
 ) =>
   ({
     request: new Request(url, {
@@ -37,15 +37,14 @@ const createActionArgs = (
       body: new URLSearchParams({ intent: "sign_up", ...body }),
     }),
     url: new URL(url),
-    context: createRouterContext(signUpInvitationsEnabled),
+    context: createRouterContext(signUpAccessCodesRequired),
     params: {},
   }) as unknown as Parameters<typeof action>[0];
 const validSignUpForm = {
   email: "new-user@example.com",
   password: "password123",
   confirmPassword: "password123",
-  invitationId: "invitation-123",
-  invitationCode: "ABC12345",
+  accessCode: "ABCD2345EFGH6789",
 };
 
 describe("backoffice sign-up route", () => {
@@ -54,7 +53,7 @@ describe("backoffice sign-up route", () => {
     vi.unstubAllEnvs();
   });
 
-  it("rejects registration without a sign-up invitation", async () => {
+  it("rejects registration without an access code", async () => {
     await expect(
       action(
         createActionArgs({
@@ -65,12 +64,12 @@ describe("backoffice sign-up route", () => {
       ),
     ).resolves.toEqual({
       state: "error",
-      message: "Enter a valid email and a password with at least 8 characters.",
+      message: "Enter your access code, a valid email, and a password with at least 8 characters.",
     });
     expect(callBetterAuth).not.toHaveBeenCalled();
   });
 
-  it("allows registration without an invitation when invitations are disabled", async () => {
+  it("allows registration without an access code when none is required", async () => {
     vi.mocked(callBetterAuth).mockResolvedValue(
       Response.json({ user: { id: "user_123", email: "new-user@example.com" } }),
     );
@@ -108,7 +107,7 @@ describe("backoffice sign-up route", () => {
     );
   });
 
-  it("allows invited registration in production", async () => {
+  it("allows registration with an access code in production", async () => {
     vi.stubEnv("MODE", "production");
     vi.mocked(callBetterAuth).mockResolvedValue(
       Response.json({ user: { id: "user_123", email: "new-user@example.com" } }),
@@ -142,8 +141,7 @@ describe("backoffice sign-up route", () => {
           name: "new-user",
           email: "new-user@example.com",
           password: "password123",
-          invitationId: "invitation-123",
-          invitationCode: "ABC12345",
+          accessCode: "ABCD2345EFGH6789",
           callbackURL: "/backoffice/login",
         }),
       },

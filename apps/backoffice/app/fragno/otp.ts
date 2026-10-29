@@ -2,22 +2,19 @@ import type { AutomationExternalEntityRef } from "@fragno-dev/backoffice-api/v0/
 import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
+import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import {
   createOtpFragment,
   type OtpConfirmedHookPayload,
   type OtpFragmentConfig,
 } from "@fragno-dev/otp-fragment";
 
-import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
-
 import type { AutomationKnownEvent } from "./automation/contracts";
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/contracts";
 
 export const IDENTITY_LINK_TYPE = "identity_link" as const;
 export const EMAIL_VERIFICATION_TYPE = "email_verification" as const;
-export const SIGN_UP_INVITATION_TYPE = "sign_up_invitation" as const;
 export const DEFAULT_IDENTITY_LINK_EXPIRY_MINUTES = 15;
-export const DEFAULT_SIGN_UP_INVITATION_TTL_DAYS = 7;
 export const EMAIL_VERIFICATION_EXPIRY_HOURS = 24;
 export const EMAIL_VERIFICATION_EXPIRY_MINUTES = EMAIL_VERIFICATION_EXPIRY_HOURS * 60;
 
@@ -46,26 +43,9 @@ export const emailVerificationPayloadSchema = z.object({
   expiresInHours: z.number().int().positive(),
 });
 
-export const signUpInvitationPayloadSchema = z.object({
-  email: z.string().trim().toLowerCase().pipe(z.email()),
-  publicBaseUrl: z.url(),
-  ttlDays: z.number().int().positive(),
-});
-
 export const buildEmailVerificationUrl = (publicBaseUrl: string, userId: string, code: string) => {
   const url = new URL("/backoffice/verify-email", publicBaseUrl);
   url.searchParams.set("userId", userId);
-  url.searchParams.set("code", code);
-  return url.toString();
-};
-
-export const buildSignUpInvitationUrl = (
-  publicBaseUrl: string,
-  invitationId: string,
-  code: string,
-) => {
-  const url = new URL("/backoffice/sign-up", publicBaseUrl);
-  url.searchParams.set("invitationId", invitationId);
   url.searchParams.set("code", code);
   return url.toString();
 };
@@ -114,15 +94,11 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
 });
 
 function isInternalOtpType(type: string): boolean {
-  return (
-    type === IDENTITY_LINK_TYPE ||
-    type === EMAIL_VERIFICATION_TYPE ||
-    type === SIGN_UP_INVITATION_TYPE
-  );
+  return type === IDENTITY_LINK_TYPE || type === EMAIL_VERIFICATION_TYPE;
 }
 
 export function createOtpServer(
-  runtime: BackofficeFragmentRuntimeOptions,
+  databaseAdapter: FragnoPublicConfigWithDatabase["databaseAdapter"],
   config: Pick<OtpFragmentConfig, "hooks"> = {},
 ) {
   return createOtpFragment(
@@ -131,9 +107,7 @@ export function createOtpServer(
       hooks: config.hooks,
     },
     {
-      databaseAdapter: runtime.adapters.createAdapter({
-        kind: "otp",
-      }),
+      databaseAdapter,
       mountRoute: "/api/otp",
     },
   ).withMiddleware(async function reserveInternalOtpTypesForTrustedCommands(

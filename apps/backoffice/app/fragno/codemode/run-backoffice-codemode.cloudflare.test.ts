@@ -818,7 +818,7 @@ const createScopedMcpRuntimeServices = (
       authEmailVerification: { enabled: false },
       sandboxBackofficeBaseUrl: null,
       sandboxContainers: true,
-      signUpInvitationsEnabled: true,
+      signUpAccessCodesRequired: true,
       localEmailLog: false,
       workersAi: false,
       bindings: {

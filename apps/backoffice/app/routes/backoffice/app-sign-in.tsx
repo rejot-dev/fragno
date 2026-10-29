@@ -71,6 +71,7 @@ export function AppSignIn({
       await startGitHubSignIn({
         returnTo: `/backoffice/oauth/consent?${page.oauthQuery}`,
         oauthQuery: page.oauthQuery,
+        accessCode: null,
       });
     } catch (error) {
       setGithubError(error instanceof Error ? error.message : "Try GitHub again in a moment.");

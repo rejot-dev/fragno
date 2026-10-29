@@ -72,8 +72,7 @@ describe("backoffice login route", () => {
       oauthQuery: null,
       authError: {
         title: "Account creation is not available",
-        message:
-          "Use an existing Backoffice account or open the invitation created for your email.",
+        message: "Use an existing Backoffice account or open your sign-up link.",
       },
     });
   });

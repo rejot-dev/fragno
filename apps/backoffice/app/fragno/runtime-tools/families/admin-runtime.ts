@@ -5,13 +5,14 @@ import type {
   AuthCommands,
   AutomationsCommands,
   OtpCommands,
-  ResendCommands,
 } from "@/backoffice-runtime/object-registry";
 import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
+import { buildAccessCodeSignUpUrl } from "@/fragno/access-codes/access-code";
+import type { AccessCodeRecord } from "@/fragno/access-codes/contracts";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 
-import type { AdminRuntime } from "./admin";
+import type { AdminAccessCode, AdminRuntime } from "./admin";
 import { compileIntegrationActionSchema } from "./integrations/integration-action-json-schema";
 
 /**
@@ -58,15 +59,15 @@ type AdminAuthCommands = Pick<
   | "setOrganizationManager"
 >;
 
-type AdminOtpCommands = Pick<OtpCommands, "issueSignUpInvitation">;
-
-type AdminResendCommands = Pick<ResendCommands, "queueEmail">;
+type AdminOtpCommands = Pick<
+  OtpCommands,
+  "createAccessCode" | "listAccessCodes" | "listAccessCodeRedemptions" | "revokeAccessCode"
+>;
 
 type AdminRuntimeDependencies = {
   auth: AdminAuthCommands;
   apps: BackofficeAppsCommands | null;
   otp: AdminOtpCommands | null;
-  resend: AdminResendCommands | null;
   automationsFor: (
     organization: BackofficeOrganizationContextScope,
   ) => Pick<AutomationsCommands, "deleteEventsOfType">;
@@ -83,6 +84,10 @@ async function requireAdminOrganization(auth: AdminAuthCommands, organizationSlu
   return organization;
 }
 
+function withSignUpUrl(publicBaseUrl: string, accessCode: AccessCodeRecord): AdminAccessCode {
+  return { ...accessCode, url: buildAccessCodeSignUpUrl(publicBaseUrl, accessCode.code) };
+}
+
 async function requireAdminOrganizationId(auth: AdminAuthCommands, organizationSlug: string) {
   return (await requireAdminOrganization(auth, organizationSlug)).id;
 }
@@ -92,10 +97,22 @@ export function createAdminRuntime({
   auth,
   apps,
   otp,
-  resend,
   automationsFor,
   publicBaseUrl,
 }: AdminRuntimeDependencies): AdminRuntime {
+  /** Access codes are shared as sign-up links, which need the public origin. */
+  function requireAccessCodeLinks(operation: string) {
+    if (!otp) {
+      throw new Error(`Admin access code ${operation} requires the OTP binding.`);
+    }
+    if (!publicBaseUrl) {
+      throw new Error(
+        `Admin access code ${operation} requires DOCS_PUBLIC_BASE_URL to be configured.`,
+      );
+    }
+    return { otp, publicBaseUrl };
+  }
+
   return {
     createOAuthClient: async (input, administratorUserId) =>
       await auth.createAdminOAuthClient({ ...input, administratorUserId }),
@@ -156,41 +173,58 @@ export function createAdminRuntime({
       }
       return requireBackofficeAppOperationValue(await apps.listApps(input));
     },
-    createSignUpInvitation: async (input) => {
-      if (!otp) {
-        throw new Error("Admin sign-up invitation creation requires the OTP binding.");
-      }
-      if (!resend) {
-        throw new Error("Admin sign-up invitation creation requires the RESEND binding.");
-      }
-      if (!publicBaseUrl) {
+    createAccessCode: async (input) => {
+      const { otp, publicBaseUrl } = requireAccessCodeLinks("creation");
+      const created = await otp.createAccessCode(input);
+      if (!created.ok) {
         throw new Error(
-          "Admin sign-up invitation creation requires DOCS_PUBLIC_BASE_URL to be configured.",
+          `An access code ${created.code} already exists; give this one another label.`,
         );
       }
-
-      const invitation = await otp.issueSignUpInvitation({
-        ...input,
-        publicBaseUrl,
-      });
-      // Imported on use, so starting the Worker does not load the email renderer.
-      const { buildSignUpInvitationEmail } =
-        await import("@/transactional-emails/sign-up-invitation");
-      await resend.queueEmail(
-        await buildSignUpInvitationEmail({
-          email: invitation.email,
-          invitationUrl: invitation.url,
-          ttlDays: invitation.ttlDays,
-          publicBaseUrl,
-        }),
-        { idempotencyKey: `admin:sign-up-invitation:${invitation.issuanceId}`, senderName: null },
+      return withSignUpUrl(publicBaseUrl, created.accessCode);
+    },
+    listAccessCodes: async ({ pageSize, cursor }) => {
+      const { otp, publicBaseUrl } = requireAccessCodeLinks("listing");
+      const listing = await otp.listAccessCodes(
+        cursor === null ? { page: "first", pageSize } : { page: "next", cursor },
       );
+      if (!listing.ok) {
+        throw new Error("The access code cursor is not from a previous page of access codes.");
+      }
       return {
-        invitationId: invitation.invitationId,
-        email: invitation.email,
-        url: invitation.url,
-        ttlDays: invitation.ttlDays,
+        ...listing.page,
+        accessCodes: listing.page.accessCodes.map((accessCode) =>
+          withSignUpUrl(publicBaseUrl, accessCode),
+        ),
       };
+    },
+    listAccessCodeRedemptions: async ({ code, pageSize, cursor }) => {
+      const { otp, publicBaseUrl } = requireAccessCodeLinks("redemption listing");
+      const listing = await otp.listAccessCodeRedemptions({
+        code,
+        pagination: cursor === null ? { page: "first", pageSize } : { page: "next", cursor },
+      });
+      if (!listing.ok) {
+        throw new Error(
+          listing.reason === "not_found"
+            ? `Access code '${code}' was not found.`
+            : "The redemption cursor is not from a previous page of this code's redemptions.",
+        );
+      }
+      return {
+        ...listing.page,
+        accessCode: withSignUpUrl(publicBaseUrl, listing.accessCode),
+      };
+    },
+    revokeAccessCode: async (input) => {
+      if (!otp) {
+        throw new Error("Admin access code revocation requires the OTP binding.");
+      }
+      const accessCode = await otp.revokeAccessCode(input);
+      if (!accessCode) {
+        throw new Error(`Access code '${input.accessCodeId}' was not found.`);
+      }
+      return accessCode;
     },
     verifyUserEmail: async (input) => await auth.verifyAdminUserEmail(input),
     createOrganization: async (input) => await auth.createAdminOrganization(input),

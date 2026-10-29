@@ -32,7 +32,6 @@ import {
 import {
   EMAIL_VERIFICATION_TYPE,
   IDENTITY_LINK_TYPE,
-  SIGN_UP_INVITATION_TYPE,
   buildIdentityClaimCompletionUrl,
 } from "@/fragno/otp";
 import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
@@ -224,11 +223,7 @@ describe("OTP public boundary security scenarios", () => {
         then.assert("all reserved operations reject attacker-selected identities", async (ctx) => {
           const member = await authenticateOtpMember(ctx);
           for (const entryPoint of ["public", "object"] as const) {
-            for (const type of [
-              IDENTITY_LINK_TYPE,
-              EMAIL_VERIFICATION_TYPE,
-              SIGN_UP_INVITATION_TYPE,
-            ]) {
+            for (const type of [IDENTITY_LINK_TYPE, EMAIL_VERIFICATION_TYPE]) {
               for (const operation of ["issue", "confirm", "invalidate"] as const) {
                 const response = await callOtpEndpoint(ctx, {
                   ...member,

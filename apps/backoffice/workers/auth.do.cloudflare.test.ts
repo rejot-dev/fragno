@@ -50,8 +50,7 @@ describe("Better Auth Durable Object SQLite", () => {
         name: "SQLite User",
         email: "sqlite-user@example.com",
         password: "password123",
-        invitationId: "auth-sql-harness",
-        invitationCode: "AUTHSQL1",
+        accessCode: "AUTHSQL1",
       },
     });
     if (!signUpResponse.ok) {
@@ -125,8 +124,7 @@ describe("Better Auth Durable Object SQLite", () => {
         name: "Restart User",
         email: "restart-user@example.com",
         password: "password123",
-        invitationId: "auth-sql-harness",
-        invitationCode: "AUTHSQL1",
+        accessCode: "AUTHSQL1",
       },
     });
     if (!signUpResponse.ok) {

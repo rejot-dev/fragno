@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { createAdminRuntime } from "./admin-runtime";
 
@@ -57,19 +57,7 @@ function createAdminRuntimeDependencies() {
         throw new Error("Organization management is not configured in this fixture.");
       },
     },
-    otp: {
-      issueSignUpInvitation: vi.fn(async (input) => ({
-        invitationId: "invitation-1",
-        issuanceId: "otp-1",
-        email: input.email,
-        url: `${input.publicBaseUrl}backoffice/sign-up?invitationId=invitation-1&code=ABC12345`,
-        ttlDays: input.ttlDays ?? 7,
-        type: "sign_up_invitation" as const,
-      })),
-    },
-    resend: {
-      queueEmail: vi.fn(async () => {}),
-    },
+    otp: null,
     automationsFor: () => {
       throw new Error("These tests do not reach an organization's automations.");
     },
@@ -78,42 +66,6 @@ function createAdminRuntimeDependencies() {
 }
 
 describe("createAdminRuntime", () => {
-  test("creates sign-up invitations through the singleton OTP object", async () => {
-    const dependencies = createAdminRuntimeDependencies();
-    const runtime = createAdminRuntime(dependencies);
-
-    await expect(
-      runtime.createSignUpInvitation({ email: "person@example.com", ttlDays: 3 }),
-    ).resolves.toEqual({
-      invitationId: "invitation-1",
-      email: "person@example.com",
-      url: "https://backoffice.example/backoffice/sign-up?invitationId=invitation-1&code=ABC12345",
-      ttlDays: 3,
-    });
-    expect(dependencies.otp.issueSignUpInvitation).toHaveBeenCalledWith({
-      email: "person@example.com",
-      ttlDays: 3,
-      publicBaseUrl: "https://backoffice.example/",
-    });
-  });
-
-  test("reports unavailable sign-up invitation dependencies", async () => {
-    const dependencies = createAdminRuntimeDependencies();
-    const withoutOtp = createAdminRuntime({ ...dependencies, otp: null });
-    const withoutResend = createAdminRuntime({ ...dependencies, resend: null });
-    const withoutPublicBaseUrl = createAdminRuntime({ ...dependencies, publicBaseUrl: null });
-
-    await expect(
-      withoutOtp.createSignUpInvitation({ email: "person@example.com" }),
-    ).rejects.toThrow("requires the OTP binding");
-    await expect(
-      withoutResend.createSignUpInvitation({ email: "person@example.com" }),
-    ).rejects.toThrow("requires the RESEND binding");
-    await expect(
-      withoutPublicBaseUrl.createSignUpInvitation({ email: "person@example.com" }),
-    ).rejects.toThrow("requires DOCS_PUBLIC_BASE_URL");
-  });
-
   test("resolves organization slugs before changing membership", async () => {
     const dependencies = createAdminRuntimeDependencies();
     const membershipCalls: unknown[] = [];
