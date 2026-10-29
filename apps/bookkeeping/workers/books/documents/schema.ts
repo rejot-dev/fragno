@@ -87,5 +87,8 @@ export const documentsSchema = schema("documents", (s) => {
       })
       // Null until someone asks the bookkeeping agent about the document.
       .alterTable("document", (t) => t.addColumn("review", jsonColumn<Review | null>().nullable()))
+      // Whether the file may still be shared with a firm's bookkeeping agent: set by each request,
+      // cleared once its shares are revoked. Documents from before it was recorded may be shared.
+      .alterTable("document", (t) => t.addColumn("shared", column("bool").defaultTo(true)))
   );
 });

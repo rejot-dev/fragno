@@ -723,7 +723,9 @@ test("the agent's answer counts only while the document awaits the request it an
       review: { status: "proposed", by: "the bookkeeping agent" },
     });
 
-    // A person answers whether asked or not, replacing the agent's answer.
+    // A person answers whether asked or not, replacing the agent's answer. Its file is shared with
+    // no one now, so answering asks Backoffice nothing about its shares.
+    const asked = scenario.backoffice.operationCount("state.listShares");
     const adaAgent = scenario.agent(
       { email: "ada@example.test" },
       { organization: CLIENT, project: ADMINISTRATION },
@@ -737,6 +739,165 @@ test("the agent's answer counts only while the document awaits the request it an
     ).toEqual({ status: 200, body: { document: id, review: "declined" } });
     expect(await readDocument(ada, id)).toMatchObject({
       review: { status: "declined", by: "Ada Lovelace via Backoffice" },
+    });
+    expect(scenario.backoffice.operationCount("state.listShares")).toBe(asked);
+  });
+});
+
+test("a document's page revokes the shares answering could not, then asks Backoffice nothing", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    const id = await uploaded(ada, invoiceFixture);
+    expect(await readDocument(ada, id)).toMatchObject({ shared: true });
+    const [prompt] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
+    const agent = await firmAgent(scenario, ada);
+
+    // Backoffice is not reached when the answer revokes the document's shares.
+    scenario.backoffice.failNextRequest("state.listShares");
+    expect(
+      await agent.call(
+        "documents.propose",
+        proposal(id, prompt.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
+      ),
+    ).toEqual({ status: 200, body: { document: id, review: "proposed" } });
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toHaveLength(1);
+
+    // The page showing the answer revokes them, and records that the file is shared no more, so
+    // showing it again asks Backoffice nothing.
+    await readDocument(ada, id);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
+    const asked = scenario.backoffice.operationCount("state.listShares");
+    expect(await readDocument(ada, id)).toMatchObject({ shared: false });
+    await listDocuments(ada);
+    expect(scenario.backoffice.operationCount("state.listShares")).toBe(asked);
+  });
+});
+
+test("a share made but not accepted for a request answered meanwhile is revoked", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    const adaAgent = scenario.agent(
+      { email: "ada@example.test" },
+      { organization: CLIENT, project: ADMINISTRATION },
+    );
+    const id = await uploadFormId(ada);
+    // Ada's own agent answers while Bookkeeping shares the file, and the firm's project cannot be
+    // reached to accept the share.
+    scenario.backoffice.beforeNextAnswer("state.share", async () => {
+      expect(
+        await adaAgent.call("documents.decline", {
+          document: id,
+          request: null,
+          reason: "A duplicate of invoice 6.",
+        }),
+      ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+    });
+    scenario.backoffice.failNextRequest("state.acceptShare");
+    await upload(ada, invoiceFixture, id);
+
+    expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(await readDocument(ada, id)).toMatchObject({
+      review: { status: "declined" },
+      shared: false,
+    });
+  });
+});
+
+test("revoking after an answer shares the file again for a newer request", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    const id = await uploaded(ada, invoiceFixture);
+    const [prompt] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
+    const agent = await firmAgent(scenario, ada);
+    // Ada asks again while the answer's shares are being revoked, so her request reuses the share
+    // being revoked.
+    scenario.backoffice.beforeNextAnswer("state.revokeShare", async () => {
+      await ada.submit(`${BOOKS}/documents/${id}`, { intent: "ask" });
+    });
+    expect(
+      await agent.call(
+        "documents.propose",
+        proposal(id, prompt.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
+      ),
+    ).toEqual({ status: 200, body: { document: id, review: "proposed" } });
+    expect(await readDocument(ada, id)).toMatchObject({
+      review: { status: "requested" },
+      shared: true,
+    });
+    // The revocation saw her request awaiting an answer and shared the file again.
+    expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toHaveLength(1);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([
+      { name: expect.stringMatching(/^document-/u), path: expect.stringContaining(id) },
+    ]);
+  });
+});
+
+test("a share made for a request answered meanwhile is revoked again", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    const id = await uploaded(ada, invoiceFixture);
+    const [first] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
+    const agent = await firmAgent(scenario, ada);
+    // Ada asks again while the first answer's shares are being revoked, and the agent answers her
+    // request while the revocation shares the file again for it.
+    scenario.backoffice.beforeNextAnswer("state.revokeShare", async () => {
+      await ada.submit(`${BOOKS}/documents/${id}`, { intent: "ask" });
+      const second = scenario.backoffice.prompts(FIRM, FIRM_AGENT).at(-1)!;
+      scenario.backoffice.beforeNextAnswer("state.share", async () => {
+        expect(
+          await agent.call("documents.decline", {
+            document: id,
+            request: second.requestId,
+            reason: "This is a price list.",
+          }),
+        ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+      });
+    });
+    expect(
+      await agent.call(
+        "documents.propose",
+        proposal(id, first.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
+      ),
+    ).toEqual({ status: 200, body: { document: id, review: "proposed" } });
+
+    // The share made for the answered request does not outlive it.
+    expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(await readDocument(ada, id)).toMatchObject({
+      review: { status: "declined" },
+      shared: false,
+    });
+  });
+});
+
+test("a request answered by a person while it is shared is neither left shared nor sent", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    const adaAgent = scenario.agent(
+      { email: "ada@example.test" },
+      { organization: CLIENT, project: ADMINISTRATION },
+    );
+    const id = await uploadFormId(ada);
+    // Ada's own agent answers while Bookkeeping shares the file for the upload's request.
+    scenario.backoffice.beforeNextAnswer("state.share", async () => {
+      expect(
+        await adaAgent.call("documents.decline", {
+          document: id,
+          request: null,
+          reason: "A duplicate of invoice 6.",
+        }),
+      ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+    });
+    await upload(ada, invoiceFixture, id);
+
+    // Her answer's revocation came before the share and recorded the file unshared; the share then
+    // recorded it shared again, so it is revoked, and the agent is not asked.
+    expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(scenario.backoffice.prompts(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(await readDocument(ada, id)).toMatchObject({
+      review: { status: "declined", by: "Ada Lovelace via Backoffice" },
+      shared: false,
     });
   });
 });
