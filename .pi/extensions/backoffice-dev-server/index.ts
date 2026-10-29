@@ -19,6 +19,9 @@ export default function registerBackofficeDevServerExtension(pi: ExtensionAPI) {
       `In this worktree, Backoffice's \`pnpm dev\` and \`pnpm preview\` (apps/backoffice) listen on ` +
       `http://127.0.0.1:${port}. The port is fixed: if it is taken, a Backoffice server from this ` +
       `worktree is probably already running, so probe it instead of starting another one. ` +
-      `If you kill it to start your own, make sure to cleanup when you are done.`;
+      `If you start the server yourself (including after killing one), stop it when you are done. ` +
+      `To sign in, use the dev account \`${process.env["USER"] ?? "$USER"}@rejot.dev\` with password ` +
+      `\`wachtwoord\`. If it does not exist yet, create it with ` +
+      `\`pnpm --filter @fragno-apps/backoffice-rr dev-account:create\` while the server runs.`;
   });
 }
