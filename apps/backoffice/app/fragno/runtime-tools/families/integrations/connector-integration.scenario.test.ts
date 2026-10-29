@@ -126,6 +126,60 @@ test("Connector setup resumes consent across restarts and binds the account only
           "gmail-account",
         ]);
       }),
+      then.assert("a root union of object variants publishes as a checked action", async (ctx) => {
+        // Notion's update_page_markdown publishes its discriminated input this way.
+        gateway.catalogActions.set("gmail.modify_labels", {
+          id: "gmail.modify_labels",
+          service: "gmail",
+          name: "Modify Gmail labels",
+          description: null,
+          inputSchema: {
+            oneOf: [
+              {
+                type: "object",
+                properties: { mode: { const: "add" }, label: { type: "string" } },
+                required: ["mode", "label"],
+              },
+              {
+                type: "object",
+                properties: { mode: { const: "clear" } },
+                required: ["mode"],
+              },
+            ],
+          },
+          outputSchema: { type: "object" },
+        });
+        const provider = gateway.providerConfigs.find(({ id }) => id === "gmail-provider");
+        assert(provider);
+        provider.actionIds.push("gmail.modify_labels");
+        try {
+          const run = await ctx.runCodemode({
+            scope: owner,
+            code: `async () => {
+              const connectionId = ${JSON.stringify(target)};
+              const actions = await integrations.actions({ connectionId });
+              try {
+                await integrations.execute({ connectionId, actionId: "gmail.modify_labels", input: { mode: "add" } });
+                return { actions, rejected: null };
+              } catch (error) {
+                return { actions, rejected: error.message };
+              }
+            }`,
+          });
+          const { actions, rejected } = run.result as {
+            actions: { id: string; validation: unknown }[];
+            rejected: string | null;
+          };
+          expect(actions.map(({ id, validation }) => ({ id, validation }))).toEqual([
+            { id: "gmail.search_threads", validation: { kind: "checked" } },
+            { id: "gmail.modify_labels", validation: { kind: "checked" } },
+          ]);
+          expect(rejected).toMatch(/failed its published JSON Schema/);
+          expect(gateway.executions).toHaveLength(1);
+        } finally {
+          provider.actionIds.pop();
+        }
+      }),
       runner.drain(),
       then.automation.event({
         scope: owner,

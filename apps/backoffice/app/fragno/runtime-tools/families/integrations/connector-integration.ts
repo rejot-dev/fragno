@@ -114,6 +114,23 @@ function startInstructions(reason: string | null) {
     .join(" ");
 }
 
+/** True when every value the schema accepts is an object, including unions of object variants. */
+function describesOnlyObjects(schema: unknown): boolean {
+  if (typeof schema !== "object" || schema === null || Array.isArray(schema)) {
+    return false;
+  }
+  const { type, oneOf, anyOf } = schema as Record<string, unknown>;
+  if (type === "object" || (Array.isArray(type) && type.length === 1 && type[0] === "object")) {
+    return true;
+  }
+  if (type !== undefined) {
+    return false;
+  }
+  // Catalogs publish discriminated inputs, such as Notion's update_page_markdown, as a root union.
+  const variants = oneOf ?? anyOf;
+  return Array.isArray(variants) && variants.length > 0 && variants.every(describesOnlyObjects);
+}
+
 function createConnectorActionValidator(schema: Record<string, unknown>) {
   const validator = compileIntegrationActionSchema(schema);
   if (!validator) {
@@ -627,11 +644,7 @@ export function createConnectorIntegration({
           }
           return response.data.actions.map((action) => {
             // The native execution route accepts objects; publishing a scalar contract would promise an unusable action.
-            const inputType = action.inputSchema.type;
-            if (
-              inputType !== "object" &&
-              !(Array.isArray(inputType) && inputType.length === 1 && inputType[0] === "object")
-            ) {
+            if (!describesOnlyObjects(action.inputSchema)) {
               throw new Error("Connector integration requires an object action input schema.");
             }
             const inputValidator = createConnectorActionValidator(action.inputSchema);
