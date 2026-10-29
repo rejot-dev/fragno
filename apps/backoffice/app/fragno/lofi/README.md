@@ -21,11 +21,11 @@ identity its server last reported (`worker-replica-target.ts`): a tab loaded aft
 replaced does not join an older tab's leader, and its replica fails to open if the backend changed
 again since its server looked. Pages connect with `@fragno-dev/lofi/sqlite` and read live views:
 
-- Upload's is a SQL view of the ready files, which the leader runs again after a batch that wrote
-  the `file` table.
-- Automations' are read views: named functions in `../automation/lofi/replica-host.ts` that the
-  leader runs again after a batch that wrote a table their last run read, with the database locked,
-  so all of a read's queries see one state. It sends a view's result only when it changed.
+- Backoffice's own views are read views: named functions in `../upload/lofi/replica-host.ts` and
+  `../automation/lofi/replica-host.ts` that the leader runs again after a batch that wrote a table
+  their last run read, with the database locked, so all of a read's queries see one state. It sends
+  a view's result only when it changed. What reads derive from events, projections keep, so reads
+  mostly look rows up.
 - User pages' are guarded SQL views (`../automation/lofi/page-relations.ts`); see Pages below.
 
 Shared pieces in this directory:
@@ -46,7 +46,7 @@ Shared pieces in this directory:
 ## What reads the Upload replica
 
 The Files explorer's workspace tree (`routes/backoffice/files/explorer.tsx`) and the Upload file
-manager (`routes/backoffice/connections/upload/files.tsx`), through `useReadyUploadFiles`: a view of
+manager (`routes/backoffice/connections/upload/files.tsx`), through `useReadyUploadFiles`: a read of
 the `file` rows whose status is `ready`, of one provider or of all. Both build their tree from the
 whole list whenever it changes. `upload/lofi/replica.scenario.test.ts` uploads, deletes, and lists
 files through the view. The explorer does not preview pages; it links to their route.

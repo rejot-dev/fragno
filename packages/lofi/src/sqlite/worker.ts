@@ -19,7 +19,7 @@ const LEADER_TIMEOUT_MS = 10_000;
  */
 export function serveLofiSqliteWorker(options: {
   replica: LofiSqliteReplicaOptions;
-  /** Engines of views beyond SQL, such as `@fragno-dev/lofi-zql`'s. */
+  /** The engines of the views pages ask for, such as `readViewEngine`'s. */
   engines: LofiSqliteViewEngine[];
 }): LofiSqliteHost {
   return serveLofiSqlite({

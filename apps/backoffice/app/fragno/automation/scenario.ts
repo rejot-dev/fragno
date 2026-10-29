@@ -107,7 +107,7 @@ import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
-import { UPLOAD_REPLICA_SCHEMAS } from "@/fragno/upload/lofi/replica-schemas";
+import { uploadReplicaHost } from "@/fragno/upload/lofi/replica-host";
 import { bytesToBase64 } from "@/lib/base64";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
@@ -1941,11 +1941,7 @@ const createScenarioLofi = (runtime: InMemoryBackofficeRuntime): BackofficeScena
   });
   const upload = createScenarioReplicaDatabase({
     name: "Upload replica",
-    schemas: UPLOAD_REPLICA_SCHEMAS,
-    localSchemas: [],
-    projections: [],
-    ephemeralTables: [],
-    engines: [],
+    ...uploadReplicaHost,
     drainRuntime: () => runtime.drain(),
     baseUrl: uploadScopedBaseUrl,
     createFetch: (scope) => createScenarioUploadFetch(runtime, scope),

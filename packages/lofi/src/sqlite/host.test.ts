@@ -31,24 +31,22 @@ const appSchema = schema("app", (s) =>
 const table = (name: string) =>
   quoteSqliteIdentifier(lofiSqliteTableName({ schema: appSchema }, name));
 
-const usersView = (client: LofiSqliteClient) =>
-  client.sql({
-    sql: `SELECT "email", "active" FROM ${table("users")} ORDER BY "email"`,
-    params: [],
-    columns: {
-      email: appSchema.tables.users.columns.email,
-      active: appSchema.tables.users.columns.active,
-    },
-  });
-
-const postCountView = (client: LofiSqliteClient) =>
-  client.sql({
-    sql: `SELECT count(*) AS "count" FROM ${table("posts")}`,
-    params: [],
-    columns: { count: "integer" },
-  });
-
 const appReads = {
+  users: (reader) =>
+    reader.query({
+      sql: `SELECT "email", "active" FROM ${table("users")} ORDER BY "email"`,
+      params: [],
+      columns: {
+        email: appSchema.tables.users.columns.email,
+        active: appSchema.tables.users.columns.active,
+      },
+    }),
+  postCount: (reader) =>
+    reader.query({
+      sql: `SELECT count(*) AS "count" FROM ${table("posts")}`,
+      params: [],
+      columns: { count: "integer" },
+    }),
   // Two queries, which see the same state, and data that is not rows.
   activity: (reader, args: { since: number }) => ({
     since: new Date(args.since),
@@ -93,6 +91,8 @@ const appReads = {
 } satisfies LofiSqliteReads;
 const appReadViews = lofiSqliteReadViews<typeof appReads>("app-reads");
 let postTitleRuns = 0;
+const usersView = (client: LofiSqliteClient) => appReadViews(client, "users", undefined);
+const postCountView = (client: LofiSqliteClient) => appReadViews(client, "postCount", undefined);
 
 // Pages read people through `people` and `active_people`, two at a time.
 let activePeopleComputed = 0;
@@ -385,7 +385,7 @@ async function runScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
 }
 
 describe("Lofi SQLite host", () => {
-  it("maintains every tab's SQL views in the leading tab, then in the next one", async () => {
+  it("maintains every tab's views in the leading tab, then in the next one", async () => {
     const ctx = await runScenario([
       openTab("a"),
       openTab("b"),
@@ -419,12 +419,6 @@ describe("Lofi SQLite host", () => {
           ],
         ]);
       }),
-
-      // A view that would write the replica is refused.
-      watch("b", "writes", (client) =>
-        client.sql({ sql: `DELETE FROM ${table("users")}`, params: [], columns: {} }),
-      ),
-      waitForError("b", "writes", "must not write"),
 
       // Tab b leads once tab a closes, and builds its views again.
       closeTab("a"),
@@ -643,38 +637,6 @@ describe("Lofi SQLite host", () => {
     expect(ctx.errors).toEqual([]);
   });
 
-  it("reports a SQL view that fails to refresh to its view, and its recovery", async () => {
-    const ctx = await runScenario([
-      openTab("a"),
-      watch("a", "json", (client) =>
-        client.sql({
-          sql: `SELECT json("email") AS "email" FROM ${table("users")}`,
-          params: [],
-          columns: { email: "text" },
-        }),
-      ),
-      waitForView("a", "json", []),
-      write("ada", (uow) => {
-        uow.create("users", { email: "ada@example.com", active: true });
-      }),
-      waitForError("a", "json", "malformed JSON"),
-      // The view's rows are again what they were before it failed, which it reports again.
-      write("gone", (uow, vars) => {
-        uow.delete("users", vars["ada"]![0]!);
-      }),
-      waitForView("a", "json", []),
-      check((ctx) => {
-        expect(ctx.views.get("a/json")!.results.map(({ status }) => status)).toEqual([
-          "loading",
-          "ready",
-          "error",
-          "ready",
-        ]);
-      }),
-    ]);
-    expect(ctx.errors).toEqual([]);
-  });
-
   it("refreshes the other engines while one fails, and gives it the tables again", async () => {
     const users = lofiSqliteTableName({ schema: appSchema }, "users");
     const posts = lofiSqliteTableName({ schema: appSchema }, "posts");
@@ -708,39 +670,19 @@ describe("Lofi SQLite host", () => {
   it("builds a view whose first run fails once a later batch lets it run", async () => {
     const ctx = await runScenario([
       openTab("a"),
-      write("post", (uow) => {
-        uow.create("posts", { title: "Hello" });
-      }),
-      watch("a", "posts", postCountView),
-      waitForView("a", "posts", [{ count: 1 }]),
       watch("a", "ada", (client) => appReadViews(client, "ada", undefined)),
-      watch("a", "json", (client) =>
-        client.sql({
-          sql: `SELECT json("title") AS "title" FROM ${table("posts")}`,
-          params: [],
-          columns: { title: "text" },
-        }),
-      ),
       waitForError("a", "ada", "Ada is gone."),
-      waitForError("a", "json", "malformed JSON"),
 
       write("ada", (uow) => {
         uow.create("users", { email: "ada@example.com", active: true });
       }),
       waitForView("a", "ada", { email: "ada@example.com" }),
-      write("no post", (uow, vars) => {
-        uow.delete("posts", vars["post"]![0]!);
-      }),
-      waitForView("a", "json", []),
       check((ctx) => {
-        // The SQL view reads only posts, so writing users did not run it again.
-        for (const view of ["a/ada", "a/json"]) {
-          expect(ctx.views.get(view)!.results.map(({ status }) => status)).toEqual([
-            "loading",
-            "error",
-            "ready",
-          ]);
-        }
+        expect(ctx.views.get("a/ada")!.results.map(({ status }) => status)).toEqual([
+          "loading",
+          "error",
+          "ready",
+        ]);
       }),
     ]);
     expect(ctx.errors).toEqual([]);

@@ -19,7 +19,7 @@ import { readScenarioReplicaView } from "@/fragno/lofi/scenario-replica-database
 
 import { AutomationsObject } from "../../../../workers/automations-object";
 import { UploadObject } from "../../../../workers/upload-object";
-import { readyUploadFilesView, toUploadFileRecord } from "./replica";
+import { readyUploadFilesView } from "./replica";
 
 const scenarioObjects = {
   AUTOMATIONS: (input) => new AutomationsObject(input),
@@ -105,7 +105,7 @@ async function readExplorerTree(ctx: BackofficeScenarioContext) {
   await upload.drain();
   const rows = await readScenarioReplicaView(readyUploadFilesView(upload.replica));
   expect(upload.replica.getStatus()).toEqual({ phase: "caught-up", error: null });
-  return createUploadFileTree(rows.map(toUploadFileRecord)).entries.map((entry) => ({
+  return createUploadFileTree(rows).entries.map((entry) => ({
     kind: entry.kind,
     path: entry.path,
     ...(entry.kind === "file" ? { sizeBytes: entry.sizeBytes } : {}),
