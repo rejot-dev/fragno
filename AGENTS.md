@@ -80,9 +80,10 @@ workflows, generated interfaces, synchronization, and operations.
 
 ### Components
 
-Always add generic, reusable UI components to the private design system package
-(`packages-private/design-system`, `@fragno-private/design-system`), not to `apps/backoffice`.
-Only app-specific components belong in Backoffice.
+Add UI components to the private design system package (`packages-private/design-system`,
+`@fragno-private/design-system`) when they are reusable or need to be designed in Storybook,
+including landing page sections. Move an existing component there when Storybook work needs it.
+Components that depend on Backoffice runtime data or routes stay in `apps/backoffice`.
 
 ### Tests
 
