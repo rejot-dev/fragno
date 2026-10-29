@@ -2,7 +2,14 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase, type FragnoPublicConfigWithDatabase, type TxResult } from "@fragno-dev/db";
 import type { createLedgerFragment } from "@fragno-dev/ledger";
 
-import { documentsSchema, type Dismissal, type DocumentMediaType, type Review } from "./schema";
+import {
+  documentsSchema,
+  type Dismissal,
+  type DocumentMediaType,
+  type Review,
+  type ReviewAnswer,
+  type ReviewRequest,
+} from "./schema";
 
 type LedgerServices = ReturnType<typeof createLedgerFragment>["services"];
 type PostEntryInput = Parameters<LedgerServices["postEntry"]>[0];
@@ -21,6 +28,8 @@ const documentErrorMessages = {
   DOCUMENT_ID_TAKEN: "Another file was uploaded with this form. Upload it again.",
   DOCUMENT_BOOKED: "This document is booked. Reverse its entry first.",
   DOCUMENT_DISMISSED: "This document was dismissed.",
+  REQUEST_NOT_AWAITED:
+    "This request no longer awaits an answer: the document was answered, or asked about again, since.",
 } as const;
 
 export type DocumentErrorCode = keyof typeof documentErrorMessages;
@@ -280,13 +289,16 @@ const documentsFragmentDefinition = defineFragment("documents")
       },
 
       /**
-       * Records the bookkeeping agent's review of a document to book: that it was asked, or its
-       * answer. Asking again replaces an earlier answer, and recording a request again does nothing;
-       * with `first`, so does a request for a document that has a review. Returns the review in
-       * effect.
+       * Records that the bookkeeping agent was asked to review a document to book. Asking again
+       * replaces an earlier answer, and recording a request again does nothing; with `first`, so does
+       * a request for a document that has a review. Returns the review in effect.
        */
-      reviewDocument: function (input: { documentId: string; review: Review; first?: boolean }) {
-        const { documentId, review, first = false } = input;
+      requestReview: function (input: {
+        documentId: string;
+        request: ReviewRequest;
+        first: boolean;
+      }) {
+        const { documentId, request, first } = input;
         return this.serviceTx(documentsSchema)
           .withServiceCalls(
             () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
@@ -303,14 +315,51 @@ const documentsFragmentDefinition = defineFragment("documents")
             assertToBook(documentState(document.dismissal, sources[0] ?? null));
             const current = document.review;
             if (
-              review.status === "requested" &&
               current !== null &&
-              (first || (current.status === "requested" && current.requestId === review.requestId))
+              (first || (current.status === "requested" && current.requestId === request.requestId))
             ) {
               return current;
             }
-            uow.update("document", document.id, (b) => b.set({ review }).check());
-            return review;
+            uow.update("document", document.id, (b) => b.set({ review: request }).check());
+            return request;
+          })
+          .build();
+      },
+
+      /**
+       * Records an answer to a document's review. An answer to `request` counts only while the
+       * document awaits that request's answer, so a request asked again, or answered, takes no
+       * late answer to it; an answer to no request replaces any review.
+       */
+      answerReview: function (input: {
+        documentId: string;
+        request: string | null;
+        answer: ReviewAnswer;
+      }) {
+        const { documentId, request, answer } = input;
+        return this.serviceTx(documentsSchema)
+          .withServiceCalls(
+            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("document", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [document], serviceIntermediateResult: [sources] }) => {
+            if (!document) {
+              throw new DocumentError("DOCUMENT_NOT_FOUND");
+            }
+            assertToBook(documentState(document.dismissal, sources[0] ?? null));
+            const current = document.review;
+            if (
+              request !== null &&
+              !(current?.status === "requested" && current.requestId === request)
+            ) {
+              throw new DocumentError("REQUEST_NOT_AWAITED");
+            }
+            uow.update("document", document.id, (b) => b.set({ review: answer }).check());
+            return answer;
           })
           .build();
       },
