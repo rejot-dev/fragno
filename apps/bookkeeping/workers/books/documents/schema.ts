@@ -48,7 +48,10 @@ export type ReviewAnswer =
   | { status: "proposed"; entry: ProposedEntry; note: string; by: string; at: string }
   | { status: "declined"; reason: string; by: string; at: string };
 
-export type Review = ReviewRequest | ReviewAnswer;
+/** A request withdrawn unanswered, e.g. when the firm asked no longer keeps the books. */
+export type ReviewWithdrawal = { status: "withdrawn"; reason: string; at: string };
+
+export type Review = ReviewRequest | ReviewAnswer | ReviewWithdrawal;
 
 function stringColumn<T extends string>() {
   return column("string") as unknown as Column<"string", T, T>;

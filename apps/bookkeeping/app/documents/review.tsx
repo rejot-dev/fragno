@@ -186,6 +186,13 @@ export function BookkeeperReview({
       </div>
     );
     actions = state.askAgain ? ask("Ask again") : null;
+  } else if (review.status === "withdrawn") {
+    body = (
+      <Callout tone="waiting" title="The request was withdrawn">
+        {review.reason}
+      </Callout>
+    );
+    actions = ask("Ask again");
   } else if (review.status === "declined") {
     body = (
       <Callout tone="waiting" title="The agent proposes no entry">

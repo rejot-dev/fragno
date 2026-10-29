@@ -238,6 +238,12 @@ export class Books extends DurableObject<CloudflareEnv> {
     );
   }
 
+  withdrawRequests(input: { reason: string }) {
+    return attempt(
+      this.documents.callServices(() => this.documents.services.withdrawRequests(input)),
+    );
+  }
+
   recordShared(input: { documentId: string; requestId: string }) {
     return attempt(this.documents.callServices(() => this.documents.services.recordShared(input)));
   }

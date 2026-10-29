@@ -13,6 +13,7 @@ import { redirect } from "react-router";
 
 import type { SessionUser } from "../../workers/auth/auth";
 import { exchangeForScope, isBackofficeUnavailable } from "../../workers/backoffice/client";
+import { followManager } from "../../workers/backoffice/management";
 import type {
   MembershipThrough,
   Organization,
@@ -104,8 +105,8 @@ export async function connectAsUser(
 
 /**
  * The person's membership as Backoffice confirms it now, with the organization as Backoffice names
- * it and whether they reach it through its firm; null when Backoffice refuses them, because they
- * were removed or Bookkeeping was uninstalled.
+ * it, the organization managing it, and whether they reach it through its firm; null when
+ * Backoffice refuses them, because they were removed or Bookkeeping was uninstalled.
  */
 async function confirmWithBackoffice(request: Request, organizationId: string) {
   const backoffice = await connectAsUser(request, {
@@ -125,10 +126,30 @@ async function confirmWithBackoffice(request: Request, organizationId: string) {
       slug: confirmed.organization.slug,
       name: confirmed.organization.name,
     },
+    managingOrganizationId: confirmed.managingOrganization?.organizationId ?? null,
     roles: parseRoles(confirmed.roles),
     through: membershipThrough(confirmed.through),
     confirmedAt: Date.now(),
   };
+}
+
+/**
+ * Asks Backoffice, as the signed-in person, which firm manages the client, e.g. one its firm's
+ * dashboard finds the firm newly manages. Does nothing when Backoffice refuses them.
+ */
+export async function confirmManager(request: Request, clientId: string): Promise<void> {
+  const client = await directory().findClient(clientId);
+  if (client === null) {
+    return;
+  }
+  const confirmed = await confirmWithBackoffice(request, clientId);
+  if (confirmed) {
+    await followManager(env, {
+      clientId,
+      expectedFirmId: client.firmId,
+      managingOrganizationId: confirmed.managingOrganizationId,
+    });
+  }
 }
 
 /**
@@ -162,10 +183,25 @@ export async function requireOrganization(
     });
     throw organizationNotFound();
   }
-  await directory().confirmMembership({ ...confirmed, userId: user.backofficeUserId });
+  const { managingOrganizationId, ...membership } = confirmed;
+  await directory().confirmMembership({ ...membership, userId: user.backofficeUserId });
+  const named = { ...organization, ...confirmed.organization };
   return {
     user,
-    organization: { ...organization, ...confirmed.organization },
+    // A Backoffice administrator may end a client's management, or move it to another firm.
+    organization:
+      named.kind === "client"
+        ? {
+            ...named,
+            // Recorded before asking Backoffice, so an answer arriving after a newer one changes
+            // nothing.
+            firmId: await followManager(env, {
+              clientId: named.id,
+              expectedFirmId: organization.kind === "client" ? organization.firmId : null,
+              managingOrganizationId,
+            }),
+          }
+        : named,
     roles: confirmed.roles,
     through: confirmed.through,
   };
@@ -202,7 +238,8 @@ export async function requireOperator(request: Request): Promise<OrganizationCon
     }
     throw organizationNotFound();
   }
-  await directory().confirmOperator({ ...confirmed, userId: user.backofficeUserId });
+  const { managingOrganizationId: _, ...membership } = confirmed;
+  await directory().confirmOperator({ ...membership, userId: user.backofficeUserId });
   return {
     user,
     organization: { ...confirmed.organization, kind: "operator" },

@@ -163,14 +163,28 @@ Bookkeeping has three layers, as Brand Intelligence does with ReJot, partners, a
   `/operator` does not exist. Operators invite more operators at `/operator/members`.
 - **Firms** are accounting firms: Backoffice organizations Bookkeeping records with kind `firm`.
 - **Clients** are the businesses whose books a firm keeps: Backoffice organizations the firm
-  manages, which Bookkeeping records with kind `client` and their firm.
+  manages, which Bookkeeping records with kind `client` and their firm, or none once no firm manages
+  them.
 
 Backoffice owns the organizations, their members, and their roles (owner, admin, member);
 Bookkeeping keeps a read-only copy in the `Directory` object and never changes membership itself.
 Backoffice also records that a firm manages its clients: every member of the firm acts in each
-client with their role in the firm, owners as admins, without becoming the client's member. The
-`Directory` keeps the firm of each client as Bookkeeping provisioned it. Operators manage no firms:
-an operator organization managing them would reach each firm's agent project and the skills in it.
+client with their role in the firm, owners as admins, without becoming the client's member.
+Backoffice's administrator may end a client's management, or move it to another firm, so the
+`Directory` keeps the firm Backoffice last named: confirming someone in a client with `org.get` also
+records the organization managing it, and a firm's dashboard records the clients Backoffice lists
+for it with `organizations.listManaged`, which reaches clients with no member of their own. A client
+no firm manages, or one managed by an organization Bookkeeping does not know as a firm, keeps its
+books with its own members and has no bookkeeping agent to ask. When Backoffice cannot list a firm's
+clients, its dashboard shows the clients the `Directory` knows. Bookkeeping records a change only if
+the client's firm is still the one it recorded before asking Backoffice, so an answer that arrives
+after a newer one changes nothing. A change records the new firm and marks the former firm's
+requests to withdraw, then withdraws them, then revokes the shares of every document whose file may
+still be shared: Backoffice keeps shares whoever manages the client, and a withdrawn request takes
+no answer, so its document's page revokes what could not be revoked then. A withdrawal that fails is
+retried at the next confirmation. Asking the agent reads the client's firm only after recording the
+request, so it sees the new firm, or its request is withdrawn. Operators manage no firms: an
+operator organization managing them would reach each firm's agent project and the skills in it.
 People sign up only through invitations: someone who signs in without one has no access yet.
 
 **Creating a firm.** At `/operator/firms/new`, an operator gives the firm's name and the email of
@@ -333,11 +347,11 @@ The upload's body is read only up to the largest upload, so a larger one is refu
 #### The bookkeeping agent
 
 Uploading a document asks the `bookkeeper` agent of the firm keeping the books to propose the entry
-booking it. The agent lives in the firm's own Backoffice project, `Bookkeeping agent`, so the skills
-the firm gives it never reach a client's workspace, where the client could read them. Bookkeeping
-provisions that project the first time one of the firm's owners or admins opens the firm, since
-Backoffice creates a project as a member of the firm who authorized Bookkeeping; until then, asking
-the agent says the firm has not set it up.
+booking it, when a firm keeps them. The agent lives in the firm's own Backoffice project,
+`Bookkeeping agent`, so the skills the firm gives it never reach a client's workspace, where the
+client could read them. Bookkeeping provisions that project the first time one of the firm's owners
+or admins opens the firm, since Backoffice creates a project as a member of the firm who authorized
+Bookkeeping; until then, asking the agent says the firm has not set it up.
 
 To ask, Bookkeeping shares the document's folder from the administration's project with the firm's
 agent project (`state.share`), which mounts it read-only at `/shared/document-<hash>/`
