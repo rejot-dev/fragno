@@ -37,17 +37,26 @@ export const projectConnectorNamedConnectionSchema = z.strictObject({
   connectionName: projectConnectorConnectionNameSchema,
 });
 
+const projectConnectorReplaceSchema = z
+  .boolean()
+  .optional()
+  .describe(
+    "Delete the name's earlier requests; confirming this one then replaces the name's other accounts.",
+  );
+
 /** Select exactly one provider and name every connection explicitly. */
 export const projectConnectorConnectInputSchema = z.union([
   z.strictObject({
     service: z.string().regex(/^[a-z0-9_-]+$/),
     connectionName: projectConnectorNamedConnectionSchema.shape.connectionName,
     returnUri: projectConnectorHttpUrlSchema,
+    replace: projectConnectorReplaceSchema,
   }),
   z.strictObject({
     providerConfigId: projectConnectorNamedConnectionSchema.shape.providerConfigId,
     connectionName: projectConnectorNamedConnectionSchema.shape.connectionName,
     returnUri: projectConnectorHttpUrlSchema,
+    replace: projectConnectorReplaceSchema,
   }),
 ]);
 
