@@ -194,6 +194,7 @@ describe("Backoffice browser authentication", () => {
       vi.fn(),
       setTimeoutImplementation,
       clearTimeoutImplementation,
+      Object.assign(new EventTarget(), { visibilityState: "visible" as const }),
     );
 
     expect(backofficeTokenRefreshDelay("2027-08-11T12:15:00.000Z")).toBe(14 * 60 * 1_000);

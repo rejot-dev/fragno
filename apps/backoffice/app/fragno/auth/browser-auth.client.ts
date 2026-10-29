@@ -111,16 +111,20 @@ function isReplayableRequest(input: RequestInfo | URL, init?: RequestInit): bool
   return !(init?.body instanceof ReadableStream);
 }
 
+function isKnownAccessTokenDueForRefresh(): boolean {
+  return (
+    knownAccessTokenExpiresAtEpochMs !== null &&
+    knownAccessTokenExpiresAtEpochMs - Date.now() <= TOKEN_REFRESH_LEEWAY_MS
+  );
+}
+
 export async function backofficeFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   fetchImplementation: typeof fetch = fetch,
 ): Promise<Response> {
   const requestSignal = resolveBackofficeRequestAbortSignal(input, init);
-  if (
-    knownAccessTokenExpiresAtEpochMs !== null &&
-    knownAccessTokenExpiresAtEpochMs - Date.now() <= TOKEN_REFRESH_LEEWAY_MS
-  ) {
+  if (isKnownAccessTokenDueForRefresh()) {
     await waitForBackofficeAccessTokenRefresh(fetchImplementation, requestSignal);
   }
 
@@ -142,14 +146,30 @@ type ScheduleTimeout = (
   delayMilliseconds: number,
 ) => ReturnType<typeof setTimeout>;
 type CancelTimeout = (timeout: ReturnType<typeof setTimeout>) => void;
+/** The page whose return from the background is watched; `document` in the browser. */
+type TokenRefreshPage = {
+  readonly visibilityState: DocumentVisibilityState;
+  addEventListener(type: "visibilitychange", listener: () => void): void;
+  removeEventListener(type: "visibilitychange", listener: () => void): void;
+};
 
 export const scheduleBackofficeTokenRefresh = (
   initialExpiresAt: string,
   onRefreshFailure: () => void,
   setTimeoutImplementation: ScheduleTimeout = setTimeout,
   clearTimeoutImplementation: CancelTimeout = clearTimeout,
+  page: TokenRefreshPage = document,
 ): (() => void) => {
   let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  // Timers pause while the computer sleeps or the browser freezes a background tab, but the token
+  // expires by the clock, so the scheduled refresh can fire after it lapsed. Returning to the tab
+  // checks the clock and refreshes before the page's own requests find the token gone.
+  function refreshOnReturnIfDue(): void {
+    if (page.visibilityState === "visible" && isKnownAccessTokenDueForRefresh()) {
+      void refreshBackofficeAccessToken().catch(onRefreshFailure);
+    }
+  }
 
   function schedule(expiresAt: string): void {
     if (timeout !== null) {
@@ -167,8 +187,10 @@ export const scheduleBackofficeTokenRefresh = (
   tokenIssuedListeners.add(listener);
   knownAccessTokenExpiresAtEpochMs = Date.parse(initialExpiresAt);
   schedule(initialExpiresAt);
+  page.addEventListener("visibilitychange", refreshOnReturnIfDue);
 
   return () => {
+    page.removeEventListener("visibilitychange", refreshOnReturnIfDue);
     tokenIssuedListeners.delete(listener);
     if (timeout !== null) {
       clearTimeoutImplementation(timeout);
