@@ -36,6 +36,11 @@ export type WorkflowRunStep = {
   attempts: { count: number; max: number };
   timing: WorkflowRunStepTiming;
   children: readonly WorkflowRunStep[];
+  /**
+   * Each run of a step inside a loop, oldest first and named as it ran; the step's own state sums
+   * them up. Empty for steps outside loops and for loop steps that have not run.
+   */
+  iterations: readonly WorkflowRunStep[];
 };
 
 /**
@@ -51,20 +56,15 @@ export type WorkflowRunEnd = {
 /**
  * The last branch of a fork continues on the parent's lane; earlier branches detour to the left.
  * A fork either takes one branch (a condition) or runs all of them (`Promise.all` and friends).
- * A section is a labelled stretch of the same path, such as a loop body.
+ * A section is a labelled stretch of the same path; a loop repeats its body from its header.
  * A try node runs its body, hands any throw from the body to `catch`, and always runs `finally`.
  */
 export type WorkflowRunNode =
   | { kind: "step"; step: WorkflowRunStep }
   | { kind: "end"; end: WorkflowRunEnd }
   | { kind: "fork"; id: string; runs: "one" | "all"; branches: readonly WorkflowRunBranch[] }
-  | {
-      kind: "section";
-      id: string;
-      label: string;
-      repeats: boolean;
-      nodes: readonly WorkflowRunNode[];
-    }
+  | { kind: "section"; id: string; label: string; nodes: readonly WorkflowRunNode[] }
+  | { kind: "loop"; id: string; label: string; nodes: readonly WorkflowRunNode[] }
   | {
       kind: "try";
       id: string;
@@ -86,9 +86,22 @@ export type WorkflowRunEvent = {
   message: string;
 };
 
+/** A loop's header row; `steps` are the ones its body runs each iteration, outside nested loops. */
+export type WorkflowRunLoop = {
+  label: string;
+  /** The steps it runs itself, which each of its iterations starts over. */
+  steps: readonly WorkflowRunStep[];
+  /**
+   * Every step inside it, its inner loops' too, which tell whether and when it ran. An inner
+   * loop's steps repeat within each iteration, so they cannot count the loop's own.
+   */
+  allSteps: readonly WorkflowRunStep[];
+};
+
 export type WorkflowRunRow = (
   | { kind: "start"; trigger: string }
   | { kind: "step"; step: WorkflowRunStep }
+  | { kind: "loop"; loop: WorkflowRunLoop }
   | { kind: "end"; end: WorkflowRunEnd }
 ) & {
   id: string;
@@ -132,6 +145,9 @@ export function layoutWorkflowRun(
   function placeChildren(step: WorkflowRunStep, lane: number, depth: number) {
     if (!expandedStepIds.has(step.id)) {
       return;
+    }
+    for (const iteration of step.iterations) {
+      rows.push({ kind: "step", step: iteration, id: iteration.id, depth, lane, label: null });
     }
     for (const child of step.children) {
       rows.push({ kind: "step", step: child, id: child.id, depth, lane, label: null });
@@ -189,22 +205,36 @@ export function layoutWorkflowRun(
           break;
         }
         case "section": {
-          const loopLane = firstFreeLane(reservedLanes, current);
-          const firstRow = rows.length;
-          const exits = placeSequence(
+          current = placeSequence(
             node.nodes,
             lane,
             current,
             joinLabels(pendingLabel, node.label),
-            node.repeats ? loopLane + 1 : reservedLanes,
+            reservedLanes,
           );
-          const first = rows[firstRow];
-          if (node.repeats && first) {
-            laneCount = Math.max(laneCount, loopLane + 1);
-            const target = { rowId: first.id, lane: first.lane, row: firstRow, detourLane: null };
-            for (const exit of exits) {
-              rails.push(connectRail({ ...exit, detourLane: loopLane }, target, "repeat"));
-            }
+          break;
+        }
+        case "loop": {
+          const loopLane = firstFreeLane(reservedLanes, current);
+          const header = placeRow(
+            {
+              kind: "loop",
+              loop: {
+                label: node.label,
+                steps: loopBodySteps(node.nodes, false),
+                allSteps: loopBodySteps(node.nodes, true),
+              },
+              id: node.id,
+              depth: 0,
+              lane,
+              label: pendingLabel,
+            },
+            current,
+          );
+          const exits = placeSequence(node.nodes, lane, [header], null, loopLane + 1);
+          laneCount = Math.max(laneCount, loopLane + 1);
+          for (const exit of exits) {
+            rails.push(connectRail({ ...exit, detourLane: loopLane }, header, "repeat"));
           }
           current = exits;
           break;
@@ -306,12 +336,18 @@ export function reachedWorkflowEndIds(
   const flows = layout.rails.filter((rail) => rail.kind === "flow");
   const isCandidate = (row: WorkflowRunRow | undefined) =>
     row?.kind === "end" && row.end.reason === reason;
+  const unrun = (step: WorkflowRunStep) => step.status === "pending" || step.status === "skipped";
+  // A loop's header is passed once its body has run.
   const finished = (row: WorkflowRunRow | undefined) =>
-    row?.kind === "start" || (row?.kind === "step" && row.step.status === "completed");
+    row?.kind === "start" ||
+    (row?.kind === "step" && row.step.status === "completed") ||
+    (row?.kind === "loop" && !row.loop.allSteps.every(unrun));
   const didNotRun = (row: WorkflowRunRow | undefined) =>
     row?.kind === "end"
       ? !isCandidate(row)
-      : row?.kind === "step" && (row.step.status === "pending" || row.step.status === "skipped");
+      : row?.kind === "step"
+        ? unrun(row.step)
+        : row?.kind === "loop" && row.loop.allSteps.every(unrun);
 
   return new Set(
     layout.rows.flatMap((row) => {
@@ -331,6 +367,27 @@ export function reachedWorkflowEndIds(
       return reached ? [row.id] : [];
     }),
   );
+}
+
+/** The steps in a loop's body, with or without those of the loops inside it. */
+function loopBodySteps(nodes: readonly WorkflowRunNode[], innerLoops: boolean): WorkflowRunStep[] {
+  return nodes.flatMap((node) => {
+    switch (node.kind) {
+      case "step":
+        return [node.step];
+      case "end":
+        return [];
+      case "loop":
+        return innerLoops ? loopBodySteps(node.nodes, innerLoops) : [];
+      case "section":
+        return loopBodySteps(node.nodes, innerLoops);
+      case "try":
+        return loopBodySteps([...node.body, ...node.catch, ...node.finally], innerLoops);
+      case "fork":
+        return node.branches.flatMap((branch) => loopBodySteps(branch.nodes, innerLoops));
+    }
+    throw new Error("Unsupported workflow run node.");
+  });
 }
 
 function joinLabels(first: string | null, second: string | null): string | null {
@@ -374,6 +431,11 @@ export function workflowStepStatusAt(
   if (cursor === null) {
     return step.status;
   }
+  // A repeated step is in the state of its newest iteration so far.
+  if (step.iterations.length > 0) {
+    const iteration = step.iterations.slice(0, workflowStepIterationsAt(step, cursor)).at(-1);
+    return iteration ? workflowStepStatusAt(iteration, cursor) : "pending";
+  }
 
   const timing = step.timing;
   switch (timing.kind) {
@@ -391,6 +453,16 @@ export function workflowStepStatusAt(
       return step.status;
   }
   throw new Error("Unsupported workflow step timing.");
+}
+
+/** How many of the step's iterations had started by the replay cursor; all of them for `null`. */
+export function workflowStepIterationsAt(step: WorkflowRunStep, cursor: number | null): number {
+  if (cursor === null) {
+    return step.iterations.length;
+  }
+  return step.iterations.filter(
+    (iteration) => workflowStepStatusAt(iteration, cursor) !== "pending",
+  ).length;
 }
 
 export type WorkflowStepMark =
@@ -588,6 +660,7 @@ function recordedMoments(nodes: readonly WorkflowRunNode[]): number[] {
       case "end":
         return [];
       case "section":
+      case "loop":
         return recordedMoments(node.nodes);
       case "try":
         return recordedMoments([...node.body, ...node.catch, ...node.finally]);
@@ -606,7 +679,7 @@ function stepMoments(step: WorkflowRunStep): number[] {
       : timing.kind === "span"
         ? [timing.startedAt, ...(timing.endedAt === null ? [] : [timing.endedAt])]
         : [];
-  return [...own, ...step.children.flatMap(stepMoments)];
+  return [...own, ...step.iterations.flatMap(stepMoments), ...step.children.flatMap(stepMoments)];
 }
 
 const DAY_MS = 86_400_000;

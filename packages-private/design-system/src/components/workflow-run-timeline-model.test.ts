@@ -23,6 +23,7 @@ function makeStep(id: string, fields: Partial<WorkflowRunStep> = {}): WorkflowRu
     attempts: { count: 0, max: 1 },
     timing: { kind: "unstarted" },
     children: [],
+    iterations: [],
     ...fields,
   };
 }
@@ -211,27 +212,27 @@ describe("workflow run layout with ends, loops, and try", () => {
     );
   });
 
-  test("draws a repeating section's way back to its first step on its own lane", () => {
+  test("returns from a loop's body to its header on its own lane", () => {
     const placed = layout([
       node("fetch"),
       {
-        kind: "section",
+        kind: "loop",
         id: "loop",
-        label: "for page",
-        repeats: true,
+        label: "for (page)",
         nodes: [node("import"), node("checkpoint")],
       },
       node("done"),
     ]);
 
     assert.deepEqual(
-      placed.rows.map((row) => [row.id, row.label]),
+      placed.rows.map((row) => [row.id, row.kind]),
       [
-        [START, null],
-        ["fetch", null],
-        ["import", "for page"],
-        ["checkpoint", null],
-        ["done", null],
+        [START, "start"],
+        ["fetch", "step"],
+        ["loop", "loop"],
+        ["import", "step"],
+        ["checkpoint", "step"],
+        ["done", "step"],
       ],
     );
     const repeat = placed.rails.find((rail) => rail.kind === "repeat");
@@ -239,10 +240,10 @@ describe("workflow run layout with ends, loops, and try", () => {
       [repeat?.fromRowId, repeat?.toRowId, repeat?.points],
       [
         "checkpoint",
-        "import",
+        "loop",
         [
-          { lane: 0, row: 3 },
-          { lane: 1, row: 3 },
+          { lane: 0, row: 4 },
+          { lane: 1, row: 4 },
           { lane: 1, row: 2 },
           { lane: 0, row: 2 },
         ],
@@ -311,6 +312,34 @@ describe("reached workflow ends", () => {
 
     assert.deepEqual([...reachedWorkflowEndIds(placed, "complete")], ["early return"]);
     assert.deepEqual([...reachedWorkflowEndIds(placed, "active")], []);
+  });
+
+  test("counts an outer loop as run when only its inner loop's steps ran", () => {
+    const placed = layout([
+      {
+        kind: "loop",
+        id: "pages",
+        label: "for (page)",
+        nodes: [
+          {
+            kind: "loop",
+            id: "rows",
+            label: "for (row)",
+            nodes: [node("import row", { status: "completed" })],
+          },
+        ],
+      },
+      end("return"),
+    ]);
+    const outer = placed.rows.find((row) => row.id === "pages");
+    assert(outer?.kind === "loop");
+    // Inner iterations repeat within each outer one, so they leave the outer count unknown.
+    assert.deepEqual(outer.loop.steps, []);
+    assert.deepEqual(
+      outer.loop.allSteps.map((step) => step.id),
+      ["import row"],
+    );
+    assert.deepEqual([...reachedWorkflowEndIds(placed, "complete")], ["return"]);
   });
 
   test("leaves competing guards unmarked because the records cannot tell them apart", () => {

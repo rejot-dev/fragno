@@ -11,20 +11,34 @@ import type {
   WorkflowRunStep,
 } from "./workflow-run-timeline-model";
 
-/** What only a run knows about a step; `detail` replaces the step's static detail when set. */
-export type WorkflowRunStepRuntime = Pick<
+type WorkflowRunStepSpan = Extract<WorkflowRunStep["timing"], { kind: "span" }>;
+
+/** One run of a step inside a loop, named as it ran. */
+export type WorkflowRunStepIteration = Pick<
   WorkflowRunStep,
-  "status" | "attempts" | "timing" | "detail"
->;
+  "id" | "label" | "status" | "attempts" | "detail"
+> & { timing: WorkflowRunStepSpan };
+
+/**
+ * What only a run knows about a step; `detail` replaces the step's static detail when set. A step
+ * inside a loop that has run is known by its iterations, oldest first.
+ */
+export type WorkflowRunStepRuntime =
+  | ({ kind: "single" } & Pick<WorkflowRunStep, "status" | "attempts" | "timing" | "detail">)
+  | {
+      kind: "repeated";
+      iterations: readonly [WorkflowRunStepIteration, ...WorkflowRunStepIteration[]];
+    };
 
 /**
  * Projects one workflow from a visualizer graph onto timeline nodes. Constructs without durable
  * steps or exits are dropped, since the timeline only shows what a run can record or end at.
+ * `runtimeOf` learns whether the step is inside a loop, so a run can report its iterations.
  */
 export function workflowRunNodesFromGraph(
   graph: WorkflowGraph,
   workflowId: string,
-  runtimeOf: (step: StepNode) => WorkflowRunStepRuntime,
+  runtimeOf: (step: StepNode, inLoop: boolean) => WorkflowRunStepRuntime,
 ): WorkflowRunNode[] {
   const childrenByParent = new Map<string, WorkflowChildNode[]>();
   for (const node of graph.nodes) {
@@ -37,32 +51,61 @@ export function workflowRunNodesFromGraph(
   }
   const childrenOf = (parentId: string) => childrenByParent.get(parentId) ?? [];
 
-  function sequenceOf(parentId: string): WorkflowRunNode[] {
-    return childrenOf(parentId).flatMap(toNodes);
+  function sequenceOf(parentId: string, inLoop: boolean): WorkflowRunNode[] {
+    return childrenOf(parentId).flatMap((child) => toNodes(child, inLoop));
   }
 
-  function toStep(node: StepNode): WorkflowRunStep {
-    const runtime = runtimeOf(node);
+  function toStep(node: StepNode, inLoop: boolean): WorkflowRunStep {
+    const runtime = runtimeOf(node, inLoop);
+    const label = stepLabel(node);
+    const activity = node.stepType === "do" ? "work" : "wait";
+    const children = nestedSteps(node.id, inLoop);
+    if (runtime.kind === "single") {
+      return {
+        id: node.id,
+        label,
+        detail: runtime.detail ?? staticStepDetail(node),
+        status: runtime.status,
+        activity,
+        attempts: runtime.attempts,
+        timing: runtime.timing,
+        children,
+        iterations: [],
+      };
+    }
+
+    // The step reads as its newest iteration, over the time from its first to its newest.
+    const [first] = runtime.iterations;
+    const latest = runtime.iterations.at(-1) ?? first;
     return {
       id: node.id,
-      label: stepLabel(node),
-      detail: runtime.detail ?? staticStepDetail(node),
-      status: runtime.status,
-      activity: node.stepType === "do" ? "work" : "wait",
-      attempts: runtime.attempts,
-      timing: runtime.timing,
-      children: nestedSteps(node.id),
+      label,
+      detail: latest.detail ?? staticStepDetail(node),
+      status: latest.status,
+      activity,
+      attempts: latest.attempts,
+      timing: { kind: "span", startedAt: first.timing.startedAt, endedAt: latest.timing.endedAt },
+      children,
+      iterations: runtime.iterations.map((iteration) => ({
+        ...iteration,
+        detail: iteration.detail ?? staticStepDetail(node),
+        activity,
+        children: [],
+        iterations: [],
+      })),
     };
   }
 
   // Control flow inside a step callback is flattened: the timeline nests steps, not their logic.
-  function nestedSteps(parentId: string): WorkflowRunStep[] {
+  function nestedSteps(parentId: string, inLoop: boolean): WorkflowRunStep[] {
     return childrenOf(parentId).flatMap((child) =>
-      child.kind === "step" ? [toStep(child)] : nestedSteps(child.id),
+      child.kind === "step"
+        ? [toStep(child, inLoop)]
+        : nestedSteps(child.id, inLoop || child.kind === "loop"),
     );
   }
 
-  function conditionNodes(node: ConditionNode): WorkflowRunNode[] {
+  function conditionNodes(node: ConditionNode, inLoop: boolean): WorkflowRunNode[] {
     const children = childrenOf(node.id);
     const thenBranch = children.find(
       (child) => child.kind === "branch" && child.branchType === "then",
@@ -71,8 +114,12 @@ export function workflowRunNodesFromGraph(
       (child) => child.kind === "branch" && child.branchType === "else",
     );
     // An `if` without an `else` owns its children directly; not taking it falls through.
-    const taken = thenBranch ? sequenceOf(thenBranch.id) : elseBranch ? [] : sequenceOf(node.id);
-    const notTaken = elseBranch ? sequenceOf(elseBranch.id) : [];
+    const taken = thenBranch
+      ? sequenceOf(thenBranch.id, inLoop)
+      : elseBranch
+        ? []
+        : sequenceOf(node.id, inLoop);
+    const notTaken = elseBranch ? sequenceOf(elseBranch.id, inLoop) : [];
     if (taken.length === 0 && notTaken.length === 0) {
       return [];
     }
@@ -93,10 +140,10 @@ export function workflowRunNodesFromGraph(
     ];
   }
 
-  function toNodes(node: WorkflowChildNode): WorkflowRunNode[] {
+  function toNodes(node: WorkflowChildNode, inLoop: boolean): WorkflowRunNode[] {
     switch (node.kind) {
       case "step":
-        return [{ kind: "step", step: toStep(node) }];
+        return [{ kind: "step", step: toStep(node, inLoop) }];
       case "terminal":
         return [
           {
@@ -117,34 +164,30 @@ export function workflowRunNodesFromGraph(
           },
         ];
       case "condition":
-        return conditionNodes(node);
+        return conditionNodes(node, inLoop);
       case "parallel": {
         const branches: WorkflowRunBranch[] = childrenOf(node.id).flatMap((branch, index) => {
-          const nodes = sequenceOf(branch.id);
+          const nodes = sequenceOf(branch.id, inLoop);
           return nodes.length === 0
             ? []
             : [{ id: branch.id, label: index === 0 ? node.label : null, nodes }];
         });
         const only = branches.length === 1 ? branches[0] : undefined;
         if (only) {
-          return [
-            { kind: "section", id: node.id, label: node.label, repeats: false, nodes: only.nodes },
-          ];
+          return [{ kind: "section", id: node.id, label: node.label, nodes: only.nodes }];
         }
         return branches.length === 0 ? [] : [{ kind: "fork", id: node.id, runs: "all", branches }];
       }
       case "loop": {
-        const nodes = sequenceOf(node.id);
-        const label = `${node.loopType} ${node.expression}`.trim();
-        return nodes.length === 0
-          ? []
-          : [{ kind: "section", id: node.id, label, repeats: true, nodes }];
+        const nodes = sequenceOf(node.id, true);
+        const label = node.expression ? `${node.loopType} (${node.expression})` : node.loopType;
+        return nodes.length === 0 ? [] : [{ kind: "loop", id: node.id, label, nodes }];
       }
       case "try": {
         const part = (branchType: "try" | "catch" | "finally") =>
           childrenOf(node.id).flatMap((branch) =>
             branch.kind === "branch" && branch.branchType === branchType
-              ? sequenceOf(branch.id)
+              ? sequenceOf(branch.id, inLoop)
               : [],
           );
         const body = part("try");
@@ -155,12 +198,12 @@ export function workflowRunNodesFromGraph(
           : [{ kind: "try", id: node.id, body, catch: handler, finally: cleanup }];
       }
       case "branch":
-        return sequenceOf(node.id);
+        return sequenceOf(node.id, inLoop);
     }
     throw new Error("Unsupported workflow graph node.");
   }
 
-  return sequenceOf(workflowId);
+  return sequenceOf(workflowId, false);
 }
 
 // Dynamic step names only have a placeholder label, so their static parts stand in for it.

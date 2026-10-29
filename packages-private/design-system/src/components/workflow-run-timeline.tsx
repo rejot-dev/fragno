@@ -8,6 +8,7 @@ import {
   layoutWorkflowRun,
   newestWorkflowMoment,
   reachedWorkflowEndIds,
+  workflowStepIterationsAt,
   workflowStepMarkAt,
   positionOnScale,
   workflowStepStatusAt,
@@ -236,11 +237,20 @@ export function WorkflowRunTimeline({
                   finished={cursor === null && endedAt !== null}
                   timed={timed}
                 />
+              ) : row.kind === "loop" ? (
+                <LoopRow
+                  key={row.id}
+                  row={row}
+                  cursor={cursor}
+                  scale={scale}
+                  horizon={horizon}
+                  timed={timed}
+                />
               ) : (
                 <StepRow
                   key={row.id}
                   row={row}
-                  status={workflowStepStatusAt(row.step, cursor)}
+                  cursor={cursor}
                   expanded={expandedStepIds.has(row.step.id)}
                   selected={row.step.id === selectedStepId}
                   scale={scale}
@@ -354,6 +364,7 @@ function AxisLabels({ scale }: { scale: WorkflowTimeScale }) {
 }
 
 type StepRowModel = Extract<WorkflowRunRow, { kind: "step" }>;
+type LoopRowModel = Extract<WorkflowRunRow, { kind: "loop" }>;
 type EndRowModel = Extract<WorkflowRunRow, { kind: "end" }>;
 
 type StartRowModel = Extract<WorkflowRunRow, { kind: "start" }>;
@@ -392,8 +403,12 @@ function StartRow({
       {timed ? (
         <span role="cell" className="relative h-full">
           <TimelineTrack
-            mark={{ kind: "bar", startedAt: createdAt, endedAt: queuedUntil }}
-            color="var(--bo-muted-2)"
+            marks={[
+              {
+                mark: { kind: "bar", startedAt: createdAt, endedAt: queuedUntil },
+                color: "var(--bo-muted-2)",
+              },
+            ]}
             scale={scale}
             horizon={horizon}
           />
@@ -450,6 +465,86 @@ function EndRow({
   );
 }
 
+/**
+ * A loop's header, where each iteration starts over. It counts the iterations its busiest step has
+ * started and spans the time from the first step inside it to the newest. A loop whose body is only
+ * inner loops cannot count its own iterations, so it says whether it is running or ran instead.
+ */
+function LoopRow({
+  row,
+  cursor,
+  scale,
+  horizon,
+  timed,
+}: {
+  row: LoopRowModel;
+  cursor: number | null;
+  scale: WorkflowTimeScale;
+  horizon: number;
+  timed: boolean;
+}) {
+  const iterations = Math.max(
+    0,
+    ...row.loop.steps.map((step) => workflowStepIterationsAt(step, cursor)),
+  );
+  const statuses = row.loop.allSteps.map((step) => workflowStepStatusAt(step, cursor));
+  const activity =
+    iterations > 0
+      ? `${iterations} ${iterations === 1 ? "iteration" : "iterations"}`
+      : statuses.some((status) => status === "running" || status === "waiting")
+        ? "Running"
+        : statuses.every((status) => status === "pending" || status === "skipped")
+          ? "Not run"
+          : "Ran";
+  const bars = row.loop.allSteps.flatMap((step) => {
+    const mark = workflowStepMarkAt(step, horizon);
+    return mark.kind === "bar" ? [mark] : [];
+  });
+  const mark: ReturnType<typeof workflowStepMarkAt> =
+    bars.length === 0
+      ? { kind: "none" }
+      : {
+          kind: "bar",
+          startedAt: Math.min(...bars.map((bar) => bar.startedAt)),
+          endedAt: Math.max(...bars.map((bar) => bar.endedAt)),
+        };
+
+  return (
+    <div
+      role="row"
+      className={cn(ROW_GRID, "pr-2 text-sm text-[var(--bo-muted)]")}
+      style={{ height: ROW_HEIGHT }}
+    >
+      <span role="cell" />
+      <span role="cell" className="flex min-w-0 items-center gap-1.5">
+        <RowLabel label={row.label} />
+        <Icon name="repeat" className="size-3 shrink-0 text-[var(--bo-muted-2)]" />
+        <span className="truncate font-mono text-xs" title={row.loop.label}>
+          {row.loop.label}
+        </span>
+      </span>
+      <span role="cell" className="text-xs whitespace-nowrap tabular-nums">
+        {activity}
+      </span>
+      <span role="cell" />
+      {timed ? (
+        <span role="cell" className="relative h-full">
+          <TimelineTrack
+            marks={[{ mark, color: "var(--bo-muted-2)" }]}
+            scale={scale}
+            horizon={horizon}
+          />
+        </span>
+      ) : null}
+      <span role="cell" className="text-right text-xs tabular-nums">
+        {mark.kind === "bar"
+          ? formatWorkflowDuration(mark.endedAt - mark.startedAt, "coarse")
+          : "—"}
+      </span>
+    </div>
+  );
+}
+
 /** Branch, loop, and handler labels lead the row but give way to the step name when space is short. */
 function RowLabel({ label }: { label: string | null }) {
   if (label === null) {
@@ -464,7 +559,7 @@ function RowLabel({ label }: { label: string | null }) {
 
 function StepRow({
   row,
-  status,
+  cursor,
   expanded,
   selected,
   scale,
@@ -475,7 +570,7 @@ function StepRow({
   onToggleExpanded,
 }: {
   row: StepRowModel;
-  status: WorkflowRunStepStatus;
+  cursor: number | null;
   expanded: boolean;
   selected: boolean;
   scale: WorkflowTimeScale;
@@ -486,9 +581,25 @@ function StepRow({
   onToggleExpanded: () => void;
 }) {
   const step = row.step;
+  const status = workflowStepStatusAt(step, cursor);
+  const iterations = workflowStepIterationsAt(step, cursor);
   const mark = workflowStepMarkAt(step, horizon);
+  // A repeated step draws each iteration in its own state, so the gaps and failures between them
+  // stay visible.
+  const marks =
+    step.iterations.length === 0
+      ? [{ mark, color: STEP_STATUS_COLOR[status] }]
+      : step.iterations.map((iteration) => ({
+          mark: workflowStepMarkAt(iteration, horizon),
+          color: STEP_STATUS_COLOR[workflowStepStatusAt(iteration, cursor)],
+        }));
+  const expandable = step.iterations.length > 0 || step.children.length > 0;
+  // A repeated step speaks for its newest iteration so far: its name, attempts, and detail.
+  const current = step.iterations[iterations - 1] ?? step;
+  const currentName = current.label === step.label ? null : current.label;
   // Details and attempt counts describe the final outcome, so replay holds them back until then.
-  const showsOutcome = status === step.status;
+  const showsOutcome = workflowStepStatusAt(current, cursor) === current.status;
+  const detail = showsOutcome ? current.detail : null;
 
   return (
     <div
@@ -512,7 +623,7 @@ function StepRow({
         style={{ paddingLeft: row.depth * 16 }}
       >
         <RowLabel label={row.label} />
-        {step.children.length === 0 ? null : (
+        {!expandable ? null : (
           <button
             type="button"
             aria-label={`${expanded ? "Collapse" : "Expand"} ${step.label}`}
@@ -540,9 +651,20 @@ function StepRow({
         >
           {step.label}
         </button>
-        {step.detail === null || !showsOutcome ? null : (
-          <span className="min-w-0 truncate text-xs text-[var(--bo-muted-2)]" title={step.detail}>
-            {step.detail}
+        {iterations === 0 ? null : (
+          <span
+            className="shrink-0 rounded-[3px] bg-[var(--bo-panel-2)] px-1 text-[11px] text-[var(--bo-muted)] tabular-nums"
+            title={`Ran ${iterations} ${iterations === 1 ? "time" : "times"}`}
+          >
+            ×{iterations}
+          </span>
+        )}
+        {currentName === null && detail === null ? null : (
+          <span
+            className="min-w-0 truncate text-xs text-[var(--bo-muted-2)]"
+            title={[currentName, detail].filter((part) => part !== null).join(" · ")}
+          >
+            {[currentName, detail].filter((part) => part !== null).join(" · ")}
           </span>
         )}
       </span>
@@ -551,19 +673,14 @@ function StepRow({
       </span>
       <span role="cell" className="flex items-center">
         {showsOutcome ? (
-          <AttemptMeter attempts={step.attempts} status={status} />
+          <AttemptMeter attempts={current.attempts} status={status} />
         ) : (
           <span className="text-xs text-[var(--bo-muted-2)]">—</span>
         )}
       </span>
       {timed ? (
         <span role="cell" className="relative h-full">
-          <TimelineTrack
-            mark={mark}
-            color={STEP_STATUS_COLOR[status]}
-            scale={scale}
-            horizon={horizon}
-          />
+          <TimelineTrack marks={marks} scale={scale} horizon={horizon} />
         </span>
       ) : null}
       <span role="cell" className="text-right text-xs text-[var(--bo-muted)] tabular-nums">
@@ -626,13 +743,11 @@ function AttemptMeter({
 }
 
 function TimelineTrack({
-  mark,
-  color,
+  marks,
   scale,
   horizon,
 }: {
-  mark: ReturnType<typeof workflowStepMarkAt>;
-  color: string;
+  marks: readonly { mark: ReturnType<typeof workflowStepMarkAt>; color: string }[];
   scale: WorkflowTimeScale;
   horizon: number;
 }) {
@@ -664,25 +779,29 @@ function TimelineTrack({
         className="absolute inset-y-1 w-px bg-[var(--bo-muted-2)]"
         style={{ left: scaleLeft(scale, horizon) }}
       />
-      {mark.kind === "bar" ? (
-        <span
-          className="absolute top-1/2 h-1.5 min-w-1.5 -translate-y-1/2 rounded-full opacity-85"
-          style={{
-            left: scaleLeft(scale, mark.startedAt),
-            width: `${((positionOnScale(scale, mark.endedAt) - positionOnScale(scale, mark.startedAt)) / AXIS_HEADROOM) * 100}%`,
-            background: color,
-          }}
-        />
-      ) : mark.kind === "point" ? (
-        // Only the commit time is durable for steps that finish within one tick.
-        <span
-          className="absolute top-1/2 flex -translate-x-[3px] -translate-y-1/2 items-center gap-1 text-[10px] text-[var(--bo-muted-2)]"
-          style={{ left: scaleLeft(scale, mark.at) }}
-          title="Start time not recorded"
-        >
-          <span className="size-1.5 rounded-full" style={{ background: color }} />?
-        </span>
-      ) : null}
+      {marks.map(({ mark, color }, index) =>
+        mark.kind === "bar" ? (
+          <span
+            key={index}
+            className="absolute top-1/2 h-1.5 min-w-1.5 -translate-y-1/2 rounded-full opacity-85"
+            style={{
+              left: scaleLeft(scale, mark.startedAt),
+              width: `${((positionOnScale(scale, mark.endedAt) - positionOnScale(scale, mark.startedAt)) / AXIS_HEADROOM) * 100}%`,
+              background: color,
+            }}
+          />
+        ) : mark.kind === "point" ? (
+          // Only the commit time is durable for steps that finish within one tick.
+          <span
+            key={index}
+            className="absolute top-1/2 flex -translate-x-[3px] -translate-y-1/2 items-center gap-1 text-[10px] text-[var(--bo-muted-2)]"
+            style={{ left: scaleLeft(scale, mark.at) }}
+            title="Start time not recorded"
+          >
+            <span className="size-1.5 rounded-full" style={{ background: color }} />?
+          </span>
+        ) : null,
+      )}
     </>
   );
 }
@@ -773,6 +892,8 @@ function RailGraph({
             reason={row.end.reason}
             reached={reachedEndIds.has(row.id)}
           />
+        ) : row.kind === "loop" ? (
+          <LoopNode key={row.id} cx={x(row.lane)} cy={y(index)} />
         ) : (
           <RailNode
             key={row.id}
@@ -869,6 +990,21 @@ function EndNode({
         />
       )}
     </g>
+  );
+}
+
+function LoopNode({ cx, cy }: { cx: number; cy: number }) {
+  return (
+    <rect
+      x={cx - 3.5}
+      y={cy - 3.5}
+      width={7}
+      height={7}
+      transform={`rotate(45 ${cx} ${cy})`}
+      fill="var(--bo-panel)"
+      stroke="var(--bo-muted-2)"
+      strokeWidth={1.25}
+    />
   );
 }
 

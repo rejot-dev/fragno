@@ -362,6 +362,7 @@ function completedStep(id: string, label: string, from: number, to: number): Wor
       attempts: { count: 1, max: 1 },
       timing: { kind: "span", startedAt: ms(from), endedAt: ms(to) },
       children: [],
+      iterations: [],
     },
   };
 }

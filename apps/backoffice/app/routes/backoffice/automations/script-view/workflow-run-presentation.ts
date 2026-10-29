@@ -110,13 +110,21 @@ export type WorkflowStepRunState = {
 };
 
 /**
- * When a step's executions ran, in epoch milliseconds. Steps that repeat (loop bodies) span from
- * their first execution to their latest one; `endedAt` is `null` while any execution is open.
+ * One execution of a step, under its own step key: steps in a loop execute once per iteration.
+ * Times are epoch milliseconds; `endedAt` is `null` while the execution is open.
  */
 export type WorkflowStepRunExecution = {
+  stepKey: string;
+  /** `null` while its first attempt runs, since a step is only written once it settles. */
+  stepRecordId: string | null;
+  /** The name it ran under, which a dynamic step name fills in. */
+  name: string;
+  status: WorkflowStepRunStatus;
+  attempts: number;
+  maxAttempts: number;
   startedAt: number;
   endedAt: number | null;
-  maxAttempts: number;
+  error: string | null;
 };
 
 export type WorkflowRunReference = {
@@ -145,7 +153,8 @@ export type ScriptWorkflowRun = {
   waitingEventTypes: readonly string[];
   workflowEvents: readonly WorkflowRunEvent[];
   stepStatesByNodeId: Map<string, WorkflowStepRunState>;
-  stepExecutionsByNodeId: ReadonlyMap<string, WorkflowStepRunExecution>;
+  /** Oldest first. */
+  stepExecutionsByNodeId: ReadonlyMap<string, readonly WorkflowStepRunExecution[]>;
   unmappedRuntimeSteps: readonly UnmappedWorkflowRuntimeStep[];
   hasUnmappedCurrentStep: boolean;
 };
@@ -296,7 +305,7 @@ function projectWorkflowStepStates({
   createdAt: number;
 }): {
   stepStatesByNodeId: Map<string, WorkflowStepRunState>;
-  stepExecutionsByNodeId: Map<string, WorkflowStepRunExecution>;
+  stepExecutionsByNodeId: Map<string, WorkflowStepRunExecution[]>;
   unmappedRuntimeSteps: UnmappedWorkflowRuntimeStep[];
 } {
   const resolveStepNodeId = createWorkflowStepNodeResolver(
@@ -306,7 +315,7 @@ function projectWorkflowStepStates({
   const stepStatesByNodeId = new Map<string, WorkflowStepRunState>();
   const unmappedRuntimeStepsByKey = new Map<string, UnmappedWorkflowRuntimeStep>();
 
-  const stepExecutionsByNodeId = new Map<string, WorkflowStepRunExecution>();
+  const stepExecutionsByNodeId = new Map<string, WorkflowStepRunExecution[]>();
 
   const orderedSteps = [...steps].sort(compareWorkflowEvents);
   const stepsByKey = new Map(orderedSteps.map((step) => [step.stepKey, step]));
@@ -327,14 +336,20 @@ function projectWorkflowStepStates({
     }
 
     nodeIdByStepKey.set(step.stepKey, nodeId);
+    const error = workflowStepError(step);
     recordStepExecution(stepExecutionsByNodeId, nodeId, {
+      stepKey: step.stepKey,
+      stepRecordId: step.id,
+      name: step.name,
+      status: step.status,
+      attempts: step.attempts,
+      maxAttempts: step.maxAttempts,
       startedAt: stepStarts.get(step.id) ?? createdAt,
       endedAt: TERMINAL_WORKFLOW_STEP_STATUSES.has(step.status)
         ? workflowRunTime(step.updatedAt)
         : null,
-      maxAttempts: step.maxAttempts,
+      error: error ?? null,
     });
-    const error = workflowStepError(step);
     stepStatesByNodeId.set(nodeId, {
       stepRecordId: step.id,
       status: step.status,
@@ -388,11 +403,26 @@ function projectWorkflowStepStates({
       activity.active && !hasTerminalWorkflowStepAncestor(activity.stepKey, stepsByKey);
     nodeActivity.active ||= running;
     if (running) {
-      recordStepExecution(stepExecutionsByNodeId, nodeId, {
-        startedAt: startedAtByStepKey.get(activity.stepKey) ?? createdAt,
-        endedAt: null,
-        maxAttempts: stepsByKey.get(activity.stepKey)?.maxAttempts ?? 1,
-      });
+      const recorded = stepExecutionsByNodeId
+        .get(nodeId)
+        ?.find((execution) => execution.stepKey === activity.stepKey);
+      recordStepExecution(
+        stepExecutionsByNodeId,
+        nodeId,
+        recorded
+          ? { ...recorded, status: "active", endedAt: null }
+          : {
+              stepKey: activity.stepKey,
+              stepRecordId: null,
+              name: parseStepKey(activity.stepKey).segments.at(-1)?.name ?? activity.stepKey,
+              status: "active",
+              attempts: 1,
+              maxAttempts: stepsByKey.get(activity.stepKey)?.maxAttempts ?? 1,
+              startedAt: startedAtByStepKey.get(activity.stepKey) ?? createdAt,
+              endedAt: null,
+              error: null,
+            },
+      );
     }
     nodeActivity.userEmissionCount += activity.userEmissionCount;
     activityByNodeId.set(nodeId, nodeActivity);
@@ -420,6 +450,10 @@ function projectWorkflowStepStates({
     });
   }
 
+  for (const executions of stepExecutionsByNodeId.values()) {
+    executions.sort((left, right) => left.startedAt - right.startedAt);
+  }
+
   return {
     stepStatesByNodeId,
     stepExecutionsByNodeId,
@@ -427,25 +461,17 @@ function projectWorkflowStepStates({
   };
 }
 
+/** Replaces the node's earlier execution under the same step key, such as one that is retrying. */
 function recordStepExecution(
-  executionsByNodeId: Map<string, WorkflowStepRunExecution>,
+  executionsByNodeId: Map<string, WorkflowStepRunExecution[]>,
   nodeId: string,
   execution: WorkflowStepRunExecution,
 ) {
-  const existing = executionsByNodeId.get(nodeId);
-  executionsByNodeId.set(
-    nodeId,
-    existing
-      ? {
-          startedAt: Math.min(existing.startedAt, execution.startedAt),
-          endedAt:
-            existing.endedAt === null || execution.endedAt === null
-              ? null
-              : Math.max(existing.endedAt, execution.endedAt),
-          maxAttempts: execution.maxAttempts,
-        }
-      : execution,
-  );
+  const executions = executionsByNodeId.get(nodeId) ?? [];
+  executionsByNodeId.set(nodeId, [
+    ...executions.filter((existing) => existing.stepKey !== execution.stepKey),
+    execution,
+  ]);
 }
 
 /**

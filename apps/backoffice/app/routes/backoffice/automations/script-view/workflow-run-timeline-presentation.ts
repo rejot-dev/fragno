@@ -7,6 +7,7 @@ import { parseStepKey } from "@fragno-dev/workflows/step-identity";
 import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
 import {
   workflowRunNodesFromGraph,
+  type WorkflowRunStepIteration,
   type WorkflowRunStepRuntime,
 } from "@fragno-private/design-system/workflow-run-timeline-graph";
 import type {
@@ -32,6 +33,7 @@ import {
   type CodemodeWorkflowRunTrigger,
   type WorkflowRunReference,
   type WorkflowRunStep,
+  type WorkflowStepRunExecution,
   type WorkflowStepRunStatus,
 } from "./workflow-run-presentation";
 
@@ -116,9 +118,9 @@ export function projectWorkflowRunTimeline({
     })),
     stepRecordsByStepId: graphNodes
       ? new Map(
-          [...graphNodes.stepRecordIdsByNodeId].flatMap(([nodeId, recordId]) => {
+          [...graphNodes.stepRecordIdsByStepId].flatMap(([stepId, recordId]) => {
             const record = recordsById.get(recordId);
-            return record ? [[nodeId, record] as const] : [];
+            return record ? [[stepId, record] as const] : [];
           }),
         )
       : recordsById,
@@ -139,37 +141,70 @@ function projectGraphNodes(
     return null;
   }
 
-  const stepRecordIdsByNodeId = new Map<string, string>();
+  // Timeline steps are the program's steps, and each iteration of the ones inside loops.
+  const stepRecordIdsByStepId = new Map<string, string>();
   const nodes = workflowRunNodesFromGraph(
     visualization.graph,
     workflow.id,
-    (node: StepNode): WorkflowRunStepRuntime => {
+    (node: StepNode, inLoop: boolean): WorkflowRunStepRuntime => {
       const state = run.stepStatesByNodeId.get(node.id);
       if (!state) {
         return {
+          kind: "single",
           status: endedAt === null ? "pending" : "skipped",
           attempts: { count: 0, max: 1 },
           timing: { kind: "unstarted" },
           detail: null,
         };
       }
-      const execution = run.stepExecutionsByNodeId.get(node.id);
-      if (!execution) {
+      const [first, ...rest] = run.stepExecutionsByNodeId.get(node.id) ?? [];
+      if (!first) {
         throw new Error("A workflow step with run state has no recorded execution.");
       }
       if (state.stepRecordId) {
-        stepRecordIdsByNodeId.set(node.id, state.stepRecordId);
+        stepRecordIdsByStepId.set(node.id, state.stepRecordId);
+      }
+      if (inLoop) {
+        const toIteration = (execution: WorkflowStepRunExecution): WorkflowRunStepIteration => {
+          if (execution.stepRecordId !== null) {
+            stepRecordIdsByStepId.set(execution.stepKey, execution.stepRecordId);
+          }
+          return {
+            id: execution.stepKey,
+            label: execution.name,
+            status: TIMELINE_STEP_STATUS[execution.status],
+            attempts: { count: execution.attempts, max: execution.maxAttempts },
+            detail: execution.error,
+            timing: { kind: "span", startedAt: execution.startedAt, endedAt: execution.endedAt },
+          };
+        };
+        return { kind: "repeated", iterations: [toIteration(first), ...rest.map(toIteration)] };
       }
       return {
+        kind: "single",
         status: TIMELINE_STEP_STATUS[state.status],
-        attempts: { count: state.attempts, max: execution.maxAttempts },
-        timing: { kind: "span", startedAt: execution.startedAt, endedAt: execution.endedAt },
+        attempts: { count: state.attempts, max: first.maxAttempts },
+        timing: { kind: "span", ...executionsSpan([first, ...rest]) },
         detail: state.error ?? null,
       };
     },
   );
 
-  return { nodes, stepRecordIdsByNodeId, unmappedStepCount: run.unmappedRuntimeSteps.length };
+  return { nodes, stepRecordIdsByStepId, unmappedStepCount: run.unmappedRuntimeSteps.length };
+}
+
+/** From the first execution's start to the newest end, or open while any execution is. */
+function executionsSpan(executions: readonly WorkflowStepRunExecution[]) {
+  return {
+    startedAt: Math.min(...executions.map((execution) => execution.startedAt)),
+    endedAt: executions.some((execution) => execution.endedAt === null)
+      ? null
+      : Math.max(
+          ...executions.flatMap((execution) =>
+            execution.endedAt === null ? [] : [execution.endedAt],
+          ),
+        ),
+  };
 }
 
 const TIMELINE_STEP_STATUS: Record<WorkflowStepRunStatus, WorkflowRunTimelineStepStatus> = {
@@ -211,6 +246,7 @@ function recordedStepNodes(instance: AutomationWorkflowRun, createdAt: number): 
         endedAt: ended ? workflowRunTime(step.updatedAt) : null,
       },
       children: (childrenByParentKey.get(step.stepKey) ?? []).map(toStep),
+      iterations: [],
     };
   }
 
@@ -247,6 +283,7 @@ function recordedStepNodes(instance: AutomationWorkflowRun, createdAt: number): 
               endedAt: null,
             },
             children: [],
+            iterations: [],
           },
         },
       ];

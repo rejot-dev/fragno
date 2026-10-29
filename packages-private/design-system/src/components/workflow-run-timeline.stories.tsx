@@ -5,7 +5,11 @@ import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens"
 // The visualizer's own fixture corpus, read as-is so these stories track its expectations.
 import { WORKFLOW_VISUALIZER_FIXTURES } from "../../../../packages/workflow-visualizer-tokens/src/test-support/workflow-fixtures";
 import { WorkflowRunTimeline } from "./workflow-run-timeline";
-import { workflowRunNodesFromGraph } from "./workflow-run-timeline-graph";
+import {
+  workflowRunNodesFromGraph,
+  type WorkflowRunStepIteration,
+  type WorkflowRunStepRuntime,
+} from "./workflow-run-timeline-graph";
 import type {
   WorkflowRunEvent,
   WorkflowRunNode,
@@ -36,6 +40,7 @@ function step(
       attempts: { count: 0, max: 1 },
       timing: { kind: "unstarted" },
       children: [],
+      iterations: [],
       ...fields,
     },
   };
@@ -136,6 +141,7 @@ const branchingNodes: WorkflowRunNode[] = [
                 attempts: { count: 1, max: 1 },
                 timing: { kind: "span", startedAt: s(8), endedAt: s(12) },
                 children: [],
+                iterations: [],
               },
               {
                 id: "daily-dims-write",
@@ -146,6 +152,7 @@ const branchingNodes: WorkflowRunNode[] = [
                 attempts: { count: 1, max: 1 },
                 timing: { kind: "span", startedAt: s(12), endedAt: s(15) },
                 children: [],
+                iterations: [],
               },
             ],
           }),
@@ -301,15 +308,99 @@ export function NotStarted() {
 type FixtureRun = "simulated" | "not started";
 
 const unstartedRuntime = {
+  kind: "single",
   status: "pending",
   attempts: { count: 0, max: 1 },
   timing: { kind: "unstarted" },
   detail: null,
 } as const;
 
+const LOOP_PASSES = 3;
+
 /**
- * Plays the main path: every condition takes its last branch, side branches are skipped, and the
- * run finishes at the first exit it reaches. Durations are deterministic so screenshots stay stable.
+ * Folds the passes of a loop body, which share one shape, into its steps: each step that ran
+ * reads as its newest iteration, over the time from its first to its newest.
+ */
+function foldLoopPasses(passes: readonly (readonly WorkflowRunNode[])[]): WorkflowRunNode[] {
+  const [first = []] = passes;
+  return first.map((node, index): WorkflowRunNode => {
+    const same = passes.map((pass) => pass[index] ?? node);
+    switch (node.kind) {
+      case "step": {
+        const ran = same.flatMap((pass, passIndex) =>
+          pass.kind === "step" && pass.step.status !== "skipped"
+            ? [
+                {
+                  ...pass.step,
+                  id: `${pass.step.id}#${passIndex}`,
+                  label: pass.step.label.replace("…", ` ${passIndex + 1}`),
+                  children: [],
+                  iterations: [],
+                },
+              ]
+            : [],
+        );
+        const [earliest] = ran;
+        const latest = ran.at(-1);
+        if (
+          !earliest ||
+          !latest ||
+          earliest.timing.kind !== "span" ||
+          latest.timing.kind !== "span"
+        ) {
+          return node;
+        }
+        return {
+          kind: "step",
+          step: {
+            ...latest,
+            id: node.step.id,
+            label: node.step.label,
+            timing: {
+              kind: "span",
+              startedAt: earliest.timing.startedAt,
+              endedAt: latest.timing.endedAt,
+            },
+            iterations: ran,
+          },
+        };
+      }
+      case "end":
+        return node;
+      case "section":
+      case "loop":
+        return {
+          ...node,
+          nodes: foldLoopPasses(same.map((pass) => (pass.kind === node.kind ? pass.nodes : []))),
+        };
+      case "try":
+        return {
+          ...node,
+          body: foldLoopPasses(same.map((pass) => (pass.kind === "try" ? pass.body : []))),
+          catch: foldLoopPasses(same.map((pass) => (pass.kind === "try" ? pass.catch : []))),
+          finally: foldLoopPasses(same.map((pass) => (pass.kind === "try" ? pass.finally : []))),
+        };
+      case "fork":
+        return {
+          ...node,
+          branches: node.branches.map((branch, branchIndex) => ({
+            ...branch,
+            nodes: foldLoopPasses(
+              same.map((pass) =>
+                pass.kind === "fork" ? (pass.branches[branchIndex]?.nodes ?? []) : [],
+              ),
+            ),
+          })),
+        };
+    }
+    throw new Error("Unsupported workflow run node.");
+  });
+}
+
+/**
+ * Plays the main path: every condition takes its last branch, side branches are skipped, loops
+ * run their body a few times, and the run finishes at the first exit it reaches. Durations are
+ * deterministic so screenshots stay stable.
  */
 function simulateMainPath(nodes: readonly WorkflowRunNode[], startedAt: number) {
   let clock = startedAt;
@@ -326,6 +417,7 @@ function simulateMainPath(nodes: readonly WorkflowRunNode[], startedAt: number) 
       case "end":
         return node;
       case "section":
+      case "loop":
         return { ...node, nodes: node.nodes.map(skip) };
       case "try":
         return {
@@ -383,6 +475,13 @@ function simulateMainPath(nodes: readonly WorkflowRunNode[], startedAt: number) 
           return node;
         case "section":
           return { ...node, nodes: run(node.nodes) };
+        case "loop": {
+          const passes = [run(node.nodes)];
+          while (passes.length < LOOP_PASSES && !finished && !throwing) {
+            passes.push(run(node.nodes));
+          }
+          return { ...node, nodes: foldLoopPasses(passes) };
+        }
         case "try": {
           const body = run(node.body);
           const caught = throwing;
@@ -521,4 +620,116 @@ export const LoopsAndParallel = {
       run={run}
     />
   ),
+};
+
+// An outer loop whose body is only an inner loop runs no step of its own, so its header says
+// whether it ran rather than counting its iterations.
+const nestedLoopsSource = `defineWorkflow({ name: "import-sheets" }, async (event, step) => {
+  for (const sheet of event.payload.sheets) {
+    for (const row of sheet.rows) {
+      await step.do("import row " + row.id, async () => rows.import(row));
+    }
+  }
+  await step.do("report", async () => report.send());
+});
+`;
+
+export const NestedLoops = {
+  name: "Source: nested loops",
+  args: { run: "simulated" satisfies FixtureRun },
+  argTypes: { run: { control: "inline-radio", options: ["simulated", "not started"] } },
+  render: ({ run }: { run: FixtureRun }) => (
+    <GraphFrame path="automations/import-sheets.workflow.js" source={nestedLoopsSource} run={run} />
+  ),
+};
+
+// A batched mirror that is part way through its loop: one batch needed a retry, and the newest
+// batch is still downloading.
+const mirrorSource = `export default defineWorkflow({ name: "kc-initial-mirror" }, async (event, step) => {
+  const m = await import("/workspace/kc/scripts/kc-sync.js");
+  const plan = await step.do("pin main snapshot", () => m.prepare());
+  for (let i = 0; i < plan.count; i += 8) {
+    await step.do(
+      "download files " + i,
+      { retries: { limit: 2, delay: "3 seconds", backoff: "exponential" } },
+      () => m.downloadBatch(plan.sha, i, 8),
+    );
+  }
+  return await step.do("publish verified snapshot", () => m.publish(plan.sha));
+});
+`;
+
+function mirrorBatches(startedAt: number, count: number): WorkflowRunStepIteration[] {
+  let clock = startedAt;
+  return Array.from({ length: count }, (_, index) => {
+    const retried = index === 2;
+    const duration = 3_100 + ((index * 1_301) % 2_400) + (retried ? 3_000 : 0);
+    const batchStart = clock;
+    const running = index === count - 1;
+    clock += duration + 150;
+    return {
+      id: `download-${index}`,
+      label: `download files ${index * 8}`,
+      status: running ? "running" : "completed",
+      attempts: { count: retried ? 2 : 1, max: 3 },
+      detail: null,
+      timing: {
+        kind: "span",
+        startedAt: batchStart,
+        endedAt: running ? null : batchStart + duration,
+      },
+    };
+  });
+}
+
+function MirrorFrame({ batches }: { batches: number }) {
+  // The run is live, so it is laid out relative to when the story loads.
+  const createdAt = useMemo(() => Date.now() - 2_000 - batches * 4_600, [batches]);
+  const projected = useMemo(() => {
+    const { graph } = visualizeWorkflowSource(
+      "automations/kc-initial-mirror.workflow.js",
+      mirrorSource,
+    );
+    const workflow = graph.nodes.find((node) => node.kind === "workflow");
+    if (!workflow) {
+      throw new Error("No workflow in the mirror source.");
+    }
+    const [first, ...rest] = mirrorBatches(createdAt + 1_400, batches);
+    return workflowRunNodesFromGraph(graph, workflow.id, (node): WorkflowRunStepRuntime => {
+      if (node.label === "pin main snapshot") {
+        return {
+          kind: "single",
+          status: "completed",
+          attempts: { count: 1, max: 1 },
+          timing: { kind: "span", startedAt: createdAt + 200, endedAt: createdAt + 1_300 },
+          detail: null,
+        };
+      }
+      if (node.nameTemplate && first) {
+        return { kind: "repeated", iterations: [first, ...rest] };
+      }
+      return unstartedRuntime;
+    });
+  }, [batches, createdAt]);
+
+  return (
+    <Frame
+      title="kc-initial-mirror"
+      status="active"
+      trigger="manual"
+      createdAt={createdAt}
+      startedAt={createdAt + 120}
+      endedAt={null}
+      nodes={projected}
+      events={[]}
+      diagnostics={0}
+    />
+  );
+}
+
+export const LoopInProgress = {
+  name: "Loop in progress",
+  args: { batches: 7 },
+  argTypes: { batches: { control: { type: "range", min: 1, max: 40 } } },
+  render: ({ batches }: { batches: number }) => <MirrorFrame batches={batches} />,
 };
