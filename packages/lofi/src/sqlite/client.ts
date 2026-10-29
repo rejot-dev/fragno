@@ -7,14 +7,7 @@ import type {
   LofiSqliteResponse,
   LofiSqliteViewResponse,
 } from "./protocol";
-import {
-  decodeLofiSqliteQueryRows,
-  type LofiSqliteQuery,
-  type LofiSqliteQueryRow,
-  type LofiSqliteResultColumn,
-} from "./query";
 import type { LofiSqliteReplicaStatus } from "./replica";
-import type { LofiSqliteRawRow, LofiSqliteSqlViewQuery } from "./views";
 
 export type LofiSqliteViewResult<TData> =
   | { status: "loading" }
@@ -38,15 +31,8 @@ export type LofiSqliteClient = {
   /** Calls `listener` whenever `getStatus` changes. Returns the unsubscribe function. */
   subscribeStatus: (listener: () => void) => () => void;
   /**
-   * A live SQL view: its rows, decoded with the query's declared columns. The worker runs the
-   * query again after every batch the replica applies, and sends the rows when they changed.
-   */
-  sql<TColumns extends Record<string, LofiSqliteResultColumn>>(
-    query: LofiSqliteQuery<TColumns>,
-  ): LofiSqliteView<LofiSqliteQueryRow<TColumns>[]>;
-  /**
-   * A live view that the worker's view engine of `kind` maintains, for packages that add one.
-   * `query` must survive `postMessage`.
+   * A live view that the worker's view engine of `kind` maintains, such as a read view of
+   * `lofiSqliteReadViews`. `query` must survive `postMessage`.
    */
   view<TData>(kind: string, query: unknown): LofiSqliteView<TData>;
 };
@@ -68,11 +54,7 @@ export function connectLofiSqlite(options: {
     options.port.postMessage(request);
   };
 
-  const view = <TData>(
-    kind: string,
-    query: unknown,
-    decode: (data: unknown) => TData,
-  ): LofiSqliteView<TData> => {
+  const view = <TData>(kind: string, query: unknown): LofiSqliteView<TData> => {
     const $result = atom<LofiSqliteViewResult<TData>>({ status: "loading" });
     onMount($result, () => {
       const id = nextId++;
@@ -81,14 +63,7 @@ export function connectLofiSqlite(options: {
           $result.set({ status: "error", message: response.message });
           return;
         }
-        try {
-          $result.set({ status: "ready", data: decode(response.data) });
-        } catch (error) {
-          $result.set({
-            status: "error",
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
+        $result.set({ status: "ready", data: response.data as TData });
       });
       send({ type: "subscribe", id, kind, query });
       return () => {
@@ -112,13 +87,7 @@ export function connectLofiSqlite(options: {
           statusListeners.delete(listener);
         };
       },
-      sql(query) {
-        const sqlQuery: LofiSqliteSqlViewQuery = { sql: query.sql, params: query.params };
-        return view("sql", sqlQuery, (rows) =>
-          decodeLofiSqliteQueryRows(query, rows as LofiSqliteRawRow[]),
-        );
-      },
-      view: (kind, query) => view(kind, query, (data) => data as never),
+      view,
     };
 
     const updateStatus = (next: LofiSqliteReplicaStatus) => {

@@ -16,11 +16,11 @@ import {
   type LofiSqliteReplicaOptions,
 } from "./replica";
 import type { LofiSqliteSyncDatabase } from "./sync-connection";
-import { sqlViewEngine, type LofiSqliteViewEngine, type LofiSqliteViews } from "./views";
+import type { LofiSqliteViewEngine, LofiSqliteViews } from "./views";
 
 export type LofiSqliteHostOptions = {
   replica: LofiSqliteReplicaOptions;
-  /** Engines of views beyond SQL, such as `@fragno-dev/lofi-zql`'s. */
+  /** The engines of the views pages ask for, such as `readViewEngine`'s. */
   engines: LofiSqliteViewEngine[];
   /** Where the page's requests arrive and its views' data goes. */
   port: LofiSqlitePort;
@@ -55,8 +55,8 @@ type Leader = {
 };
 
 /**
- * Serves the page on the other end of `port` the live views it asks for: SQL views, and views of
- * the kinds `engines` maintain. One tab at a time, elected with a Web Lock, opens the replica and
+ * Serves the page on the other end of `port` the live views it asks for, of the kinds `engines`
+ * maintain. One tab at a time, elected with a Web Lock, opens the replica and
  * maintains every tab's views as outbox entries arrive. The other tabs relay their page's requests
  * to it over a BroadcastChannel and open no database. When the leader closes, the next tab opens
  * the replica and every tab sends its views again.
@@ -67,10 +67,8 @@ type Leader = {
  * resumes or is discarded.
  */
 export function serveLofiSqlite(options: LofiSqliteHostOptions): LofiSqliteHost {
-  const engines = new Map(
-    [sqlViewEngine, ...options.engines].map((engine) => [engine.kind, engine] as const),
-  );
-  if (engines.size !== options.engines.length + 1) {
+  const engines = new Map(options.engines.map((engine) => [engine.kind, engine] as const));
+  if (engines.size !== options.engines.length) {
     throw new Error("Two view engines maintain views of the same kind.");
   }
   const group = tabGroupName(options.replica);

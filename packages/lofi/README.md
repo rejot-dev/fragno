@@ -612,11 +612,11 @@ const stopWatching = replica.subscribeStatus(() => {
 - **Indexes** have the backend's names. All of them are non-unique: a row the server deleted with
   `omitOutbox()` and no truncate notification stays in the replica, and a new row may reuse its
   unique values. There are no foreign keys, because a replica may mirror only some schemas.
-- A SQL view, `replica.sql({ sql, params, columns })`, decodes each result column like the schema
-  column it names (a `Date`, boolean, parsed JSON, or bigint), or as a plain `"integer"` or
-  `"text"`, which must not be NULL. A declared column missing from the result throws.
-  `decodeLofiSqliteRow(table, row)` restores a whole row in the record shape of a Fragno query: a
-  `FragnoId` for `id`, a `FragnoReference` for references, and decoded values.
+- A read's query, `reader.query({ sql, params, columns })` (see "Read views" below), decodes each
+  result column like the schema column it names (a `Date`, boolean, parsed JSON, or bigint), or as a
+  plain `"integer"` or `"text"`, which must not be NULL. A declared column missing from the result
+  throws. `decodeLofiSqliteRow(table, row)` restores a whole row in the record shape of a Fragno
+  query: a `FragnoId` for `id`, a `FragnoReference` for references, and decoded values.
 - **Parameters**: whole numbers bind as 64-bit integers. wa-sqlite would bind a number outside the
   32-bit range, such as a timestamp, as REAL, so `("occurredAt" - ?) / ?` would divide in floating
   point.
@@ -758,17 +758,31 @@ changed since. A reconnect or a new writer catches up again without sending view
 
 `@fragno-dev/lofi/sqlite/worker` runs the replica in a dedicated worker, and pages read it through
 live views: queries whose results the worker keeps up to date as outbox entries arrive. One tab's
-worker opens the replica and maintains the views of every tab. SQL views are built in; other kinds
-of views come from view engines, such as `@fragno-dev/lofi-zql`, which maintains ZQL views
-incrementally.
+worker opens the replica and maintains the views of every tab. Each kind of view comes from a view
+engine: read views (`readViewEngine`) run the app's named reads, guarded SQL views
+(`guardedSqlViewEngine`) run SQL that people or agents write, and `@fragno-dev/lofi-zql` maintains
+ZQL views incrementally.
 
 The worker opens the replica in OPFS through wa-sqlite's OPFSCoopSyncVFS, with a synchronous
 connection that view engines read, so it needs only `@journeyapps/wa-sqlite`. Each tab starts a
 worker with the replica's options:
 
 ```ts
+// reads.ts, imported by the worker
+import type { LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
+
+const { users } = appSchema.tables;
+export const appReads = {
+  adults: (reader: LofiSqliteReader, { age }: { age: number }) =>
+    reader.query({
+      sql: `SELECT "email", "joinedAt" FROM "users_app" WHERE "age" >= ?1 ORDER BY "email"`,
+      params: [age],
+      columns: { email: users.columns.email, joinedAt: users.columns.joinedAt },
+    }),
+};
+
 // replica.worker.ts
-import { serveLofiSqliteWorker } from "@fragno-dev/lofi/sqlite/worker";
+import { readViewEngine, serveLofiSqliteWorker } from "@fragno-dev/lofi/sqlite/worker";
 
 serveLofiSqliteWorker({
   replica: {
@@ -781,8 +795,8 @@ serveLofiSqliteWorker({
     onError: (error) => console.error(error),
     retryDelayMs: 5_000,
   },
-  // View engines beyond SQL, such as `zqlViewEngine` from `@fragno-dev/lofi-zql/worker`.
-  engines: [],
+  // Other engines too, such as `zqlViewEngine` from `@fragno-dev/lofi-zql/worker`.
+  engines: [readViewEngine({ kind: "app-reads", reads: appReads })],
 });
 ```
 
@@ -790,19 +804,17 @@ The page connects once a tab has opened the replica. A view's result is maintain
 has listeners:
 
 ```ts
-import { connectLofiSqlite } from "@fragno-dev/lofi/sqlite";
+import { connectLofiSqlite, lofiSqliteReadViews } from "@fragno-dev/lofi/sqlite";
+// The page needs only the reads' types.
+import type { appReads } from "./reads";
 
 const worker = new Worker(new URL("./replica.worker.ts", import.meta.url), { type: "module" });
 // Rejects if the backend was replaced since the page loaded. A failed request instead connects
 // with the error in `getStatus()`, and the replica opens once the backend answers.
 const replica = await connectLofiSqlite({ port: worker, schemas: [{ schema: appSchema }] });
 
-const { users } = appSchema.tables;
-const $adults = replica.sql({
-  sql: `SELECT "email", "joinedAt" FROM "users_app" WHERE "age" >= ?1 ORDER BY "email"`,
-  params: [21],
-  columns: { email: users.columns.email, joinedAt: users.columns.joinedAt },
-});
+const appReadView = lofiSqliteReadViews<typeof appReads>("app-reads");
+const $adults = appReadView(replica, "adults", { age: 21 });
 $adults.subscribe((result) => {
   // { status: "loading" } | { status: "ready", data } | { status: "error", message }
 });
@@ -810,11 +822,6 @@ $adults.subscribe((result) => {
 
 `replica.getStatus()` and `replica.subscribeStatus()` report the replica's status, as shown under
 "SQLite replica" above, so a page can wait for the catch-up before showing views.
-
-A SQL view's rows decode as Layout above describes. The worker runs the query again after every
-batch that wrote a table it reads, and sends the rows only when they changed. The query is one
-statement: SQL after it other than whitespace and comments is refused, as is a statement that would
-write, since a write would bypass the replica.
 
 ### Which views refresh
 
@@ -824,7 +831,7 @@ batches since its last refresh and passes them to every engine's `refresh(change
 authorizer reports the tables a statement reads while preparing it, as `statement.tables`, including
 the tables behind a view, so:
 
-- a SQL view refreshes after a batch that wrote one of its statement's tables;
+- a guarded SQL view refreshes after a batch that wrote one of its statement's tables;
 - a read view refreshes after a batch that wrote a table its last run read, since a read reads other
   tables only once one it read changed;
 - an engine that cannot tell, such as `@fragno-dev/lofi-zql`'s, refreshes after every batch.
@@ -902,37 +909,13 @@ and runs that fail, report why to the page that asked rather than to the worker.
 
 ### Read views
 
-A read view runs a function of several queries, for results one SQL statement cannot shape, such as
-rows parsed and folded by the app's own code. `readViewEngine` runs named reads in the worker; each
-gets a `LofiSqliteReader`, whose `query` decodes rows like a SQL view's, but synchronously, and
-returns data that survives `postMessage`. The leader runs a view's read again after every batch,
-with the database locked, so all of its queries see one state, and sends the result only when it
-changed. Reads must not write.
-
-```ts
-// reads.ts, imported by the worker
-import type { LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
-
-export const appReads = {
-  activity: (reader: LofiSqliteReader, { since }: { since: number }) => ({
-    users: reader.query({ sql: `SELECT ...`, params: [since], columns: { ... } }),
-    posts: reader.query({ sql: `SELECT ...`, params: [], columns: { ... } }),
-  }),
-};
-
-// replica.worker.ts
-serveLofiSqliteWorker({
-  replica: { ... },
-  engines: [readViewEngine({ kind: "app-reads", reads: appReads })],
-});
-
-// The page needs only the reads' types.
-import { lofiSqliteReadViews } from "@fragno-dev/lofi/sqlite";
-import type { appReads } from "./reads";
-
-const appReadView = lofiSqliteReadViews<typeof appReads>("app-reads");
-const $activity = appReadView(replica, "activity", { since: 0 });
-```
+A read view runs one of the app's named reads, the example above: a function of one or more queries,
+whose result the app's own code can parse, fold, or summarize before it crosses to the page.
+`readViewEngine` runs the reads in the worker; each gets a `LofiSqliteReader`, whose `query` decodes
+rows as Layout above describes, synchronously, and returns data that survives `postMessage`. The
+leader runs a view's read with the database locked, so all of its queries see one state, again after
+every batch that wrote a table its last run read, and sends the result only when it changed. A query
+that would write is refused, since a write would bypass the replica.
 
 ### Leader tab
 
