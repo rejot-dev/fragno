@@ -1104,6 +1104,128 @@ describe("Project Connector connection scenarios", () => {
     expect(scenario.gateway.links).toHaveLength(4);
   });
 
+  test("a replacing start deletes the name's attempts, and their abandoned links never bind", async () => {
+    const scenario = await connectorScenario();
+    const query = new URLSearchParams({
+      projectId: "project-1",
+      providerConfigId: "gmail-provider",
+      connectionName: "work",
+    }).toString();
+    const failed = await scenario.connect("alice");
+    const remote = scenario.gateway.requests.get(failed.id);
+    assert(remote);
+    remote.status = "failed";
+    remote.errorCode = "authorization_failed";
+    remote.errorMessage = "Consent was rejected";
+    await scenario.call("alice", "POST", `/connection-requests/${failed.id}/refresh`);
+    const pending = await scenario.connect("alice");
+    expect(
+      await scenario.call("alice", "GET", `/connection-requests/by-name?${query}`),
+    ).toMatchObject({ status: 409, data: { code: "CONNECTION_AMBIGUOUS" } });
+
+    const started = await scenario.call("alice", "POST", "/connection-requests", {
+      service: "gmail",
+      connectionName: "work",
+      returnUri,
+      replace: true,
+    });
+    const replacement = projectConnectorConnectionSchema.parse(started.data);
+    expect(replacement).toMatchObject({ state: { status: "initiated" } });
+    expect(await scenario.call("alice", "GET", `/connection-requests/by-name?${query}`)).toEqual({
+      status: 200,
+      data: { request: replacement },
+    });
+    // Consent through the abandoned link is never read or bound.
+    scenario.gateway.authorize(pending.id, "stale-account");
+    const reads = scenario.gateway.control.requestReads;
+    for (const request of [failed, pending]) {
+      expect(
+        await scenario.call("alice", "POST", `/connection-requests/${request.id}/refresh`),
+      ).toMatchObject({ status: 404, data: { code: "REQUEST_NOT_FOUND" } });
+    }
+    expect(scenario.gateway.control.requestReads).toBe(reads);
+    expect((await scenario.call("alice", "GET", "/accounts")).data).toMatchObject({
+      accounts: [],
+    });
+
+    scenario.gateway.authorize(replacement.id, "work-account");
+    await scenario.call("alice", "POST", `/connection-requests/${replacement.id}/refresh`);
+    expect(await scenario.call("alice", "GET", `/accounts/by-name?${query}`)).toMatchObject({
+      status: 200,
+      data: { account: { id: "work-account" } },
+    });
+    const connection = {
+      projectId: "project-1",
+      providerConfigId: "gmail-provider",
+      connectionName: "work",
+    };
+    expect((await scenario.readinessChanges()).at(-1)).toEqual({
+      externalUserId: "alice",
+      service: "gmail",
+      connection,
+      ready: true,
+    });
+  });
+
+  test("confirming a replacing reauthorization leaves the name exactly one account", async () => {
+    const scenario = await connectorScenario();
+    await scenario.bind("alice", "old-account");
+    await scenario.bind("alice", "other-name-account", "personal");
+    const started = await scenario.call("alice", "POST", "/connection-requests", {
+      service: "gmail",
+      connectionName: "work",
+      returnUri,
+      replace: true,
+    });
+    const replacement = projectConnectorConnectionSchema.parse(started.data);
+    // The old account stays usable until the new consent confirms.
+    expect(
+      await scenario.call(
+        "alice",
+        "GET",
+        `/accounts/by-name?${new URLSearchParams({ projectId: "project-1", providerConfigId: "gmail-provider", connectionName: "work" })}`,
+      ),
+    ).toMatchObject({ status: 200, data: { account: { id: "old-account" } } });
+    scenario.gateway.authorize(replacement.id, "new-account");
+    await scenario.call("alice", "POST", `/connection-requests/${replacement.id}/refresh`);
+    expect((await scenario.call("alice", "GET", "/accounts")).data).toMatchObject({
+      accounts: [
+        { id: "new-account", connectionName: "work" },
+        { id: "other-name-account", connectionName: "personal" },
+      ],
+    });
+    expect(await scenario.call("alice", "GET", "/accounts/old-account/profile")).toMatchObject({
+      status: 404,
+      data: { code: "ACCOUNT_NOT_FOUND" },
+    });
+    // The name never lost its account, so the replacement reports no readiness change.
+    const named = (connectionName: string) => ({
+      externalUserId: "alice",
+      service: "gmail",
+      connection: { projectId: "project-1", providerConfigId: "gmail-provider", connectionName },
+    });
+    expect(await scenario.readinessChanges()).toEqual([
+      { ...named("work"), ready: false },
+      { ...named("work"), ready: true },
+      { ...named("personal"), ready: false },
+      { ...named("personal"), ready: true },
+    ]);
+  });
+
+  test("confirming an additive start among a long history keeps every account under the name", async () => {
+    const scenario = await connectorScenario();
+    const accounts = ["first", "second", "third", "fourth", "fifth"].map(
+      (name) => `${name}-account`,
+    );
+    for (const accountId of accounts) {
+      await scenario.bind("alice", accountId);
+    }
+    expect(await scenario.call("alice", "GET", "/accounts")).toMatchObject({
+      status: 200,
+      data: { accounts: accounts.toSorted().map((id) => ({ id, connectionName: "work" })) },
+    });
+  });
+
   test("concurrent starts retain distinct attempts and same-name accounts remain usable by ID", async () => {
     const scenario = await connectorScenario();
     const [first, second] = await Promise.all([

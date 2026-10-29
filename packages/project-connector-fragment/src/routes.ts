@@ -159,33 +159,77 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
             providerConfigId: remote.providerConfigId,
             connectionName: body.connectionName,
           };
-          await this.handlerTx()
-            .retrieve(({ forSchema }) =>
-              forSchema(projectConnectorSchema).findFirst("connectedAccount", (b) =>
-                b.whereIndex("idx_account_named_connection", (eb) =>
-                  eb.and(
-                    eb("externalUserId", "=", externalUserId),
-                    eb("projectId", "=", named.projectId),
-                    eb("providerConfigId", "=", named.providerConfigId),
-                    eb("connectionName", "=", named.connectionName),
+          // Another attempt leaves a name that already has a confirmed account ready.
+          const notReady = {
+            externalUserId,
+            service: remote.service,
+            connection: named,
+            ready: false,
+          };
+          if (body.replace) {
+            // Starting over deletes every earlier request, pending ones included: their links are
+            // abandoned, and refreshing them finds nothing to bind.
+            await this.handlerTx()
+              .retrieve(({ forSchema }) =>
+                forSchema(projectConnectorSchema)
+                  .findFirst("connectedAccount", (b) =>
+                    b.whereIndex("idx_account_named_connection", (eb) =>
+                      eb.and(
+                        eb("externalUserId", "=", externalUserId),
+                        eb("projectId", "=", named.projectId),
+                        eb("providerConfigId", "=", named.providerConfigId),
+                        eb("connectionName", "=", named.connectionName),
+                      ),
+                    ),
+                  )
+                  .find("connectionRequest", (b) =>
+                    b
+                      .whereIndex("idx_request_named_connection", (eb) =>
+                        eb.and(
+                          eb("externalUserId", "=", externalUserId),
+                          eb("projectId", "=", named.projectId),
+                          eb("providerConfigId", "=", named.providerConfigId),
+                          eb("connectionName", "=", named.connectionName),
+                        ),
+                      )
+                      .select(["id"]),
+                  ),
+              )
+              .mutate(({ forSchema, retrieveResult: [account, earlier] }) => {
+                const uow = forSchema(projectConnectorSchema);
+                uow.create("connectionRequest", connection);
+                for (const request of earlier) {
+                  uow.delete("connectionRequest", request.id, (b) => b.check());
+                }
+                if (!account) {
+                  uow.triggerHook("onConnectionReadinessChanged", notReady);
+                }
+              })
+              .execute();
+          } else {
+            // Additive starts never read the name's requests, however long its history grows.
+            await this.handlerTx()
+              .retrieve(({ forSchema }) =>
+                forSchema(projectConnectorSchema).findFirst("connectedAccount", (b) =>
+                  b.whereIndex("idx_account_named_connection", (eb) =>
+                    eb.and(
+                      eb("externalUserId", "=", externalUserId),
+                      eb("projectId", "=", named.projectId),
+                      eb("providerConfigId", "=", named.providerConfigId),
+                      eb("connectionName", "=", named.connectionName),
+                    ),
                   ),
                 ),
-              ),
-            )
-            .mutate(({ forSchema, retrieveResult: [account] }) => {
-              const uow = forSchema(projectConnectorSchema);
-              uow.create("connectionRequest", connection);
-              // Another attempt leaves a name that already has a confirmed account ready.
-              if (!account) {
-                uow.triggerHook("onConnectionReadinessChanged", {
-                  externalUserId,
-                  service: remote.service,
-                  connection: named,
-                  ready: false,
-                });
-              }
-            })
-            .execute();
+              )
+              .mutate(({ forSchema, retrieveResult: [account] }) => {
+                const uow = forSchema(projectConnectorSchema);
+                uow.create("connectionRequest", connection);
+                if (!account) {
+                  uow.triggerHook("onConnectionReadinessChanged", notReady);
+                }
+              })
+              .execute();
+          }
           return json(connection);
         } catch (cause) {
           if (!(cause instanceof ProjectConnectorClientError)) {
@@ -263,7 +307,22 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
             .retrieve(({ forSchema }) =>
               forSchema(projectConnectorSchema)
                 .findFirst("connectionRequest", (b) =>
-                  b.whereIndex("primary", (eb) => eb("id", "=", pathParams.requestId)),
+                  b
+                    .whereIndex("primary", (eb) => eb("id", "=", pathParams.requestId))
+                    // Whether the request is its name's only one needs at most two of the name's.
+                    .joinMany("named", "connectionRequest", (named) =>
+                      named
+                        .onIndex("idx_request_named_connection", (eb) =>
+                          eb.and(
+                            eb("externalUserId", "=", eb.parent("externalUserId")),
+                            eb("projectId", "=", eb.parent("projectId")),
+                            eb("providerConfigId", "=", eb.parent("providerConfigId")),
+                            eb("connectionName", "=", eb.parent("connectionName")),
+                          ),
+                        )
+                        .select(["id"])
+                        .pageSize(2),
+                    ),
                 )
                 // Confirmation supplies the account ID later; acquire owned IDs in the single read phase.
                 .find("connectedAccount", (b) =>
@@ -306,6 +365,22 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                   if (existing) {
                     uow.delete("connectedAccount", existing.id, (b) => b.check());
                   }
+                  const sameName =
+                    (named: (typeof accounts)[number] | typeof saved) =>
+                    (other: (typeof accounts)[number]) =>
+                      other.projectId === named.projectId &&
+                      other.providerConfigId === named.providerConfigId &&
+                      other.connectionName === named.connectionName;
+                  // A replacing start deleted the name's other requests, so its request is the
+                  // name's only one, and its account becomes the name's only one. Additive starts
+                  // leave several requests and keep every account.
+                  if (saved.named.length === 1) {
+                    for (const account of accounts) {
+                      if (account !== existing && sameName(saved)(account)) {
+                        uow.delete("connectedAccount", account.id, (b) => b.check());
+                      }
+                    }
+                  }
                   // An incoming ID belonging to another user must fail the create, never replace their binding.
                   uow.create("connectedAccount", {
                     id: state.connectedAccountId,
@@ -315,12 +390,6 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                     service: saved.service,
                     connectionName: saved.connectionName,
                   });
-                  const sameName =
-                    (named: (typeof accounts)[number] | typeof saved) =>
-                    (account: (typeof accounts)[number]) =>
-                      account.projectId === named.projectId &&
-                      account.providerConfigId === named.providerConfigId &&
-                      account.connectionName === named.connectionName;
                   // Reauthorization can move the account to this name, leaving its old name without one.
                   if (
                     existing &&

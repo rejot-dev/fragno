@@ -150,18 +150,29 @@ actions, or establish provider health. An OAuth request and its confirmed accoun
 meanings: a replacement authorization may be pending while the previously confirmed account remains
 available.
 
-Named lookup is additive: `POST /connection-requests` still starts a fresh attempt on every call,
-including repeated or concurrent calls with the same name. Earlier request IDs remain usable, and
-confirmed accounts remain addressable by their account IDs. Refreshing a new account does not remove
-other accounts sharing its name. Reauthorization returning the same owned account ID updates that
-binding without duplicating it; an incoming ID belonging to another user cannot replace their
-binding.
+`POST /connection-requests` starts a fresh attempt on every call. By default it is additive,
+including repeated or concurrent calls with the same name: earlier requests and their IDs remain
+usable, and confirming the new request does not remove other accounts sharing its name.
+Reauthorization returning the same owned account ID updates that binding without duplicating it; an
+incoming ID belonging to another user cannot replace their binding.
+
+Pass `replace: true` to start over under a name instead, such as after a failed or expired attempt,
+or to consent again for a name that already has an account. The start deletes the name's earlier
+requests in the same transaction, pending ones included, so the name answers with the new request
+alone. Refreshing a deleted request returns `REQUEST_NOT_FOUND` without contacting the gateway, so
+consent through an abandoned link never binds. Ended attempts are not kept as history.
+
+Confirming a request that is its name's only request makes its account the name's only one: the
+user's other accounts under the name are removed. A replacing start always leaves its request alone
+under the name, while additive starts leave several requests, so additive confirmations keep every
+account. The previous account stays usable until the replacement confirms.
 
 If either lookup matches more than one record, it returns `CONNECTION_AMBIGUOUS` (409), even when
 only one request is pending. The fragment does not choose the newest record, prefer a status, or
-infer a current attempt. Lookups inspect at most two matching records plus the pagination lookahead;
-no historical reconciliation or current-selection store is introduced. Use an already-known request
-or account ID when a name is ambiguous.
+infer a current attempt; a replacing start is how a caller resolves the ambiguity. Lookups inspect
+at most two matching records plus the pagination lookahead; no historical reconciliation or
+current-selection store is introduced. Use an already-known request or account ID when a name is
+ambiguous.
 
 After a page reload or server restart, recover the source-owned request instead of keeping a
 separate setup handle:
@@ -196,7 +207,8 @@ machinery. Repeating a start is not a way to resume an existing attempt.
 **Schema migration:** version 4 adds non-unique named lookup indexes; databases keep duplicate names
 without reconciliation or a reset. Version 6 makes `connectionName` non-null on requests and
 accounts. Every start has required a name, so stored rows are expected to have one; the migration
-fails on a database that holds a null name.
+fails on a database that holds a null name. Existing duplicate names stay ambiguous until a
+replacing start.
 
 ### Readiness hook
 
@@ -205,9 +217,10 @@ fails on a database that holds a null name.
 write changes whether the name has a confirmed account: `ready: false` when the first request for a
 name starts, and `ready: true` when a refresh confirms the name's first account. A refresh that
 moves an existing account ID to another name also reports the old name `ready: false` when it has no
-other account. Further attempts for a name that already has an account fire nothing. The gateway
-does not notify the fragment of consent or revocation, so readiness changes only when
-`POST /connection-requests/:requestId/refresh` runs.
+other account. Further attempts for a name that already has an account fire nothing, and neither
+does confirming a replacing request for such a name. The gateway does not notify the fragment of
+consent or revocation, so readiness changes only when `POST /connection-requests/:requestId/refresh`
+runs.
 
 ## Client flow
 
@@ -254,7 +267,7 @@ availability.
 | GET    | `/provider-configs/:providerConfigId/actions`                                        | List allowed action contracts for one exact OAuth configuration |
 | GET    | `/status`                                                                            | Check project-key authentication                                |
 | GET    | `/connection-requests/by-name?projectId=...&providerConfigId=...&connectionName=...` | Read an unambiguous request by exact name                       |
-| POST   | `/connection-requests`                                                               | Start a fresh OAuth request                                     |
+| POST   | `/connection-requests`                                                               | Start a fresh OAuth request, or replace the name's requests     |
 | POST   | `/connection-requests/:requestId/refresh`                                            | Verify gateway status and bind a completed account              |
 | GET    | `/accounts?cursor=...`                                                               | List this user's locally verified account bindings              |
 | GET    | `/accounts/by-name?projectId=...&providerConfigId=...&connectionName=...`            | Read an unambiguous confirmed account by exact name             |
