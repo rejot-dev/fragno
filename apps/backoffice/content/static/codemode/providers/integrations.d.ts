@@ -16,7 +16,7 @@ type IntegrationsCodemodeProvider = {
    */
   get(input: IntegrationsGetInput): Promise<IntegrationsGetOutput>;
   /**
-   * Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Ready connections keep their configuration and credentials; reconfigure replaces them.
+   * Read current requirements or submit input for a deterministic connection address. Setup is source-owned; this operation retains no attempt state or independent binding. Ready connections keep their configuration and credentials; reconfigure replaces them. Input may move setup to another address the same source derives from it, such as a new connection name; the progress names the address it describes.
    * Requires `integrations.manage`.
    */
   setup(input: IntegrationsSetupInput): Promise<IntegrationsSetupOutput>;

@@ -16,7 +16,10 @@ import {
 import { z } from "zod";
 
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
-import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
+import {
+  BackofficeUnavailableError,
+  isBackofficeForbiddenError,
+} from "@/backoffice-runtime/kernel";
 import { backofficePublicScopePathSegment } from "@/backoffice-runtime/route-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { ProjectConnectorFragment } from "@/fragno/project-connector";
@@ -36,12 +39,21 @@ import {
   compileIntegrationActionSchema,
   describeSchemaViolations,
 } from "./integration-action-json-schema";
+import type { IntegrationSetupOperation } from "./integration-contracts";
 import { connectionStateOfInspection } from "./integration-events";
 import type { IntegrationContext, IntegrationImplementation } from "./integration-implementation";
 
+type ConnectorRuntime = Pick<BackofficeRuntimeServices, "objects" | "config">;
 type ConnectorAccount = z.output<typeof projectConnectorAccountSchema>;
+type ConnectorRequest = z.output<typeof projectConnectorConnectionSchema>;
+type ConnectorAddress = ReturnType<typeof decodeConnectorConnectionLocalId>;
 const connectorSetupInputSchema = z.strictObject({
   start: z.literal(true).describe("Explicitly start OAuth for this named connection."),
+  connectionName: projectConnectorNamedConnectionSchema.shape.connectionName
+    .optional()
+    .describe(
+      "Start under this name instead, such as for another account of the same service; the progress names that connection.",
+    ),
 });
 const connectorProfileCheck = { id: "account.profile", label: "Read provider profile" };
 
@@ -64,40 +76,40 @@ function inspectConnectorAccount(account: ConnectorAccount | null): IntegrationI
   };
 }
 
-function describeConnectorRequest(
-  connectionId: string,
-  request: z.output<typeof projectConnectorConnectionSchema>,
-): IntegrationSetupProgress {
+/** Why the name's latest attempt left it without an account; null when it was never started. */
+function describeEndedAttempt(request: ConnectorRequest | null): string | null {
+  if (!request) {
+    return null;
+  }
   switch (request.state.status) {
     case "initiated":
-      return {
-        connectionId,
-        status: "needs-authorization",
-        instructions:
-          "Complete browser consent, then check setup again to confirm it with the gateway.",
-        authorizationUrl: request.authorizationUrl,
-      };
-    case "connected":
-      return { connectionId, status: "ready" };
-    case "failed":
-      return {
-        connectionId,
-        status: "blocked",
-        reason:
-          "Connector OAuth failed. Use a fresh connection name for another attempt; historical requests are retained.",
-      };
+      return null;
+    case "failed": {
+      const { errorCode, errorMessage } = request.state;
+      const code = errorCode ? ` (${errorCode})` : "";
+      return `The last OAuth attempt failed${code}${errorMessage ? `: ${errorMessage.replace(/\.$/, "")}` : ""}.`;
+    }
     case "expired":
-      return {
-        connectionId,
-        status: "expired",
-        reason:
-          "Connector OAuth expired. Use a fresh connection name for another attempt; historical requests are retained.",
-      };
+      return "The last OAuth attempt expired before consent completed.";
+    case "connected":
+      return "Earlier consent no longer has an account under this name.";
     default:
       throw new Error("Connector integration OAuth state is unsupported.", {
         cause: request.state satisfies never,
       });
   }
+}
+
+function startInstructions(reason: string | null) {
+  return [
+    reason,
+    reason
+      ? "Submit { start: true } to start a new OAuth attempt; it replaces the earlier ones."
+      : "Submit { start: true } to start OAuth.",
+    "Provider credentials and browser consent remain with the source.",
+  ]
+    .filter((part) => part !== null)
+    .join(" ");
 }
 
 function createConnectorActionValidator(schema: Record<string, unknown>) {
@@ -108,229 +120,301 @@ function createConnectorActionValidator(schema: Record<string, unknown>) {
   return validator;
 }
 
+function createConnectorAccess(runtime: ConnectorRuntime, context: IntegrationContext) {
+  if (context.execution.scope.kind !== "user") {
+    throw new BackofficeUnavailableError("Connector integration requires a user scope.");
+  }
+  if (!runtime.config.bindings.projectConnector) {
+    throw new BackofficeUnavailableError("Connector integration object binding is unavailable.");
+  }
+  const object = context.kernel.scoped(
+    "PROJECT_CONNECTOR",
+    context.execution.scope,
+    runtime.objects.projectConnector,
+  );
+  const transport = authorizedBackofficeObjectHttp(object.http, context.execution);
+  const callRoute = createRouteCaller<ProjectConnectorFragment>({
+    baseUrl: "https://project-connector.do",
+    mountRoute: "/api/project-connector",
+    fetch: transport.fetch.bind(transport),
+  });
+  function invoke<TResult>(
+    operation: BackofficePermissionRequirement,
+    resource: Record<string, string>,
+    execute: () => Promise<TResult>,
+  ) {
+    return context.kernel.invoke({
+      execution: context.execution,
+      operation,
+      resource: { capabilityId: "connector", ...resource },
+      execute,
+    });
+  }
+  function isNotConfigured(response: Awaited<ReturnType<typeof callRoute>>): boolean {
+    return (
+      response.type === "error" &&
+      response.status === 400 &&
+      z.object({ code: z.literal("NOT_CONFIGURED") }).safeParse(response.error).success
+    );
+  }
+  function isAmbiguous(response: Awaited<ReturnType<typeof callRoute>>): boolean {
+    return (
+      response.type === "error" &&
+      response.status === 409 &&
+      z.object({ code: z.literal("CONNECTION_AMBIGUOUS") }).safeParse(response.error).success
+    );
+  }
+  function fail(response: Awaited<ReturnType<typeof callRoute>>): never {
+    return throwOnRouteRuntimeError(response, {
+      runtimeLabel: "Connector integration",
+      label: "Connector source operation",
+      notConfiguredMessage: "Connector is not configured.",
+    });
+  }
+  async function providers() {
+    const response = await invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
+      callRoute("GET", "/provider-configs"),
+    );
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return response.data;
+    }
+    return fail(response);
+  }
+  function namedAccount(selector: z.output<typeof projectConnectorNamedConnectionSchema>) {
+    return invoke(BACKOFFICE_PERMISSION.connections.read, selector, () =>
+      callRoute("GET", "/accounts/by-name", { query: selector }),
+    );
+  }
+  function namedRequest(selector: z.output<typeof projectConnectorNamedConnectionSchema>) {
+    return invoke(BACKOFFICE_PERMISSION.connections.manage, selector, () =>
+      callRoute("GET", "/connection-requests/by-name", { query: selector }),
+    );
+  }
+  function currentRequestsPage(cursor: string | null) {
+    return invoke(BACKOFFICE_PERMISSION.connections.manage, {}, () =>
+      callRoute("GET", "/connection-requests/current", {
+        query: cursor === null ? {} : { cursor },
+      }),
+    );
+  }
+  /** Every saved request across names, pending, ended, and confirmed alike. */
+  async function currentRequests(): Promise<ConnectorRequest[]> {
+    const requests: ConnectorRequest[] = [];
+    let cursor: string | null = null;
+    do {
+      const response = await currentRequestsPage(cursor);
+      if (cursor === null && isNotConfigured(response)) {
+        return [];
+      }
+      if (response.type !== "json" || !isSuccessStatus(response.status)) {
+        return fail(response);
+      }
+      requests.push(...response.data.requests);
+      cursor = response.data.cursor;
+    } while (cursor !== null);
+    return requests;
+  }
+  /** Checking never creates consent; the native refresh confirms and persists only gateway evidence. */
+  function refresh(requestId: string) {
+    return invoke(BACKOFFICE_PERMISSION.connections.manage, { requestId }, () =>
+      callRoute("POST", "/connection-requests/:requestId/refresh", {
+        pathParams: { requestId },
+      }),
+    );
+  }
+  return {
+    callRoute,
+    invoke,
+    fail,
+    isNotConfigured,
+    isAmbiguous,
+    providers,
+    namedAccount,
+    namedRequest,
+    currentRequests,
+    refresh,
+  };
+}
+
 /** Projects user-owned OAuth requests and accounts without owning credentials or current-selection state. */
 export function createConnectorIntegration({
   runtime,
   nowEpochMs,
 }: {
-  runtime: Pick<BackofficeRuntimeServices, "objects" | "config">;
+  runtime: ConnectorRuntime;
   nowEpochMs: () => number;
 }): IntegrationImplementation {
-  function createConnectorAccess(context: IntegrationContext) {
-    if (context.execution.scope.kind !== "user") {
-      throw new BackofficeUnavailableError("Connector integration requires a user scope.");
+  /**
+   * Brings a name to a confirmed account. A start replaces the name's earlier attempts, and once
+   * it confirms, its account replaces the name's others. Reconfigure consents again for a name that
+   * has an account; setup reports such a name ready.
+   */
+  async function runNamedSetup(
+    context: IntegrationContext,
+    address: ConnectorAddress,
+    operation: IntegrationSetupOperation,
+    mode: "setup" | "reconfigure",
+  ): Promise<IntegrationSetupProgress> {
+    const connectionId = encodeConnectorConnectionId(address);
+    // Invalid input never selects a connection, not even this one.
+    const input =
+      operation.kind === "input" ? connectorSetupInputSchema.parse(operation.input) : null;
+    if (context.execution.scope.kind !== "user" || !runtime.config.bindings.projectConnector) {
+      return {
+        connectionId,
+        status: "blocked",
+        reason: "Connector requires an available user-owned configuration store.",
+      };
     }
-    if (!runtime.config.bindings.projectConnector) {
-      throw new BackofficeUnavailableError("Connector integration object binding is unavailable.");
-    }
-    const object = context.kernel.scoped(
-      "PROJECT_CONNECTOR",
-      context.execution.scope,
-      runtime.objects.projectConnector,
-    );
-    const transport = authorizedBackofficeObjectHttp(object.http, context.execution);
-    const callRoute = createRouteCaller<ProjectConnectorFragment>({
-      baseUrl: "https://project-connector.do",
-      mountRoute: "/api/project-connector",
-      fetch: transport.fetch.bind(transport),
-    });
-    function invoke<TResult>(
-      operation: BackofficePermissionRequirement,
-      resource: Record<string, string>,
-      execute: () => Promise<TResult>,
-    ) {
-      return context.kernel.invoke({
-        execution: context.execution,
-        operation,
-        resource: { capabilityId: "connector", ...resource },
-        execute,
-      });
-    }
-    function isNotConfigured(response: Awaited<ReturnType<typeof callRoute>>): boolean {
-      return (
-        response.type === "error" &&
-        response.status === 400 &&
-        z.object({ code: z.literal("NOT_CONFIGURED") }).safeParse(response.error).success
-      );
-    }
-    function fail(response: Awaited<ReturnType<typeof callRoute>>): never {
-      return throwOnRouteRuntimeError(response, {
-        runtimeLabel: "Connector integration",
-        label: "Connector source operation",
-        notConfiguredMessage: "Connector is not configured.",
-      });
-    }
-    async function providers() {
-      const response = await invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
-        callRoute("GET", "/provider-configs"),
-      );
-      if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data;
+    const [, projectId, providerConfigId, connectionName] = address;
+    // Setup input can name another connection of the same provider, which setup continues at.
+    if (input?.connectionName !== undefined && input.connectionName !== connectionName) {
+      if (mode === "reconfigure") {
+        throw new Error(
+          "Connector reconfigure keeps the connection name; set up the other name instead.",
+        );
       }
-      return fail(response);
-    }
-    function namedAccount(selector: z.output<typeof projectConnectorNamedConnectionSchema>) {
-      return invoke(BACKOFFICE_PERMISSION.connections.read, selector, () =>
-        callRoute("GET", "/accounts/by-name", { query: selector }),
+      return await runNamedSetup(
+        context,
+        ["named", projectId, providerConfigId, input.connectionName],
+        { kind: "input", input: { start: true } },
+        mode,
       );
     }
-    return { callRoute, invoke, fail, isNotConfigured, providers, namedAccount };
+    const access = createConnectorAccess(runtime, context);
+    const selector = { projectId, providerConfigId, connectionName };
+    const accountResponse = await access.namedAccount(selector);
+    if (access.isNotConfigured(accountResponse)) {
+      return {
+        connectionId,
+        status: "blocked",
+        reason:
+          "Connector must be configured through its existing server configuration before OAuth setup.",
+      };
+    }
+    let account: ConnectorAccount | null = null;
+    let ambiguity: string | null = null;
+    if (accountResponse.type === "json" && isSuccessStatus(accountResponse.status)) {
+      account = accountResponse.data.account;
+    } else if (access.isAmbiguous(accountResponse)) {
+      ambiguity = "This name matches several accounts.";
+    } else {
+      return access.fail(accountResponse);
+    }
+    const saved = await access.namedRequest(selector);
+    let request: ConnectorRequest | null = null;
+    if (saved.type === "json" && isSuccessStatus(saved.status)) {
+      request = saved.data.request;
+    } else if (access.isAmbiguous(saved)) {
+      ambiguity ??= "This name matches several OAuth attempts.";
+    } else {
+      return access.fail(saved);
+    }
+    if (request?.state.status === "initiated") {
+      const refreshed = await access.refresh(request.id);
+      if (refreshed.type !== "json" || !isSuccessStatus(refreshed.status)) {
+        throwOnBackofficeRouteAuthorizationError(refreshed);
+        return {
+          connectionId,
+          status: "blocked",
+          reason: `Connector OAuth confirmation failed (HTTP ${refreshed.status}). The saved request has not been replaced.`,
+        };
+      }
+      request = refreshed.data;
+      if (request.state.status === "initiated") {
+        // Serial starts reuse the pending link instead of abandoning it.
+        return {
+          connectionId,
+          status: "needs-authorization",
+          instructions:
+            "Complete browser consent, then check setup again to confirm it with the gateway.",
+          authorizationUrl: request.authorizationUrl,
+        };
+      }
+      if (request.state.status === "connected") {
+        // The refresh bound the account under this name, replacing any other.
+        return { connectionId, status: "ready" };
+      }
+    }
+    if (account && mode === "setup") {
+      return { connectionId, status: "ready" };
+    }
+    const reason = account
+      ? [
+          request?.state.status === "connected" ? null : describeEndedAttempt(request),
+          "The current account stays usable until new consent confirms and replaces it.",
+        ]
+          .filter((part) => part !== null)
+          .join(" ")
+      : (ambiguity ?? describeEndedAttempt(request));
+
+    const discovery = await access.providers();
+    const provider = discovery.providerConfigs.find(
+      (provider) => provider.id === selector.providerConfigId,
+    );
+    if (discovery.projectId !== selector.projectId || !provider) {
+      return {
+        connectionId,
+        status: "blocked",
+        reason: "Connector named setup target does not match the configured project and provider.",
+      };
+    }
+    if (input === null) {
+      return {
+        connectionId,
+        status: "needs-input",
+        instructions: startInstructions(reason),
+        inputSchema: z.toJSONSchema(connectorSetupInputSchema, { io: "input" }),
+        secretFields: [],
+      };
+    }
+    const returnUri = projectConnectorPublicAddress(
+      runtime.config.docsPublicBaseUrl,
+      backofficePublicScopePathSegment(context.execution.scope),
+    ).oauthRedirectUri;
+    const started = await access.invoke(BACKOFFICE_PERMISSION.connections.manage, selector, () =>
+      access.callRoute("POST", "/connection-requests", {
+        body: {
+          providerConfigId: selector.providerConfigId,
+          connectionName: selector.connectionName,
+          returnUri,
+          replace: true,
+        },
+      }),
+    );
+    if (started.type !== "json" || !isSuccessStatus(started.status)) {
+      return access.fail(started);
+    }
+    if (
+      started.data.projectId !== selector.projectId ||
+      started.data.providerConfigId !== selector.providerConfigId ||
+      started.data.connectionName !== selector.connectionName ||
+      started.data.service !== provider.service
+    ) {
+      throw new Error(
+        "Connector integration OAuth response does not match the named setup target.",
+      );
+    }
+    return {
+      connectionId,
+      status: "needs-authorization",
+      instructions:
+        "Complete browser consent, then check setup again to confirm it with the gateway.",
+      authorizationUrl: started.data.authorizationUrl,
+    };
   }
 
   return {
     connectionIds: [{ kind: "namespace", namespace: "connector" }],
     setup: {
       kind: "supported",
-      async run(context, { localId, operation }) {
-        const address = decodeConnectorConnectionLocalId(localId);
-        const connectionId = encodeConnectorConnectionId(address);
-        if (context.execution.scope.kind !== "user" || !runtime.config.bindings.projectConnector) {
-          return {
-            connectionId,
-            status: "blocked",
-            reason: "Connector requires an available user-owned configuration store.",
-          };
-        }
-        const access = createConnectorAccess(context);
-        const [, projectId, providerConfigId, connectionName] = address;
-        const selector = { projectId, providerConfigId, connectionName };
-        const account = await access.namedAccount(selector);
-        if (access.isNotConfigured(account)) {
-          return {
-            connectionId,
-            status: "blocked",
-            reason:
-              "Connector must be configured through its existing server configuration before OAuth setup.",
-          };
-        }
-        if (account.type === "json" && isSuccessStatus(account.status)) {
-          if (account.data.account) {
-            return { connectionId, status: "ready" };
-          }
-        } else if (
-          account.type === "error" &&
-          account.status === 409 &&
-          account.error.code === "CONNECTION_AMBIGUOUS"
-        ) {
-          return {
-            connectionId,
-            status: "blocked",
-            reason:
-              "Connector named connection matches multiple accounts. Start setup with a fresh connection name.",
-          };
-        } else {
-          return access.fail(account);
-        }
-        const saved = await access.invoke(BACKOFFICE_PERMISSION.connections.manage, selector, () =>
-          access.callRoute("GET", "/connection-requests/by-name", { query: selector }),
-        );
-        if (saved.type !== "json" || !isSuccessStatus(saved.status)) {
-          if (
-            saved.type === "error" &&
-            saved.status === 409 &&
-            saved.error.code === "CONNECTION_AMBIGUOUS"
-          ) {
-            return {
-              connectionId,
-              status: "blocked",
-              reason:
-                "Connector named connection matches multiple OAuth requests, and no current attempt is inferred. Start setup with a fresh connection name.",
-            };
-          }
-          return access.fail(saved);
-        }
-        const request = saved.data.request;
-        if (request) {
-          if (request.state.status === "connected") {
-            // Retained requests are history: reauthorization can move the same account ID to another name.
-            return {
-              connectionId,
-              status: "blocked",
-              reason:
-                "Connector OAuth completed, but no current account has this name. Start setup with a fresh connection name.",
-            };
-          }
-          if (request.state.status !== "initiated") {
-            return describeConnectorRequest(connectionId, request);
-          }
-          // Checking never creates consent; the native refresh confirms and persists only gateway evidence.
-          const refreshed = await access.invoke(
-            BACKOFFICE_PERMISSION.connections.manage,
-            { requestId: request.id },
-            () =>
-              access.callRoute("POST", "/connection-requests/:requestId/refresh", {
-                pathParams: { requestId: request.id },
-              }),
-          );
-          if (refreshed.type === "json" && isSuccessStatus(refreshed.status)) {
-            return describeConnectorRequest(connectionId, refreshed.data);
-          }
-          throwOnBackofficeRouteAuthorizationError(refreshed);
-          return {
-            connectionId,
-            status: "blocked",
-            reason: `Connector OAuth confirmation failed (HTTP ${refreshed.status}). The saved request has not been replaced.`,
-          };
-        }
-        const discovery = await access.providers();
-        const provider = discovery.providerConfigs.find(
-          (provider) => provider.id === selector.providerConfigId,
-        );
-        if (discovery.projectId !== selector.projectId || !provider) {
-          return {
-            connectionId,
-            status: "blocked",
-            reason:
-              "Connector named setup target does not match the configured project and provider.",
-          };
-        }
-        if (operation.kind === "check") {
-          return {
-            connectionId,
-            status: "needs-input",
-            instructions:
-              "Submit { start: true } to start OAuth. Provider credentials and browser consent remain with the source.",
-            inputSchema: z.toJSONSchema(connectorSetupInputSchema, { io: "input" }),
-            secretFields: [],
-          };
-        }
-        connectorSetupInputSchema.parse(operation.input);
-        const returnUri = projectConnectorPublicAddress(
-          runtime.config.docsPublicBaseUrl,
-          backofficePublicScopePathSegment(context.execution.scope),
-        ).oauthRedirectUri;
-        const started = await access.invoke(
-          BACKOFFICE_PERMISSION.connections.manage,
-          selector,
-          () =>
-            access.callRoute("POST", "/connection-requests", {
-              body: {
-                providerConfigId: selector.providerConfigId,
-                connectionName: selector.connectionName,
-                returnUri,
-              },
-            }),
-        );
-        if (started.type !== "json" || !isSuccessStatus(started.status)) {
-          return access.fail(started);
-        }
-        if (
-          started.data.projectId !== selector.projectId ||
-          started.data.providerConfigId !== selector.providerConfigId ||
-          started.data.connectionName !== selector.connectionName ||
-          started.data.service !== provider.service
-        ) {
-          throw new Error(
-            "Connector integration OAuth response does not match the named setup target.",
-          );
-        }
-        return describeConnectorRequest(connectionId, started.data);
-      },
+      run: (context, { localId, operation }) =>
+        runNamedSetup(context, decodeConnectorConnectionLocalId(localId), operation, "setup"),
     },
     reconfigure: {
-      kind: "unsupported",
-      reason:
-        "Connector accounts are not replaced in place. Set up a fresh connection name to consent again; the gateway owns credentials.",
+      kind: "supported",
+      run: (context, { localId, operation }) =>
+        runNamedSetup(context, decodeConnectorConnectionLocalId(localId), operation, "reconfigure"),
     },
     disconnect: {
       kind: "unsupported",
@@ -340,9 +424,10 @@ export function createConnectorIntegration({
       if (context.execution.scope.kind !== "user" || !runtime.config.bindings.projectConnector) {
         return [];
       }
+      const access = createConnectorAccess(runtime, context);
       let discovery;
       try {
-        discovery = await createConnectorAccess(context).providers();
+        discovery = await access.providers();
       } catch (cause) {
         // An unconfigured source has no authoritative service identities to publish.
         if (cause instanceof NotConfiguredError) {
@@ -350,25 +435,46 @@ export function createConnectorIntegration({
         }
         throw cause;
       }
+      // Names already started, pending or ended, are setup targets too. Reading requests needs
+      // connections.manage; without it, discovery offers only the preassigned names.
+      let started: ConnectorRequest[] = [];
+      try {
+        started = await access.currentRequests();
+      } catch (cause) {
+        if (!isBackofficeForbiddenError(cause)) {
+          throw cause;
+        }
+      }
       const services = [...new Set(discovery.providerConfigs.map((provider) => provider.service))];
       return services.map((service) => ({
         id: service,
         label: service,
-        description: `OAuth connections for ${service} using this user's configured project providers.`,
+        description: `OAuth connections for ${service} using this user's configured project providers. Targets name the default connection and every name already started; to connect another account, submit { start: true, connectionName } to a target's setup.`,
         connectionCardinality: "multiple",
         availability: { status: "available" },
         // This preassigned source name makes a concrete setup target available before OAuth assigns an account ID.
         setupTargets: discovery.providerConfigs
           .filter((provider) => provider.service === service)
-          .map((provider) => ({
-            kind: "connection",
-            connectionId: encodeConnectorConnectionId([
-              "named",
-              discovery.projectId,
-              provider.id,
-              service,
-            ]),
-          })),
+          .flatMap((provider) => {
+            const names = new Set([service]);
+            for (const request of started) {
+              if (
+                request.projectId === discovery.projectId &&
+                request.providerConfigId === provider.id
+              ) {
+                names.add(request.connectionName);
+              }
+            }
+            return [...names].map((name) => ({
+              kind: "connection" as const,
+              connectionId: encodeConnectorConnectionId([
+                "named",
+                discovery.projectId,
+                provider.id,
+                name,
+              ]),
+            }));
+          }),
         automationEvents: [],
       }));
     },
@@ -376,7 +482,7 @@ export function createConnectorIntegration({
       if (context.execution.scope.kind !== "user" || !runtime.config.bindings.projectConnector) {
         return { connections: [], cursor: null };
       }
-      const access = createConnectorAccess(context);
+      const access = createConnectorAccess(runtime, context);
       const response = await access.invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
         access.callRoute("GET", "/accounts", { query: cursor === null ? {} : { cursor } }),
       );
@@ -406,7 +512,7 @@ export function createConnectorIntegration({
     },
     async resolve(context, localId) {
       const address = decodeConnectorConnectionLocalId(localId);
-      const access = createConnectorAccess(context);
+      const access = createConnectorAccess(runtime, context);
       const [, projectId, providerConfigId, name] = address;
       const response = await access.namedAccount({
         projectId,
@@ -452,7 +558,7 @@ export function createConnectorIntegration({
             accountId: account?.id ?? null,
           };
         },
-        // Consent is never replaced; a fresh connection name consents again.
+        // Reconfigure takes only { start: true }; no stored value carries over to new consent.
         async settings() {
           return null;
         },

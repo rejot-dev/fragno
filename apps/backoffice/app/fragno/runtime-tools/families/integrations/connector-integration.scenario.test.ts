@@ -3,6 +3,7 @@ import { assert, expect, test, vi } from "vitest";
 import { Buffer } from "node:buffer";
 
 import { integrationSetupProgressSchema } from "@fragno-dev/backoffice-api/v0/integrations";
+import type { z } from "zod";
 
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
@@ -200,5 +201,133 @@ test("Connector setup resumes consent across restarts and binds the account only
         },
       ),
     ],
+  }));
+});
+
+test("Connector setup replaces an ended attempt, offers started names, and starts other names", async () => {
+  await runProjectConnectorScenario<{ requestIds: string[] }>((gateway) => ({
+    objects: scenarioObjects,
+    name: "Connector attempts are replaced under their own name",
+    vars: () => ({ requestIds: [] }),
+    steps: ({ then }) => {
+      /** Runs one integrations call as the owner; the gateway's links end in the request ID. */
+      async function setup(
+        ctx: Parameters<Parameters<typeof then.assert>[1]>[0],
+        call: string,
+      ): Promise<z.output<typeof integrationSetupProgressSchema>> {
+        const run = await ctx.runCodemode({ scope: owner, code: `async () => await ${call}` });
+        const progress = integrationSetupProgressSchema.parse(run.result);
+        if (progress.status === "needs-authorization") {
+          const requestId = new URL(progress.authorizationUrl).pathname.split("/").at(-1);
+          assert(requestId);
+          ctx.vars.requestIds.push(requestId);
+        }
+        return progress;
+      }
+      const check = (connectionId: string, operation = "setup") =>
+        `integrations.${operation}({ kind: "check", connectionId: ${JSON.stringify(connectionId)} })`;
+      const start = (
+        connectionId: string,
+        input: { start: true; connectionName?: string } = { start: true },
+        operation = "setup",
+      ) =>
+        `integrations.${operation}({ kind: "input", connectionId: ${JSON.stringify(connectionId)}, input: ${JSON.stringify(input)} })`;
+      return [
+        then.assert("a failed attempt asks for a start that replaces it", async (ctx) => {
+          expect(await setup(ctx, start(target))).toMatchObject({ status: "needs-authorization" });
+          const failed = gateway.requests.get(ctx.vars.requestIds[0]!);
+          assert(failed);
+          failed.status = "failed";
+          failed.errorCode = "authorization_failed";
+          failed.errorMessage = "Consent was rejected";
+          const checked = await setup(ctx, check(target));
+          assert(checked.status === "needs-input");
+          expect(checked.instructions).toContain(
+            "The last OAuth attempt failed (authorization_failed): Consent was rejected.",
+          );
+          const restarted = await setup(ctx, start(target));
+          expect(restarted).toMatchObject({ status: "needs-authorization", connectionId: target });
+          expect(ctx.vars.requestIds).toHaveLength(2);
+          expect(gateway.links).toHaveLength(2);
+        }),
+        then.assert("only the replacement's consent binds the name", async (ctx) => {
+          const [first, replacement] = ctx.vars.requestIds;
+          assert(first && replacement);
+          gateway.authorize(first, "stale-account");
+          gateway.authorize(replacement, "gmail-account");
+          expect(await setup(ctx, check(target))).toEqual({
+            connectionId: target,
+            status: "ready",
+          });
+          const run = await ctx.runCodemode({
+            scope: owner,
+            code: `async () => await integrations.execute({ connectionId: ${JSON.stringify(target)}, actionId: "gmail.search_threads", input: { query: "is:unread" } })`,
+          });
+          expect(run.result).toMatchObject({ query: "is:unread" });
+          expect(gateway.executions.map((execution) => execution.connectedAccountId)).toEqual([
+            "gmail-account",
+          ]);
+        }),
+        then.assert("setup input starts another name, which discovery then offers", async (ctx) => {
+          expect(
+            await setup(ctx, start(target, { start: true, connectionName: "work" })),
+          ).toMatchObject({ status: "needs-authorization", connectionId: workTarget });
+          const run = await ctx.runCodemode({
+            scope: owner,
+            code: `async () => (await integrations.discover()).find((service) => service.id === "gmail").setupTargets`,
+          });
+          expect(run.result).toEqual([
+            { kind: "connection", connectionId: target },
+            { kind: "connection", connectionId: workTarget },
+          ]);
+          // Repeating the start reuses the pending link instead of abandoning it.
+          const repeated = await setup(ctx, start(workTarget));
+          assert(repeated.status === "needs-authorization");
+          expect(new Set(ctx.vars.requestIds.slice(2))).toHaveProperty("size", 1);
+        }),
+        then.assert(
+          "invalid input selects no connection, not even a pending or ready one",
+          async (ctx) => {
+            const links = gateway.links.length;
+            // `target` is ready and `workTarget` is pending; neither may answer for invalid input.
+            for (const connectionId of [target, workTarget]) {
+              for (const operation of ["setup", "reconfigure"]) {
+                await expect(
+                  ctx.runCodemode({
+                    scope: owner,
+                    code: `async () => await ${start(connectionId, { start: true, connectionName: "Work" }, operation)}`,
+                  }),
+                ).rejects.toThrow();
+              }
+            }
+            expect(gateway.links).toHaveLength(links);
+          },
+        ),
+        then.assert("reconfigure consents again while the account stays usable", async (ctx) => {
+          const checked = await setup(ctx, check(target, "reconfigure"));
+          assert(checked.status === "needs-input");
+          expect(checked.instructions).toContain("The current account stays usable");
+          expect(await setup(ctx, start(target, { start: true }, "reconfigure"))).toMatchObject({
+            status: "needs-authorization",
+            connectionId: target,
+          });
+          // Setup reports the pending replacement until its consent confirms.
+          expect(await setup(ctx, check(target))).toMatchObject({ status: "needs-authorization" });
+          gateway.authorize(ctx.vars.requestIds.at(-1)!, "replacement-account");
+          expect(await setup(ctx, check(target))).toEqual({
+            connectionId: target,
+            status: "ready",
+          });
+          await ctx.runCodemode({
+            scope: owner,
+            code: `async () => await integrations.execute({ connectionId: ${JSON.stringify(target)}, actionId: "gmail.search_threads", input: { query: "is:read" } })`,
+          });
+          expect(gateway.executions.map((execution) => execution.connectedAccountId)).toEqual([
+            "gmail-account",
+            "replacement-account",
+          ]);
+        }),
+      ];
+    },
   }));
 });
