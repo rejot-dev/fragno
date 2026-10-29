@@ -30,7 +30,7 @@ import { FormsObject } from "../../../../workers/forms-object";
 import { OtpObject } from "../../../../workers/otp-object";
 import { TelegramObject } from "../../../../workers/telegram-object";
 import { UploadObject } from "../../../../workers/upload-object";
-import { action as eventsAction } from "./events";
+import { action as activityAction } from "./activity";
 
 const ORIGIN = "https://backoffice.example";
 
@@ -53,7 +53,7 @@ type RouteRetryVars = {
 
 type Ctx = BackofficeScenarioContext<RouteRetryVars>;
 
-const EVENTS_PAGE = "/backoffice/dashboard/org/ada/events";
+const ACTIVITY_PAGE = "/backoffice/dashboard/org/ada/activity";
 const EVENT_ID = "check-1";
 
 /** Builds the route arguments React Router passes for one signed-in browser form post. */
@@ -120,11 +120,11 @@ async function forwardRoute(ctx: Ctx) {
   return routing.routes.find((route) => route.routeId === "forward");
 }
 
-test("an owner retries a route that failed for good from the events page", async () => {
+test("an owner retries a route that failed for good from the Activity page", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
       objects: scenarioObjects,
-      name: "Retry a failed route from the events page",
+      name: "Retry a failed route from the Activity page",
       // The retried route fails again, because it still forwards outside the organization.
       options: { allowFailedDurableHooks: true },
       vars: () => ({ adaSession: "", adaCookie: "", orgId: "" }),
@@ -179,8 +179,8 @@ test("an owner retries a route that failed for good from the events page", async
         }),
         then.assert("Ada retries it, and it runs again from a fresh count", async (ctx) => {
           const retry = (routeId: string) =>
-            behindBackofficeLayout(eventsAction)(
-              formPost(ctx, ctx.vars.adaCookie, EVENTS_PAGE, {
+            behindBackofficeLayout(activityAction)(
+              formPost(ctx, ctx.vars.adaCookie, ACTIVITY_PAGE, {
                 intent: "retry-route",
                 eventId: EVENT_ID,
                 routeId,

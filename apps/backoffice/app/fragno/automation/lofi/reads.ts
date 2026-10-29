@@ -258,21 +258,10 @@ export function readWorkflowRuns(
   );
 }
 
-/** The events that occurred since `since`, as the dashboard counts them. */
-export function readAutomationEventsSince(reader: LofiSqliteReader, since: Date) {
-  const event = automationFragmentSchema.tables.automation_event.columns;
-  return reader.query({
-    sql: `SELECT "source", "eventType", "occurredAt"
-          FROM ${automationTable("automation_event")}
-          WHERE "occurredAt" >= ?`,
-    params: [since.getTime()],
-    columns: { source: event.source, eventType: event.eventType, occurredAt: event.occurredAt },
-  });
-}
-
 /**
  * What the orchestration graph draws besides its records: the routes, and the source and type of
- * every event that occurred since `since`, in epoch milliseconds.
+ * every event that occurred since `since`, in epoch milliseconds, once per event so the graph can
+ * count them.
  */
 export function readOrchestrationGraphInputs(
   reader: LofiSqliteReader,
@@ -281,7 +270,7 @@ export function readOrchestrationGraphInputs(
   return {
     routes: readAutomationRoutes(reader),
     recentEvents: reader.query({
-      sql: `SELECT DISTINCT "source", "eventType"
+      sql: `SELECT "source", "eventType"
             FROM ${automationTable("automation_event")}
             WHERE "occurredAt" >= ?`,
       params: [since],

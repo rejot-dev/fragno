@@ -1,22 +1,14 @@
-import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
-import { RunStatusLight } from "@fragno-private/backoffice-ui/run-status-light";
 import { ButtonLink } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { ListRow, ListRowIcon, RowList } from "@fragno-private/design-system/list-row";
-import {
-  Panel,
-  PanelFooter,
-  PanelTable,
-  PanelTableRow,
-  panelRowTitleClassName,
-} from "@fragno-private/design-system/panel";
+import { Panel, PanelFooter } from "@fragno-private/design-system/panel";
 import { formatRelativeTime } from "@fragno-private/design-system/relative-time";
 import { RunStopControl } from "@fragno-private/design-system/run-stop-control";
 import { SparkBars } from "@fragno-private/design-system/spark-bars";
-import { StackedBarChart } from "@fragno-private/design-system/stacked-bar-chart";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import { useEffect, useRef, useState } from "react";
+import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
+import { useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import {
@@ -34,14 +26,18 @@ import {
 } from "../agents/agent-activity";
 import { piAgentsPath } from "../agents/path";
 import type { AutomationWorkflowRun } from "../automations/script-view/workflow-run-presentation";
-import { IntegrationConnectionStateLight } from "../integrations/connection-display";
+import { integrationConnectionPath } from "../integrations/connection-paths";
 import {
-  integrationConnectionPath,
-  integrationsScopeBasePath,
-} from "../integrations/connection-paths";
-import { OrchestrationPanel, type OrchestrationLoaderData } from "./orchestration-panel";
+  RepeatsOutcome,
+  TraceOutcome,
+  describeTraceEffects,
+  describeTraceTrigger,
+  traceEffectsIcon,
+} from "./activity-parts";
+import type { EventTraceListEntry, EventTraceSummary } from "./event-traces";
 import type { BackofficeDashboard, DashboardAttention } from "./overview";
 import {
+  dashboardActivityPath,
   dashboardOpenedRun,
   dashboardPath,
   dashboardRunPath,
@@ -49,31 +45,30 @@ import {
 } from "./path";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 
-/** Sources beyond this many share one "other" series so the chart stays legible. */
-const CHART_SOURCE_LIMIT = 5;
-const OTHER_SOURCES = "other";
-const COLLAPSED_WORKFLOW_COUNT = 8;
 const WINDOW_LABEL = "24 hours";
-// Clears the sticky top bar when an opened run scrolls the Automations panel into view.
+// Clears the sticky top bar when an opened run scrolls into view.
 const openedRunScrollMarginClassName = "scroll-mt-20";
 
-export type DashboardLoaderData = OrchestrationLoaderData & { hasAgents: boolean };
+export type DashboardLoaderData = { selectedScope: BackofficeScopeSelection; hasAgents: boolean };
 
+/**
+ * The scope's overview: what needs a person, what is coming up, what agents are doing, and what
+ * automations did lately. How it is wired lives on the Map, and everything it did on Activity.
+ */
 export function DashboardSections({
   dashboard,
   now,
   loaderData,
   replica,
-  routes,
-  recentEvents,
+  recentActivity,
   agents,
 }: {
   dashboard: BackofficeDashboard;
   now: number;
   loaderData: DashboardLoaderData;
   replica: LofiSqliteClient;
-  routes: readonly AutomationRouteDefinition[];
-  recentEvents: readonly { source: string; eventType: string }[];
+  /** The latest traces that set something in motion, in list order. */
+  recentActivity: readonly EventTraceListEntry[];
   agents: readonly PiAgentListing[];
 }) {
   const { selectedScope } = loaderData;
@@ -82,38 +77,14 @@ export function DashboardSections({
   return (
     <>
       <AttentionPanel attention={dashboard.attention} now={now} selectedScope={selectedScope} />
-
-      <Panel title="Orchestration" leading={null} footer={null}>
-        <OrchestrationPanel
-          replica={replica}
-          routes={routes}
-          recentEvents={recentEvents}
-          selectedScope={selectedScope}
-          workflowSource={loaderData.workflowSource}
-          runtimeToolCatalog={loaderData.runtimeToolCatalog}
-        />
-      </Panel>
-
-      <div className="grid items-start gap-x-12 gap-y-10 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="flex min-w-0 flex-col gap-10">
-          <WorkflowHealthPanel
-            workflows={dashboard.workflows}
-            now={now}
-            selectedScope={selectedScope}
-            replica={replica}
-          />
-          <EventVolumePanel eventVolume={dashboard.eventVolume} />
-        </div>
-        <div className="flex min-w-0 flex-col gap-10">
-          <ConnectionsPanel dashboard={dashboard} now={now} selectedScope={selectedScope} />
-          {dashboard.upcoming.length > 0 ? (
-            <UpcomingPanel upcoming={dashboard.upcoming} now={now} selectedScope={selectedScope} />
-          ) : null}
-          {loaderData.hasAgents ? (
-            <AgentsPanel agents={agents} now={now} agentsPath={agentsPath} />
-          ) : null}
-        </div>
+      <OpenedRunPanel selectedScope={selectedScope} replica={replica} />
+      <div className="grid items-start gap-x-12 gap-y-10 lg:grid-cols-2">
+        <ComingUpPanel dashboard={dashboard} now={now} selectedScope={selectedScope} />
+        {loaderData.hasAgents ? (
+          <AgentsPanel agents={agents} now={now} agentsPath={agentsPath} />
+        ) : null}
       </div>
+      <RecentActivityPanel entries={recentActivity} now={now} selectedScope={selectedScope} />
     </>
   );
 }
@@ -294,18 +265,14 @@ function AwaitingInputActions({
   );
 }
 
-function WorkflowHealthPanel({
-  workflows,
-  now,
+/** The run a link elsewhere on the page or beyond it opened, above everything but what needs a person. */
+function OpenedRunPanel({
   selectedScope,
   replica,
 }: {
-  workflows: BackofficeDashboard["workflows"];
-  now: number;
   selectedScope: BackofficeScopeSelection;
   replica: LofiSqliteClient;
 }) {
-  const [showAll, setShowAll] = useState(false);
   const [searchParams] = useSearchParams();
   const openedRun = dashboardOpenedRun(searchParams);
   const openedRunKey = openedRun ? `${openedRun.workflowName}:${openedRun.instanceId}` : null;
@@ -317,157 +284,31 @@ function WorkflowHealthPanel({
     }
   }, [openedRunKey]);
 
-  if (openedRun) {
-    return (
-      <div ref={panelRef} className={`min-w-0 ${openedRunScrollMarginClassName}`}>
-        <Panel
-          title="Automations"
-          leading={
-            <BackLink to={dashboardPath(backofficeRouteScopeFromResolvedScope(selectedScope))} />
-          }
-          footer={null}
-        >
-          <WorkflowRunDetail
-            key={openedRunKey}
-            replica={replica}
-            reference={openedRun}
-            presentation={{ kind: "standalone" }}
-          />
-        </Panel>
-      </div>
-    );
+  if (openedRun === null) {
+    return null;
   }
-
-  const visibleWorkflows = showAll ? workflows : workflows.slice(0, COLLAPSED_WORKFLOW_COUNT);
-  const footer =
-    workflows.length > COLLAPSED_WORKFLOW_COUNT ? (
-      <PanelFooter>
-        <button
-          type="button"
-          onClick={() => {
-            setShowAll((current) => !current);
-          }}
-          className="font-semibold text-[var(--bo-accent-fg)] hover:underline"
-        >
-          {showAll ? "Show recent workflows" : `Show all ${workflows.length} workflows`}
-        </button>
-      </PanelFooter>
-    ) : null;
   return (
     <div ref={panelRef} className={`min-w-0 ${openedRunScrollMarginClassName}`}>
-      <PanelTable
-        title="Automations"
-        columns={workflowColumns}
-        empty="No workflow has run in this scope yet."
-        footer={footer}
+      <Panel
+        title="Run"
+        leading={
+          <BackLink to={dashboardPath(backofficeRouteScopeFromResolvedScope(selectedScope))} />
+        }
+        footer={null}
       >
-        {visibleWorkflows.map((workflow) => {
-          const finished = workflow.completedRuns + workflow.erroredRuns;
-          return (
-            <PanelTableRow
-              key={workflow.workflow}
-              columns={workflowColumns}
-              title={
-                <Link
-                  to={dashboardRunPath(selectedScope, workflow.latestRun)}
-                  preventScrollReset
-                  className={panelRowTitleClassName}
-                  title={workflow.workflow}
-                >
-                  {workflow.workflow}
-                </Link>
-              }
-              cells={[
-                <>
-                  <SparkBars
-                    values={workflow.startsPerBucket}
-                    ariaLabel={`${workflow.workflow} runs over the last ${WINDOW_LABEL}`}
-                  />
-                  <span className="text-[var(--bo-muted)] tabular-nums">
-                    {workflow.startedRuns}
-                  </span>
-                </>,
-                finished === 0 ? (
-                  <span className="text-[var(--bo-muted-2)]">—</span>
-                ) : (
-                  <span
-                    className={`tabular-nums ${workflow.erroredRuns > 0 ? "text-[var(--bo-failed)]" : "text-[var(--bo-live)]"}`}
-                  >
-                    {Math.round((workflow.completedRuns / finished) * 100)}%
-                  </span>
-                ),
-                <>
-                  <RunStatusLight status={workflow.latestRun.status} />
-                  <span className="w-16 text-right text-xs text-[var(--bo-muted-2)] tabular-nums">
-                    {formatRelativeTime(workflow.latestRun.updatedAt, now)}
-                  </span>
-                </>,
-              ]}
-            />
-          );
-        })}
-      </PanelTable>
+        <WorkflowRunDetail
+          key={openedRunKey}
+          replica={replica}
+          reference={openedRun}
+          presentation={{ kind: "standalone" }}
+        />
+      </Panel>
     </div>
   );
 }
 
-const workflowColumns = [
-  { label: `Runs · ${WINDOW_LABEL}`, align: "start" },
-  { label: "Success", align: "end" },
-  { label: "Last run", align: "end" },
-] as const;
-
-// Buckets carry their date because a day-long window starts and ends at the same hour.
-const bucketLabelFormat = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-  timeZone: "UTC",
-});
-
-function EventVolumePanel({ eventVolume }: { eventVolume: BackofficeDashboard["eventVolume"] }) {
-  const charted = eventVolume.sources.slice(0, CHART_SOURCE_LIMIT).map(({ source }) => source);
-  const hasOther = eventVolume.sources.length > CHART_SOURCE_LIMIT;
-  const series = [...charted, ...(hasOther ? [OTHER_SOURCES] : [])].map((id) => ({
-    id,
-    label: id,
-  }));
-  const buckets = eventVolume.bucketStarts.map((start, index) => {
-    const counts = eventVolume.countsByBucket[index] ?? {};
-    const values: Record<string, number> = {};
-    for (const [source, count] of Object.entries(counts)) {
-      const seriesId = charted.includes(source) ? source : OTHER_SOURCES;
-      values[seriesId] = (values[seriesId] ?? 0) + count;
-    }
-    return {
-      id: String(start),
-      label: `${bucketLabelFormat.format(start)} UTC`,
-      values,
-    };
-  });
-
-  return (
-    <Panel title="Events" leading={null} footer={null}>
-      <div className="py-4">
-        {eventVolume.sources.length === 0 ? (
-          <p className="text-sm text-[var(--bo-muted)]">
-            No events arrived in the last {WINDOW_LABEL}.
-          </p>
-        ) : (
-          <StackedBarChart
-            series={series}
-            buckets={buckets}
-            ariaLabel={`Events per source over the last ${WINDOW_LABEL}`}
-          />
-        )}
-      </div>
-    </Panel>
-  );
-}
-
-function ConnectionsPanel({
+/** Schedules that fire next, then runs that wait for an event without asking anyone. */
+function ComingUpPanel({
   dashboard,
   now,
   selectedScope,
@@ -477,20 +318,27 @@ function ConnectionsPanel({
   selectedScope: BackofficeScopeSelection;
 }) {
   return (
-    <Panel
-      title="Connections"
-      leading={null}
-      footer={<ShowMoreFooter to={integrationsScopeBasePath(selectedScope)} page="Integrations" />}
-    >
-      <RowList empty="No connections yet. Ask your agent to add one.">
-        {dashboard.connections.map((connection) => (
+    <Panel title="Coming up" leading={null} footer={null}>
+      <RowList empty="Nothing is scheduled. Ask an agent to run something on a schedule, such as a summary every morning.">
+        {dashboard.schedules.map((schedule) => (
           <ListRow
-            key={connection.connectionId}
-            to={integrationConnectionPath(selectedScope, connection.connectionId)}
-            leading={null}
-            title={connection.displayName}
-            detail={`${connection.kindLabel} · ${formatRelativeTime(connection.changedAt, now)}`}
-            trailing={<IntegrationConnectionStateLight state={connection.state} />}
+            key={`schedule:${schedule.routeId}`}
+            to={dashboardSelectionPath(selectedScope, { kind: "route", id: schedule.routeId })}
+            leading={<ListRowIcon name="calendar" tone={null} />}
+            title={schedule.name}
+            detail={schedule.cadence}
+            trailing={<RowTime time={formatRelativeTime(schedule.at, now)} />}
+            expansion={null}
+          />
+        ))}
+        {dashboard.waiting.map((entry) => (
+          <ListRow
+            key={`waiting:${entry.workflow}`}
+            to={dashboardRunPath(selectedScope, entry.latestRun)}
+            leading={<ListRowIcon name="pause-circle" tone={null} />}
+            title={entry.workflow}
+            detail={describeWaiting(entry.runCount, entry.waitingFor)}
+            trailing={<RowTime time={formatRelativeTime(entry.latestRun.updatedAt, now)} />}
             expansion={null}
           />
         ))}
@@ -499,45 +347,79 @@ function ConnectionsPanel({
   );
 }
 
-function UpcomingPanel({
-  upcoming,
+function describeWaiting(runCount: number, waitingFor: readonly string[]): string {
+  const runs = runCount === 1 ? "Waiting" : `${runCount} runs waiting`;
+  return waitingFor.length === 0 ? runs : `${runs} for ${waitingFor.join(", ")}`;
+}
+
+const RECENT_ACTIVITY_ROWS = 6;
+
+/** Every row's icon sits in a toned box, so titles line up whether or not the row needs a look. */
+function outcomeTone(summaries: readonly EventTraceSummary[]): BackofficeStatusTone {
+  const outcomes = summaries.map((summary) => summary.outcome);
+  if (outcomes.some((outcome) => outcome.kind !== "unhandled" && outcome.failedCount > 0)) {
+    return "failed";
+  }
+  if (outcomes.some((outcome) => outcome.kind === "in_progress")) {
+    return outcomes.some((outcome) => outcome.kind === "in_progress" && outcome.state === "running")
+      ? "live"
+      : "waiting";
+  }
+  return "muted";
+}
+
+/** What automations did lately, each led by what it did and followed by what set it off. */
+function RecentActivityPanel({
+  entries,
   now,
   selectedScope,
 }: {
-  upcoming: BackofficeDashboard["upcoming"];
+  entries: readonly EventTraceListEntry[];
   now: number;
   selectedScope: BackofficeScopeSelection;
 }) {
+  const scope = backofficeRouteScopeFromResolvedScope(selectedScope);
   return (
-    <Panel title="Scheduled & waiting" leading={null} footer={null}>
-      <RowList empty={null}>
-        {upcoming.map((entry) =>
-          entry.kind === "schedule" ? (
+    <Panel
+      title="Recent activity"
+      leading={null}
+      footer={
+        <ShowMoreFooter
+          to={dashboardActivityPath(scope, { trace: null, filter: "all" })}
+          page="Activity"
+        />
+      }
+    >
+      <RowList empty="Nothing has happened yet. When a schedule fires, or an event starts a workflow or reaches an agent, it shows here.">
+        {entries.slice(0, RECENT_ACTIVITY_ROWS).map((entry) => {
+          const traces = entry.kind === "trace" ? [entry.trace] : entry.traces;
+          const newest = traces[0];
+          if (newest === undefined) {
+            return null;
+          }
+          const effects = traces.flatMap((trace) => trace.effects);
+          const repeated = traces.length > 1 ? ` ×${traces.length}` : "";
+          return (
             <ListRow
-              key={`schedule:${entry.routeId}`}
-              to={dashboardSelectionPath(selectedScope, { kind: "route", id: entry.routeId })}
-              leading={<ListRowIcon name="clock" tone={null} />}
-              title={entry.name}
-              detail="Scheduled route"
-              trailing={<RowTime time={formatRelativeTime(entry.at, now)} />}
-              expansion={null}
-            />
-          ) : (
-            <ListRow
-              key={`run:${entry.run.workflowName}:${entry.run.instanceId}`}
-              to={dashboardRunPath(selectedScope, entry.run)}
-              leading={<ListRowIcon name="pause-circle" tone={null} />}
-              title={entry.workflow}
-              detail={
-                entry.waitingFor.length > 0
-                  ? `Waiting for ${entry.waitingFor.join(", ")}`
-                  : "Waiting"
+              key={newest.rootEventId}
+              to={dashboardActivityPath(scope, { trace: newest.rootEventId, filter: "all" })}
+              leading={<ListRowIcon name={traceEffectsIcon(effects)} tone={outcomeTone(traces)} />}
+              title={`${describeTraceEffects(newest.effects)}${repeated}`}
+              detail={describeTraceTrigger(newest)}
+              trailing={
+                <>
+                  {traces.length > 1 ? (
+                    <RepeatsOutcome traces={traces} />
+                  ) : (
+                    <TraceOutcome summary={newest} />
+                  )}
+                  <RowTime time={formatRelativeTime(newest.occurredAt, now)} />
+                </>
               }
-              trailing={<RowTime time={formatRelativeTime(entry.run.updatedAt, now)} />}
               expansion={null}
             />
-          ),
-        )}
+          );
+        })}
       </RowList>
     </Panel>
   );

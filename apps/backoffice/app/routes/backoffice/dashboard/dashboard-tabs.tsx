@@ -14,13 +14,14 @@ import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 
 import type { PageSources } from "../pages/load.server";
 import { pageName, pagePath } from "../pages/path";
-import { dashboardEventsPath, dashboardPath } from "./path";
+import { dashboardActivityPath, dashboardMapPath, dashboardPath } from "./path";
 import { usePinnedPages } from "./pinned-pages";
 
 /** Pages go by their file's name, as in Files; a page's title heads the page itself. */
 export type DashboardTab =
   | { kind: "overview" }
-  | { kind: "events" }
+  | { kind: "activity" }
+  | { kind: "map" }
   | { kind: "page"; name: string };
 
 export function DashboardTabs({
@@ -91,11 +92,18 @@ export function DashboardTabs({
           active: active.kind === "overview",
         },
         {
-          id: "events",
-          label: "Events",
-          to: dashboardEventsPath(scope, null),
+          id: "activity",
+          label: "Activity",
+          to: dashboardActivityPath(scope, { trace: null, filter: "all" }),
           groupId: "dashboard",
-          active: active.kind === "events",
+          active: active.kind === "activity",
+        },
+        {
+          id: "map",
+          label: "Map",
+          to: dashboardMapPath(scope),
+          groupId: "dashboard",
+          active: active.kind === "map",
         },
         ...pageTabs.map((name) => ({
           id: `page:${name}`,

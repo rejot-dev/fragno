@@ -8,36 +8,39 @@ import {
   type CausalFlameNode,
   type CausalFlameStatus,
 } from "@fragno-private/design-system/causal-flame-graph-model";
-import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { cn } from "@fragno-private/design-system/cn";
 import { CopyButton } from "@fragno-private/design-system/copy-button";
-import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
 import { Icon } from "@fragno-private/design-system/icon";
 import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { formatWorkflowDuration } from "@fragno-private/design-system/workflow-run-timeline-model";
-import { Fragment, Suspense, use, useMemo, useState, type ReactNode } from "react";
+import { underlineTabClassName } from "@fragno-private/design-system/underline-tab-class-name";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
 
 import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
-import type { BackofficeRouteScope } from "@/backoffice-runtime/route-scope";
-import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { useClock } from "@/components/backoffice/use-clock";
-import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
-import { describeAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
-import { LofiReplicaGate } from "@/fragno/lofi/replica-gate";
+import { useAutomationRead } from "@/fragno/automation/lofi/replica";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
 import { formatTimestamp } from "../automations/formatting";
 import { loadPageSources } from "../pages/load.server";
 import { shouldRevalidateWithinScope } from "../scope-revalidation";
-import type { Route } from "./+types/events";
+import type { Route } from "./+types/activity";
+import {
+  RepeatsOutcome,
+  TraceOutcome,
+  describeTraceEffects,
+  describeTraceTrigger,
+  isScheduledTrace,
+  traceEffectsIcon,
+} from "./activity-parts";
+import { DashboardReplica } from "./dashboard-replica";
 import { DashboardTabs } from "./dashboard-tabs";
 import {
   describeRouteDispatchProgress,
@@ -47,6 +50,7 @@ import {
   projectEventTraceList,
   type EventTrace,
   type EventTraceDispatch,
+  type EventTraceEffect,
   type EventTraceEvent,
   type EventTraceListEntry,
   type EventTraceRecord,
@@ -54,17 +58,18 @@ import {
   type EventTraceSummary,
 } from "./event-traces";
 import {
-  dashboardEventsPath,
+  dashboardActivityFilter,
+  dashboardActivityPath,
   dashboardOpenedTrace,
   dashboardRunPath,
   dashboardSelectedTraceNode,
   withSelectedTraceNode,
+  type ActivityFilter,
 } from "./path";
 import { retryEventRoute, type RouteRetryActionData } from "./route-retry.server";
 import { WorkflowRunDetail } from "./workflow-run-detail";
 
 const TRACE_LIMIT = 100;
-const DOWNLOAD_TITLE = "Downloading automation activity…";
 const CLOCK_TICK_MS = 60_000;
 const pageClassName = `${backofficePageBodyClassName} flex flex-col gap-4`;
 const sectionHeaderClassName =
@@ -83,7 +88,7 @@ export async function loader({ context }: Route.LoaderArgs) {
 export async function action({ request, context }: Route.ActionArgs) {
   const formData = await request.formData();
   if (formData.get("intent") !== "retry-route") {
-    return { ok: false, message: "Unknown events action." } satisfies RouteRetryActionData;
+    return { ok: false, message: "Unknown activity action." } satisfies RouteRetryActionData;
   }
   return await retryEventRoute(context, {
     eventId: String(formData.get("eventId") ?? ""),
@@ -91,63 +96,55 @@ export async function action({ request, context }: Route.ActionArgs) {
   });
 }
 
-/** Opening a trace only changes the URL. */
+/** Opening a trace or filtering the list only changes the URL. */
 export const shouldRevalidate = shouldRevalidateWithinScope;
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  return [{ title: `Events · ${loaderData?.selectedScope.label ?? "scope"}` }];
+  return [{ title: `Activity · ${loaderData?.selectedScope.label ?? "scope"}` }];
 }
 
-export default function BackofficeDashboardEvents({ loaderData }: Route.ComponentProps) {
+export default function BackofficeDashboardActivity({ loaderData }: Route.ComponentProps) {
   const { selectedScope, pageSources } = loaderData;
-  // The replica's database opens before its download reports progress.
-  const loading = <BackofficeDownloadState title={DOWNLOAD_TITLE} fraction={null} error={null} />;
-
   return (
     <>
       <DashboardTabs
         selectedScope={selectedScope}
-        active={{ kind: "events" }}
+        active={{ kind: "activity" }}
         pageSources={pageSources}
       />
       <div className={pageClassName}>
-        <h1 className="sr-only">Events in {selectedScope.label}</h1>
-        <ClientOnly fallback={loading}>
-          <Suspense fallback={loading}>
-            <EventsClient selectedScope={selectedScope} />
-          </Suspense>
-        </ClientOnly>
+        <h1 className="sr-only">Activity in {selectedScope.label}</h1>
+        <DashboardReplica>
+          {(replica) => <ActivityWorkspace selectedScope={selectedScope} replica={replica} />}
+        </DashboardReplica>
       </div>
     </>
   );
 }
 
-function EventsClient({ selectedScope }: { selectedScope: BackofficeScopeSelection }) {
-  const { automationReplicaSource } = useCurrentBackofficeContext();
-  if (automationReplicaSource.status === "unavailable") {
-    return (
-      <BackofficeSystemState
-        tone="error"
-        label="Unavailable"
-        title="Automation events could not be synchronized."
-        description={automationReplicaSource.message}
-      />
-    );
-  }
-  const source = automationReplicaSource.source;
-  const replica = use(getAutomationReplica(source));
-  return (
-    <LofiReplicaGate replica={replica} title={DOWNLOAD_TITLE}>
-      <EventTracesWorkspace
-        key={describeAutomationReplicaSource(source).resourceKey}
-        selectedScope={selectedScope}
-        replica={replica}
-      />
-    </LofiReplicaGate>
-  );
-}
+const ACTIVITY_FILTERS: Record<
+  ActivityFilter,
+  { label: string; empty: string; matches: (summary: EventTraceSummary) => boolean }
+> = {
+  all: { label: "All", empty: "No events yet.", matches: () => true },
+  failed: {
+    label: "Failed",
+    empty: `Nothing failed among the latest ${TRACE_LIMIT} events.`,
+    matches: ({ outcome }) => outcome.kind !== "unhandled" && outcome.failedCount > 0,
+  },
+  scheduled: {
+    label: "Scheduled",
+    empty: `No schedule fired among the latest ${TRACE_LIMIT} events.`,
+    matches: isScheduledTrace,
+  },
+  agents: {
+    label: "Agents",
+    empty: `None of the latest ${TRACE_LIMIT} events reached an agent.`,
+    matches: ({ effects }) => effects.some((effect) => effect.kind === "agent"),
+  },
+};
 
-function EventTracesWorkspace({
+function ActivityWorkspace({
   selectedScope,
   replica,
 }: {
@@ -155,11 +152,29 @@ function EventTracesWorkspace({
   replica: LofiSqliteClient;
 }) {
   const [searchParams] = useSearchParams();
+  const filter = dashboardActivityFilter(searchParams);
   const now = useClock(CLOCK_TICK_MS);
-  const listRead = useAutomationRead(replica, "eventTraceSummaries", { limit: TRACE_LIMIT });
+  const listRead = useAutomationRead(replica, "eventTraceSummaries", {
+    limit: TRACE_LIMIT,
+    origins: "all",
+  });
   const summaries = listRead.status === "ready" ? listRead.data : null;
-  const entries = useMemo(() => (summaries ? projectEventTraceList(summaries) : []), [summaries]);
-  const openedTrace = dashboardOpenedTrace(searchParams) ?? newestTraceOf(entries[0]) ?? null;
+  const days = useMemo(
+    () => activityByDay(summaries?.filter(ACTIVITY_FILTERS[filter].matches) ?? [], now),
+    [summaries, filter, now],
+  );
+  // A trace someone picked, as opposed to the one the page opens by default.
+  const chosenTrace = dashboardOpenedTrace(searchParams);
+  const openedTrace = chosenTrace ?? newestActedTrace(days);
+  const listRef = useRef<HTMLDivElement>(null);
+  const detailRef = useRef<HTMLDivElement>(null);
+  // Rows keep the scroll position so the list stays put beside the trace. Where the trace replaces
+  // the list instead, start the trace at its top.
+  useEffect(() => {
+    if (chosenTrace !== null && listRef.current?.offsetParent === null) {
+      detailRef.current?.scrollIntoView({ block: "start" });
+    }
+  }, [chosenTrace]);
   const traceRead = useAutomationRead(openedTrace === null ? null : replica, "eventTrace", {
     rootEventId: openedTrace ?? "",
   });
@@ -181,47 +196,69 @@ function EventTracesWorkspace({
     return (
       <BackofficeSystemState
         tone="error"
-        title="Automation events could not be read."
+        title="Automation activity could not be read."
         description={message ?? "Reload to try again."}
       />
     );
   }
   if (summaries === null) {
-    return <PaneSpinner label="Reading automation events" />;
+    return <PaneSpinner label="Reading automation activity" />;
   }
   if (summaries.length === 0) {
     return (
       <BackofficeSystemState
         tone="empty"
-        title="No events yet"
-        description="Events from integrations, forms, and workflows appear here with everything they set in motion."
+        title="Nothing has happened yet"
+        description="What schedules, events from integrations and forms, and agents set in motion appears here."
       />
     );
   }
 
+  // Side by side on wide screens. On narrower ones the list and a picked trace take turns, so a
+  // picked trace does not open far below the list.
   return (
-    <div className="grid items-start gap-x-10 gap-y-8 xl:grid-cols-[21rem_minmax(0,1fr)]">
-      <TraceList
-        entries={entries}
-        capped={summaries.length === TRACE_LIMIT}
-        openedTrace={openedTrace}
-        selectedScope={selectedScope}
-        now={now}
-      />
-      {trace === undefined ? (
-        <PaneSpinner label="Reading the trace" />
-      ) : trace === null ? (
-        <p className="py-5 text-sm text-[var(--bo-muted)]">
-          There is no event {openedTrace} in this scope.
-        </p>
-      ) : (
-        <TraceView
-          key={openedTrace}
-          trace={trace}
+    <div className="grid items-start gap-x-10 gap-y-8 xl:grid-cols-[22rem_minmax(0,1fr)]">
+      <div ref={listRef} className={cn("min-w-0", chosenTrace !== null && "hidden xl:block")}>
+        <ActivityList
+          days={days}
+          filter={filter}
+          capped={summaries.length === TRACE_LIMIT}
+          openedTrace={openedTrace}
           selectedScope={selectedScope}
-          replica={replica}
         />
-      )}
+      </div>
+      <div
+        ref={detailRef}
+        className={cn(
+          "flex min-w-0 scroll-mt-20 flex-col gap-4",
+          chosenTrace === null && "hidden xl:flex",
+        )}
+      >
+        <Link
+          to={dashboardActivityPath(backofficeRouteScopeFromResolvedScope(selectedScope), {
+            trace: null,
+            filter,
+          })}
+          className="inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-[var(--bo-accent-fg)] hover:underline xl:hidden"
+        >
+          <Icon name="arrow-left" aria-hidden="true" className="size-4" />
+          All activity
+        </Link>
+        {openedTrace === null ? null : trace === undefined ? (
+          <PaneSpinner label="Reading the trace" />
+        ) : trace === null ? (
+          <p className="py-5 text-sm text-[var(--bo-muted)]">
+            There is no event {openedTrace} in this scope.
+          </p>
+        ) : (
+          <TraceView
+            key={openedTrace}
+            trace={trace}
+            selectedScope={selectedScope}
+            replica={replica}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -230,8 +267,11 @@ function entryTraces(entry: EventTraceListEntry): readonly EventTraceSummary[] {
   return entry.kind === "trace" ? [entry.trace] : entry.traces;
 }
 
-function newestTraceOf(entry: EventTraceListEntry | undefined): string | undefined {
-  return entry === undefined ? undefined : entryTraces(entry)[0]?.rootEventId;
+/** The trace the page opens without a link to one: the newest that set something in motion. */
+function newestActedTrace(days: readonly ActivityDay[]): string | null {
+  const acted = days.flatMap((day) => day.entries)[0];
+  const newest = acted === undefined ? days[0]?.unhandled[0] : entryTraces(acted)[0];
+  return newest?.rootEventId ?? null;
 }
 
 // The reader's own clock, since they compare traces with when things happened around them.
@@ -266,23 +306,32 @@ function dayLabel(date: Date, now: number): string {
   return daysAgo === 0 ? "Today" : daysAgo === 1 ? "Yesterday" : dayFormat.format(date);
 }
 
-/** Entries under the day their newest trace happened on. */
-function entriesByDay(
-  entries: readonly EventTraceListEntry[],
-  now: number,
-): { label: string; entries: EventTraceListEntry[] }[] {
-  const days: { label: string; entries: EventTraceListEntry[] }[] = [];
-  for (const entry of entries) {
-    const newest = entryTraces(entry)[0];
-    const label = newest === undefined ? "" : dayLabel(newest.occurredAt, now);
-    const day = days.at(-1);
-    if (day?.label === label) {
-      day.entries.push(entry);
-    } else {
-      days.push({ label, entries: [entry] });
+/**
+ * One day of the list: what traces set in motion, and the events nothing acted on, which gather
+ * into one row at the day's end so they do not split what automations did.
+ */
+type ActivityDay = {
+  label: string;
+  entries: EventTraceListEntry[];
+  unhandled: EventTraceSummary[];
+};
+
+function activityByDay(summaries: readonly EventTraceSummary[], now: number): ActivityDay[] {
+  const days: { label: string; acted: EventTraceSummary[]; unhandled: EventTraceSummary[] }[] = [];
+  for (const summary of summaries) {
+    const label = dayLabel(summary.occurredAt, now);
+    let day = days.at(-1);
+    if (day?.label !== label) {
+      day = { label, acted: [], unhandled: [] };
+      days.push(day);
     }
+    (summary.outcome.kind === "unhandled" ? day.unhandled : day.acted).push(summary);
   }
-  return days;
+  return days.map(({ label, acted, unhandled }) => ({
+    label,
+    entries: projectEventTraceList(acted),
+    unhandled,
+  }));
 }
 
 type TraceTone = "failed" | "live" | "waiting" | "settled" | "unhandled";
@@ -316,96 +365,25 @@ const TRACE_TONE_LABEL: Record<TraceTone, string> = {
   unhandled: "unhandled",
 };
 
-/** Only what needs attention gets a status; settled work is the quiet default. */
-function AttentionLight({
-  failedCount,
-  state,
-}: {
-  failedCount: number;
-  state: "running" | "waiting" | null;
-}) {
-  if (failedCount > 0) {
-    return <BackofficeStatusLight tone="failed">{failedCount} failed</BackofficeStatusLight>;
-  }
-  if (state === null) {
-    return null;
-  }
+/** What a trace did, led by the icon of what it reached; this is what a row is about. */
+function EffectsTitle({ effects }: { effects: readonly EventTraceEffect[] }) {
+  const text = describeTraceEffects(effects);
   return (
-    <BackofficeStatusLight tone={state === "running" ? "live" : "waiting"}>
-      {state === "running" ? "Running" : "Waiting"}
-    </BackofficeStatusLight>
-  );
-}
-
-function TraceOutcome({ summary }: { summary: EventTraceSummary }) {
-  const { outcome } = summary;
-  if (outcome.kind === "unhandled") {
-    return null;
-  }
-  if (outcome.kind === "in_progress" || outcome.failedCount > 0) {
-    return (
-      <AttentionLight
-        failedCount={outcome.failedCount}
-        state={outcome.kind === "in_progress" ? outcome.state : null}
+    <span className="flex min-w-0 flex-1 items-center gap-2" title={text}>
+      <Icon
+        name={traceEffectsIcon(effects)}
+        aria-hidden="true"
+        className="size-3.5 shrink-0 text-[var(--bo-muted)]"
       />
-    );
-  }
-  const duration = outcome.settledAt.getTime() - summary.occurredAt.getTime();
-  return duration <= 0 ? null : (
-    <span
-      className="shrink-0 text-xs text-[var(--bo-muted-2)] tabular-nums"
-      title="From the event to the last thing it set in motion"
-    >
-      {formatWorkflowDuration(duration, "fine")}
+      <span className="truncate text-[13px] font-medium text-[var(--bo-fg)]">{text}</span>
     </span>
   );
 }
 
-function RepeatsOutcome({ traces }: { traces: readonly EventTraceSummary[] }) {
-  const outcomes = traces.map((trace) => trace.outcome);
-  const states = outcomes.flatMap((outcome) =>
-    outcome.kind === "in_progress" ? [outcome.state] : [],
-  );
+function Trigger({ summary }: { summary: EventTraceSummary }) {
+  const text = describeTraceTrigger(summary);
   return (
-    <AttentionLight
-      failedCount={outcomes.reduce(
-        (count, outcome) => count + (outcome.kind === "unhandled" ? 0 : outcome.failedCount),
-        0,
-      )}
-      state={states.includes("running") ? "running" : states.includes("waiting") ? "waiting" : null}
-    />
-  );
-}
-
-function TraceLabel({ summary }: { summary: EventTraceSummary }) {
-  return (
-    <span className="min-w-0 flex-1 truncate text-[13px]">
-      <span className="text-[var(--bo-muted)]">{summary.source} · </span>
-      <span className="font-medium text-[var(--bo-fg)]">{summary.eventType}</span>
-    </span>
-  );
-}
-
-function Headline({ headline }: { headline: string | null }) {
-  return headline === null ? null : (
-    <span className="truncate text-xs text-[var(--bo-fg)]" title={headline}>
-      {headline}
-    </span>
-  );
-}
-
-function Effects({ effects }: { effects: readonly string[] }) {
-  if (effects.length === 0) {
-    return (
-      <span className="min-w-0 flex-1 truncate text-[var(--bo-muted-2)]">Nothing acted on it</span>
-    );
-  }
-  const text = effects.join(", ");
-  return (
-    <span className="min-w-0 flex-1 truncate text-[var(--bo-muted)]" title={text}>
-      <span aria-hidden="true" className="text-[var(--bo-muted-2)]">
-        →{" "}
-      </span>
+    <span className="truncate text-xs text-[var(--bo-muted)]" title={text}>
       {text}
     </span>
   );
@@ -435,22 +413,42 @@ function rowClassName(current: boolean): string {
   );
 }
 
-function TraceList({
-  entries,
+const toggleClassName =
+  "w-full text-left focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none";
+
+function ShowToggle({ expanded }: { expanded: boolean }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--bo-muted)]">
+      {expanded ? "Hide" : "Show"}
+      <Icon
+        name="chevron-down"
+        aria-hidden="true"
+        className={cn(
+          "size-3 transition-transform duration-150 ease-out",
+          expanded && "rotate-180",
+        )}
+      />
+    </span>
+  );
+}
+
+function ActivityList({
+  days,
+  filter,
   capped,
   openedTrace,
   selectedScope,
-  now,
 }: {
-  entries: readonly EventTraceListEntry[];
+  days: readonly ActivityDay[];
+  filter: ActivityFilter;
   /** Whether older events exist beyond the latest ones the list holds. */
   capped: boolean;
   openedTrace: string | null;
   selectedScope: BackofficeScopeSelection;
-  now: number;
 }) {
   const scope = backofficeRouteScopeFromResolvedScope(selectedScope);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const traceLink = (trace: string) => dashboardActivityPath(scope, { trace, filter });
 
   function toggle(id: string) {
     setExpanded((current) => {
@@ -464,11 +462,30 @@ function TraceList({
 
   return (
     <section className="min-w-0">
-      <header className={sectionHeaderClassName}>
-        <h2 className={sectionTitleClassName}>Incoming events</h2>
-      </header>
+      <h2 className="sr-only">What happened</h2>
+      <nav
+        aria-label="Show"
+        className="flex items-stretch gap-1 shadow-[inset_0_-1px_0_var(--bo-border)]"
+      >
+        {Object.entries(ACTIVITY_FILTERS).map(([id, { label }]) => (
+          <Link
+            key={id}
+            to={dashboardActivityPath(scope, { trace: null, filter: id as ActivityFilter })}
+            preventScrollReset
+            aria-current={id === filter ? "page" : undefined}
+            className={underlineTabClassName(id === filter ? "selected" : "idle")}
+          >
+            {label}
+          </Link>
+        ))}
+      </nav>
       <div className="backoffice-scroll max-h-[calc(100vh-14rem)] [scrollbar-gutter:stable] overflow-y-auto pb-1">
-        {entriesByDay(entries, now).map((day) => (
+        {days.length === 0 ? (
+          <p className="px-3 py-5 text-sm text-[var(--bo-muted)]">
+            {ACTIVITY_FILTERS[filter].empty}
+          </p>
+        ) : null}
+        {days.map((day) => (
           <section key={day.label} aria-label={day.label}>
             <h3 className="sticky top-0 z-[1] bg-[var(--bo-bg)] px-3 pt-3 pb-1 text-xs font-medium text-[var(--bo-muted-2)]">
               {day.label}
@@ -480,7 +497,7 @@ function TraceList({
                     <TraceRow
                       summary={entry.trace}
                       opened={entry.trace.rootEventId === openedTrace}
-                      scope={scope}
+                      to={traceLink(entry.trace.rootEventId)}
                     />
                   </li>
                 ) : (
@@ -492,17 +509,30 @@ function TraceList({
                       onToggle={() => {
                         toggle(entry.id);
                       }}
-                      scope={scope}
+                      traceLink={traceLink}
                     />
                   </li>
                 ),
+              )}
+              {day.unhandled.length === 0 ? null : (
+                <li>
+                  <UnhandledRow
+                    traces={day.unhandled}
+                    openedTrace={openedTrace}
+                    expanded={expanded.has(`unhandled:${day.label}`)}
+                    onToggle={() => {
+                      toggle(`unhandled:${day.label}`);
+                    }}
+                    traceLink={traceLink}
+                  />
+                </li>
               )}
             </ul>
           </section>
         ))}
         {capped ? (
           <p className="px-3 pt-3 text-xs text-[var(--bo-muted-2)]">
-            Showing the latest {TRACE_LIMIT} events.
+            Showing what the latest {TRACE_LIMIT} events set in motion.
           </p>
         ) : null}
       </div>
@@ -513,28 +543,25 @@ function TraceList({
 function TraceRow({
   summary,
   opened,
-  scope,
+  to,
 }: {
   summary: EventTraceSummary;
   opened: boolean;
-  scope: BackofficeRouteScope;
+  to: string;
 }) {
   return (
     <Link
-      to={dashboardEventsPath(scope, summary.rootEventId)}
+      to={to}
       preventScrollReset
       aria-current={opened ? "page" : undefined}
       className={rowClassName(opened)}
     >
-      <span className="flex items-baseline gap-2">
-        <TraceLabel summary={summary} />
+      <span className="flex min-h-6 items-center gap-2">
+        <EffectsTitle effects={summary.effects} />
+        <TraceOutcome summary={summary} />
         <Clock at={summary.occurredAt} precise={false} />
       </span>
-      <Headline headline={summary.headline} />
-      <span className="flex min-h-6 items-center gap-2 text-xs">
-        <Effects effects={summary.effects} />
-        <TraceOutcome summary={summary} />
-      </span>
+      <Trigger summary={summary} />
     </Link>
   );
 }
@@ -548,13 +575,13 @@ function RepeatsRow({
   openedTrace,
   expanded,
   onToggle,
-  scope,
+  traceLink,
 }: {
   traces: readonly EventTraceSummary[];
   openedTrace: string | null;
   expanded: boolean;
   onToggle: () => void;
-  scope: BackofficeRouteScope;
+  traceLink: (rootEventId: string) => string;
 }) {
   const newest = traces[0];
   const oldest = traces.at(-1);
@@ -564,6 +591,11 @@ function RepeatsRow({
   const holdsOpened = traces.some((trace) => trace.rootEventId === openedTrace);
   const ticks = [...traces].reverse().slice(-REPEAT_TICK_LIMIT);
   const olderCount = traces.length - ticks.length;
+  const effects = [
+    ...new Map(
+      traces.flatMap((trace) => trace.effects).map((effect) => [effect.label, effect]),
+    ).values(),
+  ];
 
   return (
     <>
@@ -571,13 +603,10 @@ function RepeatsRow({
         type="button"
         aria-expanded={expanded}
         onClick={onToggle}
-        className={cn(
-          rowClassName(holdsOpened && !expanded),
-          "w-full text-left focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none",
-        )}
+        className={cn(rowClassName(holdsOpened && !expanded), toggleClassName)}
       >
-        <span className="flex items-baseline gap-2">
-          <TraceLabel summary={newest} />
+        <span className="flex min-h-6 items-center gap-2">
+          <EffectsTitle effects={effects} />
           <span className="shrink-0 text-xs font-medium text-[var(--bo-muted)] tabular-nums">
             ×{traces.length}
           </span>
@@ -590,10 +619,7 @@ function RepeatsRow({
             </span>
           )}
         </span>
-        <Headline headline={newest.headline} />
-        <span className="flex text-xs">
-          <Effects effects={[...new Set(traces.flatMap((trace) => trace.effects))]} />
-        </span>
+        <Trigger summary={newest} />
         <span className="flex min-h-6 items-center gap-2">
           <span aria-hidden="true" className="flex min-w-0 flex-1 items-center gap-[3px]">
             {olderCount === 0 ? null : (
@@ -615,17 +641,7 @@ function RepeatsRow({
             ))}
           </span>
           <RepeatsOutcome traces={traces} />
-          <span className="inline-flex shrink-0 items-center gap-1 text-xs text-[var(--bo-muted)]">
-            {expanded ? "Hide" : "Show"}
-            <Icon
-              name="chevron-down"
-              aria-hidden="true"
-              className={cn(
-                "size-3 transition-transform duration-150 ease-out",
-                expanded && "rotate-180",
-              )}
-            />
-          </span>
+          <ShowToggle expanded={expanded} />
         </span>
       </button>
       {expanded ? (
@@ -635,15 +651,79 @@ function RepeatsRow({
             return (
               <li key={trace.rootEventId}>
                 <Link
-                  to={dashboardEventsPath(scope, trace.rootEventId)}
+                  to={traceLink(trace.rootEventId)}
                   preventScrollReset
                   aria-current={opened ? "page" : undefined}
                   className={cn(rowClassName(opened), "py-1")}
                 >
                   <span className="flex min-h-6 items-center gap-2 text-xs">
                     <Clock at={trace.occurredAt} precise />
-                    <Effects effects={trace.effects} />
+                    <span className="min-w-0 flex-1 truncate text-[var(--bo-muted)]">
+                      {describeTraceEffects(trace.effects)}
+                    </span>
                     <TraceOutcome summary={trace} />
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * A day's events no route acted on, folded into one quiet row so what automations did stays in
+ * view. They stay one click away, since an event that should have started something is worth
+ * checking.
+ */
+function UnhandledRow({
+  traces,
+  openedTrace,
+  expanded,
+  onToggle,
+  traceLink,
+}: {
+  traces: readonly EventTraceSummary[];
+  openedTrace: string | null;
+  expanded: boolean;
+  onToggle: () => void;
+  traceLink: (rootEventId: string) => string;
+}) {
+  const holdsOpened = traces.some((trace) => trace.rootEventId === openedTrace);
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className={cn(rowClassName(holdsOpened && !expanded), toggleClassName, "py-1.5")}
+      >
+        <span className="flex min-h-6 items-center gap-2 text-xs text-[var(--bo-muted-2)]">
+          <span className="min-w-0 flex-1 truncate">
+            {traces.length === 1 ? "1 event" : `${traces.length} events`} nothing acted on
+          </span>
+          <ShowToggle expanded={expanded} />
+        </span>
+      </button>
+      {expanded ? (
+        <ul className="mb-1 ml-3 flex flex-col border-l border-[color:var(--bo-border)] pl-1">
+          {traces.map((trace) => {
+            const opened = trace.rootEventId === openedTrace;
+            return (
+              <li key={trace.rootEventId}>
+                <Link
+                  to={traceLink(trace.rootEventId)}
+                  preventScrollReset
+                  aria-current={opened ? "page" : undefined}
+                  className={cn(rowClassName(opened), "py-1")}
+                >
+                  <span className="flex min-h-6 items-center gap-2 text-xs">
+                    <span className="min-w-0 flex-1 truncate text-[var(--bo-muted)]">
+                      {describeTraceTrigger(trace)}
+                    </span>
+                    <Clock at={trace.occurredAt} precise={false} />
                   </span>
                 </Link>
               </li>

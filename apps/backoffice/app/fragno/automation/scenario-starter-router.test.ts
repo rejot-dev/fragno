@@ -147,7 +147,10 @@ async function replicaTrace(
       ...rows,
       ...(runs ? {} : { runs: [], steps: [], deliveries: [] }),
     }),
-    summaries: await readAutomationReplica(replica.replica, "eventTraceSummaries", { limit: 10 }),
+    summaries: await readAutomationReplica(replica.replica, "eventTraceSummaries", {
+      limit: 10,
+      origins: "all",
+    }),
   };
 }
 

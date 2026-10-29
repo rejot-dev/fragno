@@ -62,7 +62,7 @@ type OrchestrationCatalog = {
  * Every source, event, route, and workflow of the scope as one graph, with the selected item's
  * details beside it. The selection lives in the URL so other panels can link to a route or event.
  */
-export function OrchestrationPanel({
+function OrchestrationPanel({
   replica,
   routes,
   recentEvents,
@@ -197,10 +197,7 @@ export function OrchestrationPanel({
   );
 }
 
-/**
- * The orchestration panel on its own, as a page shows it. The dashboard shares routes and the
- * last day's events with its other panels; here the panel reads them from the replica itself.
- */
+/** The orchestration panel over the routes and the last day's events it reads from the replica. */
 export function ScopeOrchestration({
   replica,
   loaderData,

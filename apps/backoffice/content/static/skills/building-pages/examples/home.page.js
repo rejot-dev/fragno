@@ -1,6 +1,6 @@
-// The scope's home dashboard as a page: what needs a person, how routes lead events to workflows,
-// how automations and events did over the last day, connections, what is scheduled or waiting,
-// and agents. Copy it into /workspace as a <name>.page.js file to open it or start from it.
+// The scope's home dashboard as a page: what needs a person, what is scheduled or waiting, and
+// agents. What automations did lately lives on the dashboard's Activity tab. Copy it into
+// /workspace as a <name>.page.js file to open it or start from it.
 export default page.define({ title: "Home" }, ({ sql, now, intervals, bucket }) => {
   const day = now.minus("24 hours");
   const hours = intervals({ every: "1 hour", since: day });
@@ -72,111 +72,47 @@ export default page.define({ title: "Home" }, ({ sql, now, intervals, bucket }) 
       + (SELECT count(*) FROM (${unavailable})) AS total
   `.columns({ total: "number" });
 
-  // Every workflow's runs today, its success rate, its latest run, and its starts per hour.
-  const health = sql`
-    WITH run AS (
-      SELECT *, coalesce(remoteWorkflowName, workflowName) AS workflow FROM runs
-    ),
-    workflow AS (
-      SELECT workflow,
-        sum(createdAt >= ${day}) AS started,
-        sum(status = 'complete' AND completedAt >= ${day}) AS completed,
-        sum(status = 'errored' AND completedAt >= ${day}) AS errored,
-        max(updatedAt) AS lastActivity
-      FROM run
-      GROUP BY workflow
-    ),
-    latest AS (
-      SELECT workflow, workflowName, instanceId, status, updatedAt,
-        row_number() OVER (PARTITION BY workflow ORDER BY updatedAt DESC, id DESC) AS recency
-      FROM run
-    ),
-    hourly AS (
-      SELECT workflow, json_group_array(json_object('hour', hour, 'runs', runs)) AS hourly
-      FROM (
-        SELECT workflow, ${bucket("createdAt", hours)} AS hour, count(*) AS runs
-        FROM run
-        WHERE createdAt >= ${day}
-        GROUP BY workflow, hour
-      )
-      GROUP BY workflow
-    )
-    SELECT workflow.workflow, workflow.started, workflow.completed, workflow.errored,
-      CASE WHEN workflow.completed + workflow.errored > 0
-        THEN 1.0 * workflow.completed / (workflow.completed + workflow.errored) END AS successRate,
-      CASE WHEN workflow.errored > 0 THEN 'failed' ELSE 'live' END AS rateTone,
-      latest.workflowName, latest.instanceId, latest.status, latest.updatedAt,
-      coalesce(hourly.hourly, '[]') AS hourly
-    FROM workflow
-    JOIN latest ON latest.workflow = workflow.workflow AND latest.recency = 1
-    LEFT JOIN hourly ON hourly.workflow = workflow.workflow
-    ORDER BY workflow.lastActivity DESC, workflow.workflow
-  `.columns({
-    workflow: "string",
-    started: "number",
-    completed: "number",
-    errored: "number",
-    successRate: "number?",
-    rateTone: ["failed", "live"],
-    workflowName: "string",
-    instanceId: "string",
-    // Listing the values a column holds lets components that take one of them show it.
-    status: ["active", "paused", "waiting", "complete", "errored", "terminated"],
-    updatedAt: "time",
-    hourly: { rows: { hour: "time", runs: "number" } },
-  });
-
-  const eventVolume = sql`
-    SELECT ${bucket("occurredAt", hours)} AS hour, source, count(*) AS events
-    FROM events
-    WHERE occurredAt >= ${day}
-    GROUP BY hour, source
-  `.columns({ hour: "time", source: "string", events: "number" });
-
-  const connections = sql`
-    SELECT connectionId AS id, displayName AS name, kindLabel AS kind, state,
-      CASE WHEN state = 'ready' THEN 'Ready' ELSE 'Unavailable' END AS stateLabel,
-      CASE WHEN state = 'ready' THEN 'live' ELSE 'waiting' END AS tone, changedAt
-    FROM connections
-    WHERE state <> 'disconnected'
-    ORDER BY service, connectionId
-  `.columns({
-    id: "string",
-    name: "string",
-    kind: "string",
-    state: ["ready", "unavailable"],
-    stateLabel: "string",
-    tone: ["live", "waiting"],
-    changedAt: "time",
-  });
-
-  // Waiting runs that do not ask a person, with what each waits for.
+  // The runs of each workflow that wait for an event without asking a person, with every event
+  // they wait for and the run that waited last.
   const waiting = sql`
-    SELECT coalesce(run.remoteWorkflowName, run.workflowName) AS workflow, run.workflowName,
-      run.instanceId, run.updatedAt,
-      (SELECT json_group_array(json_object('eventType', wait.eventType) ORDER BY wait.eventType)
-       FROM workflow_waits AS wait WHERE wait.runId = run.id) AS waits
-    FROM runs AS run
-    WHERE run.status = 'waiting'
-      AND NOT EXISTS (SELECT 1 FROM workflow_waits AS ask
-                      WHERE ask.runId = run.id AND ask.interfaceStepKey IS NOT NULL)
-    ORDER BY run.updatedAt
+    WITH run AS (
+      SELECT run.*, coalesce(run.remoteWorkflowName, run.workflowName) AS workflow,
+        row_number() OVER (PARTITION BY coalesce(run.remoteWorkflowName, run.workflowName)
+                           ORDER BY run.updatedAt DESC, run.id DESC) AS recency
+      FROM runs AS run
+      WHERE run.status = 'waiting'
+        AND NOT EXISTS (SELECT 1 FROM workflow_waits AS ask
+                        WHERE ask.runId = run.id AND ask.interfaceStepKey IS NOT NULL)
+    )
+    SELECT latest.workflow, latest.workflowName, latest.instanceId, latest.updatedAt,
+      (SELECT count(*) FROM run WHERE run.workflow = latest.workflow) AS runs,
+      (SELECT json_group_array(json_object('eventType', eventType) ORDER BY eventType)
+       FROM (SELECT DISTINCT wait.eventType FROM run
+             JOIN workflow_waits AS wait ON wait.runId = run.id
+             WHERE run.workflow = latest.workflow)) AS waits
+    FROM run AS latest
+    WHERE latest.recency = 1
+    ORDER BY latest.updatedAt DESC
   `.columns({
     workflow: "string",
     workflowName: "string",
     instanceId: "string",
     updatedAt: "time",
+    runs: "number",
     waits: { rows: { eventType: "string" } },
   });
 
+  // The dashboard spells out common cron expressions; a page shows them as they are.
   const schedules = sql`
-    SELECT route.id, route.name, schedule.nextOccurrenceAt AS at
+    SELECT route.id, route.name, schedule.nextOccurrenceAt AS at,
+      CASE route.trigger ->> '$.cadence.kind' WHEN 'once' THEN 'Once'
+        ELSE 'Cron ' || (route.trigger ->> '$.cadence.expression') END AS cadence
     FROM routes AS route
     JOIN route_schedules AS schedule ON schedule.id = route.id
     WHERE route.enabled = 1 AND route.trigger ->> '$.kind' = 'schedule'
       AND schedule.nextOccurrenceAt IS NOT NULL
     ORDER BY at
-  `.columns({ id: "string", name: "string", at: "time" });
+  `.columns({ id: "string", name: "string", at: "time", cadence: "string" });
 
   const upcoming = sql`
     SELECT (SELECT count(*) FROM (${waiting})) + (SELECT count(*) FROM (${schedules})) AS total
@@ -228,26 +164,13 @@ export default page.define({ title: "Home" }, ({ sql, now, intervals, bucket }) 
     hourly: { rows: { hour: "time", turns: "number" } },
   });
 
-  const scheduledAndWaiting = ui.panel({ title: "Scheduled & waiting" }, [
-    ui.rowList(
-      {},
-      ui.each(waiting, (run) =>
-        ui.listRow(
-          {
-            title: run.workflow,
-            to: { kind: "run", workflowName: run.workflowName, instanceId: run.instanceId },
-            detail: "Waiting for an event",
-            icon: "pause-circle",
-          },
-          [
-            ui.stack(
-              { gap: "sm", direction: "row" },
-              ui.each(run.waits, (wait) => ui.badge({ label: wait.eventType, tone: "waiting" })),
-            ),
-            ui.relativeTime({ time: run.updatedAt }),
-          ],
-        ),
-      ),
+  const comingUp = ui.panel({ title: "Coming up" }, [
+    ui.when(
+      ui.is(upcoming.value("total", 0), { eq: 0 }),
+      ui.text({
+        text: "Nothing is scheduled. Ask an agent to run something on a schedule, such as a summary every morning.",
+        tone: "muted",
+      }),
     ),
     ui.rowList(
       {},
@@ -256,10 +179,37 @@ export default page.define({ title: "Home" }, ({ sql, now, intervals, bucket }) 
           {
             title: route.name,
             to: { kind: "route", id: route.id },
-            detail: "Scheduled route",
-            icon: "clock",
+            detail: route.cadence,
+            icon: "calendar",
           },
           [ui.relativeTime({ time: route.at })],
+        ),
+      ),
+    ),
+    ui.rowList(
+      {},
+      ui.each(waiting, (workflow) =>
+        ui.listRow(
+          {
+            title: workflow.workflow,
+            to: {
+              kind: "run",
+              workflowName: workflow.workflowName,
+              instanceId: workflow.instanceId,
+            },
+            detail: "Waiting for an event",
+            icon: "pause-circle",
+          },
+          [
+            ui.stack(
+              { gap: "sm", direction: "row" },
+              ui.each(workflow.waits, (wait) =>
+                ui.badge({ label: wait.eventType, tone: "waiting" }),
+              ),
+            ),
+            ui.number({ value: workflow.runs, format: "integer", tone: "muted" }),
+            ui.relativeTime({ time: workflow.updatedAt }),
+          ],
         ),
       ),
     ),
@@ -336,115 +286,35 @@ export default page.define({ title: "Home" }, ({ sql, now, intervals, bucket }) 
         ),
       ),
     ]),
-    ui.panel({ title: "Orchestration" }, [ui.orchestration({})]),
-    ui.grid({ columns: "main-side", gap: "xl" }, [
-      ui.stack({ gap: "xl" }, [
-        ui.panelTable(
-          {
-            title: "Automations",
-            columns: [
-              { label: "Runs · 24 hours" },
-              { label: "Success", align: "end" },
-              { label: "Last run", align: "end" },
-            ],
-            empty: "No workflow has run in this scope yet.",
-          },
-          ui.each(health, (row) =>
-            ui.panelTableRow(
-              {
-                title: row.workflow,
-                to: { kind: "run", workflowName: row.workflowName, instanceId: row.instanceId },
-              },
-              [
-                ui.stack({ gap: "md", direction: "row" }, [
-                  ui.sparkBars({
-                    label: "Starts per hour",
-                    rows: row.hourly,
-                    axis: { field: "hour", intervals: hours },
-                    value: "runs",
-                  }),
-                  ui.number({ value: row.started, format: "integer", tone: "muted" }),
-                ]),
-                ui.number({ value: row.successRate, format: "percent", tone: row.rateTone }),
-                ui.stack({ gap: "md", direction: "row" }, [
-                  ui.runStatus({ status: row.status }),
-                  ui.relativeTime({ time: row.updatedAt }),
-                ]),
-              ],
-            ),
-          ),
-        ),
-        ui.panel({ title: "Events" }, [
-          ui.when(
-            ui.is(eventVolume.value("source", "")),
-            ui.barChart({
-              label: "Events per hour",
-              rows: eventVolume,
-              axis: { field: "hour", intervals: hours },
-              value: "events",
-              series: "source",
-            }),
-          ),
-          ui.when(
-            ui.is(eventVolume.value("source", ""), { not: true }),
-            ui.text({ text: "No events arrived in the last 24 hours.", tone: "muted" }),
-          ),
-        ]),
-      ]),
-      ui.stack({ gap: "xl" }, [
-        ui.panel(
-          {
-            title: "Connections",
-            link: { label: "Show more on the Integrations page", to: { kind: "integrations" } },
-          },
-          [
-            ui.rowList(
-              { empty: "No connections yet. Ask your agent to add one." },
-              ui.each(connections, (connection) =>
-                ui.listRow(
-                  {
-                    title: connection.name,
-                    to: { kind: "connection", id: connection.id },
-                    detail: connection.kind,
-                  },
-                  [
-                    ui.relativeTime({ time: connection.changedAt }),
-                    ui.badge({ label: connection.stateLabel, tone: connection.tone }),
-                  ],
+    ui.grid({ columns: 2, gap: "xl" }, [
+      comingUp,
+      ui.panel(
+        {
+          title: "Agents",
+          link: { label: "Show more on the Agents page", to: { kind: "agents" } },
+        },
+        [
+          ui.rowList(
+            { empty: "No agents in this scope." },
+            ui.each(agents, (agent) =>
+              ui.listRow({ title: agent.name, detail: agent.activity, icon: "message-square" }, [
+                ui.when(
+                  ui.is(agent.queue),
+                  ui.badge({ label: agent.queue, tone: agent.queueTone }),
                 ),
-              ),
+                ui.relativeTime({ time: agent.latestAt }),
+                ui.sparkBars({
+                  label: "Turns per hour",
+                  rows: agent.hourly,
+                  axis: { field: "hour", intervals: hours },
+                  value: "turns",
+                }),
+                ui.number({ value: agent.turns, format: "integer", tone: "muted" }),
+              ]),
             ),
-          ],
-        ),
-        ui.when(ui.is(upcoming.value("total", 0), { gt: 0 }), scheduledAndWaiting),
-        ui.panel(
-          {
-            title: "Agents",
-            link: { label: "Show more on the Agents page", to: { kind: "agents" } },
-          },
-          [
-            ui.rowList(
-              { empty: "No agents in this scope." },
-              ui.each(agents, (agent) =>
-                ui.listRow({ title: agent.name, detail: agent.activity, icon: "message-square" }, [
-                  ui.when(
-                    ui.is(agent.queue),
-                    ui.badge({ label: agent.queue, tone: agent.queueTone }),
-                  ),
-                  ui.relativeTime({ time: agent.latestAt }),
-                  ui.sparkBars({
-                    label: "Turns per hour",
-                    rows: agent.hourly,
-                    axis: { field: "hour", intervals: hours },
-                    value: "turns",
-                  }),
-                  ui.number({ value: agent.turns, format: "integer", tone: "muted" }),
-                ]),
-              ),
-            ),
-          ],
-        ),
-      ]),
+          ),
+        ],
+      ),
     ]),
   ]);
 });

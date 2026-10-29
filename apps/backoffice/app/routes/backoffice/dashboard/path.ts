@@ -14,8 +14,8 @@ import {
 } from "@/backoffice-runtime/route-scope";
 import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
-// The dashboard shows one workflow run in place of its Automations table. The run lives in the
-// URL, so browser back, reload, and links from elsewhere all reach it.
+// The overview shows one workflow run above its other panels. The run lives in the URL, so browser
+// back, reload, and links from elsewhere all reach it.
 const RUN_WORKFLOW_PARAM = "workflow";
 const RUN_INSTANCE_PARAM = "run";
 // The orchestration selection lives in the URL too, so links can point at a route or an event.
@@ -54,19 +54,36 @@ export function dashboardPath(scope: BackofficeRouteScope): string {
   return `/backoffice/dashboard/${backofficeRouteScopePath(scope)}`;
 }
 
-// The open trace and the node selected in it live in the URL, so both can be linked to and survive
-// a reload.
+// The open trace, the node selected in it, and what the list shows live in the URL, so all three
+// can be linked to and survive a reload.
 const TRACE_PARAM = "trace";
 const TRACE_NODE_PARAM = "node";
+const ACTIVITY_FILTER_PARAM = "show";
 
-export function dashboardEventsPath(
+/** Which traces the Activity list shows; `all` folds the ones nothing acted on out of the way. */
+export type ActivityFilter = "all" | "failed" | "scheduled" | "agents";
+
+const ACTIVITY_FILTERS: readonly ActivityFilter[] = ["all", "failed", "scheduled", "agents"];
+
+export function dashboardActivityPath(
   scope: BackofficeRouteScope,
-  rootEventId: string | null,
+  { trace, filter }: { trace: string | null; filter: ActivityFilter },
 ): string {
-  const path = `${dashboardPath(scope)}/events`;
-  return rootEventId === null
-    ? path
-    : `${path}?${new URLSearchParams({ [TRACE_PARAM]: rootEventId }).toString()}`;
+  const search = new URLSearchParams();
+  if (filter !== "all") {
+    search.set(ACTIVITY_FILTER_PARAM, filter);
+  }
+  if (trace !== null) {
+    search.set(TRACE_PARAM, trace);
+  }
+  const query = search.toString();
+  return `${dashboardPath(scope)}/activity${query === "" ? "" : `?${query}`}`;
+}
+
+export function dashboardActivityFilter(searchParams: URLSearchParams): ActivityFilter {
+  return (
+    ACTIVITY_FILTERS.find((filter) => filter === searchParams.get(ACTIVITY_FILTER_PARAM)) ?? "all"
+  );
 }
 
 export function dashboardOpenedTrace(searchParams: URLSearchParams): string | null {
@@ -113,6 +130,11 @@ export function dashboardOpenedRun(searchParams: URLSearchParams): WorkflowRunRe
   return workflowName && instanceId ? { workflowName, instanceId } : null;
 }
 
+export function dashboardMapPath(scope: BackofficeRouteScope): string {
+  return `${dashboardPath(scope)}/map`;
+}
+
+/** The Map with a route, event, source, or target selected in its graph. */
 export function dashboardSelectionPath(
   scope: BackofficeResolvedScope,
   item: OrchestrationGraphItem,
@@ -121,7 +143,7 @@ export function dashboardSelectionPath(
     [SELECTION_KIND_PARAM]: item.kind,
     [SELECTION_ID_PARAM]: item.id,
   });
-  return `${dashboardPath(backofficeRouteScopeFromResolvedScope(scope))}?${search.toString()}`;
+  return `${dashboardMapPath(backofficeRouteScopeFromResolvedScope(scope))}?${search.toString()}`;
 }
 
 export function dashboardSelection(searchParams: URLSearchParams): OrchestrationGraphItem | null {
@@ -132,7 +154,7 @@ export function dashboardSelection(searchParams: URLSearchParams): Orchestration
   return kind && id ? { kind, id } : null;
 }
 
-/** Keeps every other parameter, such as an opened run, while the selection changes. */
+/** Keeps every other parameter while the selection changes. */
 export function withDashboardSelection(
   searchParams: URLSearchParams,
   item: OrchestrationGraphItem | null,

@@ -1,4 +1,7 @@
-import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type {
+  AutomationRouteDefinition,
+  AutomationScheduleCadence,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
 
 import type { WorkflowWaitRecord } from "@/fragno/automation/workflow-waits";
@@ -47,8 +50,6 @@ type DashboardRunRecord = {
   completedAt: Date | null;
 };
 
-type DashboardEventRecord = { source: string; eventType: string; occurredAt: Date };
-
 /** The run a dashboard row opens. */
 export type DashboardRunReference = {
   workflowName: string;
@@ -73,34 +74,24 @@ export type DashboardAttention =
     }
   | { kind: "connection-unavailable"; connection: IntegrationConnectionRecord };
 
-export type DashboardWorkflowHealth = {
+/** A scheduled route that will fire again, with how often it fires in words. */
+export type DashboardSchedule = { routeId: string; name: string; cadence: string; at: Date };
+
+/** The runs of one workflow that wait for an event without asking a person. */
+export type DashboardWaitingWorkflow = {
   workflow: string;
-  startedRuns: number;
-  completedRuns: number;
-  erroredRuns: number;
-  startsPerBucket: number[];
+  waitingFor: string[];
+  runCount: number;
   latestRun: DashboardRunReference;
 };
 
-export type DashboardUpcoming =
-  | { kind: "schedule"; routeId: string; name: string; at: Date }
-  | {
-      kind: "waiting-run";
-      workflow: string;
-      run: DashboardRunReference;
-      waitingFor: readonly string[];
-    };
-
 export type BackofficeDashboard = {
   attention: DashboardAttention[];
-  workflows: DashboardWorkflowHealth[];
-  eventVolume: {
-    bucketStarts: number[];
-    sources: { source: string; count: number }[];
-    countsByBucket: Record<string, number>[];
-  };
-  connections: readonly IntegrationConnectionRecord[];
-  upcoming: DashboardUpcoming[];
+  /** Soonest first. */
+  schedules: DashboardSchedule[];
+  /** The workflow that waited last first. */
+  waiting: DashboardWaitingWorkflow[];
+  bucketStarts: number[];
 };
 
 /**
@@ -152,17 +143,77 @@ function groupBy<T>(items: readonly T[], key: (item: T) => string): Map<string, 
   return groups;
 }
 
+const weekdayFormat = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" });
+
+/** A cron day of the week, where both 0 and 7 are Sunday, by name. */
+function cronWeekday(field: string): string | null {
+  const day = Number(field);
+  // 1970-01-04 was a Sunday.
+  return Number.isInteger(day) && day >= 0 && day <= 7
+    ? weekdayFormat.format(Date.UTC(1970, 0, 4 + (day % 7)))
+    : null;
+}
+
 /**
- * Summarizes a scope's synchronized automation state over the last day: what needs a person, how
- * each workflow is doing, what events arrive and which of them nothing handles, and what is
- * scheduled or waiting next.
+ * How often a schedule fires, in words, for the common cron shapes; others keep their expression.
+ * Times read in the schedule's own time zone, which the words name.
+ */
+function describeScheduleCadence(cadence: AutomationScheduleCadence): string {
+  if (cadence.kind === "once") {
+    return "Once";
+  }
+  const fields = cadence.expression.trim().split(/\s+/);
+  const [minute = "", hour = "", dayOfMonth = "", month = "", dayOfWeek = ""] = fields;
+  const isNumber = (field: string) => /^\d{1,2}$/.test(field);
+  const time = `${hour.padStart(2, "0")}:${minute.padStart(2, "0")} ${cadence.timeZone}`;
+  const step = /^\*\/(\d+)$/.exec(minute)?.[1];
+  const everyDay = dayOfMonth === "*" && month === "*";
+
+  if (fields.length !== 5) {
+    return `Cron ${cadence.expression}`;
+  }
+  if (minute === "*" && hour === "*" && everyDay && dayOfWeek === "*") {
+    return "Every minute";
+  }
+  if (step !== undefined && hour === "*" && everyDay && dayOfWeek === "*") {
+    return step === "1" ? "Every minute" : `Every ${step} minutes`;
+  }
+  if (isNumber(minute) && hour === "*" && everyDay && dayOfWeek === "*") {
+    return `Every hour at :${minute.padStart(2, "0")}`;
+  }
+  if (isNumber(minute) && isNumber(hour) && everyDay) {
+    if (dayOfWeek === "*") {
+      return `Every day at ${time}`;
+    }
+    if (dayOfWeek === "1-5") {
+      return `Every weekday at ${time}`;
+    }
+    const weekday = cronWeekday(dayOfWeek);
+    if (weekday !== null) {
+      return `Every ${weekday} at ${time}`;
+    }
+  }
+  if (
+    isNumber(minute) &&
+    isNumber(hour) &&
+    isNumber(dayOfMonth) &&
+    month === "*" &&
+    dayOfWeek === "*"
+  ) {
+    return `Monthly on day ${dayOfMonth} at ${time}`;
+  }
+  return `Cron ${cadence.expression}`;
+}
+
+/**
+ * Summarizes a scope's synchronized automation state for its overview: what needs a person, which
+ * schedules fire next, and which runs wait for an event without asking anyone.
  */
 export function projectBackofficeDashboard({
   now,
   runs,
   waitingRuns,
   waits,
-  events,
   connections,
   routes,
 }: {
@@ -171,37 +222,21 @@ export function projectBackofficeDashboard({
   /** Waiting runs in full, as the interface of one that awaits input renders them. */
   waitingRuns: readonly AutomationWorkflowRun[];
   waits: readonly WorkflowWaitRecord[];
-  events: readonly DashboardEventRecord[];
-  /** The scope's connections that are not disconnected, in the order the panel lists them. */
+  /** The scope's connections that are not disconnected. */
   connections: readonly IntegrationConnectionRecord[];
   routes: readonly AutomationRouteDefinition[];
 }): BackofficeDashboard {
   const bucketStarts = dashboardBucketStarts(now);
   const windowStart = bucketStarts[0] ?? now;
-  const bucketIndex = (time: Date) => dashboardBucketIndex(bucketStarts, time);
   const inWindow = (time: Date | null): time is Date =>
     time !== null && time.getTime() >= windowStart;
 
-  const workflows: DashboardWorkflowHealth[] = [];
   const failingWorkflows: DashboardAttention[] = [];
   for (const [workflow, workflowRuns] of groupBy(runs, workflowDisplayName)) {
-    const started = workflowRuns.filter((run) => inWindow(run.createdAt));
-    const finished = workflowRuns.filter((run): run is DashboardRunRecord & { completedAt: Date } =>
-      inWindow(run.completedAt),
+    const errored = workflowRuns.filter(
+      (run): run is DashboardRunRecord & { completedAt: Date } =>
+        run.status === "errored" && inWindow(run.completedAt),
     );
-    const errored = finished.filter((run) => run.status === "errored");
-    const startsPerBucket = bucketStarts.map(() => 0);
-    for (const run of started) {
-      startsPerBucket[bucketIndex(run.createdAt)] += 1;
-    }
-    workflows.push({
-      workflow,
-      startedRuns: started.length,
-      completedRuns: finished.filter((run) => run.status === "complete").length,
-      erroredRuns: errored.length,
-      startsPerBucket,
-      latestRun: runReference(latestByUpdate(workflowRuns)),
-    });
     // A workflow whose run completed after its failures has recovered from them. Runs that end
     // in the same instant have no order, so a failure tied with a completion still counts.
     const recoveredAt = workflowRuns.reduce(
@@ -223,17 +258,13 @@ export function projectBackofficeDashboard({
       });
     }
   }
-  workflows.sort(
-    (left, right) => right.latestRun.updatedAt.getTime() - left.latestRun.updatedAt.getTime(),
-  );
 
   // A waiting run asks a person only when it shows an interface for the events it waits on.
   const awaitingInput: DashboardAttention[] = [];
-  const upcoming: DashboardUpcoming[] = [];
+  const waitingEntries: { run: AutomationWorkflowRun; waitingFor: string[] }[] = [];
   const waitsByRun = groupBy(waits, (wait) => wait.runId);
   for (const run of waitingRuns) {
     const runWaits = waitsByRun.get(run.id) ?? [];
-    const waitingFor = runWaits.map((wait) => wait.eventType);
     const interfaceStep = awaitingInputStep(run, runWaits);
     if (interfaceStep) {
       awaitingInput.push({
@@ -242,43 +273,44 @@ export function projectBackofficeDashboard({
         run,
         generatedUi: { type: "step", step: interfaceStep },
       });
-    } else {
-      upcoming.push({
-        kind: "waiting-run",
-        workflow: workflowDisplayName(run),
-        run: {
-          workflowName: run.workflowName,
-          instanceId: run.instanceId,
-          status: run.status,
-          updatedAt: new Date(run.updatedAt),
-        },
-        waitingFor,
-      });
+      continue;
     }
+    waitingEntries.push({ run, waitingFor: runWaits.map((wait) => wait.eventType) });
   }
-  for (const route of routes) {
-    if (route.enabled && route.trigger.kind === "schedule" && route.nextOccurrenceAt) {
-      upcoming.push({
-        kind: "schedule",
-        routeId: route.id,
-        name: route.name,
-        at: new Date(route.nextOccurrenceAt),
-      });
-    }
-  }
-  const upcomingTime = (entry: DashboardUpcoming) =>
-    entry.kind === "schedule" ? entry.at.getTime() : entry.run.updatedAt.getTime();
-  upcoming.sort((left, right) => upcomingTime(left) - upcomingTime(right));
+  const waitingByWorkflow = groupBy(waitingEntries, (entry) => workflowDisplayName(entry.run));
+  const waiting = [...waitingByWorkflow].map(([workflow, entries]): DashboardWaitingWorkflow => {
+    const latest = entries.reduce((last, entry) =>
+      entry.run.updatedAt > last.run.updatedAt ? entry : last,
+    ).run;
+    return {
+      workflow,
+      waitingFor: [...new Set(entries.flatMap((entry) => entry.waitingFor))].sort(),
+      runCount: entries.length,
+      latestRun: {
+        workflowName: latest.workflowName,
+        instanceId: latest.instanceId,
+        status: latest.status,
+        updatedAt: new Date(latest.updatedAt),
+      },
+    };
+  });
+  waiting.sort(
+    (left, right) => right.latestRun.updatedAt.getTime() - left.latestRun.updatedAt.getTime(),
+  );
 
-  const windowEvents = events.filter((event) => inWindow(event.occurredAt));
-  const countsByBucket = bucketStarts.map((): Record<string, number> => ({}));
-  for (const event of windowEvents) {
-    const counts = countsByBucket[bucketIndex(event.occurredAt)];
-    counts[event.source] = (counts[event.source] ?? 0) + 1;
-  }
-  const sourceCounts = [...groupBy(windowEvents, (event) => event.source)]
-    .map(([source, sourceEvents]) => ({ source, count: sourceEvents.length }))
-    .sort((left, right) => right.count - left.count || left.source.localeCompare(right.source));
+  const schedules = routes.flatMap((route): DashboardSchedule[] =>
+    route.enabled && route.trigger.kind === "schedule" && route.nextOccurrenceAt
+      ? [
+          {
+            routeId: route.id,
+            name: route.name,
+            cadence: describeScheduleCadence(route.trigger.cadence),
+            at: new Date(route.nextOccurrenceAt),
+          },
+        ]
+      : [],
+  );
+  schedules.sort((left, right) => left.at.getTime() - right.at.getTime());
 
   return {
     attention: [
@@ -288,13 +320,8 @@ export function projectBackofficeDashboard({
         .filter((connection) => connection.state === "unavailable")
         .map((connection): DashboardAttention => ({ kind: "connection-unavailable", connection })),
     ],
-    workflows,
-    eventVolume: {
-      bucketStarts,
-      sources: sourceCounts,
-      countsByBucket,
-    },
-    connections,
-    upcoming,
+    schedules,
+    waiting,
+    bucketStarts,
   };
 }

@@ -40,6 +40,8 @@ export type EventTraceEvent = {
   id: string;
   source: string;
   eventType: string;
+  /** The label the scope's event catalog gives its type, if the scope defines it. */
+  label: string | null;
   occurredAt: Date;
   payload: unknown;
   subject: unknown;
@@ -122,22 +124,32 @@ export type EventTraceOutcome =
   | { kind: "in_progress"; state: "running" | "waiting"; failedCount: number }
   | { kind: "settled"; settledAt: Date; failedCount: number };
 
+/**
+ * Something an origin set in motion, named by what did it: a workflow run, an agent, or, when a
+ * route did nothing else, the route itself.
+ */
+export type EventTraceEffect = { kind: "workflow" | "agent" | "route"; label: string };
+
 export type EventTraceSummary = {
   rootEventId: string;
   source: string;
   eventType: string;
+  /** The label the scope's event catalog gives the origin's type, if the scope defines it. */
+  label: string | null;
   /** What the origin is about, read from its payload, such as an issue title or a schedule name. */
   headline: string | null;
   occurredAt: Date;
   /** What the origin set in motion: the workflows it started, else what else came of it. */
-  effects: string[];
+  effects: EventTraceEffect[];
   outcome: EventTraceOutcome;
 };
 
-/** Traces in list order, with adjacent repeats of the same origin folded into one entry. */
+/**
+ * Traces in list order, with adjacent repeats of the same origin folded into one entry. `id` is the
+ * oldest trace's, which stays put while newer repeats arrive.
+ */
 export type EventTraceListEntry =
   | { kind: "trace"; trace: EventTraceSummary }
-  /** `id` is the oldest trace's, which stays put while newer repeats arrive. */
   | { kind: "repeats"; id: string; traces: EventTraceSummary[] };
 
 function rootIdOf(event: Pick<EventTraceEvent, "id" | "rootEventId">): string {
@@ -303,6 +315,7 @@ export function projectEventTraceSummaries({
         rootEventId: origin.id,
         source: origin.source,
         eventType: origin.eventType,
+        label: origin.label,
         headline: eventHeadline(origin.payload),
         occurredAt: origin.occurredAt,
         effects: traceEffects(rootDispatches, runsByKey, derivedEvents),
@@ -329,8 +342,9 @@ function groupBy<T>(items: readonly T[], keyOf: (item: T) => string): Map<string
   return groups;
 }
 
-function distinct(values: readonly string[]): string[] {
-  return [...new Set(values)];
+function distinctEffects(effects: readonly EventTraceEffect[]): EventTraceEffect[] {
+  const byKey = new Map(effects.map((effect) => [`${effect.kind}\u0000${effect.label}`, effect]));
+  return [...byKey.values()];
 }
 
 /**
@@ -344,50 +358,60 @@ function traceEffects(
   dispatches: readonly EventTraceDispatch[],
   runsByKey: ReadonlyMap<string, EventTraceRun>,
   events: readonly EventTraceEvent[],
-): string[] {
-  const effects = dispatches.map(({ routeName, state }): { text: string; acted: boolean } => {
-    switch (state.status) {
-      case "pending":
-      case "retrying":
-        return { text: routeName, acted: true };
-      case "failed":
-        return { text: `${routeName} failed`, acted: true };
-      case "completed":
-        break;
-    }
-    const { outcome } = state;
-    switch (outcome.kind) {
-      case "workflow_started": {
-        const run = runsByKey.get(runKey(outcome.workflowName, outcome.instanceId));
-        return {
-          text: run?.remoteWorkflowName ?? run?.workflowName ?? outcome.workflowName,
-          acted: true,
-        };
+): EventTraceEffect[] {
+  const effects = dispatches.map(
+    ({ routeName, state }): { effect: EventTraceEffect; acted: boolean } => {
+      switch (state.status) {
+        case "pending":
+        case "retrying":
+          return { effect: { kind: "route", label: routeName }, acted: true };
+        case "failed":
+          return { effect: { kind: "route", label: `${routeName} failed` }, acted: true };
+        case "completed":
+          break;
       }
-      // A delivery is named by the run that took it, like a run a route started.
-      case "workflow_event_sent": {
-        const run = runsByKey.get(runKey(outcome.workflowName, outcome.instanceId));
-        return {
-          text: run?.remoteWorkflowName ?? `${routeName} delivered ${outcome.eventType}`,
-          acted: true,
-        };
+      const { outcome } = state;
+      switch (outcome.kind) {
+        case "workflow_started": {
+          const run = runsByKey.get(runKey(outcome.workflowName, outcome.instanceId));
+          return {
+            effect: {
+              kind: "workflow",
+              label: run?.remoteWorkflowName ?? run?.workflowName ?? outcome.workflowName,
+            },
+            acted: true,
+          };
+        }
+        // A delivery is named by the run that took it, like a run a route started.
+        case "workflow_event_sent": {
+          const run = runsByKey.get(runKey(outcome.workflowName, outcome.instanceId));
+          return {
+            effect: run?.remoteWorkflowName
+              ? { kind: "workflow", label: run.remoteWorkflowName }
+              : { kind: "route", label: `${routeName} delivered ${outcome.eventType}` },
+            acted: true,
+          };
+        }
+        case "agent_notified":
+          return { effect: { kind: "agent", label: outcome.agentName }, acted: true };
+        case "event_forwarded":
+          return { effect: { kind: "route", label: `${routeName} forwarded` }, acted: true };
+        case "event_reclassified":
+          return {
+            effect: {
+              kind: "route",
+              label: events.find((event) => event.id === outcome.eventId)?.eventType ?? routeName,
+            },
+            acted: false,
+          };
+        case "skipped":
+          return { effect: { kind: "route", label: `${routeName} skipped` }, acted: false };
       }
-      case "agent_notified":
-        return { text: `${outcome.agentName} agent`, acted: true };
-      case "event_forwarded":
-        return { text: `${routeName} forwarded`, acted: true };
-      case "event_reclassified":
-        return {
-          text: events.find((event) => event.id === outcome.eventId)?.eventType ?? routeName,
-          acted: false,
-        };
-      case "skipped":
-        return { text: `${routeName} skipped`, acted: false };
-    }
-    throw new Error("Unsupported automation route dispatch outcome.");
-  });
+      throw new Error("Unsupported automation route dispatch outcome.");
+    },
+  );
   const acted = effects.filter((effect) => effect.acted);
-  return distinct((acted.length > 0 ? acted : effects).map((effect) => effect.text));
+  return distinctEffects((acted.length > 0 ? acted : effects).map(({ effect }) => effect));
 }
 
 function traceOutcome(

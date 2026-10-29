@@ -45,7 +45,7 @@ function openDashboard(pageSources: Promise<PageSources>) {
 function pageTabs(): string[] {
   const links = screen.getByRole("navigation", { name: "Dashboard" }).querySelectorAll("a");
   return Array.from(links, (link) => link.textContent).filter(
-    (label) => label !== "Overview" && label !== "Events",
+    (label) => label !== "Overview" && label !== "Activity" && label !== "Map",
   );
 }
 

@@ -1,7 +1,6 @@
 import type { LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 
 import {
-  readAutomationEventsSince,
   readAutomationRoutes,
   readWorkflowRuns,
   readWorkflowRunSummaries,
@@ -28,7 +27,6 @@ export function readDashboardOverview(reader: LofiSqliteReader, { since }: { sin
     runs: readWorkflowRunSummaries(reader),
     waitingRuns,
     waits,
-    events: readAutomationEventsSince(reader, new Date(since)),
     connections: readCurrentIntegrationConnections(reader),
     agents: readPiAgents(reader),
     agentTurns: readPiAgentTurns(reader, new Date(since)),

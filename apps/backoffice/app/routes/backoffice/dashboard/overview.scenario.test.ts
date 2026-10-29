@@ -59,6 +59,7 @@ import { TelegramObject } from "../../../../workers/telegram-object";
 import { UploadObject } from "../../../../workers/upload-object";
 import { piAgentListings, piAgentQueueStatus } from "../agents/agent-activity";
 import type { AutomationWorkflowRun } from "../automations/script-view/workflow-run-presentation";
+import { projectEventTraceList, type EventTraceSummary } from "./event-traces";
 import { projectOrchestrationGraph } from "./orchestration-graph";
 import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
 
@@ -316,20 +317,9 @@ type HomePageRows = {
     { workflow: string; errored: number; error: string }[],
     { id: string }[],
   ];
-  Automations: [
-    {
-      workflow: string;
-      started: number;
-      completed: number;
-      errored: number;
-      status: string;
-    }[],
-  ];
-  Events: [{ source: string; events: number }[]];
-  Connections: [{ id: string; state: string }[]];
-  "Scheduled & waiting": [
-    { workflow: string; waits: { eventType: string }[] }[],
+  "Coming up": [
     { name: string; at: string }[],
+    { workflow: string; runs: number; waits: { eventType: string }[] }[],
   ];
   Agents: [
     {
@@ -405,14 +395,9 @@ async function readHomePage(ctx: BackofficeScenarioContext, definition: PageDefi
     ]),
   ) as unknown as HomePageRows;
   const [awaitingInput, failing, unavailable] = sections["Needs attention"];
-  const [waiting, schedules] = sections["Scheduled & waiting"];
+  const [schedules, waiting] = sections["Coming up"];
   const responses = new Set([...markup.matchAll(/data-respond="([^"]+)"/g)].map(([, id]) => id));
-  const eventsBySource = new Map<string, number>();
-  for (const { source, events } of sections.Events[0]) {
-    eventsBySource.set(source, (eventsBySource.get(source) ?? 0) + events);
-  }
   return {
-    showsOrchestration: markup.includes('data-widget="orchestration"'),
     attention: [
       ...awaitingInput.map(
         ({ workflow, step, instanceId }) =>
@@ -423,18 +408,6 @@ async function readHomePage(ctx: BackofficeScenarioContext, definition: PageDefi
       ),
       ...unavailable.map(({ id }) => `unavailable: ${id}`),
     ],
-    workflows: sections.Automations[0]
-      .map(
-        ({ workflow, started, completed, errored, status }) =>
-          `${workflow}: ${started} started, ${completed} complete, ${errored} errored, last ${status}`,
-      )
-      .sort(),
-    sources: [...eventsBySource]
-      .sort(
-        ([left, leftCount], [right, rightCount]) =>
-          rightCount - leftCount || left.localeCompare(right),
-      )
-      .map(([source, count]) => `${source} ×${count}`),
     agents: sections.Agents[0].map(({ agentName, description, latestKind, queue, hourly }) => {
       const turns = hourly.reduce((total, hour) => total + hour.turns, 0);
       const recorded =
@@ -443,55 +416,56 @@ async function readHomePage(ctx: BackofficeScenarioContext, definition: PageDefi
           : `${latestKind}, ${turns} turns in ${hourly.length} hours`;
       return `${agentName} (${description.slice(0, 20)}): ${recorded}${queue ? `; ${queue}` : ""}`;
     }),
-    connections: sections.Connections[0].map(({ id, state }) => `${id}: ${state}`),
-    upcoming: [
-      ...waiting.map(
-        ({ workflow, waits }) =>
-          `waiting: ${workflow} for ${waits.map(({ eventType }) => eventType).join(", ")}`,
-      ),
-      ...schedules.map(({ name, at }) => `schedule: ${name} at ${at}`),
-    ],
+    // The page shows cron expressions as they are, so only when each schedule fires compares.
+    schedules: schedules.map(({ name, at }) => `${name} at ${at}`),
+    waiting: waiting.map(
+      ({ workflow, runs, waits }) =>
+        `${workflow}: ${runs} for ${waits.map(({ eventType }) => eventType).join(", ")}`,
+    ),
   };
 }
 
 /**
- * The example home page shows what the dashboard shows. Its orchestration graph and response forms
- * are the dashboard's own, so the page only has to place them. Building the page records Codemode
- * events, so both read the scope after the build.
+ * The example home page shows what the overview shows, except what automations did lately, which
+ * the Activity tab projects from traces. Its response forms are the dashboard's own, so the page
+ * only has to place them. Building the page records Codemode events, so both read the scope after
+ * the build.
  */
 async function assertHomePageMatchesDashboard(ctx: BackofficeScenarioContext) {
   const definition = await buildHomePage(ctx);
   const {
-    orchestration: _graph,
     conversations: _conversations,
+    activity: _activity,
+    recentActivity: _recentActivity,
+    schedules,
     ...dashboard
   } = await readDashboard(ctx);
-  const { showsOrchestration, ...page } = await readHomePage(ctx, definition);
-  assert.isTrue(showsOrchestration, "The home page shows the orchestration graph.");
-  assert.deepEqual(page, dashboard);
+  assert.deepEqual(await readHomePage(ctx, definition), {
+    ...dashboard,
+    schedules: schedules.map((schedule) => schedule.replace(/^(.*): .* at /, "$1 at ")),
+  });
 }
 
-/** Reads the dashboard the way the page does: from the scope's Automations replica. */
+/**
+ * Reads the overview the way the page does, from the scope's Automations replica, and the Activity
+ * tab's list of what each origin set in motion.
+ */
 async function readDashboard(ctx: BackofficeScenarioContext) {
   const replica = ctx.lofi.automations.forOrg(orgId);
   await replica.drain();
   const now = ctx.runtime.now();
   const since = dashboardBucketStarts(now)[0] ?? now;
-  const [overview, { activeWorkflows }] = await Promise.all([
+  const [overview, traces, recentTraces] = await Promise.all([
     readAutomationReplica(replica.replica, "dashboardOverview", { since }),
-    readAutomationReplica(replica.replica, "orchestrationRecords", undefined),
+    readAutomationReplica(replica.replica, "eventTraceSummaries", { limit: 100, origins: "all" }),
+    // Fewer than the events nothing acted on after the last run, as a burst of them can be.
+    readAutomationReplica(replica.replica, "eventTraceSummaries", {
+      limit: 2,
+      origins: "acted-on",
+    }),
   ]);
-  const { routes, events, agents, agentTurns } = overview;
+  const { agents, agentTurns } = overview;
   const dashboard = projectBackofficeDashboard({ now, ...overview });
-  // Catalogs are left out so the graph holds only what this scope's data puts there.
-  const graph = projectOrchestrationGraph({
-    scopeLabel: "Ada Labs",
-    sources: [],
-    eventDefinitions: [],
-    routes,
-    activeWorkflows,
-    recentEvents: events,
-  });
 
   return {
     attention: dashboard.attention.map((item) => {
@@ -511,26 +485,7 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
         ? [`${item.workflow}: ${item.run.codemode?.agentName ?? "no conversation"}`]
         : [],
     ),
-    // Runs created within one millisecond tie on recency, so workflows are compared by name.
-    workflows: dashboard.workflows
-      .map(
-        (workflow) =>
-          `${workflow.workflow}: ${workflow.startedRuns} started, ${workflow.completedRuns} complete, ${workflow.erroredRuns} errored, last ${workflow.latestRun.status}`,
-      )
-      .sort(),
-    sources: dashboard.eventVolume.sources.map(({ source, count }) => `${source} ×${count}`),
-    orchestration: {
-      routes: graph.routes.map(
-        ({ eventId, priority, label, action }) =>
-          `${eventId} → P${priority} ${label} → ${action.kind === "reclassify_event" ? action.eventId : action.targetId}`,
-      ),
-      targets: graph.targets.map(({ label, activeCount }) => `${label}: ${activeCount} running`),
-      recent: graph.events
-        .filter(({ recentCount }) => recentCount > 0)
-        .map(({ id, recentCount }) => `${id} ×${recentCount}`)
-        .sort(),
-    },
-    agents: piAgentListings(agents, agentTurns, dashboard.eventVolume.bucketStarts).map((agent) => {
+    agents: piAgentListings(agents, agentTurns, dashboard.bucketStarts).map((agent) => {
       const turns = agent.turnsPerBucket.reduce((total, count) => total + count, 0);
       const recorded =
         agent.latestKind === null
@@ -539,14 +494,69 @@ async function readDashboard(ctx: BackofficeScenarioContext) {
       const queue = piAgentQueueStatus(agent);
       return `${agent.agentName} (${agent.definition.description.slice(0, 20)}): ${recorded}${queue ? `; ${queue.label}` : ""}`;
     }),
-    connections: dashboard.connections.map(
-      ({ connectionId, state }) => `${connectionId}: ${state}`,
+    schedules: dashboard.schedules.map(
+      ({ name, cadence, at }) => `${name}: ${cadence} at ${at.toISOString()}`,
     ),
-    upcoming: dashboard.upcoming.map((entry) =>
-      entry.kind === "schedule"
-        ? `schedule: ${entry.name} at ${entry.at.toISOString()}`
-        : `waiting: ${entry.workflow} for ${entry.waitingFor.join(", ")}`,
+    waiting: dashboard.waiting.map(
+      ({ workflow, runCount, waitingFor }) =>
+        `${workflow}: ${runCount} for ${waitingFor.join(", ")}`,
     ),
+    activity: [
+      ...describeActivity(traces.filter((trace) => trace.outcome.kind !== "unhandled")),
+      `${traces.filter((trace) => trace.outcome.kind === "unhandled").length} nothing acted on`,
+    ],
+    recentActivity: describeActivity(recentTraces),
+  };
+}
+
+function describeActivity(traces: EventTraceSummary[]): string[] {
+  return projectEventTraceList(traces).map((entry) => {
+    const [newest, ...older] = entry.kind === "trace" ? [entry.trace] : entry.traces;
+    const effects = newest.effects.map(({ kind, label }) => `${kind} ${label}`).join(", ");
+    const repeats = older.length === 0 ? "" : ` ×${older.length + 1}`;
+    return `${effects}${repeats} ← ${newest.source} ${newest.headline ?? newest.eventType}: ${newest.outcome.kind}`;
+  });
+}
+
+/** When a schedule that fires daily at 07:00 UTC fires next after `now`. */
+function nextMorning(now: number): string {
+  const morning = new Date(now);
+  morning.setUTCHours(7, 0, 0, 0);
+  if (morning.getTime() <= now) {
+    morning.setUTCDate(morning.getUTCDate() + 1);
+  }
+  return morning.toISOString();
+}
+
+/** The Map's orchestration graph, as its tab reads it from the replica. */
+async function readMap(ctx: BackofficeScenarioContext) {
+  const replica = ctx.lofi.automations.forOrg(orgId);
+  await replica.drain();
+  const now = ctx.runtime.now();
+  const since = dashboardBucketStarts(now)[0] ?? now;
+  const [{ routes, recentEvents }, { activeWorkflows }] = await Promise.all([
+    readAutomationReplica(replica.replica, "orchestrationGraphInputs", { since }),
+    readAutomationReplica(replica.replica, "orchestrationRecords", undefined),
+  ]);
+  // Catalogs are left out so the graph holds only what this scope's data puts there.
+  const graph = projectOrchestrationGraph({
+    scopeLabel: "Ada Labs",
+    sources: [],
+    eventDefinitions: [],
+    routes,
+    activeWorkflows,
+    recentEvents,
+  });
+  return {
+    routes: graph.routes.map(
+      ({ eventId, priority, label, action }) =>
+        `${eventId} → P${priority} ${label} → ${action.kind === "reclassify_event" ? action.eventId : action.targetId}`,
+    ),
+    targets: graph.targets.map(({ label, activeCount }) => `${label}: ${activeCount} running`),
+    recent: graph.events
+      .filter(({ recentCount }) => recentCount > 0)
+      .map(({ id, recentCount }) => `${id} ×${recentCount}`)
+      .sort(),
   };
 }
 
@@ -692,6 +702,23 @@ describe("dashboard", () => {
           }),
           given.router.route({
             orgId,
+            id: "morning-digest",
+            name: "Morning digest",
+            enabled: true,
+            priority: 150,
+            trigger: {
+              kind: "schedule",
+              cadence: { kind: "cron", expression: "0 7 * * *", timeZone: "UTC" },
+            },
+            action: {
+              kind: "start_workflow",
+              authority: { kind: "organization-automation", grants: [] },
+              workflowScriptPath: "/workspace/automations/ship-order.workflow.js",
+              instanceIdTemplate: "morning-${event.id}",
+            },
+          }),
+          given.router.route({
+            orgId,
             id: "new-year-digest",
             name: "New year digest",
             enabled: true,
@@ -734,32 +761,42 @@ describe("dashboard", () => {
                   "unavailable: mcp#agensi",
                 ],
                 conversations: ["approve-refund: no conversation"],
-                workflows: [
-                  "approve-refund: 1 started, 0 complete, 0 errored, last waiting",
-                  "await-shipment: 1 started, 0 complete, 0 errored, last waiting",
-                  "charge-card: 1 started, 0 complete, 1 errored, last errored",
-                  "ship-order: 1 started, 1 complete, 0 errored, last complete",
-                ],
-                sources: ["acme ×2", "integrations ×2", "shop ×1"],
-                // Both routes start the same workflow, so they meet at one target.
-                orchestration: {
-                  routes: [
-                    "shop:order.placed → P100 Ship placed orders → workflow:/workspace/automations/ship-order.workflow.js",
-                    "scheduler:schedule:new-year-digest → P200 New year digest → workflow:/workspace/automations/ship-order.workflow.js",
-                  ],
-                  targets: ["ship-order: 0 running"],
-                  recent: [
-                    "acme:webhook.received ×2",
-                    "integrations:connection.ready ×1",
-                    "integrations:connection.unavailable ×1",
-                    "shop:order.placed ×1",
-                  ],
-                },
                 agents: ["assistant (General-purpose Back): no activity"],
-                connections: ["api#billing: ready", "mcp#agensi: unavailable"],
-                upcoming: [
-                  "waiting: await-shipment for shipped",
-                  `schedule: New year digest at ${SCHEDULED_AT}`,
+                schedules: [
+                  `Morning digest: Every day at 07:00 UTC at ${nextMorning(twoDaysLater)}`,
+                  `New year digest: Once at ${SCHEDULED_AT}`,
+                ],
+                waiting: ["await-shipment: 1 for shipped"],
+                // What set something in motion leads; events nothing acted on gather apart. The
+                // clock jumps two days at once, so the morning schedule fires once to catch up.
+                activity: [
+                  "workflow ship-order ← shop order.placed: settled",
+                  "workflow ship-order ← scheduler Morning digest: settled",
+                  "6 nothing acted on",
+                ],
+                // Overview's recent activity reaches past the events nothing acted on since.
+                recentActivity: [
+                  "workflow ship-order ← shop order.placed: settled",
+                  "workflow ship-order ← scheduler Morning digest: settled",
+                ],
+              });
+            },
+          ),
+          then.assert(
+            "the Map leads both schedules and the order route to one workflow",
+            async (ctx) => {
+              assert.deepEqual(await readMap(ctx), {
+                routes: [
+                  "shop:order.placed → P100 Ship placed orders → workflow:/workspace/automations/ship-order.workflow.js",
+                  "scheduler:schedule:morning-digest → P150 Morning digest → workflow:/workspace/automations/ship-order.workflow.js",
+                  "scheduler:schedule:new-year-digest → P200 New year digest → workflow:/workspace/automations/ship-order.workflow.js",
+                ],
+                targets: ["ship-order: 0 running"],
+                recent: [
+                  "acme:webhook.received ×2",
+                  "integrations:connection.ready ×1",
+                  "integrations:connection.unavailable ×1",
+                  "shop:order.placed ×1",
                 ],
               });
             },
@@ -777,6 +814,7 @@ describe("dashboard", () => {
               assert.deepEqual(await readReplicaReads(ctx), {
                 routes: [
                   '100 ship-placed-orders "Ship placed orders": event -> start_workflow',
+                  `150 morning-digest "Morning digest": schedule -> start_workflow at ${nextMorning(twoDaysLater)}`,
                   `200 new-year-digest "New year digest": schedule -> start_workflow at ${SCHEDULED_AT}`,
                 ],
                 eventSources: ["shop: Shop"],

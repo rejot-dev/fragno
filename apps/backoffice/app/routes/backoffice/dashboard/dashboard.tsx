@@ -1,14 +1,12 @@
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
 import { Field } from "@fragno-private/design-system/field";
 import { Input } from "@fragno-private/design-system/input";
 import { PaneSpinner } from "@fragno-private/design-system/pane-message";
 import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { TextArea } from "@fragno-private/design-system/text-area";
-import { Suspense, use, useMemo } from "react";
+import { useMemo } from "react";
 import { Form, redirect, useActionData, useNavigation, useSearchParams } from "react-router";
 
 import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
@@ -16,48 +14,50 @@ import {
   backofficeRouteScopeFromResolvedScope,
   backofficeRuntimeScopeFromResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { useClock } from "@/components/backoffice/use-clock";
-import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
-import { describeAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
-import { LofiReplicaGate } from "@/fragno/lofi/replica-gate";
+import { useAutomationRead } from "@/fragno/automation/lofi/replica";
 import {
   getBackofficeShellRequest,
   requireRouteScope,
+  requireScopeSelection,
 } from "@/layouts/backoffice-shell-request.server";
 
 import { piAgentListings } from "../agents/agent-activity";
 import { createAutomationProject } from "../automations/data.server";
 import { loadPageSources, type PageSources } from "../pages/load.server";
+import { shouldRevalidateWithinScope } from "../scope-revalidation";
 import type { Route } from "./+types/dashboard";
+import { DashboardReplica } from "./dashboard-replica";
 import { DashboardSections, type DashboardLoaderData } from "./dashboard-sections";
 import { DashboardTabs } from "./dashboard-tabs";
-import { loadOrchestration } from "./orchestration-loader.server";
+import { projectEventTraceList } from "./event-traces";
 import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
-import { dashboardPath, shouldRevalidateOrchestration } from "./path";
+import { dashboardPath } from "./path";
 
 const CLOCK_TICK_MS = 60_000;
-const DOWNLOAD_TITLE = "Downloading automation activity…";
+// Enough traces that, with repeats folded into one row, recent activity still fills its rows.
+const RECENT_TRACE_LIMIT = 50;
 const CREATE_PROJECT_PARAM = "createProject";
 const pageClassName = `${backofficePageBodyClassName} flex flex-col gap-4`;
 
 type ProjectActionData = { ok: false; message: string };
 
-export async function loader({ context, url }: Route.LoaderArgs) {
-  const orchestration = await loadOrchestration({ context, url });
+export async function loader({ context }: Route.LoaderArgs) {
+  const selectedScope = requireScopeSelection(context);
   return {
-    ...orchestration,
+    selectedScope,
     // Some workspaces, such as an installed app's, have no agents.
     hasAgents: isBackofficeObjectAvailableInContext(
       "PI_MANAGER",
-      backofficeRuntimeScopeFromResolvedScope(orchestration.selectedScope),
+      backofficeRuntimeScopeFromResolvedScope(selectedScope),
     ),
     pageSources: loadPageSources(context),
   } satisfies DashboardLoaderData & { pageSources: Promise<PageSources> };
 }
 
-export const shouldRevalidate = shouldRevalidateOrchestration;
+/** Opening a run only changes the URL; everything the page shows comes from the replica. */
+export const shouldRevalidate = shouldRevalidateWithinScope;
 
 export async function action({ request, context }: Route.ActionArgs) {
   const formData = await request.formData();
@@ -131,19 +131,14 @@ export default function BackofficeDashboard({ loaderData }: Route.ComponentProps
     );
   }
 
-  // The replica's database opens before its download reports progress.
-  const loading = <BackofficeDownloadState title={DOWNLOAD_TITLE} fraction={null} error={null} />;
-
   return (
     <>
       {header}
       <div className={pageClassName}>
         <h1 className="sr-only">Dashboard for {loaderData.selectedScope.label}</h1>
-        <ClientOnly fallback={loading}>
-          <Suspense fallback={loading}>
-            <DashboardClient loaderData={loaderData} />
-          </Suspense>
-        </ClientOnly>
+        <DashboardReplica>
+          {(replica) => <DashboardWorkspace loaderData={loaderData} replica={replica} />}
+        </DashboardReplica>
       </div>
     </>
   );
@@ -206,31 +201,6 @@ function CreateProjectPanel({ cancelPath }: { cancelPath: string }) {
   );
 }
 
-function DashboardClient({ loaderData }: { loaderData: DashboardLoaderData }) {
-  const { automationReplicaSource } = useCurrentBackofficeContext();
-  if (automationReplicaSource.status === "unavailable") {
-    return (
-      <BackofficeSystemState
-        tone="error"
-        label="Unavailable"
-        title="Automation activity could not be synchronized."
-        description={automationReplicaSource.message}
-      />
-    );
-  }
-  const source = automationReplicaSource.source;
-  const replica = use(getAutomationReplica(source));
-  return (
-    <LofiReplicaGate replica={replica} title={DOWNLOAD_TITLE}>
-      <DashboardWorkspace
-        key={describeAutomationReplicaSource(source).resourceKey}
-        loaderData={loaderData}
-        replica={replica}
-      />
-    </LofiReplicaGate>
-  );
-}
-
 function DashboardWorkspace({
   loaderData,
   replica,
@@ -242,7 +212,12 @@ function DashboardWorkspace({
   // The window start only moves when a new bucket begins, so the view opens again rarely.
   const windowStart = dashboardBucketStarts(now)[0] ?? now;
   const reading = useAutomationRead(replica, "dashboardOverview", { since: windowStart });
+  const tracesRead = useAutomationRead(replica, "eventTraceSummaries", {
+    limit: RECENT_TRACE_LIMIT,
+    origins: "acted-on",
+  });
   const overview = reading.status === "ready" ? reading.data : null;
+  const traces = tracesRead.status === "ready" ? tracesRead.data : null;
   const dashboard = useMemo(
     () =>
       overview &&
@@ -251,7 +226,6 @@ function DashboardWorkspace({
         runs: overview.runs,
         waitingRuns: overview.waitingRuns,
         waits: overview.waits,
-        events: overview.events,
         connections: overview.connections,
         routes: overview.routes,
       }),
@@ -260,21 +234,28 @@ function DashboardWorkspace({
   const agents = useMemo(
     () =>
       overview && dashboard
-        ? piAgentListings(overview.agents, overview.agentTurns, dashboard.eventVolume.bucketStarts)
+        ? piAgentListings(overview.agents, overview.agentTurns, dashboard.bucketStarts)
         : [],
     [overview, dashboard],
   );
+  const recentActivity = useMemo(() => (traces ? projectEventTraceList(traces) : null), [traces]);
 
-  if (reading.status === "error") {
+  const readError =
+    reading.status === "error"
+      ? reading.message
+      : tracesRead.status === "error"
+        ? tracesRead.message
+        : null;
+  if (readError !== null) {
     return (
       <BackofficeSystemState
         tone="error"
         title="Automation activity could not be read."
-        description={reading.message}
+        description={readError}
       />
     );
   }
-  if (!overview || !dashboard) {
+  if (!overview || !dashboard || !recentActivity) {
     return <PaneSpinner label="Reading automation activity" />;
   }
 
@@ -284,8 +265,7 @@ function DashboardWorkspace({
       now={now}
       loaderData={loaderData}
       replica={replica}
-      routes={overview.routes}
-      recentEvents={overview.events}
+      recentActivity={recentActivity}
       agents={agents}
     />
   );

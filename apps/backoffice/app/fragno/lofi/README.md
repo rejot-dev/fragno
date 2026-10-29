@@ -53,28 +53,32 @@ files through the view. The explorer does not preview pages; it links to their r
 
 ## What reads the Automations replica
 
-The dashboard's Overview and Events tabs. Each view is one of `automationReads`
+The dashboard's Overview, Activity, and Map tabs. Each view is one of `automationReads`
 (`../automation/lofi/replica-host.ts`), which a component opens with `useAutomationRead`
 (`../automation/lofi/replica.ts`). Overview (`routes/backoffice/dashboard/dashboard.tsx`):
 
-- The overview, through `readDashboardOverview` in `overview-replica.ts`: workflow health, failing
-  and waiting runs, event volume, scheduled routes, connections, and agents.
-  `projectBackofficeDashboard` turns what it reads into the page.
-- The orchestration graph, through `readOrchestrationRecords` (`../automation/lofi/reads.ts`): the
-  scope's own event sources and definitions, and its unfinished runs. Its inspector reads an event
-  type's latest events with `readLatestEventsOfType`, and a workflow's running Codemode runs.
+- The overview, through `readDashboardOverview` in `overview-replica.ts`: failing and waiting runs,
+  scheduled routes, connections, and agents. `projectBackofficeDashboard` turns what it reads into
+  the page.
+- Its recent activity, through `readEventTraceSummaries`, as Activity reads it below.
 - An opened run's timeline, a page's form for a waiting run, and the Automations script view's runs,
   through `readWorkflowRuns` (`../automation/lofi/reads.ts`): waiting runs, running Codemode runs,
   or one run by workflow and instance. A run's waits are derived from its steps with
   `currentWorkflowWaits` (`../automation/workflow-waits.ts`).
 
-Events (`routes/backoffice/dashboard/events.tsx`), through `event-traces-replica.ts`:
+Activity (`routes/backoffice/dashboard/activity.tsx`), through `event-traces-replica.ts`:
 `readEventTraceSummaries` reads the newest 100 origin events with the events they caused, their
 route dispatches, and the runs those started or sent events to, and summarizes them with
 `projectEventTraceSummaries` in the worker, so the origins' payloads, which the list needs only for
 headlines, do not cross to the page. `readEventTrace` reads one origin's events, dispatches, runs,
 and those runs' steps and workflow events, which `projectEventTrace` turns into the trace on the
 page.
+
+Map (`routes/backoffice/dashboard/map.tsx`) draws the orchestration graph, through
+`readOrchestrationGraphInputs` and `readOrchestrationRecords` (`../automation/lofi/reads.ts`): the
+scope's routes and last day of events, its own event sources and definitions, and its unfinished
+runs. Its inspector reads an event type's latest events with `readLatestEventsOfType`, and a
+workflow's running Codemode runs.
 
 The Files explorer (`routes/backoffice/files/explorer.tsx`) reads the routes that start each
 workflow file with `readAutomationRoutes`, the overview's read of the routes, and shows them as

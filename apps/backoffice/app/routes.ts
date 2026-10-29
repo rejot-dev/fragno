@@ -27,7 +27,8 @@ export default [
       route("usage", "routes/backoffice/organization-billing.tsx", { id: "personal-usage" }),
       route("dashboard", "routes/backoffice/dashboard/index.tsx"),
       route("dashboard/:scopeKind/:scopeId", "routes/backoffice/dashboard/dashboard.tsx"),
-      route("dashboard/:scopeKind/:scopeId/events", "routes/backoffice/dashboard/events.tsx"),
+      route("dashboard/:scopeKind/:scopeId/activity", "routes/backoffice/dashboard/activity.tsx"),
+      route("dashboard/:scopeKind/:scopeId/map", "routes/backoffice/dashboard/map.tsx"),
       route("dashboard/:scopeKind/:scopeId/pages/*", "routes/backoffice/pages/page.tsx"),
       route("invitations/:invitationId", "routes/backoffice/invitation-accept.tsx"),
       route("organizations/:orgSlug", "routes/backoffice/organization-layout.tsx", [

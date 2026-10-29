@@ -1,3 +1,4 @@
+import { column } from "@fragno-dev/db/schema";
 import { lofiSqliteTableName, type LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
@@ -26,13 +27,21 @@ const EVENT_COLUMNS = {
   id: "text",
   source: event.source,
   eventType: event.eventType,
+  // NULL for an event type the scope's catalog does not define.
+  label: column("string").nullable(),
   occurredAt: event.occurredAt,
   causation: event.causation,
   rootEventId: event.rootEventId,
   routesMatched: event.routesMatched,
 } as const;
-const EVENT_SELECT = `"id", "source", "eventType", "occurredAt", "causation", "rootEventId",
-  "routesMatched"`;
+const EVENT_TABLE = automationTable("automation_event");
+// Sources match case-insensitively, as the orchestration graph folds them.
+const EVENT_SELECT = `"id", "source", "eventType",
+  (SELECT "definition"."label" FROM ${automationTable("automation_event_definition")} AS "definition"
+    WHERE lower("definition"."source") = lower(${EVENT_TABLE}."source")
+      AND "definition"."eventType" = ${EVENT_TABLE}."eventType"
+    LIMIT 1) AS "label",
+  "occurredAt", "causation", "rootEventId", "routesMatched"`;
 
 /** What a trace reads of its events. Only the events a view shows carry their payload. */
 type EventRow = Omit<EventTraceEvent, "payload" | "subject">;
@@ -114,11 +123,29 @@ function readDispatchedRuns(
 }
 
 /**
- * The newest `limit` origins' summaries, as the Events list shows them. They are projected where
+ * Which origins a list reads: all of them, or only those something acted on. Origins nothing acted
+ * on can far outnumber the rest, so a list of what automations did leaves them out before it
+ * limits, or they would push out what it shows.
+ */
+type EventTraceOrigins = "all" | "acted-on";
+
+// Mirrors `traceOutcome`'s "unhandled": routes have matched it, yet it caused no dispatch and no
+// event.
+const ACTED_ON_ORIGIN = `("routesMatched" = 0
+  OR EXISTS (SELECT 1 FROM ${automationTable("automation_route_dispatch")} AS "dispatch"
+    WHERE "dispatch"."rootEventId" = ${EVENT_TABLE}."id")
+  OR EXISTS (SELECT 1 FROM ${EVENT_TABLE} AS "derived"
+    WHERE "derived"."rootEventId" = ${EVENT_TABLE}."id" AND "derived"."id" <> "derived"."rootEventId"))`;
+
+/**
+ * The newest `limit` origins' summaries, as the Activity list shows them. They are projected where
  * they are read, so the origins' payloads, which can be whole webhook bodies, stay in the worker.
  */
-export function readEventTraceSummaries(reader: LofiSqliteReader, { limit }: { limit: number }) {
-  return projectEventTraceSummaries({ ...readEventTraceList(reader, { limit }), limit });
+export function readEventTraceSummaries(
+  reader: LofiSqliteReader,
+  { limit, origins }: { limit: number; origins: EventTraceOrigins },
+) {
+  return projectEventTraceSummaries({ ...readEventTraceList(reader, { limit, origins }), limit });
 }
 
 /**
@@ -126,11 +153,15 @@ export function readEventTraceSummaries(reader: LofiSqliteReader, { limit }: { l
  * payload their headline comes from, the events they caused, their dispatches, and the runs those
  * started or sent events to. Origins that tie on time come newest ID first.
  */
-function readEventTraceList(reader: LofiSqliteReader, { limit }: { limit: number }) {
+function readEventTraceList(
+  reader: LofiSqliteReader,
+  { limit, origins: which }: { limit: number; origins: EventTraceOrigins },
+) {
   const origins = reader.query({
     sql: `SELECT ${EVENT_SELECT}, "payload"
-          FROM ${automationTable("automation_event")}
-          WHERE "rootEventId" IS NULL OR "rootEventId" = "id"
+          FROM ${EVENT_TABLE}
+          WHERE ("rootEventId" IS NULL OR "rootEventId" = "id")
+            ${which === "acted-on" ? `AND ${ACTED_ON_ORIGIN}` : ""}
           ORDER BY "occurredAt" DESC, "id" DESC
           LIMIT ?`,
     params: [limit],
@@ -142,7 +173,7 @@ function readEventTraceList(reader: LofiSqliteReader, { limit }: { limit: number
       ? []
       : reader.query({
           sql: `SELECT ${EVENT_SELECT}
-                FROM ${automationTable("automation_event")}
+                FROM ${EVENT_TABLE}
                 WHERE "rootEventId" IN (${placeholders(originIds.length)}) AND "id" <> "rootEventId"`,
           params: originIds,
           columns: EVENT_COLUMNS,
@@ -163,7 +194,7 @@ function readEventTraceList(reader: LofiSqliteReader, { limit }: { limit: number
 export function readEventTrace(reader: LofiSqliteReader, { rootEventId }: { rootEventId: string }) {
   const events = reader.query({
     sql: `SELECT ${EVENT_SELECT}, "payload", "subject"
-            FROM ${automationTable("automation_event")}
+            FROM ${EVENT_TABLE}
             WHERE "id" = ? OR "rootEventId" = ?`,
     params: [rootEventId, rootEventId],
     columns: { ...EVENT_COLUMNS, payload: event.payload, subject: event.subject },

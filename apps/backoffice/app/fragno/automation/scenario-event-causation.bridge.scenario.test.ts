@@ -271,11 +271,15 @@ test("events record the routes and workflows that caused them back to their orig
 
           const [summary] = await readAutomationReplica(replica.replica, "eventTraceSummaries", {
             limit: 10,
+            origins: "all",
           });
           expect(summary).toMatchObject({
             rootEventId: webhookEventId,
             headline: "#42 Flaky deploy check",
-            effects: expect.arrayContaining(["issue-log", "triage-issue"]),
+            effects: expect.arrayContaining([
+              { kind: "workflow", label: "issue-log" },
+              { kind: "workflow", label: "triage-issue" },
+            ]),
             outcome: { kind: "settled", failedCount: 0 },
           });
         }),
