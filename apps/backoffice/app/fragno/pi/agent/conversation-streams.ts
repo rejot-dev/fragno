@@ -41,7 +41,7 @@ export function createPiConversationExportStream(
         cursor,
         BACKGROUND_CONTEXT,
       );
-      for (const entry of page.items.filter(reach.includes)) {
+      for (const entry of page.items.filter(reach.shows)) {
         yield encodePiExportLine({ type: "entry", entry });
       }
       cursor = page.next;

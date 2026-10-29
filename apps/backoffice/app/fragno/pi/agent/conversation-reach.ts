@@ -11,7 +11,8 @@ type PiConversationReach = {
   fromEntryId: EntryId | null;
   /** The newest entry when the reach was read. */
   toEntryId: EntryId;
-  includes: (entry: EntryRecord) => boolean;
+  /** Whether the reader sees an entry the reach's bounds hold. */
+  shows: (entry: EntryRecord) => boolean;
 };
 
 /**
@@ -34,13 +35,13 @@ export async function readPiConversationReach(
     return null;
   }
   if (marker === undefined) {
-    return { fromEntryId: null, toEntryId: newest.id, includes: () => true };
+    return { fromEntryId: null, toEntryId: newest.id, shows: () => true };
   }
   return {
     fromEntryId: marker.head,
     toEntryId: newest.id,
     // A compaction that kept entries from before an older one replaces it.
-    includes: (entry) => entry.head === undefined || entry.id === marker.id,
+    shows: (entry) => entry.head === undefined || entry.id === marker.id,
   };
 }
 

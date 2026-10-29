@@ -83,7 +83,7 @@ export async function listPiConversationMessages(
       BACKGROUND_CONTEXT,
     );
     for (const entry of page.items) {
-      const message = reach.includes(entry) ? entryMessage(entry) : null;
+      const message = reach.shows(entry) ? entryMessage(entry) : null;
       if (message === null) {
         continue;
       }
