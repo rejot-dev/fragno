@@ -10,11 +10,11 @@ export default defineConfig({
       "@": path.resolve(__dirname, "app"),
       ajv: path.resolve(__dirname, "shims/ajv.ts"),
       "ajv-formats": path.resolve(__dirname, "shims/ajv-formats.ts"),
-      undici: path.resolve(__dirname, "shims/undici.ts"),
     },
   },
   ssr: {
-    external: ["better-sqlite3"],
+    // rivetkit loads its native SQLite and Rivet Engine binaries at runtime.
+    external: ["better-sqlite3", "rivetkit"],
     noExternal: true,
   },
   build: {

@@ -7,4 +7,6 @@ interface CloudflareEnv {
   POSTHOG_PROJECT_TOKEN?: string;
   ANTHROPIC_API_KEY?: string;
   GEMINI_API_KEY?: string;
+  /** Shared with the Rivet host, which exports each Durable Object through the objects Worker. */
+  WORKER_MIGRATOR_TOKEN?: string;
 }

@@ -179,6 +179,38 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
   },
 });
 
+/** Resolves authority from the Auth, Automations and App Installations objects. */
+export function createObjectsAuthorityResolver(
+  objects: BackofficeObjectRegistry,
+  now: () => number,
+): BackofficeAuthorityResolver {
+  return createControlPlaneAuthorityResolver({
+    resolver: createAppInstallationAuthorityResolver({
+      resolver: createAutomationRouteAuthorityResolver({
+        fallbackResolver: createBackofficeAuthorityResolver(
+          {
+            getUserAuthorityFacts: async (input) =>
+              await objects.auth.singleton().commands.getUserAuthorityFacts(input),
+            findAdministeredMember: async (input) =>
+              await objects.auth.singleton().commands.findAdministeredMember(input),
+          },
+          { now },
+        ),
+        lookupRoute: async ({ scope, routeId }) =>
+          await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
+      }),
+      installations: {
+        getInstallation: async ({ owner, appId }) =>
+          await objects.appInstallations.for(owner).commands.getInstallation({ appId }),
+      },
+    }),
+    auth: {
+      getUserOrganizationAuthorityFacts: async (input) =>
+        await objects.auth.singleton().commands.getUserOrganizationAuthorityFacts(input),
+    },
+  });
+}
+
 export const createCloudflareBackofficeRuntimeServices = (
   env: CloudflareEnv,
   options: CreateCloudflareBackofficeRuntimeServicesOptions = {},
@@ -190,28 +222,7 @@ export const createCloudflareBackofficeRuntimeServices = (
     objects,
     adapters: options.databaseScope ? adapters.forScope(options.databaseScope) : adapters,
     config: createCloudflareBackofficeRuntimeConfig(env),
-    authorityResolver: createControlPlaneAuthorityResolver({
-      resolver: createAppInstallationAuthorityResolver({
-        resolver: createAutomationRouteAuthorityResolver({
-          fallbackResolver: createBackofficeAuthorityResolver({
-            getUserAuthorityFacts: async (input) =>
-              await objects.auth.singleton().commands.getUserAuthorityFacts(input),
-            findAdministeredMember: async (input) =>
-              await objects.auth.singleton().commands.findAdministeredMember(input),
-          }),
-          lookupRoute: async ({ scope, routeId }) =>
-            await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
-        }),
-        installations: {
-          getInstallation: async ({ owner, appId }) =>
-            await objects.appInstallations.for(owner).commands.getInstallation({ appId }),
-        },
-      }),
-      auth: {
-        getUserOrganizationAuthorityFacts: async (input) =>
-          await objects.auth.singleton().commands.getUserOrganizationAuthorityFacts(input),
-      },
-    }),
+    authorityResolver: createObjectsAuthorityResolver(objects, Date.now),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
     codemodeExecutor: env.CODEMODE_EXECUTOR
       ? createCodemodeServiceExecutor(codemodeExecutionService(env.CODEMODE_EXECUTOR))

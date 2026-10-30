@@ -58,7 +58,8 @@ export function piAgentDurableObjectId(
   );
 }
 
-function objectAddressJurisdiction({ scope }: BackofficeObjectAddress) {
+/** The jurisdiction an address's object is kept in on Cloudflare. */
+export function objectAddressJurisdiction({ scope }: BackofficeObjectAddress) {
   return scope.kind === "singleton" || scope.kind === "named"
     ? null
     : backofficeScopeJurisdiction(scope);

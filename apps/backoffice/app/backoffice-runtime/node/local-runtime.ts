@@ -2,18 +2,12 @@ import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-wo
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
-import { createControlPlaneAuthorityResolver } from "@/backoffice-runtime/control-plane-authority-resolver";
-import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
-import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 import type { PiAvailableModel } from "@/fragno/pi/agent/pi-agent-contract";
 import { createReson8Server } from "@/fragno/reson8";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
 
-import {
-  createBackofficeAuthorityResolver,
-  type BackofficeAuthorityResolver,
-} from "../authority-resolver";
+import type { BackofficeAuthorityResolver } from "../authority-resolver";
 import type { BackofficeRuntimeEnv } from "../backoffice-runtime-env";
 import { discardBackofficeTelemetry, type BackofficeTelemetry } from "../backoffice-telemetry";
 import type { BackofficeDatabaseAdapterFactory } from "../database-adapters";
@@ -22,10 +16,11 @@ import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "../
 import { LocalObjectFactory, type LocalBackofficeObjects } from "../local-object-factory";
 import { createBackofficeObjectRegistry } from "../object-registry";
 import type { BackofficeObjectAddress, BackofficeObjectRegistry } from "../object-registry";
-import type {
-  BackofficeFragmentHostOperations,
-  BackofficeRuntimeConfig,
-  BackofficeRuntimeServices,
+import {
+  createObjectsAuthorityResolver,
+  type BackofficeFragmentHostOperations,
+  type BackofficeRuntimeConfig,
+  type BackofficeRuntimeServices,
 } from "../runtime-services";
 import { createSqliteBackofficeDatabaseAdapters } from "./sqlite-database-adapters";
 import { SqliteBackofficeObjectStorage } from "./sqlite-object-storage";
@@ -121,31 +116,7 @@ export async function createLocalBackofficeRuntime(
     config,
     authorityResolver:
       options.authorityResolver ??
-      createControlPlaneAuthorityResolver({
-        resolver: createAppInstallationAuthorityResolver({
-          resolver: createAutomationRouteAuthorityResolver({
-            fallbackResolver: createBackofficeAuthorityResolver(
-              {
-                getUserAuthorityFacts: async (input) =>
-                  await objects.auth.singleton().commands.getUserAuthorityFacts(input),
-                findAdministeredMember: async (input) =>
-                  await objects.auth.singleton().commands.findAdministeredMember(input),
-              },
-              { now: () => objectFactory.now() },
-            ),
-            lookupRoute: async ({ scope, routeId }) =>
-              await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
-          }),
-          installations: {
-            getInstallation: async ({ owner, appId }) =>
-              await objects.appInstallations.for(owner).commands.getInstallation({ appId }),
-          },
-        }),
-        auth: {
-          getUserOrganizationAuthorityFacts: async (input) =>
-            await objects.auth.singleton().commands.getUserOrganizationAuthorityFacts(input),
-        },
-      }),
+      createObjectsAuthorityResolver(objects, () => objectFactory.now()),
     kernelObserver: options.kernelObserver ?? noopBackofficeKernelObserver,
     codemodeExecutor: options.runtimeEnv.codemode,
     workerTypeChecker: options.workerTypeChecker ?? null,

@@ -22,7 +22,6 @@ export default defineConfig({
       "@/lib": path.resolve(__dirname, "app/lib"),
       ajv: path.resolve(__dirname, "shims/ajv.ts"),
       "ajv-formats": path.resolve(__dirname, "shims/ajv-formats.ts"),
-      undici: path.resolve(__dirname, "shims/undici.ts"),
     },
   },
   plugins: [tailwindcss(), reactRouter(), emitWaSqliteWasmAssetPlugin()],

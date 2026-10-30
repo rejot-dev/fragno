@@ -4,10 +4,16 @@ import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-wo
 
 import type { BackofficeRuntimeEnv } from "../../app/backoffice-runtime/backoffice-runtime-env";
 import { createNodeBackofficeRuntimeConfiguration } from "../../app/backoffice-runtime/node/node-runtime-env";
+import type { CloudflareObjectSource } from "../../app/backoffice-runtime/rivet/rivet-backoffice-host";
 import type { CreateSandboxRuntimeProviders } from "../../app/sandbox/contracts";
 
+/** Where objects run: in this process on SQLite files, or as Rivet actors. */
+export type NodeBackofficeObjectHost =
+  | { kind: "local"; sqliteDataDirectory: string }
+  | { kind: "rivet"; endpoint: string; cloudflare: CloudflareObjectSource | null };
+
 export type NodeBackofficeProcessConfig = {
-  sqliteDataDirectory: string;
+  objectHost: NodeBackofficeObjectHost;
   port: number;
   listenHosts: readonly string[];
   publicBaseUrl: string;
@@ -33,6 +39,27 @@ function parsePort(name: string, value: string | undefined, fallback: number): n
     throw new Error(`${name} must be an integer between 1 and 65535.`);
   }
   return port;
+}
+
+function parseNodeBackofficeObjectHost(env: NodeJS.ProcessEnv): NodeBackofficeObjectHost {
+  if (env.BACKOFFICE_OBJECT_HOST !== "rivet") {
+    return {
+      kind: "local",
+      sqliteDataDirectory: path.resolve(env.BACKOFFICE_SQLITE_DIR || "./.backoffice-node"),
+    };
+  }
+  const workerUrl = env.CLOUDFLARE_OBJECTS_WORKER_URL;
+  const token = env.WORKER_MIGRATOR_TOKEN;
+  if (Boolean(workerUrl) !== Boolean(token)) {
+    throw new Error(
+      "Copying objects from Cloudflare requires both CLOUDFLARE_OBJECTS_WORKER_URL and WORKER_MIGRATOR_TOKEN.",
+    );
+  }
+  return {
+    kind: "rivet",
+    endpoint: env.RIVET_ENDPOINT || "http://127.0.0.1:6420",
+    cloudflare: workerUrl && token ? { workerUrl, token } : null,
+  };
 }
 
 export async function createNodeBackofficeProcessConfig(): Promise<NodeBackofficeProcessConfig> {
@@ -84,7 +111,7 @@ export async function createNodeBackofficeProcessConfig(): Promise<NodeBackoffic
   });
 
   return {
-    sqliteDataDirectory: path.resolve(process.env.BACKOFFICE_SQLITE_DIR || "./.backoffice-node"),
+    objectHost: parseNodeBackofficeObjectHost(process.env),
     port,
     listenHosts,
     publicBaseUrl,

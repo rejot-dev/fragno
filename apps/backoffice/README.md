@@ -396,6 +396,34 @@ running containers locally. Verify the deployed bridge's resource limits and int
 before rollout. Production still requires backups, TLS, trusted proxies, and a policy for the shared
 rate-limit bucket when a client IP cannot be determined.
 
+## Run objects as Rivet Actors (moving off Cloudflare)
+
+With `BACKOFFICE_OBJECT_HOST=rivet`, the Node server runs every Backoffice object as a
+[Rivet Actor](https://rivet.dev) instead of on SQLite files, and copies each object from its
+Cloudflare Durable Object the first time the actor starts. Each actor's SQLite holds its object's
+tables, Durable Object storage keys (`__do_kv`) and alarm (`__do_meta`) as on Cloudflare; Rivet
+schedules the alarm, which processes durable hooks, so the hook processor does not run.
+
+| Variable                        | Meaning                                                                             |
+| ------------------------------- | ----------------------------------------------------------------------------------- |
+| `BACKOFFICE_OBJECT_HOST=rivet`  | Run objects as Rivet Actors.                                                        |
+| `RIVET_ENDPOINT`                | The Rivet Engine. Defaults to `http://127.0.0.1:6420`, which starts a local engine. |
+| `CLOUDFLARE_OBJECTS_WORKER_URL` | The `rejot-backoffice` Worker's workers.dev URL. Unset starts every object empty.   |
+| `WORKER_MIGRATOR_TOKEN`         | The same secret as on that Worker (`wrangler secret put WORKER_MIGRATOR_TOKEN`).    |
+
+```bash
+pnpm --dir apps/backoffice exec turbo run build:node --filter=@fragno-apps/backoffice-rr
+BACKOFFICE_OBJECT_HOST=rivet node --env-file=apps/backoffice/.dev.vars apps/backoffice/build-node/node-server.mjs
+```
+
+The objects Worker serves only `/__migrate/*` from
+[`@rivet-dev/durable-object-migrator`](https://github.com/rivet-dev/durable-object-migrator), and
+each copied Durable Object rejects app traffic. To cut over: deploy the Worker with
+`WORKER_MIGRATOR_TOKEN` set, start the Node server against the Rivet Engine, then point
+`backoffice.rejot.dev` at it. Objects nobody requests stay on Cloudflare until something reaches
+them; there is no backfill. To roll back, point the domain back at Cloudflare and set
+`MIGRATOR_DISABLED=true` on the Worker; writes made on Rivet stay there.
+
 ## Release
 
 Deploy `cf-sandbox-bridge` before releasing Backoffice versions that use its compiler entrypoint or

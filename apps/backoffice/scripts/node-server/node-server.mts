@@ -15,6 +15,7 @@ import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/
 import { startNodeBackofficeAlarmScheduler } from "../../app/backoffice-runtime/node/node-alarm-scheduler";
 import { createExternallyProcessedNodeBackofficeDurableHooks } from "../../app/backoffice-runtime/node/node-durable-hooks";
 import { shutdownNodeOpenTelemetry } from "../../app/backoffice-runtime/node/node-opentelemetry-lifecycle";
+import { startRivetBackofficeHost } from "../../app/backoffice-runtime/rivet/rivet-backoffice-host";
 import { createBackofficeRouterContextProvider } from "../../app/worker-runtime/router-context-provider.server";
 import { createNodeBackofficeProcessConfig } from "./node-process-config";
 import { registerNodeBackofficeRequestObservability } from "./node-request-observability";
@@ -32,17 +33,7 @@ const serverBuild = (await import(
 )) as ServerBuild;
 
 const config = await createNodeBackofficeProcessConfig();
-const runtime = await createLocalBackofficeRuntime({
-  objects: allLocalObjects,
-  sqliteDataDirectory: config.sqliteDataDirectory,
-  runtimeEnv: config.runtimeEnv,
-  workerTypeChecker: config.workerTypeChecker,
-  createSandboxProviders: config.createSandboxProviders,
-  durableHooks: createExternallyProcessedNodeBackofficeDurableHooks(),
-});
-// Durable Object alarms must run beside HTTP/RPC object instances. A second process opening the
-// same Pi harness would classify active tasks as crash recovery and repeat in-flight model calls.
-const alarmScheduler = startNodeBackofficeAlarmScheduler(runtime);
+const runtime = await startNodeBackofficeObjectHost();
 const kernel = new BackofficeKernel(runtime.services);
 const staticDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "client");
 const app = express();
@@ -64,22 +55,29 @@ app.use(
   }),
 );
 app.use(express.static(staticDirectory, { maxAge: "1m", index: false, redirect: false }));
-const backofficeApiListener = getRequestListener(async (request, { incoming }) => {
-  // Use the URL React Router sees: Express applies the trusted proxy's protocol and host, and
-  // credential verification depends on the public origin.
-  const { protocol, host, originalUrl } = incoming as express.Request;
-  return await backofficeApiRouter.fetch(
-    new Request(new URL(`${protocol}://${host}${originalUrl}`), {
-      method: request.method,
-      headers: request.headers,
-      // API bodies are small JSON documents, so buffering avoids streaming-body plumbing.
-      body:
-        request.method === "GET" || request.method === "HEAD" ? null : await request.arrayBuffer(),
-      signal: request.signal,
-    }),
-    { runtime: runtime.services, kernel },
-  );
-});
+const backofficeApiListener = getRequestListener(
+  async (request, { incoming }) => {
+    // Use the URL React Router sees: Express applies the trusted proxy's protocol and host, and
+    // credential verification depends on the public origin.
+    const { protocol, host, originalUrl } = incoming as express.Request;
+    return await backofficeApiRouter.fetch(
+      new Request(new URL(`${protocol}://${host}${originalUrl}`), {
+        method: request.method,
+        headers: request.headers,
+        // API bodies are small JSON documents, so buffering avoids streaming-body plumbing.
+        body:
+          request.method === "GET" || request.method === "HEAD"
+            ? null
+            : await request.arrayBuffer(),
+        signal: request.signal,
+      }),
+      { runtime: runtime.services, kernel },
+    );
+  },
+  // Hono would replace the global Request and Response for the whole process; React Router's
+  // instrumentation then rejects the native Response that `Response.json` returns.
+  { overrideGlobalObjects: false },
+);
 app.use((request, response, next) => {
   if (isBackofficeApiPath(request.path)) {
     void backofficeApiListener(request, response);
@@ -133,8 +131,7 @@ const listeners = await startNodeBackofficeListeners({
   port: config.port,
 }).catch(async (error: unknown) => {
   try {
-    await alarmScheduler.stop();
-    await runtime.cleanup();
+    await runtime.stop();
   } catch (cleanupError) {
     console.error("Node Backoffice startup cleanup failed", cleanupError);
   } finally {
@@ -145,6 +142,40 @@ const listeners = await startNodeBackofficeListeners({
 console.info(
   `Node Backoffice listening on ${formatNodeBackofficeListenUrls(listeners, config.port)}`,
 );
+
+/** Starts the objects this server reaches, and stops them once it no longer serves requests. */
+async function startNodeBackofficeObjectHost() {
+  const host = config.objectHost;
+  if (host.kind === "rivet") {
+    return await startRivetBackofficeHost({
+      objects: allLocalObjects,
+      runtimeEnv: config.runtimeEnv,
+      workerTypeChecker: config.workerTypeChecker,
+      createSandboxProviders: config.createSandboxProviders,
+      rivetEndpoint: host.endpoint,
+      cloudflare: host.cloudflare,
+    });
+  }
+  const runtime = await createLocalBackofficeRuntime({
+    objects: allLocalObjects,
+    sqliteDataDirectory: host.sqliteDataDirectory,
+    runtimeEnv: config.runtimeEnv,
+    workerTypeChecker: config.workerTypeChecker,
+    createSandboxProviders: config.createSandboxProviders,
+    durableHooks: createExternallyProcessedNodeBackofficeDurableHooks(),
+  });
+  // Durable Object alarms must run beside HTTP/RPC object instances. A second process opening the
+  // same Pi harness would classify active tasks as crash recovery and repeat in-flight model calls.
+  const alarmScheduler = startNodeBackofficeAlarmScheduler(runtime);
+  return {
+    env: runtime.env,
+    services: runtime.services,
+    async stop() {
+      await alarmScheduler.stop();
+      await runtime.cleanup();
+    },
+  };
+}
 
 let shutdownPromise: Promise<void> | null = null;
 
@@ -162,10 +193,8 @@ function shutdownNodeBackofficeServer(): Promise<void> {
       );
       console.info(`Node Backoffice server closing ${activeResponseCount} active response(s)`);
       await stopNodeBackofficeListeners(listeners);
-      console.info("Node Backoffice server HTTP listeners closed: stopping alarm scheduler");
-      await alarmScheduler.stop();
-      console.info("Node Backoffice server alarm scheduler stopped: cleaning up runtime");
-      await runtime.cleanup();
+      console.info("Node Backoffice server HTTP listeners closed: stopping objects");
+      await runtime.stop();
     } finally {
       await shutdownNodeOpenTelemetry();
     }

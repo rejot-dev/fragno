@@ -6,9 +6,14 @@ import { createNodeBackofficeProcessConfig } from "./node-process-config";
 import { stopNodeBackofficeOnSupervisorDisconnect } from "./node-supervisor-disconnect";
 
 const config = await createNodeBackofficeProcessConfig();
+if (config.objectHost.kind !== "local") {
+  throw new Error(
+    "Rivet actors process their own durable hooks; run the Node Backoffice server alone.",
+  );
+}
 const runtime = await createLocalBackofficeRuntime({
   objects: allLocalObjects,
-  sqliteDataDirectory: config.sqliteDataDirectory,
+  sqliteDataDirectory: config.objectHost.sqliteDataDirectory,
   runtimeEnv: config.runtimeEnv,
   workerTypeChecker: config.workerTypeChecker,
   createSandboxProviders: config.createSandboxProviders,

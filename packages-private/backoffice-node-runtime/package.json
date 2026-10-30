@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "better-sqlite3": "12.10.0"
+    "better-sqlite3": "12.10.0",
+    "rivetkit": "2.3.31"
   }
 }

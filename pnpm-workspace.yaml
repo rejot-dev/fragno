@@ -45,6 +45,8 @@ packageExtensions:
 allowBuilds:
   "@journeyapps/wa-sqlite": true
   better-sqlite3: true
+  # Optional native speedup for cbor-x, which rivetkit uses; the JS fallback works.
+  cbor-extract: false
   "@mongodb-js/zstd": false
   "@parcel/watcher": false
   "@prisma/client": false
@@ -67,6 +69,7 @@ minimumReleaseAgeExclude:
   - "@tanstack/db@0.15.1"
   - "@tanstack/node-db-sqlite-persistence@0.2.36"
   - "@tanstack/react-db@0.5.11"
+  - "@rivet-dev/durable-object-migrator@1.0.0"
 
 patchedDependencies:
   "@cloudflare/worker-bundler@0.2.2": patches/@cloudflare__worker-bundler@0.2.2.patch

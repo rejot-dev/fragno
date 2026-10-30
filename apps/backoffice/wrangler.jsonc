@@ -26,7 +26,8 @@
       "head_sampling_rate": 1,
     },
   },
-  "workers_dev": false,
+  // The Rivet host reaches the Durable Object migrator here after DNS points at it.
+  "workers_dev": true,
   "preview_urls": false,
   /**
    * Smart Placement

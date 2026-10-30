@@ -391,44 +391,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
   }
 
   createRuntimeConfig(): BackofficeRuntimeConfig {
-    return {
-      ...(this.env.DOCS_PUBLIC_BASE_URL?.trim()
-        ? { docsPublicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL.trim() }
-        : {}),
-      // Local sandboxes run on the deployed bridge, which forwards its intercepted origin to the
-      // deployed Backoffice, so they reach this runtime only at a public URL such as a tunnel.
-      sandboxBackofficeBaseUrl: this.env.DOCS_PUBLIC_BASE_URL?.trim() || null,
-      // Sandboxes run in a deployed bridge, which always has containers.
-      sandboxContainers: true,
-      authEmailVerification: parseAuthEmailVerificationRuntimeConfig({
-        enabled: this.env.AUTH_EMAIL_VERIFICATION_ENABLED,
-        publicBaseUrl: this.env.DOCS_PUBLIC_BASE_URL,
-      }),
-      signUpAccessCodesRequired: parseSignUpAccessCodesRequired(
-        this.env.SIGN_UP_ACCESS_CODES_REQUIRED,
-      ),
-      localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", this.env.LOCAL_EMAIL_LOG),
-      workersAi: this.#workersAi,
-      bindings: {
-        api: this.#isConfigured("API"),
-        auth: this.#isConfigured("AUTH"),
-        automations: this.#isConfigured("AUTOMATIONS"),
-        piManager: this.#isConfigured("PI_MANAGER"),
-        billing: this.#isConfigured("BILLING"),
-        marketplace: this.#isConfigured("MARKETPLACE"),
-        telegram: this.#isConfigured("TELEGRAM"),
-        otp: this.#isConfigured("OTP"),
-        resend: this.#isConfigured("RESEND"),
-        mcp: this.#isConfigured("MCP"),
-        projectConnector: this.#isConfigured("PROJECT_CONNECTOR"),
-        upload: this.#isConfigured("UPLOAD"),
-        blobs: this.#isConfigured("BLOBS"),
-        github: this.#isConfigured("GITHUB"),
-        githubWebhookRouter: this.#isConfigured("GITHUB_WEBHOOK_ROUTER"),
-        cloudflare: this.#isConfigured("CLOUDFLARE"),
-        sandbox: this.#isConfigured("SANDBOX"),
-      },
-    };
+    return createLocalBackofficeRuntimeConfig(this.env, this.#objects, this.#workersAi);
   }
 
   #registerNamespaces() {
@@ -593,4 +556,49 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
       drainTime.active = false;
     }
   }
+}
+
+/** The configuration of a runtime that hosts `objects` outside Cloudflare. */
+export function createLocalBackofficeRuntimeConfig(
+  env: BackofficeRuntimeEnv,
+  objects: LocalBackofficeObjects,
+  workersAi: boolean,
+): BackofficeRuntimeConfig {
+  const isConfigured = (bindingName: BackofficeObjectBindingName) => objects[bindingName] !== null;
+  return {
+    ...(env.DOCS_PUBLIC_BASE_URL?.trim()
+      ? { docsPublicBaseUrl: env.DOCS_PUBLIC_BASE_URL.trim() }
+      : {}),
+    // Local sandboxes run on the deployed bridge, which forwards its intercepted origin to the
+    // deployed Backoffice, so they reach this runtime only at a public URL such as a tunnel.
+    sandboxBackofficeBaseUrl: env.DOCS_PUBLIC_BASE_URL?.trim() || null,
+    // Sandboxes run in a deployed bridge, which always has containers.
+    sandboxContainers: true,
+    authEmailVerification: parseAuthEmailVerificationRuntimeConfig({
+      enabled: env.AUTH_EMAIL_VERIFICATION_ENABLED,
+      publicBaseUrl: env.DOCS_PUBLIC_BASE_URL,
+    }),
+    signUpAccessCodesRequired: parseSignUpAccessCodesRequired(env.SIGN_UP_ACCESS_CODES_REQUIRED),
+    localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", env.LOCAL_EMAIL_LOG),
+    workersAi: workersAi,
+    bindings: {
+      api: isConfigured("API"),
+      auth: isConfigured("AUTH"),
+      automations: isConfigured("AUTOMATIONS"),
+      piManager: isConfigured("PI_MANAGER"),
+      billing: isConfigured("BILLING"),
+      marketplace: isConfigured("MARKETPLACE"),
+      telegram: isConfigured("TELEGRAM"),
+      otp: isConfigured("OTP"),
+      resend: isConfigured("RESEND"),
+      mcp: isConfigured("MCP"),
+      projectConnector: isConfigured("PROJECT_CONNECTOR"),
+      upload: isConfigured("UPLOAD"),
+      blobs: isConfigured("BLOBS"),
+      github: isConfigured("GITHUB"),
+      githubWebhookRouter: isConfigured("GITHUB_WEBHOOK_ROUTER"),
+      cloudflare: isConfigured("CLOUDFLARE"),
+      sandbox: isConfigured("SANDBOX"),
+    },
+  };
 }
