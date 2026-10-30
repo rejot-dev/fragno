@@ -28,6 +28,7 @@ import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-c
 
 import { createScriptedPiAgentDependencies } from "../../../../workers/pi-durable-scenario.test-support";
 import { PiObject } from "../../../../workers/pi-object";
+import { loader as publicConnectorLoader } from "../../api/project-connector";
 import { action as connectAction, loader as connectLoader } from "./connect";
 
 const ORIGIN = "https://backoffice.example";
@@ -55,7 +56,9 @@ type Ctx = BackofficeScenarioContext<Vars>;
 
 /** The route arguments React Router passes for one request to the user's Connect page. */
 function connectRequest(ctx: Ctx, search: string, form?: Record<string, string>) {
-  const url = new URL(`/backoffice/integrations/user/${ctx.vars.userId}/connect${search}`, ORIGIN);
+  // Browsers submit forms to React Router's data endpoint, not the page itself.
+  const page = `/backoffice/integrations/user/${ctx.vars.userId}/connect${form ? ".data" : ""}`;
+  const url = new URL(`${page}${search}`, ORIGIN);
   const request = new Request(url, {
     method: form ? "POST" : "GET",
     headers: { cookie: ctx.vars.cookie, origin: ORIGIN },
@@ -85,6 +88,28 @@ async function submitConnect(ctx: Ctx, form: Record<string, string>) {
     assert(thrown instanceof Response, String(thrown));
     return { redirectsTo: thrown.headers.get("location") };
   }
+}
+
+/** Follows a provider's return to the Connector's public callback, signed in, as the browser would. */
+async function followConnectorReturn(ctx: Ctx, returnUri: string): Promise<string | null> {
+  const url = new URL(returnUri);
+  const request = new Request(url, { headers: { cookie: ctx.vars.cookie } });
+  const [, , , scopeSegment, ...rest] = url.pathname.split("/");
+  assert(scopeSegment);
+  const response = await publicConnectorLoader({
+    request,
+    url,
+    pattern: "/api/connector/:scopeSegment/*",
+    params: { scopeSegment: decodeURIComponent(scopeSegment), "*": rest.join("/") },
+    context: createBackofficeRouterContextProvider(request, {
+      runtime: ctx.runtime.services,
+      kernel: new BackofficeKernel(ctx.runtime.services),
+      env: ctx.runtime.env as unknown as CloudflareEnv,
+      ctx: {} as ExecutionContext,
+    }),
+  });
+  assert(response instanceof Response && response.status === 302);
+  return response.headers.get("location");
 }
 
 /** What the person has said to the scope's main agent. */
@@ -132,7 +157,10 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
         assert(page.step.kind === "choose");
         expect(page.services.find((service) => service.id === "gmail")).toMatchObject({
           label: "Gmail",
-          description: "Email conversations, labels, drafts, and mailbox management",
+          // The catalog's description leads; agents read on for how to add accounts.
+          description: expect.stringMatching(
+            /^Email conversations, labels, drafts, and mailbox management\. Targets /,
+          ),
           iconUrl: "https://static.example/logo/Gmail.svg",
           // Communication is Gmail's primary category, which Telegram shares.
           categories: [{ id: "communication" }, { id: "productivity" }],
@@ -150,19 +178,30 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
           assert(chosen.step.kind === "connect" && chosen.step.method.kind === "authorization");
           assert(chosen.step.method.progress.status === "needs-input");
 
-          expect(await submitConnect(ctx, { intent: "start", source: "gmail" })).toEqual({
-            returned: { error: null },
-          });
-          const waiting = await openConnect(ctx, "?source=gmail");
-          assert(waiting.step.kind === "connect" && waiting.step.method.kind === "authorization");
-          const progress = waiting.step.method.progress;
-          assert(progress.status === "needs-authorization");
-
-          const requestId = new URL(progress.authorizationUrl).pathname.split("/").at(-1);
+          // Connecting goes straight to the provider's sign-in, in the same tab.
+          const started = await submitConnect(ctx, { intent: "start", source: "gmail" });
+          const authorizationUrl = "redirectsTo" in started ? started.redirectsTo : null;
+          assert(authorizationUrl);
+          const requestId = new URL(authorizationUrl).pathname.split("/").at(-1);
           assert(requestId);
           gateway.authorize(requestId, "gmail-account");
         },
       ),
+      then.assert("the provider's return lands back on the wizard for Gmail", async (ctx) => {
+        const returnUri = gateway.links.at(-1)?.returnUri;
+        assert(returnUri);
+        assert(/\/oauth\/callback\/connect\/n_[^/]+$/.test(new URL(returnUri).pathname));
+        const landing = await followConnectorReturn(ctx, returnUri);
+        assert(landing);
+        const { pathname, search } = new URL(landing);
+        assert(pathname === `/backoffice/integrations/user/${ctx.vars.userId}/connect`);
+        // The return names the connection, and the wizard continues with its service.
+        const resumed = await openConnect(ctx, search).then(
+          () => null,
+          (thrown: unknown) => (thrown instanceof Response ? thrown.headers.get("location") : null),
+        );
+        assert(resumed === "?source=gmail");
+      }),
       then.assert("the page notices consent and lists Gmail as connected", async (ctx) => {
         const connected = await openConnect(ctx, "?source=gmail");
         assert(connected.step.kind === "connect" && connected.step.method.kind === "authorization");
@@ -170,31 +209,33 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
         const catalog = await openConnect(ctx, "");
         assert(catalog.services.find((service) => service.id === "gmail")?.connected);
       }),
-      then.assert("a daily workflow request reaches the main agent", async (ctx) => {
-        const automate = await openConnect(ctx, "?source=gmail&step=automate");
-        assert(automate.step.kind === "automate");
-        const { connectionId } = automate.step;
+      then.assert(
+        "creating a workflow asks the main agent to clarify it, on its own page",
+        async (ctx) => {
+          const connected = await openConnect(ctx, "?source=gmail");
+          assert(
+            connected.step.kind === "connect" && connected.step.method.kind === "authorization",
+          );
+          const { connectionId } = connected.step.method;
 
-        expect(
-          await submitConnect(ctx, {
-            intent: "automate",
-            source: "gmail",
-            schedule: "daily",
-            time: "08:30",
-            timeZone: "Europe/Amsterdam",
-            goal: "Summarize my unread email.",
-          }),
-        ).toEqual({
-          redirectsTo: `/backoffice/integrations/user/${ctx.vars.userId}/connect?agent=opened`,
-        });
-        const [prompt] = await userMessages(ctx);
-        assert(prompt);
-        expect(prompt).toContain(`I just connected Gmail (connection ${connectionId}).`);
-        expect(prompt).toContain(
-          "When: on a schedule, every day at 08:30 (time zone Europe/Amsterdam).",
-        );
-        expect(prompt).toContain("What it should do: Summarize my unread email.");
-      }),
+          expect(
+            await submitConnect(ctx, {
+              intent: "create-workflow",
+              source: "gmail",
+              timeZone: "Europe/Amsterdam",
+            }),
+          ).toEqual({
+            redirectsTo: `/backoffice/agents/user/${ctx.vars.userId}/agents/assistant`,
+          });
+          const [prompt] = await userMessages(ctx);
+          assert(prompt);
+          expect(prompt).toContain(
+            `I just connected Gmail (connection ${connectionId}) and want to build a workflow with it.`,
+          );
+          expect(prompt).toContain("ask me what it should do and how often it should run");
+          expect(prompt).toContain("My time zone is Europe/Amsterdam.");
+        },
+      ),
     ],
   }));
 });

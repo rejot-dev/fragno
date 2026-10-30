@@ -23,6 +23,7 @@ import { resolveBackofficePageScope } from "@/layouts/backoffice-layout-scope";
 import { BackofficePhoneChrome } from "./phone-chrome";
 import { BackofficeProjectMenu } from "./project-menu";
 import { BackofficeMobileNav, BackofficeSidebarNav, useBackofficeSections } from "./sidebar-nav";
+import { BackofficeTopBar } from "./top-bar";
 
 const organization: Organization = {
   id: "agency-id",
@@ -77,7 +78,7 @@ async function loadScope({ params }: LoaderFunctionArgs) {
   return result.scope;
 }
 
-type Navigation = "desktop" | "mobile" | "phone";
+type Navigation = "desktop" | "mobile" | "phone" | "top-bar";
 
 function NavigationScenario({ navigation }: { navigation: Navigation }) {
   const scope = useLoaderData<typeof loadScope>();
@@ -95,7 +96,7 @@ function NavigationScenario({ navigation }: { navigation: Navigation }) {
         />
       ) : navigation === "mobile" ? (
         <BackofficeMobileNav sections={sections} />
-      ) : (
+      ) : navigation === "phone" ? (
         <BackofficePhoneChrome
           sections={sections}
           me={me}
@@ -103,6 +104,15 @@ function NavigationScenario({ navigation }: { navigation: Navigation }) {
           administeredMember={null}
           projectList={null}
           isLoading={false}
+        />
+      ) : (
+        <BackofficeTopBar
+          sections={sections}
+          me={me}
+          resolvedScope={scope}
+          administeredMember={null}
+          projectList={null}
+          sidebarCollapsed={collapsed}
         />
       )}
       {owner.kind !== "system" ? (
@@ -265,4 +275,26 @@ describe("scope navigation scenarios", () => {
       assert(tab("Agents").getAttribute("href") === agentsStart("org/agency"));
     },
   );
+
+  test("the top bar's Connect opens the wizard of whichever scope is selected", async () => {
+    const router = await renderNavigation("/backoffice/dashboard/user/ada", "top-bar");
+    await screen.findByRole("link", { name: "Connect" });
+
+    const scopePaths = [
+      ...personalScopes("ada").map(backofficeRouteScopePath),
+      "org/agency",
+      "project/org:agency:sales",
+    ];
+    for (const scopePath of scopePaths) {
+      await act(() => router.navigate(`/backoffice/dashboard/${scopePath}`));
+      fireEvent.click(await screen.findByRole("link", { name: "Connect" }));
+      await waitFor(() => {
+        expect(router.state.location.pathname).toBe(
+          `/backoffice/integrations/${scopePath}/connect`,
+        );
+      });
+      const connect = await screen.findByRole("link", { name: "Connect" });
+      assert(connect.getAttribute("aria-current") === "page");
+    }
+  });
 });

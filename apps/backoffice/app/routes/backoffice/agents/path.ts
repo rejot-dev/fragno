@@ -20,6 +20,18 @@ const decodePathname = (pathname: string) => {
 const matchesBasePath = (pathname: string, basePath: string) =>
   pathname === basePath || pathname.startsWith(`${basePath}/`);
 
+/**
+ * Names an agent's conversation in the drawer and on the agent's page alike, so opening the page
+ * from the drawer grows the one into the other.
+ */
+export const PI_AGENT_CONVERSATION_TRANSITION = "pi-agent-conversation";
+
+/** Whether `pathname`, as React Router reports it, is the page at `path`. */
+export function isPiAgentPagePath(path: string, pathname: string): boolean {
+  const normalizedPath = pathname.replace(/\/+$/, "");
+  return normalizedPath === path || normalizedPath === decodePathname(path);
+}
+
 /** The scope's agents list. */
 export function piAgentsPath(scope: BackofficeRouteScope): string {
   return `/backoffice/agents/${backofficeRouteScopePath(scope)}/agents`;

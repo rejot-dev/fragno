@@ -25,10 +25,7 @@ import {
   isConnectorOAuthReturnSegment,
 } from "@/fragno/runtime-tools/families/integrations/connector-connection-id";
 import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
-import {
-  isScopedPublicOAuthRedirectUriAllowed,
-  PROJECT_CONNECTOR_PUBLIC_PREFIX,
-} from "@/fragno/scoped-public-fragment-routes";
+import { isProjectConnectorReturnUriAllowed } from "@/fragno/scoped-public-fragment-routes";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
@@ -160,9 +157,8 @@ export class ProjectConnectorObject extends RpcTarget implements ProjectConnecto
             );
           },
           allowedReturnUrls: (redirectUri) =>
-            isScopedPublicOAuthRedirectUriAllowed({
+            isProjectConnectorReturnUriAllowed({
               publicOrigin: runtime.config.docsPublicBaseUrl,
-              publicPrefix: PROJECT_CONNECTOR_PUBLIC_PREFIX,
               redirectUri,
               // Every return names its connection, so the return confirms that one alone.
               returnSegment: isConnectorOAuthReturnSegment,

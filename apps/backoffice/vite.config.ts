@@ -256,6 +256,20 @@ export default defineConfig(({ command }) => {
       workerConfig.vars.SANDBOX_CONTAINERS = "false";
     }
   };
+  // Workers AI has no local runtime: its binding always reaches Cloudflare, which needs wrangler
+  // signed in to an account with a workers.dev subdomain. The dev server leaves the binding out
+  // unless BACKOFFICE_WORKERS_AI is "true" (`pnpm dev:ai`), so Backoffice reports Workers AI
+  // unavailable instead of failing to start.
+  const workersAiOnDevServer = process.env.BACKOFFICE_WORKERS_AI === "true";
+  const configureObjectWorkerOnDevServer = (workerConfig: {
+    vars: Record<string, unknown>;
+    ai?: unknown;
+  }) => {
+    disableSandboxContainersOnDevServer(workerConfig);
+    if (isDevServer && !workersAiOnDevServer) {
+      delete workerConfig.ai;
+    }
+  };
   // Only serving needs a port; builds must not depend on running inside a git checkout.
   const port = isDevServer ? backofficeDevServerPort(__dirname) : undefined;
   const environments: Record<string, EnvironmentOptions> = isDevServer
@@ -289,7 +303,7 @@ export default defineConfig(({ command }) => {
         configPath: "./wrangler.web.jsonc",
         config: disableSandboxContainersOnDevServer,
         auxiliaryWorkers: [
-          { configPath: "./wrangler.jsonc", config: disableSandboxContainersOnDevServer },
+          { configPath: "./wrangler.jsonc", config: configureObjectWorkerOnDevServer },
           {
             configPath: "../cf-sandbox-bridge/wrangler.jsonc",
             // The bridge hosts Sandbox containers; `preview:containers` turns them on, and
