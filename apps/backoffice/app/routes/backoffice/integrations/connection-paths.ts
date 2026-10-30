@@ -26,6 +26,24 @@ export type IntegrationOAuthOutcome =
   | { status: "error"; message: string | null }
   | { status: "returned" };
 
+/** A provider's return to the Connect wizard, which resumes the service `connectionId` belongs to. */
+export function integrationConnectReturn({
+  request,
+  routeScope,
+  connectionId,
+}: {
+  request: Request;
+  routeScope: BackofficeRouteScope;
+  connectionId: string;
+}): Response {
+  const url = new URL(
+    `/backoffice/integrations/${backofficeRouteScopePath(routeScope)}/connect`,
+    request.url,
+  );
+  url.searchParams.set("connection", connectionId);
+  return Response.redirect(url, 302);
+}
+
 /**
  * Provider returns land in Integrations: on the connection's detail view when the callback knows
  * the connection, otherwise on the scope's table. The query only explains the return; the
