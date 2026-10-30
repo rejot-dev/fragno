@@ -1,4 +1,3 @@
-import { ButtonLink } from "@fragno-private/design-system/controls/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
 import { Checkbox } from "@fragno-private/design-system/controls/checkbox";
 import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
@@ -26,11 +25,7 @@ import { formatTimestamp } from "../automations/formatting";
 import { shouldRevalidateWithinScope } from "../scope-revalidation";
 import type { Route } from "./+types/scope-layout";
 import { IntegrationConnectionStateLight, integrationAuthMethodLabels } from "./connection-display";
-import {
-  integrationConnectionPath,
-  integrationsConnectPath,
-  integrationsScopeBasePath,
-} from "./connection-paths";
+import { integrationConnectionPath, integrationsScopeBasePath } from "./connection-paths";
 import type { IntegrationsLayoutContext } from "./layout-context";
 import { NativeServices } from "./native-services";
 
@@ -107,11 +102,7 @@ function IntegrationsPage({
         ]}
         ariaLabel="Integrations"
         trailing={null}
-        options={
-          <ButtonLink to={integrationsConnectPath(selectedScope)} variant="accent">
-            Connect
-          </ButtonLink>
-        }
+        options={null}
       />
       <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>
         <ProviderReturnNotice />

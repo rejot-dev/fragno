@@ -8,10 +8,12 @@ import { confirmConnectorConsent } from "@/fragno/runtime-tools/families/integra
 import {
   PROJECT_CONNECTOR_INTERNAL_PREFIX,
   PROJECT_CONNECTOR_PUBLIC_PREFIX,
+  projectConnectorReturn,
 } from "@/fragno/scoped-public-fragment-routes";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import {
+  integrationConnectReturn,
   integrationOAuthReturn,
   type IntegrationOAuthOutcome,
 } from "../backoffice/integrations/connection-paths";
@@ -25,16 +27,20 @@ type ConnectorReturnInput = Parameters<
 
 const CALLBACK_SUFFIX = "/oauth/callback";
 
-/** The connection a return names; the bare callback and malformed segments name none. */
+/**
+ * The connection a return names, and whether the Connect wizard started it; the bare callback and
+ * malformed segments name none.
+ */
 function returnedConnection(suffix: string) {
-  if (!suffix.startsWith(`${CALLBACK_SUFFIX}/`)) {
+  const named = projectConnectorReturn(suffix);
+  if (!named) {
     return null;
   }
-  const segment = suffix.slice(CALLBACK_SUFFIX.length + 1);
   try {
     return {
-      address: decodeConnectorConnectionLocalId(segment),
-      connectionId: `connector#${segment}`,
+      address: decodeConnectorConnectionLocalId(named.segment),
+      connectionId: `connector#${named.segment}`,
+      returnTo: named.returnTo,
     };
   } catch {
     return null;
@@ -55,13 +61,20 @@ async function confirmConnectorReturn({
   suffix,
 }: ConnectorReturnInput): Promise<Response> {
   const named = returnedConnection(suffix);
+  // The wizard reads the confirmed state itself, so its landing carries no outcome.
   const returned = (outcome: IntegrationOAuthOutcome) =>
-    integrationOAuthReturn({
-      request,
-      routeScope: pageScope,
-      connectionId: named?.connectionId ?? null,
-      outcome,
-    });
+    named?.returnTo === "connect"
+      ? integrationConnectReturn({
+          request,
+          routeScope: pageScope,
+          connectionId: named.connectionId,
+        })
+      : integrationOAuthReturn({
+          request,
+          routeScope: pageScope,
+          connectionId: named?.connectionId ?? null,
+          outcome,
+        });
   if (!named) {
     return returned({ status: "returned" });
   }
@@ -123,7 +136,7 @@ export const projectConnectorPublicRoute = {
     // The bare callback serves links issued before returns named their connection.
     matches: (request, _scope, suffix) =>
       request.method === "GET" &&
-      (suffix === CALLBACK_SUFFIX || /^\/oauth\/callback\/[^/]+$/.test(suffix)),
+      (suffix === CALLBACK_SUFFIX || projectConnectorReturn(suffix) !== null),
     redirect: confirmConnectorReturn,
   },
 } satisfies PublicFragmentRoute<ProjectConnectorCommands>;

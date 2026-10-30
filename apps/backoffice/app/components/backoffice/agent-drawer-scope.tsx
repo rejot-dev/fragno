@@ -29,6 +29,7 @@ export function AgentDrawerScope({
   screen,
   draft,
   onAgentChange,
+  onExpand,
   onClose,
 }: {
   open: boolean;
@@ -39,6 +40,8 @@ export function AgentDrawerScope({
   /** A message a page asked this agent, for its composer. */
   draft: ComposerDraft | null;
   onAgentChange: (agentName: string) => void;
+  /** Called as the agent's page at the given path opens in the drawer's place. */
+  onExpand: (agentPath: string) => void;
   onClose: () => void;
 }) {
   const directory = usePiAgentDirectory();
@@ -52,7 +55,14 @@ export function AgentDrawerScope({
           <AgentSelect directory={directory} agentName={agentName} onChange={onAgentChange} />
           {/* On phones the agent's page shows only its profile; its conversation stays here. */}
           {screen === "desktop" ? (
-            <IconButtonLink to={agentPath} label={`Open ${formatPiAgentName(agentName)}`}>
+            <IconButtonLink
+              to={agentPath}
+              viewTransition
+              onClick={() => {
+                onExpand(agentPath);
+              }}
+              label={`Open ${formatPiAgentName(agentName)}`}
+            >
               <Icon name="maximize-2" className="size-4" />
             </IconButtonLink>
           ) : null}
