@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/stripe-integration.png" alt="Stripe integration example" width="600" />
+  <img src="../fragno/assets/stripe-integration.png" alt="Stripe integration example" width="600" />
 </p>
 
 # @fragno-dev/stripe

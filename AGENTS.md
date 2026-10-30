@@ -1,20 +1,37 @@
-# Fragno
+# Backoffice
 
-Fragno is a pre-1.0 meta-framework and end-to-end toolchain for users and agents building full-stack
-libraries called **Fragments**. A Fragment can span frontend hooks, backend routes, and database
-models.
+Backoffice is the AI-native automation product in `apps/backoffice`: people describe how their
+business runs, and agents write it as workflows that run the same way every time, ask before they
+act, and record every step. This repository exists to build Backoffice.
 
-Pre 1.0 means FULL BREAKING CHANGES, even in the data layer. We want to find
-the optional API for our users. We're dogfooding everything in `apps/backoffice`.
+Fragno, the framework in `packages/`, is how we build it. Backoffice's features are built from
+Fragments: full-stack libraries spanning frontend hooks, backend routes, and database models. Change
+Fragno when Backoffice needs a primitive.
+
+Pre 1.0 means FULL BREAKING CHANGES in Backoffice and Fragno, even in the data layer. We want to
+find the optimal API for our users.
 
 ## Users
 
-- **You** are the agent building Fragno; **we** are the human contributors directing and reviewing
-  the work.
-- **Authors** build Fragments. Give them guardrails because they may not inspect generated or
-  agent-written code.
-- **Integrators** mount Fragments in applications. Assume they rely on public APIs, types, defaults,
-  and documentation without reading implementation code.
+- **You** are the agent building Backoffice; **we** are the human contributors directing and
+  reviewing the work.
+- **Authors** build Fragments, mostly us for Backoffice. Give them guardrails because they may not
+  inspect generated or agent-written code.
+- **Integrators** mount Fragments in applications, Backoffice first. Assume they rely on public
+  APIs, types, defaults, and documentation without reading implementation code.
+
+## Backoffice (BO)
+
+### Components
+
+Add UI components to the private design system package (`packages-private/design-system`,
+`@fragno-private/design-system`) when they are reusable or need to be designed in Storybook,
+including landing page sections. Move an existing component there when Storybook work needs it.
+Components that depend on Backoffice runtime data or routes stay in `apps/backoffice`.
+
+### Tests
+
+In Backoffice, we test exclusively through scenario tests, unless specifically direct otherwise by me.
 
 ## Coding style
 
@@ -45,7 +62,9 @@ Use canonical definitions and direct imports.
   user flows. Real end-to-end, but within a process. If the tests are simple enough to not need steps, we should NOT have the test at all. If a test should normally be a unit test, DO NOT ADD IT at all.
 - **Primitive-first.** Build reusable primitives, not application conveniences.
 
-## Fragno's constraints:
+## Fragno
+
+### Constraints
 
 We restrict authors so they can only do the right thing:
 
@@ -55,7 +74,7 @@ We restrict authors so they can only do the right thing:
 - Cursor-based pagination only.
 - Two-phase optimistic concurrency control.
 
-## Architecture
+### Architecture
 
 Code is the source of truth for current APIs and capabilities.
 
@@ -66,28 +85,10 @@ Code is the source of truth for current APIs and capabilities.
   OCC, and durable hooks. ORM adapters include Kysely, Drizzle, and Prisma; database adapters
   include SQLite, Postgres/PGLite, and MySQL.
 
-## Fragment integration
+### Fragment integration
 
 Authors define routes, client hooks, schemas, and queries. Integrators mount the routes, migrate the
 Fragment schema, and consume the hooks.
-
-## Backoffice
-
-Backoffice is the working name for the AI-native automation application in `apps/backoffice`. It is
-a product combining all best aspects of Fragno. Backoffice tests whether Fragno's separate
-primitives form one coherent system. Backoffice is our dogfooding proving ground for sessions, files, integrations, permissions,
-workflows, generated interfaces, synchronization, and operations.
-
-### Components
-
-Add UI components to the private design system package (`packages-private/design-system`,
-`@fragno-private/design-system`) when they are reusable or need to be designed in Storybook,
-including landing page sections. Move an existing component there when Storybook work needs it.
-Components that depend on Backoffice runtime data or routes stay in `apps/backoffice`.
-
-### Tests
-
-In Backoffice, we test exclusively through scenario tests, unless specifically direct otherwise by me.
 
 ## Development
 
@@ -128,6 +129,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## References
 
-- **Models, schemas, transactions, public APIs, test seams, or non-obvious behavior:** read
-  [`.agents/skills/self-documenting-code/SKILL.md`](.agents/skills/self-documenting-code/SKILL.md)
-  and its relevant references.
+- **Apps built on Backoffice:** [`apps/bookkeeping (BK)`](apps/bookkeeping) is the example app.

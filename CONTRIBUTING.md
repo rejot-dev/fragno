@@ -2,8 +2,9 @@
 
 We welcome all contributions!
 
-The project overview, architecture, command commands, tools, and development practices can all be
-found in the [CLAUDE.md](CLAUDE.md) file.
+This repository builds [Backoffice](README.md) and Fragno, the framework Backoffice is built with.
+The project overview, architecture, common commands, tools, and development practices can all be
+found in the [AGENTS.md](AGENTS.md) file.
 
 ## Rules
 
@@ -23,7 +24,10 @@ found in the [CLAUDE.md](CLAUDE.md) file.
     actual behavior, error messages, etc.
 
 - **Updating documentation**:
-  - Documentation is located in the `packages/docs/content/docs` directory as Markdown files.
+  - Running and deploying Backoffice is documented in the [README](README.md) and
+    [`apps/backoffice/README.md`](apps/backoffice/README.md).
+  - Fragno's documentation, published at [fragno.dev](https://fragno.dev/docs), is located in the
+    `apps/docs/content/docs` directory as Markdown files.
 
 - **Opening PRs**:
   - Opening an issue beforehand is always a good idea
@@ -40,6 +44,7 @@ If you want to contact us in a more casual manner than creating an issue, you ca
 
 1. Clone the repository
 1. Run `pnpm exec turbo build types:check test`
+1. Start Backoffice as described in [Run Backoffice locally](README.md#run-backoffice-locally)
 
 ## Common Commands
 

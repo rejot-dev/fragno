@@ -1,264 +1,202 @@
-<p align="center">
-  <img src="./assets/stripe-integration.png" alt="Stripe integration example" width="600" />
-  <p align="center" style="color: #888; font-size: 0.96em;"><em>These lines also set up webhook integration and make data available to the frontend</em></p>
-</p>
-
-<br/>
+<!-- prettier-ignore -->
 <div align="center">
-  <h3>Fragno: Build Full-Stack Libraries</h3>
-  <a href="https://fragno.dev">Website</a> •
-  <a href="https://fragno.dev/docs">Documentation</a> •
-  <a href="https://discord.gg/jdXZxyGCnC">Discord</a>
+
+<img src="apps/backoffice/public/favicon.svg" alt="" height="64" />
+
+# Backoffice
+
+_An agent workspace where agents write the workflows that run your business._
+
+[![CI](https://img.shields.io/github/actions/workflow/status/rejot-dev/fragno/ci.yml?style=flat-square&label=CI)](https://github.com/rejot-dev/fragno/actions/workflows/ci.yml)
+![Node version](https://img.shields.io/badge/Node.js-%5E22.22%20%7C%7C%20%3E%3D24.11-3c873a?style=flat-square)
+[![TypeScript](https://img.shields.io/badge/TypeScript-blue?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE.md)
+[![Discord](https://img.shields.io/badge/Discord-ReJot-5865f2?style=flat-square&logo=discord&logoColor=fff)](https://discord.gg/jdXZxyGCnC)
+
+[Overview](#overview) • [How it works](#how-it-works) • [Get started](#get-started) •
+[Deploy](#deploy) • [Build on Backoffice](#build-on-backoffice) • [Repository](#repository)
+
+![Orchestration view: event sources, their events, the routes that match them, and the workflows they start](assets/orchestration.webp)
+
+<sub>Events from each source reach workflows through routes. Agents create, filter, and turn off
+routes; this view shows them read-only.</sub>
+
 </div>
 
-<br/>
-<br/>
+Backoffice is an agent workspace built around programmatic tool calling (`codemode`). You direct
+agents to create durable, deterministic workflows. Every component describes its tools in a `.d.ts`
+file, which agents read to write code and workflows. The system is event-based: you and your agents
+decide which events start which workflows. Each workspace is isolated, and can choose to send data
+to other workspaces.
 
-### What's Fragno?
+<!-- prettier-ignore -->
+> [!TIP]
+> To use Backoffice without running it yourself, sign up at
+> [backoffice.rejot.dev](https://backoffice.rejot.dev).
 
-Fragno is a toolkit for building libraries that bundle frontend hooks, backend routes, and database
-operations into a single package. This allows library authors to ship complete features across the
-full stack.
+## Overview
 
-**Fragno supports all major frameworks: Next.js, Nuxt, SvelteKit, SolidStart, and more.** Wherever
-your users are, Fragno will work. This is also true for the **data layer**: Fragno integrates with
-**Kysely**, **Drizzle**, **Prisma** and is database-system agnostic.
+You describe a process to an agent:
 
-Fragno has all features you'd expect from a **modern framework**: type-safe routes, streaming data,
-and middleware support. Frontend hooks follow "Stale-While-Revalidate" semantics and allow arbitrary
-logic.
+> "When Stripe reports a failed payment, look up the customer and draft a friendly reminder. Ask me
+> before it's sent."
 
-When using the **optional** data layer, all expected features are supported like schema generation
-and querying. We also focus on performance and correctness with **indexes and transactions**.
+The agent writes a workflow file and a route that starts it. From then on, each failed payment runs
+the same steps, and the run waits for your approval before the reminder goes out.
 
-#### First-party full-stack libraries
+A workflow is plain JavaScript. Each `step.do` is durable: a run survives restarts and retries
+without repeating finished steps. This excerpt from the Telegram marketplace package links a chat to
+a Backoffice account:
 
-Fragno has a number of first-party Fragments that help builders get started quick in various ways:
+```js
+export default defineWorkflow({ name: "telegram-user-linking" }, async (event, step) => {
+  const chatId = event.payload.chatId;
 
-- [Stripe](https://github.com/fragno-dev/stripe) - Stripe integration with subscriptions and
-  webhooks.
-- [Forms](https://github.com/fragno-dev/forms) - Forms with validation and submission.
-- [Workflows](https://github.com/fragno-dev/workflows) - [ALPHA] Workflows with steps, timers,
-  events, and retries.
-- [Upload](https://github.com/fragno-dev/upload) - Database-backed files with atomic writes, search,
-  and upload progress.
+  const claim = await step.do("create telegram identity claim", async () => {
+    return await otp.createIdentityClaim({});
+  });
 
-To get started with any of these, install the Agent Skill:
+  await step.do("send telegram identity claim link", async () => {
+    await integrations.execute({
+      connectionId: "backoffice#telegram",
+      actionId: "messages.send",
+      input: { chatId, text: "Open this link to finish linking: " + claim.url /* … */ },
+    });
+  });
 
-```bash
-npx skills add https://github.com/rejot-dev/fragno --skill fragno
-```
-
-Then ask: "Use fragno to integrate the Stripe fragment into my application."
-
-#### When to build with Fragno?
-
-- You are a **Client SDK author** and want to do more than simply wrapping API calls. You can use
-  Fragno so your users no longer have to be concerned with webhook handlers and your data model. You
-  understand **idempotency** and **at-least-once delivery**, but your users don't have to.
-- You want to build **full-stack components** that can be reused across applications, regardless of
-  their stack. You see how **Better-Auth is outmaneuvering SaaS auth providers** and want to do the
-  same for your vertical.
-
-Either way, you want to use Fragno when you care about a great developer experience for your users,
-you care about correctness and performance, and want to have everything tested from the ground up.
-
-#### What it looks like
-
-Start by defining what configuration you need from your users:
-
-```ts
-export interface ChatConfig {
-  openaiApiKey: string;
-  model?: string;
-}
-
-export const definition = defineFragment<ChatConfig>("chat")
-  .withDependencies(({ config }) => ({ openaiClient: new OpenAI({ apiKey: config.openaiApiKey }) }))
-  .build();
-```
-
-Then, simply define a route:
-
-```ts
-export const routes = defineRoutes(definition).create(({ defineRoute, deps, config }) => {
-  const { openaiClient } = deps;
-
-  return [
-    defineRoute({
-      method: "POST",
-      path: "/chat/:id",
-      inputSchema: z.object({ message: z.string() }),
-      outputSchema: z.any(),
-      handler: async ({ input }, { json }) => {
-        const { message } = await input.valid();
-
-        return json({
-          response: await openaiClient.responses.create({
-            model: config.model ?? "gpt-5-nano",
-            // ...
-          }),
-        });
-      },
-    }),
-  ];
+  // The run sleeps until the person opens the link, for at most 15 minutes.
+  await step.waitForEvent("identity-claim-completed", {
+    type: "identity-claim-completed",
+    timeout: "15 minutes",
+  });
+  // …
 });
 ```
 
-And your client-side hooks:
-
-```ts
-const builder = createClientBuilder(definition, options, routes);
-
-const hooks = {
-  useChat: builder.createMutator("POST", "/chat/:id"),
-};
-```
-
-Your users can then immediately use the hooks in their application:
-
-```ts
-const { mutate, loading, error } = useChat();
-const { response } = await mutate({
-  body: { message: prompt },
-});
-```
-
-#### Example use cases
-
-- **Full-stack components** – opinionated packages that own backend, frontend, and a data layer.
-  E.g.:
-  - Feature flags
-  - Form submission / builder
-  - Authentication (Better Auth–style)
-  - File uploads
-  - etc
-
-- **Client SDKs** – packages to facilitate interaction with a SaaS application, such as payments.
-  Flows with a lot of webhooks can benefit greatly.
-
-### Documentation
-
-Full documentation can be found at [fragno.dev](https://fragno.dev/docs).
-
-The docs are split in two:
-
-- [For Library Authors](https://fragno.dev/docs/fragno/for-library-authors/getting-started) -
-  Everything you need to build Fragno libraries.
-- [User Quick Start](https://fragno.dev/docs/fragno/user-quick-start) - This gives you a good idea
-  on how users would integrate your library and how they would customize the experience.
-
-#### Quick Start
-
-Basic template to get you started building a full-stack Fragno library:
-
-```bash
-# Create a new Fragno library from a template
-pnpm create fragno@latest
-```
-
-Also make sure to install the Agent Skill:
-
-```bash
-npx skills add https://github.com/rejot-dev/fragno --skill fragno-author
-```
-
-Then ask: "Use fragno-author to scaffold a fragment for feature flags."
+`otp` and `integrations` are providers; [How it works](#how-it-works) explains them.
 
 ### Features
 
-- **End-to-end type safety**: Standard Schema-compatible route typing and fully type-safe client
-  hooks.
-- **Built-in frontend state management**: reactive stores with caching and invalidation (TanStack
-  Query-style) via [Nano Stores](https://github.com/nanostores/nanostores).
-- **Optional data layer**: type-safe database layer with schema generation and adapters for common
-  ORMs.
-- **Middleware support**: users can plug in authentication, rate limiting, and other cross-cutting
-  concerns.
-- **Streaming support**: NDJSON (newline-delimited JSON) streaming for real-time use cases.
-- **Automatic code splitting**: library-level splitting via `@fragno-dev/unplugin-fragno`, no extra
-  build complexity for end users.
+- **Workflows** that start from schedules and events, such as webhooks, with durable steps, waits,
+  approvals, and a trace of every step.
+- **Agents** that chat with you, work in a shared workspace file system, and run code through
+  `codemode`. Built on pi-durable.
+- **Integrations**: first-party ones for GitHub, Resend, and Telegram, plus MCP servers, HTTP APIs,
+  and more through the OOMOL connector.
+- **Generative UI and pages** that agents build and that update as events arrive. Their data syncs
+  to the browser, so pages load local-first.
+- **Computers**: sandboxed machines with a shell for agents, and an embedded terminal for you.
+- **A marketplace** to install and publish automation packages.
+- **Organizations** with projects, roles, invitations, and client management for agencies. Each
+  workspace can keep its data in the EU or the US.
 
-#### Data Layer
+## How it works
 
-Define schemas, query with type safety, and write directly to the user's database.
+Agents don't call one tool per turn. They write a program against typed providers, and Backoffice
+runs it in a sandbox (`codemode`). Saved as a workflow file, the same kind of code runs whenever a
+route matches an event. Every event keeps a trace of what it caused:
 
-```ts
-schema((s) => {
-  return s.addTable("conversation", (t) => {
-    return t
-      .addColumn("id", idColumn())
-      .addColumn("messages", column("json"))
-      .addColumn("createdAt", column("timestamp"))
-      .createIndex("idx_conversation_createdAt", ["createdAt"]);
-  });
-});
-```
+<table>
+  <tr>
+    <td width="50%"><img src="assets/codemode-turn.webp" alt="An agent turn: two codemode runs, with each provider call and its duration" /></td>
+    <td width="50%"><img src="assets/trace.webp" alt="Trace of a GitHub issue event: routes, workflow runs, their steps, and a failed Linear sync" /></td>
+  </tr>
+  <tr>
+    <td><sub>An agent's code runs in <code>codemode</code>. Each provider call shows its duration, and a failed call shows its error.</sub></td>
+    <td><sub>One GitHub webhook starts three workflows through routes. The trace shows why one of them failed.</sub></td>
+  </tr>
+</table>
 
-**Fragno's schema builder** is intentionally restricted in types to be able to map onto multiple
-ORMs and databases. Its basic feature set still contains everything you need to build a rich and
-performant schema such as indexes and relationships.
+Backoffice is built from these concepts:
 
-The **query builder** follows the same pattern. Retrieval operations such as filtering and ordering
-take indexes as arguments, so it's impossible to write queries that can't be executed efficiently.
-Simple joins are supported as well as cursor-based pagination.
+| Concept  | What it is                                                                                                                                                                                                      |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Scope    | Where work belongs: a person, an organization, a project, or an installed app. Each scope keeps its own files, connections, routes, and workflow runs.                                                          |
+| Provider | A typed API that code calls as a global, such as `integrations`, `models`, or `store`. Agents read its declaration in [`content/static/codemode`](apps/backoffice/content/static/codemode) before writing code. |
+| Event    | A record that something happened, with its source, type, payload, and the people or systems involved. Integrations, forms, and Backoffice itself emit events.                                                   |
+| Route    | A rule that reacts to an event or a schedule. It starts a workflow, delivers the event to a running workflow, notifies an agent, or forwards the event to another scope.                                        |
+| Workflow | A `.workflow.js` file of durable steps. A workflow can sleep, wait for events, and show interfaces, such as a form that asks for your approval.                                                                 |
+| Agent    | A conversation that writes and runs code, and creates the routes and workflows above.                                                                                                                           |
 
-**Transactions** are supported via the _Unit of Work_ pattern. This is a two-phase pattern for
-atomic operations using optimistic concurrency control (OCC). The first phase **retrieves** the
-data, the second phase is responsible for **mutating** the data. When mutating, the OCC pattern
-ensures that data isn't modified by another client. This means transactions are non-interactive,
-meaning the user's database cannot be blocked for a long time.
+## Get started
 
-We make sure it's easy to **test** everything. Fragno libraries can be easily instantiated in test
-environments, the data layer will be backed by a real SQLite or PGLite database. This means you can
-easily test full flows, from calling a route to persisting data to the database.
+### Prerequisites
 
-#### Framework and database support
+- [Node.js](https://nodejs.org) `^22.22.0` or `>=24.11.0`
+- [pnpm](https://pnpm.io) 11
+- An [OpenAI API key](https://platform.openai.com/api-keys), so agents can respond
 
-Fragno focuses on a small, framework-agnostic surface (standard `Request`/`Response`) and provides
-adapters for many environments.
+### Run Backoffice locally
 
-| Client-side frameworks | Support | —   | Server-side frameworks  | Support |
-| ---------------------- | ------- | --- | ----------------------- | ------- |
-| React                  | ✅      |     | Node.js / Express       | ✅      |
-| Vue                    | ✅      |     | React Router v7 / Remix | ✅      |
-| Vanilla JavaScript     | ✅      |     | Astro                   | ✅      |
-| Svelte                 | ✅      |     | Next.js                 | ✅      |
-| SolidJS                | ✅      |     | Nuxt                    | ✅      |
-|                        |         |     | SvelteKit               | ✅      |
-|                        |         |     | SolidStart              | ✅      |
-|                        |         |     | TanStack Start          | ✅      |
+1. Clone the repository and install the dependencies:
 
-See the [Framework Support](https://fragno.dev/docs/fragno/reference/frameworks) page for the full
-and up-to-date list, including database adapter support.
+   ```bash
+   git clone https://github.com/rejot-dev/fragno.git backoffice
+   cd backoffice
+   pnpm install
+   ```
 
-Supported ORMs are Kysely, Drizzle, and Prisma, with Postgres and SQLite. This includes PGLite and
-Cloudflare Durable Objects.
+2. Create the local configuration, then set `OPENAI_API_KEY` in `apps/backoffice/.dev.vars`:
 
-### Example Code
+   ```bash
+   cp apps/backoffice/.dev.vars.example apps/backoffice/.dev.vars
+   ```
 
-This repo ships complete examples and sample libraries:
+3. Build the dependencies and start the development server. It also starts the sandbox bridge:
 
-- `example-fragments/stripe` – A featureful Stripe integration library that manages subscriptions
-  and customers. It uses the data layer to consume webhooks from Stripe and write them to the user's
-  database. See the [Stripe Quick Start](https://fragno.dev/docs/stripe/quickstart) for more
-  details. This full-stack library is also discussed in
-  ["Solving Split Brain Integrations"](https://fragno.dev/blog/split-brain-stripe).
-- `example-fragments/example-fragment` – minimal Fragno library example.
-- `example-apps/*` – full application examples (React Router, Next.js, Nuxt, Astro, SvelteKit,
-  SolidStart, Vue SPA, etc.).
-- `example-apps/stripe-webshop` – Uses Drizzle and Better Auth with PGLite to integrate the Stripe
-  Fragment.
+   ```bash
+   pnpm exec turbo dev --filter=@fragno-apps/backoffice-rr
+   ```
 
-### Contributing
+4. In a second terminal, create an account. It uses the email `$USER@rejot.dev` and the password
+   `wachtwoord`:
 
-Fragno is an open source project. We welcome contributions! Fragno is licensed under the MIT
-License. See the [LICENSE](LICENSE.md) file for details.
+   ```bash
+   pnpm --filter @fragno-apps/backoffice-rr dev-account:create
+   ```
 
-See the [CONTRIBUTING](CONTRIBUTING.md) file for details.
+5. Open http://127.0.0.1:5173 and sign in.
 
-<p align="center">
-  <img src="./assets/cake.png" alt="Have your cake and eat it, too" width="400" />
-</p>
+<!-- prettier-ignore -->
+> [!NOTE]
+> The development server prints email to the terminal instead of sending it, including sign-in and
+> password-reset links.
 
-Make sure to star the repo! ⭐️
+## Deploy
+
+Backoffice deploys to Cloudflare Workers: a web Worker, and an object Worker with Durable Objects
+and R2 for large files. See [Release](apps/backoffice/README.md#release) in the application's
+README.
+
+<!-- prettier-ignore -->
+> [!IMPORTANT]
+> Backoffice needs a deployed [`cf-sandbox-bridge`](apps/cf-sandbox-bridge) to run code. Deploy it
+> before Backoffice.
+
+## Build on Backoffice
+
+- **Apps** sign people in with Backoffice, are installed into organizations, and give agents their
+  actions. [Bookkeeping](apps/bookkeeping) is the reference app, and the
+  [`backoffice-apps` skill](.agents/skills/backoffice-apps/SKILL.md) explains the integration.
+- **The HTTP API** is defined in [`@fragno-dev/backoffice-api`](packages/backoffice-api), with an
+  OpenAPI document.
+- **The CLI** in [`apps/backoffice-cli`](apps/backoffice-cli) signs in through the device flow, runs
+  code in a workspace, and moves files.
+- **Marketplace packages** bundle workflows, routes, and agents. See the
+  [built-in packages](apps/backoffice/content/marketplace) for examples.
+
+## Repository
+
+| Path                                                               | Contents                                                   |
+| ------------------------------------------------------------------ | ---------------------------------------------------------- |
+| [`apps/backoffice`](apps/backoffice)                               | The Backoffice application                                 |
+| [`apps/cf-sandbox-bridge`](apps/cf-sandbox-bridge)                 | Code execution and sandboxed computers                     |
+| [`apps/bookkeeping`](apps/bookkeeping)                             | An accounting app built on Backoffice                      |
+| [`apps/backoffice-cli`](apps/backoffice-cli)                       | The command-line client                                    |
+| [`packages-private/design-system`](packages-private/design-system) | UI components and their Storybook                          |
+| [`packages`](packages)                                             | Fragno, and the Fragno libraries Backoffice's features use |
+
+### Looking for Fragno?
+
+Fragno, the framework for building full-stack libraries, lives in this repository. See its
+[README](packages/fragno/README.md) and the documentation at [fragno.dev](https://fragno.dev/docs).
