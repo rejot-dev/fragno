@@ -23,6 +23,7 @@ import {
   resetPiManagerAgent,
   stopPiManagerAgent,
 } from "./data";
+import { PI_AGENT_CONVERSATION_TRANSITION } from "./path";
 
 export async function action(args: Route.ActionArgs): Promise<PiAgentActionData> {
   const { request, params, context } = args;
@@ -77,10 +78,19 @@ export function shouldRevalidate({
   return isPiConversationSubmission(formData) ? false : defaultShouldRevalidate;
 }
 
-export default function BackofficeOrganizationPiAgentDetail({
-  loaderData,
-  params,
-}: Route.ComponentProps) {
+// Named like the drawer's conversation, which grows into this page when expanded.
+export default function BackofficeOrganizationPiAgentDetail(props: Route.ComponentProps) {
+  return (
+    <div
+      className="flex h-full min-h-0 flex-1 flex-col"
+      style={{ viewTransitionName: PI_AGENT_CONVERSATION_TRANSITION }}
+    >
+      <PiAgentDetail {...props} />
+    </div>
+  );
+}
+
+function PiAgentDetail({ loaderData, params }: Route.ComponentProps) {
   const { resolvedScope, directory, basePath, usageLabel, availableModelOptions } =
     useOutletContext<PiAgentsOutletContext>();
   if (!loaderData.found) {

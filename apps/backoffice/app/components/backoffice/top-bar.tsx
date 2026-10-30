@@ -1,4 +1,6 @@
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { Icon } from "@fragno-private/design-system/icon";
+import { Link, useLocation } from "react-router";
 
 import {
   type BackofficeNamedProject,
@@ -7,6 +9,7 @@ import {
 } from "@/backoffice-runtime/resolved-scope";
 import type { AdministeredMember, BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 import type { AutomationProjectList } from "@/fragno/automation/project-list";
+import { integrationsConnectPath } from "@/routes/backoffice/integrations/connection-paths";
 
 import { AGENT_DRAWER_ID, preloadAgentDrawer } from "./agent-drawer";
 import { AgentMark } from "./agent-mark";
@@ -27,6 +30,34 @@ type BackofficeTopBarProps = {
   agentDrawerOpen?: boolean;
   onAgentDrawerToggle?: () => void;
 };
+
+// The Connect wizard opens from every page of a scope, so connecting a source is always one click
+// away. On the wizard it stays as the current place, and leads back to choosing a source.
+function ConnectButton({
+  scope,
+}: {
+  scope: BackofficeResolvedScope<Organization, BackofficeNamedProject>;
+}) {
+  const location = useLocation();
+  const to = integrationsConnectPath(scope);
+  const current = location.pathname === to;
+  return (
+    <Link
+      to={to}
+      aria-label="Connect"
+      aria-current={current ? "page" : undefined}
+      title="Connect a source"
+      className={`group flex shrink-0 cursor-pointer items-center gap-2 border-l border-[color:var(--bo-border)] px-4 text-sm font-semibold text-[var(--bo-fg)] transition-[background-color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset ${current ? "bg-[color:var(--bo-sidebar-bg)]" : "hover:bg-[var(--bo-panel-2)]"}`}
+    >
+      <span
+        className={`flex size-8 shrink-0 items-center justify-center transition-colors duration-150 ease-out group-hover:text-[var(--bo-fg)] ${current ? "text-[var(--bo-fg)]" : "text-[var(--bo-muted)]"}`}
+      >
+        <Icon name="plus" className="size-4" strokeWidth={1.75} />
+      </span>
+      <span className="hidden pr-2 sm:inline">Connect</span>
+    </Link>
+  );
+}
 
 export function BackofficeTopBar({
   sections,
@@ -73,6 +104,7 @@ export function BackofficeTopBar({
         ) : null}
 
         <div className="ml-auto flex shrink-0 items-stretch">
+          {resolvedScope ? <ConnectButton scope={resolvedScope} /> : null}
           {me?.activeOrganizationId ? (
             // Keyed so switching organizations drops the previous organization's members.
             <BackofficePresenceIndicator key={me.activeOrganizationId} />

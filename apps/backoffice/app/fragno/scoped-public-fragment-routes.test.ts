@@ -6,10 +6,13 @@ import {
   API_PUBLIC_PREFIX,
   apiPublicAddress,
   apiWebhookPublicUrl,
+  isProjectConnectorReturnUriAllowed,
   isScopedPublicOAuthRedirectUriAllowed,
   MCP_PUBLIC_PREFIX,
   PROJECT_CONNECTOR_PUBLIC_PREFIX,
   mcpPublicAddress,
+  projectConnectorPublicAddress,
+  projectConnectorReturnUri,
   scopedPublicMountPath,
 } from "./scoped-public-fragment-routes";
 
@@ -162,4 +165,29 @@ describe("scoped public fragment routes", () => {
       );
     },
   );
+
+  test("allows the Connector to return to the Connect wizard for one connection only", () => {
+    const { oauthRedirectUri } = projectConnectorPublicAddress(
+      "https://backoffice.example",
+      "user:ada",
+    );
+    const allowed = (uri: string) =>
+      isProjectConnectorReturnUriAllowed({
+        publicOrigin: "https://backoffice.example",
+        redirectUri: new URL(uri),
+        returnSegment: (segment) => segment === "n_work",
+      });
+    const returnUri = (returnTo: "integrations" | "connect") =>
+      projectConnectorReturnUri({ oauthRedirectUri, returnSegment: "n_work", returnTo });
+
+    assert(allowed(returnUri("integrations")));
+    assert(allowed(returnUri("connect")));
+    assert(!allowed(`${oauthRedirectUri}/connect/n_other`));
+    assert(!allowed(`${oauthRedirectUri}/connect/n_work/extra`));
+    assert(!allowed(`${oauthRedirectUri}/wizard/n_work`));
+    assert(!allowed(`${returnUri("connect")}?next=attacker`));
+    assert(
+      !allowed("https://attacker.example/api/connector/user%3Aada/oauth/callback/connect/n_work"),
+    );
+  });
 });

@@ -7,6 +7,7 @@ import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
+import { INTEGRATION_CATEGORY } from "./integration-categories";
 import { connectionStateOfInspection } from "./integration-events";
 import {
   checkedIntegrationActionDefinition,
@@ -130,6 +131,8 @@ export function createWorkersAiIntegration({
           id: workersAiConnectionIdentity.integrationId,
           label: workersAiConnectionIdentity.name,
           description: `Models Cloudflare hosts, each run billed to this scope's owner: ${WORKERS_AI_MODELS.map(({ label }) => label).join(", ")}.`,
+          iconUrl: null,
+          categories: [INTEGRATION_CATEGORY.ai],
           connectionCardinality: "singleton",
           availability:
             unavailable === null
