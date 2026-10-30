@@ -13,9 +13,10 @@ import { BackofficeAppearanceMenu } from "./appearance-menu";
 import { BackofficePresenceIndicator } from "./presence-indicator";
 import { StreamedBackofficeProjectMenu } from "./project-menu";
 import { BackofficeScopeMenu } from "./scope-menu";
-import { BackofficeMobileNav } from "./sidebar-nav";
+import { BackofficeMobileNav, type BackofficeSections } from "./sidebar-nav";
 
 type BackofficeTopBarProps = {
+  sections: BackofficeSections;
   me: BackofficeMeData | null;
   resolvedScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> | null;
   administeredMember: AdministeredMember | null;
@@ -27,6 +28,7 @@ type BackofficeTopBarProps = {
 };
 
 export function BackofficeTopBar({
+  sections,
   me,
   resolvedScope,
   administeredMember,
@@ -111,7 +113,7 @@ export function BackofficeTopBar({
       </div>
 
       <div className="border-t border-[color:var(--bo-border)] min-[960px]:hidden">
-        <BackofficeMobileNav currentScope={resolvedScope} me={me} />
+        <BackofficeMobileNav sections={sections} />
       </div>
     </header>
   );

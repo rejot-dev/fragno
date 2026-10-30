@@ -24,21 +24,21 @@ import type { AutomationProjectList } from "@/fragno/automation/project-list";
 import { BackofficeAppearanceMenu } from "./appearance-menu";
 import { StreamedBackofficeProjectMenu } from "./project-menu";
 import { BackofficeScopeMenu, currentScopeLabel } from "./scope-menu";
-import { useBackofficeSections } from "./sidebar-nav";
+import type { BackofficeSections } from "./sidebar-nav";
 
 /**
  * The shell's chrome on phones, in place of the top bar and sidebar: a slim header naming the
- * section and the workspace, a bottom tab bar, and a menu sheet with everything else. Like a native
- * app's tabs, a section's link returns to where it was left, and tapping the current section's
- * returns to its start.
+ * section and the workspace, a bottom tab bar, and a menu sheet with everything else.
  */
 export function BackofficePhoneChrome({
+  sections,
   me,
   resolvedScope,
   administeredMember,
   projectList,
   isLoading,
 }: {
+  sections: BackofficeSections;
   me: BackofficeMeData | null;
   resolvedScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> | null;
   administeredMember: AdministeredMember | null;
@@ -49,19 +49,10 @@ export function BackofficePhoneChrome({
   // Remembers the location it opened at, so following any link in it closes it.
   const [menuOpenAt, setMenuOpenAt] = useState<string | null>(null);
   const menuOpen = menuOpenAt === location.key;
-  const sections = useBackofficeSections(resolvedScope, me);
-  const currentSection = sections.all.find((item) => item.active) ?? null;
+  const allSections = [...sections.primary, ...sections.context];
+  const currentSection = allSections.find((item) => item.active) ?? null;
   const currentSectionInMenu =
-    currentSection !== null && !sections.phoneTabs.some((tab) => tab.to === currentSection.to);
-  // Where each section was left, by its link. Links carry the scope, so each scope remembers its
-  // own.
-  const [lastVisited, setLastVisited] = useState<ReadonlyMap<string, string>>(new Map());
-  const here = `${location.pathname}${location.search}`;
-  if (currentSection !== null && lastVisited.get(currentSection.to) !== here) {
-    setLastVisited(new Map(lastVisited).set(currentSection.to, here));
-  }
-  const resume = (item: NavigationItem): NavigationItem =>
-    item.active ? item : { ...item, to: lastVisited.get(item.to) ?? item.to };
+    currentSection !== null && !sections.phoneTabs.some((tab) => tab.active);
   const workspaceLabel =
     me?.user && resolvedScope
       ? resolvedScope.kind === "project"
@@ -101,7 +92,7 @@ export function BackofficePhoneChrome({
       <div className="sm:hidden">
         <BottomNavigation ariaLabel="Backoffice">
           {sections.phoneTabs.map((item) => (
-            <BottomNavigationItem key={item.to} item={resume(item)} />
+            <BottomNavigationItem key={item.label} item={item} />
           ))}
           <BottomNavigationButton
             label="More"
@@ -121,7 +112,7 @@ export function BackofficePhoneChrome({
         title="Menu"
       >
         <PhoneMenu
-          sections={sections.all.map(resume)}
+          sections={allSections}
           me={me}
           resolvedScope={resolvedScope}
           administeredMember={administeredMember}
@@ -179,7 +170,7 @@ function PhoneMenu({
       <SheetSection label="Sections">
         <nav aria-label="All sections" className="grid grid-cols-2 gap-2">
           {sections.map((item) => (
-            <SidebarNavigationItem key={item.to} item={item} collapsed={false} />
+            <SidebarNavigationItem key={item.label} item={item} collapsed={false} />
           ))}
         </nav>
       </SheetSection>

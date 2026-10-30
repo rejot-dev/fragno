@@ -22,7 +22,7 @@ import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { MemberWorkspaceBanner } from "./member-workspace-banner";
 import { BackofficePhoneChrome } from "./phone-chrome";
-import { BackofficeSidebarNav } from "./sidebar-nav";
+import { BackofficeSidebarNav, useBackofficeSections } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
 
 // The terminal renders only in browsers, so the server imports none of it.
@@ -155,6 +155,7 @@ function BackofficeShellFrame({
   isLoading,
 }: BackofficeShellProps) {
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
+  const sections = useBackofficeSections(resolvedScope, me);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarRestoredRef = useRef(false);
   const [sidebarRestoring, setSidebarRestoring] = useState(true);
@@ -228,6 +229,7 @@ function BackofficeShellFrame({
       <div className="relative flex min-w-0 flex-1 flex-col pb-[var(--bo-shell-bottom)]">
         <div className="bo-grid-backdrop pointer-events-none absolute inset-0" />
         <BackofficePhoneChrome
+          sections={sections}
           me={me}
           resolvedScope={resolvedScope}
           administeredMember={administeredMember}
@@ -235,6 +237,7 @@ function BackofficeShellFrame({
           isLoading={isLoading ?? false}
         />
         <BackofficeTopBar
+          sections={sections}
           me={me}
           resolvedScope={resolvedScope}
           administeredMember={administeredMember}
@@ -248,8 +251,7 @@ function BackofficeShellFrame({
         />
         <div className="flex min-w-0 flex-1">
           <BackofficeSidebarNav
-            currentScope={resolvedScope}
-            me={me}
+            sections={sections}
             collapsed={sidebarCollapsed}
             onCollapsedChange={setSidebarCollapsed}
           />

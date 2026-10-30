@@ -2,6 +2,7 @@ import { backofficeScopeRootOwner } from "@fragno-dev/backoffice-api/v0/shared/s
 import type { IconName } from "@fragno-private/design-system/icon";
 import { MobileNavigation, SidebarNavigation } from "@fragno-private/design-system/navigation";
 import type { NavigationItem } from "@fragno-private/design-system/navigation-item";
+import { useState } from "react";
 import { useLocation } from "react-router";
 
 import {
@@ -142,27 +143,18 @@ function resolveContextNavigationItems(
 }
 
 export function BackofficeSidebarNav({
-  currentScope,
-  me,
+  sections,
   collapsed,
   onCollapsedChange,
 }: {
-  currentScope: SidebarScope | null;
-  me: BackofficeMeData | null;
+  sections: BackofficeSections;
   collapsed: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
 }) {
-  const location = useLocation();
-
   return (
     <SidebarNavigation
-      sections={[
-        {
-          label: null,
-          items: resolveNavigationItems(currentScope, location.pathname, PRIMARY_NAVIGATION),
-        },
-      ]}
-      secondaryItems={resolveContextNavigationItems(currentScope, me, location.pathname)}
+      sections={[{ label: null, items: sections.primary }]}
+      secondaryItems={sections.context}
       ariaLabel="Backoffice"
       collapsed={collapsed}
       onCollapsedChange={onCollapsedChange}
@@ -170,33 +162,49 @@ export function BackofficeSidebarNav({
   );
 }
 
-export function BackofficeMobileNav({
-  currentScope,
-  me,
-}: {
-  currentScope: SidebarScope | null;
-  me: BackofficeMeData | null;
-}) {
+export function BackofficeMobileNav({ sections }: { sections: BackofficeSections }) {
   return (
-    <MobileNavigation items={useBackofficeSections(currentScope, me).all} ariaLabel="Backoffice" />
+    <MobileNavigation items={[...sections.primary, ...sections.context]} ariaLabel="Backoffice" />
   );
 }
 
-/** Every section in the sidebar's order, and the ones phones give a tab of their own. */
+export type BackofficeSections = {
+  primary: NavigationItem[];
+  /** Internals and Settings, after the primary sections. */
+  context: NavigationItem[];
+  /** The primary sections phones give a tab of their own. */
+  phoneTabs: NavigationItem[];
+};
+
+/**
+ * Every section in the sidebar's order. Like a native app's tabs, a section's link returns to where
+ * it was left, and the current section's link returns to its start. The shell calls this once and
+ * passes the sections to every navigation, so they share where each section was left.
+ */
 export function useBackofficeSections(
   currentScope: SidebarScope | null,
   me: BackofficeMeData | null,
-): { all: NavigationItem[]; phoneTabs: NavigationItem[] } {
+): BackofficeSections {
   const location = useLocation();
+  const primary = resolveNavigationItems(currentScope, location.pathname, PRIMARY_NAVIGATION);
+  const context = resolveContextNavigationItems(currentScope, me, location.pathname);
+  // Where each section was left, by its link. Links carry the scope, so each scope remembers its
+  // own. The memory lasts until a reload.
+  const [lastVisited, setLastVisited] = useState<ReadonlyMap<string, string>>(new Map());
+  const currentSection = [...primary, ...context].find((item) => item.active);
+  const here = `${location.pathname}${location.search}`;
+  if (currentSection !== undefined && lastVisited.get(currentSection.to) !== here) {
+    setLastVisited(new Map(lastVisited).set(currentSection.to, here));
+  }
+  const resume = (item: NavigationItem): NavigationItem =>
+    item.active ? item : { ...item, to: lastVisited.get(item.to) ?? item.to };
   return {
-    all: [
-      ...resolveNavigationItems(currentScope, location.pathname, PRIMARY_NAVIGATION),
-      ...resolveContextNavigationItems(currentScope, me, location.pathname),
-    ],
+    primary: primary.map(resume),
+    context: context.map(resume),
     phoneTabs: resolveNavigationItems(
       currentScope,
       location.pathname,
       PRIMARY_NAVIGATION.filter((item) => item.phoneTab),
-    ),
+    ).map(resume),
   };
 }

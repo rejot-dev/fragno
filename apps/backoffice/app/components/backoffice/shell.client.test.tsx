@@ -7,8 +7,8 @@ import { render } from "@testing-library/react";
 
 import type { Organization } from "@/fragno/auth/contracts";
 
-const { sidebarMock, terminalMock, topBarMock } = vi.hoisted(() => ({
-  sidebarMock: vi.fn(),
+const { sectionsMock, terminalMock, topBarMock } = vi.hoisted(() => ({
+  sectionsMock: vi.fn(),
   terminalMock: vi.fn(),
   topBarMock: vi.fn(),
 }));
@@ -29,9 +29,10 @@ vi.mock("./quake-terminal", () => ({
   },
 }));
 vi.mock("./sidebar-nav", () => ({
-  BackofficeSidebarNav: (props: unknown) => {
-    sidebarMock(props);
-    return null;
+  BackofficeSidebarNav: () => null,
+  useBackofficeSections: (...args: unknown[]) => {
+    sectionsMock(...args);
+    return { primary: [], context: [], phoneTabs: [] };
   },
 }));
 vi.mock("./phone-chrome", () => ({ BackofficePhoneChrome: () => null }));
@@ -56,7 +57,7 @@ const organization: Organization = {
 
 describe("BackofficeShell resolved scope", () => {
   beforeEach(() => {
-    sidebarMock.mockClear();
+    sectionsMock.mockClear();
     terminalMock.mockClear();
     topBarMock.mockClear();
   });
@@ -86,9 +87,7 @@ describe("BackofficeShell resolved scope", () => {
     );
 
     expect(topBarMock).toHaveBeenCalledWith(expect.objectContaining({ resolvedScope }));
-    expect(sidebarMock).toHaveBeenCalledWith(
-      expect.objectContaining({ currentScope: resolvedScope }),
-    );
+    expect(sectionsMock).toHaveBeenCalledWith(resolvedScope, null);
     // The terminal is imported once the shell has mounted.
     await vi.waitFor(() => {
       expect(terminalMock).toHaveBeenCalledWith(

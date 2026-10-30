@@ -22,7 +22,7 @@ import { resolveBackofficePageScope } from "@/layouts/backoffice-layout-scope";
 
 import { BackofficePhoneChrome } from "./phone-chrome";
 import { BackofficeProjectMenu } from "./project-menu";
-import { BackofficeMobileNav, BackofficeSidebarNav } from "./sidebar-nav";
+import { BackofficeMobileNav, BackofficeSidebarNav, useBackofficeSections } from "./sidebar-nav";
 
 const organization: Organization = {
   id: "agency-id",
@@ -82,21 +82,22 @@ type Navigation = "desktop" | "mobile" | "phone";
 function NavigationScenario({ navigation }: { navigation: Navigation }) {
   const scope = useLoaderData<typeof loadScope>();
   const [collapsed, setCollapsed] = useState(false);
+  const sections = useBackofficeSections(scope, me);
   const routeScope = backofficeRouteScopeFromResolvedScope(scope);
   const owner = routeScope.kind === "project" ? routeScope.owner : routeScope;
   return (
     <>
       {navigation === "desktop" ? (
         <BackofficeSidebarNav
-          currentScope={scope}
-          me={me}
+          sections={sections}
           collapsed={collapsed}
           onCollapsedChange={setCollapsed}
         />
       ) : navigation === "mobile" ? (
-        <BackofficeMobileNav currentScope={scope} me={me} />
+        <BackofficeMobileNav sections={sections} />
       ) : (
         <BackofficePhoneChrome
+          sections={sections}
           me={me}
           resolvedScope={scope}
           administeredMember={null}
@@ -221,9 +222,9 @@ describe("scope navigation scenarios", () => {
             }),
           ).toBeTruthy();
         });
+        // Settings returns to the tab it was left on.
         assert(
-          screen.getByRole("link", { name: "Settings" }).getAttribute("href") ===
-            "/backoffice/organizations/agency",
+          screen.getByRole("link", { name: "Settings" }).getAttribute("href") === settingsPath,
         );
         await act(() => router.navigate(settingsPath));
         await screen.findByRole("button", { name: "Switch project. Current project: none" });
@@ -231,31 +232,34 @@ describe("scope navigation scenarios", () => {
     },
   );
 
-  test("phone tabs return to where each section was left, per scope", async () => {
-    const router = await renderNavigation("/backoffice/dashboard/user/ada", "phone");
-    const tab = (name: string) =>
-      within(screen.getByRole("navigation", { name: "Backoffice" })).getByRole("link", { name });
-    const follow = async (name: string) => {
-      await act(async () => {
-        fireEvent.click(tab(name));
-      });
-    };
-    const pathname = () => router.state.location.pathname;
+  test.each(["desktop", "mobile", "phone"] as const)(
+    "%s navigation returns to where each section was left, per scope",
+    async (navigation) => {
+      const router = await renderNavigation("/backoffice/dashboard/user/ada", navigation);
+      const tab = (name: string) =>
+        within(screen.getByRole("navigation", { name: "Backoffice" })).getByRole("link", { name });
+      const follow = async (name: string) => {
+        await act(async () => {
+          fireEvent.click(tab(name));
+        });
+      };
+      const pathname = () => router.state.location.pathname;
 
-    await act(() => router.navigate("/backoffice/agents/user/ada/agents/assistant"));
-    await follow("Files");
-    assert(pathname() === "/backoffice/files/user/ada");
-    await act(() => router.navigate("/backoffice/files/user/ada?path=uploads"));
+      await act(() => router.navigate("/backoffice/agents/user/ada/agents/assistant"));
+      await follow("Files");
+      assert(pathname() === "/backoffice/files/user/ada");
+      await act(() => router.navigate("/backoffice/files/user/ada?path=uploads"));
 
-    await follow("Agents");
-    assert(pathname() === "/backoffice/agents/user/ada/agents/assistant");
-    assert(tab("Files").getAttribute("href") === "/backoffice/files/user/ada?path=uploads");
+      await follow("Agents");
+      assert(pathname() === "/backoffice/agents/user/ada/agents/assistant");
+      assert(tab("Files").getAttribute("href") === "/backoffice/files/user/ada?path=uploads");
 
-    // The current section's tab starts it over.
-    await follow("Agents");
-    assert(pathname() === "/backoffice/agents/user/ada/agents");
+      // The current section's link starts it over.
+      await follow("Agents");
+      assert(pathname() === "/backoffice/agents/user/ada/agents");
 
-    await act(() => router.navigate("/backoffice/dashboard/org/agency"));
-    assert(tab("Agents").getAttribute("href") === "/backoffice/agents/org/agency/agents");
-  });
+      await act(() => router.navigate("/backoffice/dashboard/org/agency"));
+      assert(tab("Agents").getAttribute("href") === "/backoffice/agents/org/agency/agents");
+    },
+  );
 });
