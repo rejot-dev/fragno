@@ -159,6 +159,7 @@ export async function reportPiAgentTurnSettled(
       agentName: input.agentName,
       settledRequestId: input.requestId,
       ended: input.ended && piAgentNotificationEvent(input.ended),
+      compact: input.compact,
       availableModels,
     }),
   );

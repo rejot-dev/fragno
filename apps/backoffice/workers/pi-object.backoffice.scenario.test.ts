@@ -45,6 +45,7 @@ import {
   type ConversationView,
   type HarnessSettings,
   type InboxState,
+  type LiveState,
 } from "@earendil-works/pi-durable";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
@@ -77,6 +78,7 @@ import { fetchPiManagerAgent, submitPiManagerPrompt } from "@/routes/backoffice/
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { AppInstallationsObject } from "./app-installations-object";
+import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import { shutdownCloudflarePostHog } from "./lib/cloudflare-posthog";
 import { createScriptedPiAgentDependencies } from "./pi-durable-scenario.test-support";
 import { PiObject } from "./pi-object";
@@ -691,6 +693,273 @@ test("messages and exports start at the newest compaction or clear, as the chat 
             expect(whole.text).toContain("Fourth answer.");
           },
         ),
+      ],
+    }),
+  );
+});
+
+// Any context is past a threshold this far below the window, so every turn ends compacting.
+const COMPACTING_EVERY_TURN = { keepRecentTokens: 1, backgroundTokens: 1_000_000 };
+
+/** Scripted responses, consumed in call order, so each summary proves when its compaction ran. */
+function scriptedDependencies(responses: FauxResponseStep[], settings: HarnessSettings) {
+  const faux = fauxProvider();
+  faux.setResponses(responses);
+  const models = createModels();
+  models.setProvider(faux.provider);
+  return { ...createScriptedPiAgentDependencies(models), settings };
+}
+
+/** What the agent's whole history says, oldest first, by entry kind and model messages. */
+async function transcript(
+  runtime: InMemoryBackofficeRuntime,
+  execution: BackofficeExecutionContext,
+) {
+  const exported = await request(runtime, execution, "/agents/assistant/export?history=true", null);
+  assert.equal(exported.status, 200, await exported.clone().text());
+  const [, ...lines] = (await exported.text()).trim().split("\n");
+  return lines
+    .map((line) => (JSON.parse(line) as { entry: ConversationView["entries"][number] }).entry)
+    .filter((entry) => ["pi.user", "pi.assistant", "pi.compaction"].includes(entry.kind))
+    .map((entry) => [entry.kind, JSON.stringify(entry.model)]);
+}
+
+/** Two turns, each followed by the compaction the queue ran before anything else. */
+const TWO_COMPACTED_TURNS = [
+  ["pi.user", expect.stringContaining("First question?")],
+  ["pi.assistant", expect.stringContaining("First answer.")],
+  ["pi.compaction", expect.stringContaining("The first answer was given.")],
+  ["pi.user", expect.stringContaining("Second question?")],
+  ["pi.assistant", expect.stringContaining("Second answer.")],
+  ["pi.compaction", expect.stringContaining("Both answers were given.")],
+];
+
+const TWO_COMPACTED_TURNS_RESPONSES = [
+  fauxAssistantMessage("First answer."),
+  fauxAssistantMessage("The first answer was given."),
+  fauxAssistantMessage("Second answer."),
+  fauxAssistantMessage("Both answers were given."),
+];
+
+test("a turn that fills the context is compacted before the next turn waiting for it starts", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "turn-end-compaction-scenario" },
+  });
+  const handedOver: Parameters<PiObject["dispatch"]>[] = [];
+  class RecordingPiObject extends PiObject {
+    override async dispatch(...args: Parameters<PiObject["dispatch"]>) {
+      handedOver.push(args);
+      return await super.dispatch(...args);
+    }
+  }
+  let agentObject: PiObject | null = null;
+  // The third answer waits while a stale handover is replayed beside its turn.
+  let thirdAsked: () => void = () => undefined;
+  const askedForThird = new Promise<void>((resolve) => {
+    thirdAsked = resolve;
+  });
+  let answerThird: () => void = () => undefined;
+  const thirdAnswered = new Promise<void>((resolve) => {
+    answerThird = resolve;
+  });
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi compacts between turns",
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          agentObject = new RecordingPiObject({
+            state,
+            runtime,
+            dependencies: scriptedDependencies(
+              [
+                ...TWO_COMPACTED_TURNS_RESPONSES,
+                async () => {
+                  thirdAsked();
+                  await thirdAnswered;
+                  return fauxAssistantMessage("Third answer.");
+                },
+                fauxAssistantMessage("All three answers were given."),
+              ],
+              { compaction: COMPACTING_EVERY_TURN },
+            ),
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+          return agentObject;
+        },
+      },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("each compaction stands between the turns", async ({ runtime }) => {
+          // The second prompt waits in the queue while the first turn runs.
+          await prompt(runtime, execution, { requestId: "first", content: "First question?" });
+          await prompt(runtime, execution, { requestId: "second", content: "Second question?" });
+          await runtime.drain();
+
+          expect(await transcript(runtime, execution)).toEqual(TWO_COMPACTED_TURNS);
+          const live = (await view(runtime, execution)).docs["pi.live"] as LiveState;
+          expect(live.compactions).toBeUndefined();
+        }),
+        then.assert(
+          "a compaction handed over again once a newer one started starts nothing",
+          async ({ runtime }) => {
+            const third = prompt(runtime, execution, {
+              requestId: "third",
+              content: "Third question?",
+            }).then(() => runtime.drain());
+            await askedForThird;
+            const [first] = handedOver.filter(([, , , work]) => work.type === "compaction");
+            assert(agentObject && first);
+            await agentObject.dispatch(...first);
+            answerThird();
+            await third;
+
+            expect(await transcript(runtime, execution)).toEqual([
+              ...TWO_COMPACTED_TURNS,
+              ["pi.user", expect.stringContaining("Third question?")],
+              ["pi.assistant", expect.stringContaining("Third answer.")],
+              ["pi.compaction", expect.stringContaining("All three answers were given.")],
+            ]);
+            const live = (await view(runtime, execution)).docs["pi.live"] as LiveState;
+            expect(live.compactions).toBeUndefined();
+            expect(live.compactionFailure).toBeUndefined();
+          },
+        ),
+        then.assert("no prompt takes a compaction's request ID", async ({ runtime }) => {
+          const refused = await request(runtime, execution, "/agents/assistant/prompts", {
+            requestId: "compaction:first",
+            content: "Take its place.",
+          });
+          assert.equal(refused.status, 400, await refused.clone().text());
+          expect(await refused.json()).toMatchObject({ code: "INVALID_PROMPT" });
+        }),
+      ],
+    }),
+  );
+});
+
+test("compaction between turns follows the model's own policy, and nothing compacts beside a turn", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "model-compaction-policy-scenario" },
+  });
+  const { keepRecentTokens, backgroundTokens } = COMPACTING_EVERY_TURN;
+  const { PI: createAgent } = scriptedAgents(TWO_COMPACTED_TURNS_RESPONSES, {
+    compaction: { keepRecentTokens, modelOverrides: { "faux/faux-1": { backgroundTokens } } },
+  });
+  assert(createAgent);
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi compacts between turns by the model's policy",
+      options: { drain: false },
+      objects: { ...scenarioObjects, PI: createAgent },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("each compaction stands between the turns", async ({ runtime }) => {
+          await prompt(runtime, execution, { requestId: "first", content: "First question?" });
+          await prompt(runtime, execution, { requestId: "second", content: "Second question?" });
+          await runtime.drain();
+
+          expect(await transcript(runtime, execution)).toEqual(TWO_COMPACTED_TURNS);
+        }),
+      ],
+    }),
+  );
+});
+
+test("a stop that lands while a compaction starts holds it back until the agent resumes", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "compaction-stop-scenario" },
+  });
+  // A compaction's start arms the agent's alarm, then waits there until the stop has returned.
+  // Admitting a turn arms it the same way, so `skipping` lets that many pass first.
+  let holding = false;
+  let skipping = 0;
+  let reached: () => void = () => undefined;
+  const reachedStart = new Promise<void>((resolve) => {
+    reached = resolve;
+  });
+  let release: () => void = () => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  function holdingCompactionStart(
+    state: BackofficeObjectState,
+    nowEpochMs: () => number,
+  ): BackofficeObjectState {
+    const setAlarm = state.storage.setAlarm.bind(state.storage);
+    // The alarm's heartbeat is armed ahead; work being admitted arms it for now.
+    state.storage.setAlarm = async (time, options) => {
+      if (holding && Number(time) <= nowEpochMs()) {
+        if (skipping > 0) {
+          skipping -= 1;
+        } else {
+          holding = false;
+          reached();
+          await released;
+        }
+      }
+      return await setAlarm(time, options);
+    };
+    return state;
+  }
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi compaction fenced by a stop",
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) =>
+          new PiObject({
+            state: holdingCompactionStart(state, nowEpochMs),
+            runtime,
+            dependencies: scriptedDependencies(TWO_COMPACTED_TURNS_RESPONSES, {
+              compaction: COMPACTING_EVERY_TURN,
+            }),
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          }),
+      },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("nothing is summarized while the agent is stopped", async ({ runtime }) => {
+          await prompt(runtime, execution, { requestId: "first", content: "First question?" });
+          await runtime.drain();
+          // Holds the compaction after the second turn, once that turn's admission passed.
+          holding = true;
+          skipping = 1;
+          const second = prompt(runtime, execution, {
+            requestId: "second",
+            content: "Second question?",
+          }).then(() => runtime.drain());
+          await reachedStart;
+          const stopped = await request(runtime, execution, "/agents/assistant/stop", {});
+          assert.equal(stopped.status, 204, await stopped.clone().text());
+          release();
+          await second;
+
+          expect(await transcript(runtime, execution)).toEqual(TWO_COMPACTED_TURNS.slice(0, 5));
+          const live = (await view(runtime, execution)).docs["pi.live"] as LiveState;
+          expect(live.compactions).toBeUndefined();
+        }),
+        then.assert("resuming compacts before the waiting turn", async ({ runtime }) => {
+          const resumed = await request(runtime, execution, "/agents/assistant/resume", {});
+          assert.equal(resumed.status, 204, await resumed.clone().text());
+          await runtime.drain();
+          expect(await transcript(runtime, execution)).toEqual(TWO_COMPACTED_TURNS);
+        }),
       ],
     }),
   );

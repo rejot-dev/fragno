@@ -12,18 +12,19 @@ import {
   piPromptModel,
   type PiAgentAdmission,
 } from "@/fragno/pi/agent/agent-definitions";
-import type {
-  PiAgent,
-  PiAgentModelChoice,
-  PiAgentNotification,
-  PiAgentPrompt,
-  PiAgentSteer,
-  PiAgentQueueSubmission,
-  PiAgentTurn,
-  PiAgentWaitingQueue,
-  PiQueuedSubagent,
-  PiAgentWork,
-  PiAvailableModel,
+import {
+  PI_INTERNAL_REQUEST_ID_PREFIX,
+  type PiAgent,
+  type PiAgentModelChoice,
+  type PiAgentNotification,
+  type PiAgentPrompt,
+  type PiAgentSteer,
+  type PiAgentQueueSubmission,
+  type PiAgentTurn,
+  type PiAgentWaitingQueue,
+  type PiQueuedSubagent,
+  type PiAgentWork,
+  type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { piNotificationRequestId } from "@/fragno/pi/agent/pi-agent-notification-entry";
 import { mayJoinPiAgentTurn, nextPiAgentQueueTurn } from "@/fragno/pi/agent/pi-agent-queue-rules";
@@ -174,8 +175,13 @@ function itemState(state: PiAgentQueueItemState) {
 
 type PiAgentQueueItem = { requestId: string; input: PiAgentQueueInput };
 
-/** Work for the agent's own conversation, which runs one turn at a time. */
+/** Work for the agent's own conversation, which does one thing at a time. */
 type PiAgentRootInput = Exclude<PiAgentQueueInput, { type: "subagent" }>;
+
+/** Root work that waits for a turn; the queue dispatches its compactions at once. */
+type PiAgentTurnInput = Exclude<PiAgentRootInput, { type: "compaction" }>;
+
+type PiAgentSubagentInput = Extract<PiAgentQueueInput, { type: "subagent" }>;
 
 function isRootItem<TItem extends PiAgentQueueItem>(
   item: TItem,
@@ -183,16 +189,22 @@ function isRootItem<TItem extends PiAgentQueueItem>(
   return item.input.type !== "subagent";
 }
 
+function isTurnItem<TItem extends PiAgentQueueItem>(
+  item: TItem,
+): item is TItem & { input: PiAgentTurnInput } {
+  return item.input.type === "prompt" || item.input.type === "notification";
+}
+
 function isSubagentItem<TItem extends PiAgentQueueItem>(
   item: TItem,
-): item is TItem & { input: Extract<PiAgentQueueInput, { type: "subagent" }> } {
+): item is TItem & { input: PiAgentSubagentInput } {
   return item.input.type === "subagent";
 }
 
 function queueEntry({
   requestId,
   input,
-}: PiAgentQueueItem & { input: PiAgentRootInput }): PiAgentQueueEntry {
+}: PiAgentQueueItem & { input: PiAgentTurnInput }): PiAgentQueueEntry {
   return input.type === "prompt"
     ? { type: "prompt", requestId, content: input.content }
     : {
@@ -208,11 +220,14 @@ function waitingQueue(revision: number, paused: boolean, queued: readonly PiAgen
   return {
     revision,
     paused,
-    items: queued.filter(isRootItem).map(queueEntry),
+    items: queued.filter(isTurnItem).map(queueEntry),
   } satisfies PiAgentWaitingQueue;
 }
 
-/** A dispatched turn's work, named by its oldest item, which the queue's rules put first. */
+/**
+ * A dispatched turn's work, named by its oldest item, which the queue's rules put first, or a
+ * dispatched compaction.
+ */
 function dispatchedWork(
   items: readonly [
     PiAgentQueueItem & { input: PiAgentRootInput },
@@ -222,6 +237,9 @@ function dispatchedWork(
   const [head] = items;
   if (head.input.type === "prompt") {
     return { type: "prompt", requestId: head.requestId, content: head.input.content };
+  }
+  if (head.input.type === "compaction") {
+    return { type: "compaction", requestId: head.requestId };
   }
   return {
     type: "notifications",
@@ -243,7 +261,10 @@ function changeAgentQueue(uow: PiAgentQueueUow, agent: { id: FragnoId }, paused:
   return agent.id.version + 1;
 }
 
-/** An agent's definition and provisioning, its dispatched turn, and what waits. */
+/**
+ * An agent's definition and provisioning, its dispatched turn, what waits, and the steers that have
+ * not settled.
+ */
 function findAgentQueue(uow: PiAgentQueueUow, agentName: string) {
   return uow
     .findFirst("agent_definition", (b) => b.whereIndex("primary", (eb) => eb("id", "=", agentName)))
@@ -261,7 +282,24 @@ function findAgentQueue(uow: PiAgentQueueUow, agentName: string) {
           eb.and(eb("agentName", "=", agentName), eb("status", "=", "queued")),
         )
         .orderByIndex(AGENT_QUEUE_STATUS_INDEX, "asc"),
+    )
+    .find("agent_queue_item", (b) =>
+      b.whereIndex(AGENT_QUEUE_STATUS_INDEX, (eb) =>
+        eb.and(eb("agentName", "=", agentName), eb("status", "=", "steered")),
+      ),
     );
+}
+
+/**
+ * Whether the agent's conversation is busy with what the queue handed it: a dispatched turn or
+ * compaction, or a steer that has not settled. Pi starts a steer it takes at a turn's final answer
+ * as that turn settles, so the conversation is free only once its steers settled too.
+ */
+function isConversationBusy(
+  dispatched: readonly PiAgentQueueItem[],
+  steered: readonly PiAgentQueueItem[],
+) {
+  return dispatched.some(isRootItem) || steered.length > 0;
 }
 
 /** Who sent an item, and the agent it replies to once it ends. */
@@ -274,7 +312,7 @@ type PiAgentArrivingItem = PiAgentQueueItem &
     position: number;
   };
 type PiAgentQueueRow = PiAgentQueueItem & PiAgentQueueSender & { id: FragnoId };
-type PiAgentRootRow = PiAgentQueueRow & { input: PiAgentRootInput };
+type PiAgentTurnRow = PiAgentQueueRow & { input: PiAgentTurnInput };
 
 function replyIfAsked(
   uow: PiAgentQueueUow,
@@ -293,7 +331,9 @@ function replyIfAsked(
 function recordQueueChange(
   uow: PiAgentQueueUow,
   agentName: string,
-  item: PiAgentQueueItem & { provenance: PiAgentTurnProvenance },
+  item: { requestId: string; input: PiAgentTurnInput | PiAgentSubagentInput } & {
+    provenance: PiAgentTurnProvenance;
+  },
   change:
     | { kind: "added"; steer: boolean }
     | { kind: "dispatched"; turnRequestId: string }
@@ -322,8 +362,8 @@ function startNextTurn(
     revision: number;
     definition: PiAgentDefinition | null;
     availableModels: readonly PiAvailableModel[];
-    queued: readonly PiAgentRootRow[];
-    arriving: (PiAgentArrivingItem & { input: PiAgentRootInput }) | null;
+    queued: readonly PiAgentTurnRow[];
+    arriving: (PiAgentArrivingItem & { input: PiAgentTurnInput }) | null;
   },
 ): { handover: PiAgentHandover | null; waiting: PiAgentQueueItem[] } {
   const { agent, arriving } = input;
@@ -398,9 +438,9 @@ type PiAgentPlacement = {
 
 /**
  * Records an admitted item at the agent's new version: steering the dispatched turn when
- * `steering` is the item and the turn's sender sent it, waiting behind the dispatched turn or in a
- * paused queue, or starting the next turn when nothing runs. A notification that waits has its
- * card written at once; only the request to handle it waits.
+ * `steering` is the item and the turn's sender sent it, waiting behind the dispatched turn or
+ * compaction or in a paused queue, or starting the next turn when nothing runs. A notification that
+ * waits has its card written at once; only the request to handle it waits.
  */
 function placeQueueItem(
   uow: PiAgentQueueUow,
@@ -408,13 +448,14 @@ function placeQueueItem(
     agent: PiAgentConfig;
     revision: number;
     paused: boolean;
-    item: PiAgentQueueItem & { input: PiAgentRootInput } & PiAgentQueueSender;
+    item: PiAgentQueueItem & { input: PiAgentTurnInput } & PiAgentQueueSender;
     turn: PiAgentTurn;
     steering: PiAgentSteer | null;
     definition: PiAgentDefinition | null;
     availableModels: readonly PiAvailableModel[];
-    dispatched: { state: PiAgentQueueItemState } | undefined;
-    queued: readonly PiAgentRootRow[];
+    dispatched: (PiAgentQueueItem & { state: PiAgentQueueItemState }) | undefined;
+    busy: boolean;
+    queued: readonly PiAgentTurnRow[];
   },
 ): PiAgentPlacement {
   const { agent, revision, paused, turn, dispatched, queued } = input;
@@ -423,6 +464,8 @@ function placeQueueItem(
   if (
     !paused &&
     input.steering &&
+    // A steer would start a turn beside the compaction, which the next turn waits for instead.
+    dispatched?.input.type !== "compaction" &&
     dispatched?.state.status === "dispatched" &&
     mayJoinPiAgentTurn(dispatched.state.turn, turn)
   ) {
@@ -435,7 +478,7 @@ function placeQueueItem(
       queue: waitingQueue(revision, paused, queued),
     };
   }
-  if (paused || dispatched) {
+  if (paused || input.busy) {
     uow.create("agent_queue_item", { ...arriving, ...itemState({ status: "queued" }) });
     recordQueueChange(uow, agentName, arriving, { kind: "added", steer: false });
     const queue = waitingQueue(revision, paused, [...queued, arriving]);
@@ -572,6 +615,7 @@ function startResumedQueue(
     definition: PiAgentDefinition | null;
     availableModels: readonly PiAvailableModel[];
     dispatched: readonly PiAgentQueueRow[];
+    steered: readonly PiAgentQueueRow[];
     queued: readonly PiAgentQueueRow[];
     arrivingSubagent: PiAgentArrivingItem | null;
   },
@@ -587,7 +631,7 @@ function startResumedQueue(
     queued: input.queued,
     arriving: input.arrivingSubagent,
   });
-  if (input.dispatched.some(isRootItem)) {
+  if (isConversationBusy(input.dispatched, input.steered)) {
     return { handovers: subagents, waiting: [...input.queued] };
   }
   const started = startNextTurn(uow, {
@@ -595,7 +639,7 @@ function startResumedQueue(
     revision: input.revision,
     definition: input.definition,
     availableModels: input.availableModels,
-    queued: input.queued.filter(isRootItem),
+    queued: input.queued.filter(isTurnItem),
     arriving: null,
   });
   return {
@@ -677,7 +721,7 @@ export function piAgentQueueServices(
         .mutate(
           ({
             uow,
-            retrieveResult: [definitionRow, agent, dispatchedItems, queued, submitted],
+            retrieveResult: [definitionRow, agent, dispatchedItems, queued, steered, submitted],
           }):
             | Extract<PiAgentAdmission, { type: "error" }>
             | Extract<ReturnType<typeof piPromptModel>, { type: "error" }>
@@ -733,7 +777,7 @@ export function piAgentQueueServices(
             if (
               !input.subagent &&
               input.whenBusy === "reject" &&
-              (dispatched || queued.some(isRootItem))
+              (isConversationBusy(dispatchedItems, steered) || queued.some(isRootItem))
             ) {
               return { type: "busy" };
             }
@@ -789,6 +833,7 @@ export function piAgentQueueServices(
                   definition,
                   availableModels: input.availableModels,
                   dispatched: dispatchedItems,
+                  steered,
                   queued,
                   arrivingSubagent: arriving,
                 });
@@ -823,7 +868,8 @@ export function piAgentQueueServices(
               definition,
               availableModels: input.availableModels,
               dispatched,
-              queued: queued.filter(isRootItem),
+              busy: isConversationBusy(dispatchedItems, steered),
+              queued: queued.filter(isTurnItem),
             });
             return {
               type: "placed",
@@ -861,7 +907,7 @@ export function piAgentQueueServices(
         .mutate(
           ({
             uow,
-            retrieveResult: [definitionRow, agent, dispatchedItems, queued, submitted],
+            retrieveResult: [definitionRow, agent, dispatchedItems, queued, steered, submitted],
           }):
             | Extract<PiAgentAdmission, { type: "error" }>
             | { type: "not-started" }
@@ -903,7 +949,8 @@ export function piAgentQueueServices(
               definition,
               availableModels: input.availableModels,
               dispatched: dispatchedItems.find(isRootItem),
-              queued: queued.filter(isRootItem),
+              busy: isConversationBusy(dispatchedItems, steered),
+              queued: queued.filter(isTurnItem),
             });
             return { type: "placed", ...placement };
           },
@@ -911,18 +958,23 @@ export function piAgentQueueServices(
         .build();
     },
     /**
-     * Records a settled turn. When it was the dispatched turn, every item it handled settles, and
-     * unless the queue is paused the next turn starts; when it was a subagent's, the next waiting
-     * subagent starts in its place. `ended` is the event recording how the turn ended, which its
-     * prompt's `replyTo` hears. Null when the turn was not the queue's.
+     * Records a settled turn, steer, or compaction. When it was the dispatched turn, every item it
+     * handled settles. Once the conversation is free, with no steer left to settle, the next turn
+     * starts unless the queue is paused, or first a compaction when `compact` says the context
+     * outgrew its threshold. When it was a subagent's, the next waiting subagent starts in its
+     * place. `ended` is the event recording how the turn ended, which its prompt's `replyTo` hears.
+     * Null when the turn was not the queue's.
      */
     advanceAgentQueue: function (input: {
       agentName: string;
       settledRequestId: string;
       ended: PiAgentNotification["event"] | null;
+      compact: boolean;
       availableModels: readonly PiAvailableModel[];
     }) {
       const { agentName } = input;
+      // Named by the settlement it follows, so each compacts at most once.
+      const compactionRequestId = `${PI_INTERNAL_REQUEST_ID_PREFIX.compaction}${input.settledRequestId}`;
       return this.serviceTx(piAgentDirectorySchema)
         .retrieve((uow) =>
           findAgentQueue(uow, agentName).findFirst("agent_queue_item", (b) =>
@@ -934,7 +986,7 @@ export function piAgentQueueServices(
         .mutate(
           ({
             uow,
-            retrieveResult: [definitionRow, agent, dispatched, queued, settled],
+            retrieveResult: [definitionRow, agent, dispatched, queued, steered, settled],
           }): { handovers: PiAgentHandover[]; queue: PiAgentWaitingQueue } | null => {
             if (
               !agent ||
@@ -945,13 +997,6 @@ export function piAgentQueueServices(
             const revision = changeAgentQueue(uow, agent, agent.paused);
             if (input.ended) {
               replyIfAsked(uow, settled, { type: "settled", event: input.ended });
-            }
-            // A steer settles with the turn it joined, which moves the queue when it settles.
-            if (settled.state.status === "steered") {
-              uow.update("agent_queue_item", settled.id, (b) =>
-                b.set(itemState({ status: "settled", turnRequestId: settled.requestId })),
-              );
-              return { handovers: [], queue: waitingQueue(revision, agent.paused, queued) };
             }
             const definition = definitionOf(agentName, definitionRow);
             if (isSubagentItem(settled)) {
@@ -972,23 +1017,64 @@ export function piAgentQueueServices(
                 queue: waitingQueue(revision, agent.paused, queued),
               };
             }
-            for (const item of dispatched.filter(isRootItem)) {
-              if (item.state.status === "dispatched") {
-                const { turnRequestId } = item.state;
-                uow.update("agent_queue_item", item.id, (b) =>
-                  b.set(itemState({ status: "settled", turnRequestId })),
-                );
+            if (settled.state.status === "steered") {
+              uow.update("agent_queue_item", settled.id, (b) =>
+                b.set(itemState({ status: "settled", turnRequestId: settled.requestId })),
+              );
+            } else {
+              for (const item of dispatched.filter(isRootItem)) {
+                if (item.state.status === "dispatched") {
+                  const { turnRequestId } = item.state;
+                  uow.update("agent_queue_item", item.id, (b) =>
+                    b.set(itemState({ status: "settled", turnRequestId })),
+                  );
+                }
               }
+            }
+            const busy =
+              settled.state.status === "steered"
+                ? isConversationBusy(
+                    dispatched,
+                    steered.filter(({ requestId }) => requestId !== settled.requestId),
+                  )
+                : steered.length > 0;
+            if (busy) {
+              return { handovers: [], queue: waitingQueue(revision, agent.paused, queued) };
             }
             if (agent.paused) {
               return { handovers: [], queue: waitingQueue(revision, true, queued) };
+            }
+            if (input.compact) {
+              const { turn } = settled.state;
+              uow.create("agent_queue_item", {
+                agentName,
+                position: revision,
+                requestId: compactionRequestId,
+                input: { type: "compaction" },
+                provenance: settled.provenance,
+                replyTo: null,
+                ...itemState({ status: "dispatched", turn, turnRequestId: compactionRequestId }),
+              });
+              uow.triggerHook("redispatchAgentQueue", { agentName });
+              return {
+                handovers: [
+                  {
+                    type: "dispatch",
+                    agent: agentConfig(agentName),
+                    revision,
+                    turn,
+                    work: { type: "compaction", requestId: compactionRequestId },
+                  },
+                ],
+                queue: waitingQueue(revision, false, queued),
+              };
             }
             const started = startNextTurn(uow, {
               agent: agentConfig(agentName),
               revision,
               definition,
               availableModels: input.availableModels,
-              queued: queued.filter(isRootItem),
+              queued: queued.filter(isTurnItem),
               arriving: null,
             });
             return {
@@ -1031,7 +1117,7 @@ export function piAgentQueueServices(
         .mutate(
           ({
             uow,
-            retrieveResult: [definitionRow, agent, dispatched, queued],
+            retrieveResult: [definitionRow, agent, dispatched, queued, steered],
           }): { handovers: PiAgentHandover[]; queue: PiAgentWaitingQueue } | null => {
             if (!agent) {
               return null;
@@ -1051,6 +1137,7 @@ export function piAgentQueueServices(
               definition: definitionOf(agentName, definitionRow),
               availableModels: input.availableModels,
               dispatched,
+              steered,
               queued,
               arrivingSubagent: null,
             });
@@ -1091,7 +1178,7 @@ export function piAgentQueueServices(
           const config = agentConfig(agentName);
           const revision = agent.id.version;
           const handovers = steered.flatMap((item): PiAgentHandover[] => {
-            if (item.state.status !== "steered" || item.input.type === "subagent") {
+            if (item.state.status !== "steered" || !isTurnItem(item)) {
               return [];
             }
             const steer: PiAgentSteer =

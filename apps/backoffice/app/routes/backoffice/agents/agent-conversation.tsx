@@ -635,7 +635,8 @@ function AgentConversationThread({
   }, [runtime]);
 
   const handleCompact = useCallback(() => {
-    if (running) {
+    // One compaction at a time: another would summarize the same history again.
+    if (running || compacting) {
       return;
     }
     const instructions = runtimeRef.current?.thread.composer.getState().text.trim() ?? "";
@@ -646,7 +647,7 @@ function AgentConversationThread({
       });
     }
     void compaction.compact(instructions);
-  }, [posthog, compaction, running, agent.agentName]);
+  }, [posthog, compaction, running, compacting, agent.agentName]);
 
   const handleStop = useCallback(() => {
     submitAction({ intent: "stop" });

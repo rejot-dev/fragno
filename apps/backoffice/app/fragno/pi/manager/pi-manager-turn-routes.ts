@@ -16,6 +16,8 @@ import { checkUsageLimits } from "@/fragno/billing/usage-billing";
 import { admitPiAgentTurn } from "@/fragno/pi/agent/agent-definitions";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import {
+  isPiInternalRequestId,
+  PI_INTERNAL_REQUEST_ID_PREFIX,
   piAgentCompactionSchema,
   piAgentModelChoiceSchema,
   piAgentNotificationSchema,
@@ -36,7 +38,15 @@ export const turnProvenanceSchema = piAgentTurnSchema.pick({
 // A person's message resumes a stopped agent's queue; automations wait until someone does.
 const promptWhenPausedSchema = z.enum(["wait", "resume"]);
 export const promptRequestSchema = z.object({
-  requestId: z.string().trim().min(1).max(256).optional(),
+  requestId: z
+    .string()
+    .trim()
+    .min(1)
+    .max(256)
+    .refine((requestId) => !isPiInternalRequestId(requestId), {
+      message: `Request IDs starting with ${Object.values(PI_INTERNAL_REQUEST_ID_PREFIX).join(", ")} are reserved for Backoffice's own work.`,
+    })
+    .optional(),
   content: piAgentPromptSchema.shape.content,
   whenBusy: piPromptWhenBusySchema.default("followUp"),
   whenPaused: promptWhenPausedSchema.default("wait"),

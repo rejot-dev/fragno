@@ -1276,6 +1276,10 @@ const createFakePiManagerApi = (
       );
     },
     async dispatch(config, _revision, turn, work) {
+      // The fake keeps no context, so it never reports one to compact.
+      if (work.type === "compaction") {
+        throw new Error("The fake Pi agent does not compact.");
+      }
       await answer(config, turn, {
         requestId: work.requestId,
         content:
@@ -4610,9 +4614,12 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
                     .for(config.scope)
                     .commands.ingestEvent(ended, { propagationContext: null });
                 }
-                await runtime.objects.piManager
-                  .for(config.scope)
-                  .commands.reportSettledTurn({ agentName: config.agentName, requestId, ended });
+                await runtime.objects.piManager.for(config.scope).commands.reportSettledTurn({
+                  agentName: config.agentName,
+                  requestId,
+                  ended,
+                  compact: false,
+                });
               }
               return {
                 ...fakePi.agent,
