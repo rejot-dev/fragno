@@ -56,7 +56,7 @@ export function SidebarNavigation({
                 </p>
               )}
               {section.items.map((item) => (
-                <SidebarNavigationItem key={item.to} item={item} collapsed={collapsed} />
+                <SidebarNavigationItem key={item.label} item={item} collapsed={collapsed} />
               ))}
             </div>
           ))}
@@ -69,7 +69,7 @@ export function SidebarNavigation({
           )}
         >
           {footerItems.map((item) => (
-            <SidebarNavigationItem key={item.to} item={item} collapsed={collapsed} />
+            <SidebarNavigationItem key={item.label} item={item} collapsed={collapsed} />
           ))}
           <div className={cn("flex gap-2", collapsed ? "flex-col gap-2.5" : "items-center")}>
             {lastFooterItem ? (
@@ -109,7 +109,7 @@ export function MobileNavigation({
   return (
     <nav aria-label={ariaLabel} className="grid auto-cols-fr grid-flow-col">
       {items.map((item) => (
-        <MobileNavigationItem key={item.to} item={item} />
+        <MobileNavigationItem key={item.label} item={item} />
       ))}
     </nav>
   );
