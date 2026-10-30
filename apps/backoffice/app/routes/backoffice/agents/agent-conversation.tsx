@@ -18,6 +18,7 @@ import type { ConversationView, EntryRecord } from "@earendil-works/pi-durable";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { FileScopeProvider } from "@/components/backoffice/file-scope";
+import { estimatePiContextTokens } from "@/fragno/pi/agent/context-usage";
 import type {
   PiAgentCompactionStatus,
   PiAvailableModel,
@@ -52,7 +53,6 @@ import {
   type PiDraftAgentMessage,
   type PiUserMessageMetadata,
 } from "./session-detail/assistant-runtime";
-import { estimatePiContextTokens } from "./session-detail/context-usage";
 import { SessionDisplayOptions } from "./session-detail/display-options";
 import { usePiPendingMessages } from "./session-detail/pending-messages";
 import {
