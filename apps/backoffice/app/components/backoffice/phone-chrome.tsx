@@ -49,10 +49,9 @@ export function BackofficePhoneChrome({
   // Remembers the location it opened at, so following any link in it closes it.
   const [menuOpenAt, setMenuOpenAt] = useState<string | null>(null);
   const menuOpen = menuOpenAt === location.key;
-  const allSections = [...sections.primary, ...sections.context];
-  const currentSection = allSections.find((item) => item.active) ?? null;
+  const currentSection = sections.phone.all.find((item) => item.active) ?? null;
   const currentSectionInMenu =
-    currentSection !== null && !sections.phoneTabs.some((tab) => tab.active);
+    currentSection !== null && !sections.phone.tabs.some((tab) => tab.active);
   const workspaceLabel =
     me?.user && resolvedScope
       ? resolvedScope.kind === "project"
@@ -91,7 +90,7 @@ export function BackofficePhoneChrome({
       {/* Pages keep clear of it through --bo-shell-bottom. */}
       <div className="sm:hidden">
         <BottomNavigation ariaLabel="Backoffice">
-          {sections.phoneTabs.map((item) => (
+          {sections.phone.tabs.map((item) => (
             <BottomNavigationItem key={item.label} item={item} />
           ))}
           <BottomNavigationButton
@@ -112,7 +111,7 @@ export function BackofficePhoneChrome({
         title="Menu"
       >
         <PhoneMenu
-          sections={allSections}
+          sections={sections.phone.all}
           me={me}
           resolvedScope={resolvedScope}
           administeredMember={administeredMember}

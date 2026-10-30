@@ -9,7 +9,9 @@ import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
+import type { BackofficeRouteScope } from "@/backoffice-runtime/route-scope";
 import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
+import { mainPiAgentPath } from "@/routes/backoffice/agents/path";
 
 import { scopeSwitchPath } from "./scope-switch-path";
 
@@ -20,6 +22,8 @@ type PrimaryNavigationItem = {
   isActive: (pathname: string) => boolean;
   /** Whether phones give it a tab of its own; the others are in the phone menu. */
   phoneTab: boolean;
+  /** Where phones start it in a scope, when not where wider screens do. */
+  phoneStart: ((scope: BackofficeRouteScope) => string) | null;
 };
 
 const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
@@ -29,6 +33,7 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     icon: "grid",
     isActive: (pathname) => pathname.startsWith("/backoffice/dashboard"),
     phoneTab: true,
+    phoneStart: null,
   },
   {
     label: "Integrations",
@@ -36,6 +41,7 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     icon: "link",
     isActive: (pathname) => pathname.startsWith("/backoffice/integrations"),
     phoneTab: false,
+    phoneStart: null,
   },
   {
     label: "Agents",
@@ -43,6 +49,7 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     icon: "message-square",
     isActive: (pathname) => pathname.startsWith("/backoffice/agents"),
     phoneTab: true,
+    phoneStart: mainPiAgentPath,
   },
   {
     label: "Files",
@@ -50,6 +57,7 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     icon: "folder",
     isActive: (pathname) => pathname.startsWith("/backoffice/files"),
     phoneTab: true,
+    phoneStart: null,
   },
   {
     label: "Computers",
@@ -57,6 +65,7 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     icon: "monitor",
     isActive: (pathname) => pathname.startsWith("/backoffice/computers"),
     phoneTab: false,
+    phoneStart: null,
   },
   {
     label: "Marketplace",
@@ -64,25 +73,26 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     icon: "shopping-bag",
     isActive: (pathname) => pathname.startsWith("/backoffice/marketplace"),
     phoneTab: false,
+    phoneStart: null,
   },
 ];
 
 type SidebarScope = BackofficeResolvedScope<Organization>;
 
+type PrimarySection = { link: NavigationItem; phoneTab: boolean; phoneStart: string };
+
 // Section links carry the current scope so switching sections keeps the
 // selected organization/project instead of falling back to the default scope.
-function resolveNavigationItems(
-  scope: SidebarScope | null,
-  pathname: string,
-  items: readonly PrimaryNavigationItem[],
-): NavigationItem[] {
+function resolvePrimarySections(scope: SidebarScope | null, pathname: string): PrimarySection[] {
   const routeScope = scope ? backofficeRouteScopeFromResolvedScope(scope) : null;
-  return items.map((item) => ({
-    label: item.label,
-    to: routeScope ? scopeSwitchPath(item.to, routeScope) : item.to,
-    icon: item.icon,
-    active: item.isActive(pathname),
-  }));
+  return PRIMARY_NAVIGATION.map((item) => {
+    const start = routeScope ? scopeSwitchPath(item.to, routeScope) : item.to;
+    return {
+      link: { label: item.label, to: start, icon: item.icon, active: item.isActive(pathname) },
+      phoneTab: item.phoneTab,
+      phoneStart: routeScope && item.phoneStart ? item.phoneStart(routeScope) : start,
+    };
+  });
 }
 
 const SETTINGS_SECTIONS = [
@@ -172,8 +182,12 @@ export type BackofficeSections = {
   primary: NavigationItem[];
   /** Internals and Settings, after the primary sections. */
   context: NavigationItem[];
-  /** The primary sections phones give a tab of their own. */
-  phoneTabs: NavigationItem[];
+  /** Phones' sections, some of which start elsewhere. */
+  phone: {
+    /** The primary sections phones give a tab of their own. */
+    tabs: NavigationItem[];
+    all: NavigationItem[];
+  };
 };
 
 /**
@@ -186,25 +200,33 @@ export function useBackofficeSections(
   me: BackofficeMeData | null,
 ): BackofficeSections {
   const location = useLocation();
-  const primary = resolveNavigationItems(currentScope, location.pathname, PRIMARY_NAVIGATION);
+  const primary = resolvePrimarySections(currentScope, location.pathname);
   const context = resolveContextNavigationItems(currentScope, me, location.pathname);
   // Where each section was left, by its link. Links carry the scope, so each scope remembers its
   // own. The memory lasts until a reload.
   const [lastVisited, setLastVisited] = useState<ReadonlyMap<string, string>>(new Map());
-  const currentSection = [...primary, ...context].find((item) => item.active);
+  const currentSection = [...primary.map(({ link }) => link), ...context].find(
+    (item) => item.active,
+  );
   const here = `${location.pathname}${location.search}`;
   if (currentSection !== undefined && lastVisited.get(currentSection.to) !== here) {
     setLastVisited(new Map(lastVisited).set(currentSection.to, here));
   }
-  const resume = (item: NavigationItem): NavigationItem =>
-    item.active ? item : { ...item, to: lastVisited.get(item.to) ?? item.to };
+  const resume = (item: NavigationItem, start: string): NavigationItem => ({
+    ...item,
+    to: item.active ? start : (lastVisited.get(item.to) ?? start),
+  });
+  const resumedContext = context.map((item) => resume(item, item.to));
+  const phonePrimary = primary.map((section) => ({
+    ...section,
+    link: resume(section.link, section.phoneStart),
+  }));
   return {
-    primary: primary.map(resume),
-    context: context.map(resume),
-    phoneTabs: resolveNavigationItems(
-      currentScope,
-      location.pathname,
-      PRIMARY_NAVIGATION.filter((item) => item.phoneTab),
-    ).map(resume),
+    primary: primary.map(({ link }) => resume(link, link.to)),
+    context: resumedContext,
+    phone: {
+      tabs: phonePrimary.filter((section) => section.phoneTab).map(({ link }) => link),
+      all: [...phonePrimary.map(({ link }) => link), ...resumedContext],
+    },
   };
 }

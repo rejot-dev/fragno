@@ -244,22 +244,25 @@ describe("scope navigation scenarios", () => {
         });
       };
       const pathname = () => router.state.location.pathname;
+      // Phones start Agents in the assistant's conversation; wider screens in the list of agents.
+      const agentsStart = (scopePath: string) =>
+        `/backoffice/agents/${scopePath}/agents${navigation === "phone" ? "/assistant" : ""}`;
 
-      await act(() => router.navigate("/backoffice/agents/user/ada/agents/assistant"));
+      await act(() => router.navigate("/backoffice/agents/user/ada/agents/researcher"));
       await follow("Files");
       assert(pathname() === "/backoffice/files/user/ada");
       await act(() => router.navigate("/backoffice/files/user/ada?path=uploads"));
 
       await follow("Agents");
-      assert(pathname() === "/backoffice/agents/user/ada/agents/assistant");
+      assert(pathname() === "/backoffice/agents/user/ada/agents/researcher");
       assert(tab("Files").getAttribute("href") === "/backoffice/files/user/ada?path=uploads");
 
       // The current section's link starts it over.
       await follow("Agents");
-      assert(pathname() === "/backoffice/agents/user/ada/agents");
+      assert(pathname() === agentsStart("user/ada"));
 
       await act(() => router.navigate("/backoffice/dashboard/org/agency"));
-      assert(tab("Agents").getAttribute("href") === "/backoffice/agents/org/agency/agents");
+      assert(tab("Agents").getAttribute("href") === agentsStart("org/agency"));
     },
   );
 });

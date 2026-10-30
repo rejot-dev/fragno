@@ -32,7 +32,7 @@ vi.mock("./sidebar-nav", () => ({
   BackofficeSidebarNav: () => null,
   useBackofficeSections: (...args: unknown[]) => {
     sectionsMock(...args);
-    return { primary: [], context: [], phoneTabs: [] };
+    return { primary: [], context: [], phone: { tabs: [], all: [] } };
   },
 }));
 vi.mock("./phone-chrome", () => ({ BackofficePhoneChrome: () => null }));
