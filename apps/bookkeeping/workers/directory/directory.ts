@@ -6,6 +6,7 @@ import directoryMigration from "./migrations/0001-directory.sql?raw";
 import operatorsMigration from "./migrations/0002-operators.sql?raw";
 import firmAgentsMigration from "./migrations/0003-firm-agents.sql?raw";
 import firmAccessMigration from "./migrations/0004-firm-access.sql?raw";
+import unmanagedClientsMigration from "./migrations/0005-unmanaged-clients.sql?raw";
 
 /**
  * Operators run Bookkeeping; a firm keeps the books of its clients; a client is one business whose
@@ -13,11 +14,15 @@ import firmAccessMigration from "./migrations/0004-firm-access.sql?raw";
  */
 export type OrganizationKind = "operator" | "firm" | "client";
 
-/** A Backoffice organization Bookkeeping is installed in; clients name the firm that manages them. */
+/**
+ * A Backoffice organization Bookkeeping is installed in. A client names the firm managing it, as
+ * Backoffice last said; null once no firm Bookkeeping knows manages it, when its own members keep
+ * its books without a firm.
+ */
 export type Organization = { id: string; slug: string; name: string } & (
   | { kind: "operator" }
   | { kind: "firm" }
-  | { kind: "client"; firmId: string }
+  | { kind: "client"; firmId: string | null }
 );
 
 /** The organizations Bookkeeping creates; Backoffice's administrator creates the operators'. */
@@ -91,9 +96,9 @@ const INVITATION_QUERY = `SELECT ${ORGANIZATION_COLUMNS}, i."id" AS "invitationI
 
 function toOrganization(row: OrganizationRow): Organization {
   const { id, slug, name } = row;
-  // The table's CHECK constraint pairs every client with its firm.
+  // The table's CHECK constraint gives only clients a firm.
   return row.kind === "client"
-    ? { id, slug, name, kind: "client", firmId: row.firmId! }
+    ? { id, slug, name, kind: "client", firmId: row.firmId }
     : { id, slug, name, kind: row.kind };
 }
 
@@ -136,6 +141,7 @@ export class Directory extends DurableObject<CloudflareEnv> {
         operatorsMigration,
         firmAgentsMigration,
         firmAccessMigration,
+        unmanagedClientsMigration,
       ]);
     });
   }
@@ -289,6 +295,64 @@ export class Directory extends DurableObject<CloudflareEnv> {
       this.#renameOrganization(confirmation.organization);
       this.#recordMembership(confirmation.organization.id, confirmation);
     });
+  }
+
+  /** The client's firm, or null for an organization that is no client Bookkeeping knows. */
+  findClient(clientId: string): { firmId: string | null } | null {
+    const [row] = this.ctx.storage.sql
+      .exec<{ firmId: string | null }>(
+        `SELECT "firmId" FROM "organization" WHERE "id" = ? AND "kind" = 'client'`,
+        clientId,
+      )
+      .toArray();
+    return row ?? null;
+  }
+
+  /**
+   * Records the firm Backoffice says manages the client, by its `managingOrganizationId`: that
+   * organization, or none when it is no firm Bookkeeping knows. Only while the client's firm is
+   * still `expectedFirmId`, read before asking Backoffice: an answer that arrives after a newer one
+   * changed the firm changes nothing, and the next confirmation asks again. A change marks the
+   * former firm's requests to withdraw. Returns the client's firm now and whether its requests are
+   * still to withdraw, or null for an organization that is no client Bookkeeping knows.
+   */
+  followManager(input: {
+    clientId: string;
+    expectedFirmId: string | null;
+    managingOrganizationId: string | null;
+  }): { firmId: string | null; withdrawalPending: boolean } | null {
+    return this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec(
+        `UPDATE "organization" AS c
+         SET "firmId" = m."id", "withdrawalPending" = 1
+         FROM (SELECT (SELECT f."id" FROM "organization" f
+                       WHERE f."id" = ? AND f."kind" = 'firm') AS "id") AS m
+         WHERE c."id" = ? AND c."kind" = 'client' AND c."firmId" IS ? AND c."firmId" IS NOT m."id"`,
+        input.managingOrganizationId,
+        input.clientId,
+        input.expectedFirmId,
+      );
+      const [row] = this.ctx.storage.sql
+        .exec<{ firmId: string | null; withdrawalPending: number }>(
+          `SELECT "firmId", "withdrawalPending" FROM "organization"
+           WHERE "id" = ? AND "kind" = 'client'`,
+          input.clientId,
+        )
+        .toArray();
+      return row ? { firmId: row.firmId, withdrawalPending: row.withdrawalPending === 1 } : null;
+    });
+  }
+
+  /**
+   * Records that the requests asked before the client's firm became `firmId` were withdrawn. A
+   * newer change, to another firm, keeps its own withdrawal pending.
+   */
+  endWithdrawal(input: { clientId: string; firmId: string | null }): void {
+    this.ctx.storage.sql.exec(
+      `UPDATE "organization" SET "withdrawalPending" = 0 WHERE "id" = ? AND "firmId" IS ?`,
+      input.clientId,
+      input.firmId,
+    );
   }
 
   /**
@@ -455,6 +519,18 @@ export class Directory extends DurableObject<CloudflareEnv> {
       )
       .toArray();
     return row?.projectId ?? null;
+  }
+
+  /** The project holding the bookkeeping agent of the firm managing the client, once set up. */
+  findClientsFirmAgent(clientId: string): { firmId: string; projectId: string } | null {
+    const [row] = this.ctx.storage.sql
+      .exec<{ firmId: string; projectId: string }>(
+        `SELECT a."firmId", a."projectId" FROM "organization" o
+         JOIN "firm_agent" a ON a."firmId" = o."firmId" WHERE o."id" = ?`,
+        clientId,
+      )
+      .toArray();
+    return row ?? null;
   }
 
   #renameOrganization(organization: Pick<Organization, "id" | "slug" | "name">): void {

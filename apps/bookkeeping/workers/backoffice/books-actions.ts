@@ -21,6 +21,7 @@ import {
 } from "../directory/membership";
 import { exchangeForScope, isBackofficeUnavailable } from "./client";
 import { releaseDocument, sharedDocumentPath } from "./document-shares";
+import { followManager } from "./management";
 
 /**
  * The actions Backoffice agents keep an administration's books with. They run in the
@@ -60,10 +61,34 @@ const administrationInput = z
   );
 
 /**
- * Who answers a document's review when Bookkeeping's installation calls: the bookkeeping agent,
- * which Bookkeeping prompts as its installation so that it can answer reviews and nothing else.
+ * Who answers a document's review: the bookkeeping agent, which Bookkeeping prompts as its
+ * installation so that it can answer reviews and nothing else, answers the request asking it; a
+ * person answers whether asked or not.
  */
-const BOOKKEEPING_AGENT: Person = { name: "the bookkeeping agent" };
+type Answerer = { kind: "bookkeeping-agent" } | { kind: "person"; person: Person };
+
+/** The request an answer is to, and who gave it. */
+function answering(
+  answerer: Answerer,
+  request: string | null,
+): { request: string | null; by: string } {
+  switch (answerer.kind) {
+    case "person":
+      return { request, by: answerer.person.name };
+    case "bookkeeping-agent":
+      if (request === null) {
+        refuse("Give the ID of the request you answer as `request`: the request names it.");
+      }
+      return { request, by: "the bookkeeping agent" };
+  }
+  throw new Error("Unsupported answerer.");
+}
+
+const requestInput = z
+  .string()
+  .min(1)
+  .nullable()
+  .describe("The ID of the request asking you about the document; null when nobody asked you.");
 
 /** Answers the action with `status` and a message Backoffice shows the agent. */
 class ActionFailure extends Error {
@@ -99,7 +124,7 @@ type BooksAction = { declaration: AppAction } & (
     }
   | {
       access: "review";
-      run(books: BooksStub, input: unknown, person: Person): Promise<{ document: string }>;
+      run(books: BooksStub, input: unknown, answerer: Answerer): Promise<{ document: string }>;
     }
   | {
       access: "keep" | "set-up";
@@ -152,14 +177,16 @@ function readAction<TInput extends z.ZodObject, TOutput extends z.ZodType>(
 /** An action answering a document's review, which says which document it answered. */
 function reviewAction<TInput extends z.ZodObject, TOutput extends z.ZodType<{ document: string }>>(
   definition: ActionDefinition<TInput, TOutput> & {
-    run(books: BooksStub, input: z.output<TInput>, person: Person): Promise<z.input<TOutput>>;
+    run(books: BooksStub, input: z.output<TInput>, answerer: Answerer): Promise<z.input<TOutput>>;
   },
 ): BooksAction {
   return {
     declaration: declare(definition),
     access: "review",
-    run: async (books, input, person) =>
-      definition.output.parse(await definition.run(books, parse(definition.input, input), person)),
+    run: async (books, input, answerer) =>
+      definition.output.parse(
+        await definition.run(books, parse(definition.input, input), answerer),
+      ),
   };
 }
 
@@ -773,10 +800,10 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
         .nullable()
         .describe("The date it was first booked with, which booking it again keeps."),
       review: z
-        .enum(["requested", "proposed", "declined"])
+        .enum(["requested", "proposed", "declined", "withdrawn"])
         .nullable()
         .describe(
-          "Whether the bookkeeping agent was asked about it, proposed an entry, or proposed none.",
+          "Whether the bookkeeping agent was asked about it, proposed an entry, or proposed none, or whether the request was withdrawn unanswered.",
         ),
     }),
     async run(books, input, workplace) {
@@ -994,9 +1021,10 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     id: "documents.propose",
     label: "Propose a document's entry",
     description:
-      "Proposes the entry that books a document to book, for a person to review and book: it posts nothing. The entry is as entries.post takes it, except that a customer's or supplier's line may leave its party null when the books lack them. It must balance in the functional currency. Proposing again, or after declining, replaces the earlier answer.",
+      "Proposes the entry that books a document to book, for a person to review and book: it posts nothing. The entry is as entries.post takes it, except that a customer's or supplier's line may leave its party null when the books lack them. It must balance in the functional currency. An answer to a request counts only while the document awaits it; one to no request replaces the earlier answer.",
     input: z.strictObject({
       document: z.uuid().describe("The document's ID."),
+      request: requestInput,
       documentDate: z.iso
         .date()
         .describe("The date printed on the document, e.g. its invoice date."),
@@ -1011,7 +1039,8 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
         ),
     }),
     output: z.object({ document: z.string(), review: z.literal("proposed") }),
-    async run(books, input, person) {
+    async run(books, input, answerer) {
+      const { request, by } = answering(answerer, input.request);
       const described = await books.describe();
       const index = indexBooks(described);
       const journal = index.journal(input.entry.journal);
@@ -1031,9 +1060,10 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
         );
       }
       settled(
-        await books.reviewDocument({
+        await books.answerReview({
           documentId: input.document,
-          review: {
+          request,
+          answer: {
             status: "proposed",
             entry: {
               journalId: journal.id,
@@ -1054,7 +1084,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
               })),
             },
             note: input.note,
-            by: person.name,
+            by,
             at: new Date().toISOString(),
           },
         }),
@@ -1067,21 +1097,24 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     id: "documents.decline",
     label: "Propose no entry for a document",
     description:
-      "Says why you propose no entry for a document to book, such as a file that is no invoice or receipt, or one you cannot read, so a person books it themselves. Proposing later replaces this.",
+      "Says why you propose no entry for a document to book, such as a file that is no invoice or receipt, or one you cannot read, so a person books it themselves. An answer to a request counts only while the document awaits it; one to no request replaces the earlier answer.",
     input: z.strictObject({
       document: z.uuid().describe("The document's ID."),
+      request: requestInput,
       reason: z.string().trim().min(1).max(2000).describe("Why, for the person who books it."),
     }),
     output: z.object({ document: z.string(), review: z.literal("declined") }),
-    async run(books, input, person) {
+    async run(books, input, answerer) {
+      const { request, by } = answering(answerer, input.request);
       await requireDocument(books, input.document);
       settled(
-        await books.reviewDocument({
+        await books.answerReview({
           documentId: input.document,
-          review: {
+          request,
+          answer: {
             status: "declined",
             reason: input.reason,
-            by: person.name,
+            by,
             at: new Date().toISOString(),
           },
         }),
@@ -1349,7 +1382,7 @@ async function administrationOf(
  * Answers a document's review, then revokes the document's shares: the firm's agent is done with
  * its file. Should that fail, the document's page revokes them when it shows the answer.
  */
-async function answerReview(
+async function answerThenRelease(
   env: CloudflareEnv,
   administration: Administration,
   answer: () => Promise<{ document: string }>,
@@ -1388,8 +1421,8 @@ export async function runBooksAction(
     }
     if (action.access === "review" && claims.actor.kind === "installation") {
       return Response.json(
-        await answerReview(env, administration, () =>
-          action.run(books, actionInput, BOOKKEEPING_AGENT),
+        await answerThenRelease(env, administration, () =>
+          action.run(books, actionInput, { kind: "bookkeeping-agent" }),
         ),
       );
     }
@@ -1407,8 +1440,8 @@ export async function runBooksAction(
     const viaBackoffice = { name: `${person.name} via Backoffice` };
     if (action.access === "review") {
       return Response.json(
-        await answerReview(env, administration, () =>
-          action.run(books, actionInput, viaBackoffice),
+        await answerThenRelease(env, administration, () =>
+          action.run(books, actionInput, { kind: "person", person: viaBackoffice }),
         ),
       );
     }
@@ -1449,6 +1482,8 @@ async function confirmPerson(env: CloudflareEnv, organizationId: string, userId:
   if (known && Date.now() - known.confirmedAt < MEMBERSHIP_CONFIRMATION_LIFETIME_MS) {
     return { name, roles: known.roles };
   }
+  // Read before asking Backoffice, so an answer arriving after a newer one changes nothing.
+  const client = await directory.findClient(organizationId);
   const token = await auth.getBackofficeAccessTokenOf(userId);
   if (token === null) {
     throw new ActionFailure(403, signInFirst);
@@ -1489,6 +1524,11 @@ async function confirmPerson(env: CloudflareEnv, organizationId: string, userId:
     through: membershipThrough(confirmed.through),
     confirmedAt: Date.now(),
     userId,
+  });
+  await followManager(env, {
+    clientId: organizationId,
+    expectedFirmId: client?.firmId ?? null,
+    managingOrganizationId: confirmed.managingOrganization?.organizationId ?? null,
   });
   return { name, roles };
 }

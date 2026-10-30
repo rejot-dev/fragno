@@ -117,3 +117,35 @@ test("the firm's people open its clients only while they are in the firm", async
     expect(await joan.navigate(clientPath)).toMatchObject({ status: 404 });
   });
 });
+
+test("a client is its firm's while Backoffice says the firm manages it", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { grace, ada, firmPath, clientPath } = await scenario.practice();
+    const clientsOf = async (firm: typeof ada, path: string) =>
+      (
+        (await firm.navigate(path)).loaderData["firms/dashboard"] as {
+          clients: { name: string }[];
+        }
+      ).clients.map(({ name }) => name);
+    expect(await clientsOf(ada, firmPath)).toEqual(["Analytical Engines"]);
+
+    // A Backoffice administrator ends the firm's management. The client has no member of its own
+    // to tell Bookkeeping, so the firm's dashboard asks Backoffice which clients it manages.
+    scenario.backoffice.admin.setManager("analytical-engines", null);
+    expect(await clientsOf(ada, firmPath)).toEqual([]);
+    scenario.advanceTime(CONFIRMATION_EXPIRED_MS);
+    expect(await ada.navigate(clientPath)).toMatchObject({ status: 404 });
+
+    // Then has another firm manage it, which lists it and opens it.
+    const babbagePath = await scenario.createFirm(grace, "Babbage & Co", "joan@example.test");
+    const { browser: joan } = await scenario.acceptInvitation("joan@example.test", "Joan Clarke");
+    scenario.backoffice.admin.setManager("analytical-engines", "babbage-co");
+    expect(await clientsOf(joan, babbagePath)).toEqual(["Analytical Engines"]);
+    expect(await joan.navigate(clientPath)).toMatchObject({ status: 200 });
+    expect(await clientsOf(ada, firmPath)).toEqual([]);
+
+    // When Backoffice cannot say, the dashboard shows the clients Bookkeeping knows.
+    scenario.backoffice.failNextResponse("organizations.listManaged");
+    expect(await clientsOf(joan, babbagePath)).toEqual(["Analytical Engines"]);
+  });
+});

@@ -2,7 +2,14 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import { withDatabase, type FragnoPublicConfigWithDatabase, type TxResult } from "@fragno-dev/db";
 import type { createLedgerFragment } from "@fragno-dev/ledger";
 
-import { documentsSchema, type Dismissal, type DocumentMediaType, type Review } from "./schema";
+import {
+  documentsSchema,
+  type Dismissal,
+  type DocumentMediaType,
+  type Review,
+  type ReviewAnswer,
+  type ReviewRequest,
+} from "./schema";
 
 type LedgerServices = ReturnType<typeof createLedgerFragment>["services"];
 type PostEntryInput = Parameters<LedgerServices["postEntry"]>[0];
@@ -21,6 +28,8 @@ const documentErrorMessages = {
   DOCUMENT_ID_TAKEN: "Another file was uploaded with this form. Upload it again.",
   DOCUMENT_BOOKED: "This document is booked. Reverse its entry first.",
   DOCUMENT_DISMISSED: "This document was dismissed.",
+  REQUEST_NOT_AWAITED:
+    "This request no longer awaits an answer: the document was answered, or asked about again, since.",
 } as const;
 
 export type DocumentErrorCode = keyof typeof documentErrorMessages;
@@ -59,6 +68,8 @@ export type DocumentState =
 export type DocumentView = NewDocument & {
   uploadedAt: Date;
   review: Review | null;
+  /** Whether its file may still be shared with a firm's bookkeeping agent. */
+  shared: boolean;
   /** The ledger's source document, once an entry recorded it, with every entry recording it. */
   source: SourceDocument | null;
   state: DocumentState;
@@ -92,6 +103,18 @@ function documentState(dismissal: Dismissal | null, source: SourceDocument | nul
   return inEffect ? { status: "booked", entryId: inEffect.id } : { status: "to-book" };
 }
 
+/** The request a document to book awaits an answer to, if any. */
+function awaitedRequest(
+  document: { dismissal: Dismissal | null; review: Review | null },
+  source: SourceDocument | null,
+): string | null {
+  const { review } = document;
+  return review?.status === "requested" &&
+    documentState(document.dismissal, source).status === "to-book"
+    ? review.requestId
+    : null;
+}
+
 /** Refuses booking a document that is booked or dismissed. */
 function assertToBook(state: DocumentState) {
   if (state.status === "dismissed") {
@@ -119,6 +142,7 @@ function toRow(document: {
   uploadedBy: string;
   dismissal: Dismissal | null;
   review: Review | null;
+  shared: boolean;
 }): DocumentRow {
   return {
     id: document.id.valueOf(),
@@ -131,6 +155,7 @@ function toRow(document: {
     uploadedBy: document.uploadedBy,
     dismissal: document.dismissal,
     review: document.review,
+    shared: document.shared,
   };
 }
 
@@ -160,7 +185,14 @@ const documentsFragmentDefinition = defineFragment("documents")
             }
             uow.create(
               "document",
-              { ...document, uploadedAt: uow.now(), bookings: 0, dismissal: null, review: null },
+              {
+                ...document,
+                uploadedAt: uow.now(),
+                bookings: 0,
+                dismissal: null,
+                review: null,
+                shared: false,
+              },
               // A concurrent upload recorded it: retrying reads it and compares the files. Its ID is
               // the table's only unique key.
               { retryOnUniqueConflict: () => true },
@@ -280,13 +312,17 @@ const documentsFragmentDefinition = defineFragment("documents")
       },
 
       /**
-       * Records the bookkeeping agent's review of a document to book: that it was asked, or its
-       * answer. Asking again replaces an earlier answer, and recording a request again does nothing;
-       * with `first`, so does a request for a document that has a review. Returns the review in
-       * effect.
+       * Records that the bookkeeping agent was asked to review a document to book, and that its file
+       * may be shared with it. Asking again replaces an earlier answer, and recording a request again
+       * does nothing; with `first`, so does a request for a document that has a review. Returns the
+       * review in effect.
        */
-      reviewDocument: function (input: { documentId: string; review: Review; first?: boolean }) {
-        const { documentId, review, first = false } = input;
+      requestReview: function (input: {
+        documentId: string;
+        request: ReviewRequest;
+        first: boolean;
+      }) {
+        const { documentId, request, first } = input;
         return this.serviceTx(documentsSchema)
           .withServiceCalls(
             () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
@@ -303,14 +339,137 @@ const documentsFragmentDefinition = defineFragment("documents")
             assertToBook(documentState(document.dismissal, sources[0] ?? null));
             const current = document.review;
             if (
-              review.status === "requested" &&
               current !== null &&
-              (first || (current.status === "requested" && current.requestId === review.requestId))
+              (first || (current.status === "requested" && current.requestId === request.requestId))
             ) {
               return current;
             }
-            uow.update("document", document.id, (b) => b.set({ review }).check());
-            return review;
+            uow.update("document", document.id, (b) =>
+              b.set({ review: request, shared: true }).check(),
+            );
+            return request;
+          })
+          .build();
+      },
+
+      /**
+       * Records an answer to a document's review. An answer to `request` counts only while the
+       * document awaits that request's answer, so a request asked again, or answered, takes no
+       * late answer to it; an answer to no request replaces any review.
+       */
+      answerReview: function (input: {
+        documentId: string;
+        request: string | null;
+        answer: ReviewAnswer;
+      }) {
+        const { documentId, request, answer } = input;
+        return this.serviceTx(documentsSchema)
+          .withServiceCalls(
+            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("document", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [document], serviceIntermediateResult: [sources] }) => {
+            if (!document) {
+              throw new DocumentError("DOCUMENT_NOT_FOUND");
+            }
+            assertToBook(documentState(document.dismissal, sources[0] ?? null));
+            const current = document.review;
+            if (
+              request !== null &&
+              !(current?.status === "requested" && current.requestId === request)
+            ) {
+              throw new DocumentError("REQUEST_NOT_AWAITED");
+            }
+            uow.update("document", document.id, (b) => b.set({ review: answer }).check());
+            return answer;
+          })
+          .build();
+      },
+
+      /**
+       * Withdraws every request awaiting an answer, so no answer to it counts, and returns the IDs of
+       * the documents whose files may still be shared: theirs, and answered ones whose shares were
+       * not revoked yet.
+       */
+      withdrawRequests: function (input: { reason: string }) {
+        return this.serviceTx(documentsSchema)
+          .retrieve((uow) => uow.find("document", (b) => b.whereIndex("primary")))
+          .mutate(({ uow, retrieveResult: [documents] }) => {
+            const requested = documents.filter(({ review }) => review?.status === "requested");
+            for (const document of requested) {
+              uow.update("document", document.id, (b) =>
+                b
+                  .set({
+                    review: {
+                      status: "withdrawn",
+                      reason: input.reason,
+                      at: new Date().toISOString(),
+                    },
+                  })
+                  .check(),
+              );
+            }
+            // A request records its file shared, and nothing records it unshared while it awaits.
+            return documents.filter(({ shared }) => shared).map(({ id }) => id.valueOf());
+          })
+          .build();
+      },
+
+      /**
+       * Records that the document's shares were revoked, unless a request awaits an answer, which
+       * may have reused a share the revoker revoked. Returns that request, for the revoker to share
+       * the file again for it, or null.
+       */
+      recordSharesRevoked: function (input: { documentId: string }) {
+        const { documentId } = input;
+        return this.serviceTx(documentsSchema)
+          .withServiceCalls(
+            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("document", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [document], serviceIntermediateResult: [sources] }) => {
+            if (!document) {
+              throw new DocumentError("DOCUMENT_NOT_FOUND");
+            }
+            const awaited = awaitedRequest(document, sources[0] ?? null);
+            if (awaited === null) {
+              uow.update("document", document.id, (b) => b.set({ shared: false }).check());
+            }
+            return awaited;
+          })
+          .build();
+      },
+
+      /**
+       * Records that the document's file is shared for `requestId`, after sharing it: a revocation
+       * may have recorded it unshared meanwhile. Returns whether the request still awaits an answer;
+       * when it does not, its sharer revokes the share again.
+       */
+      recordShared: function (input: { documentId: string; requestId: string }) {
+        const { documentId, requestId } = input;
+        return this.serviceTx(documentsSchema)
+          .withServiceCalls(
+            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("document", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [document], serviceIntermediateResult: [sources] }) => {
+            if (!document) {
+              throw new DocumentError("DOCUMENT_NOT_FOUND");
+            }
+            uow.update("document", document.id, (b) => b.set({ shared: true }).check());
+            return awaitedRequest(document, sources[0] ?? null) === requestId;
           })
           .build();
       },

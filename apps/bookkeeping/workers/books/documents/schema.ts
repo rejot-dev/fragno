@@ -42,10 +42,16 @@ export type ProposedEntry = {
  * entry it proposes, or why it proposes none. Asking again replaces its answer. Times are ISO
  * timestamps; `by` names the person the agent acted for.
  */
-export type Review =
-  | { status: "requested"; requestId: string; by: string; at: string }
+export type ReviewRequest = { status: "requested"; requestId: string; by: string; at: string };
+
+export type ReviewAnswer =
   | { status: "proposed"; entry: ProposedEntry; note: string; by: string; at: string }
   | { status: "declined"; reason: string; by: string; at: string };
+
+/** A request withdrawn unanswered, e.g. when the firm asked no longer keeps the books. */
+export type ReviewWithdrawal = { status: "withdrawn"; reason: string; at: string };
+
+export type Review = ReviewRequest | ReviewAnswer | ReviewWithdrawal;
 
 function stringColumn<T extends string>() {
   return column("string") as unknown as Column<"string", T, T>;
@@ -84,5 +90,8 @@ export const documentsSchema = schema("documents", (s) => {
       })
       // Null until someone asks the bookkeeping agent about the document.
       .alterTable("document", (t) => t.addColumn("review", jsonColumn<Review | null>().nullable()))
+      // Whether the file may still be shared with a firm's bookkeeping agent: set by each request,
+      // cleared once its shares are revoked. Documents from before it was recorded may be shared.
+      .alterTable("document", (t) => t.addColumn("shared", column("bool").defaultTo(true)))
   );
 });

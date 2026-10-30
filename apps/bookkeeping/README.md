@@ -163,14 +163,28 @@ Bookkeeping has three layers, as Brand Intelligence does with ReJot, partners, a
   `/operator` does not exist. Operators invite more operators at `/operator/members`.
 - **Firms** are accounting firms: Backoffice organizations Bookkeeping records with kind `firm`.
 - **Clients** are the businesses whose books a firm keeps: Backoffice organizations the firm
-  manages, which Bookkeeping records with kind `client` and their firm.
+  manages, which Bookkeeping records with kind `client` and their firm, or none once no firm manages
+  them.
 
 Backoffice owns the organizations, their members, and their roles (owner, admin, member);
 Bookkeeping keeps a read-only copy in the `Directory` object and never changes membership itself.
 Backoffice also records that a firm manages its clients: every member of the firm acts in each
-client with their role in the firm, owners as admins, without becoming the client's member. The
-`Directory` keeps the firm of each client as Bookkeeping provisioned it. Operators manage no firms:
-an operator organization managing them would reach each firm's agent project and the skills in it.
+client with their role in the firm, owners as admins, without becoming the client's member.
+Backoffice's administrator may end a client's management, or move it to another firm, so the
+`Directory` keeps the firm Backoffice last named: confirming someone in a client with `org.get` also
+records the organization managing it, and a firm's dashboard records the clients Backoffice lists
+for it with `organizations.listManaged`, which reaches clients with no member of their own. A client
+no firm manages, or one managed by an organization Bookkeeping does not know as a firm, keeps its
+books with its own members and has no bookkeeping agent to ask. When Backoffice cannot list a firm's
+clients, its dashboard shows the clients the `Directory` knows. Bookkeeping records a change only if
+the client's firm is still the one it recorded before asking Backoffice, so an answer that arrives
+after a newer one changes nothing. A change records the new firm and marks the former firm's
+requests to withdraw, then withdraws them, then revokes the shares of every document whose file may
+still be shared: Backoffice keeps shares whoever manages the client, and a withdrawn request takes
+no answer, so its document's page revokes what could not be revoked then. A withdrawal that fails is
+retried at the next confirmation. Asking the agent reads the client's firm only after recording the
+request, so it sees the new firm, or its request is withdrawn. Operators manage no firms: an
+operator organization managing them would reach each firm's agent project and the skills in it.
 People sign up only through invitations: someone who signs in without one has no access yet.
 
 **Creating a firm.** At `/operator/firms/new`, an operator gives the firm's name and the email of
@@ -333,11 +347,11 @@ The upload's body is read only up to the largest upload, so a larger one is refu
 #### The bookkeeping agent
 
 Uploading a document asks the `bookkeeper` agent of the firm keeping the books to propose the entry
-booking it. The agent lives in the firm's own Backoffice project, `Bookkeeping agent`, so the skills
-the firm gives it never reach a client's workspace, where the client could read them. Bookkeeping
-provisions that project the first time one of the firm's owners or admins opens the firm, since
-Backoffice creates a project as a member of the firm who authorized Bookkeeping; until then, asking
-the agent says the firm has not set it up.
+booking it, when a firm keeps them. The agent lives in the firm's own Backoffice project,
+`Bookkeeping agent`, so the skills the firm gives it never reach a client's workspace, where the
+client could read them. Bookkeeping provisions that project the first time one of the firm's owners
+or admins opens the firm, since Backoffice creates a project as a member of the firm who authorized
+Bookkeeping; until then, asking the agent says the firm has not set it up.
 
 To ask, Bookkeeping shares the document's folder from the administration's project with the firm's
 agent project (`state.share`), which mounts it read-only at `/shared/document-<hash>/`
@@ -346,17 +360,22 @@ its administration, and the firm's agent serves all its clients, so the mount's 
 administration's ID with the document's, and the prompt's request ID names both. Answering the
 review revokes the share, as does the document's page when it shows a document whose review was
 answered, or that was booked or dismissed, so the firm reads a client's file only while it is asked
-about it. Bookkeeping asks as its installation, not as the person, so the agent's calls to
-Bookkeeping arrive as the installation's: they read the books and answer reviews
-(`documents.propose` and `documents.decline`), and every other change is refused, whatever a
-document tells the agent. Bookkeeping defines the agent when the firm's project has none, granting
-it `upload.read`, `models.extract`, `integrations.read` (to read the actions' input schemas), and
-`integrations.execute`; a definition the firm's members changed in Backoffice is left as it is. So
-is one Bookkeeping defined before its definition changed: members update or delete it to get the new
-one. It then submits the prompt, naming the administration and where the file is shared, with
-`pi.prompt.submit` as a `subagent`: each document runs in a new conversation of the agent, beside
-the others, so documents uploaded together are read side by side and no document sees another's
-text. Backoffice bills the turn to the firm.
+about it. Each request records that the file may be shared, and a revocation records that it is not,
+so revoking asks Backoffice only while the file may be shared. A request asked while a revocation
+runs may reuse the share it revokes, so a revocation that finds a request awaiting an answer shares
+the file again. An answer may also come while the file is being shared for its request, before the
+share exists, so sharing records the file shared again afterwards, and revokes it again, without
+asking the agent, when the request no longer awaits an answer. Bookkeeping asks as its installation,
+not as the person, so the agent's calls to Bookkeeping arrive as the installation's: they read the
+books and answer reviews (`documents.propose` and `documents.decline`), and every other change is
+refused, whatever a document tells the agent. Bookkeeping defines the agent when the firm's project
+has none, granting it `upload.read`, `models.extract`, `integrations.read` (to read the actions'
+input schemas), and `integrations.execute`; a definition the firm's members changed in Backoffice is
+left as it is. So is one Bookkeeping defined before its definition changed: members update or delete
+it to get the new one. It then submits the prompt, naming the administration and where the file is
+shared, with `pi.prompt.submit` as a `subagent`: each document runs in a new conversation of the
+agent, beside the others, so documents uploaded together are read side by side and no document sees
+another's text. Backoffice bills the turn to the firm.
 
 The agent reads the document with `documents.get` and `models.extract`, the books with
 `books.describe` and `entries.list`, and answers with `documents.propose`, an entry as
@@ -373,10 +392,13 @@ received; or that Backoffice cannot say, e.g. while it cannot be reached. The ag
 its turn ends, so the page reads the document again before showing a finished turn without an
 answer. While waiting or running, the page asks again every 5 seconds while it is in view, since
 nothing tells Bookkeeping when the agent's turn ends. Any but the first two offer **Ask again**,
-which sends a new request; a later answer replaces an earlier one. The upload asks under one request
-ID, and only while the document has no review, so sending it again, even twice at once, asks once
-and never undoes an answer. Booking or dismissing a document ends its review: the agent's actions
-refuse documents that are not to book.
+which sends a new request. The prompt names its request, and the agent's answer names it back: an
+answer counts only while the document awaits that request, so an earlier request's subagent still
+running, or one that can no longer read the file once the first answer stopped sharing it, cannot
+replace the answer. A person's agent may answer without a request, replacing any answer. The upload
+asks under one request ID, and only while the document has no review, so sending it again, even
+twice at once, asks once and never undoes an answer. Booking or dismissing a document ends its
+review: the agent's actions refuse documents that are not to book.
 
 Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
 administration is created, and administrations from before a storage change do not open. Delete

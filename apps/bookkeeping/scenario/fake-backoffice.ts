@@ -159,8 +159,12 @@ export class FakeBackoffice {
   readonly #failNextResponse = new Set<string>();
   /** Operations whose next request is lost before it reaches Backoffice. */
   readonly #failNextRequest = new Set<string>();
+  /** How many requests for each scoped operation reached Backoffice. */
+  readonly #operationCounts = new Map<string, number>();
   /** What happens elsewhere while Backoffice works on the next request for an operation. */
   readonly #beforeNextAnswer = new Map<string, () => Promise<void>>();
+  /** What happens elsewhere after Backoffice answered the next request, before the answer arrives. */
+  readonly #beforeNextDelivery = new Map<string, () => Promise<void>>();
 
   constructor({ origin, bookkeepingOrigin }: { origin: string; bookkeepingOrigin: string }) {
     this.origin = origin;
@@ -255,6 +259,11 @@ export class FakeBackoffice {
     this.#failNextResponse.add(operationId);
   }
 
+  /** How many requests for the scoped operation `operationId` reached Backoffice. */
+  operationCount(operationId: string): number {
+    return this.#operationCounts.get(operationId) ?? 0;
+  }
+
   /** The next request for `operationId` fails as a network failure does, before Backoffice sees it. */
   failNextRequest(operationId: string): void {
     this.#failNextRequest.add(operationId);
@@ -266,6 +275,14 @@ export class FakeBackoffice {
    */
   beforeNextAnswer(operationId: string, happen: () => Promise<void>): void {
     this.#beforeNextAnswer.set(operationId, happen);
+  }
+
+  /**
+   * `happen` runs after Backoffice answered the next request for `operationId`, before the answer
+   * reaches the caller, e.g. a newer request overtaking a slow one.
+   */
+  beforeNextDelivery(operationId: string, happen: () => Promise<void>): void {
+    this.#beforeNextDelivery.set(operationId, happen);
   }
 
   /** The agents defined in the workspace of one of the organization's projects. */
@@ -421,6 +438,14 @@ export class FakeBackoffice {
     rename: (slug: string, name: string) => {
       this.#organizationBySlug(slug).name = name;
     },
+    /**
+     * A global administrator has the organization at `managerSlug` manage the one at `slug`, or
+     * ends its management with null.
+     */
+    setManager: (slug: string, managerSlug: string | null) => {
+      this.#organizationBySlug(slug).managingOrganizationId =
+        managerSlug === null ? null : this.#organizationBySlug(managerSlug).id;
+    },
     uninstall: (slug: string) => {
       this.#organizationBySlug(slug).installation = "uninstalled";
     },
@@ -525,10 +550,15 @@ export class FakeBackoffice {
         if (this.#failNextRequest.delete(operation[2])) {
           throw new TypeError("fetch failed");
         }
+        this.#operationCounts.set(operation[2], this.operationCount(operation[2]) + 1);
         const happen = this.#beforeNextAnswer.get(operation[2]);
         this.#beforeNextAnswer.delete(operation[2]);
         await happen?.();
-        return await this.#operate(request, operation[1], operation[2]);
+        const response = await this.#operate(request, operation[1], operation[2]);
+        const delivery = this.#beforeNextDelivery.get(operation[2]);
+        this.#beforeNextDelivery.delete(operation[2]);
+        await delivery?.();
+        return response;
       }
       throw new ApiError("not_found", `Backoffice does not serve ${url.pathname}.`);
     } catch (error) {
@@ -1072,6 +1102,31 @@ export class FakeBackoffice {
             jurisdiction: null,
             created: existing === undefined,
             ownerInvitation: null,
+          }),
+        );
+      }
+      case "organizations.listManaged": {
+        const input = backofficeProvisioningOperations[operationId].input.parse(body);
+        const managed = [...this.#organizations.values()].filter(
+          (organization) =>
+            organization.managingOrganizationId === input.managingOrganizationId &&
+            organization.installation === "active",
+        );
+        const start = input.cursor === null ? 0 : Number(input.cursor);
+        const end = start + input.pageSize;
+        return Response.json(
+          backofficeProvisioningOperations[operationId].output.parse({
+            organizations: managed.slice(start, end).map((organization) => ({
+              organizationId: organization.id,
+              name: organization.name,
+              slug: organization.slug,
+              jurisdiction: null,
+              hasOwner: [...organization.members.values()].some(({ roles }) =>
+                roles.includes("owner"),
+              ),
+            })),
+            nextCursor: end < managed.length ? String(end) : null,
+            hasNextPage: end < managed.length,
           }),
         );
       }

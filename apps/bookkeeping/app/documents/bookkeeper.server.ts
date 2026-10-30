@@ -5,7 +5,7 @@ import { env } from "cloudflare:workers";
 import { connectAsInstallation, createProvisioningClient } from "../../workers/backoffice/client";
 import {
   releaseDocument,
-  shareDocument,
+  shareForRequest,
   sharedDocumentPath,
   type InstalledProject,
 } from "../../workers/backoffice/document-shares";
@@ -41,7 +41,7 @@ When asked about a document:
 4. Look at recent entries in the journal you would book it in (\`entries.list\`), and book it as the books booked similar documents.
 5. Propose the entry with \`documents.propose\`: purchases in the purchase journal and sales in the sales journal, posted on the document's date when its period is open, with the document's number as the reference. Lines on a supplier's or customer's account name them; leave the party null when the books lack them. In \`note\`, tell the person what the document is, how you chose the accounts, and what to check.
 
-If the file is no invoice or receipt, or you cannot read it, call \`documents.decline\` with the reason instead. When an action refuses your proposal, fix what it names and propose again.`,
+If the file is no invoice or receipt, or you cannot read it, call \`documents.decline\` with the reason instead. Both answers take the ID of the request asking you as \`request\`; the request names it. When an action refuses your proposal, fix what it names and propose again; when it says the request no longer awaits an answer, stop.`,
   permissions: ["upload.read", "models.extract", "integrations.read", "integrations.execute"],
   model: null,
 };
@@ -107,10 +107,19 @@ async function connectToAgent(
   | { ok: false; error: string }
 > {
   const { organization, administration } = context;
-  const firmId = organization.kind === "client" ? organization.firmId : null;
-  const projectId =
-    firmId === null ? null : await env.DIRECTORY.getByName("directory").findFirmAgent(firmId);
-  if (firmId === null || projectId === null) {
+  const directory = env.DIRECTORY.getByName("directory");
+  // Read now, after the request was recorded, not when the page started: a change of firm records
+  // the new firm before it withdraws the former firm's requests, so this sees the new firm, or the
+  // request is withdrawn and its share revoked.
+  const firmId = (await directory.findClient(organization.id))?.firmId ?? null;
+  if (firmId === null) {
+    return {
+      ok: false,
+      error: "No firm keeps these books, so there is no bookkeeping agent to ask.",
+    };
+  }
+  const projectId = await directory.findFirmAgent(firmId);
+  if (projectId === null) {
     return {
       ok: false,
       error:
@@ -159,9 +168,9 @@ export async function askBookkeeper(
   // The firm's agent answers every administration of its clients, where a document's ID is unique
   // only in its own.
   const requestId = `document:${context.administration.id}:${document.id}:${ask === "first" ? "upload" : crypto.randomUUID()}`;
-  const recorded = await context.books.reviewDocument({
+  const recorded = await context.books.requestReview({
     documentId: document.id,
-    review: {
+    request: {
       status: "requested",
       requestId,
       by: context.user.name,
@@ -192,15 +201,24 @@ export async function askBookkeeper(
         throw error;
       }
     }
-    await shareDocument({ administration: connected.administration, agent, document });
     const { organization, administration } = context;
+    const awaited = await shareForRequest(env, {
+      administration,
+      projects: { administration: connected.administration, agent },
+      document,
+      requestId,
+    });
+    // Answered meanwhile, e.g. by a person: the agent has nothing to answer.
+    if (!awaited) {
+      return { ok: true };
+    }
     // Each document is a subagent of its own: documents are read side by side, and no document
     // sees another's text.
     await agent.backoffice.call(agent.scope, "pi.prompt.submit", {
       agentName: BOOKKEEPER.agentName,
       requestId,
       subagent: true,
-      content: `Propose the entry for document ${document.id} (${document.filename}) of administration ${administration.id}, ${organization.name}'s ${administration.name}. Its file is at ${await sharedDocumentPath(administration.id, document)}.`,
+      content: `Propose the entry for document ${document.id} (${document.filename}) of administration ${administration.id}, ${organization.name}'s ${administration.name}. Its file is at ${await sharedDocumentPath(administration.id, document)}. This is request ${requestId}: give it as \`request\` when you answer with documents.propose or documents.decline.`,
     });
   } catch (error) {
     return { ok: false, error: `Backoffice did not ask the agent: ${backofficeProblem(error)}` };
@@ -239,14 +257,15 @@ export async function readBookkeeperProgress(
 
 /**
  * Revokes the shares of a document the agent no longer needs: its review was answered, or it is
- * booked or dismissed. Answering revokes them already; this catches what that could not.
+ * booked or dismissed, which its page shows next. Answering revokes them already; this catches
+ * what that could not.
  */
 export async function releaseDocumentIfDone(
   context: BooksContext,
   document: DocumentView,
 ): Promise<void> {
   const { review } = document;
-  if (!review || (review.status === "requested" && document.state.status === "to-book")) {
+  if (review?.status === "requested" && document.state.status === "to-book") {
     return;
   }
   try {
