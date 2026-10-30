@@ -1,4 +1,4 @@
-import type { PiAgentNotification } from "./pi-agent-contract";
+import { PI_INTERNAL_REQUEST_ID_PREFIX, type PiAgentNotification } from "./pi-agent-contract";
 import { escapeAttribute, unescapeAttribute } from "./xml-attribute";
 
 /**
@@ -16,7 +16,9 @@ export type PiNotificationReference = { routeId: string | null; eventId: string 
  * or to the agent directly, is recognized. Its entry is written as `<requestId>:event`.
  */
 export function piNotificationRequestId({ routeId, event }: PiAgentNotification) {
-  return routeId === null ? `reply:${event.id}` : `route:${routeId}:${event.id}`;
+  return routeId === null
+    ? `${PI_INTERNAL_REQUEST_ID_PREFIX.reply}${event.id}`
+    : `${PI_INTERNAL_REQUEST_ID_PREFIX.route}${routeId}:${event.id}`;
 }
 
 const REQUEST_PATTERN =

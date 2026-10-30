@@ -427,7 +427,7 @@ export function SessionThread({
                         return;
                       }
                       event.preventDefault();
-                      if (composerAction === "compact" && readyForInput) {
+                      if (composerAction === "compact" && readyForInput && !compacting) {
                         void onCompact();
                       }
                     }}
@@ -528,7 +528,7 @@ export function SessionThread({
                                     <ChatComposerButton
                                       tone="accent"
                                       joined
-                                      disabled={disabled || !readyForInput}
+                                      disabled={disabled || !readyForInput || compacting}
                                       onClick={() => void onCompact()}
                                     >
                                       Compact

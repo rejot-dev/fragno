@@ -343,6 +343,16 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
         agentName,
         requestId,
         ended: completedTurn(agentName, requestId),
+        compact: false,
+      });
+    },
+    /** Settles a turn that left the agent's context past its compaction threshold. */
+    async settleFull(requestId: string) {
+      await reportPiAgentTurnSettled(fragment, config, {
+        agentName: "assistant",
+        requestId,
+        ended: completedTurn("assistant", requestId),
+        compact: true,
       });
     },
     async submission(requestId: string, agentName = "assistant") {
@@ -434,6 +444,52 @@ test("a steer joins only a running turn of the same sender, and a rejectable pro
     status: "queued",
   });
   assert(queue.requestIds().at(-1) === "dispatch ada-reject");
+});
+
+test("a turn that fills the context is compacted before anything waiting runs, and no steer joins it", async () => {
+  const queue = await piManagerQueue();
+  await queue.receipt({ requestId: "first" });
+  await queue.receipt({ requestId: "second" });
+
+  // The compaction goes ahead of what waits, which stays waiting.
+  await queue.settleFull("first");
+  expect(queue.requestIds()).toEqual(["dispatch first", "dispatch compaction:first"]);
+  expect(queue.publishedQueue()).toEqual(["prompt second"]);
+
+  // A steer would start a turn beside the compaction, so it waits too.
+  expect(await queue.receipt({ requestId: "steer", whenBusy: "steer" })).toEqual({
+    requestId: "steer",
+    status: "queued",
+  });
+  // A settlement reported again compacts nothing more.
+  await queue.settleFull("first");
+  expect(queue.requestIds()).toHaveLength(2);
+
+  await queue.settle("compaction:first");
+  assert(queue.requestIds().at(-1) === "dispatch second");
+  expect(queue.publishedQueue()).toEqual(["prompt steer"]);
+});
+
+test("a steer Pi starts as its turn ends holds the conversation until it settles, and compaction waits for it", async () => {
+  const queue = await piManagerQueue();
+  await queue.receipt({ requestId: "first" });
+  await queue.receipt({ requestId: "steer", whenBusy: "steer" });
+  await queue.receipt({ requestId: "waiting" });
+
+  // Pi took the steer at the turn's final answer, so it runs on after the turn settles.
+  await queue.settleFull("first");
+  expect(queue.requestIds()).toEqual(["dispatch first", "steer steer"]);
+  // No turn is left to join, so a later steer waits too.
+  expect(await queue.receipt({ requestId: "late", whenBusy: "steer" })).toEqual({
+    requestId: "late",
+    status: "queued",
+  });
+  expect(queue.publishedQueue()).toEqual(["prompt waiting", "prompt late"]);
+
+  await queue.settleFull("steer");
+  assert(queue.requestIds().at(-1) === "dispatch compaction:steer");
+  await queue.settle("compaction:steer");
+  assert(queue.requestIds().at(-1) === "dispatch waiting");
 });
 
 test("a resent request ID keeps its first placement and is never handed over twice", async () => {
@@ -788,28 +844,20 @@ test("resuming starts the next turn at once, or when the stopped turn settles", 
 
 test("the queue's hook hands over again what a failed request did not", async () => {
   const queue = await piManagerQueue();
-  await queue.receipt({ requestId: "first" });
-  queue.failing.handovers = 2;
+  queue.failing.handovers = 3;
   // Each submission is recorded before its handover fails.
+  await queue.receipt({ requestId: "first" });
   expect(await queue.receipt({ requestId: "steered", whenBusy: "steer" })).toEqual({
     requestId: "steered",
     status: "steered",
   });
-  await queue.settle("first");
-  await queue.receipt({ requestId: "next" });
-  queue.failing.handovers = 1;
   await queue.delivered({ eventId: "ada-1" });
-  expect(queue.requestIds()).toEqual(["dispatch first"]);
+  expect(queue.requestIds()).toEqual([]);
 
   await drainDurableHooks(queue.fragment);
   // Every hook run hands over each unsettled item; the agent object keeps the first submission.
   expect(new Set(queue.requestIds())).toEqual(
-    new Set([
-      "dispatch first",
-      "steer steered",
-      "dispatch next",
-      "steer route:orders:ada-1 (ada-1)",
-    ]),
+    new Set(["dispatch first", "steer steered", "steer route:orders:ada-1 (ada-1)"]),
   );
 });
 

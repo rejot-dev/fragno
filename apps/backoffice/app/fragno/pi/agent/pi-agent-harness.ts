@@ -6,10 +6,14 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import type { Context } from "@earendil-works/chord";
 import {
   createRegistry,
+  DEFAULT_COMPACTION_POLICY,
   Harness,
   ROOT_CONVERSATION_ID,
+  type CompactionPolicy,
+  type CompactionSettings,
   type Extension,
   type HarnessSettings,
+  type ModelRef,
   type Storage,
   type ToolRegistration,
   type Wake,
@@ -33,6 +37,7 @@ import {
   createBackofficeAgentContext,
   type BackofficeAgentContext,
 } from "./backoffice-agent-context";
+import { estimatePiContextTokens } from "./context-usage";
 import { piConversationOfSession } from "./pi-agent-subagents";
 import { startReportingPiAgentTurns } from "./pi-agent-turn-events";
 import { readActivePiAgentTurn } from "./pi-agent-turns";
@@ -92,6 +97,65 @@ export function createPiAgentDependencies(
       });
     },
   };
+}
+
+/** The compaction policy Pi applies to `model`: its override over the harness-wide one, by field. */
+function piCompactionPolicy(settings: HarnessSettings, model: ModelRef): CompactionPolicy {
+  const { modelOverrides, ...harnessWide } = settings.compaction ?? {};
+  return {
+    ...DEFAULT_COMPACTION_POLICY,
+    ...harnessWide,
+    ...modelOverrides?.[`${model.provider}/${model.modelId}`],
+  };
+}
+
+/**
+ * Pi's compaction settings without its background compaction, for every model. The queue compacts
+ * between turns instead (see `isPiCompactionDue`); a turn that outgrows the window on its own still
+ * compacts at Pi's blocking threshold, or on overflow.
+ */
+function withoutBackgroundCompaction(settings: HarnessSettings): CompactionSettings {
+  const { modelOverrides, ...harnessWide } = settings.compaction ?? {};
+  return {
+    ...harnessWide,
+    backgroundTokens: 0,
+    ...(modelOverrides && {
+      modelOverrides: Object.fromEntries(
+        Object.entries(modelOverrides).map(([model, policy]) => [
+          model,
+          { ...policy, backgroundTokens: 0 },
+        ]),
+      ),
+    }),
+  };
+}
+
+/**
+ * Whether the root's context passed the threshold where Pi would start background compaction,
+ * `backgroundTokens` below its blocking one. Backoffice compacts there once a turn ends instead,
+ * so compaction never runs beside a turn and the next turn waits for it.
+ */
+async function isPiCompactionDue(
+  harness: Harness,
+  models: Models,
+  settings: HarnessSettings,
+  context: Context,
+): Promise<boolean> {
+  const root = await harness.root(context);
+  const { model } = await root.agent(context);
+  if (!model) {
+    return false;
+  }
+  const policy = piCompactionPolicy(settings, model);
+  const contextWindow = models.getModel(model.provider, model.modelId)?.contextWindow;
+  if (!policy.enabled || policy.backgroundTokens === 0 || !contextWindow) {
+    return false;
+  }
+  const { entries } = await root.context(context);
+  return (
+    estimatePiContextTokens(entries) >
+    contextWindow - policy.reserveTokens - policy.backgroundTokens
+  );
 }
 
 /** Rebuilds an agent's registry and opens its root conversation; authority comes from its turns. */
@@ -194,6 +258,7 @@ export async function openPiAgentHarness(input: {
       settings: {
         ...dependencies.settings,
         stream: { maxRetries: 3, ...dependencies.settings.stream },
+        compaction: withoutBackgroundCompaction(dependencies.settings),
       },
       onReport: report,
       // Sleep deadlines and the object's alarms must read one clock.
@@ -212,6 +277,8 @@ export async function openPiAgentHarness(input: {
       ? runtime.objects.automations.for(config.scope).commands
       : null,
     manager: runtime.objects.piManager.for(config.scope).commands,
+    compactionDue: (context) =>
+      isPiCompactionDue(harness, dependencies.models, dependencies.settings, context),
     nowEpochMs: input.nowEpochMs,
     report,
   });

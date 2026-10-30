@@ -80,10 +80,12 @@ import {
   runningPiSubagentConversations,
 } from "@/fragno/pi/agent/pi-agent-subagents";
 import {
+  isObsoleteQueuedPiCompaction,
   readPiAgentRun,
   recordAdmittedPiAgentTurn,
   recordPiAgentCompactionTurn,
   recordPiAgentTurn,
+  recordQueuedPiCompaction,
   withdrawPiAgentTurn,
 } from "@/fragno/pi/agent/pi-agent-turns";
 
@@ -175,6 +177,9 @@ export class PiObject extends RpcTarget implements PiAgent {
   #opened: OpenPiAgent | null = null;
   #opening: Promise<OpenPiAgent> | null = null;
   #admitting = 0;
+  // Handovers of the queue's compactions start one at a time, so each sees what the one before it
+  // recorded and a repeated or older one starts nothing.
+  #startingCompaction: Promise<void> = Promise.resolve();
   // An alarm waiting for the agent's work to stop follows its wakeups and its session's end.
   readonly #waiters = new Set<PiAgentWaiter>();
   // Only the manager knows the queue; it publishes every change, and before each viewer connects.
@@ -571,6 +576,14 @@ export class PiObject extends RpcTarget implements PiAgent {
       return;
     }
     const opened = await this.#requireAgent(config);
+    if (work.type === "compaction") {
+      const starting = this.#startingCompaction.then(() =>
+        this.#startQueuedCompaction(opened, revision, turn, work.requestId),
+      );
+      this.#startingCompaction = starting.catch(() => undefined);
+      await starting;
+      return;
+    }
     const root = await opened.harness.root(BACKGROUND_CONTEXT);
     // A turn handed over again keeps the submission and turn Pi already has for it.
     if (await opened.storage.submissionByRequest(root.id, work.requestId, BACKGROUND_CONTEXT)) {
@@ -596,6 +609,44 @@ export class PiObject extends RpcTarget implements PiAgent {
       null,
       "followUp",
     );
+  }
+
+  /**
+   * Starts the compaction the queue dispatched between turns, which runs as the turn before it.
+   * Starting the task and recording it are two commits, so an object lost between them leaves a
+   * compaction a repeated handover starts again; Pi keeps the furthest cut of the two.
+   */
+  async #startQueuedCompaction(
+    opened: OpenPiAgent,
+    // The queue revision that handed it over, which a stop may fence.
+    revision: number,
+    turn: PiAgentTurn,
+    requestId: string,
+  ) {
+    const { harness } = opened;
+    if (await isObsoleteQueuedPiCompaction(harness, requestId, revision, BACKGROUND_CONTEXT)) {
+      return;
+    }
+    this.#admitting += 1;
+    try {
+      // The alarm reports the compaction once it ends, which the queue waits for.
+      await this.#state.storage.setAlarm(this.#nowEpochMs());
+      await recordPiAgentCompactionTurn(harness, turn, BACKGROUND_CONTEXT);
+      const root = await harness.root(BACKGROUND_CONTEXT);
+      // A stop that landed while it was admitted found nothing to abort. The compaction stays
+      // dispatched, so resuming hands it over again.
+      if (await this.#fenced(revision)) {
+        return;
+      }
+      const taskId = await root.compact(undefined, BACKGROUND_CONTEXT);
+      await recordQueuedPiCompaction(harness, requestId, revision, taskId, BACKGROUND_CONTEXT);
+      // A stop that landed after that check aborted before the compaction existed.
+      if (await this.#fenced(revision)) {
+        await root.abort(BACKGROUND_CONTEXT, { background: true });
+      }
+    } finally {
+      this.#admitting -= 1;
+    }
   }
 
   async writeNotifications(config: PiAgentConfig, rawNotifications: PiAgentNotification[]) {

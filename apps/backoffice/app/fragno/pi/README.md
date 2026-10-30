@@ -73,11 +73,12 @@ re-resolve permissions on every check, so revocations apply mid-turn.
 
 A conversation's current run (`pi.live` `run.inputs[0]`) identifies the owning turn, and each
 conversation runs one turn at a time: the root's, or a subagent's (see Subagents). Work outside any
-run, such as background or manual compaction, uses the latest admitted turn; manual compaction
-records its requester first. A turn is recorded before Pi admits its prompt, so no work can start
-without it, and withdrawn if Pi does not admit it, so a refused prompt never decides whom later work
-runs as. Work a turn persists, such as workflows or events, keeps the `pi-agent` actor, whose static
-role grants everything: it runs as the principal without the definition's narrowing.
+run, such as compaction, uses the latest admitted turn; manual compaction records its requester
+first, and the queue's compaction the turn it follows. A turn is recorded before Pi admits its
+prompt, so no work can start without it, and withdrawn if Pi does not admit it, so a refused prompt
+never decides whom later work runs as. Work a turn persists, such as workflows or events, keeps the
+`pi-agent` actor, whose static role grants everything: it runs as the principal without the
+definition's narrowing.
 
 ## Subagents
 
@@ -161,9 +162,11 @@ oldest item it handles.
 
 - `steer` joins the dispatched turn when that turn has the same sender. Otherwise the prompt is
   queued like `followUp`, the default. The receipt's `status` says `steered` or `queued`.
-- `reject` is refused with `409 AGENT_BUSY` while a turn is dispatched or items wait.
-- With nothing dispatched and the queue running, a new item is dispatched at once; items wait only
-  behind a dispatched turn or in a paused queue.
+- `reject` is refused with `409 AGENT_BUSY` while the conversation is busy or items wait.
+- The conversation is busy while a turn or compaction is dispatched, and until every steer settled:
+  Pi starts a steer it takes at a turn's final answer as a run of its own as that turn settles. With
+  the conversation free and the queue running, a new item is dispatched at once; items wait only
+  behind a busy conversation or in a paused queue.
 - Stopping an agent (`pi.agent.stop`) pauses its queue and aborts what Pi holds; the stopped turn
   settles unanswered and nothing starts after it. A paused queue records new items but dispatches
   none, even for an idle agent, and a steer never joins the stopped turn.
@@ -176,6 +179,23 @@ oldest item it handles.
   it; the stop passes its own to the agent, which refuses earlier ones from then on, and the queue's
   hook retries nothing while the queue is paused. Resuming runs the hook, which hands them over
   again at the new revision.
+
+The queue also compacts the conversation between turns. Pi's background compaction is off, since it
+ran beside a turn and could overlap another compaction. Instead, the agent reports with each settled
+root turn whether its context passed the point where Pi would have started one, `backgroundTokens`
+below Pi's blocking threshold (`isPiCompactionDue`). The queue then dispatches a `compaction` item,
+`compaction:<requestId>` after the settlement it follows, once the conversation is free, ahead of
+everything waiting, and under the authority of that turn or steer. It holds the conversation like a
+turn: items wait behind it, and a steer waits too rather than start a turn beside it. The agent
+reports its end, however it ended, as a settlement, which starts the next turn. A paused queue
+compacts nothing. A turn that outgrows the window on its own still compacts at Pi's blocking
+threshold, or on overflow. Thresholds are the model's own: its `modelOverrides` entry over the
+harness-wide policy.
+
+Pi's compaction carries no request ID, so the agent records the newest one it started with the queue
+revision of its handover. The queue dispatches a compaction only once the one before it settled, at
+a later revision, so a handover of a compaction again, or of an older one, starts nothing. Like a
+turn, a compaction handed over before a stop starts only once the queue resumes.
 
 Subagent items (see Subagents) run beside the agent's turns rather than in them, so they wait only
 for a slot: up to `PI_AGENT_SUBAGENT_LIMIT`, four, run at once per agent, each dispatched as its own
@@ -346,8 +366,10 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   `model`, the first available model for null, or null when that model is unavailable.
 - `GET /agents/:agentName`: one definition and whether it is provisioned.
 - `POST /agents/:agentName/prompts`: `{ requestId, content, whenBusy, whenPaused, model, replyTo }`,
-  answering `{ requestId, status }`, `409 AGENT_BUSY` for a refused `reject` (see Queue), or
-  `403 USAGE_LIMIT_EXCEEDED` once the root owner used up its monthly `ai.cost.total` limit (see
+  answering `{ requestId, status }`, `400 INVALID_PROMPT` for a request ID starting with `route:`,
+  `reply:`, or `compaction:`, which name Backoffice's own work (`PI_INTERNAL_REQUEST_ID_PREFIX`),
+  `409 AGENT_BUSY` for a refused `reject` (see Queue), or `403 USAGE_LIMIT_EXCEEDED` once the root
+  owner used up its monthly `ai.cost.total` limit (see
   [Usage limits](../billing/README.md#usage-limits)). `model` is
   `{ provider, modelId, thinkingLevel }` or `null`; only built-in agents choose one, and others
   answer `400 MODEL_NOT_CHOOSABLE`; see Agent definitions. `replyTo` is `{ scope, agentName }` or

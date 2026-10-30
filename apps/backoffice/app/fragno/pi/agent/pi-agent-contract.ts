@@ -74,6 +74,23 @@ export class PiConversationViewDamagedError extends Error {
   }
 }
 
+/**
+ * Prefixes of the request IDs Backoffice names its own work by: notifications by their route or as
+ * replies, and compactions, the queue's and the summaries Pi writes as `compaction:<taskId>`.
+ * Callers' request IDs never start with one, so no prompt takes the identity of such work.
+ */
+export const PI_INTERNAL_REQUEST_ID_PREFIX = {
+  route: "route:",
+  reply: "reply:",
+  compaction: "compaction:",
+} as const;
+
+export function isPiInternalRequestId(requestId: string): boolean {
+  return Object.values(PI_INTERNAL_REQUEST_ID_PREFIX).some((prefix) =>
+    requestId.startsWith(prefix),
+  );
+}
+
 /** Request IDs deduplicate prompt admission within an agent's root conversation. */
 export const piAgentPromptSchema = z.object({
   requestId: z.string().min(1),
@@ -127,17 +144,20 @@ export function piAgentNotificationEvent(event: AutomationEvent): PiAgentNotific
 
 /**
  * A turn the agent settled, by its request ID, and the `turn.*` event recording how it ended; null
- * for settlements that record none.
+ * for settlements that record none. `compact` says the agent's context outgrew its compaction
+ * threshold when the turn ended, so the queue compacts it before the next turn.
  */
 export type PiAgentSettledTurn = {
   agentName: string;
   requestId: string;
   ended: AutomationEvent | null;
+  compact: boolean;
 };
 
 /**
  * What a dispatched turn asks the agent for: one prompt, or the notifications it handles together,
- * named by the oldest one's request ID.
+ * named by the oldest one's request ID. A dispatched compaction runs between turns instead, under
+ * the authority of the turn before it; the next turn waits until it settles.
  */
 export const piAgentWorkSchema = z.lazy(() =>
   z.discriminatedUnion("type", [
@@ -147,6 +167,7 @@ export const piAgentWorkSchema = z.lazy(() =>
       requestId: z.string().min(1),
       notifications: z.array(piAgentNotificationSchema).min(1),
     }),
+    z.object({ type: z.literal("compaction"), requestId: z.string().min(1) }),
   ]),
 );
 export type PiAgentWork = z.infer<typeof piAgentWorkSchema>;
@@ -289,7 +310,8 @@ export type PiAgent = {
   ): Promise<void>;
   /**
    * Hands Pi the turn the manager's queue dispatched, writing its notifications into the
-   * conversation first; a request ID Pi already has is kept.
+   * conversation first; a request ID Pi already has is kept. A dispatched compaction starts once
+   * per request ID.
    */
   dispatch(
     config: PiAgentConfig,

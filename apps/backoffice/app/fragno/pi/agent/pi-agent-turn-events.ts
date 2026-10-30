@@ -4,6 +4,7 @@ import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 
 import type { Context } from "@earendil-works/chord";
 import {
+  ROOT_CONVERSATION_ID,
   type CommitPublication,
   type Harness,
   type SettledSubmissionRecord,
@@ -20,7 +21,9 @@ import {
 import type { BackofficeAgentContext } from "./backoffice-agent-context";
 import {
   forgetReportedPiAgentTurn,
+  forgetReportedQueuedPiCompaction,
   readReportablePiAgentTurns,
+  readSettledQueuedPiCompactions,
   type ReportablePiAgentTurn,
 } from "./pi-agent-turns";
 
@@ -121,8 +124,9 @@ function changesSubmission(publication: CommitPublication) {
  * turn that settled, then forgets it. Pi starts and settles submissions in commits Backoffice
  * cannot join, so a report follows each commit that does. A turn's start is recorded before its
  * end, also when the turn settles before its start was reported, and recording it again records
- * nothing. A report dies with the object, so callers that must not lose one, like the agent alarm,
- * call the returned function again.
+ * nothing. Compactions the queue dispatched are reported to the manager once they end. A report
+ * dies with the object, so callers that must not lose one, like the agent alarm, call the returned
+ * function again.
  */
 export function startReportingPiAgentTurns(input: {
   config: PiAgentConfig;
@@ -132,6 +136,8 @@ export function startReportingPiAgentTurns(input: {
   /** Null when the runtime has no Automations, which leaves nowhere to record turn history. */
   automations: Pick<AutomationsCommands, "ingestEvent"> | null;
   manager: PiManagerCommands;
+  /** Whether the root's context outgrew its compaction threshold. */
+  compactionDue: (context: Context) => Promise<boolean>;
   nowEpochMs: () => number;
   report: (error: unknown) => void;
 }): (context: Context) => Promise<void> {
@@ -158,10 +164,13 @@ export function startReportingPiAgentTurns(input: {
     }
     const endedTurn = settledTurnEventOf(settlement);
     const ended = endedTurn ? turnEvent(reportable, endedTurn) : null;
+    // Subagents answer once, so only the root's context is compacted between turns.
+    const compact =
+      reportable.conversationId === ROOT_CONVERSATION_ID && (await input.compactionDue(context));
     // Both reports are idempotent, and an unrecordable event must not stop the agent's queue.
     const [recorded, advanced] = await Promise.allSettled([
       recordTurnEvents([...(startedEvent ? [startedEvent] : []), ...(ended ? [ended] : [])]),
-      manager.reportSettledTurn({ agentName: config.agentName, requestId, ended }),
+      manager.reportSettledTurn({ agentName: config.agentName, requestId, ended, compact }),
     ]);
     for (const report of [recorded, advanced]) {
       if (report.status === "rejected") {
@@ -177,6 +186,19 @@ export function startReportingPiAgentTurns(input: {
     for (const reportable of await readReportablePiAgentTurns(harness, storage, context)) {
       try {
         await reportTurn(reportable, context);
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    for (const requestId of await readSettledQueuedPiCompactions(harness, context)) {
+      try {
+        await manager.reportSettledTurn({
+          agentName: config.agentName,
+          requestId,
+          ended: null,
+          compact: false,
+        });
+        await forgetReportedQueuedPiCompaction(harness, requestId, context);
       } catch (error) {
         failures.push(error);
       }

@@ -9,6 +9,7 @@ import {
   type Harness,
   type SettledSubmissionRecord,
   type Storage,
+  type TaskId,
 } from "@earendil-works/pi-durable";
 
 import type { PiAgentTurn } from "./pi-agent-contract";
@@ -65,6 +66,8 @@ export async function recordPiAgentTurn(
  */
 export type ReportablePiAgentTurn = {
   requestId: string;
+  /** The root's, or a subagent's. */
+  conversationId: ConversationId;
   turn: PiAgentTurn;
   started: boolean;
   /** Null while the turn runs. */
@@ -89,7 +92,13 @@ export async function readReportablePiAgentTurns(
     const settlement =
       submission.status === "done" || submission.status === "unanswered" ? submission : null;
     if (started || settlement) {
-      reportable.push({ requestId, turn: turn as unknown as PiAgentTurn, started, settlement });
+      reportable.push({
+        requestId,
+        conversationId,
+        turn: turn as unknown as PiAgentTurn,
+        started,
+        settlement,
+      });
     }
   }
   return reportable;
@@ -136,6 +145,84 @@ export async function withdrawPiAgentTurn(
     if (!(await tx.submissionByRequest(conversationId, requestId))) {
       delete turns.pending[requestId];
     }
+  }, context);
+}
+
+type PiQueuedCompactionsState = {
+  /** Pi's compaction task of each compaction the queue dispatched, until its settlement is reported. */
+  pending: { [requestId: string]: number };
+  /**
+   * The newest compaction started, and the queue revision of the handover that started it. The
+   * queue dispatches a compaction only once the one before it settled, at a later revision, so a
+   * handover of it again, or one older than it, is obsolete.
+   */
+  latest: { requestId: string; revision: number } | null;
+};
+
+const PiQueuedCompactionsDoc = defineDoc<PiQueuedCompactionsState>({
+  kind: "backoffice.pi.queued-compactions",
+  version: 1,
+  scope: "session",
+  checkpointWhen: (_value, _ops, { deltasSinceBase }) => deltasSinceBase >= 31,
+  initial: () => ({ pending: {}, latest: null }),
+});
+
+/**
+ * Whether a handover of the queue's compaction `requestId` at queue `revision` comes too late: that
+ * compaction already started, or a newer one did.
+ */
+export async function isObsoleteQueuedPiCompaction(
+  read: DocumentReader,
+  requestId: string,
+  revision: number,
+  context: Context,
+): Promise<boolean> {
+  const latest = (await read.snapshot(PiQueuedCompactionsDoc, context))?.latest ?? null;
+  return latest !== null && (latest.requestId === requestId || revision < latest.revision);
+}
+
+/**
+ * Records Pi's compaction task for the queue's compaction `requestId`, handed over at queue
+ * `revision`, until it is reported.
+ */
+export async function recordQueuedPiCompaction(
+  harness: Harness,
+  requestId: string,
+  revision: number,
+  taskId: number,
+  context: Context,
+): Promise<void> {
+  await harness.commit(async (tx) => {
+    const compactions = await tx.doc(PiQueuedCompactionsDoc);
+    compactions.pending[requestId] = taskId;
+    compactions.latest = { requestId, revision };
+  }, context);
+}
+
+/** The queue's compactions whose Pi task ended, by request ID, which the queue waits to hear of. */
+export async function readSettledQueuedPiCompactions(
+  harness: Harness,
+  context: Context,
+): Promise<string[]> {
+  const compactions = await harness.snapshot(PiQueuedCompactionsDoc, context);
+  const settled: string[] = [];
+  for (const [requestId, taskId] of Object.entries(compactions?.pending ?? {})) {
+    const task = await harness.getTask(taskId as TaskId, context);
+    // A missing task cannot run any more, so it ended too.
+    if (task === undefined || task.state.status === "terminal") {
+      settled.push(requestId);
+    }
+  }
+  return settled;
+}
+
+export async function forgetReportedQueuedPiCompaction(
+  harness: Harness,
+  requestId: string,
+  context: Context,
+): Promise<void> {
+  await harness.commit(async (tx) => {
+    delete (await tx.doc(PiQueuedCompactionsDoc)).pending[requestId];
   }, context);
 }
 
