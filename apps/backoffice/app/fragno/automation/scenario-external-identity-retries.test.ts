@@ -52,7 +52,7 @@ const scope = { kind: "org" as const, orgId, jurisdiction: null };
 const identity = {
   scope: "external" as const,
   source: "telegram",
-  type: "chat",
+  type: "user",
   id: "1001",
 };
 

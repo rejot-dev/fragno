@@ -69,7 +69,7 @@ type OtpOperation = "issue" | "confirm" | "invalidate";
 const identity = {
   scope: "external",
   source: "telegram",
-  type: "chat",
+  type: "user",
   id: "attacker-chat",
 } as const satisfies AutomationExternalEntityRef;
 

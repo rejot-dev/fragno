@@ -72,15 +72,24 @@ export const buildTelegramAutomationEvent = (
     ...(payload.attachments.length > 0 ? { attachments: payload.attachments } : {}),
   },
   actors: {
-    initiator: {
-      scope: "external",
-      source: AUTOMATION_SOURCES.telegram,
-      // Only a private sender's own conversation can stand for that human identity.
-      // Shared conversations must never reuse a legacy chat-to-user binding.
-      type: payload.fromUserId === payload.chatId ? "chat" : "shared-chat",
-      id: payload.chatId,
-      role: "initiator",
-    },
+    initiator:
+      // Telegram attests the sender, who stays one person in every chat. A chat that sent the
+      // message as itself, such as a channel or an anonymous group admin, names no person.
+      payload.fromUserId !== null && payload.senderChatId === null
+        ? {
+            scope: "external",
+            source: AUTOMATION_SOURCES.telegram,
+            type: "user",
+            id: payload.fromUserId,
+            role: "initiator",
+          }
+        : {
+            scope: "external",
+            source: AUTOMATION_SOURCES.telegram,
+            type: "chat",
+            id: payload.senderChatId ?? payload.chatId,
+            role: "initiator",
+          },
     principal: null,
     delegation: [],
   },

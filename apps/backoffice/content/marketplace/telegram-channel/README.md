@@ -2,10 +2,11 @@
 
 Telegram Channel installs two workflows and their managed automation routes:
 
-- `/start` links a Telegram chat to a Backoffice user through an OTP identity claim.
+- `/start`, sent in a private chat, links a Telegram user to a Backoffice user through an OTP
+  identity claim.
 - `/pi` reports which Pi agent the chat talks to.
-- Ordinary non-command messages run a turn of the `telegram` agent and send its answer back to
-  Telegram.
+- Ordinary non-command messages run a turn of the `telegram` agent as the sender's linked user and
+  send its answer back to the chat.
 
 Version 1.0.1 starts Pi workflows as the user linked to the trusted Telegram initiator and lets the
 Telegram Pi route inherit that user's current permissions.
@@ -38,6 +39,12 @@ uninstalling deletes it.
 
 Version 2.1.1 reads a completed turn's answer with `pi.getPrompt`, which keeps it however the
 agent's context changes later. Earlier versions look it up by its entry in the agent's messages.
+
+Version 3.0.0 links Telegram users instead of chats, because Backoffice now names the person who
+sent a message rather than the chat it was sent in. A linked user's messages in groups run with that
+user's permissions, and each prompt names both the chat and the sender. `/start` in a group asks the
+sender to link in a private chat, where no one else sees the claim link. Links made with earlier
+versions name chats and no longer apply; send `/start` again to link.
 
 Install this item into an organization, project, or personal automation scope. Telegram connection
 availability is configured separately.

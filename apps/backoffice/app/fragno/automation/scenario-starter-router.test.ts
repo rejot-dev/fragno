@@ -176,7 +176,7 @@ if (!telegramTestCommandEntry) {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
   slug: "telegram-channel",
-  version: "2.1.1",
+  version: "3.0.0",
   // The Marketplace page's suggested folder, so nothing depends on where a package lands.
   installationRoot: "/workspace/telegram-channel",
 } as const;
@@ -253,7 +253,7 @@ const telegramMessageEvent = ({
   const actor = {
     scope: "external" as const,
     source: "telegram",
-    type: "chat",
+    type: "user",
     id: chatId,
     role: "initiator" as const,
   };
@@ -268,7 +268,7 @@ const telegramMessageEvent = ({
     payload: {
       messageId: id,
       chatId,
-      fromUserId: null,
+      fromUserId: chatId,
       text,
     },
     actors: {
@@ -421,7 +421,7 @@ describe("starter automation router scenarios", () => {
             assert.equal(response.status, 200, await response.clone().text());
             expect(await response.json()).toMatchObject({
               agentName: "telegram",
-              instructions: expect.stringContaining("Messages arrive from Telegram chats"),
+              instructions: expect.stringContaining("Messages arrive from Telegram users"),
               steward: {
                 kind: "package",
                 listingId: marketplaceListingId({
@@ -1401,7 +1401,7 @@ describe("starter automation router scenarios", () => {
             identity: {
               scope: "external",
               source: "telegram",
-              type: "chat",
+              type: "user",
               id: "1001",
             },
             userId: "user-1",
@@ -1427,7 +1427,7 @@ describe("starter automation router scenarios", () => {
                 initiator: {
                   scope: "external",
                   source: "telegram",
-                  type: "chat",
+                  type: "user",
                   id: "1001",
                   role: "initiator",
                 },
@@ -1450,7 +1450,7 @@ describe("starter automation router scenarios", () => {
               initiator: {
                 scope: "external",
                 source: "telegram",
-                type: "chat",
+                type: "user",
                 id: "1001",
                 role: "initiator",
               },
@@ -1485,7 +1485,7 @@ describe("starter automation router scenarios", () => {
                     initiator: {
                       scope: "external",
                       source: "telegram",
-                      type: "chat",
+                      type: "user",
                       id: "1001",
                       role: "initiator",
                     },
@@ -1843,12 +1843,44 @@ describe("starter automation router scenarios", () => {
           }),
           then.pi.ranPrompt({
             agentName: "telegram",
-            content: "[Telegram chat 1001] Hello Pi",
-            assistantText: "agent:[Telegram chat 1001] Hello Pi",
+            content: "[Telegram chat 1001, user 1001] Hello Pi",
+            assistantText: "agent:[Telegram chat 1001, user 1001] Hello Pi",
           }),
           then.telegram.sentMessage({
             chatId: "1001",
-            text: "agent:[Telegram chat 1001] Hello Pi",
+            text: "agent:[Telegram chat 1001, user 1001] Hello Pi",
+          }),
+
+          // The linked user speaks in a group: their authority, the group's chat.
+          when.telegram.webhook({
+            orgId: "org-1",
+            update: {
+              update_id: 20_005,
+              message: {
+                message_id: 605,
+                date: 1_780_000_000,
+                text: "Hello team",
+                from: { id: 1_001, is_bot: false, first_name: "Ada" },
+                chat: { id: -1_002_001, type: "supergroup", title: "Ada Labs team" },
+              },
+            },
+          }),
+          then.pi.ranPrompt({
+            agentName: "telegram",
+            content: "[Telegram chat -1002001, user 1001] Hello team",
+            assistantText: "agent:[Telegram chat -1002001, user 1001] Hello team",
+          }),
+          then.telegram.sentMessage({
+            chatId: "-1002001",
+            text: "agent:[Telegram chat -1002001, user 1001] Hello team",
+          }),
+          then.assert("assert the group turn runs as the sender's linked user", (ctx) => {
+            expect(ctx.fakes.pi?.turns.at(-1)?.turn.actors.principal).toEqual({
+              scope: "internal",
+              type: "user",
+              id: "user-1",
+              role: "principal",
+            });
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-pi-linking",
@@ -1957,7 +1989,7 @@ describe("starter automation router scenarios", () => {
           }),
           then.pi.ranPrompt({
             agentName: "telegram",
-            content: "[Telegram chat 1001] No response expected",
+            content: "[Telegram chat 1001, user 1001] No response expected",
             assistantText: "",
           }),
           then.assert("assert only the /pi reply was sent", (ctx) => {
@@ -2026,7 +2058,7 @@ describe("starter automation router scenarios", () => {
                     initiator: {
                       scope: "external",
                       source: "telegram",
-                      type: "chat",
+                      type: "user",
                       id: "1001",
                       role: "initiator",
                     },

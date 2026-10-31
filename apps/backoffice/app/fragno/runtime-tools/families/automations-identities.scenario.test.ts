@@ -41,8 +41,8 @@ const scenarioObjects = {
 } satisfies LocalBackofficeObjects;
 
 const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
-const telegramChat = (id: string) =>
-  ({ scope: "external", source: "telegram", type: "chat", id }) as const;
+const telegramUser = (id: string) =>
+  ({ scope: "external", source: "telegram", type: "user", id }) as const;
 
 test("identity.external.list pages through active and revoked bindings", async () => {
   await runBackofficeScenario(
@@ -65,7 +65,7 @@ test("identity.external.list pages through active and revoked bindings", async (
             ] as const) {
               await automations.commands.bindExternalIdentity(
                 {
-                  identity: telegramChat(externalId),
+                  identity: telegramUser(externalId),
                   userId,
                   verifiedByClaimId: `claim-${externalId}`,
                 },
@@ -73,7 +73,7 @@ test("identity.external.list pages through active and revoked bindings", async (
               );
             }
             await automations.commands.revokeExternalIdentity(
-              { identity: telegramChat("1002"), expectedUserId: "user-2", expectedVersion: 0 },
+              { identity: telegramUser("1002"), expectedUserId: "user-2", expectedVersion: 0 },
               { execution },
             );
 
@@ -122,7 +122,7 @@ test("identity.external.list pages through active and revoked bindings", async (
 
             const text = await bash.exec("identity.external.list");
             expect(text.exitCode, text.stderr).toBe(0);
-            expect(text.stdout).toContain("telegram\tchat\t1002\tuser-2\trevoked");
+            expect(text.stdout).toContain("telegram\tuser\t1002\tuser-2\trevoked");
           },
         ),
       ],

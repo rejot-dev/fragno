@@ -2346,7 +2346,7 @@ const buildIdentityClaimCompletedEvent = (input: ConfirmClaimInput): AutomationE
   const actor = {
     scope: "external" as const,
     source: input.actor?.source ?? "telegram",
-    type: input.actor?.type ?? "chat",
+    type: input.actor?.type ?? "user",
     id: input.actor?.id ?? "unknown",
     role: "initiator" as const,
   };
@@ -2730,7 +2730,7 @@ const buildStepBuilders = <
                 identity: {
                   scope: "external",
                   source: input.source ?? "telegram",
-                  type: input.externalType ?? "chat",
+                  type: input.externalType ?? "user",
                   id: input.externalId,
                 },
                 userId: input.userId,
@@ -3142,7 +3142,7 @@ const buildStepBuilders = <
                 identity: {
                   scope: "external",
                   source: input.source ?? "telegram",
-                  type: input.externalType ?? "chat",
+                  type: input.externalType ?? "user",
                   id: input.externalId,
                 },
                 expectedUserId: input.expectedUserId,

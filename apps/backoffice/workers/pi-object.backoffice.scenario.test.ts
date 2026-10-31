@@ -1774,7 +1774,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
         initiator: {
           scope: "external" as const,
           source: "telegram",
-          type: "chat",
+          type: "user",
           id: "1001",
           role: "initiator" as const,
         },

@@ -11,10 +11,10 @@ import {
 } from "./external-identities";
 import { createAutomationFragment } from "./index";
 
-const telegramChat = (id: string): ExternalIdentity => ({
+const telegramUser = (id: string): ExternalIdentity => ({
   scope: "external",
   source: "telegram",
-  type: "chat",
+  type: "user",
   id,
 });
 
@@ -80,7 +80,7 @@ describe("external identity binding IDs", () => {
 describe("external identity binding services", () => {
   test("applies binding, revocation, and reactivation transitions", async () => {
     const fragment = createAutomation("external-identity-binding-lifecycle");
-    const identity = telegramChat("chat-1");
+    const identity = telegramUser("chat-1");
 
     await expect(
       fragment.callServices(() => fragment.services.getExternalIdentityBinding({ identity })),
@@ -267,7 +267,7 @@ describe("external identity binding services", () => {
 
   test("rejects a stale revocation after the same user reactivates the binding", async () => {
     const fragment = createAutomation("external-identity-binding-stale-revocation");
-    const identity = telegramChat("chat-1");
+    const identity = telegramUser("chat-1");
 
     await fragment.callServices(() =>
       fragment.services.bindExternalIdentity({
@@ -310,8 +310,8 @@ describe("external identity binding services", () => {
 
   test("rejects a verified claim already used by another current binding", async () => {
     const fragment = createAutomation("external-identity-binding-claim-conflict");
-    const firstIdentity = telegramChat("chat-1");
-    const secondIdentity = telegramChat("chat-2");
+    const firstIdentity = telegramUser("chat-1");
+    const secondIdentity = telegramUser("chat-2");
 
     await fragment.callServices(() =>
       fragment.services.bindExternalIdentity({
@@ -344,7 +344,7 @@ describe("external identity binding services", () => {
     await expect(
       fragment.callServices(() =>
         fragment.services.revokeExternalIdentity({
-          identity: telegramChat("missing"),
+          identity: telegramUser("missing"),
           expectedUserId: "user-1",
           expectedVersion: 0,
         }),

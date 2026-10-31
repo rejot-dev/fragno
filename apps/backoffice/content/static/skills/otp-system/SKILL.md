@@ -2,7 +2,7 @@
 name: otp-system
 description:
   Use the Backoffice OTP identity claim capability. Use when creating identity claim links, handling
-  otp:identity.claim.completed events, or linking external actors such as Telegram chats to
+  otp:identity.claim.completed events, or linking external actors such as Telegram users to
   Backoffice users.
 ---
 
@@ -27,7 +27,7 @@ Payload fields:
 - `otpId`: id of the completed claim.
 - `claimType`: claim type.
 
-Actor: the external actor that was claimed, for example a Telegram chat entity.
+Actor: the external actor that was claimed, for example a Telegram user entity.
 
 Subject:
 
@@ -35,6 +35,9 @@ Subject:
 
 Common automation pattern: start a workflow that sends a claim URL to an external actor, store
 `otpId -> workflowInstanceId`, and resume the workflow when this event arrives.
+
+Send a claim URL only where its actor alone reads it, such as a Telegram private chat, whose chat ID
+equals the sender's user ID. Whoever opens the URL links the actor to their own account.
 
 Hook scope: `otp`.
 

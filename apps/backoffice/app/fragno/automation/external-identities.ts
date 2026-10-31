@@ -3,9 +3,9 @@ import { z } from "zod";
 
 export type ExternalIdentity = AutomationExternalEntityRef;
 
-/** Telegram conversations shared by several senders cannot confer one human's authority. */
+/** Only a Telegram user is one person; a chat can speak for several, or for none. */
 export function canLinkExternalIdentity(identity: ExternalIdentity): boolean {
-  return identity.source !== "telegram" || identity.type === "chat";
+  return identity.source !== "telegram" || identity.type === "user";
 }
 
 export const externalIdentitySchema: z.ZodType<ExternalIdentity> = z.strictObject({

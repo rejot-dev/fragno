@@ -33,12 +33,20 @@ export const telegramConfigureInputSchema = z.object({
 });
 
 const telegramAutomationExternalEntities = {
+  user: {
+    scope: "external",
+    source: AUTOMATION_SOURCE,
+    type: "user",
+    label: "Telegram user",
+    description:
+      "Person who sent a message in any chat with the bot; links to one Backoffice user.",
+  },
   chat: {
     scope: "external",
     source: AUTOMATION_SOURCE,
     type: "chat",
     label: "Telegram chat",
-    description: "Telegram chat or conversation that can send and receive bot messages.",
+    description: "Channel or group that sent a message as itself, naming no person.",
   },
 } as const satisfies Record<string, AutomationExternalEntityDefinition<typeof AUTOMATION_SOURCE>>;
 
@@ -47,12 +55,16 @@ const telegramMessageReceivedPayloadSchema = z.object({
   chatId: z
     .string()
     .min(1)
-    .describe("Telegram chat ID, also the initiator's id; backoffice#telegram actions take it."),
+    .describe(
+      "Telegram chat ID; equals fromUserId in a private chat. backoffice#telegram actions take it.",
+    ),
   fromUserId: z
     .string()
     .min(1)
     .nullable()
-    .describe("Sender's Telegram user ID; null when Telegram omits the sender."),
+    .describe(
+      "Sender's Telegram user ID, also the user initiator's id; null when Telegram omits the sender.",
+    ),
   text: z
     .string()
     .nullable()
@@ -68,7 +80,9 @@ const telegramMessageReceivedPayloadSchema = z.object({
 const telegramMessageReceivedActorSchema = z.object({
   scope: z.literal("external"),
   source: z.literal(AUTOMATION_SOURCE),
-  type: z.literal("chat"),
+  type: z
+    .enum(["user", "chat"])
+    .describe("user when a person sent the message; chat when a chat sent it as itself."),
   id: z.string().min(1),
   role: z.literal("initiator"),
 });
@@ -126,7 +140,10 @@ export const telegramCapability: BackofficeCapability = {
       },
     ],
     skillPaths: [],
-    externalEntities: [telegramAutomationExternalEntities.chat],
+    externalEntities: [
+      telegramAutomationExternalEntities.user,
+      telegramAutomationExternalEntities.chat,
+    ],
     automationEvents: [
       {
         source: AUTOMATION_SOURCE,

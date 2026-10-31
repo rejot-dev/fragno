@@ -65,7 +65,7 @@ const scenarioObjects = {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
   slug: "telegram-channel",
-  version: "2.1.1",
+  version: "3.0.0",
   installationRoot: "/workspace/telegram-channel",
 } as const;
 
@@ -81,7 +81,7 @@ const telegramMessageEvent = ({
   const actor = {
     scope: "external" as const,
     source: "telegram",
-    type: "chat",
+    type: "user",
     id: chatId,
     role: "initiator" as const,
   };
@@ -96,7 +96,7 @@ const telegramMessageEvent = ({
     payload: {
       messageId: id,
       chatId,
-      fromUserId: null,
+      fromUserId: chatId,
       text,
     },
     actors: {
@@ -113,7 +113,7 @@ const identityClaimCompletedEvent = ({
   otpId,
   subjectUserId = "user-1",
   actorSource = "telegram",
-  actorType = "chat",
+  actorType = "user",
   actorId = "1001",
 }: {
   otpId: string;
@@ -234,7 +234,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
                     identity: {
                       scope: "external",
                       source: "telegram",
-                      type: "chat",
+                      type: "user",
                       id: "1001",
                     },
                   },
@@ -250,7 +250,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
 
           then.telegram.sentMessage({
             chatId: "1001",
-            text: "Your Telegram chat is now linked.",
+            text: "Your Telegram account is now linked.",
           }),
 
           then.workflow.instance({
@@ -275,6 +275,55 @@ describe("Telegram Channel OTP linking automation in memory", () => {
             orgId: "org-1",
             fragments: ["automations", "telegram"],
           }),
+        ],
+      }),
+    );
+  });
+
+  test("Telegram /start in a group asks for a private chat and posts no claim link", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "starter telegram /start in a group creates no claim",
+        fakes: ({ fake }) => ({ telegram: fake.telegram() }),
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.telegram.configured({ orgId: "org-1", botUsername: "fragno_bot" }),
+        ],
+        steps: ({ when, then }) => [
+          when.marketplace.install(TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION),
+          when.telegram.webhook({
+            orgId: "org-1",
+            update: {
+              update_id: 10_001,
+              message: {
+                message_id: 501,
+                date: 1_780_000_000,
+                text: "/start",
+                from: { id: 1_001, is_bot: false, first_name: "Ada" },
+                chat: { id: -1_002_001, type: "supergroup", title: "Ada Labs team" },
+              },
+            },
+          }),
+
+          then.telegram.sentMessage({
+            chatId: "-1002001",
+            text: "Send /start to me in a private chat to link your Telegram account.",
+          }),
+          then.assert("assert no claim link was sent", (ctx) => {
+            const calls = ctx.fakes.telegram?.sendMessageCalls ?? [];
+            if (calls.length !== 1) {
+              throw new Error(
+                `Expected only the private-chat prompt, got ${calls.length} messages.`,
+              );
+            }
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "telegram-user-linking",
+            status: "complete",
+            output: { skipped: true, reason: "not-private-chat" },
+          }),
+          then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),
     );
@@ -372,7 +421,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
 
           then.telegram.sentMessage({
             chatId: "1001",
-            text: "This Telegram chat is already linked.",
+            text: "Your Telegram account is already linked.",
           }),
           then.workflow.instance({
             remoteWorkflowName: "telegram-user-linking",

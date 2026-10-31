@@ -47,7 +47,7 @@ const scope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
 const identity = {
   scope: "external" as const,
   source: "telegram",
-  type: "chat",
+  type: "user",
   id: "chat-1",
 };
 const objectExecution = createBackofficeServiceExecution({
@@ -92,7 +92,7 @@ describe("Automations identity binding RPCs", () => {
           resource: {
             kind: "external-identity-binding",
             source: "telegram",
-            externalType: "chat",
+            externalType: "user",
             externalId: "chat-1",
             userId: "user-1",
           },
@@ -110,7 +110,7 @@ describe("Automations identity binding RPCs", () => {
           resource: {
             kind: "external-identity-binding",
             source: "telegram",
-            externalType: "chat",
+            externalType: "user",
             externalId: "chat-1",
           },
         },
@@ -136,7 +136,7 @@ describe("Automations identity binding RPCs", () => {
           resource: {
             kind: "external-identity-binding",
             source: "telegram",
-            externalType: "chat",
+            externalType: "user",
             externalId: "chat-1",
             expectedUserId: "user-1",
             expectedVersion: 0,
