@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/lofi-zql",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Live ZQL views of a Fragno lofi SQLite replica, maintained incrementally",
   "homepage": "https://fragno.dev",
   "license": "MIT",

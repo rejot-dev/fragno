@@ -1,5 +1,190 @@
 # @fragno-dev/db
 
+## 0.5.0
+
+### Minor Changes
+
+- d2da73f: feat: add atomic bulk deletes with optimistic concurrency and bounded SQL statements.
+- 867bc9d: feat: `alterTable()` can drop regular columns (`dropColumn`), keeping the table's rows.
+  Drop a column's indexes first; ID, system, and reference columns cannot be dropped. A SQLite
+  rebuild now keeps a column renamed to a name dropped or renamed away in the same step.
+- 187d67e: feat: replace bare outbox streaming with protocol-1 frames and migrate built-in
+  consumers.
+
+### Patch Changes
+
+- 0d4cbe8: feat: support additional isolated fragment runtimes in database tests
+- 2797663: perf: use fixed 50-entry, versionstamp-aligned outbox catch-up pages, bound stream
+  snapshot retention, and align Lofi with the canonical outbox page size.
+- fcecfed: fix: await async transformRetrieve callbacks before mutation
+- cff3b99: feat: add Auth-owned email verification requests, resend APIs, and database-time checks.
+- fcd0179: fix: batch normalized outbox mutations to stay within Durable Object SQLite binding
+  limits.
+- 4db850e: perf: stream bounded outbox pages item by item with database backpressure, isolate
+  bounded catch-up work, share one live polling loop across active stream observers, reuse one UTF-8
+  frame encoding across observers receiving the same entry, and keep normalized SQL mutation
+  payloads as opaque JSON through entry assembly and framing.
+- 766f977: perf: bound live workflow emission memory and remove snapshot APIs.
+- 27b7db5: fix: support no-op migrations for the in-memory adapter.
+- 9419f78: feat: add a reusable buffered pump registry for async stream delivery.
+- 73e14d7: feat: add `uow.checkAbsent()` for complete, non-null unique-index keys.
+- a8010b8: fix: await stream pumps and SQLite persistence writes before closing their resources.
+- 26a21e3: feat: expose request-source and Durable Object initialization instrumentation.
+- eb6ea3e: fix: handle concurrent adapter identity initialization without failing cold-start
+  requests.
+- 71b0233: feat: delete completed durable hooks once their last attempt is older than
+  `completedHookRetentionMinutes` (default 7 days; `false` keeps them). A hook `id` now rejects
+  duplicate triggers only while its hook is kept.
+- 4fd5010: fix: preserve application Date values when serializing database cursors.
+- 2ab64f4: feat: export SQL naming from `@fragno-dev/db/naming` without `node:crypto`, and the
+  `/_internal` description call from `@fragno-dev/db/outbox`. fix: derive `/_internal` URLs
+  correctly from a base URL without a path.
+- 3f9d1bb: fix: normalize database constraint errors for duplicate handling.
+- 8b651fe: fix: dropping an index works on SQLite and Postgres, and drops a unique index by its own
+  name instead of silently doing nothing.
+- b79e697: fix: migrations that create and drop a table with a foreign key in one run, such as a new
+  database migrating a schema that dropped the table, no longer fail on PostgreSQL and MySQL.
+- c1314be: feat: schemas can drop a table with `dropTable()`. Its migration drops the table only if
+  it exists, so a schema can restore an `addTable()` an earlier release replaced with `noOp()` and
+  drop it. Lofi skips the outbox rows of tables a registered schema dropped instead of failing on
+  them.
+- 767c934: feat: expose durable hook dispatcher idle waiting and instrumentation overrides.
+- b854e42: feat!: each durable hook owns its retry policy, passed as
+  `defineHook(fn, { retryPolicy })`, with `isRetryable(error)` to fail at once and jittered backoff;
+  the default now retries for about half an hour instead of about 3 seconds. Migrate by moving
+  `TriggerHookOptions.retryPolicy` onto the hook definition and declaring hook map types as
+  `HookFn<Payload>` instead of plain functions.
+- c13b6c7: fix: an empty `in` list now matches no rows, and an empty `not in` list every row,
+  instead of failing with a syntax error on PostgreSQL and MySQL.
+- e6d80bb: fix: A query-tree join that compares a row's `id` with a plain string column of its
+  parent now matches on the external id the column holds. It compared the internal id instead, so
+  such joins, such as `onIndex("primary", (eb) => eb("id", "=", eb.parent("eventId")))`, never
+  matched.
+- d9a5ffe: fix: include db-now defaults in create outbox payloads.
+- a15bcc2: fix: decode binary columns of joined rows as bytes on PostgreSQL and MySQL.
+- 719ac3b: refactor!: remove `markHookFailed` from the durable hooks service. Hook processing
+  already settles failed attempts; let a hook throw instead of marking it failed yourself.
+- d1b4bd9: refactor!: remove `SchemaBuilder.mergeWithExistingSchema()`, which Fragno no longer used.
+  Define each table in the schema that owns it; fragments keep their schemas apart under their own
+  namespaces.
+- 83bea0b: feat: `alterTable()` can rename columns (`renameColumn`) and drop indexes (`dropIndex`),
+  keeping the table's rows. Lofi keys its IndexedDB indexes by the schema's current indexes.
+- 9a01df4: feat: Retry a durable hook that failed for good with
+  `hookService.retryFailedHook(namespace, hookId)`, which queues it again with a fresh set of
+  attempts and wakes its dispatcher. Fragment routes and services reach their own hook service
+  through `getFragmentDurableHooks(deps)` from `@fragno-dev/db/durable-hooks`.
+- d92f4ce: feat: let create and update operations classify selected unique constraints as retryable
+  conflicts.
+- 1d2125e: fix: parse prefixed SQLite unique constraint errors from SQLocal.
+- fc794d7: fix: `starts with` and `not starts with` now match a literal, case-sensitive prefix on
+  every database, compiled to index range bounds instead of `LIKE`. `%` and `_` in the prefix are no
+  longer wildcards, SQLite no longer ignores ASCII case, and prefixes longer than Durable Object
+  SQLite's 50-byte `LIKE` limit work. Code that relied on case-insensitive matching on SQLite must
+  normalize case itself.
+- 0cf8414: fix: Stop polling idle workflow steps while preserving event delivery, lifecycle writes,
+  and failed-flush retries. Pass `polling: "interval"` to `BufferedDatabasePump` for existing
+  polling behavior or `polling: "on-demand"` for writer-only scheduling; observer leases require
+  interval mode. Migrate scope and log metrics from `successfulFlushCount` and `emptyFlushCount` to
+  `flushCount`, `eventPollCount`, and `applicationEmissionsFlushed`.
+- 20324e7: fix: preserve earlier durable hook alarms when scheduling new work.
+- 6b028b6: feat: report each committed durable-hook attempt outcome (`completed`, `retry-scheduled`,
+  or `failed`) to `DurableHooksInstrumentation.observeAttemptOutcome()`
+- c1255e4: fix: await durable hook alarm handoff after mutations, fail runtime initialization when
+  dispatcher alarm setup fails, await async error observers, and keep hook processing owned by alarm
+  invocations.
+- 318921d: fix: process durable hooks concurrently with bounded backpressure.
+- 92adef0: feat: recover durable hooks from lost Cloudflare alarms; add `wake()` and their observers
+- 7e2d989: refactor: reject Durable Object SQLite introspection explicitly.
+- d62cc57: feat: include execution duration in Durable Object query metrics.
+- ae415ff: fix: retry workflow step inserts when Durable Object query errors wrap SQLite unique
+  conflicts.
+- 204bbb7: feat: expose final Durable Object SQLite row counters through explicit query
+  instrumentation.
+- 8a60280: feat: add handler transaction early returns after retrieve.
+- 2b8f4b7: perf: assemble outbox stream entries without scanning payload strings character by
+  character.
+- a7bf719: refactor: remove the legacy relation-key join API and execution path.
+- 9ea7170: feat: add named transaction and durable-hook instrumentation with direct package exports.
+- aff91d1: fix: harden cursor pagination metadata, in-memory unique create rollback, and SQL
+  reference filtering.
+- a28094e: feat: add query-tree find APIs with nested joins and count support.
+- b4fc242: fix: a forked in-memory adapter no longer restarts internal row ids, which let a write
+  from the fork overwrite an existing row in a shared table.
+- 033a643: fix: snapshot mutable column values at the in-memory database boundary so writes and
+  reads match persisted database value semantics.
+- c41c1e2: fix: preserve JSON value types in joined query-tree projections.
+- f42c8c6: fix materialize db-now values before serializing outbox payloads.
+- 9cd79f3: fix: Preserve MySQL DATE calendar values through query projections.
+- 7a625f6: fix: preserve ordered join-many results when MySQL JSON aggregation discards row order.
+- d689267: fix: number the first outbox entry correctly on MySQL, so it no longer sorts after later
+  entries.
+- 49ca4fb: fix: Quote MySQL outbox reservation settings identifiers.
+- 0e63275: fix: align MySQL string defaults, serialization, and affected-row handling
+- 4e5d611: fix: preserve outer handlerTx mutations when executing nested transactions
+- 2dbc550: fix: let Node durable-hook wake calls return when a processor claims no hooks.
+- 2dbc550: fix: serialize Node durable-hook polling and await active polls during dispatcher
+  shutdown.
+- 7405040: feat: store outbox mutation payloads on indexed mutation rows for granular compaction.
+- 04fac88: fix: SQL adapters read a null reference column as `null` instead of a reference without
+  an ID
+- b40a129: fix: include materialized create defaults in durable outbox payloads.
+- 5256cee: fix: add bounded diagnostics for non-retryable outbox insert failures
+- 6c0de3b: perf: read outbox stream mutations as stored text instead of re-encoding them as JSON in
+  SQL.
+- f297b5d: feat: add streaming outbox transport for Lofi clients.
+- caf581b: feat: allow database fragments to restrict outbox writes to selected tables.
+- 02e29d4: fix: keep outbox streams open while clients catch up, and serve others past a slow one.
+- 7de0078: feat: add buffered pump observation waits for live workflow coordination.
+- d7236a2: feat: expose standalone mutation recording through a canonical package subpath.
+- 1e1088b: fix: reduce default durable hooks logging noise during tests
+- 9e2ee05: fix: serialize referenced ids in generic SQL where clauses.
+- 3734573: fix: treat same-process buffered pump scope collisions as workflow runner contention
+- 1c57f29: perf: reduce idle outbox polling and name internal database transaction spans.
+- f510d32: feat: `referenceColumn({ table })` types its values as `FragnoReferenceTo<table>`, a
+  `FragnoReference` that names the referenced table in its type, so consumers can type relationships
+- 48c0094: refactor: remove deprecated query engine, hook scheduler, and processor compatibility
+  APIs
+- 7a60491: fix: bind buffered pump schedulers to active actors so polling work drains with its
+  owner.
+- 6649e1f: feat: add request-scoped read query policies for middleware authorization.
+- 2d729a4: feat: expose Fragment Durable Object host definitions separately from runtime
+  infrastructure.
+- 85be413: fix: Resolve default outbox targets through Fragno's sanitized physical database
+  namespace.
+- fa21507: fix: restore interrupted Pi agent turns from live step emissions and publish commit
+  markers.
+- 79055dd: feat: add a reusable Cloudflare Durable Object fragment host.
+- e7b36e1: fix: normalize SQLite result-code constraint errors.
+- a61b3a5: fix: parse Cloudflare SQLite unique-constraint columns without trailing result metadata.
+- 4dc14bf: fix: round-trip SQLite BLOB values in joined query-tree results.
+- a64dc64: feat: add text columns and map string columns to index-safe varchar storage.
+- ea8ea88: feat: allow scoping the database roundtrip guard to selected routes.
+- 5599183: feat: persist and restore durable hook propagation context, and enforce exactly-once hook
+  execution by attempt instrumentation.
+- e2cad8d: feat: add typed application request context and trusted W3C propagation extraction.
+- 93bc657: fix: verify resumed outbox checkpoints without replaying old entries.
+- 9919fdd: feat: add schema-bound FragnoDatabase APIs and explicit unit-of-work query flows.
+- Updated dependencies [a8010b8]
+- Updated dependencies [0186a7a]
+- Updated dependencies [fe0e92d]
+- Updated dependencies [9ea7170]
+- Updated dependencies [03d5a5c]
+- Updated dependencies [bfe589e]
+- Updated dependencies [6cc8f36]
+- Updated dependencies [4944ecf]
+- Updated dependencies [d9ac2a3]
+- Updated dependencies [ff3673f]
+- Updated dependencies [2e7263b]
+- Updated dependencies [801e6ab]
+- Updated dependencies [7a60491]
+- Updated dependencies [3570c2a]
+- Updated dependencies [d125074]
+- Updated dependencies [8afaf3d]
+- Updated dependencies [3328fe3]
+- Updated dependencies [e2cad8d]
+- Updated dependencies [5e0cfe8]
+  - @fragno-dev/core@0.2.3
+
 ## 0.4.1
 
 ### Patch Changes
