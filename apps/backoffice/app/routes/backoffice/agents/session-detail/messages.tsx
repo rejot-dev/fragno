@@ -221,10 +221,11 @@ export function AssistantMessage({
     };
   });
   const lastShown = shownTurn.at(-1);
-  // What the agent says shows it at work, as does a card it works in.
+  // A card the agent works in shows it at work. What it said does not: text stops moving while the
+  // agent thinks about its next step, and the turn would read as finished.
   const working =
     running &&
-    (lastShown === undefined || (lastShown.kind === "work" && lastShown.visibleSteps.length === 0));
+    (lastShown === undefined || lastShown.kind === "said" || lastShown.visibleSteps.length === 0);
   const shown = shownTurn.some(
     (segment) =>
       segment.kind === "said" || segment.visibleSteps.length > 0 || segment.workflowRuns.length > 0,

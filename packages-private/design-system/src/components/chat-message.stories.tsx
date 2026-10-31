@@ -12,6 +12,7 @@ import {
 import { OUT_OF_CONTEXT, SAMPLE_TIME } from "./chat-story-support";
 import { CopyButton } from "./copy-button";
 import { InlineAlert } from "./inline-alert";
+import { WorkingIndicator } from "./working-indicator";
 
 export default { title: "Agents/Chat messages" };
 
@@ -128,6 +129,45 @@ export function Interleaved() {
             </p>
           </ChatActivityStep>
         </ChatActivity>
+      </ChatAssistantMessage>
+    </Column>
+  );
+}
+
+/**
+ * Once the agent has said something, its text stops moving while it thinks about its next step;
+ * the indicator below keeps the turn from reading as finished.
+ */
+export function WorkingAfterSpeaking() {
+  return (
+    <Column>
+      <ChatUserMessage time={SAMPLE_TIME} attachments={null}>
+        <p>Send a reminder for every unpaid invoice.</p>
+      </ChatUserMessage>
+      <ChatAssistantMessage author={{ name: "Pi", time: SAMPLE_TIME }} footer={null}>
+        <ChatActivity
+          status={{
+            kind: "settled",
+            outcome: "done",
+            durationMs: null,
+            note: "1 tool · 1 thought",
+            failedSteps: 0,
+          }}
+          artifacts={null}
+        >
+          <ChatActivityStep
+            icon="code"
+            state="done"
+            title="invoices.unpaid"
+            detail={null}
+            durationMs={1_180}
+            actions={null}
+          >
+            {null}
+          </ChatActivityStep>
+        </ChatActivity>
+        <p>Three invoices are open. Drafting a reminder for each customer now.</p>
+        <WorkingIndicator>Working…</WorkingIndicator>
       </ChatAssistantMessage>
     </Column>
   );
