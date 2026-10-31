@@ -17,6 +17,7 @@ import type {
 import type {
   MarketplacePublishResult,
   PackageInstallation,
+  PackageInstallStatus,
   PackagesImportLegacyInput,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
@@ -746,6 +747,11 @@ export type AutomationsCommands = {
     input: MarketplaceIngestionRequestInput,
     context: BackofficeActionRpcContext,
   ): Promise<MarketplaceIngestionRestartResult>;
+  /** Where an installation into `targetScope` this organization coordinates stands. */
+  getMarketplaceIngestionStatus(input: {
+    workflowInstanceId: string;
+    targetScope: BackofficeRoutableScope;
+  }): Promise<PackageInstallStatus | null>;
   bindExternalIdentity(
     input: BindExternalIdentityInput,
     context: BackofficeActionRpcContext,

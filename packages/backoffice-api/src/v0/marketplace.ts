@@ -1,6 +1,9 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
+import { automationRouteCreateInputSchema } from "./automation";
+import { automationEventDefinitionCreateInputSchema } from "./events";
+import { piAgentDefinitionCreateSchema } from "./pi";
 import { BACKOFFICE_PERMISSION, backofficePermissionRequirementSchema } from "./shared/permissions";
 import {
   backofficeOrganizationScopeSchema,
@@ -313,6 +316,43 @@ export const packagePermissionsSchema = z.lazy(() =>
     ),
 );
 
+/**
+ * What installing a release sets up beyond copying its files: the permissions its routes and install
+ * workflow use, and the routes, event definitions, and agents Backoffice keeps in sync for each
+ * installation. A route's `start_workflow` names a file in the package; the installation resolves it
+ * to the installed copy.
+ */
+export const marketplacePackageDeclarationSchema = z.lazy(() =>
+  z.strictObject({
+    permissions: packagePermissionsSchema.default([]),
+    routes: z
+      .array(automationRouteCreateInputSchema)
+      .default([])
+      .refine(
+        (routes) => new Set(routes.map((route) => route.id)).size === routes.length,
+        "Declared route ids must be unique.",
+      ),
+    eventDefinitions: z
+      .array(automationEventDefinitionCreateInputSchema)
+      .default([])
+      .refine(
+        (definitions) =>
+          new Set(definitions.map(({ source, eventType }) => JSON.stringify([source, eventType])))
+            .size === definitions.length,
+        "Declared event definitions must each have their own source and event type.",
+      ),
+    agents: z
+      .array(piAgentDefinitionCreateSchema._zod.innerType.strict())
+      .default([])
+      .refine(
+        (agents) => new Set(agents.map((agent) => agent.agentName)).size === agents.length,
+        "Declared agent names must be unique.",
+      ),
+  }),
+);
+
+export type MarketplacePackageDeclaration = z.infer<typeof marketplacePackageDeclarationSchema>;
+
 /** Installation names the Marketplace holding the listing; listing ids repeat across Marketplaces. */
 export const marketplaceIngestionRequestInputSchema = z.lazy(() =>
   z.object({
@@ -391,7 +431,11 @@ export type MarketplacePublishedListingInput = z.input<
 >;
 
 export const marketplaceViewInputSchema = z.lazy(() =>
-  marketplacePublishedListingInputSchema._zod.innerType.extend(marketplaceReadVisibilityField),
+  marketplacePublishedListingInputSchema._zod.innerType.extend({
+    ...marketplaceReadVisibilityField,
+    /** The release whose declaration to read; the latest when omitted, as installing does. */
+    version: marketplaceVersionSchema.optional(),
+  }),
 );
 
 /** A dry run writes nothing; accepted packages return their durable System workflow identity. */
@@ -471,6 +515,17 @@ export const marketplaceListingDetailSchema = z.lazy(() =>
 
 export type MarketplaceListingDetail = z.infer<typeof marketplaceListingDetailSchema>;
 
+/** A listing with one release's declaration, which an installer approves the permissions of. */
+export const marketplaceViewResultSchema = z.lazy(() =>
+  marketplaceListingDetailSchema._zod.innerType.extend({
+    release: marketplacePackageDeclarationSchema._zod.innerType.extend({
+      version: marketplaceVersionSchema,
+    }),
+  }),
+);
+
+export type MarketplaceViewResult = z.infer<typeof marketplaceViewResultSchema>;
+
 /** Hidden entries belong to listings that are no longer published. */
 export const marketplaceFeatureStateSchema = z.lazy(() =>
   z.enum(["active", "scheduled", "expired", "hidden"]),
@@ -519,10 +574,10 @@ export const marketplaceOperations = {
   },
   "marketplace.view": {
     description:
-      "Inspect published package metadata and cursor-paginated releases in the public Marketplace, or in the current organization's Marketplace with organization visibility.",
+      "Inspect published package metadata and cursor-paginated releases in the public Marketplace, or in the current organization's Marketplace with organization visibility. `release` is what installing one release (the latest unless version is given) sets up: the permissions to approve with packages.install, and the routes, event definitions, and agents it defines. Its routes' start_workflow paths are relative to the installation folder.",
     permissions: [BACKOFFICE_PERMISSION.marketplace.read],
     input: marketplaceViewInputSchema,
-    output: marketplaceListingDetailSchema,
+    output: marketplaceViewResultSchema,
   },
   "marketplace.publish": {
     description:
@@ -612,13 +667,70 @@ export const packagesImportLegacyResultSchema = z.lazy(() =>
 
 export type PackagesImportLegacyResult = z.infer<typeof packagesImportLegacyResultSchema>;
 
+const packageWorkflowStatusSchema = z.lazy(() =>
+  z.enum(["active", "paused", "waiting", "complete", "errored", "terminated"]),
+);
+
+const packageWorkflowErrorSchema = z.lazy(() =>
+  z.strictObject({ name: z.string(), message: z.string() }),
+);
+
+/**
+ * A package's own install workflow, a saved workflow in the installation's coordinating
+ * organization, where workflow.getInstance reads what it waits for and workflow.sendEvent answers.
+ */
+const packageInstallerStatusSchema = z.lazy(() =>
+  z.strictObject({
+    workflowInstanceId: z.string(),
+    status: packageWorkflowStatusSchema,
+  }),
+);
+
+/** Where one installation run stands; it records the installation once it completes. */
+export const packageInstallStatusSchema = z.lazy(() =>
+  z.discriminatedUnion("status", [
+    z.strictObject({
+      listingId: marketplaceListingIdSchema,
+      version: marketplaceVersionSchema,
+      installationRoot: marketplaceInstallationRootSchema,
+      status: z.enum(["active", "paused", "waiting", "complete"]),
+      installer: packageInstallerStatusSchema.nullable(),
+    }),
+    z.strictObject({
+      listingId: marketplaceListingIdSchema,
+      version: marketplaceVersionSchema,
+      installationRoot: marketplaceInstallationRootSchema,
+      status: z.enum(["errored", "terminated"]),
+      error: packageWorkflowErrorSchema,
+      installer: packageInstallerStatusSchema.nullable(),
+    }),
+  ]),
+);
+
+export type PackageInstallStatus = z.infer<typeof packageInstallStatusSchema>;
+
+/** Names an installation run as packages.install returned it, with the organization running it. */
+export const packagesStatusInputSchema = z.lazy(() =>
+  z.strictObject({
+    workflowInstanceId: z.string().trim().min(1),
+    workflowScope: backofficeOrganizationScopeSchema,
+  }),
+);
+
 export const packagesOperations = {
   "packages.install": {
     description:
-      "Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous. Pass the release's declared permissions to approve them; the install is refused unless they match exactly, and you must hold each one. A refusal names the permissions the release declares. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.",
+      "Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous: follow workflowInstanceId with packages.status. Pass the release's declared permissions, which marketplace.view returns, to approve them; the install is refused unless they match exactly, and you must hold each one. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.",
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packagesInstallInputSchema,
     output: packagesInstallResultSchema,
+  },
+  "packages.status": {
+    description:
+      "Get where an installation started with packages.install stands, by the workflowInstanceId and workflowScope it returned, or null when this workspace has no such installation. A complete run has recorded the installation, which packages.get reads; a failed one says why. installer is the package's own install workflow, null for packages without one or until it starts. While it waits, such as for the package's settings, read the event types it waits for with workflow.getInstance and send them with workflow.sendEvent, both in the workflowScope organization.",
+    permissions: [BACKOFFICE_PERMISSION.packages.read],
+    input: packagesStatusInputSchema,
+    output: z.lazy(() => packageInstallStatusSchema.nullable()),
   },
   "packages.ls": {
     description: "List the package installations in the current workspace.",

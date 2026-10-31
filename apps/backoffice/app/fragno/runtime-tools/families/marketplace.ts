@@ -4,6 +4,7 @@ import { marketplaceViewInputSchema } from "@fragno-dev/backoffice-api/v0/market
 import { type MarketplaceFeatureEntry } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { z } from "zod";
 
+import { formatPackagePermissions } from "@/fragno/marketplace/package-declaration";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
@@ -115,6 +116,11 @@ const marketplaceViewTool = defineBackofficeRuntimeTool({
               "public (default) reads the public Marketplace; organization reads the current organization's Marketplace.",
           },
           {
+            name: "version",
+            valueRequired: true,
+            description: "Release whose declaration to show; defaults to the latest release.",
+          },
+          {
             name: "version-page-size",
             valueRequired: true,
             description: "Release page size (maximum 60).",
@@ -130,6 +136,7 @@ const marketplaceViewTool = defineBackofficeRuntimeTool({
       parse: defineCliArgsParser<z.input<typeof marketplaceViewInputSchema>>("marketplace.view", {
         listingId: { required: true },
         visibility: {},
+        version: {},
         versionPageSize: { kind: "positiveInteger" },
         versionCursor: {},
       }),
@@ -148,6 +155,7 @@ const marketplaceViewTool = defineBackofficeRuntimeTool({
                 ...(result.nextVersionCursor
                   ? [`Next version cursor: ${result.nextVersionCursor}`]
                   : []),
+                `Permissions to approve for ${result.release.version}: ${formatPackagePermissions(result.release.permissions)}`,
                 "",
               ].join("\n"),
             },

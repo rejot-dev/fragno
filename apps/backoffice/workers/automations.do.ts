@@ -99,6 +99,13 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
     return await this.#object.restartMarketplaceIngestion(input, context);
   }
 
+  async getMarketplaceIngestionStatus(input: {
+    workflowInstanceId: string;
+    targetScope: BackofficeRoutableScope;
+  }) {
+    return await this.#object.getMarketplaceIngestionStatus(input);
+  }
+
   async bindExternalIdentity(
     input: BindExternalIdentityInput,
     context: BackofficeActionRpcContext,

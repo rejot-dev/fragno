@@ -1,12 +1,15 @@
 import {
   packagesInstallInputSchema,
   packagesInstallResultSchema,
+  packagesStatusInputSchema,
   type PackageInstallation,
+  type PackageInstallStatus,
   type PackagesImportLegacyInput,
   type PackagesImportLegacyResult,
   type PackageUninstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
+  backofficeContextScopesEqual,
   type BackofficeOrganizationContextScope,
   backofficeScopeRootOwner,
   isBackofficeRoutableScope,
@@ -25,6 +28,7 @@ export type PackagesRuntime = {
   install(
     input: z.output<typeof packagesInstallInputSchema>,
   ): Promise<z.output<typeof packagesInstallResultSchema>>;
+  status(input: z.output<typeof packagesStatusInputSchema>): Promise<PackageInstallStatus | null>;
   ls(): Promise<{ installations: PackageInstallation[] }>;
   get(input: { listingId: string }): Promise<PackageInstallation | null>;
   uninstall(input: { listingId: string }): Promise<PackageUninstallation | null>;
@@ -52,12 +56,17 @@ export function createPackagesRuntime({
 
   const targetAutomations = () => kernel.scoped("AUTOMATIONS", targetScope, objects.automations);
 
+  const installationTarget = () => {
+    if (targetScope.kind === "app") {
+      throw new Error("Packages cannot be installed into an app's workspace.");
+    }
+    return targetScope;
+  };
+
   return {
     async install({ visibility, ...input }) {
-      if (targetScope.kind === "app") {
-        throw new Error("Packages cannot be installed into an app's workspace.");
-      }
-      const owner = backofficeScopeRootOwner(targetScope);
+      const target = installationTarget();
+      const owner = backofficeScopeRootOwner(target);
       let workflowScope: BackofficeOrganizationContextScope;
       // A user's workspace installs through one of the user's organizations.
       if (owner.kind === "user") {
@@ -81,10 +90,26 @@ export function createPackagesRuntime({
       const result = await kernel
         .scoped("AUTOMATIONS", workflowScope, objects.automations)
         .commands.restartMarketplaceIngestion(
-          { ...input, marketplace, targetScope },
+          { ...input, marketplace, targetScope: target },
           { execution: { ...execution, scope: workflowScope }, propagationContext: null },
         );
       return { ...result, installationRoot: input.installationRoot, workflowScope };
+    },
+    async status({ workflowInstanceId, workflowScope }) {
+      const target = installationTarget();
+      const owner = backofficeScopeRootOwner(target);
+      // A personal workspace installs through whichever organization the installer chose, so the
+      // run names it; other workspaces always install through their own organization.
+      if (owner.kind !== "user" && !backofficeContextScopesEqual(owner, workflowScope)) {
+        throw new BackofficeOperationError(
+          "invalid_request",
+          `This workspace installs through organization '${owner.orgId}', not '${workflowScope.orgId}'.`,
+        );
+      }
+      // The coordinator answers only for runs into this workspace, which authorizes the read.
+      return await kernel
+        .scoped("AUTOMATIONS", workflowScope, objects.automations)
+        .commands.getMarketplaceIngestionStatus({ workflowInstanceId, targetScope: target });
     },
     async ls() {
       return { installations: await targetAutomations().commands.listPackageInstallations() };

@@ -8,8 +8,8 @@ import {
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
   marketplaceViewInputSchema,
-  type MarketplaceListingDetail,
   type MarketplaceScope,
+  type MarketplaceViewResult,
   type MarketplaceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
@@ -27,6 +27,10 @@ import type {
   MarketplaceCommands,
 } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
+import {
+  MarketplaceIngestionPackageUnavailableError,
+  resolveMarketplaceIngestionPackageVersion,
+} from "@/fragno/automation/marketplace-ingestions";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type {
   MarketplaceOperationResult,
@@ -36,6 +40,7 @@ import type {
   marketplaceUnfeatureResultSchema,
 } from "@/fragno/marketplace/contracts";
 import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
+import { readMarketplacePackageDeclaration } from "@/fragno/marketplace/package-declaration";
 import { captureMarketplacePackageSnapshot } from "@/fragno/marketplace/package-manifest";
 import { resolveMarketplacePackageOwner } from "@/fragno/marketplace/package-publishing";
 import { searchPublishedListings } from "@/fragno/marketplace/search";
@@ -45,7 +50,7 @@ export type MarketplaceRuntime = {
   search(
     input: z.output<typeof marketplaceSearchInputSchema>,
   ): Promise<z.output<typeof marketplaceSearchResultSchema>>;
-  view(input: z.output<typeof marketplaceViewInputSchema>): Promise<MarketplaceListingDetail>;
+  view(input: z.output<typeof marketplaceViewInputSchema>): Promise<MarketplaceViewResult>;
   publish(input: z.output<typeof marketplacePublishInputSchema>): Promise<MarketplacePublishResult>;
   feature(input: z.output<typeof marketplaceFeatureInputSchema>): Promise<MarketplaceFeatureEntry>;
   unfeature(
@@ -183,15 +188,33 @@ export function createMarketplaceRuntime({
         hasNextPage: page.hasNextPage,
       };
     },
-    async view({ visibility, ...input }) {
-      const detail = await readableMarketplace(visibility).getPublishedListing(input);
+    async view({ visibility, version, ...input }) {
+      const marketplace = readableMarketplace(visibility);
+      const [detail, storage] = await Promise.all([
+        marketplace.getPublishedListing(input),
+        marketplace.getListingStorage({ listingId: input.listingId }),
+      ]);
       if (!detail) {
         throw new BackofficeOperationError(
           "not_found",
           `Marketplace listing '${input.listingId}' was not found.`,
         );
       }
-      return detail;
+      // Resolved as installing resolves it, so the declaration is the one installing approves.
+      let release;
+      try {
+        release = resolveMarketplaceIngestionPackageVersion(storage, version);
+      } catch (error) {
+        if (error instanceof MarketplaceIngestionPackageUnavailableError) {
+          throw new BackofficeOperationError("not_found", error.message);
+        }
+        throw error;
+      }
+      const declaration = await readMarketplacePackageDeclaration({
+        http: objects.upload.forName(release.manifest.uploadName).http,
+        version: release.version,
+      });
+      return { ...detail, release: { version: release.version, ...declaration } };
     },
     async feature(input) {
       return await curate(async (marketplace) =>

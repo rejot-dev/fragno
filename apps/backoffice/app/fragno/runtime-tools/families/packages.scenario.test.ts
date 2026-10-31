@@ -19,14 +19,11 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
-import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import { MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-install-identity";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
-import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
@@ -69,19 +66,6 @@ async function publishPackages(ctx: BackofficeScenarioContext) {
   await ctx.runtime.objects.automations.singleton().commands.requestStaticMarketplacePublications();
 }
 
-async function submitInstallerConfiguration(ctx: BackofficeScenarioContext, instanceId: string) {
-  const workflow = createRouteBackedAutomationWorkflowRuntime({
-    object: ctx.runtime.objects.automations.for(ORG_SCOPE),
-    execution: createBackofficeSystemExecution(ORG_SCOPE),
-  });
-  await workflow.sendInternalEvent({
-    workflowName: CODEMODE_WORKFLOW,
-    instanceId: `${instanceId}:installation`,
-    type: "telegram-test-command.message-configured",
-    payload: { message: "Configured through the installer event." },
-  });
-}
-
 async function createScenarioShell(ctx: BackofficeScenarioContext, scope: BackofficeContextScope) {
   return (
     await createInteractiveBashHost({
@@ -107,9 +91,16 @@ describe("Workspace package runtime scenarios", () => {
           then.assert("publish packages", publishPackages),
           runner.drain(),
           then.assert(
-            "installation from the terminal approves the declared permissions",
+            "installation from the terminal approves the permissions the release declares",
             async (ctx) => {
               const bash = await createScenarioShell(ctx, ORG_SCOPE);
+              const view = await bash.exec(
+                `marketplace.view --listing-id '${LISTING_ID}' --version 2.0.0`,
+              );
+              assert(view.exitCode === 0, view.stderr);
+              expect(view.stdout).toContain(
+                "Permissions to approve for 2.0.0: integrations.execute, packages.read\n",
+              );
               const unapproved = await bash.exec(
                 `packages.install --listing-id '${LISTING_ID}' --version 2.0.0 --installation-root ${INSTALLATION_ROOT}`,
               );
@@ -132,13 +123,52 @@ describe("Workspace package runtime scenarios", () => {
             },
           ),
           runner.drain(),
-          then.assert("answer the install workflow", async (ctx) => {
+          then.assert("the agent answers the install workflow its status names", async (ctx) => {
+            const status = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => await packages.status(${JSON.stringify({ workflowInstanceId: ctx.vars.instanceId, workflowScope: ORG_SCOPE })})`,
+              assertToolCalls: ["packages.status"],
+            });
+            expect(status.result).toEqual({
+              listingId: LISTING_ID,
+              version: "2.0.0",
+              installationRoot: INSTALLATION_ROOT,
+              status: "waiting",
+              installer: {
+                workflowInstanceId: `${ctx.vars.instanceId}:installation`,
+                status: "waiting",
+              },
+            });
             await expect(
               ctx.runCodemode({ scope: ORG_SCOPE, code: "async () => await packages.ls({})" }),
             ).resolves.toMatchObject({ result: { installations: [] } });
-            await submitInstallerConfiguration(ctx, ctx.vars.instanceId);
+            const answered = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => {
+                const { installer } = await packages.status(${JSON.stringify({ workflowInstanceId: ctx.vars.instanceId, workflowScope: ORG_SCOPE })});
+                const { waitingFor } = await workflow.getInstance({ instanceId: installer.workflowInstanceId });
+                await workflow.sendEvent({
+                  instanceId: installer.workflowInstanceId,
+                  type: waitingFor[0],
+                  payload: { message: "Configured through the installer event." },
+                });
+                return waitingFor;
+              }`,
+              assertToolCalls: ["packages.status", "workflow.getInstance", "workflow.sendEvent"],
+            });
+            expect(answered.result).toEqual(["telegram-test-command.message-configured"]);
           }),
           runner.drain(),
+          then.assert("the run completes", async (ctx) => {
+            const run = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => await packages.status(${JSON.stringify({ workflowInstanceId: ctx.vars.instanceId, workflowScope: ORG_SCOPE })})`,
+            });
+            expect(run.result).toMatchObject({
+              status: "complete",
+              installer: { status: "complete" },
+            });
+          }),
           then.assert("the installation lists, with its settings", async (ctx) => {
             const bash = await createScenarioShell(ctx, ORG_SCOPE);
             const text = await bash.exec("packages.ls");
@@ -190,6 +220,124 @@ describe("Workspace package runtime scenarios", () => {
             });
           }),
           then.router.missing({ orgId: "org-1", id: "telegram-test-command" }),
+        ],
+      }),
+    );
+  });
+
+  test("an agent answers an install workflow waiting for two settings at once, in either order", async () => {
+    const listingId = "org:org-1#two-settings";
+    const packageRoot = "/workspace/authoring/two-settings";
+    const installationRoot = "/workspace/packages/two-settings";
+    const files = {
+      "manifest.json": JSON.stringify({
+        name: "@ada-labs/two-settings",
+        version: "1.0.0",
+        metadata: {
+          name: "Two settings",
+          summary: "A package whose installer asks for two settings at once.",
+          description: "Its install workflow waits for a greeting and a signature in parallel.",
+          category: "developer-tools",
+          tags: ["testing"],
+        },
+        files: ["README.md", ".marketplace/install.workflow.js"],
+      }),
+      "README.md": "Two settings",
+      ".marketplace/install.workflow.js": `export default defineWorkflow({ name: "install-two-settings" }, async (event, step) => {
+  const [greeting, signature] = await Promise.all([
+    step.waitForEvent("wait for greeting", { type: "two-settings.greeting" }),
+    step.waitForEvent("wait for signature", { type: "two-settings.signature" }),
+  ]);
+  return { greeting: greeting.payload.text, signature: signature.payload.text };
+});`,
+    };
+    const waitsOfInstaller = (instanceId: string) =>
+      `async () => {
+        const { installer } = await packages.status(${JSON.stringify({ workflowInstanceId: instanceId, workflowScope: ORG_SCOPE })});
+        return (await workflow.getInstance({ instanceId: installer.workflowInstanceId })).waitingFor;
+      }`;
+    const answer = (instanceId: string, type: string, text: string) =>
+      `async () => {
+        const { installer } = await packages.status(${JSON.stringify({ workflowInstanceId: instanceId, workflowScope: ORG_SCOPE })});
+        return await workflow.sendEvent({ instanceId: installer.workflowInstanceId, type: ${JSON.stringify(type)}, payload: { text: ${JSON.stringify(text)} } });
+      }`;
+    await runBackofficeScenario(
+      defineBackofficeScenario<{ instanceId: string }>({
+        objects: scenarioObjects,
+        name: "Package installers wait for several events at once",
+        vars: () => ({ instanceId: "" }),
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
+        ],
+        steps: ({ then, runner }) => [
+          then.assert("the agent publishes the package to its organization", async (ctx) => {
+            for (const [path, content] of Object.entries(files)) {
+              await ctx.runCodemode({
+                scope: ORG_SCOPE,
+                code: `async () => await state.writeFile(${JSON.stringify({ path: `${packageRoot}/${path}`, content })})`,
+              });
+            }
+            await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => await marketplace.publish({ packageRoot: ${JSON.stringify(packageRoot)}, visibility: "organization" })`,
+              assertToolCalls: ["marketplace.publish"],
+            });
+          }),
+          runner.drain(),
+          then.assert("the agent installs it", async (ctx) => {
+            const run = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => {
+                const { release } = await marketplace.view({ listingId: ${JSON.stringify(listingId)}, visibility: "organization" });
+                return await packages.install({ listingId: ${JSON.stringify(listingId)}, version: release.version, installationRoot: ${JSON.stringify(installationRoot)}, permissions: release.permissions, visibility: "organization" });
+              }`,
+            });
+            ctx.vars.instanceId = packagesInstallResultSchema.parse(run.result).workflowInstanceId;
+          }),
+          runner.drain(),
+          then.assert(
+            "the installer waits for both, and the agent sends the second",
+            async (ctx) => {
+              const waits = await ctx.runCodemode({
+                scope: ORG_SCOPE,
+                code: waitsOfInstaller(ctx.vars.instanceId),
+              });
+              expect(waits.result).toEqual(["two-settings.greeting", "two-settings.signature"]);
+              await ctx.runCodemode({
+                scope: ORG_SCOPE,
+                code: answer(ctx.vars.instanceId, "two-settings.signature", "Ada"),
+              });
+            },
+          ),
+          runner.drain(),
+          then.assert(
+            "the installer still waits for the first, which the agent sends",
+            async (ctx) => {
+              const waits = await ctx.runCodemode({
+                scope: ORG_SCOPE,
+                code: waitsOfInstaller(ctx.vars.instanceId),
+              });
+              expect(waits.result).toEqual(["two-settings.greeting"]);
+              await ctx.runCodemode({
+                scope: ORG_SCOPE,
+                code: answer(ctx.vars.instanceId, "two-settings.greeting", "Hello"),
+              });
+            },
+          ),
+          runner.drain(),
+          then.assert("the installation records both settings", async (ctx) => {
+            const run = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => ({
+                status: await packages.status(${JSON.stringify({ workflowInstanceId: ctx.vars.instanceId, workflowScope: ORG_SCOPE })}),
+                installation: await packages.get({ listingId: ${JSON.stringify(listingId)} }),
+              })`,
+            });
+            expect(run.result).toMatchObject({
+              status: { status: "complete", installer: { status: "complete" } },
+              installation: { settings: { greeting: "Hello", signature: "Ada" } },
+            });
+          }),
         ],
       }),
     );
@@ -355,10 +503,42 @@ describe("Workspace package runtime scenarios", () => {
   });
 
   test("authenticated personal installations use the request's organization for coordination", async () => {
+    // A request authenticated for the organization, as the owner's active one.
+    const personalShell = async (
+      ctx: BackofficeScenarioContext,
+      organization: { id: string; slug: string },
+    ) => {
+      const principal = {
+        user: {
+          id: "owner-1",
+          email: "owner@example.test",
+          role: "user" as const,
+          personalScope: { kind: "user" as const, userId: "owner-1", jurisdiction: null },
+        },
+        auth: {
+          transport: "bearer" as const,
+          expiresAt: new Date(Date.now() + 60_000),
+          organization: { ...organization, jurisdiction: null, roles: ["owner"] },
+          scopeRestriction: null,
+        },
+      };
+      const context = createCodemodeRouteBackedRuntimeContext({
+        emitter: { kind: "caller" },
+        runtime: ctx.runtime.services,
+        kernel: new BackofficeKernel(ctx.runtime.services),
+        execution: await createBackofficeExecutionForPrincipal(
+          principal,
+          { kind: "user", userId: "owner-1", jurisdiction: null },
+          ctx.runtime.objects.auth.singleton().commands,
+        ),
+      });
+      return (await createInteractiveBashHost({ context })).bash;
+    };
     await runBackofficeScenario(
-      defineBackofficeScenario({
+      defineBackofficeScenario<{ instanceId: string }>({
         objects: scenarioObjects,
         name: "Request authority selects personal package installation coordination",
+        vars: () => ({ instanceId: "" }),
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "owner-1" }),
           given.organization.exists({ id: "org-2", name: "Second Org", ownerUserId: "owner-1" }),
@@ -367,42 +547,15 @@ describe("Workspace package runtime scenarios", () => {
           then.assert("publish packages", publishPackages),
           runner.drain(),
           then.assert("the authenticated organization coordinates installation", async (ctx) => {
-            const principal = {
-              user: {
-                id: "owner-1",
-                email: "owner@example.test",
-                role: "user" as const,
-                personalScope: { kind: "user" as const, userId: "owner-1", jurisdiction: null },
-              },
-              auth: {
-                transport: "bearer" as const,
-                expiresAt: new Date(Date.now() + 60_000),
-                organization: {
-                  id: "org-1",
-                  slug: "ada-labs",
-                  jurisdiction: null,
-                  roles: ["owner"],
-                },
-                scopeRestriction: null,
-              },
-            };
-            const context = createCodemodeRouteBackedRuntimeContext({
-              emitter: { kind: "caller" },
-              runtime: ctx.runtime.services,
-              kernel: new BackofficeKernel(ctx.runtime.services),
-              execution: await createBackofficeExecutionForPrincipal(
-                principal,
-                { kind: "user", userId: "owner-1", jurisdiction: null },
-                ctx.runtime.objects.auth.singleton().commands,
-              ),
-            });
             const result = await (
-              await createInteractiveBashHost({ context })
-            ).bash.exec(
+              await personalShell(ctx, { id: "org-1", slug: "ada-labs" })
+            ).exec(
               `packages.install --listing-id '${LISTING_ID}' --version 1.0.0 --installation-root ${INSTALLATION_ROOT} --format json`,
             );
             assert(result.exitCode === 0, result.stderr);
-            expect(JSON.parse(result.stdout)).toMatchObject({ workflowScope: ORG_SCOPE });
+            const installed = packagesInstallResultSchema.parse(JSON.parse(result.stdout));
+            expect(installed).toMatchObject({ workflowScope: ORG_SCOPE });
+            ctx.vars.instanceId = installed.workflowInstanceId;
           }),
           runner.drain(),
           then.assert("the deferred workflow installs into the personal workspace", async (ctx) => {
@@ -414,6 +567,37 @@ describe("Workspace package runtime scenarios", () => {
               installations: [{ listingId: LISTING_ID, version: "1.0.0" }],
             });
           }),
+          then.assert(
+            "the personal workspace reads the run's status with another organization active; the organization's workspace does not",
+            async (ctx) => {
+              const status = await (
+                await personalShell(ctx, { id: "org-2", slug: "second-org" })
+              ).exec(
+                `packages.status --workflow-instance-id ${ctx.vars.instanceId} --workflow-scope '${JSON.stringify(ORG_SCOPE)}' --format json`,
+              );
+              assert(status.exitCode === 0, status.stderr);
+              expect(JSON.parse(status.stdout)).toEqual({
+                listingId: LISTING_ID,
+                version: "1.0.0",
+                installationRoot: INSTALLATION_ROOT,
+                status: "complete",
+                installer: null,
+              });
+              const organization = await ctx.runCodemode({
+                scope: ORG_SCOPE,
+                code: `async () => await packages.status(${JSON.stringify({ workflowInstanceId: ctx.vars.instanceId, workflowScope: ORG_SCOPE })})`,
+              });
+              expect(organization.result).toBeNull();
+              await expect(
+                ctx.runCodemode({
+                  scope: ORG_SCOPE,
+                  code: `async () => await packages.status(${JSON.stringify({ workflowInstanceId: ctx.vars.instanceId, workflowScope: { kind: "org", orgId: "org-2", jurisdiction: null } })})`,
+                }),
+              ).rejects.toThrow(
+                "This workspace installs through organization 'org-1', not 'org-2'.",
+              );
+            },
+          ),
         ],
       }),
     );
@@ -477,21 +661,31 @@ describe("Workspace package runtime scenarios", () => {
             });
             const run = await ctx.runCodemode({
               scope: ORG_SCOPE,
-              code: `async () => await packages.install(${JSON.stringify({ listingId: LISTING_ID, version: "1.0.0", installationRoot: INSTALLATION_ROOT })})`,
+              code: `async () => {
+                const { release } = await marketplace.view({ listingId: ${JSON.stringify(LISTING_ID)}, version: "1.0.0" });
+                return await packages.install({ listingId: ${JSON.stringify(LISTING_ID)}, version: release.version, installationRoot: ${JSON.stringify(INSTALLATION_ROOT)}, permissions: release.permissions });
+              }`,
+              assertToolCalls: ["marketplace.view", "packages.install"],
             });
             ctx.vars.instanceId = packagesInstallResultSchema.parse(run.result).workflowInstanceId;
           }),
           runner.drain(),
           then.assert("failure preserves the file and records no installation", async (ctx) => {
-            const workflow = createRouteBackedAutomationWorkflowRuntime({
-              object: ctx.runtime.objects.automations.for(ORG_SCOPE),
-              execution: createBackofficeSystemExecution(ORG_SCOPE),
+            const status = await ctx.runCodemode({
+              scope: ORG_SCOPE,
+              code: `async () => await packages.status(${JSON.stringify({ workflowInstanceId: ctx.vars.instanceId, workflowScope: ORG_SCOPE })})`,
             });
-            const instance = await workflow.getInternalInstance({
-              workflowName: MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
-              instanceId: ctx.vars.instanceId,
+            expect(status.result).toEqual({
+              listingId: LISTING_ID,
+              version: "1.0.0",
+              installationRoot: INSTALLATION_ROOT,
+              status: "errored",
+              error: {
+                name: "NonRetryableError",
+                message: `Marketplace ingestion conflicts with workspace file '${INSTALLATION_ROOT}/${WORKFLOW_FILE}'.`,
+              },
+              installer: null,
             });
-            assert(instance.details.status === "errored");
             const state = await ctx.runCodemode({
               scope: ORG_SCOPE,
               code: `async () => ({ content: await state.readFile({ path: ${JSON.stringify(`${INSTALLATION_ROOT}/${WORKFLOW_FILE}`)} }), installed: await packages.ls({}) })`,

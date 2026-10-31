@@ -1,10 +1,15 @@
 // Package installs into the workspace. Read to install a Marketplace package or list installed ones.
 type PackagesCodemodeProvider = {
   /**
-   * Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous. Pass the release's declared permissions to approve them; the install is refused unless they match exactly, and you must hold each one. A refusal names the permissions the release declares. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.
+   * Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous: follow workflowInstanceId with packages.status. Pass the release's declared permissions, which marketplace.view returns, to approve them; the install is refused unless they match exactly, and you must hold each one. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.
    * Requires `packages.install`.
    */
   install(input: PackagesInstallInput): Promise<PackagesInstallOutput>;
+  /**
+   * Get where an installation started with packages.install stands, by the workflowInstanceId and workflowScope it returned, or null when this workspace has no such installation. A complete run has recorded the installation, which packages.get reads; a failed one says why. installer is the package's own install workflow, null for packages without one or until it starts. While it waits, such as for the package's settings, read the event types it waits for with workflow.getInstance and send them with workflow.sendEvent, both in the workflowScope organization.
+   * Requires `packages.read`.
+   */
+  status(input: PackagesStatusInput): Promise<PackagesStatusOutput>;
   /**
    * List the package installations in the current workspace.
    * Requires `packages.read`.
@@ -156,6 +161,40 @@ type PackagesInstallOutput = {
     jurisdiction: "eu" | "us" | null;
   };
 };
+type PackagesStatusInput = {
+  workflowInstanceId: string;
+  workflowScope: {
+    kind: "org";
+    orgId: string;
+    jurisdiction?: "eu" | "us" | null;
+  };
+};
+type PackagesStatusOutput =
+  | {
+      listingId: string;
+      version: string;
+      installationRoot: string;
+      status: "active" | "paused" | "waiting" | "complete";
+      installer: {
+        workflowInstanceId: string;
+        status: "active" | "paused" | "waiting" | "complete" | "errored" | "terminated";
+      } | null;
+    }
+  | {
+      listingId: string;
+      version: string;
+      installationRoot: string;
+      status: "errored" | "terminated";
+      error: {
+        name: string;
+        message: string;
+      };
+      installer: {
+        workflowInstanceId: string;
+        status: "active" | "paused" | "waiting" | "complete" | "errored" | "terminated";
+      } | null;
+    }
+  | null;
 type PackagesLsInput = Record<string, unknown>;
 type PackagesLsOutput = {
   installations: {

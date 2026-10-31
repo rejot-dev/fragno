@@ -2,6 +2,7 @@ import {
   MARKETPLACE_LOCK_PATH,
   packagesImportLegacyInputSchema,
   packagesInstallInputSchema,
+  packagesStatusInputSchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
@@ -39,7 +40,7 @@ const packagesInstallTool = defineBackofficeRuntimeTool({
       command: "packages.install",
       help: {
         summary:
-          "Start the existing installation flow in the selected workspace. A created or restarted workflow is not a completed installation.",
+          "Start the existing installation flow in the selected workspace. A created or restarted workflow is not a completed installation; follow it with packages.status.",
         options: [
           {
             name: "listing-id",
@@ -100,6 +101,44 @@ const packagesInstallTool = defineBackofficeRuntimeTool({
           : {
               stdout: `${result.action}\t${result.listingId}@${result.version}\t${result.installationRoot}\t${result.workflowStatus}\t${result.workflowInstanceId}\torg:${result.workflowScope.orgId}\n`,
             },
+    },
+  },
+});
+
+const packagesStatusTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("packages.status"),
+  namespace: "packages",
+  name: "status",
+  execute: async (input, context: PackagesToolContext) =>
+    await getPackagesRuntime(context).status(input),
+  adapters: {
+    bash: {
+      command: "packages.status",
+      help: {
+        summary: "Show where an installation packages.install started stands.",
+        options: [
+          {
+            name: "workflow-instance-id",
+            required: true,
+            valueRequired: true,
+            description: "The workflowInstanceId packages.install returned.",
+          },
+          {
+            name: "workflow-scope",
+            required: true,
+            valueRequired: true,
+            description: "The workflowScope packages.install returned, as JSON.",
+          },
+        ],
+        examples: [
+          `packages.status --workflow-instance-id marketplace-package-install-<id> --workflow-scope '{"kind":"org","orgId":"<org-id>","jurisdiction":null}' --format json`,
+        ],
+      },
+      parse: defineCliArgsParser<z.input<typeof packagesStatusInputSchema>>("packages.status", {
+        workflowInstanceId: { required: true },
+        workflowScope: { required: true, kind: "json" },
+      }),
+      format: (result) => ({ data: result }),
     },
   },
 });
@@ -272,6 +311,7 @@ export const packagesToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "packages",
   tools: [
     packagesInstallTool,
+    packagesStatusTool,
     packagesListTool,
     packagesGetTool,
     packagesUninstallTool,

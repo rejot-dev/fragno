@@ -8,6 +8,7 @@ import type {
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRestartResult,
   PackageInstallation,
+  PackageInstallStatus,
   PackagesImportLegacyInput,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { marketplaceIngestionRequestInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
@@ -22,7 +23,7 @@ import {
   backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { AcceptedFileShare, FileShare } from "@fragno-dev/backoffice-api/v0/state";
-import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
+import { type InstanceStatus, WorkflowInstanceNotFoundError } from "@fragno-dev/workflows/workflow";
 import { RpcTarget } from "cloudflare:workers";
 
 import { decodeCursor, type Cursor } from "@fragno-dev/db";
@@ -65,6 +66,7 @@ import {
 } from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
+import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { automationEventRecord } from "@/fragno/automation/event-routes";
 import type {
   AutomationEventSource,
@@ -95,11 +97,13 @@ import {
   assertMarketplaceIngestionTargetAccessible,
   assertMarketplaceIngestionSourceAccessible,
   assertMarketplaceIngestionTargetBelongsToOrganization,
+  marketplaceIngestionWorkflowInputSchema,
   resolveMarketplaceIngestionPackageVersion,
 } from "@/fragno/automation/marketplace-ingestions";
 import {
   buildMarketplacePackageInstallWorkflowInstanceId,
   MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+  marketplaceInstallationWorkflowInstanceId,
 } from "@/fragno/automation/marketplace-package-install-identity";
 import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "@/fragno/automation/marketplace-package-publish-workflow";
 import {
@@ -1009,6 +1013,88 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       action: result.action,
       workflowStatus: result.details.status,
     };
+  }
+
+  async getMarketplaceIngestionStatus(input: {
+    workflowInstanceId: string;
+    targetScope: BackofficeRoutableScope;
+  }): Promise<PackageInstallStatus | null> {
+    const scope = this.#requireScope();
+    if (scope.kind !== "org") {
+      throw new Error("Marketplace ingestion requires an organization Automations object.");
+    }
+    await this.#ensureConfigured({ scope });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    const { services } = runtime.workflowsFragment;
+    const unlessMissing = async <T>(read: () => Promise<T>) => {
+      try {
+        return await read();
+      } catch (error) {
+        if (error instanceof WorkflowInstanceNotFoundError) {
+          return null;
+        }
+        throw error;
+      }
+    };
+
+    const ingestion = await unlessMissing(() =>
+      runtime.workflowsFragment.callServices(
+        () =>
+          [
+            services.getInstanceStatus(
+              MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+              input.workflowInstanceId,
+            ),
+            services.getInstanceMetadata(
+              MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+              input.workflowInstanceId,
+            ),
+          ] as const,
+      ),
+    );
+    if (!ingestion) {
+      return null;
+    }
+    const [status, metadata] = ingestion;
+    const params = marketplaceIngestionWorkflowInputSchema.parse(metadata.params);
+    // Other workspaces of this organization install through it too; their runs are theirs to read.
+    if (!backofficeContextScopesEqual(params.targetScope, input.targetScope)) {
+      return null;
+    }
+    const installerInstanceId = marketplaceInstallationWorkflowInstanceId(input.workflowInstanceId);
+    const installerStatus = await unlessMissing(() =>
+      runtime.workflowsFragment.callServices(() =>
+        services.getInstanceStatus(CODEMODE_WORKFLOW, installerInstanceId),
+      ),
+    );
+    const installer = installerStatus && {
+      workflowInstanceId: installerInstanceId,
+      status: installerStatus.status,
+    };
+    const release = {
+      listingId: params.listingId,
+      version: params.version,
+      installationRoot: params.installationRoot,
+    };
+    const described = describeExistingMarketplaceWorkflow({
+      operation: {
+        label: "ingestion",
+        failedErrorName: "MarketplaceIngestionFailed",
+        terminatedErrorName: "MarketplaceIngestionTerminated",
+      },
+      status,
+      workflowInstanceId: input.workflowInstanceId,
+    });
+    switch (described.state) {
+      case "pending":
+        return { ...release, status: described.workflowStatus, installer };
+      case "complete":
+        return { ...release, status: "complete", installer };
+      case "failed":
+        return { ...release, status: described.workflowStatus, error: described.error, installer };
+    }
+
+    throw new Error("Unsupported marketplace workflow state.");
   }
 
   async bindExternalIdentity(

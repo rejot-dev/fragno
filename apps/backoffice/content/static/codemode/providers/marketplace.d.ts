@@ -6,7 +6,7 @@ type MarketplaceCodemodeProvider = {
    */
   search(input: MarketplaceSearchInput): Promise<MarketplaceSearchOutput>;
   /**
-   * Inspect published package metadata and cursor-paginated releases in the public Marketplace, or in the current organization's Marketplace with organization visibility.
+   * Inspect published package metadata and cursor-paginated releases in the public Marketplace, or in the current organization's Marketplace with organization visibility. `release` is what installing one release (the latest unless version is given) sets up: the permissions to approve with packages.install, and the routes, event definitions, and agents it defines. Its routes' start_workflow paths are relative to the installation folder.
    * Requires `marketplace.read`.
    */
   view(input: MarketplaceViewInput): Promise<MarketplaceViewOutput>;
@@ -23,6 +23,296 @@ type MarketplaceCodemodeProvider = {
 };
 declare const marketplace: MarketplaceCodemodeProvider;
 
+type BackofficePermissionRequirement =
+  | {
+      namespace: "account";
+      permission: "read" | "manage";
+    }
+  | {
+      namespace: "admin";
+      permission:
+        | "apps.manage"
+        | "apps.read"
+        | "oauth-clients.manage"
+        | "oauth-clients.read"
+        | "access-codes.manage"
+        | "organizations.manage"
+        | "users.manage";
+    }
+  | {
+      namespace: "apps";
+      permission: "read" | "manage";
+    }
+  | {
+      namespace: "cloudflare";
+      permission: "browserRun";
+    }
+  | {
+      namespace: "connections";
+      permission: "manage" | "read";
+    }
+  | {
+      namespace: "events";
+      permission: "emit" | "manage" | "read" | "route";
+    }
+  | {
+      namespace: "forms";
+      permission: "create" | "read" | "update";
+    }
+  | {
+      namespace: "hooks";
+      permission: "read";
+    }
+  | {
+      namespace: "identity";
+      permission: "link" | "bind" | "read" | "resolve" | "revoke";
+    }
+  | {
+      namespace: "integrations";
+      permission: "read" | "manage" | "execute";
+    }
+  | {
+      namespace: "internal";
+      permission: "manage";
+    }
+  | {
+      namespace: "org";
+      permission: "read" | "manage";
+    }
+  | {
+      namespace: "models";
+      permission: "classify" | "generateImage" | "extract" | "run";
+    }
+  | {
+      namespace: "marketplace";
+      permission: "read" | "publish" | "feature";
+    }
+  | {
+      namespace: "packages";
+      permission: "read" | "install";
+    }
+  | {
+      namespace: "otp";
+      permission: "create";
+    }
+  | {
+      namespace: "pi";
+      permission: "manage" | "modify" | "read";
+    }
+  | {
+      namespace: "projects";
+      permission: "create" | "read";
+    }
+  | {
+      namespace: "reson8";
+      permission: "transcribe";
+    }
+  | {
+      namespace: "router";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "sandbox";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "store";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "upload";
+      permission: "modify" | "read";
+    }
+  | {
+      namespace: "web";
+      permission: "download";
+    }
+  | {
+      namespace: "workflow";
+      permission: "executeCode" | "modify" | "read";
+    };
+type AutomationRouteTrigger =
+  | {
+      kind: "event";
+      source: string;
+      eventType: string;
+      matcher: AutomationEventMatcher | null;
+    }
+  | {
+      kind: "schedule";
+      cadence:
+        | {
+            kind: "once";
+            /** ISO 8601 datetime string. */
+            at: string;
+          }
+        | {
+            kind: "cron";
+            expression: string;
+            timeZone: string;
+          };
+    };
+type AutomationRouteAction =
+  | AutomationStartWorkflowAction
+  | AutomationSendWorkflowEventAction
+  | AutomationForwardEventAction
+  | AutomationReclassifyEventAction
+  | AutomationNotifyAgentAction;
+type AutomationEventMatcher =
+  | {
+      actor:
+        | {
+            participation: "initiator" | "principal";
+            scope: "internal";
+            type?: string;
+            id?: string;
+          }
+        | {
+            participation: "initiator" | "principal";
+            scope: "external";
+            source?: string;
+            type?: string;
+            id?: string;
+          }
+        | {
+            participation: "delegation";
+            scope: "internal";
+            type?: string;
+            id?: string;
+            role?: "delegate" | "assistant";
+          }
+        | {
+            participation: "delegation";
+            scope: "external";
+            source?: string;
+            type?: string;
+            id?: string;
+            role?: "delegate" | "assistant";
+          };
+    }
+  | {
+      path: string;
+      op: "exists";
+    }
+  | {
+      path: string;
+      op: "eq" | "neq" | "startsWith" | "includes";
+      value: unknown;
+    }
+  | {
+      all: AutomationEventMatcher[];
+    }
+  | {
+      any: AutomationEventMatcher[];
+    }
+  | {
+      not: AutomationEventMatcher;
+    };
+type AutomationStartWorkflowAction = {
+  kind: "start_workflow";
+  authority: AutomationAuthorityMode;
+  workflowScriptPath: string;
+  instanceIdTemplate: string;
+};
+type AutomationSendWorkflowEventAction = {
+  kind: "send_workflow_event";
+  target: AutomationWorkflowEventTarget;
+  eventType: string;
+  payload?: unknown;
+};
+type AutomationForwardEventAction = {
+  kind: "forward_event";
+  targetScope: AutomationRouteScopeTemplate;
+  idTemplate?: string;
+};
+type AutomationReclassifyEventAction = {
+  kind: "reclassify_event";
+  source: string;
+  eventType: string;
+  payload: AutomationEventPayloadProjection;
+};
+type AutomationNotifyAgentAction = {
+  kind: "notify_agent";
+  agentName: string;
+  authority: AutomationAuthorityMode;
+};
+type AutomationAuthorityMode =
+  | {
+      kind: "delegated-user" | "linked-user";
+      grants: BackofficePermissionRequirement[] | "inherit";
+    }
+  | {
+      kind: "organization-automation";
+      grants: BackofficePermissionRequirement[];
+    };
+type AutomationWorkflowEventTarget =
+  | AutomationWorkflowEventInstanceIdTarget
+  | AutomationWorkflowEventStoredInstanceIdTarget;
+type AutomationRouteScopeTemplate =
+  | {
+      kind: "system" | "subject";
+    }
+  | {
+      kind: "org";
+      orgIdTemplate: string;
+    }
+  | {
+      kind: "user";
+      userIdTemplate: string;
+    }
+  | {
+      kind: "app";
+      owner:
+        | {
+            kind: "org";
+            orgIdTemplate: string;
+          }
+        | {
+            kind: "user";
+            userIdTemplate: string;
+          };
+      appIdTemplate: string;
+    }
+  | {
+      kind: "project";
+      owner:
+        | {
+            kind: "org";
+            orgIdTemplate: string;
+          }
+        | {
+            kind: "user";
+            userIdTemplate: string;
+          }
+        | {
+            kind: "app";
+            owner:
+              | {
+                  kind: "org";
+                  orgIdTemplate: string;
+                }
+              | {
+                  kind: "user";
+                  userIdTemplate: string;
+                };
+            appIdTemplate: string;
+          };
+      projectIdTemplate: string;
+    };
+type AutomationEventPayloadProjection = {
+  kind: "projection";
+  fields: {
+    [key: string]: string;
+  };
+};
+type AutomationWorkflowEventInstanceIdTarget = {
+  kind: "instance_id";
+  template: string;
+};
+type AutomationWorkflowEventStoredInstanceIdTarget = {
+  kind: "stored_instance_id";
+  keyTemplate: string;
+};
 type MarketplaceSearchInput = {
   category?: "communication" | "developer-tools" | "operations" | "productivity" | "reporting";
   pageSize?: number;
@@ -49,6 +339,7 @@ type MarketplaceViewInput = {
   versionPageSize?: number;
   versionCursor?: string;
   visibility?: "public" | "organization";
+  version?: string;
 };
 type MarketplaceViewOutput = {
   listing: {
@@ -72,6 +363,43 @@ type MarketplaceViewOutput = {
   }[];
   nextVersionCursor?: string;
   hasNextVersionPage: boolean;
+  release: {
+    permissions: BackofficePermissionRequirement[];
+    routes: {
+      id: string;
+      name: string;
+      enabled: boolean;
+      priority: number;
+      description?: string | null;
+      trigger: AutomationRouteTrigger;
+      action: AutomationRouteAction;
+    }[];
+    eventDefinitions: {
+      source: string;
+      eventType: string;
+      label: string;
+      description?: string | null;
+      payloadSchema?: {
+        [key: string]: unknown;
+      } | null;
+      actorSchema?: {
+        [key: string]: unknown;
+      } | null;
+      subjectSchema?: {
+        [key: string]: unknown;
+      } | null;
+      example?: unknown | null;
+      enabled: boolean;
+    }[];
+    agents: {
+      description: string;
+      model: string | null;
+      permissions: string[];
+      instructions: string;
+      agentName: string;
+    }[];
+    version: string;
+  };
 };
 type MarketplacePublishInput = {
   packageRoot: string;

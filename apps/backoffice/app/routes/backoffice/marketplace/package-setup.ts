@@ -4,10 +4,9 @@ import type {
   AutomationRouteAction,
   AutomationRouteScopeTemplate,
 } from "@fragno-dev/backoffice-api/v0/automation";
+import type { MarketplacePackageDeclaration } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { PackageSetup, PackageSetupRoute } from "@fragno-private/design-system/package-setup";
 import type { ComponentProps } from "react";
-
-import type { MarketplacePackageDeclaration } from "@/fragno/marketplace/package-declaration";
 
 import { formatTimestamp } from "../automations/formatting";
 import { automationAuthorityActorLabel } from "../automations/route-action";

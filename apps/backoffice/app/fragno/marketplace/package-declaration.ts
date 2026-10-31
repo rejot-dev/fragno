@@ -1,10 +1,8 @@
+import type { AutomationRouteCreateInput } from "@fragno-dev/backoffice-api/v0/automation";
 import {
-  automationRouteCreateInputSchema,
-  type AutomationRouteCreateInput,
-} from "@fragno-dev/backoffice-api/v0/automation";
-import { automationEventDefinitionCreateInputSchema } from "@fragno-dev/backoffice-api/v0/events";
-import { packagePermissionsSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { piAgentDefinitionCreateSchema } from "@fragno-dev/backoffice-api/v0/pi";
+  marketplacePackageDeclarationSchema,
+  type MarketplacePackageDeclaration,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
@@ -12,40 +10,6 @@ import { normalizeMarketplacePackagePath } from "./package-files";
 
 /** What installing a release sets up in a workspace, beyond copying its files. */
 export const MARKETPLACE_DECLARATION_PATH = ".marketplace/installation.json";
-
-/**
- * A release declares the permissions its routes and install workflow use, and the routes, event
- * definitions, and agents Backoffice keeps in sync for each installation. A route's
- * `start_workflow` names a file in the package; the installation resolves it to the installed copy.
- */
-export const marketplacePackageDeclarationSchema = z.strictObject({
-  permissions: packagePermissionsSchema.default([]),
-  routes: z
-    .array(automationRouteCreateInputSchema)
-    .default([])
-    .refine(
-      (routes) => new Set(routes.map((route) => route.id)).size === routes.length,
-      "Declared route ids must be unique.",
-    ),
-  eventDefinitions: z
-    .array(automationEventDefinitionCreateInputSchema)
-    .default([])
-    .refine(
-      (definitions) =>
-        new Set(definitions.map(({ source, eventType }) => JSON.stringify([source, eventType])))
-          .size === definitions.length,
-      "Declared event definitions must each have their own source and event type.",
-    ),
-  agents: z
-    .array(piAgentDefinitionCreateSchema._zod.innerType.strict())
-    .default([])
-    .refine(
-      (agents) => new Set(agents.map((agent) => agent.agentName)).size === agents.length,
-      "Declared agent names must be unique.",
-    ),
-});
-
-export type MarketplacePackageDeclaration = z.infer<typeof marketplacePackageDeclarationSchema>;
 
 export const EMPTY_MARKETPLACE_PACKAGE_DECLARATION: MarketplacePackageDeclaration = {
   permissions: [],

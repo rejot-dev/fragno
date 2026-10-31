@@ -4710,6 +4710,11 @@
         "description": "public (default) reads the public Marketplace; organization reads the current organization's Marketplace."
       },
       {
+        "name": "version",
+        "valueRequired": true,
+        "description": "Release whose declaration to show; defaults to the latest release."
+      },
+      {
         "name": "version-page-size",
         "valueRequired": true,
         "description": "Release page size (maximum 60)."
@@ -4816,7 +4821,7 @@
   },
   {
     "command": "packages.install",
-    "summary": "Start the existing installation flow in the selected workspace. A created or restarted workflow is not a completed installation.",
+    "summary": "Start the existing installation flow in the selected workspace. A created or restarted workflow is not a completed installation; follow it with packages.status.",
     "options": [
       {
         "name": "listing-id",
@@ -4844,6 +4849,43 @@
         "name": "permission",
         "valueRequired": true,
         "description": "Approve one permission the release declares, as namespace.permission. Repeat it for each declared permission."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "packages.status",
+    "summary": "Show where an installation packages.install started stands.",
+    "options": [
+      {
+        "name": "workflow-instance-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "The workflowInstanceId packages.install returned."
+      },
+      {
+        "name": "workflow-scope",
+        "required": true,
+        "valueRequired": true,
+        "description": "The workflowScope packages.install returned, as JSON."
       },
       {
         "name": "help",
