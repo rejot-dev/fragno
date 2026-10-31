@@ -245,6 +245,8 @@ type RouteExecutionContext = {
   /** The stored value under `routeStoredInstanceKey`, when the route reads one. */
   storedInstanceId: string | null;
   linkedUserId: string | null;
+  /** The scope the route belongs to. */
+  ownerScope: BackofficeContextScope;
 };
 
 const routeRoutingKey = (event: AutomationEvent, route: AutomationRouteDefinition) =>
@@ -276,11 +278,13 @@ function routeActionExecution({
   event,
   route,
   linkedUserId,
+  ownerScope,
 }: {
   authority: AutomationAuthorityMode;
   event: AutomationEvent;
   route: AutomationRouteDefinition;
   linkedUserId: string | null;
+  ownerScope: BackofficeContextScope;
 }): { event: AutomationEvent; execution: BackofficeExecutionContext } | null {
   const scheduledUserId = scheduledRouteUserId({
     ownerScope: event.scope,
@@ -307,7 +311,11 @@ function routeActionExecution({
         ? createBackofficeSystemExecution(actingEvent.scope)
         : createAutomationRuntimeExecution({
             event: actingEvent,
-            authority: automationRouteAuthority({ routeId: route.id, mode: authority }),
+            authority: automationRouteAuthority({
+              routeId: route.id,
+              routeScope: ownerScope,
+              mode: authority,
+            }),
           }),
   };
 }
@@ -321,6 +329,7 @@ const handleStartWorkflowRouteAction = async ({
   commitDispatch,
   config,
   linkedUserId,
+  ownerScope,
 }: RouteExecutionContext & {
   action: AutomationStartWorkflowAction;
   config: Pick<AutomationFragmentConfig, "readAutomationSource">;
@@ -330,6 +339,7 @@ const handleStartWorkflowRouteAction = async ({
     event,
     route,
     linkedUserId,
+    ownerScope,
   });
   if (!acting) {
     await commitDispatch({ kind: "skipped", reason: "no_linked_external_sender" }, null);
@@ -396,7 +406,6 @@ const handleForwardEventRouteAction = async ({
   runtime,
 }: RouteExecutionContext & {
   action: AutomationForwardEventAction;
-  ownerScope: BackofficeContextScope;
   runtime: BackofficeRuntimeServices | undefined;
 }) => {
   if (!runtime) {
@@ -454,6 +463,7 @@ const handleNotifyAgentRouteAction = async ({
   route,
   commitDispatch,
   linkedUserId,
+  ownerScope,
   runtime,
 }: RouteExecutionContext & {
   action: AutomationNotifyAgentAction;
@@ -467,6 +477,7 @@ const handleNotifyAgentRouteAction = async ({
     event,
     route,
     linkedUserId,
+    ownerScope,
   });
   if (!acting) {
     await commitDispatch({ kind: "skipped", reason: "no_linked_external_sender" }, null);
@@ -949,6 +960,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               commitDispatch,
               storedInstanceId,
               linkedUserId,
+              ownerScope: config.ownerScope,
             };
             const action = route.action;
             switch (action.kind) {
@@ -964,7 +976,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 await handleForwardEventRouteAction({
                   ...context,
                   action,
-                  ownerScope: config.ownerScope,
                   runtime: config.runtime,
                 });
                 break;

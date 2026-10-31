@@ -8,7 +8,7 @@ import {
 import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 
-import { createAutomationRouteAuthorityResolver } from "./authority";
+import { automationRouteAuthority, createAutomationRouteAuthorityResolver } from "./authority";
 
 const organizationAutomationExecution = {
   kind: "deferred" as const,
@@ -160,6 +160,51 @@ describe("createAutomationRouteAuthorityResolver", () => {
       expect(fallbackResolver.resolveActorCapabilityGrants).not.toHaveBeenCalled();
     },
   );
+
+  test("resolves a route delegate from its route's scope wherever its workflow acts", async () => {
+    const fallbackResolver = createFallbackResolver();
+    const routeScope = { kind: "user", userId: "user-1", jurisdiction: null } as const;
+    const automationDelegate = automationRouteAuthority({
+      routeId: "user/workflow",
+      routeScope,
+      mode: { kind: "delegated-user", grants: [] },
+    }).automationId;
+    expect(automationDelegate).toBe("automation-route/user:user-1/user/workflow");
+    const actor = {
+      scope: "internal",
+      type: "automation",
+      id: automationDelegate,
+      role: "delegate",
+    } as const;
+    const lookupRoute = vi.fn(async () => ({
+      enabled: true,
+      action: {
+        kind: "start_workflow" as const,
+        authority: {
+          kind: "delegated-user" as const,
+          grants: [BACKOFFICE_PERMISSION.store.modify],
+        },
+        workflowScriptPath: "/workspace/automations/user.workflow.js",
+        instanceIdTemplate: "user-${event.id}",
+      },
+    }));
+    const resolver = createAutomationRouteAuthorityResolver({ fallbackResolver, lookupRoute });
+
+    await expect(
+      resolver.resolveActorCapabilityGrants({
+        actor,
+        execution: {
+          ...organizationAutomationExecution,
+          actors: {
+            ...organizationAutomationExecution.actors,
+            principal: { scope: "internal", type: "user", id: "user-1", role: "principal" },
+            delegation: [actor],
+          },
+        },
+      }),
+    ).resolves.toEqual([BACKOFFICE_PERMISSION.store.modify]);
+    expect(lookupRoute).toHaveBeenCalledWith({ scope: routeScope, routeId: "user/workflow" });
+  });
 
   test.each(["delegated-user", "linked-user"] as const)(
     "resolves a %s automation from current delegated route grants",

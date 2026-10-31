@@ -1873,7 +1873,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
                 {
                   scope: "internal",
                   type: "automation",
-                  id: "automation-route:telegram-pi-linking",
+                  id: "automation-route/org:org-1/telegram-pi-linking",
                   role: "delegate",
                 },
                 piAgentActor(scope, "assistant"),

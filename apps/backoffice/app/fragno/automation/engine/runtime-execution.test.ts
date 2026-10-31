@@ -34,11 +34,13 @@ const event = {
 
 const organizationAuthority = automationRouteAuthority({
   routeId: "telegram-message",
+  routeScope: event.scope,
   mode: { kind: "organization-automation", grants: [] },
 });
 
 const delegatedUserAuthority = automationRouteAuthority({
   routeId: "telegram-message",
+  routeScope: event.scope,
   mode: { kind: "delegated-user", grants: [] },
 });
 
@@ -91,7 +93,7 @@ describe("createAutomationRuntimeExecution", () => {
         {
           scope: "internal",
           type: "automation",
-          id: "automation-route:telegram-message",
+          id: "automation-route/org:org-1/telegram-message",
           role: "delegate",
         },
       ],
@@ -102,7 +104,7 @@ describe("createAutomationRuntimeExecution", () => {
     const routeDelegate = {
       scope: "internal",
       type: "automation",
-      id: "automation-route:telegram-message",
+      id: "automation-route/org:org-1/telegram-message",
       role: "delegate",
     } as const;
     const execution = createAutomationRuntimeExecution({

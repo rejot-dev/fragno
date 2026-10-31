@@ -2,7 +2,10 @@ import { describe, expect, test, vi, assert } from "vitest";
 
 import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import {
   createBackofficeSystemExecution,
@@ -37,13 +40,22 @@ import { AutomationsObject } from "../../../workers/automations-object";
 import { BillingObject } from "../../../workers/billing-object";
 import { CodemodeObject } from "../../../workers/codemode-object";
 import { FormsObject } from "../../../workers/forms-object";
+import { GitHubObject } from "../../../workers/github-object";
+import { GitHubWebhookRouterObject } from "../../../workers/github-webhook-router-object";
 import { McpObject } from "../../../workers/mcp-object";
+import { OtpObject } from "../../../workers/otp-object";
+import { ProjectConnectorObject } from "../../../workers/project-connector-object";
 import { ResendObject } from "../../../workers/resend-object";
 import { TelegramObject } from "../../../workers/telegram-object";
 import { UploadObject } from "../../../workers/upload-object";
 import { CODEMODE_WORKFLOW, codemodeWorkflowParamsSchema } from "./engine/codemode-invocation";
 import { createAutomationsRouteCaller, createWorkflowsRouteCaller } from "./route-callers";
-import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+import {
+  backofficeFiles,
+  type BackofficeScenarioDefinitionInput,
+  defineBackofficeScenario,
+  runBackofficeScenario,
+} from "./scenario";
 
 const scenarioObjects = {
   API: (input) => new ApiObject(input),
@@ -55,9 +67,13 @@ const scenarioObjects = {
   CODEMODE: (input) => new CodemodeObject(input),
   FORMS: (input) => new FormsObject(input),
   MCP: (input) => new McpObject(input),
+  OTP: (input) => new OtpObject(input),
   RESEND: (input) => new ResendObject(input),
   TELEGRAM: (input) => new TelegramObject(input),
   UPLOAD: (input) => new UploadObject(input),
+  GITHUB: (input) => new GitHubObject(input),
+  GITHUB_WEBHOOK_ROUTER: (input) => new GitHubWebhookRouterObject(input),
+  PROJECT_CONNECTOR: (input) => new ProjectConnectorObject(input),
 } satisfies LocalBackofficeObjects;
 
 const authorityEvent = ({
@@ -104,6 +120,84 @@ const workflowSource = `export default defineWorkflow(
   },
 );
 `;
+
+const otherOrganizationWorkflowSource = `export default defineWorkflow(
+  { name: "other-organization" },
+  async (event, step) => {
+    const eventId = event.id;
+    await step.do("write in the other organization", async () => {
+      await context.org("org-2").store.set({ key: "authority/" + eventId, value: "written" });
+    });
+    return { eventId };
+  },
+);
+`;
+
+/** A delegated-user route in org-1 whose workflow writes to org-2, where its user is a member. */
+const otherOrganizationScenario = ({
+  name,
+  grants,
+  outcome,
+  allowErroredWorkflows = false,
+}: {
+  name: string;
+  grants: BackofficePermissionRequirement[];
+  outcome: BackofficeScenarioDefinitionInput["steps"];
+  allowErroredWorkflows?: boolean;
+}) =>
+  defineBackofficeScenario({
+    objects: scenarioObjects,
+    name,
+    options: { allowErroredWorkflows },
+    files: backofficeFiles.workspaceStarter(),
+    setup: ({ given }) => [
+      given.auth.user({ id: "owner-1", role: "admin" }),
+      given.auth.user({ id: "user-1", role: "user" }),
+      ...["org-1", "org-2"].flatMap((orgId) => [
+        given.auth.organization({
+          id: orgId,
+          name: orgId,
+          ownerUserId: "owner-1",
+          ownerRoles: ["owner"],
+        }),
+        given.auth.member({ orgId, userId: "user-1", roles: ["member"] }),
+        given.organization.exists({ id: orgId, name: orgId, ownerUserId: "owner-1" }),
+      ]),
+      given.direct.file({
+        orgId: "org-1",
+        path: "/workspace/automations/other-organization.workflow.js",
+        content: otherOrganizationWorkflowSource,
+      }),
+      given.router.route({
+        orgId: "org-1",
+        id: "delegated-elsewhere",
+        name: "Delegated elsewhere",
+        enabled: true,
+        priority: 100,
+        trigger: {
+          kind: "event",
+          source: "authority-test",
+          eventType: "authority.requested",
+          matcher: { path: "$.payload.id", op: "exists" },
+        },
+        action: {
+          kind: "start_workflow",
+          authority: { kind: "delegated-user", grants },
+          workflowScriptPath: "/workspace/automations/other-organization.workflow.js",
+          instanceIdTemplate: "elsewhere-${event.id}",
+        },
+      }),
+    ],
+    steps: (builders) => [
+      builders.when.automation.ingestEvent(
+        authorityEvent({
+          id: "event-1",
+          principal: { scope: "internal", type: "user", id: "user-1", role: "principal" },
+        }),
+      ),
+      ...outcome(builders),
+    ],
+  });
 
 const liveGrantWorkflowSource = `export default defineWorkflow(
   { name: "live-automation-grant" },
@@ -355,7 +449,7 @@ describe("automation route authority modes", () => {
                 {
                   scope: "internal",
                   type: "automation",
-                  id: "automation-route:delegated-authority",
+                  id: "automation-route/org:org-1/delegated-authority",
                   role: "delegate",
                 },
               ],
@@ -383,7 +477,7 @@ describe("automation route authority modes", () => {
               delegation: [
                 {
                   type: "automation",
-                  id: "automation-route:delegated-authority",
+                  id: "automation-route/org:org-1/delegated-authority",
                   role: "delegate",
                 },
               ],
@@ -392,6 +486,75 @@ describe("automation route authority modes", () => {
           then.store.missing({ orgId: "org-1", key: "authority/event-2" }),
         ],
         options: { allowErroredWorkflows: true },
+      }),
+    );
+  });
+
+  test("delegated-user route grants follow its workflow into another scope", async () => {
+    await runBackofficeScenario(
+      otherOrganizationScenario({
+        name: "delegated user route acts in another organization",
+        grants: [BACKOFFICE_PERMISSION.store.modify],
+        outcome: ({ then }) => [
+          then.workflow.instance({
+            remoteWorkflowName: "other-organization",
+            instanceId: "elsewhere-event-1",
+            status: "complete",
+            actors: {
+              principal: { type: "user", id: "user-1", role: "principal" },
+              delegation: [
+                {
+                  type: "automation",
+                  id: "automation-route/org:org-1/delegated-elsewhere",
+                  role: "delegate",
+                },
+              ],
+            },
+          }),
+          then.store.entry({ orgId: "org-2", key: "authority/event-1", value: "written" }),
+        ],
+      }),
+    );
+  });
+
+  test("delegated-user route grants still narrow the user in another scope", async () => {
+    await runBackofficeScenario(
+      otherOrganizationScenario({
+        name: "delegated user route is narrowed in another organization",
+        grants: [BACKOFFICE_PERMISSION.store.read],
+        outcome: ({ then }) => [
+          then.workflow.instance({
+            remoteWorkflowName: "other-organization",
+            instanceId: "elsewhere-event-1",
+            status: "errored",
+          }),
+          then.assert("the route's own grants deny the write", async (ctx) => {
+            const workflows = createWorkflowsRouteCaller({
+              object: ctx.runtime.objects.automations.for({
+                kind: "org",
+                orgId: "org-1",
+                jurisdiction: null,
+              }),
+              context: {
+                execution: createBackofficeSystemExecution({
+                  kind: "org",
+                  orgId: "org-1",
+                  jurisdiction: null,
+                }),
+                propagationContext: null,
+              },
+            });
+            const response = await workflows("GET", "/:workflowName/instances/:instanceId", {
+              pathParams: { workflowName: "codemode-script", instanceId: "elsewhere-event-1" },
+            });
+            assert(response.type === "json");
+            expect(response.data.details.error?.message).toContain(
+              "Delegated automation 'automation-route/org:org-1/delegated-elsewhere' is not granted store.modify",
+            );
+          }),
+          then.store.missing({ orgId: "org-2", key: "authority/event-1" }),
+        ],
+        allowErroredWorkflows: true,
       }),
     );
   });
@@ -476,7 +639,7 @@ describe("automation route authority modes", () => {
                 {
                   scope: "internal",
                   type: "automation",
-                  id: "automation-route:linked-authority",
+                  id: "automation-route/org:org-1/linked-authority",
                   role: "delegate",
                 },
               ],

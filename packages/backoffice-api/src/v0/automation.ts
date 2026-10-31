@@ -156,7 +156,8 @@ export type AutomationAuthorityMode =
        * from the owning route's current grants. The kernel requires both resulting grant sets to
        * contain the operation. Missing, disabled, or changed routes and missing, invalid, banned,
        * or no-longer-authorized users therefore fail closed. The delegate can restrict but never
-       * elevate the user.
+       * elevate the user. The delegate names the route's scope, so the same grants apply in every
+       * other scope the workflow reaches as the user.
        */
       kind: "delegated-user";
       grants: AutomationUserRouteGrants;

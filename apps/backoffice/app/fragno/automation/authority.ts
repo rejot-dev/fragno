@@ -12,7 +12,11 @@ import {
   allBackofficePermissionRequirements,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  type BackofficeContextScope,
+  backofficeScopePathSegment,
+  parseBackofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
@@ -37,17 +41,30 @@ export class AutomationAuthorityModeError extends Error {
 }
 
 const AUTOMATION_ROUTE_ACTOR_ID_PREFIX = "automation-route:";
+const SCOPED_AUTOMATION_ROUTE_ACTOR_ID_PREFIX = "automation-route/";
 const noAutomationRouteGrants = [] as const satisfies readonly BackofficePermissionRequirement[];
 
+/**
+ * The identity a route's action acts as. An organization automation principal is
+ * `automation-route:<routeId>` and only ever acts in its route's scope. A user delegate follows its
+ * workflow into every scope its user can reach, so it names its route's scope as well:
+ * `automation-route/<scope segment>/<routeId>`. Scope segments encode `/`, so the route ID follows
+ * the first one after the prefix.
+ */
 export const automationRouteAuthority = ({
   routeId,
+  routeScope,
   mode,
 }: {
   routeId: string;
+  routeScope: BackofficeContextScope;
   mode: AutomationAuthorityMode;
 }): AutomationRuntimeAuthority => ({
   mode,
-  automationId: `${AUTOMATION_ROUTE_ACTOR_ID_PREFIX}${routeId}`,
+  automationId:
+    mode.kind === "organization-automation"
+      ? `${AUTOMATION_ROUTE_ACTOR_ID_PREFIX}${routeId}`
+      : `${SCOPED_AUTOMATION_ROUTE_ACTOR_ID_PREFIX}${backofficeScopePathSegment(routeScope)}/${routeId}`,
 });
 
 export type AutomationRouteAuthorityLookup = (input: {
@@ -55,20 +72,43 @@ export type AutomationRouteAuthorityLookup = (input: {
   routeId: string;
 }) => Promise<Pick<AutomationRouteDefinition, "enabled" | "action"> | null>;
 
+/**
+ * The route an automation-route actor acts for. Its scope is null for identities that do not name
+ * one: organization automation principals, and delegates started before delegates named it, whose
+ * route is in the scope they act in.
+ */
+function automationRouteFromActor(
+  actor: AutomationActor<"principal" | "delegate">,
+): { routeId: string; routeScope: BackofficeContextScope | null } | null {
+  if (actor.scope !== "internal" || actor.type !== "automation") {
+    return null;
+  }
+
+  if (actor.id.startsWith(AUTOMATION_ROUTE_ACTOR_ID_PREFIX)) {
+    const routeId = actor.id.slice(AUTOMATION_ROUTE_ACTOR_ID_PREFIX.length);
+    return routeId.length > 0 ? { routeId, routeScope: null } : null;
+  }
+
+  if (actor.role !== "delegate" || !actor.id.startsWith(SCOPED_AUTOMATION_ROUTE_ACTOR_ID_PREFIX)) {
+    return null;
+  }
+  const scopedRoute = actor.id.slice(SCOPED_AUTOMATION_ROUTE_ACTOR_ID_PREFIX.length);
+  const separator = scopedRoute.indexOf("/");
+  const routeId = scopedRoute.slice(separator + 1);
+  if (separator < 0 || routeId.length === 0) {
+    return null;
+  }
+  return {
+    routeId,
+    routeScope: parseBackofficeScopePathSegment(scopedRoute.slice(0, separator)),
+  };
+}
+
 /** Returns the owning route id only for stable automation-route actor identities. */
 export function automationRouteIdFromActor(
   actor: AutomationActor<"principal" | "delegate">,
 ): string | null {
-  if (
-    actor.scope !== "internal" ||
-    actor.type !== "automation" ||
-    !actor.id.startsWith(AUTOMATION_ROUTE_ACTOR_ID_PREFIX)
-  ) {
-    return null;
-  }
-
-  const routeId = actor.id.slice(AUTOMATION_ROUTE_ACTOR_ID_PREFIX.length);
-  return routeId.length > 0 ? routeId : null;
+  return automationRouteFromActor(actor)?.routeId ?? null;
 }
 
 async function resolveAutomationRouteActorGrants({
@@ -80,12 +120,15 @@ async function resolveAutomationRouteActorGrants({
   execution: BackofficeExecutionContext;
   lookupRoute: AutomationRouteAuthorityLookup;
 }): Promise<readonly BackofficePermissionRequirement[] | null> {
-  const routeId = automationRouteIdFromActor(actor);
-  if (!routeId) {
+  const actorRoute = automationRouteFromActor(actor);
+  if (!actorRoute) {
     return null;
   }
 
-  const route = await lookupRoute({ scope: execution.scope, routeId });
+  const route = await lookupRoute({
+    scope: actorRoute.routeScope ?? execution.scope,
+    routeId: actorRoute.routeId,
+  });
   const authority = route?.enabled ? automationRouteActionAuthority(route.action) : null;
   if (!authority) {
     return noAutomationRouteGrants;

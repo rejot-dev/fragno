@@ -1464,7 +1464,7 @@ describe("starter automation router scenarios", () => {
                 {
                   scope: "internal",
                   type: "automation",
-                  id: "automation-route:telegram-pi-linking",
+                  id: "automation-route/org:org-1/telegram-pi-linking",
                   role: "delegate",
                 },
               ],
@@ -1499,7 +1499,7 @@ describe("starter automation router scenarios", () => {
                       {
                         scope: "internal",
                         type: "automation",
-                        id: "automation-route:telegram-pi-linking",
+                        id: "automation-route/org:org-1/telegram-pi-linking",
                         role: "delegate",
                       },
                     ],
