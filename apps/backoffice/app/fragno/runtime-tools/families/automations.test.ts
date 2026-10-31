@@ -34,6 +34,7 @@ const createWorkflowRuntime = (
       startedAt: null,
       completedAt: null,
     },
+    waitingFor: [],
   }),
   retryFailedStep: async ({ instanceId }) => ({
     accepted: true,

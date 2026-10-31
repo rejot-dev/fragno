@@ -1,3 +1,4 @@
+import { pendingWaitEventTypes } from "@fragno-dev/workflows/pending-waits";
 import { Button, ButtonLink, IconButton } from "@fragno-private/design-system/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { use, type ReactNode } from "react";
@@ -16,10 +17,7 @@ import {
 } from "@/fragno/automation/marketplace-package-install-identity";
 import { useWorkflowRunRecords } from "@/routes/backoffice/automations/script-view/use-script-workflow-runs";
 import { WorkflowGeneratedUi } from "@/routes/backoffice/automations/script-view/workflow-generated-ui";
-import {
-  currentWorkflowWaitingEventTypes,
-  type AutomationWorkflowRun,
-} from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
+import { type AutomationWorkflowRun } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 import { WorkflowStepGeneratedUi } from "@/routes/backoffice/automations/script-view/workflow-step-generated-ui";
 
 import {
@@ -249,7 +247,10 @@ export function MarketplaceInstallerGeneratedUi({
       }}
       workflowName={instance.workflowName}
       workflowInstanceId={instance.instanceId}
-      waitingEventTypes={currentWorkflowWaitingEventTypes(instance.workflowSteps)}
+      waitingEventTypes={pendingWaitEventTypes({
+        steps: instance.workflowSteps,
+        events: instance.workflowEvents,
+      })}
     />
   );
 }

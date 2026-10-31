@@ -654,7 +654,14 @@ async function readReplicaReads(ctx: BackofficeScenarioContext) {
     // `WorkflowRunResponse` derives a run's waits from the run, as the waits relation does.
     waits: waiting
       .flatMap((run) =>
-        currentWorkflowWaits([{ id: run.id, output: run.output, steps: run.workflowSteps }]),
+        currentWorkflowWaits([
+          {
+            id: run.id,
+            output: run.output,
+            steps: run.workflowSteps,
+            events: run.workflowEvents,
+          },
+        ]),
       )
       .map(
         ({ eventType, interfaceStepKey }) =>

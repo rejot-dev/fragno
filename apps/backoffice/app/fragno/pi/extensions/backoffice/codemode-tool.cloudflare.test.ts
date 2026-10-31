@@ -114,6 +114,7 @@ const createPiWorkflowRuntime = (
       startedAt: null,
       completedAt: null,
     },
+    waitingFor: [],
   }),
   retryFailedStep: async ({ instanceId }) => ({
     accepted: true,
@@ -677,6 +678,7 @@ describe("Pi codemode tool", () => {
             startedAt: null,
             completedAt: null,
           },
+          waitingFor: [],
         }),
         sendEvent: async () => ({ accepted: true }),
       }),
@@ -723,6 +725,7 @@ describe("Pi codemode tool", () => {
               startedAt: null,
               completedAt: null,
             },
+            waitingFor: [],
           };
         },
       }),

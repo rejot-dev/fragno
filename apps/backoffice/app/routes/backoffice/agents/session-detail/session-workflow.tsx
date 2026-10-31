@@ -1,4 +1,5 @@
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
+import { pendingWaitEventTypes } from "@fragno-dev/workflows/pending-waits";
 import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import { ChatEventLink } from "@fragno-private/design-system/chat-divider";
 import {
@@ -26,7 +27,6 @@ import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-
 import { useCurrentAutomationReplica } from "@/fragno/automation/lofi/replica";
 import { useWorkflowRunRecords } from "@/routes/backoffice/automations/script-view/use-script-workflow-runs";
 import {
-  currentWorkflowWaitingEventTypes,
   latestWorkflowRunGeneratedUi,
   workflowRunTime,
   type AutomationWorkflowRun,
@@ -325,7 +325,8 @@ function workflowStatus(
       return { kind: "running" };
     case "waiting": {
       const generatedUi = latestWorkflowRunGeneratedUi({ output: run.output, steps });
-      if (currentWorkflowWaitingEventTypes(steps).length > 0 && generatedUi?.type === "step") {
+      const waits = pendingWaitEventTypes({ steps, events: run.workflowEvents });
+      if (waits.length > 0 && generatedUi?.type === "step") {
         return { kind: "waiting-for-input", step: generatedUi.step.name };
       }
       return { kind: "waiting" };

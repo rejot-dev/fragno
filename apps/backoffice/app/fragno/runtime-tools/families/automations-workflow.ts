@@ -85,6 +85,7 @@ export type WorkflowInstanceDetails = {
     startedAt: string | Date | null;
     completedAt: string | Date | null;
   };
+  waitingFor: string[];
 };
 
 export type WorkflowRetryFailedStepResult = {
@@ -503,7 +504,9 @@ const workflowGetInstanceTool = defineAutomationWorkflowTool({
       format: (result, options) =>
         options.format === "json"
           ? { data: result }
-          : { stdout: `${result.id}\t${formatWorkflowStatusSummary(result.details)}\n` },
+          : {
+              stdout: `${result.id}\t${formatWorkflowStatusSummary(result.details)}${result.waitingFor.length ? `\twaiting for ${result.waitingFor.join(", ")}` : ""}\n`,
+            },
     },
   },
 });

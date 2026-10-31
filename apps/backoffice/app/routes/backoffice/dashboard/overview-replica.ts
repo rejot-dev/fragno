@@ -21,7 +21,12 @@ export function readDashboardOverview(reader: LofiSqliteReader, { since }: { sin
   const waitingRuns = readWorkflowRuns(reader, { type: "waiting" });
   // Waits follow from the waiting runs' current steps, which the overview reads anyway.
   const waits = currentWorkflowWaits(
-    waitingRuns.map((run) => ({ id: run.id, output: run.output, steps: run.workflowSteps })),
+    waitingRuns.map((run) => ({
+      id: run.id,
+      output: run.output,
+      steps: run.workflowSteps,
+      events: run.workflowEvents,
+    })),
   );
   return {
     runs: readWorkflowRunSummaries(reader),

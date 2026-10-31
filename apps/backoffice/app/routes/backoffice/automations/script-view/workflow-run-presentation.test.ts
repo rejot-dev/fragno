@@ -13,7 +13,6 @@ import {
 } from "@fragno-dev/workflow-visualizer-tokens";
 
 import {
-  currentWorkflowWaitingEventTypes,
   projectScriptWorkflowRuns,
   projectWorkflowRun,
   selectScriptWorkflowRun,
@@ -603,21 +602,6 @@ describe("automation script workflow run presentation", () => {
       run.stepStatesByNodeId.get(stepNodeIn(raceVisualization, "after race").id)?.current,
       true,
     );
-    expect(
-      currentWorkflowWaitingEventTypes([
-        workflowSteps[0]!,
-        workflowStep({
-          id: "abandoned-wait",
-          stepKey: "do:race>waitForEvent:abandoned",
-          parentStepKey: "do:race",
-          name: "abandoned",
-          type: "waitForEvent",
-          status: "waiting",
-          waitEventType: "abandoned",
-        }),
-        workflowSteps[2]!,
-      ]),
-    ).toEqual(["approved"]);
   });
 
   it("maps runtime steps back to template-named loop steps", () => {

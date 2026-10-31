@@ -79,6 +79,7 @@ describe("useWorkflowRun", () => {
               createdAt: "2026-07-31T10:00:00.000Z",
             },
           ],
+          workflowEvents: [],
           workflowStepEmissions: [],
         },
       ],

@@ -11,7 +11,7 @@ type WorkflowCodemodeProvider = {
    */
   listInstances(input: WorkflowListInstancesInput): Promise<WorkflowListInstancesOutput>;
   /**
-   * Get durable workflow instance details.
+   * Get durable workflow instance details. waitingFor lists the event types it waits for, which sendEvent delivers; an event already sent and not yet taken is not listed again.
    * Requires `workflow.read`.
    */
   getInstance(input: WorkflowGetInstanceInput): Promise<WorkflowGetInstanceOutput>;
@@ -99,6 +99,7 @@ type WorkflowGetInstanceOutput = {
     startedAt: string | null;
     completedAt: string | null;
   };
+  waitingFor: string[];
 };
 type WorkflowShowInstanceInput = {
   instanceId: string;
@@ -121,6 +122,7 @@ type WorkflowShowInstanceOutput = {
     startedAt: string | null;
     completedAt: string | null;
   };
+  waitingFor: string[];
 };
 type WorkflowGetHistoryInput = {
   instanceId: string;

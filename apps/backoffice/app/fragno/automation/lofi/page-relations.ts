@@ -314,6 +314,7 @@ const DERIVED_RELATIONS: DerivedRelation[] = [
           id: run.id,
           output: run.output,
           steps: run.workflowSteps,
+          events: run.workflowEvents,
         })),
       ),
   },

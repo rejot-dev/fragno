@@ -36,7 +36,14 @@ export function WorkflowRunResponse({
   // Only waiting runs wait, as the scope's `workflowWaits` collection derives them.
   const waits =
     run?.status === "waiting"
-      ? currentWorkflowWaits([{ id: run.id, output: run.output, steps: run.workflowSteps }])
+      ? currentWorkflowWaits([
+          {
+            id: run.id,
+            output: run.output,
+            steps: run.workflowSteps,
+            events: run.workflowEvents,
+          },
+        ])
       : [];
   const step = run === null ? null : awaitingInputStep(run, waits);
   if (run === null || step === null) {

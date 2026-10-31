@@ -9,8 +9,10 @@ import {
   workflowsFragmentDefinition,
 } from "./definition";
 import { buildScopedInstanceRowId } from "./instance-ref";
+import { pendingWaitEventTypes } from "./pending-waits";
 import { workflowsSchema } from "./schema";
 import {
+  isTerminalStatus,
   WorkflowFailedStepNotRetryableError,
   WorkflowInstanceNotErroredError,
   type InstanceStatus,
@@ -656,6 +658,8 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           id: z.string(),
           details: instanceStatusOutputSchema,
           meta: instanceMetaOutputSchema,
+          /** The event types the run waits for; sending one of them lets it continue. */
+          waitingFor: z.array(z.string()),
         }),
         errorCodes: ["WORKFLOW_NOT_FOUND", "INVALID_INSTANCE_ID", "INSTANCE_NOT_FOUND"],
         handler: async function (context, { json, error }) {
@@ -669,7 +673,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
           }
 
           try {
-            const { details, meta, currentStep } = await this.handlerTx()
+            const { details, meta, currentStep, waitingFor } = await this.handlerTx()
               .retrieve(({ forSchema }) =>
                 forSchema(workflowsSchema)
                   .findFirst("workflow_instance", (b) =>
@@ -680,16 +684,22 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                       ),
                     ),
                   )
-                  .findWithCursor("workflow_step", (b) =>
+                  .find("workflow_step", (b) =>
                     b
                       .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
                         eb("instanceRef", "=", buildScopedInstanceRowId(workflowName, instanceId)),
                       )
-                      .orderByIndex("idx_workflow_step_instanceRef_createdAt", "desc")
-                      .pageSize(1),
+                      .orderByIndex("idx_workflow_step_instanceRef_createdAt", "asc"),
+                  )
+                  .find("workflow_event", (b) =>
+                    b
+                      .whereIndex("idx_workflow_event_instanceRef_createdAt", (eb) =>
+                        eb("instanceRef", "=", buildScopedInstanceRowId(workflowName, instanceId)),
+                      )
+                      .orderByIndex("idx_workflow_event_instanceRef_createdAt", "asc"),
                   ),
               )
-              .transformRetrieve(([instance, steps]) => {
+              .transformRetrieve(([instance, steps, events]) => {
                 if (!instance) {
                   throw new Error("INSTANCE_NOT_FOUND");
                 }
@@ -719,7 +729,7 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                   completedAt: instance.completedAt,
                 };
 
-                const latestStep = steps.items[0];
+                const latestStep = steps.at(-1);
                 const currentStep = latestStep
                   ? {
                       stepKey: latestStep.stepKey,
@@ -744,11 +754,16 @@ export const workflowsRoutesFactory = defineRoutes(workflowsFragmentDefinition).
                     }
                   : undefined;
 
-                return { details, meta, currentStep };
+                // A finished run's leftover waits, such as a lost race's, take no events.
+                const waitingFor = isTerminalStatus(status)
+                  ? []
+                  : pendingWaitEventTypes({ steps, events });
+
+                return { details, meta, currentStep, waitingFor };
               })
               .execute();
 
-            return json({ id: instanceId, details, meta: { ...meta, currentStep } });
+            return json({ id: instanceId, details, meta: { ...meta, currentStep }, waitingFor });
           } catch (err) {
             return handleServiceError(err, errorResponder);
           }

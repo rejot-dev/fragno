@@ -1,3 +1,4 @@
+import { pendingWaitEventTypes } from "@fragno-dev/workflows/pending-waits";
 import {
   BackofficeUiErrorBoundary,
   BackofficeUiRenderer,
@@ -8,7 +9,6 @@ import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scop
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import { FileScopeProvider } from "@/components/backoffice/file-scope";
 import {
-  currentWorkflowWaitingEventTypes,
   type WorkflowRunEvent,
   type WorkflowRunGeneratedUi,
   type WorkflowRunStep,
@@ -88,7 +88,7 @@ function GeneratedInterfaceContent({
       // Events address the run by its runner's name; the authored name only labels it.
       workflowName={run.workflowName}
       workflowInstanceId={run.instanceId}
-      waitingEventTypes={currentWorkflowWaitingEventTypes(run.steps)}
+      waitingEventTypes={pendingWaitEventTypes({ steps: run.steps, events: run.workflowEvents })}
       workflowEventSender={async ({ eventId, workflowName, instanceId, eventType, payload }) => {
         await sendBackofficeWorkflowEvent({
           eventId,

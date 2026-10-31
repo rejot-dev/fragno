@@ -11,6 +11,7 @@ export default defineConfig([
       "./src/workflow.ts",
       "./src/debug-log.ts",
       "./src/step-identity.ts",
+      "./src/pending-waits.ts",
       "./src/step-emission-control.ts",
       "./src/remote-workflow.ts",
       "./src/instance-ref.ts",
@@ -36,6 +37,7 @@ export default defineConfig([
     entry: [
       "./src/schema.ts",
       "./src/step-identity.ts",
+      "./src/pending-waits.ts",
       "./src/step-emission-control.ts",
       "./src/client/clients.ts",
       "./src/client/react.ts",

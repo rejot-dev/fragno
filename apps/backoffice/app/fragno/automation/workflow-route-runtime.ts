@@ -313,6 +313,7 @@ export const createRouteBackedAutomationWorkflowRuntime = ({
           startedAt: backendMeta.startedAt,
           completedAt: backendMeta.completedAt,
         },
+        waitingFor: instance.waitingFor,
       };
       return details;
     },

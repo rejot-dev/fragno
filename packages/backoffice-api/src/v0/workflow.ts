@@ -38,6 +38,8 @@ export const workflowInstanceDetailsSchema = z.lazy(() =>
       startedAt: dateTimeStringOutputSchema.nullable(),
       completedAt: dateTimeStringOutputSchema.nullable(),
     }),
+    /** The event types the run waits for; sending one of them with sendEvent lets it continue. */
+    waitingFor: z.array(z.string()),
   }),
 );
 
@@ -136,7 +138,8 @@ export const workflowOperations = {
     output: workflowListInstancesResultSchema,
   },
   "workflow.instances.get": {
-    description: "Get durable workflow instance details.",
+    description:
+      "Get durable workflow instance details. waitingFor lists the event types it waits for, which sendEvent delivers; an event already sent and not yet taken is not listed again.",
     permissions: [BACKOFFICE_PERMISSION.workflow.read],
     input: z.lazy(() =>
       z.strictObject({

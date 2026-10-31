@@ -1,4 +1,8 @@
 import {
+  isAbandonedWorkflowStep,
+  pendingWaitEventTypes,
+} from "@fragno-dev/workflows/pending-waits";
+import {
   isWorkflowStepStartedControlPayload,
   projectWorkflowStepExecutionActivity,
   selectCanonicalWorkflowStepEmissions,
@@ -227,7 +231,10 @@ export function projectWorkflowRun({
     createdAt: instance.createdAt,
     updatedAt: instance.updatedAt,
     workflowEvents: instance.workflowEvents,
-    waitingEventTypes: currentWorkflowWaitingEventTypes(instance.workflowSteps),
+    waitingEventTypes: pendingWaitEventTypes({
+      steps: instance.workflowSteps,
+      events: instance.workflowEvents,
+    }),
     stepStatesByNodeId: stepProjection.stepStatesByNodeId,
     stepExecutionsByNodeId: stepProjection.stepExecutionsByNodeId,
     unmappedRuntimeSteps: stepProjection.unmappedRuntimeSteps,
@@ -270,27 +277,6 @@ export function latestWorkflowRunGeneratedUi<
   return step ? { type: "step", step } : null;
 }
 
-export function currentWorkflowWaitingEventTypes(
-  steps: readonly Pick<
-    WorkflowRunStep,
-    "parentStepKey" | "status" | "stepKey" | "type" | "waitEventType"
-  >[],
-): string[] {
-  const stepsByKey = new Map(steps.map((step) => [step.stepKey, step]));
-  return [
-    ...new Set(
-      steps.flatMap((step) =>
-        step.status === "waiting" &&
-        step.type === "waitForEvent" &&
-        step.waitEventType &&
-        !hasTerminalWorkflowStepAncestor(step.stepKey, stepsByKey)
-          ? [step.waitEventType]
-          : [],
-      ),
-    ),
-  ];
-}
-
 function projectWorkflowStepStates({
   visualization,
   workflowName,
@@ -329,8 +315,7 @@ function projectWorkflowStepStates({
         name: step.name,
         type: step.type,
         status: step.status,
-        current:
-          step.status === "waiting" && !hasTerminalWorkflowStepAncestor(step.stepKey, stepsByKey),
+        current: step.status === "waiting" && !isAbandonedWorkflowStep(step.stepKey, stepsByKey),
       });
       continue;
     }
@@ -361,8 +346,7 @@ function projectWorkflowStepStates({
         ? { waitEventType: step.waitEventType }
         : {}),
       emissionCount: 0,
-      current:
-        step.status === "waiting" && !hasTerminalWorkflowStepAncestor(step.stepKey, stepsByKey),
+      current: step.status === "waiting" && !isAbandonedWorkflowStep(step.stepKey, stepsByKey),
     });
   }
 
@@ -381,7 +365,7 @@ function projectWorkflowStepStates({
   for (const activity of projectWorkflowStepExecutionActivity(canonicalEmissions)) {
     const nodeId = nodeIdByStepKey.get(activity.stepKey) ?? resolveStepNodeId(activity.stepKey);
     if (!nodeId) {
-      if (activity.active && !hasTerminalWorkflowStepAncestor(activity.stepKey, stepsByKey)) {
+      if (activity.active && !isAbandonedWorkflowStep(activity.stepKey, stepsByKey)) {
         const existing = unmappedRuntimeStepsByKey.get(activity.stepKey);
         unmappedRuntimeStepsByKey.set(activity.stepKey, {
           stepKey: activity.stepKey,
@@ -399,8 +383,7 @@ function projectWorkflowStepStates({
       active: false,
       userEmissionCount: 0,
     };
-    const running =
-      activity.active && !hasTerminalWorkflowStepAncestor(activity.stepKey, stepsByKey);
+    const running = activity.active && !isAbandonedWorkflowStep(activity.stepKey, stepsByKey);
     nodeActivity.active ||= running;
     if (running) {
       const recorded = stepExecutionsByNodeId
@@ -810,34 +793,6 @@ function workflowStepNameMatchesTemplate(
   }
 
   return runtimeName.slice(searchStart).endsWith(lastPart);
-}
-
-function hasTerminalWorkflowStepAncestor(
-  stepKey: string,
-  stepsByKey: ReadonlyMap<string, Pick<WorkflowRunStep, "parentStepKey" | "status" | "stepKey">>,
-): boolean {
-  let parentStepKey =
-    stepsByKey.get(stepKey)?.parentStepKey ?? workflowStepParentKeyFromIdentity(stepKey);
-  const visitedStepKeys = new Set<string>();
-
-  while (parentStepKey && !visitedStepKeys.has(parentStepKey)) {
-    visitedStepKeys.add(parentStepKey);
-    const parentStep = stepsByKey.get(parentStepKey);
-    if (parentStep && TERMINAL_WORKFLOW_STEP_STATUSES.has(parentStep.status)) {
-      return true;
-    }
-    parentStepKey = parentStep?.parentStepKey ?? workflowStepParentKeyFromIdentity(parentStepKey);
-  }
-
-  return false;
-}
-
-function workflowStepParentKeyFromIdentity(stepKey: string): string | null | undefined {
-  try {
-    return parseStepKey(stepKey).parentStepKey;
-  } catch {
-    return undefined;
-  }
 }
 
 function workflowStepError(step: WorkflowRunStep): string | undefined {

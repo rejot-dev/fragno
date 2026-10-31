@@ -37,6 +37,11 @@
       "browser": "./dist/browser/step-identity.js",
       "default": "./dist/node/step-identity.js"
     },
+    "./pending-waits": {
+      "types": "./dist/browser/pending-waits.d.ts",
+      "browser": "./dist/browser/pending-waits.js",
+      "default": "./dist/node/pending-waits.js"
+    },
     "./step-emission-control": {
       "types": "./dist/node/step-emission-control.d.ts",
       "default": "./dist/node/step-emission-control.js"

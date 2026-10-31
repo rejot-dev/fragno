@@ -67,6 +67,13 @@ the current step summary. Every status details object includes `runGeneration`, 
 list, management, and restart-or-create responses. New instances start at generation `1`; each full
 restart increments it.
 
+`waitingFor` lists the event types the run needs sent to continue, each once, or nothing once the
+run is finished. A run waiting for several events at once, such as with `Promise.all`, lists each.
+An event already sent but not yet taken by its wait covers it, so it is not listed again; neither is
+a wait inside a step that finished without it. `pendingWaitEventTypes` from
+`@fragno-dev/workflows/pending-waits` derives the same list from a run's steps and events, such as a
+client's synchronized copy of them.
+
 ### Get current-step emissions
 
 `GET /:workflowName/instances/:instanceId/current-step/emissions`

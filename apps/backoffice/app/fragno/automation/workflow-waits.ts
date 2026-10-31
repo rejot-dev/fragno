@@ -1,5 +1,6 @@
+import { pendingWaitEventTypes, type WorkflowWaitEvent } from "@fragno-dev/workflows/pending-waits";
+
 import {
-  currentWorkflowWaitingEventTypes,
   latestWorkflowRunGeneratedUi,
   type WorkflowRunStep,
 } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
@@ -16,7 +17,7 @@ export type WorkflowWaitRecord = {
   interfaceStepKey: string | null;
 };
 
-/** What waiting runs wait for, from their output and steps in the order they were created. */
+/** What waiting runs wait for, from their output, and steps and events in the order they were created. */
 export function currentWorkflowWaits(
   runs: readonly {
     id: string;
@@ -25,12 +26,13 @@ export function currentWorkflowWaits(
       WorkflowRunStep,
       "stepKey" | "parentStepKey" | "type" | "status" | "waitEventType" | "result"
     >[];
+    events: readonly WorkflowWaitEvent[];
   }[],
 ): WorkflowWaitRecord[] {
   return runs.flatMap((run) => {
     const generatedUi = latestWorkflowRunGeneratedUi({ output: run.output, steps: run.steps });
     const interfaceStepKey = generatedUi?.type === "step" ? generatedUi.step.stepKey : null;
-    return currentWorkflowWaitingEventTypes(run.steps).map((eventType) => ({
+    return pendingWaitEventTypes(run).map((eventType) => ({
       id: `${run.id}:${eventType}`,
       runId: run.id,
       eventType,
