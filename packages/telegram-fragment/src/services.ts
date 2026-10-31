@@ -714,6 +714,7 @@ export const createProcessIncomingUpdateOps = (config: TelegramFragmentConfig) =
             messageId: messageSummary.id,
             chatId,
             fromUserId,
+            senderChatId,
             text: message.text ?? null,
             attachments,
             commandName,

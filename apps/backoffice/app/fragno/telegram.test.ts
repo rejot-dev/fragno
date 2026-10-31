@@ -12,6 +12,7 @@ describe("buildTelegramAutomationEvent", () => {
         messageId: "chat-1:10",
         chatId: "chat-1",
         fromUserId: "user-1",
+        senderChatId: null,
         text: "/start",
         attachments: [],
         commandName: "start",
@@ -57,6 +58,7 @@ describe("buildTelegramAutomationEvent", () => {
         messageId: "chat-1:11",
         chatId: "chat-1",
         fromUserId: "user-1",
+        senderChatId: null,
         text: null,
         attachments: [
           {

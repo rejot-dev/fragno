@@ -383,6 +383,8 @@ export interface TelegramMessageHookPayload {
   messageId: string;
   chatId: string;
   fromUserId: string | null;
+  /** Set when a chat sent the message as itself, such as a channel or an anonymous group admin. */
+  senderChatId: string | null;
   text: string | null;
   attachments: TelegramAttachment[];
   commandName: string | null;
