@@ -1,4 +1,4 @@
-import { conciseFunctionEndsBefore } from "./function-scope.ts";
+import { type ActivatedFunctionScope, conciseFunctionEndsBefore } from "./function-scope.ts";
 import type {
   BranchNode,
   ConditionNode,
@@ -24,10 +24,10 @@ import type {
   TokenSubmachine,
   TokenSubmachineStatus,
 } from "./state-machine.ts";
+import { stepNameFromArgument } from "./step-name.ts";
 import {
   isTriviaToken,
   staticStringValue,
-  templateStringParts,
   tokenizeWorkflowSource,
   tokenIsOpen,
   type WorkflowToken,
@@ -316,14 +316,34 @@ export class LoopStatementMachine implements TokenSubmachine {
   }
 }
 
+interface FanOut {
+  branch: BranchNode;
+  loop: LoopNode;
+  callbackDepth: TokenMachineContext["depth"];
+  /** The tokens of the callback argument so far. */
+  callbackTokens: PositionedWorkflowToken[];
+  status: "open" | "closed";
+}
+
 export class ParallelCallMachine implements TokenSubmachine {
   readonly kind = "parallel" as const;
   readonly parentId: string;
   readonly #workflow: WorkflowBuilder;
   readonly #parallel: ParallelNode;
   readonly #openParentheses: number;
+  readonly #baseBraces: number;
+  readonly #baseBrackets: number;
+  readonly #argumentStart: number;
+  readonly #argumentTokens: PositionedWorkflowToken[] = [];
+  readonly #onCallbackReference: (reference: PositionedWorkflowToken) => void;
   #arrayBrackets: number | undefined;
+  /**
+   * An array argument is a list of parallel operations unless the expression continues after it,
+   * as in `["eu", "us"].map(...)`. Its branches stay provisional until the next token decides.
+   */
+  #array: { role: "pending" | "operations" | "receiver"; branches: BranchNode[] } | undefined;
   #activeBranch: BranchNode | undefined;
+  #fanOut: FanOut | undefined;
   #nextBranchIndex = 0;
 
   constructor({
@@ -331,16 +351,32 @@ export class ParallelCallMachine implements TokenSubmachine {
     parallel,
     parentId,
     openParentheses,
+    baseBraces,
+    baseBrackets,
+    argumentStart,
+    onCallbackReference,
   }: {
     workflow: WorkflowBuilder;
     parallel: ParallelNode;
     parentId: string;
     openParentheses: number;
+    baseBraces: number;
+    baseBrackets: number;
+    argumentStart: number;
+    /**
+     * Receives a fan-out callback written as a bare name, as in `items.map(load)`, while its loop
+     * is still the active container, so a helper of that name can expand inside it.
+     */
+    onCallbackReference: (reference: PositionedWorkflowToken) => void;
   }) {
     this.#workflow = workflow;
     this.#parallel = parallel;
     this.parentId = parentId;
     this.#openParentheses = openParentheses;
+    this.#baseBraces = baseBraces;
+    this.#baseBrackets = baseBrackets;
+    this.#argumentStart = argumentStart;
+    this.#onCallbackReference = onCallbackReference;
   }
 
   get id(): string {
@@ -360,7 +396,15 @@ export class ParallelCallMachine implements TokenSubmachine {
   }
 
   activeContainerId(): string {
+    if (this.#fanOut?.status === "open") {
+      return this.#fanOut.loop.id;
+    }
     return this.#activeBranch?.id ?? this.#parallel.id;
+  }
+
+  /** Whether a function starting at `depth` is the callback of `Promise.all(items.map(...))`. */
+  acceptsFanOutCallback(depth: TokenMachineContext["depth"]): boolean {
+    return this.#fanOut?.status === "open" && sameDepth(depth, this.#fanOut.callbackDepth);
   }
 
   consume(
@@ -371,15 +415,52 @@ export class ParallelCallMachine implements TokenSubmachine {
     if (this.#activeBranch) {
       extendSourceRangeToToken(this.#activeBranch.source, positioned);
     }
+    if (this.#fanOut?.status === "open") {
+      extendSourceRangeToToken(this.#fanOut.loop.source, positioned);
+    }
     const value = positioned.token.value;
-    if (
-      value === "[" &&
+    const directArgument =
       context.depth.parentheses === this.#openParentheses &&
-      this.#arrayBrackets === undefined
-    ) {
+      context.depth.braces === this.#baseBraces &&
+      context.depth.brackets === this.#baseBrackets;
+
+    if (this.#array?.role === "pending" && directArgument) {
+      this.settleArray(value);
+    }
+
+    if (value === "[" && directArgument && this.#argumentTokens.length === 0 && !this.#array) {
       this.#arrayBrackets = context.depth.brackets + 1;
+      this.#array = { role: "pending", branches: [] };
       this.#parallel.construction = { status: "partial", phase: "branches" };
       return "active";
+    }
+
+    const closesFanOut =
+      value === ")" &&
+      this.#fanOut?.status === "open" &&
+      context.depth.parentheses === this.#fanOut.callbackDepth.parentheses;
+    if (this.#fanOut?.status === "open" && !closesFanOut) {
+      this.#fanOut.callbackTokens.push(positioned);
+    }
+
+    if (
+      value === "(" &&
+      directArgument &&
+      this.#arrayBrackets === undefined &&
+      this.#array?.role !== "operations" &&
+      !this.#fanOut
+    ) {
+      this.startFanOut(positioned, context);
+    }
+
+    if (closesFanOut && this.#fanOut) {
+      const [reference, ...rest] = this.#fanOut.callbackTokens;
+      if (reference?.token.type === "IdentifierName" && rest.length === 0) {
+        this.#onCallbackReference(reference);
+      }
+      this.#fanOut.loop.construction = { status: "complete", phase: "complete" };
+      this.#fanOut.status = "closed";
+      this.completeActiveBranch();
     }
 
     if (
@@ -394,9 +475,13 @@ export class ParallelCallMachine implements TokenSubmachine {
       if (value === "]") {
         this.completeActiveBranch();
         this.#arrayBrackets = undefined;
+        this.#argumentTokens.push(positioned);
         return "active";
       }
-      this.#activeBranch ??= this.createBranch(positioned);
+      if (!this.#activeBranch) {
+        this.#activeBranch = this.createBranch(positioned);
+        this.#array?.branches.push(this.#activeBranch);
+      }
     }
 
     if (value === ")" && context.depth.parentheses === this.#openParentheses) {
@@ -405,7 +490,90 @@ export class ParallelCallMachine implements TokenSubmachine {
       return "complete";
     }
 
+    if (directArgument) {
+      this.#argumentTokens.push(positioned);
+    }
     return "active";
+  }
+
+  /**
+   * `Promise.all(items.map(callback))` runs the callback once per item, all at once: one parallel
+   * branch that holds a `map` loop over the items.
+   */
+  private startFanOut(
+    openingParenthesis: PositionedWorkflowToken,
+    context: TokenMachineContext,
+  ): void {
+    const method = this.#argumentTokens.at(-1);
+    const dot = this.#argumentTokens.at(-2);
+    if (
+      method?.token.type !== "IdentifierName" ||
+      method.token.value !== "map" ||
+      (dot?.token.value !== "." && dot?.token.value !== "?.")
+    ) {
+      return;
+    }
+    const expression = context.source.slice(this.#argumentStart, dot.start).trim();
+    if (!expression) {
+      return;
+    }
+
+    const branch = this.createBranch(method);
+    this.#activeBranch = branch;
+    const sourceOrder = this.#workflow.nextNodeOrdinal;
+    this.#workflow.nextNodeOrdinal += 1;
+    const loop: LoopNode = {
+      id: `${this.#workflow.node.id}/loop#${sourceOrder}`,
+      kind: "loop",
+      label: `map ${expression}`,
+      loopType: "map",
+      expression,
+      workflowName: this.#workflow.node.name,
+      order: 0,
+      sourceOrder,
+      parentId: branch.id,
+      source: sourceRangeFromToken(this.#parallel.source.path, method),
+      construction: { status: "partial", phase: "body" },
+    };
+    extendSourceRangeToToken(loop.source, openingParenthesis);
+    this.#workflow.children.push(loop);
+    this.#parallel.construction = { status: "partial", phase: "branches" };
+    this.#fanOut = {
+      branch,
+      loop,
+      callbackDepth: { ...context.depth, parentheses: context.depth.parentheses + 1 },
+      callbackTokens: [],
+      status: "open",
+    };
+  }
+
+  /**
+   * Decides a closed array argument by the token after it. When the expression continues, the
+   * array only feeds it: its element branches are retracted, unless an element holds durable work,
+   * as in `[step.do(...), step.do(...)].map(...)`, where the elements still run in parallel.
+   */
+  private settleArray(nextValue: string): void {
+    const array = this.#array;
+    if (!array || this.#arrayBrackets !== undefined) {
+      return;
+    }
+    const continues = nextValue === "." || nextValue === "?." || nextValue === "[";
+    const elementsHoldWork = array.branches.some((branch) =>
+      this.#workflow.children.some((node) => node.parentId === branch.id),
+    );
+    if (!continues || elementsHoldWork) {
+      array.role = "operations";
+      return;
+    }
+
+    array.role = "receiver";
+    const retracted = new Set<WorkflowChildNode>(array.branches);
+    this.#workflow.children.splice(
+      0,
+      this.#workflow.children.length,
+      ...this.#workflow.children.filter((node) => !retracted.has(node)),
+    );
+    this.#nextBranchIndex = 0;
   }
 
   private createBranch(positioned: PositionedWorkflowToken): BranchNode {
@@ -438,6 +606,137 @@ export class ParallelCallMachine implements TokenSubmachine {
   }
 }
 
+/**
+ * A named function written in workflow code. Its durable constructs form a template that the
+ * coordinator expands at every call, so the graph shows them where they run.
+ */
+export class HelperDefinitionMachine implements TokenSubmachine {
+  readonly kind = "helper" as const;
+  readonly parentId = undefined;
+  readonly id: string;
+  readonly name: string;
+  readonly parameters: ReadonlyArray<string | null>;
+  readonly source: SourceRange;
+  readonly workflow: WorkflowBuilder;
+  readonly #scope: ActivatedFunctionScope;
+  #phase: "body" | "complete" = "body";
+
+  constructor({
+    id,
+    name,
+    parameters,
+    source,
+    workflow,
+    scope,
+  }: {
+    id: string;
+    name: string;
+    parameters: ReadonlyArray<string | null>;
+    source: SourceRange;
+    workflow: WorkflowBuilder;
+    scope: ActivatedFunctionScope;
+  }) {
+    this.id = id;
+    this.name = name;
+    this.parameters = parameters;
+    this.source = source;
+    this.workflow = workflow;
+    this.#scope = scope;
+  }
+
+  get phase(): string {
+    return this.#phase;
+  }
+
+  activeContainerId(): string {
+    return this.id;
+  }
+
+  consume(
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+  ): TokenSubmachineStatus {
+    const value = positioned.token.value;
+    const ended =
+      this.#scope.boundary === "block"
+        ? value === "}" && context.depth.braces === this.#scope.bodyBraces
+        : conciseFunctionEndsBefore(value, context.depth, this.#scope.baseDepth);
+    if (this.#scope.boundary === "block" || !ended) {
+      extendSourceRangeToToken(this.source, positioned);
+    }
+    if (!ended) {
+      return "active";
+    }
+    this.#phase = "complete";
+    return "complete";
+  }
+}
+
+/** A call of a workflow helper; it completes with the argument tokens once the call closes. */
+export class HelperCallMachine implements TokenSubmachine {
+  readonly kind = "call" as const;
+  readonly parentId = undefined;
+  readonly id: string;
+  readonly helper: HelperDefinitionMachine;
+  readonly source: SourceRange;
+  readonly #openParentheses: number;
+  readonly #baseBraces: number;
+  readonly #baseBrackets: number;
+  readonly #arguments: WorkflowToken[][] = [[]];
+  readonly #onComplete: (callArguments: WorkflowToken[][]) => void;
+
+  constructor({
+    id,
+    helper,
+    callee,
+    depth,
+    onComplete,
+  }: {
+    id: string;
+    helper: HelperDefinitionMachine;
+    callee: PositionedWorkflowToken;
+    /** The delimiter depth just inside the call's parentheses. */
+    depth: TokenMachineContext["depth"];
+    onComplete: (callArguments: WorkflowToken[][]) => void;
+  }) {
+    this.id = id;
+    this.helper = helper;
+    this.source = sourceRangeFromToken(helper.source.path, callee);
+    this.#openParentheses = depth.parentheses;
+    this.#baseBraces = depth.braces;
+    this.#baseBrackets = depth.brackets;
+    this.#onComplete = onComplete;
+  }
+
+  get phase(): string {
+    return "arguments";
+  }
+
+  consume(
+    positioned: PositionedWorkflowToken,
+    context: TokenMachineContext,
+  ): TokenSubmachineStatus {
+    extendSourceRangeToToken(this.source, positioned);
+    const { token } = positioned;
+    const { depth } = context;
+    if (token.value === ")" && depth.parentheses === this.#openParentheses) {
+      this.#onComplete(this.#arguments.filter((tokens) => tokens.length > 0));
+      return "complete";
+    }
+    if (
+      token.value === "," &&
+      depth.parentheses === this.#openParentheses &&
+      depth.braces === this.#baseBraces &&
+      depth.brackets === this.#baseBrackets
+    ) {
+      this.#arguments.push([]);
+      return "active";
+    }
+    this.#arguments.at(-1)?.push(token);
+    return "active";
+  }
+}
+
 export class StepCallMachine implements TokenSubmachine {
   readonly kind = "step" as const;
   readonly parentId: string;
@@ -448,6 +747,7 @@ export class StepCallMachine implements TokenSubmachine {
   #argumentIndex = 0;
   #argumentStart: number;
   #argumentTokens: PositionedWorkflowToken[] = [];
+  #nameTokens: WorkflowToken[] = [];
   #optionProperty: { name: "type" | "timeout"; awaitingValue: boolean } | undefined;
 
   constructor({
@@ -487,6 +787,11 @@ export class StepCallMachine implements TokenSubmachine {
 
   get step(): StepNode {
     return this.#step;
+  }
+
+  /** The step name argument, which a helper call can rename by substituting its parameters. */
+  get nameTokens(): readonly WorkflowToken[] {
+    return this.#nameTokens;
   }
 
   consume(
@@ -535,27 +840,22 @@ export class StepCallMachine implements TokenSubmachine {
   }
 
   private updateStepLabel(): void {
-    const label = staticArgumentValue(this.#argumentTokens);
-    if (label !== undefined) {
-      this.#step.label = label || `${this.#step.stepType} step`;
+    this.#nameTokens = this.#argumentTokens.map(({ token }) => token);
+    const name = stepNameFromArgument(this.#nameTokens);
+    if (!name) {
+      this.#step.label = `${this.#step.stepType} step`;
       delete this.#step.nameTemplate;
-      this.#step.construction = { status: "partial", phase: "labeled" };
+      this.#step.construction = { status: "partial", phase: "discovered" };
       return;
     }
 
-    const template =
-      templateArgumentValue(this.#argumentTokens) ??
-      concatenatedArgumentValue(this.#argumentTokens);
-    if (template) {
-      this.#step.label = template.label;
-      this.#step.nameTemplate = { staticParts: template.staticParts };
-      this.#step.construction = { status: "partial", phase: "labeled" };
-      return;
+    this.#step.label = name.label || `${this.#step.stepType} step`;
+    if (name.kind === "template") {
+      this.#step.nameTemplate = name.nameTemplate;
+    } else {
+      delete this.#step.nameTemplate;
     }
-
-    this.#step.label = `${this.#step.stepType} step`;
-    delete this.#step.nameTemplate;
-    this.#step.construction = { status: "partial", phase: "discovered" };
+    this.#step.construction = { status: "partial", phase: "labeled" };
   }
 
   private updateRawArgument(source: string, end: number): void {
@@ -1821,6 +2121,12 @@ export function isParallelCallMachine(machine: TokenSubmachine): machine is Para
   return machine instanceof ParallelCallMachine;
 }
 
+export function isHelperDefinitionMachine(
+  machine: TokenSubmachine,
+): machine is HelperDefinitionMachine {
+  return machine instanceof HelperDefinitionMachine;
+}
+
 export function isStepCallMachine(machine: TokenSubmachine): machine is StepCallMachine {
   return machine instanceof StepCallMachine;
 }
@@ -1853,76 +2159,6 @@ export function isThrowStatementMachine(
 
 function staticArgumentValue(tokens: PositionedWorkflowToken[]): string | undefined {
   return tokens.length === 1 ? staticStringValue(tokens[0].token) : undefined;
-}
-
-function templateArgumentValue(
-  tokens: PositionedWorkflowToken[],
-): { label: string; staticParts: string[] } | undefined {
-  const staticParts = templateStringParts(tokens.map(({ token }) => token));
-  if (!staticParts) {
-    return undefined;
-  }
-
-  const source = tokens.map(({ token }) => token.value).join("");
-  return {
-    label: source.slice(1, -1),
-    staticParts,
-  };
-}
-
-/**
- * Reads `"load region " + region` like the template literal `load region ${region}`, so display
- * and runtime step matching treat both spellings of a dynamic step name the same way.
- */
-function concatenatedArgumentValue(
-  tokens: PositionedWorkflowToken[],
-): { label: string; staticParts: string[] } | undefined {
-  const operands: WorkflowToken[][] = [[]];
-  let depth = 0;
-  for (const { token } of tokens) {
-    if (isTriviaToken(token)) {
-      continue;
-    }
-    if (token.type === "Punctuator" && "([{".includes(token.value)) {
-      depth += 1;
-    } else if (token.type === "Punctuator" && ")]}".includes(token.value)) {
-      depth -= 1;
-    }
-    if (depth === 0 && token.type === "Punctuator" && token.value === "+") {
-      operands.push([]);
-      continue;
-    }
-    operands.at(-1)?.push(token);
-  }
-  if (operands.length < 2 || operands.some((operand) => operand.length === 0)) {
-    return undefined;
-  }
-
-  const staticParts = [""];
-  const labelParts: string[] = [];
-  let hasStaticText = false;
-  let previousWasDynamic = false;
-  for (const operand of operands) {
-    const [only] = operand;
-    const text = operand.length === 1 && only ? staticStringValue(only) : undefined;
-    if (text !== undefined) {
-      hasStaticText = true;
-      previousWasDynamic = false;
-      staticParts[staticParts.length - 1] += text;
-      labelParts.push(text);
-      continue;
-    }
-    // Adjacent dynamic operands fill one hole, just like adjacent template substitutions would.
-    if (!previousWasDynamic) {
-      staticParts.push("");
-    }
-    previousWasDynamic = true;
-    labelParts.push(`\${${operand.map((token) => token.value).join("")}}`);
-  }
-
-  return hasStaticText && staticParts.length > 1
-    ? { label: labelParts.join(""), staticParts }
-    : undefined;
 }
 
 function secondArrowParameter(prefix: string): string | undefined {

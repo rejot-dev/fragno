@@ -78,6 +78,11 @@ export class TokenSubmachineRuntime {
     return this.#machines.findLast(predicate);
   }
 
+  /** The position of an active machine among active machines, oldest first. */
+  activationOrder(machine: TokenSubmachine): number {
+    return this.#machines.indexOf(machine);
+  }
+
   has(predicate: (machine: TokenSubmachine) => boolean): boolean {
     return this.#machines.some(predicate);
   }
