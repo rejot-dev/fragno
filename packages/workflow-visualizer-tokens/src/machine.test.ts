@@ -1785,6 +1785,232 @@ describe("workflow token state machine", () => {
     ]);
   });
 
+  it("fans Promise combinators over mapped callbacks out into map loops", () => {
+    const snapshot = visualizeStreamedSource(
+      "automations/fan-out.workflow.js",
+      `defineWorkflow({ name: "fan-out" }, async (event, step) => {
+        await Promise.all(
+          event.payload.regions.map(async (region) => {
+            if (region.enabled) {
+              await step.do(\`sync \${region.id}\`, async () => store.set({ key: region.id }));
+            }
+          }),
+        );
+        await step.do("notify", async () => {
+          await Promise.all(event.payload.chats.map((chat) => telegram.sendMessage({ chat })));
+          event.payload.chats.map((chat) => telegram.sendChatAction({ chat }));
+        });
+      });`,
+    );
+
+    expect(renderWorkflowVisualizationText(snapshot)).toMatchInlineSnapshot(`
+      "workflow fan-out
+      ├─ 0. parallel Promise.all
+      │  └─ branch 1
+      │     └─ 0. map event.payload.regions
+      │        └─ 0. if region.enabled
+      │           └─ 0. do sync \${region.id}
+      │              returns: store.set({ key: region.id })
+      └─ 1. do notify
+         └─ 0. parallel Promise.all
+            └─ branch 1
+               └─ 0. map event.payload.chats"
+    `);
+    expect(
+      ancestorLabels(snapshot.graph, stepByLabel(snapshot.graph, "sync ${region.id}")),
+    ).toEqual([
+      "if region.enabled",
+      "map event.payload.regions",
+      "branch 1",
+      "Promise.all",
+      "fan-out",
+    ]);
+    // A fan-out callback runs inside its step; an ordinary callback stays opaque.
+    expect(invocationLabels(stepByLabel(snapshot.graph, "notify"))).toEqual([
+      "event.payload.chats.map",
+      "telegram.sendMessage",
+      "event.payload.chats.map",
+    ]);
+  });
+
+  it("reads a mapped array literal as the receiver of a fan-out", () => {
+    const snapshot = visualizeStreamedSource(
+      "automations/mapped-array.workflow.js",
+      `defineWorkflow({ name: "mapped-array" }, async (event, step) => {
+        await Promise.all(["eu", "us"].map((region) => step.do("load " + region, async () => {})));
+        await Promise.all([a, b].concat(c).map((item) => step.do("sync " + item, async () => {})));
+        await Promise.all(
+          [step.do("first", async () => {}), step.do("second", async () => {})].map((run) => run),
+        );
+      });`,
+    );
+
+    expect(renderWorkflowVisualizationText(snapshot)).toMatchInlineSnapshot(`
+      "workflow mapped-array
+      ├─ 0. parallel Promise.all
+      │  └─ branch 1
+      │     └─ 0. map ["eu", "us"]
+      │        └─ 0. do load \${region}
+      ├─ 1. parallel Promise.all
+      │  └─ branch 1
+      │     └─ 0. map [a, b].concat(c)
+      │        └─ 0. do sync \${item}
+      └─ 2. parallel Promise.all
+         ├─ branch 1
+         │  └─ 0. do first
+         └─ branch 2
+            └─ 0. do second"
+    `);
+  });
+
+  it("expands workflow helpers where the workflow calls them", () => {
+    const snapshot = visualizeStreamedSource(
+      "automations/helpers.workflow.js",
+      `defineWorkflow({ name: "helpers" }, async (event, step) => {
+        const formatName = (name) => name.trim();
+        const load = (region) =>
+          step.do("load " + region, async () => store.get({ key: formatName(region) }));
+        async function notify(step, chat, text) {
+          await step.do(\`notify \${chat}\`, async () => {
+            await telegram.sendMessage({ chat, text });
+          });
+        }
+
+        await load("eu");
+        await Promise.all([load("us"), load(event.payload.region)]);
+        await step.do("report", async () => {
+          await notify(step, "ops", "loaded");
+        });
+      });`,
+    );
+
+    expect(renderWorkflowVisualizationText(snapshot)).toMatchInlineSnapshot(`
+      "workflow helpers
+      ├─ 0. do load eu
+      │  returns: store.get({ key: formatName(region) })
+      ├─ 1. parallel Promise.all
+      │  ├─ branch 1
+      │  │  └─ 0. do load us
+      │  │     returns: store.get({ key: formatName(region) })
+      │  └─ branch 2
+      │     └─ 0. do load \${event.payload.region}
+      │        returns: store.get({ key: formatName(region) })
+      └─ 2. do report
+         └─ 0. do notify ops"
+    `);
+    expect(
+      snapshot.graph.nodes
+        .filter((node): node is StepNode => node.kind === "step")
+        .map((step) => [step.label, step.nameTemplate?.staticParts, invocationLabels(step)]),
+    ).toEqual([
+      ["load eu", undefined, ["store.get"]],
+      ["load us", undefined, ["store.get"]],
+      ["load ${event.payload.region}", ["load ", ""], ["store.get"]],
+      ["report", undefined, []],
+      ["notify ops", undefined, ["telegram.sendMessage"]],
+    ]);
+  });
+
+  it("keeps exception control flow inside helpers at each call", () => {
+    const snapshot = visualizeStreamedSource(
+      "automations/helper-exceptions.workflow.js",
+      `defineWorkflow({ name: "helper-exceptions" }, async (event, step) => {
+        async function sync(region) {
+          if (!region) throw new Error("missing region");
+          try {
+            await step.do("load " + region, async () => {});
+          } catch (error) {
+            await step.do("recover " + region, async () => {});
+          }
+        }
+
+        try {
+          await sync(event.payload.region);
+        } catch (error) {
+          await step.do("report", async () => {});
+        }
+        await sync("eu");
+      });`,
+    );
+
+    expect(renderWorkflowVisualizationText(snapshot)).toMatchInlineSnapshot(`
+      "workflow helper-exceptions
+      ├─ 0. try/catch
+      │  ├─ try
+      │  │  ├─ 0. if !region
+      │  │  │  └─ 0. throw to catch
+      │  │  │     value: new Error("missing region")
+      │  │  └─ 1. try/catch
+      │  │     ├─ try
+      │  │     │  └─ 0. do load \${event.payload.region}
+      │  │     └─ catch
+      │  │        └─ 0. do recover \${event.payload.region}
+      │  └─ catch
+      │     └─ 0. do report
+      ├─ 1. if !region
+      │  └─ 0. terminal error missing region
+      │     value: new Error("missing region")
+      └─ 2. try/catch
+         ├─ try
+         │  └─ 0. do load eu
+         └─ catch
+            └─ 0. do recover eu"
+    `);
+  });
+
+  it("substitutes only references to the helper's own parameters", () => {
+    const snapshot = visualizeStreamedSource(
+      "automations/helper-bindings.workflow.js",
+      `defineWorkflow({ name: "helper-bindings" }, async (event, step) => {
+        const load = (region, attempt) =>
+          step.do("load " + region, async () => {
+            const region = "us";
+            const { attempt: retry = attempt } = event.payload;
+            await step.do("load " + region + " " + retry, async () => {});
+          });
+        const loadBoth = async (first, second) => {
+          await load(first, 1);
+          await load(second, 2);
+        };
+        const first = "shadowed";
+
+        await loadBoth("eu", "ap");
+      });`,
+    );
+
+    expect(
+      snapshot.graph.nodes
+        .filter((node): node is StepNode => node.kind === "step")
+        .map((step) => step.label),
+    ).toEqual(["load eu", "load ${region} ${retry}", "load ap", "load ${region} ${retry}"]);
+  });
+
+  it("expands a helper passed by name as a fan-out callback", () => {
+    const snapshot = visualizeStreamedSource(
+      "automations/helper-fan-out.workflow.js",
+      `defineWorkflow({ name: "helper-fan-out" }, async (event, step) => {
+        const format = (region) => region.trim();
+        const load = (region) => step.do("load " + region, async () => {});
+        await Promise.all(event.payload.regions.map(load));
+        await Promise.all(event.payload.names.map(format));
+      });`,
+    );
+
+    expect(renderWorkflowVisualizationText(snapshot)).toMatchInlineSnapshot(`
+      "workflow helper-fan-out
+      ├─ 0. parallel Promise.all
+      │  └─ branch 1
+      │     └─ 0. map event.payload.regions
+      │        └─ 0. do load \${region}
+      └─ 1. parallel Promise.all
+         └─ branch 1
+            └─ 0. map event.payload.names"
+    `);
+    expect(stepByLabel(snapshot.graph, "load ${region}").nameTemplate).toEqual({
+      staticParts: ["load ", ""],
+    });
+  });
+
   it("keeps an unfinished call reference observable", () => {
     const snapshot = visualizeWorkflowSource(
       "automations/partial-invocation.workflow.js",

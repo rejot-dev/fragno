@@ -151,7 +151,8 @@ export interface ConditionNode {
   analysis: ConditionAnalysis;
 }
 
-export type LoopType = "for" | "while";
+/** `map` is the per-item callback of `Promise.all(items.map(callback))`. */
+export type LoopType = "for" | "while" | "map";
 export type LoopConstructionPhase = "header" | "body" | "complete";
 
 export interface LoopNode {
@@ -300,7 +301,17 @@ export interface DelimiterDepth {
 }
 
 export interface ActiveConstruct {
-  kind: "workflow" | "parallel" | "step" | "condition" | "loop" | "try" | "return" | "throw";
+  kind:
+    | "workflow"
+    | "parallel"
+    | "step"
+    | "condition"
+    | "loop"
+    | "try"
+    | "return"
+    | "throw"
+    | "helper"
+    | "call";
   id: string;
   parentId?: string;
   phase: string;

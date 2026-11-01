@@ -1,35 +1,51 @@
 import type { DelimiterDepth } from "./model.ts";
 import type { PositionedWorkflowToken, TokenMachineContext } from "./state-machine.ts";
 
-type BindingKind = "local" | "context-provider";
+type Binding =
+  | { kind: "local" }
+  | { kind: "context-provider" }
+  | { kind: "helper"; helperId: string };
 
-interface FunctionScopeRole {
-  durableStepCallId?: string;
-}
+/**
+ * What a function's body means to the workflow. Only `ordinary` functions are opaque: the others
+ * run as workflow code, so durable constructs inside them are part of the workflow graph.
+ */
+export type FunctionScopeRole =
+  | { kind: "ordinary" }
+  /** The direct callback of a durable step. */
+  | { kind: "durable-step"; stepCallId: string }
+  /** The callback of `Promise.all(items.map(callback))`, which runs once per item. */
+  | { kind: "fan-out" }
+  /** A named function in workflow code, expanded wherever the workflow calls it. */
+  | { kind: "helper"; helperId: string };
 
-interface BlockFunctionScope extends FunctionScopeRole {
+interface BlockFunctionScope {
   boundary: "block";
+  role: FunctionScopeRole;
   bodyBraces: number;
-  bindings: Map<string, BindingKind>;
+  bindings: Map<string, Binding>;
 }
 
-interface ExpressionFunctionScope extends FunctionScopeRole {
+interface ExpressionFunctionScope {
   boundary: "expression";
+  role: FunctionScopeRole;
   baseDepth: DelimiterDepth;
-  bindings: Map<string, BindingKind>;
+  bindings: Map<string, Binding>;
 }
 
 type ActiveFunctionScope = BlockFunctionScope | ExpressionFunctionScope;
 
-interface PendingFunctionScope extends FunctionScopeRole {
+interface PendingFunctionScope {
+  role: FunctionScopeRole;
   parameterParentheses?: number;
   parametersComplete: boolean;
-  bindings: Map<string, BindingKind>;
+  bindings: Map<string, Binding>;
 }
 
-interface PendingArrowScope extends FunctionScopeRole {
+interface PendingArrowScope {
+  role: FunctionScopeRole;
   baseDepth: DelimiterDepth;
-  bindings: Map<string, BindingKind>;
+  bindings: Map<string, Binding>;
 }
 
 interface PendingMethodScope {
@@ -38,15 +54,15 @@ interface PendingMethodScope {
 }
 
 export type ActivatedFunctionScope =
-  | { boundary: "block"; durableStepCallId?: string }
-  | { boundary: "expression"; baseDepth: DelimiterDepth; durableStepCallId?: string };
+  | { boundary: "block"; role: FunctionScopeRole; bodyBraces: number }
+  | { boundary: "expression"; role: FunctionScopeRole; baseDepth: DelimiterDepth };
 
 /** Tracks which tokens execute in the workflow callback or an explicitly durable step callback. */
 export class WorkflowFunctionScopeTracker {
   readonly #activeScopes: ActiveFunctionScope[] = [];
   readonly #pendingFunctions: PendingFunctionScope[] = [];
   readonly #pendingMethods: PendingMethodScope[] = [];
-  readonly #workflowBindings = new Map<string, BindingKind>();
+  readonly #workflowBindings = new Map<string, Binding>();
   #pendingArrow: PendingArrowScope | undefined;
 
   beforeToken(
@@ -71,47 +87,33 @@ export class WorkflowFunctionScopeTracker {
               baseDepth: { ...pending.baseDepth },
             };
       this.#activeScopes.push(activeScope);
-      return activeScope.boundary === "expression"
-        ? {
-            boundary: "expression",
-            baseDepth: { ...activeScope.baseDepth },
-            ...(activeScope.durableStepCallId
-              ? { durableStepCallId: activeScope.durableStepCallId }
-              : {}),
-          }
-        : {
-            boundary: "block",
-            ...(activeScope.durableStepCallId
-              ? { durableStepCallId: activeScope.durableStepCallId }
-              : {}),
-          };
+      return activatedScope(activeScope);
     }
 
     const pendingFunction = this.#pendingFunctions.at(-1);
     if (pendingFunction?.parametersComplete && positioned.token.value === "{") {
       this.#pendingFunctions.pop();
-      this.#activeScopes.push({
-        ...pendingFunction,
+      const activeScope: BlockFunctionScope = {
+        role: pendingFunction.role,
+        bindings: pendingFunction.bindings,
         boundary: "block",
         bodyBraces: context.depth.braces + 1,
-      });
-      return {
-        boundary: "block",
-        ...(pendingFunction.durableStepCallId
-          ? { durableStepCallId: pendingFunction.durableStepCallId }
-          : {}),
       };
+      this.#activeScopes.push(activeScope);
+      return activatedScope(activeScope);
     }
 
     while (this.#pendingMethods.at(-1)?.parametersComplete) {
       this.#pendingMethods.pop();
       if (positioned.token.value === "{") {
-        this.#activeScopes.push({
+        const activeScope: BlockFunctionScope = {
           boundary: "block",
+          role: { kind: "ordinary" },
           bodyBraces: context.depth.braces + 1,
           bindings: new Map(),
-        });
-        return { boundary: "block" };
+        };
+        this.#activeScopes.push(activeScope);
+        return activatedScope(activeScope);
       }
     }
 
@@ -123,17 +125,20 @@ export class WorkflowFunctionScopeTracker {
     context,
     previousTokens,
     activeStepCallId,
+    fanOutCallback,
   }: {
     positioned: PositionedWorkflowToken;
     context: TokenMachineContext;
     previousTokens: PositionedWorkflowToken[];
-    activeStepCallId?: string;
+    activeStepCallId: string | undefined;
+    /** Whether a function starting at this token is the callback of a durable fan-out. */
+    fanOutCallback: boolean;
   }): void {
     this.completeBlockScopeAfter(positioned, context.depth);
 
     if (positioned.token.value === "function") {
       this.#pendingFunctions.push({
-        ...this.scopeRole(activeStepCallId),
+        role: this.scopeRole(activeStepCallId, fanOutCallback),
         parametersComplete: false,
         bindings: new Map(),
       });
@@ -145,7 +150,7 @@ export class WorkflowFunctionScopeTracker {
 
     if (positioned.token.value === "=>") {
       this.#pendingArrow = {
-        ...this.scopeRole(activeStepCallId),
+        role: this.scopeRole(activeStepCallId, fanOutCallback),
         baseDepth: { ...context.depth },
         bindings: possibleArrowParameterBindings(previousTokens),
       };
@@ -170,30 +175,111 @@ export class WorkflowFunctionScopeTracker {
     );
   }
 
-  allowsWorkflowConstructDiscovery(): boolean {
-    return this.allFunctionScopes().every((scope) => scope.durableStepCallId !== undefined);
+  /**
+   * Whether the current token is workflow control flow, where a throw ends the workflow or reaches
+   * a workflow `try`. Inside a durable step callback, exceptions are the step's own business.
+   */
+  isWorkflowControlFlow(): boolean {
+    return this.allFunctionScopes().every(
+      (scope) => scope.role.kind === "fan-out" || scope.role.kind === "helper",
+    );
   }
 
+  allowsWorkflowConstructDiscovery(): boolean {
+    return this.allFunctionScopes().every((scope) => scope.role.kind !== "ordinary");
+  }
+
+  /** The durable step whose callback directly contains the current token, which owns its returns. */
   directDurableStepCallId(): string | undefined {
-    return this.allFunctionScopes().at(-1)?.durableStepCallId;
+    const role = this.allFunctionScopes().at(-1)?.role;
+    return role?.kind === "durable-step" ? role.stepCallId : undefined;
+  }
+
+  /**
+   * The durable step that executes calls at the current token. Fan-out callbacks run inside the
+   * enclosing step, so a call in `Promise.all(items.map((item) => tool(item)))` belongs to it.
+   */
+  invocationStepCallId(): string | undefined {
+    for (const scope of this.allFunctionScopes().toReversed()) {
+      if (scope.role.kind === "durable-step") {
+        return scope.role.stepCallId;
+      }
+      if (scope.role.kind !== "fan-out") {
+        return undefined;
+      }
+    }
+    return undefined;
   }
 
   shadows(binding: string): boolean {
-    return this.bindingKind(binding) === "local";
+    const kind = this.binding(binding)?.kind;
+    return kind !== undefined && kind !== "context-provider";
+  }
+
+  /**
+   * Names that refer to a helper's own bindings at the current token, with that helper's id.
+   * Inner bindings hide outer ones, so a callback local named like a parameter is not one.
+   */
+  helperParameterOwners(): Map<string, string> {
+    const owners = new Map<string, string | null>();
+    for (const name of this.#workflowBindings.keys()) {
+      owners.set(name, null);
+    }
+    for (const scope of this.#activeScopes) {
+      for (const name of scope.bindings.keys()) {
+        owners.set(name, scope.role.kind === "helper" ? scope.role.helperId : null);
+      }
+    }
+    return new Map(
+      [...owners].flatMap(([name, helperId]) => (helperId ? [[name, helperId] as const] : [])),
+    );
+  }
+
+  helperId(binding: string): string | undefined {
+    const resolved = this.binding(binding);
+    return resolved?.kind === "helper" ? resolved.helperId : undefined;
   }
 
   markContextProviderBinding(binding: string): void {
-    const scopes = this.allFunctionScopes();
-    for (let index = scopes.length - 1; index >= 0; index -= 1) {
-      const scope = scopes[index];
-      if (scope?.bindings.has(binding)) {
-        scope.bindings.set(binding, "context-provider");
-        return;
-      }
+    this.rebind(this.allFunctionScopes(), binding, { kind: "context-provider" });
+  }
+
+  /**
+   * Turns the function whose body just started into a workflow helper bound to `name`. Only a
+   * function written directly in workflow code qualifies; its parameters named like the workflow's
+   * step parameter receive that step, because helpers commonly take it explicitly.
+   */
+  promoteToHelper({
+    helperId,
+    name,
+    declaration,
+    stepParameter,
+  }: {
+    helperId: string;
+    name: string;
+    declaration: boolean;
+    stepParameter: string;
+  }): boolean {
+    const scope = this.#activeScopes.at(-1);
+    const enclosingScopes = this.#activeScopes.slice(0, -1);
+    if (
+      scope?.role.kind !== "ordinary" ||
+      this.#pendingFunctions.length > 0 ||
+      this.#pendingArrow !== undefined ||
+      enclosingScopes.some((enclosing) => enclosing.role.kind === "ordinary")
+    ) {
+      return false;
     }
-    if (this.#workflowBindings.has(binding)) {
-      this.#workflowBindings.set(binding, "context-provider");
+
+    scope.role = { kind: "helper", helperId };
+    scope.bindings.delete(stepParameter);
+    const helper: Binding = { kind: "helper", helperId };
+    if (declaration) {
+      (enclosingScopes.at(-1)?.bindings ?? this.#workflowBindings).set(name, helper);
+    } else {
+      this.rebind(enclosingScopes, name, helper);
     }
+    return true;
   }
 
   private completeConciseScopesBefore(
@@ -279,38 +365,59 @@ export class WorkflowFunctionScopeTracker {
     ) {
       return;
     }
-    const activeScope = this.#activeScopes.at(-1);
-    if (activeScope) {
-      activeScope.bindings.set(positioned.token.value, "local");
-    } else {
-      this.#workflowBindings.set(positioned.token.value, "local");
-    }
+    this.bindLocal(positioned.token.value);
   }
 
-  private bindingKind(binding: string): BindingKind | undefined {
+  private bindLocal(name: string): void {
+    const activeScope = this.#activeScopes.at(-1);
+    (activeScope?.bindings ?? this.#workflowBindings).set(name, { kind: "local" });
+  }
+
+  private binding(name: string): Binding | undefined {
     const scopes = this.allFunctionScopes();
     for (let index = scopes.length - 1; index >= 0; index -= 1) {
-      const bindingKind = scopes[index]?.bindings.get(binding);
-      if (bindingKind) {
-        return bindingKind;
+      const binding = scopes[index]?.bindings.get(name);
+      if (binding) {
+        return binding;
       }
     }
-    return this.#workflowBindings.get(binding);
+    return this.#workflowBindings.get(name);
   }
 
-  private scopeRole(activeStepCallId: string | undefined): FunctionScopeRole {
-    // The direct callback of each durable step may itself declare nested durable steps.
-    // Deeper callbacks (for example `.map()`) return to ordinary JavaScript function semantics.
-    if (!activeStepCallId || this.claimedDurableStepCallIds().has(activeStepCallId)) {
-      return {};
+  private rebind(
+    scopes: ReadonlyArray<{ bindings: Map<string, Binding> }>,
+    name: string,
+    binding: Binding,
+  ): void {
+    for (let index = scopes.length - 1; index >= 0; index -= 1) {
+      const scope = scopes[index];
+      if (scope?.bindings.has(name)) {
+        scope.bindings.set(name, binding);
+        return;
+      }
     }
-    return { durableStepCallId: activeStepCallId };
+    if (this.#workflowBindings.has(name)) {
+      this.#workflowBindings.set(name, binding);
+    }
+  }
+
+  private scopeRole(
+    activeStepCallId: string | undefined,
+    fanOutCallback: boolean,
+  ): FunctionScopeRole {
+    // The direct callback of each durable step may itself declare nested durable steps.
+    // Deeper callbacks (for example `.map()`) return to ordinary JavaScript function semantics,
+    // except a fan-out callback, which the workflow runs once per item.
+    if (activeStepCallId && !this.claimedDurableStepCallIds().has(activeStepCallId)) {
+      return { kind: "durable-step", stepCallId: activeStepCallId };
+    }
+    return fanOutCallback ? { kind: "fan-out" } : { kind: "ordinary" };
   }
 
   private claimedDurableStepCallIds(): Set<string> {
     return new Set(
       this.allFunctionScopes().flatMap((scope) =>
-        scope.durableStepCallId ? [scope.durableStepCallId] : [],
+        scope.role.kind === "durable-step" ? [scope.role.stepCallId] : [],
       ),
     );
   }
@@ -324,6 +431,12 @@ export class WorkflowFunctionScopeTracker {
       ...(this.#pendingArrow ? [this.#pendingArrow] : []),
     ];
   }
+}
+
+function activatedScope(scope: ActiveFunctionScope): ActivatedFunctionScope {
+  return scope.boundary === "expression"
+    ? { boundary: "expression", role: scope.role, baseDepth: { ...scope.baseDepth } }
+    : { boundary: "block", role: scope.role, bodyBraces: scope.bodyBraces };
 }
 
 export function conciseFunctionEndsBefore(
@@ -368,13 +481,13 @@ function sameDepth(left: DelimiterDepth, right: DelimiterDepth): boolean {
 
 function possibleArrowParameterBindings(
   previousTokens: PositionedWorkflowToken[],
-): Map<string, BindingKind> {
+): Map<string, Binding> {
   const previous = previousTokens.at(-1);
   if (!previous) {
     return new Map();
   }
   if (previous.token.type === "IdentifierName") {
-    return new Map([[previous.token.value, "local"]]);
+    return new Map([[previous.token.value, { kind: "local" }]]);
   }
   if (previous.token.value !== ")") {
     return new Map();
@@ -400,7 +513,7 @@ function possibleArrowParameterBindings(
     }
   }
 
-  const bindings = new Map<string, BindingKind>();
+  const bindings = new Map<string, Binding>();
   for (const token of parameterTokens) {
     rememberPossibleBinding(bindings, token);
   }
@@ -408,11 +521,11 @@ function possibleArrowParameterBindings(
 }
 
 function rememberPossibleBinding(
-  bindings: Map<string, BindingKind>,
+  bindings: Map<string, Binding>,
   positioned: PositionedWorkflowToken,
 ): void {
   if (positioned.token.type === "IdentifierName") {
-    bindings.set(positioned.token.value, "local");
+    bindings.set(positioned.token.value, { kind: "local" });
   }
 }
 

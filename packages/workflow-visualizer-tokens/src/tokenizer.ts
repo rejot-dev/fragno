@@ -41,50 +41,10 @@ export function staticStringValue(token: WorkflowToken): string | undefined {
   return decodeEscapes(body);
 }
 
-export function templateStringParts(tokens: readonly WorkflowToken[]): string[] | undefined {
-  if (tokens[0]?.type !== "TemplateHead" || tokens.at(-1)?.type !== "TemplateTail") {
-    return undefined;
-  }
-
-  const parts: string[] = [];
-  let templateDepth = 0;
-
-  for (const [index, token] of tokens.entries()) {
-    if (token.type === "TemplateHead") {
-      if (templateDepth === 0) {
-        if (index !== 0) {
-          return undefined;
-        }
-        parts.push(decodeEscapes(token.value.slice(1, -2)));
-      }
-      templateDepth += 1;
-      continue;
-    }
-
-    if (token.type === "TemplateMiddle") {
-      if (templateDepth === 1) {
-        parts.push(decodeEscapes(token.value.slice(1, -2)));
-      }
-      continue;
-    }
-
-    if (token.type !== "TemplateTail") {
-      continue;
-    }
-
-    if (templateDepth === 1) {
-      if (index !== tokens.length - 1) {
-        return undefined;
-      }
-      parts.push(decodeEscapes(token.value.slice(1, token.closed ? -1 : undefined)));
-    }
-    templateDepth -= 1;
-    if (templateDepth < 0) {
-      return undefined;
-    }
-  }
-
-  return templateDepth === 0 && parts.length >= 2 ? parts : undefined;
+/** The decoded text of one template chunk: a head, middle, or (possibly unclosed) tail. */
+export function templateChunkText(token: WorkflowToken): string {
+  const end = token.type === "TemplateTail" ? (tokenIsOpen(token) ? undefined : -1) : -2;
+  return decodeEscapes(token.value.slice(1, end));
 }
 
 function decodeEscapes(value: string): string {

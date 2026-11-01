@@ -39,10 +39,19 @@ import {
 import {
   type PositionedWorkflowToken,
   type TokenMachineContext,
+  type TokenSubmachine,
   TokenSubmachineRuntime,
 } from "./state-machine.ts";
 import {
+  type ReferencedToken,
+  referencedTokens,
+  stepNameFromArgument,
+  substituteHelperArguments,
+} from "./step-name.ts";
+import {
   ConditionalExpressionMachine,
+  HelperCallMachine,
+  HelperDefinitionMachine,
   IfStatementMachine,
   LoopStatementMachine,
   ParallelCallMachine,
@@ -55,6 +64,7 @@ import {
   type WorkflowBuilder,
   WorkflowDefinitionMachine,
   isConditionalExpressionMachine,
+  isHelperDefinitionMachine,
   isIfStatementMachine,
   isLoopStatementMachine,
   isParallelCallMachine,
@@ -134,6 +144,9 @@ export function createWorkflowTokenMachine({
   const lexicalDiagnostics: Diagnostic[] = [];
   const functionScopesByWorkflowId = new Map<string, WorkflowFunctionScopeTracker>();
   const activeStepInvocations: ActiveStepInvocation[] = [];
+  const helpersById = new Map<string, HelperDefinitionMachine>();
+  const stepNameTokensById = new Map<string, () => readonly ReferencedToken[]>();
+  let helperCallCount = 0;
   const runtime = new TokenSubmachineRuntime();
   let pendingReturnStatement: PendingReturnStatement | undefined;
   let pendingTryStatement: PendingTryStatement | undefined;
@@ -220,18 +233,22 @@ export function createWorkflowTokenMachine({
       ? functionScopesByWorkflowId.get(workflowMachine.id)
       : undefined;
     const activatedFunctionScope = functionScopes?.beforeToken(positioned, context);
-    if (activatedFunctionScope) {
+    if (activatedFunctionScope && workflowMachine && functionScopes) {
       discoverImplicitStepReturn(positioned, activatedFunctionScope);
+      discoverHelperDefinition(positioned, activatedFunctionScope, workflowMachine, functionScopes);
     }
 
     if (positioned.token.value === "return") {
       rememberPendingReturnStatement(positioned, context, workflowMachine, functionScopes);
-    } else if (positioned.token.value === "throw" && !functionScopes?.isNestedFunction()) {
+    } else if (
+      positioned.token.value === "throw" &&
+      (functionScopes?.isWorkflowControlFlow() ?? true)
+    ) {
       discoverThrow(positioned, context);
     } else if (
       positioned.token.value === "try" &&
       workflowMachine &&
-      !functionScopes?.isNestedFunction() &&
+      (functionScopes?.isWorkflowControlFlow() ?? true) &&
       tokenCanStartTryStatement(significantTokens.at(-1)?.token)
     ) {
       const enclosingCondition = activeConditionMachines(workflowMachine.workflow).at(-1);
@@ -271,6 +288,9 @@ export function createWorkflowTokenMachine({
       context,
       previousTokens: significantTokens,
       activeStepCallId: runtime.findLast(isStepCallMachine)?.id,
+      fanOutCallback:
+        (positioned.token.value === "=>" || positioned.token.value === "function") &&
+        (runtime.findLast(isParallelCallMachine)?.acceptsFanOutCallback(context.depth) ?? false),
     });
     updateDelimiterDepth(positioned.token.value);
   }
@@ -362,7 +382,7 @@ export function createWorkflowTokenMachine({
     workflowMachine: WorkflowDefinitionMachine | undefined,
     functionScopes: WorkflowFunctionScopeTracker,
   ): void {
-    const stepId = functionScopes.directDurableStepCallId();
+    const stepId = functionScopes.invocationStepCallId();
     if (!stepId || !workflowMachine) {
       return;
     }
@@ -402,10 +422,10 @@ export function createWorkflowTokenMachine({
     positioned: PositionedWorkflowToken,
     activatedScope: ActivatedFunctionScope,
   ): void {
-    if (activatedScope.boundary !== "expression" || !activatedScope.durableStepCallId) {
+    if (activatedScope.boundary !== "expression" || activatedScope.role.kind !== "durable-step") {
       return;
     }
-    const step = stepById(activatedScope.durableStepCallId);
+    const step = stepById(activatedScope.role.stepCallId);
     if (step?.stepType !== "do") {
       return;
     }
@@ -603,16 +623,182 @@ export function createWorkflowTokenMachine({
 
     const parallelCall = directPromiseCombinator(significantTokens);
     if (parallelCall) {
-      discoverParallel(parallelCall.object, parallelCall.strategy, workflowMachine, context);
+      discoverParallel(
+        positioned,
+        parallelCall.object,
+        parallelCall.strategy,
+        workflowMachine,
+        context,
+        functionScopes,
+      );
       return;
     }
 
     const stepCall = directStepCall(significantTokens, workflowMachine.stepParameter);
-    if (!stepCall || functionScopes?.shadows(workflowMachine.stepParameter)) {
+    if (stepCall && !functionScopes?.shadows(workflowMachine.stepParameter)) {
+      discoverStep({
+        openingParenthesis: positioned,
+        object: stepCall.object,
+        stepType: stepCall.method,
+        workflowMachine,
+        context,
+        helperParameterOwners: functionScopes?.helperParameterOwners() ?? new Map(),
+      });
       return;
     }
 
-    discoverStep(positioned, stepCall.object, stepCall.method, workflowMachine, context);
+    const callee = directFunctionCallee(significantTokens);
+    const helper = callee && helpersById.get(functionScopes?.helperId(callee.token.value) ?? "");
+    if (callee && helper) {
+      discoverHelperCall(callee, helper, workflowMachine, context, functionScopes);
+    }
+  }
+
+  function discoverHelperDefinition(
+    bodyStart: PositionedWorkflowToken,
+    scope: ActivatedFunctionScope,
+    workflowMachine: WorkflowDefinitionMachine,
+    functionScopes: WorkflowFunctionScopeTracker,
+  ): void {
+    const header = namedFunctionHeader(significantTokens);
+    if (!header) {
+      return;
+    }
+    // Helpers get their own ordinals, so declaring an ordinary function keeps every node id stable.
+    const id = `${workflowMachine.id}/helper#${helpersById.size}`;
+    const promoted = functionScopes.promoteToHelper({
+      helperId: id,
+      name: header.name.token.value,
+      declaration: header.declaration,
+      stepParameter: workflowMachine.stepParameter,
+    });
+    if (!promoted) {
+      return;
+    }
+
+    const helper = new HelperDefinitionMachine({
+      id,
+      name: header.name.token.value,
+      parameters: header.parameters,
+      source: sourceRangeFromToken(path, header.name),
+      workflow: workflowMachine.workflow,
+      scope,
+    });
+    extendSourceRangeToToken(helper.source, bodyStart);
+    helpersById.set(id, helper);
+    runtime.add(helper);
+  }
+
+  function discoverHelperCall(
+    callee: PositionedWorkflowToken,
+    helper: HelperDefinitionMachine,
+    workflowMachine: WorkflowDefinitionMachine,
+    context: TokenMachineContext,
+    functionScopes: WorkflowFunctionScopeTracker | undefined,
+  ): void {
+    const id = helperCallId(helper, workflowMachine);
+    if (!id) {
+      return;
+    }
+    const helperParameterOwners = functionScopes?.helperParameterOwners() ?? new Map();
+    runtime.add(
+      new HelperCallMachine({
+        id,
+        helper,
+        callee,
+        depth: { ...context.depth, parentheses: context.depth.parentheses + 1 },
+        onComplete: (callArguments) => {
+          expandHelperCall(
+            id,
+            helper,
+            callArguments.map((tokens) => referencedTokens(tokens, helperParameterOwners)),
+            workflowMachine.workflow,
+          );
+        },
+      }),
+    );
+  }
+
+  /** A fresh id for a call of `helper`, unless the workflow cannot expand it there. */
+  function helperCallId(
+    helper: HelperDefinitionMachine,
+    workflowMachine: WorkflowDefinitionMachine,
+  ): string | undefined {
+    // A helper that calls itself is still being defined; it has no template to expand yet.
+    if (helper.phase !== "complete" || helper.workflow !== workflowMachine.workflow) {
+      return undefined;
+    }
+    const id = `${workflowMachine.id}/call#${helperCallCount}`;
+    helperCallCount += 1;
+    return id;
+  }
+
+  /**
+   * Copies a helper's durable constructs to where the workflow calls it, naming each copied step
+   * after the call's arguments. A helper without durable steps is ordinary code and adds nothing.
+   */
+  function expandHelperCall(
+    callId: string,
+    helper: HelperDefinitionMachine,
+    callArguments: ReferencedToken[][],
+    workflow: WorkflowBuilder,
+  ): void {
+    const childrenById = new Map(workflow.children.map((node) => [node.id, node]));
+    const template = workflow.children
+      .filter((node) => descendsFrom(node, helper.id, childrenById))
+      .toSorted((left, right) => left.sourceOrder - right.sourceOrder);
+    if (!template.some((node) => node.kind === "step")) {
+      return;
+    }
+
+    const parentId = activeContainerId(workflow) ?? workflow.node.id;
+    const copyIds = new Map<string, string>();
+    const topLevelCopies: WorkflowChildNode[] = [];
+    for (const node of template) {
+      const copy = cloneNode(node);
+      copy.id = `${node.id}@${callId}`;
+      copy.sourceOrder = nextNodeOrdinal(workflow);
+      copyIds.set(node.id, copy.id);
+      if (node.parentId === helper.id) {
+        copy.parentId = parentId;
+        copy.order = nextChildOrder(workflow, parentId);
+        topLevelCopies.push(copy);
+      } else {
+        copy.parentId = copyIds.get(node.parentId) ?? parentId;
+      }
+      if (copy.kind === "step") {
+        renameCopiedStep(copy, node.id, helper, callArguments);
+      }
+      workflow.children.push(copy);
+    }
+
+    for (const copy of topLevelCopies) {
+      moveBeforeWrappingReturn(workflow, copy, false);
+    }
+    for (const condition of activeConditionMachines(workflow)) {
+      condition.markContainsStep();
+      moveBeforeWrappingReturn(workflow, condition.condition);
+    }
+  }
+
+  function renameCopiedStep(
+    copy: StepNode,
+    templateStepId: string,
+    helper: HelperDefinitionMachine,
+    callArguments: ReferencedToken[][],
+  ): void {
+    const nameTokens = substituteHelperArguments(
+      stepNameTokensById.get(templateStepId)?.() ?? [],
+      helper,
+      callArguments,
+    );
+    stepNameTokensById.set(copy.id, () => nameTokens);
+    const name = stepNameFromArgument(nameTokens.map(({ token }) => token));
+    delete copy.nameTemplate;
+    copy.label = name?.label || `${copy.stepType} step`;
+    if (name?.kind === "template") {
+      copy.nameTemplate = name.nameTemplate;
+    }
   }
 
   function discoverWorkflow(
@@ -727,10 +913,12 @@ export function createWorkflowTokenMachine({
   }
 
   function discoverParallel(
+    openingParenthesis: PositionedWorkflowToken,
     method: PositionedWorkflowToken,
     strategy: ParallelStrategy,
     workflowMachine: WorkflowDefinitionMachine,
     context: TokenMachineContext,
+    functionScopes: WorkflowFunctionScopeTracker | undefined,
   ): void {
     const conditions = activeConditionMachines(workflowMachine.workflow);
     const parentId = activeContainerId(workflowMachine.workflow) ?? workflowMachine.id;
@@ -759,6 +947,18 @@ export function createWorkflowTokenMachine({
         parallel,
         parentId: activeRuntimeContainerId(workflowMachine.workflow) ?? parentId,
         openParentheses: context.depth.parentheses + 1,
+        baseBraces: context.depth.braces,
+        baseBrackets: context.depth.brackets,
+        argumentStart: openingParenthesis.end,
+        // `items.map(load)` runs the helper once per item, as `items.map((item) => load(item))`
+        // does, but without arguments to name its steps after, so they keep the helper's own names.
+        onCallbackReference: (reference) => {
+          const helper = helpersById.get(functionScopes?.helperId(reference.token.value) ?? "");
+          const id = helper && helperCallId(helper, workflowMachine);
+          if (helper && id) {
+            expandHelperCall(id, helper, [], workflowMachine.workflow);
+          }
+        },
       }),
     );
   }
@@ -851,13 +1051,22 @@ export function createWorkflowTokenMachine({
     );
   }
 
-  function discoverStep(
-    openingParenthesis: PositionedWorkflowToken,
-    object: PositionedWorkflowToken,
-    stepType: StepType,
-    workflowMachine: WorkflowDefinitionMachine,
-    context: TokenMachineContext,
-  ): void {
+  function discoverStep({
+    openingParenthesis,
+    object,
+    stepType,
+    workflowMachine,
+    context,
+    helperParameterOwners,
+  }: {
+    openingParenthesis: PositionedWorkflowToken;
+    object: PositionedWorkflowToken;
+    stepType: StepType;
+    workflowMachine: WorkflowDefinitionMachine;
+    context: TokenMachineContext;
+    /** The step name is read in the scope of the call, where these names are helper parameters. */
+    helperParameterOwners: ReadonlyMap<string, string>;
+  }): void {
     const conditions = activeConditionMachines(workflowMachine.workflow);
     const parentId = activeContainerId(workflowMachine.workflow) ?? workflowMachine.id;
     const step = createStepNode({
@@ -875,16 +1084,18 @@ export function createWorkflowTokenMachine({
       moveBeforeWrappingReturn(workflowMachine.workflow, condition.condition);
     }
 
-    runtime.add(
-      new StepCallMachine({
-        step,
-        parentId: activeRuntimeContainerId(workflowMachine.workflow) ?? parentId,
-        openParentheses: context.depth.parentheses + 1,
-        baseBraces: context.depth.braces,
-        baseBrackets: context.depth.brackets,
-        argumentStart: openingParenthesis.end,
-      }),
+    const stepMachine = new StepCallMachine({
+      step,
+      parentId: activeRuntimeContainerId(workflowMachine.workflow) ?? parentId,
+      openParentheses: context.depth.parentheses + 1,
+      baseBraces: context.depth.braces,
+      baseBrackets: context.depth.brackets,
+      argumentStart: openingParenthesis.end,
+    });
+    stepNameTokensById.set(step.id, () =>
+      referencedTokens(stepMachine.nameTokens, helperParameterOwners),
     );
+    runtime.add(stepMachine);
   }
 
   function createStepNode({
@@ -958,7 +1169,7 @@ export function createWorkflowTokenMachine({
 
   function moveBeforeWrappingReturn(
     workflow: WorkflowBuilder,
-    node: ConditionNode | ParallelNode | StepNode,
+    node: WorkflowChildNode,
     delegatesReturnValue = true,
   ): void {
     const returnMachine = runtime.findLast(
@@ -998,37 +1209,59 @@ export function createWorkflowTokenMachine({
   }
 
   function activeLoopMachines(workflow: WorkflowBuilder): LoopStatementMachine[] {
-    return runtime.all(isLoopStatementMachine).filter((loop) => loop.workflow === workflow);
+    return inCurrentFrame(
+      runtime.all(isLoopStatementMachine).filter((loop) => loop.workflow === workflow),
+    );
   }
 
   function activeTryMachines(workflow: WorkflowBuilder): TryStatementMachine[] {
-    return runtime
-      .all(isTryStatementMachine)
-      .filter((tryMachine) => tryMachine.workflow === workflow);
+    return inCurrentFrame(
+      runtime.all(isTryStatementMachine).filter((tryMachine) => tryMachine.workflow === workflow),
+    );
   }
 
   function activeConditionMachines(
     workflow: WorkflowBuilder,
   ): Array<IfStatementMachine | ConditionalExpressionMachine> {
-    return runtime
-      .all(
-        (machine): machine is IfStatementMachine | ConditionalExpressionMachine =>
-          isIfStatementMachine(machine) || isConditionalExpressionMachine(machine),
-      )
-      .filter(
-        (condition) =>
-          condition.workflow === workflow && condition.activeBranchCondition() !== undefined,
-      );
+    return inCurrentFrame(
+      runtime
+        .all(
+          (machine): machine is IfStatementMachine | ConditionalExpressionMachine =>
+            isIfStatementMachine(machine) || isConditionalExpressionMachine(machine),
+        )
+        .filter(
+          (condition) =>
+            condition.workflow === workflow && condition.activeBranchCondition() !== undefined,
+        ),
+    );
+  }
+
+  /**
+   * A helper's body runs where the helper is called, not inside the statements around its
+   * definition, so constructs started before the innermost active helper do not contain it.
+   */
+  function inCurrentFrame<T extends TokenSubmachine>(machines: T[]): T[] {
+    const helper = runtime.findLast(isHelperDefinitionMachine);
+    if (!helper) {
+      return machines;
+    }
+    const frameStart = runtime.activationOrder(helper);
+    return machines.filter((machine) => runtime.activationOrder(machine) > frameStart);
   }
 
   function activeRuntimeContainerId(workflow: WorkflowBuilder): string | undefined {
     return runtime.findLast(
       (
         machine,
-      ): machine is IfStatementMachine | ConditionalExpressionMachine | TryStatementMachine =>
+      ): machine is
+        | IfStatementMachine
+        | ConditionalExpressionMachine
+        | TryStatementMachine
+        | HelperDefinitionMachine =>
         ((isIfStatementMachine(machine) || isConditionalExpressionMachine(machine)) &&
           machine.workflow === workflow) ||
-        (isTryStatementMachine(machine) && machine.workflow === workflow),
+        (isTryStatementMachine(machine) && machine.workflow === workflow) ||
+        (isHelperDefinitionMachine(machine) && machine.workflow === workflow),
     )?.id;
   }
 
@@ -1042,8 +1275,10 @@ export function createWorkflowTokenMachine({
         | IfStatementMachine
         | ConditionalExpressionMachine
         | LoopStatementMachine
-        | TryStatementMachine =>
+        | TryStatementMachine
+        | HelperDefinitionMachine =>
         (isStepCallMachine(machine) && workflow.children.includes(machine.step)) ||
+        (isHelperDefinitionMachine(machine) && machine.workflow === workflow) ||
         (isParallelCallMachine(machine) && workflow.children.includes(machine.parallel)) ||
         (isIfStatementMachine(machine) && machine.workflow === workflow) ||
         (isConditionalExpressionMachine(machine) && machine.workflow === workflow) ||
@@ -1062,7 +1297,7 @@ export function createWorkflowTokenMachine({
     ) {
       return container.activeContainerId();
     }
-    if (container && isLoopStatementMachine(container)) {
+    if (container && (isLoopStatementMachine(container) || isHelperDefinitionMachine(container))) {
       return container.activeContainerId();
     }
     return container && isTryStatementMachine(container)
@@ -1175,7 +1410,11 @@ export function createWorkflowTokenMachine({
   }
 
   function projectWorkflowChildren(children: WorkflowChildNode[]): WorkflowChildNode[] {
-    const sortedChildren = children.toSorted((left, right) => left.sourceOrder - right.sourceOrder);
+    const allChildrenById = new Map(children.map((node) => [node.id, node]));
+    // Helper templates appear only as the copies expanded where the workflow calls them.
+    const sortedChildren = children
+      .filter((node) => !helpersById.has(rootParentId(node, allChildrenById)))
+      .toSorted((left, right) => left.sourceOrder - right.sourceOrder);
     const childrenById = new Map(sortedChildren.map((node) => [node.id, node]));
     const caughtThrowIds = new Set(
       sortedChildren
@@ -1331,6 +1570,179 @@ export function createWorkflowTokenMachine({
       };
     },
   };
+}
+
+function rootParentId(
+  node: WorkflowChildNode,
+  childrenById: ReadonlyMap<string, WorkflowChildNode>,
+): string {
+  let parentId = node.parentId;
+  for (let parent = childrenById.get(parentId); parent; parent = childrenById.get(parentId)) {
+    parentId = parent.parentId;
+  }
+  return parentId;
+}
+
+function descendsFrom(
+  node: WorkflowChildNode,
+  ancestorId: string,
+  childrenById: ReadonlyMap<string, WorkflowChildNode>,
+): boolean {
+  let parentId = node.parentId;
+  while (parentId !== ancestorId) {
+    const parent = childrenById.get(parentId);
+    if (!parent) {
+      return false;
+    }
+    parentId = parent.parentId;
+  }
+  return true;
+}
+
+/** `name(` as a plain call, which may call a workflow helper. */
+function directFunctionCallee(
+  significantTokens: PositionedWorkflowToken[],
+): PositionedWorkflowToken | undefined {
+  const callee = significantTokens.at(-1);
+  const previous = significantTokens.at(-2)?.token.value;
+  return callee?.token.type === "IdentifierName" &&
+    previous !== "." &&
+    previous !== "?." &&
+    previous !== "function" &&
+    previous !== "new"
+    ? callee
+    : undefined;
+}
+
+interface NamedFunctionHeader {
+  name: PositionedWorkflowToken;
+  /** Positional parameter names; `null` for destructured and rest parameters. */
+  parameters: Array<string | null>;
+  declaration: boolean;
+}
+
+const FUNCTION_DECLARATION_PREDECESSORS = new Set([";", "{", "}", ")", "]"]);
+
+/**
+ * The header of the function whose body starts after `significantTokens`, when it names the
+ * function: `const name = (...) =>`, `const name = function (...) {`, or `function name(...) {`.
+ */
+function namedFunctionHeader(
+  significantTokens: PositionedWorkflowToken[],
+): NamedFunctionHeader | undefined {
+  const last = significantTokens.length - 1;
+  if (significantTokens[last]?.token.value === "=>") {
+    let index = last - 1;
+    const parameter = significantTokens[index];
+    let parameters: Array<string | null>;
+    if (parameter?.token.type === "IdentifierName") {
+      parameters = [parameter.token.value];
+      index -= 1;
+    } else if (parameter?.token.value === ")") {
+      const open = matchingOpenParenthesis(significantTokens, index);
+      if (open < 0) {
+        return undefined;
+      }
+      parameters = parameterNames(significantTokens.slice(open + 1, index));
+      index = open - 1;
+    } else {
+      return undefined;
+    }
+    if (significantTokens[index]?.token.value === "async") {
+      index -= 1;
+    }
+    const name = variableBindingBefore(significantTokens, index);
+    return name ? { name, parameters, declaration: false } : undefined;
+  }
+
+  if (significantTokens[last]?.token.value !== ")") {
+    return undefined;
+  }
+  const open = matchingOpenParenthesis(significantTokens, last);
+  const parameters = parameterNames(significantTokens.slice(open + 1, last));
+  let index = open - 1;
+  let functionName: PositionedWorkflowToken | undefined;
+  if (
+    significantTokens[index]?.token.type === "IdentifierName" &&
+    significantTokens[index - 1]?.token.value === "function"
+  ) {
+    functionName = significantTokens[index];
+    index -= 1;
+  }
+  if (open < 0 || significantTokens[index]?.token.value !== "function") {
+    return undefined;
+  }
+  index -= 1;
+  if (significantTokens[index]?.token.value === "async") {
+    index -= 1;
+  }
+  const binding = variableBindingBefore(significantTokens, index);
+  if (binding) {
+    return { name: binding, parameters, declaration: false };
+  }
+  const previous = significantTokens[index]?.token.value;
+  return functionName && (previous === undefined || FUNCTION_DECLARATION_PREDECESSORS.has(previous))
+    ? { name: functionName, parameters, declaration: true }
+    : undefined;
+}
+
+/** `const name =` ending at `assignmentIndex`. */
+function variableBindingBefore(
+  significantTokens: PositionedWorkflowToken[],
+  assignmentIndex: number,
+): PositionedWorkflowToken | undefined {
+  const name = significantTokens[assignmentIndex - 1];
+  const declaration = significantTokens[assignmentIndex - 2]?.token.value;
+  return significantTokens[assignmentIndex]?.token.value === "=" &&
+    name?.token.type === "IdentifierName" &&
+    (declaration === "const" || declaration === "let" || declaration === "var")
+    ? name
+    : undefined;
+}
+
+function matchingOpenParenthesis(
+  significantTokens: PositionedWorkflowToken[],
+  closeIndex: number,
+): number {
+  let depth = 0;
+  for (let index = closeIndex; index >= 0; index -= 1) {
+    const value = significantTokens[index]?.token.value;
+    if (value === ")") {
+      depth += 1;
+    } else if (value === "(") {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+  return -1;
+}
+
+function parameterNames(parameterTokens: PositionedWorkflowToken[]): Array<string | null> {
+  if (parameterTokens.length === 0) {
+    return [];
+  }
+  const parameters: PositionedWorkflowToken[][] = [[]];
+  let depth = 0;
+  for (const positioned of parameterTokens) {
+    const value = positioned.token.value;
+    if (value === "(" || value === "[" || value === "{") {
+      depth += 1;
+    } else if (value === ")" || value === "]" || value === "}") {
+      depth -= 1;
+    }
+    if (value === "," && depth === 0) {
+      parameters.push([]);
+      continue;
+    }
+    parameters.at(-1)?.push(positioned);
+  }
+  return parameters.map(([first, second]) =>
+    first?.token.type === "IdentifierName" && (second === undefined || second.token.value === "=")
+      ? first.token.value
+      : null,
+  );
 }
 
 const INVALID_TRY_STATEMENT_PREDECESSORS = new Set([".", "?.", "#"]);

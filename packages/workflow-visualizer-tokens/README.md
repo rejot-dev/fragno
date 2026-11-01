@@ -19,6 +19,9 @@ Every consumed token produces a usable graph snapshot, construction state, and g
 - Nested `if`, `else`, `else if`, and ternary control-flow containers around durable steps
 - `for (...)`, `for await (...)`, and `while (...)` loop containers
 - `Promise.all(...)`, `Promise.race(...)`, and `Promise.any(...)` parallel branch containers
+- `Promise.all(items.map(callback))` fan-outs, whose callback runs as workflow code once per item
+- Named workflow helpers (`const load = (region) => step.do(...)` and `function load(region) {}`),
+  expanded where the workflow calls them or passes them to a fan-out, as in `items.map(load)`
 - Durable steps nested inside other step callbacks
 - Exact static member calls made directly by durable step callbacks
 - Explicit and concise-arrow return values from `step.do` callbacks
@@ -38,6 +41,8 @@ constructs are independent `TokenSubmachine` implementations:
 - `LoopStatementMachine`
 - `ReturnStatementMachine`
 - `ThrowStatementMachine`
+- `HelperDefinitionMachine`
+- `HelperCallMachine`
 
 `TokenSubmachineRuntime` sends each token child-first and propagates child completion to its parent.
 This allows an `else if` machine, for example, to complete its enclosing `else` branch without
@@ -53,7 +58,16 @@ The graph is a control-flow tree rather than a flat list with condition annotati
 - returns inside active conditions are `early-return` terminals, unconditional workflow returns are
   `final-return` terminals, and throws are `error` terminals;
 - a loop owns the durable structure in its body;
-- a Promise combinator owns one branch node per array element;
+- a Promise combinator owns one branch node per array element; over `items.map(callback)`, it owns
+  one branch holding a `map` loop, so steps in the callback repeat like steps in any loop. An array
+  literal followed by `.map(...)` or another member is that loop's receiver, unless its elements are
+  themselves durable steps;
+- a helper is a template rather than a graph node: each call copies the helper's durable constructs
+  to the call site, with fresh ids, and names copied steps after the call's arguments, so
+  `load("eu")` of `(region) => step.do("load " + region, ...)` becomes the step `load eu`. Only
+  names that refer to the helper's own parameters are substituted; a callback local that shadows a
+  parameter keeps the step name dynamic. Helper `try`, `catch`, and `throw` are copied too, so a
+  throw inside a helper called from a workflow `try` becomes a throw to that catch;
 - `order` is sibling-relative, while `sourceOrder` preserves global discovery order;
 - sequence edges connect siblings that execute in order, but never alternative condition or parallel
   branches;
@@ -77,11 +91,18 @@ receives a `specific-event-guard` annotation. Its accepted fallthrough predicate
 equality facts, and an alias such as `automationEvent` resolves back to
 `event.payload.automationEvent`.
 
+Helpers must be written in workflow code and defined before they are called; a function declaration
+called before its definition is not expanded. A helper without durable steps adds nothing to the
+graph, and calls made inside helpers are not attributed to the step that calls the helper. A
+`return` inside a helper is not modeled: it ends the helper rather than the workflow, so steps after
+a conditional `return` appear unconditional.
+
 The state machine still excludes implementation details from the control-flow tree when they do not
 contain durable workflow structure. For example, an `if` inside a step callback is removed when it
 contains no nested durable step. Exact member calls made directly by the step callback remain as
 step annotations rather than becoming graph nodes. Calls inside deeper ordinary function callbacks
-are excluded, and a nested durable step owns its own calls.
+are excluded, except a fan-out callback (`Promise.all(items.map(callback))`), which runs inside the
+step. A nested durable step owns its own calls.
 
 ## Token-at-a-time usage
 
