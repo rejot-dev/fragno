@@ -1725,8 +1725,11 @@ describe("workflow token state machine", () => {
         const internal = event.payload.internal;
         const org = event.payload.org;
         await step.do("boundaries", async () => {
+          const { store, user: [telegram] } = event.payload;
           await internal.filesSeedExecute({});
           await org.internal.filesSeedExecute({});
+          await store.get({ key: "settings" });
+          await telegram.sendMessage({ text: "destructured" });
           const helper = async () => telegram.sendMessage({ text: "nested" });
           return helper;
         });
@@ -1983,6 +1986,27 @@ describe("workflow token state machine", () => {
         .filter((node): node is StepNode => node.kind === "step")
         .map((step) => step.label),
     ).toEqual(["load eu", "load ${region} ${retry}", "load ap", "load ${region} ${retry}"]);
+  });
+
+  it("restores an outer helper once the block that shadows it ends", () => {
+    const snapshot = visualizeStreamedSource(
+      "automations/helper-shadowing.workflow.js",
+      `defineWorkflow({ name: "helper-shadowing" }, async (event, step) => {
+        const load = () => step.do("outer", async () => {});
+        if (event.payload.ok) {
+          const load = () => step.do("inner", async () => {});
+          await load();
+        }
+        await load();
+      });`,
+    );
+
+    expect(renderWorkflowVisualizationText(snapshot)).toMatchInlineSnapshot(`
+      "workflow helper-shadowing
+      ├─ 0. if event.payload.ok
+      │  └─ 0. do inner
+      └─ 1. do outer"
+    `);
   });
 
   it("expands a helper passed by name as a fan-out callback", () => {

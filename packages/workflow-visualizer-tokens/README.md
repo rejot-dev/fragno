@@ -21,7 +21,8 @@ Every consumed token produces a usable graph snapshot, construction state, and g
 - `Promise.all(...)`, `Promise.race(...)`, and `Promise.any(...)` parallel branch containers
 - `Promise.all(items.map(callback))` fan-outs, whose callback runs as workflow code once per item
 - Named workflow helpers (`const load = (region) => step.do(...)` and `function load(region) {}`),
-  expanded where the workflow calls them or passes them to a fan-out, as in `items.map(load)`
+  expanded where the workflow calls them or passes them to a fan-out, as in `items.map(load)`; a
+  helper declared in a block shadows an outer one until the block ends
 - Durable steps nested inside other step callbacks
 - Exact static member calls made directly by durable step callbacks
 - Explicit and concise-arrow return values from `step.do` callbacks

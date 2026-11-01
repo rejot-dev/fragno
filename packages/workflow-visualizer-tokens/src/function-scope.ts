@@ -19,11 +19,18 @@ export type FunctionScopeRole =
   /** A named function in workflow code, expanded wherever the workflow calls it. */
   | { kind: "helper"; helperId: string };
 
+/** A `{ … }` block, whose `const`, `let`, and function declarations end with it. */
+interface LexicalBlock {
+  braces: number;
+  bindings: Map<string, Binding>;
+}
+
 interface BlockFunctionScope {
   boundary: "block";
   role: FunctionScopeRole;
   bodyBraces: number;
   bindings: Map<string, Binding>;
+  blocks: LexicalBlock[];
 }
 
 interface ExpressionFunctionScope {
@@ -31,6 +38,7 @@ interface ExpressionFunctionScope {
   role: FunctionScopeRole;
   baseDepth: DelimiterDepth;
   bindings: Map<string, Binding>;
+  blocks: LexicalBlock[];
 }
 
 type ActiveFunctionScope = BlockFunctionScope | ExpressionFunctionScope;
@@ -48,6 +56,16 @@ interface PendingArrowScope {
   bindings: Map<string, Binding>;
 }
 
+interface DeclarationPattern {
+  /** Whether the pattern belongs to a `const` or `let` rather than a function-scoped `var`. */
+  blockScoped: boolean;
+  closers: Array<"}" | "]">;
+  /** Nesting inside a default value, which binds nothing; `null` outside one. */
+  defaultDepth: number | null;
+  /** An identifier that binds unless it turns out to be a property key. */
+  candidate: string | null;
+}
+
 interface PendingMethodScope {
   parameterParentheses: number;
   parametersComplete: boolean;
@@ -63,7 +81,9 @@ export class WorkflowFunctionScopeTracker {
   readonly #pendingFunctions: PendingFunctionScope[] = [];
   readonly #pendingMethods: PendingMethodScope[] = [];
   readonly #workflowBindings = new Map<string, Binding>();
+  readonly #workflowBlocks: LexicalBlock[] = [];
   #pendingArrow: PendingArrowScope | undefined;
+  #declarationPattern: DeclarationPattern | undefined;
 
   beforeToken(
     positioned: PositionedWorkflowToken,
@@ -80,11 +100,13 @@ export class WorkflowFunctionScopeTracker {
               ...pending,
               boundary: "block",
               bodyBraces: context.depth.braces + 1,
+              blocks: [],
             }
           : {
               ...pending,
               boundary: "expression",
               baseDepth: { ...pending.baseDepth },
+              blocks: [],
             };
       this.#activeScopes.push(activeScope);
       return activatedScope(activeScope);
@@ -98,6 +120,7 @@ export class WorkflowFunctionScopeTracker {
         bindings: pendingFunction.bindings,
         boundary: "block",
         bodyBraces: context.depth.braces + 1,
+        blocks: [],
       };
       this.#activeScopes.push(activeScope);
       return activatedScope(activeScope);
@@ -111,6 +134,7 @@ export class WorkflowFunctionScopeTracker {
           role: { kind: "ordinary" },
           bodyBraces: context.depth.braces + 1,
           bindings: new Map(),
+          blocks: [],
         };
         this.#activeScopes.push(activeScope);
         return activatedScope(activeScope);
@@ -134,7 +158,10 @@ export class WorkflowFunctionScopeTracker {
     /** Whether a function starting at this token is the callback of a durable fan-out. */
     fanOutCallback: boolean;
   }): void {
+    this.completeLexicalBlockAfter(positioned, context.depth);
     this.completeBlockScopeAfter(positioned, context.depth);
+    this.consumeDeclarationPattern(positioned, previousTokens.at(-1));
+    this.openLexicalBlock(positioned, context.depth);
 
     if (positioned.token.value === "function") {
       this.#pendingFunctions.push({
@@ -222,12 +249,16 @@ export class WorkflowFunctionScopeTracker {
    */
   helperParameterOwners(): Map<string, string> {
     const owners = new Map<string, string | null>();
-    for (const name of this.#workflowBindings.keys()) {
-      owners.set(name, null);
+    for (const bindings of [this.#workflowBindings, ...blockBindings(this.#workflowBlocks)]) {
+      for (const name of bindings.keys()) {
+        owners.set(name, null);
+      }
     }
     for (const scope of this.#activeScopes) {
-      for (const name of scope.bindings.keys()) {
-        owners.set(name, scope.role.kind === "helper" ? scope.role.helperId : null);
+      for (const bindings of [scope.bindings, ...blockBindings(scope.blocks)]) {
+        for (const name of bindings.keys()) {
+          owners.set(name, scope.role.kind === "helper" ? scope.role.helperId : null);
+        }
       }
     }
     return new Map(
@@ -275,7 +306,11 @@ export class WorkflowFunctionScopeTracker {
     scope.bindings.delete(stepParameter);
     const helper: Binding = { kind: "helper", helperId };
     if (declaration) {
-      (enclosingScopes.at(-1)?.bindings ?? this.#workflowBindings).set(name, helper);
+      const enclosing = enclosingScopes.at(-1);
+      const bindings = enclosing
+        ? (enclosing.blocks.at(-1)?.bindings ?? enclosing.bindings)
+        : (this.#workflowBlocks.at(-1)?.bindings ?? this.#workflowBindings);
+      bindings.set(name, helper);
     } else {
       this.rebind(enclosingScopes, name, helper);
     }
@@ -295,6 +330,34 @@ export class WorkflowFunctionScopeTracker {
         return;
       }
       this.#activeScopes.pop();
+    }
+  }
+
+  /**
+   * Opens a block at a `{` that neither starts a function body, which has its own scope, nor a
+   * destructuring pattern, which binds into the enclosing one. Object literals open blocks too, but
+   * declare nothing in them.
+   */
+  private openLexicalBlock(positioned: PositionedWorkflowToken, depth: DelimiterDepth): void {
+    const scope = this.#activeScopes.at(-1);
+    const braces = depth.braces + 1;
+    if (
+      positioned.token.value !== "{" ||
+      this.#declarationPattern ||
+      (scope?.boundary === "block" && scope.bodyBraces === braces)
+    ) {
+      return;
+    }
+    (scope?.blocks ?? this.#workflowBlocks).push({ braces, bindings: new Map() });
+  }
+
+  private completeLexicalBlockAfter(
+    positioned: PositionedWorkflowToken,
+    depth: DelimiterDepth,
+  ): void {
+    const blocks = this.#activeScopes.at(-1)?.blocks ?? this.#workflowBlocks;
+    if (positioned.token.value === "}" && blocks.at(-1)?.braces === depth.braces) {
+      blocks.pop();
     }
   }
 
@@ -357,48 +420,117 @@ export class WorkflowFunctionScopeTracker {
     positioned: PositionedWorkflowToken,
     previous: PositionedWorkflowToken | undefined,
   ): void {
+    const declaration = previous?.token.value;
     if (
       positioned.token.type !== "IdentifierName" ||
-      (previous?.token.value !== "const" &&
-        previous?.token.value !== "let" &&
-        previous?.token.value !== "var")
+      (declaration !== "const" && declaration !== "let" && declaration !== "var")
     ) {
       return;
     }
-    this.bindLocal(positioned.token.value);
+    this.bindLocal(positioned.token.value, declaration !== "var");
   }
 
-  private bindLocal(name: string): void {
+  /**
+   * Binds the names of a destructuring declaration such as `const { id, region: name = "eu" } =`.
+   * A property key is only known once `:` follows it, so each identifier waits for the next token.
+   */
+  private consumeDeclarationPattern(
+    positioned: PositionedWorkflowToken,
+    previous: PositionedWorkflowToken | undefined,
+  ): void {
+    const value = positioned.token.value;
+    const pattern = this.#declarationPattern;
+    if (!pattern) {
+      const declaration = previous?.token.value;
+      if (
+        (value === "{" || value === "[") &&
+        (declaration === "const" || declaration === "let" || declaration === "var")
+      ) {
+        this.#declarationPattern = {
+          blockScoped: declaration !== "var",
+          closers: [closerOf(value)],
+          defaultDepth: null,
+          candidate: null,
+        };
+      }
+      return;
+    }
+
+    if (pattern.candidate !== null && value !== ":") {
+      this.bindLocal(pattern.candidate, pattern.blockScoped);
+    }
+    pattern.candidate = null;
+
+    if (pattern.defaultDepth !== null) {
+      if (value === "(" || value === "[" || value === "{") {
+        pattern.defaultDepth += 1;
+        return;
+      }
+      const closes = value === ")" || value === "]" || value === "}";
+      if (pattern.defaultDepth > 0) {
+        pattern.defaultDepth -= closes ? 1 : 0;
+        return;
+      }
+      if (!closes && value !== ",") {
+        return;
+      }
+      pattern.defaultDepth = null;
+    }
+
+    if (value === "{" || value === "[") {
+      pattern.closers.push(closerOf(value));
+    } else if (value === "}" || value === "]") {
+      pattern.closers.pop();
+      if (pattern.closers.length === 0) {
+        this.#declarationPattern = undefined;
+      }
+    } else if (value === "=") {
+      pattern.defaultDepth = 0;
+    } else if (positioned.token.type === "IdentifierName") {
+      pattern.candidate = value;
+    }
+  }
+
+  /** Binds a declared name in the innermost block, or the function for a `var`. */
+  private bindLocal(name: string, blockScoped: boolean): void {
     const activeScope = this.#activeScopes.at(-1);
-    (activeScope?.bindings ?? this.#workflowBindings).set(name, { kind: "local" });
+    const blocks = activeScope?.blocks ?? this.#workflowBlocks;
+    const bindings =
+      (blockScoped ? blocks.at(-1)?.bindings : undefined) ??
+      activeScope?.bindings ??
+      this.#workflowBindings;
+    bindings.set(name, { kind: "local" });
   }
 
   private binding(name: string): Binding | undefined {
-    const scopes = this.allFunctionScopes();
-    for (let index = scopes.length - 1; index >= 0; index -= 1) {
-      const binding = scopes[index]?.bindings.get(name);
-      if (binding) {
-        return binding;
-      }
-    }
-    return this.#workflowBindings.get(name);
+    return this.lexicalBindings(this.allFunctionScopes())
+      .findLast((bindings) => bindings.has(name))
+      ?.get(name);
   }
 
+  /** Points the innermost binding of `name` visible from `scopes` at `binding`. */
   private rebind(
-    scopes: ReadonlyArray<{ bindings: Map<string, Binding> }>,
+    scopes: ReadonlyArray<ActiveFunctionScope | PendingFunctionScope | PendingArrowScope>,
     name: string,
     binding: Binding,
   ): void {
-    for (let index = scopes.length - 1; index >= 0; index -= 1) {
-      const scope = scopes[index];
-      if (scope?.bindings.has(name)) {
-        scope.bindings.set(name, binding);
-        return;
-      }
-    }
-    if (this.#workflowBindings.has(name)) {
-      this.#workflowBindings.set(name, binding);
-    }
+    this.lexicalBindings(scopes)
+      .findLast((bindings) => bindings.has(name))
+      ?.set(name, binding);
+  }
+
+  /** The bindings visible through `scopes`, from the workflow's outermost to the innermost. */
+  private lexicalBindings(
+    scopes: ReadonlyArray<ActiveFunctionScope | PendingFunctionScope | PendingArrowScope>,
+  ): Map<string, Binding>[] {
+    return [
+      this.#workflowBindings,
+      ...blockBindings(this.#workflowBlocks),
+      ...scopes.flatMap((scope) => [
+        scope.bindings,
+        ...("blocks" in scope ? blockBindings(scope.blocks) : []),
+      ]),
+    ];
   }
 
   private scopeRole(
@@ -431,6 +563,14 @@ export class WorkflowFunctionScopeTracker {
       ...(this.#pendingArrow ? [this.#pendingArrow] : []),
     ];
   }
+}
+
+function blockBindings(blocks: readonly LexicalBlock[]): Map<string, Binding>[] {
+  return blocks.map((block) => block.bindings);
+}
+
+function closerOf(opener: "{" | "["): "}" | "]" {
+  return opener === "{" ? "}" : "]";
 }
 
 function activatedScope(scope: ActiveFunctionScope): ActivatedFunctionScope {
