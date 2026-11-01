@@ -17,7 +17,7 @@ Every consumed token produces a usable graph snapshot, construction state, and g
 - `step.waitForEvent(...)`
 - Early-return, final-return, and thrown-error terminal nodes
 - Nested `if`, `else`, `else if`, and ternary control-flow containers around durable steps
-- `for (...)` and `while (...)` loop containers
+- `for (...)`, `for await (...)`, and `while (...)` loop containers
 - `Promise.all(...)`, `Promise.race(...)`, and `Promise.any(...)` parallel branch containers
 - Durable steps nested inside other step callbacks
 - Exact static member calls made directly by durable step callbacks

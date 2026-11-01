@@ -437,6 +437,10 @@ function possibleMethodParameterList(previousTokens: PositionedWorkflowToken[]):
       return false;
     }
     const precedingValue = previousTokens.at(-2)?.token.value;
+    // `for await (...) {` is a loop, not a method named `await`.
+    if (methodName.token.value === "await" && precedingValue === "for") {
+      return false;
+    }
     return precedingValue !== "." && precedingValue !== "?." && precedingValue !== "function";
   }
 

@@ -1758,6 +1758,33 @@ describe("workflow token state machine", () => {
     ]);
   });
 
+  it("keeps for-await loops around and inside durable steps", () => {
+    const snapshot = visualizeStreamedSource(
+      "automations/for-await.workflow.js",
+      `defineWorkflow({ name: "for-await" }, async (event, step) => {
+        for await (const page of event.payload.pages) {
+          await step.do("import page", async () => {
+            for await (const row of page.rows) {
+              await store.set({ key: row.id });
+            }
+            await telegram.sendMessage({ text: "imported" });
+          });
+        }
+      });`,
+    );
+
+    expect(renderWorkflowVisualizationText(snapshot)).toMatchInlineSnapshot(`
+      "workflow for-await
+      └─ 0. for const page of event.payload.pages
+         └─ 0. do import page
+            └─ 0. for const row of page.rows"
+    `);
+    expect(invocationLabels(stepByLabel(snapshot.graph, "import page"))).toEqual([
+      "store.set",
+      "telegram.sendMessage",
+    ]);
+  });
+
   it("keeps an unfinished call reference observable", () => {
     const snapshot = visualizeWorkflowSource(
       "automations/partial-invocation.workflow.js",
@@ -1896,6 +1923,18 @@ describe("workflow token state machine", () => {
     );
   });
 });
+
+/** Visualizes source token by token, requiring every intermediate graph to stay usable. */
+function visualizeStreamedSource(path: string, source: string) {
+  const machine = createWorkflowTokenMachine({ path });
+  for (const token of tokenizeWorkflowSource(source)) {
+    const update = machine.push(token);
+    assertUsableGraph(update.graph.nodes, update.graph.edges);
+  }
+  const finished = machine.finish();
+  expect(finished.graph.diagnostics).toEqual([]);
+  return finished;
+}
 
 function visualizeFixture(path: string) {
   const source = AUTOMATIONS.get(path);
