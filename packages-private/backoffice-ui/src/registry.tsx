@@ -18,6 +18,7 @@ import { KeyValue } from "./components/key-value.component";
 import { Link } from "./components/link.component";
 import { ListRow } from "./components/list-row.component";
 import { List } from "./components/list.component";
+import { Markdown } from "./components/markdown.component";
 import { Metric } from "./components/metric.component";
 import { NumberValue } from "./components/number.component";
 import { Orchestration } from "./components/orchestration.component";
@@ -56,6 +57,7 @@ const components: BackofficeUiComponents = {
   Heading,
   Text,
   Code,
+  Markdown,
   Image,
   Callout: CalloutComponent,
   Metric,

@@ -29,6 +29,7 @@ describe("Backoffice UI builder declaration generation", () => {
       "Heading",
       "Text",
       "Code",
+      "Markdown",
       "Image",
       "Callout",
       "Metric",

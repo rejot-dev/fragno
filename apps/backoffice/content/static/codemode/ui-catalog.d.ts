@@ -215,6 +215,13 @@ type BackofficeUiComponents = {
       language?: string;
     }>,
   ): BackofficeUiElement;
+  /** Builds Markdown. Renders Markdown prose, such as a page's Markdown file body: headings, lists, tables, links, and code. Workspace paths link to their files, and images of workspace files show; raw HTML does not render. */
+  markdown(
+    props: BackofficeUiProps<{
+      /** at most 20000 characters */
+      text: string;
+    }>,
+  ): BackofficeUiElement;
   /** Builds Image. Displays a PNG, JPEG, GIF, WebP, or SVG file from the current Backoffice scope. Use an absolute virtual file path (for example /workspace/screenshots/dashboard.png), not a URL or base64. Files remain private and are fetched with the viewer's authorization. */
   image(
     props: BackofficeUiProps<{
