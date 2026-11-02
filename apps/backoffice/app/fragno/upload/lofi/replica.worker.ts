@@ -10,7 +10,7 @@ const RETRY_DELAY_MS = 5_000;
 
 // The page names the worker after the backend it replicates. A replica that fails to open, such as
 // one of a backend replaced since the page loaded, fails the page's connection.
-const { baseUrl, adapterIdentity } = readWorkerReplicaName(self.name);
+const { baseUrl, adapterIdentity, pollOnceCaughtUp } = readWorkerReplicaName(self.name);
 serveLofiSqliteWorker({
   replica: {
     baseUrl,
@@ -24,6 +24,7 @@ serveLofiSqliteWorker({
       console.error("The Upload replica failed to synchronize.", error);
     },
     retryDelayMs: RETRY_DELAY_MS,
+    pollOnceCaughtUp,
   },
   engines: uploadReplicaHost.engines,
 });
