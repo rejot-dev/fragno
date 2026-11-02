@@ -606,6 +606,40 @@ test("blobs one organization shares read under /shared in the other once it acce
             cursor: null,
           });
         }),
+        then.assert("a blob's longest key reads under a share's longest mount", async (ctx) => {
+          const client = inOrganization(ctx, "client", "ada");
+          const key = `a/${"k".repeat(510)}`;
+          await storeBlob(r2, client, key, scan);
+          const share = (await client.call("shares.create", {
+            of: { kind: "blobs", prefix: "a" },
+            with: { kind: "org", orgId: "firm" },
+          })) as Share;
+          const firm = inOrganization(ctx, "firm", "ada");
+          await firm.call("shares.accept", {
+            from: { kind: "org", orgId: "client" },
+            shareId: share.shareId,
+            name: "s".repeat(64),
+          });
+
+          const listed = (await firm.call("blobs.list", {
+            prefix: `/shared/${"s".repeat(64)}/`,
+          })) as {
+            blobs: { key: string }[];
+          };
+          const [shared] = listed.blobs.map((blob) => blob.key);
+          assert(shared !== undefined && shared.length > 512);
+          await expect(firm.call("blobs.get", { key: shared })).resolves.toMatchObject({
+            key: shared,
+            sizeBytes: scan.length,
+          });
+          await expect(
+            firm.call("blobs.read", { key: shared, offset: 0, length: 1 }),
+          ).resolves.toBeDefined();
+          // A scope's own keys keep their limit.
+          await expect(
+            client.call("blobs.createUpload", { key: `a/${"k".repeat(511)}`, contentType: "a/b" }),
+          ).rejects.toThrow("at most 512 characters");
+        }),
         then.assert("a shared folder is not read as blobs", async (ctx) => {
           const client = inOrganization(ctx, "client", "ada");
           await storeBlob(r2, client, "notes/a.pdf", scan);
