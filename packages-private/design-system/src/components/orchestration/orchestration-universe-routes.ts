@@ -14,6 +14,8 @@ import { eventDepartureAngle } from "./workflow-trigger-graph-model";
 import {
   PLANET_EVENT_EDGE_RADIUS,
   PLANET_ORBIT_RADIUS,
+  PLANET_STATUS_RING_RADIUS,
+  PLANET_STATUS_RING_WIDTH,
   PLANET_WORKFLOW_LABEL_FONT,
   PLANET_WORKFLOW_NODE_RADIUS,
 } from "./workflow-trigger-planet";
@@ -226,7 +228,8 @@ export type DrawnForward = { forward: UniverseForward; path: string; middle: Poi
 
 /**
  * Each forward routed around every planet: out of its event, around whatever is in the way, and
- * straight into the same event in the other planet, or onto its orbit when nothing there listens.
+ * straight into the same event in the other planet, onto the ring of a planet still being read, or
+ * onto its orbit when nothing there listens.
  * Without a way around, as while planets overlap mid-drag, it curves straight across. `positions`
  * and the field follow the planets' order.
  */
@@ -251,13 +254,19 @@ export function routeForwards(
     const arriveAngle = arriving
       ? eventDepartureAngle(arriving, outward + Math.PI)
       : outward + Math.PI;
-    const arriveRadius = arriving ? PLANET_EVENT_EDGE_RADIUS + 4 : PLANET_ORBIT_RADIUS;
+    // A planet still being read draws no events yet, so forwards land on the ring around it.
+    const ringed = !arriving && planets[to].scope.status !== undefined;
+    const arriveRadius = arriving
+      ? PLANET_EVENT_EDGE_RADIUS + 4
+      : ringed
+        ? PLANET_STATUS_RING_RADIUS + PLANET_STATUS_RING_WIDTH / 2 + 4
+        : PLANET_ORBIT_RADIUS;
     const start = offset(fromCenter, departAngle, PLANET_EVENT_EDGE_RADIUS);
     const end = offset(toCenter, arriveAngle, arriveRadius);
-    // A forward landing on an event crosses its planet's workflow ring straight to it: going round
-    // the ring first would turn it sharply onto the event. Workflows keep out of the stretch facing
-    // close planets, where forwards come in.
-    const shrunk = new Map(arriving ? [[to, arriveRadius + FORWARD_LANDING]] : []);
+    // A forward landing on an event, or on a planet's ring, crosses the workflow ring straight to
+    // it: going round the ring first would turn it sharply onto the event. Workflows keep out of
+    // the stretch facing close planets, where forwards come in.
+    const shrunk = new Map(arriving || ringed ? [[to, arriveRadius + FORWARD_LANDING]] : []);
     const radius = shrunk.get(to) ?? field.obstacles[to].radius;
     const inward = unit(arriveAngle + Math.PI);
     const steps =

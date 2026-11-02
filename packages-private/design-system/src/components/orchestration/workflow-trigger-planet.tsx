@@ -34,6 +34,9 @@ export const PLANET_EVENT_EDGE_RADIUS = 283;
 const ACTIVITY_OUTER = 281;
 /** The orbit workflows sit on. */
 export const PLANET_ORBIT_RADIUS = 400;
+/** The ring around a planet still being read, just outside its event band, and how wide it is. */
+export const PLANET_STATUS_RING_RADIUS = PLANET_EVENT_EDGE_RADIUS + 16;
+export const PLANET_STATUS_RING_WIDTH = 8;
 const WORKFLOW_RADIUS = PLANET_ORBIT_RADIUS;
 // Workflows are what a planet is for, so they read at least as large as its rings.
 export const PLANET_WORKFLOW_NODE_RADIUS = 24;
@@ -114,6 +117,7 @@ export function WorkflowTriggerPlanet({
   interaction,
   workflowScale,
   workflowLabelReach,
+  revealing = false,
 }: {
   scopeLabel: string;
   layout: WorkflowTriggerLayout;
@@ -128,6 +132,8 @@ export function WorkflowTriggerPlanet({
   workflowScale: number;
   /** How far from the centre workflow names may reach before they are cut short. */
   workflowLabelReach: number;
+  /** Fades in everything around the hub, as when a planet that was loading is drawn. */
+  revealing?: boolean;
 }) {
   const itemsRespond = interaction.kind === "items";
   const active = interaction.kind === "items" ? interaction.active : null;
@@ -236,239 +242,242 @@ export function WorkflowTriggerPlanet({
 
   return (
     <g role="group" aria-label={`Workflow triggers for ${scopeLabel}`}>
-      <circle
-        cx={0}
-        cy={0}
-        r={WORKFLOW_RADIUS}
-        className="fill-none stroke-[var(--bo-border)]"
-        strokeDasharray="2 6"
-      />
+      {/* The hub stays put while what surrounds it fades in. */}
+      <g className={revealing ? "bo-planet-reveal" : undefined}>
+        <circle
+          cx={0}
+          cy={0}
+          r={WORKFLOW_RADIUS}
+          className="fill-none stroke-[var(--bo-border)]"
+          strokeDasharray="2 6"
+        />
 
-      {/* Edges sit under every node so links never cover a label. */}
-      <g className="pointer-events-none">
-        {layout.triggers.map(({ eventId, workflowId, angle }) => {
-          const targetAngle = workflowAngles.get(workflowId) ?? angle;
-          const edgeEmphasis = Math.min(
-            emphasis({ kind: "event", id: eventId }),
-            emphasis({ kind: "target", id: workflowId }),
+        {/* Edges sit under every node so links never cover a label. */}
+        <g className="pointer-events-none">
+          {layout.triggers.map(({ eventId, workflowId, angle }) => {
+            const targetAngle = workflowAngles.get(workflowId) ?? angle;
+            const edgeEmphasis = Math.min(
+              emphasis({ kind: "event", id: eventId }),
+              emphasis({ kind: "target", id: workflowId }),
+            );
+            return (
+              <path
+                key={`${eventId}→${workflowId}`}
+                d={polarLink(
+                  angle,
+                  ACTIVITY_OUTER + 2,
+                  targetAngle,
+                  WORKFLOW_RADIUS - WORKFLOW_NODE_RADIUS * workflowScale - 4,
+                  0,
+                )}
+                opacity={edgeEmphasis}
+                className={cn(
+                  "fill-none transition-opacity duration-200",
+                  ACTION_EDGE_CLASS_NAME[WORKFLOW_EDGE],
+                )}
+                strokeWidth={1.8}
+                markerEnd={actionMarkerUrl(markerIdPrefix, WORKFLOW_EDGE)}
+              />
+            );
+          })}
+        </g>
+
+        {layout.sources.map(({ source, startAngle, endAngle }) => {
+          const item = { kind: "source", id: source.id } as const;
+          const labelRadius = SOURCE_INNER + 18;
+          const label = fitLabel(
+            source.label,
+            (endAngle - startAngle) * labelRadius - 10,
+            SANS_CHAR_WIDTH,
           );
+          const labelPathId = `${idPrefix}-source-${source.id}`;
+          const labelPath = labelArc(startAngle, endAngle, labelRadius);
+          const [iconX, iconY] = polar((startAngle + endAngle) / 2, SOURCE_OUTER - 17);
           return (
-            <path
-              key={`${eventId}→${workflowId}`}
-              d={polarLink(
-                angle,
-                ACTIVITY_OUTER + 2,
-                targetAngle,
-                WORKFLOW_RADIUS - WORKFLOW_NODE_RADIUS * workflowScale - 4,
-                0,
-              )}
-              opacity={edgeEmphasis}
-              className={cn(
-                "fill-none transition-opacity duration-200",
-                ACTION_EDGE_CLASS_NAME[WORKFLOW_EDGE],
-              )}
-              strokeWidth={1.8}
-              markerEnd={actionMarkerUrl(markerIdPrefix, WORKFLOW_EDGE)}
-            />
+            <g
+              key={source.id}
+              {...interactions(item, `${source.label} source`)}
+              opacity={emphasis(item)}
+            >
+              <path
+                d={annularSector(startAngle, endAngle, SOURCE_INNER, SOURCE_OUTER)}
+                className={cn(
+                  "fill-lime-500/14 stroke-[var(--bo-bg)] transition-[fill] dark:fill-lime-300/12",
+                  itemsRespond && "hover:fill-lime-500/24",
+                  isPinned(item) && "fill-lime-500/30 dark:fill-lime-300/25",
+                )}
+                strokeWidth={2}
+              />
+              <SvgIcon
+                name={source.icon}
+                x={iconX}
+                y={iconY}
+                size={15}
+                className="text-lime-800 dark:text-lime-200"
+              />
+              {label ? (
+                <>
+                  <path id={labelPathId} d={labelPath} fill="none" />
+                  <text
+                    className="fill-lime-900 text-[12px] font-semibold dark:fill-lime-100"
+                    dominantBaseline="central"
+                  >
+                    <textPath href={`#${labelPathId}`} startOffset="50%" textAnchor="middle">
+                      {label}
+                    </textPath>
+                  </text>
+                </>
+              ) : null}
+            </g>
           );
         })}
-      </g>
 
-      {layout.sources.map(({ source, startAngle, endAngle }) => {
-        const item = { kind: "source", id: source.id } as const;
-        const labelRadius = SOURCE_INNER + 18;
-        const label = fitLabel(
-          source.label,
-          (endAngle - startAngle) * labelRadius - 10,
-          SANS_CHAR_WIDTH,
-        );
-        const labelPathId = `${idPrefix}-source-${source.id}`;
-        const labelPath = labelArc(startAngle, endAngle, labelRadius);
-        const [iconX, iconY] = polar((startAngle + endAngle) / 2, SOURCE_OUTER - 17);
-        return (
-          <g
-            key={source.id}
-            {...interactions(item, `${source.label} source`)}
-            opacity={emphasis(item)}
-          >
-            <path
-              d={annularSector(startAngle, endAngle, SOURCE_INNER, SOURCE_OUTER)}
-              className={cn(
-                "fill-lime-500/14 stroke-[var(--bo-bg)] transition-[fill] dark:fill-lime-300/12",
-                itemsRespond && "hover:fill-lime-500/24",
-                isPinned(item) && "fill-lime-500/30 dark:fill-lime-300/25",
-              )}
-              strokeWidth={2}
-            />
-            <SvgIcon
-              name={source.icon}
-              x={iconX}
-              y={iconY}
-              size={15}
-              className="text-lime-800 dark:text-lime-200"
-            />
-            {label ? (
-              <>
-                <path id={labelPathId} d={labelPath} fill="none" />
-                <text
-                  className="fill-lime-900 text-[12px] font-semibold dark:fill-lime-100"
-                  dominantBaseline="central"
-                >
-                  <textPath href={`#${labelPathId}`} startOffset="50%" textAnchor="middle">
-                    {label}
-                  </textPath>
-                </text>
-              </>
-            ) : null}
-          </g>
-        );
-      })}
-
-      {layout.events.map(({ event, startAngle, endAngle }) => {
-        const item = { kind: "event", id: event.id } as const;
-        const middle = (startAngle + endAngle) / 2;
-        const tangentialRadius = (EVENT_INNER + EVENT_OUTER) / 2;
-        const fitsAlongArc =
-          event.eventType.length * MONO_CHAR_WIDTH <=
-          (endAngle - startAngle) * tangentialRadius - 14;
-        // Narrow events read along the radius instead; the narrowest go unlabelled.
-        const radialLabel =
-          fitsAlongArc || (endAngle - startAngle) * EVENT_INNER < 13
-            ? null
-            : fitLabel(event.eventType, EVENT_OUTER - EVENT_INNER - 14, MONO_CHAR_WIDTH);
-        const labelPathId = `${idPrefix}-event-${event.id}`;
-        const labelPath = labelArc(startAngle, endAngle, tangentialRadius);
-        const activityEnd =
-          startAngle + (endAngle - startAngle) * Math.min(1, event.recentCount / maxRecent);
-        const [labelX, labelY] = polar(middle, tangentialRadius);
-        return (
-          <g
-            key={event.id}
-            {...interactions(item, `${event.sourceId}.${event.eventType} event`)}
-            opacity={emphasis(item)}
-          >
-            <path
-              d={annularSector(startAngle, endAngle, EVENT_INNER, EVENT_OUTER)}
-              className={cn(
-                "fill-[var(--bo-accent-bg)] stroke-[var(--bo-bg)] transition-[fill]",
-                itemsRespond &&
-                  "hover:fill-[color-mix(in_srgb,var(--bo-accent-bg)_80%,var(--bo-accent))]",
-                isPinned(item) &&
-                  "fill-[color-mix(in_srgb,var(--bo-accent-bg)_65%,var(--bo-accent))]",
-              )}
-              strokeWidth={2}
-            />
-            {event.recentCount > 0 ? (
+        {layout.events.map(({ event, startAngle, endAngle }) => {
+          const item = { kind: "event", id: event.id } as const;
+          const middle = (startAngle + endAngle) / 2;
+          const tangentialRadius = (EVENT_INNER + EVENT_OUTER) / 2;
+          const fitsAlongArc =
+            event.eventType.length * MONO_CHAR_WIDTH <=
+            (endAngle - startAngle) * tangentialRadius - 14;
+          // Narrow events read along the radius instead; the narrowest go unlabelled.
+          const radialLabel =
+            fitsAlongArc || (endAngle - startAngle) * EVENT_INNER < 13
+              ? null
+              : fitLabel(event.eventType, EVENT_OUTER - EVENT_INNER - 14, MONO_CHAR_WIDTH);
+          const labelPathId = `${idPrefix}-event-${event.id}`;
+          const labelPath = labelArc(startAngle, endAngle, tangentialRadius);
+          const activityEnd =
+            startAngle + (endAngle - startAngle) * Math.min(1, event.recentCount / maxRecent);
+          const [labelX, labelY] = polar(middle, tangentialRadius);
+          return (
+            <g
+              key={event.id}
+              {...interactions(item, `${event.sourceId}.${event.eventType} event`)}
+              opacity={emphasis(item)}
+            >
               <path
-                d={annularSector(startAngle, activityEnd, EVENT_OUTER + 1, ACTIVITY_OUTER)}
-                className="fill-[var(--bo-live)]"
-                opacity={0.75}
+                d={annularSector(startAngle, endAngle, EVENT_INNER, EVENT_OUTER)}
+                className={cn(
+                  "fill-[var(--bo-accent-bg)] stroke-[var(--bo-bg)] transition-[fill]",
+                  itemsRespond &&
+                    "hover:fill-[color-mix(in_srgb,var(--bo-accent-bg)_80%,var(--bo-accent))]",
+                  isPinned(item) &&
+                    "fill-[color-mix(in_srgb,var(--bo-accent-bg)_65%,var(--bo-accent))]",
+                )}
+                strokeWidth={2}
               />
-            ) : null}
-            {fitsAlongArc ? (
-              <>
-                <path id={labelPathId} d={labelPath} fill="none" />
+              {event.recentCount > 0 ? (
+                <path
+                  d={annularSector(startAngle, activityEnd, EVENT_OUTER + 1, ACTIVITY_OUTER)}
+                  className="fill-[var(--bo-live)]"
+                  opacity={0.75}
+                />
+              ) : null}
+              {fitsAlongArc ? (
+                <>
+                  <path id={labelPathId} d={labelPath} fill="none" />
+                  <text
+                    className="fill-[var(--bo-accent-strong)] font-mono text-[11px]"
+                    dominantBaseline="central"
+                  >
+                    <textPath href={`#${labelPathId}`} startOffset="50%" textAnchor="middle">
+                      {event.eventType}
+                    </textPath>
+                  </text>
+                </>
+              ) : radialLabel ? (
                 <text
-                  className="fill-[var(--bo-accent-strong)] font-mono text-[11px]"
+                  x={labelX}
+                  y={labelY}
+                  transform={`rotate(${degrees(middle) + (isLeftHalf(middle) ? 90 : -90)} ${labelX} ${labelY})`}
+                  textAnchor="middle"
                   dominantBaseline="central"
+                  className="fill-[var(--bo-accent-strong)] font-mono text-[10.5px]"
                 >
-                  <textPath href={`#${labelPathId}`} startOffset="50%" textAnchor="middle">
-                    {event.eventType}
-                  </textPath>
+                  {radialLabel}
                 </text>
-              </>
-            ) : radialLabel ? (
-              <text
-                x={labelX}
-                y={labelY}
-                transform={`rotate(${degrees(middle) + (isLeftHalf(middle) ? 90 : -90)} ${labelX} ${labelY})`}
-                textAnchor="middle"
-                dominantBaseline="central"
-                className="fill-[var(--bo-accent-strong)] font-mono text-[10.5px]"
-              >
-                {radialLabel}
-              </text>
-            ) : null}
-          </g>
-        );
-      })}
+              ) : null}
+            </g>
+          );
+        })}
 
-      {layout.workflows.map(({ workflow, angle }) => {
-        const item = { kind: "target", id: workflow.id } as const;
-        const presentation = TARGET_KIND_PRESENTATION.workflow;
-        const [x, y] = polar(angle, WORKFLOW_RADIUS);
-        const side = labelSide(angle, layout.workflows);
-        const beside = side !== 0;
-        const offset = WORKFLOW_NODE_RADIUS + 10;
-        const labelX = x + side * offset;
-        const labelRoom = beside
-          ? (workflowLabelReach - side * x) / workflowScale - offset - 12
-          : WORKFLOW_LABEL_MAX_WIDTH * 1.6;
-        const nameY = beside
-          ? y - (workflow.activeCount > 0 ? WORKFLOW_RUNNING_FONT * 0.7 : 0)
-          : Math.cos(angle) > 0
-            ? y - offset - WORKFLOW_LABEL_FONT * 1.4
-            : y + offset + 6;
-        const label =
-          fitLabel(workflow.label, labelRoom, (SANS_CHAR_WIDTH * WORKFLOW_LABEL_FONT) / 12.5) ??
-          workflow.label.slice(0, 4);
-        return (
-          <g
-            key={workflow.id}
-            {...interactions(item, `${workflow.label} workflow`)}
-            opacity={emphasis(item)}
-            transform={`translate(${x} ${y}) scale(${workflowScale}) translate(${-x} ${-y})`}
-          >
-            {workflow.activeCount > 0 ? (
+        {layout.workflows.map(({ workflow, angle }) => {
+          const item = { kind: "target", id: workflow.id } as const;
+          const presentation = TARGET_KIND_PRESENTATION.workflow;
+          const [x, y] = polar(angle, WORKFLOW_RADIUS);
+          const side = labelSide(angle, layout.workflows);
+          const beside = side !== 0;
+          const offset = WORKFLOW_NODE_RADIUS + 10;
+          const labelX = x + side * offset;
+          const labelRoom = beside
+            ? (workflowLabelReach - side * x) / workflowScale - offset - 12
+            : WORKFLOW_LABEL_MAX_WIDTH * 1.6;
+          const nameY = beside
+            ? y - (workflow.activeCount > 0 ? WORKFLOW_RUNNING_FONT * 0.7 : 0)
+            : Math.cos(angle) > 0
+              ? y - offset - WORKFLOW_LABEL_FONT * 1.4
+              : y + offset + 6;
+          const label =
+            fitLabel(workflow.label, labelRoom, (SANS_CHAR_WIDTH * WORKFLOW_LABEL_FONT) / 12.5) ??
+            workflow.label.slice(0, 4);
+          return (
+            <g
+              key={workflow.id}
+              {...interactions(item, `${workflow.label} workflow`)}
+              opacity={emphasis(item)}
+              transform={`translate(${x} ${y}) scale(${workflowScale}) translate(${-x} ${-y})`}
+            >
+              {workflow.activeCount > 0 ? (
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={WORKFLOW_NODE_RADIUS + 5}
+                  className="fill-none stroke-[var(--bo-live)]"
+                  strokeWidth={2}
+                  strokeDasharray="4 3"
+                />
+              ) : null}
               <circle
                 cx={x}
                 cy={y}
-                r={WORKFLOW_NODE_RADIUS + 5}
-                className="fill-none stroke-[var(--bo-live)]"
-                strokeWidth={2}
-                strokeDasharray="4 3"
+                r={WORKFLOW_NODE_RADIUS}
+                className={cn(
+                  "fill-[var(--bo-panel)] transition-[stroke-width]",
+                  presentation.strokeClassName,
+                )}
+                strokeWidth={isPinned(item) ? 3 : 1.5}
               />
-            ) : null}
-            <circle
-              cx={x}
-              cy={y}
-              r={WORKFLOW_NODE_RADIUS}
-              className={cn(
-                "fill-[var(--bo-panel)] transition-[stroke-width]",
-                presentation.strokeClassName,
-              )}
-              strokeWidth={isPinned(item) ? 3 : 1.5}
-            />
-            <SvgIcon
-              name={presentation.icon}
-              x={x}
-              y={y}
-              size={WORKFLOW_NODE_RADIUS}
-              className={presentation.iconClassName}
-            />
-            <text
-              x={labelX}
-              y={nameY}
-              textAnchor={side > 0 ? "start" : side < 0 ? "end" : "middle"}
-              dominantBaseline="central"
-              fontSize={WORKFLOW_LABEL_FONT}
-              className="fill-[var(--bo-fg)] font-semibold"
-            >
-              {label}
-              {workflow.activeCount > 0 ? (
-                <tspan
-                  x={labelX}
-                  dy={WORKFLOW_RUNNING_FONT * 1.4}
-                  fontSize={WORKFLOW_RUNNING_FONT}
-                  className="fill-[var(--bo-live)] font-medium tabular-nums"
-                >
-                  {workflow.activeCount} running
-                </tspan>
-              ) : null}
-            </text>
-          </g>
-        );
-      })}
+              <SvgIcon
+                name={presentation.icon}
+                x={x}
+                y={y}
+                size={WORKFLOW_NODE_RADIUS}
+                className={presentation.iconClassName}
+              />
+              <text
+                x={labelX}
+                y={nameY}
+                textAnchor={side > 0 ? "start" : side < 0 ? "end" : "middle"}
+                dominantBaseline="central"
+                fontSize={WORKFLOW_LABEL_FONT}
+                className="fill-[var(--bo-fg)] font-semibold"
+              >
+                {label}
+                {workflow.activeCount > 0 ? (
+                  <tspan
+                    x={labelX}
+                    dy={WORKFLOW_RUNNING_FONT * 1.4}
+                    fontSize={WORKFLOW_RUNNING_FONT}
+                    className="fill-[var(--bo-live)] font-medium tabular-nums"
+                  >
+                    {workflow.activeCount} running
+                  </tspan>
+                ) : null}
+              </text>
+            </g>
+          );
+        })}
+      </g>
 
       <circle
         cx={0}

@@ -40,6 +40,8 @@ import {
   universeItemKey,
   type OrchestrationExternal,
   type OrchestrationUniverse,
+  type OrchestrationUniverseScope,
+  type OrchestrationUniverseScopeStatus,
   type UniverseCall,
   type UniverseForward,
   type UniversePlanet,
@@ -55,6 +57,8 @@ import { polar, SANS_CHAR_WIDTH, type Point } from "./radial-geometry";
 import {
   PLANET_EVENT_EDGE_RADIUS,
   PLANET_ORBIT_RADIUS,
+  PLANET_STATUS_RING_RADIUS,
+  PLANET_STATUS_RING_WIDTH,
   PLANET_WORKFLOW_NODE_RADIUS,
   WorkflowTriggerPlanet,
   type PlanetItemInteraction,
@@ -99,6 +103,14 @@ const NO_ITEM_INTERACTION: PlanetItemInteraction = { kind: "none" };
 const ASPECT_STEP = 0.1;
 const DEFAULT_ASPECT = 1.5;
 const DIMMED_TILE = 0.35;
+// A planet still being read says how far it got under its hub.
+const STATUS_LABEL_Y = 140;
+// How long a planet that finished loading fades from its ring to its graph, as .bo-planet-reveal
+// and .bo-planet-status-leave animate it, with time to spare.
+const REVEAL_MS = 900;
+const NO_STATUSES: ReadonlyMap<string, OrchestrationUniverseScopeStatus> = new Map();
+// The share of the ring the arc turning round a planet still being read covers.
+const LOADING_ARC = 0.2;
 const NO_TILES: readonly ExternalTile[] = [];
 const NO_CALLS: readonly UniverseCall[] = [];
 const NOTHING_LIT: ReadonlySet<string> = new Set();
@@ -116,11 +128,14 @@ const PlanetBody = memo(function PlanetBody({
   idPrefix,
   lit,
   workflowScale,
+  finishedLoading,
 }: {
   planet: UniversePlanet;
   idPrefix: string;
   lit: ReadonlySet<string> | null;
   workflowScale: number;
+  /** The status a planet that just finished loading last showed, while its graph fades in. */
+  finishedLoading: OrchestrationUniverseScopeStatus | null;
 }) {
   const scopeId = planet.scope.id;
   return (
@@ -152,10 +167,116 @@ const PlanetBody = memo(function PlanetBody({
         interaction={NO_ITEM_INTERACTION}
         workflowScale={workflowScale}
         workflowLabelReach={WORKFLOW_LABEL_REACH}
+        revealing={finishedLoading !== null}
       />
+      {planet.scope.status ? (
+        <PlanetStatus status={planet.scope.status} />
+      ) : finishedLoading ? (
+        <g className="bo-planet-status-leave">
+          <PlanetStatus status={finishedLoading} />
+        </g>
+      ) : null}
     </>
   );
 });
+
+/**
+ * The planets that finished loading in the last moments, with the status each last showed, so its
+ * ring can fade away as its graph fades in. Measured before paint, so a planet that just finished
+ * never shows its graph whole for a frame first.
+ */
+function useFinishedLoading(scopes: readonly OrchestrationUniverseScope[]) {
+  // Each reveal with when it ends, so other planets' progress, which changes the scopes many times
+  // a reveal, never restarts it.
+  const [revealing, setRevealing] = useState<
+    ReadonlyMap<string, { status: OrchestrationUniverseScopeStatus; until: number }>
+  >(new Map());
+  const loading = useRef(new Map<string, OrchestrationUniverseScopeStatus>());
+  useLayoutEffect(() => {
+    const until = performance.now() + REVEAL_MS;
+    const done = new Map<string, { status: OrchestrationUniverseScopeStatus; until: number }>();
+    for (const scope of scopes) {
+      const was = loading.current.get(scope.id);
+      if (was && !scope.status) {
+        done.set(scope.id, { status: was, until });
+      }
+    }
+    loading.current = new Map(
+      scopes.flatMap((scope) => (scope.status ? [[scope.id, scope.status] as const] : [])),
+    );
+    if (done.size > 0) {
+      setRevealing((current) => new Map([...current, ...done]));
+    }
+  }, [scopes]);
+  // One timer, for the reveal that ends first; ending it sets the next.
+  useEffect(() => {
+    if (revealing.size === 0) {
+      return undefined;
+    }
+    const next = Math.min(...[...revealing.values()].map(({ until }) => until));
+    const timer = setTimeout(
+      () => {
+        const now = performance.now();
+        setRevealing((current) => new Map([...current].filter(([, { until }]) => until > now)));
+      },
+      Math.max(0, next - performance.now()),
+    );
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [revealing]);
+  return useMemo(
+    () =>
+      revealing.size === 0
+        ? NO_STATUSES
+        : new Map([...revealing].map(([id, { status }]) => [id, status] as const)),
+    [revealing],
+  );
+}
+
+/**
+ * A ring around a planet still being read, with an arc turning round it while the label says how
+ * far it got; red with the reason once reading failed.
+ */
+function PlanetStatus({ status }: { status: OrchestrationUniverseScopeStatus }) {
+  const failed = status.kind === "failed";
+  const fraction = status.kind === "loading" ? status.fraction : null;
+  const label = failed
+    ? "Could not be read"
+    : fraction === null
+      ? "Loading…"
+      : `Loading ${Math.round(fraction * 100)}%`;
+  return (
+    <g className="pointer-events-none">
+      <title>{failed ? status.message : label}</title>
+      <circle
+        r={PLANET_STATUS_RING_RADIUS}
+        className={`fill-none ${failed ? "stroke-[var(--bo-failed)]" : "stroke-[var(--bo-border)]"}`}
+        strokeWidth={PLANET_STATUS_RING_WIDTH}
+        strokeDasharray={failed ? "14 10" : undefined}
+      />
+      {failed ? null : (
+        <circle
+          r={PLANET_STATUS_RING_RADIUS}
+          pathLength={1}
+          // CSS turns an SVG element about its viewport's corner unless told to use its own box.
+          // Without motion a still arc would read as progress, so only the track stays.
+          className="origin-center fill-none stroke-[var(--bo-accent)] [transform-box:fill-box] motion-safe:animate-spin motion-reduce:hidden"
+          strokeWidth={PLANET_STATUS_RING_WIDTH}
+          strokeLinecap="round"
+          strokeDasharray={`${LOADING_ARC} 1`}
+        />
+      )}
+      <text
+        y={STATUS_LABEL_Y}
+        textAnchor="middle"
+        className={`text-[22px] ${failed ? "fill-[var(--bo-failed)]" : "fill-[var(--bo-muted)]"}`}
+      >
+        {label}
+      </text>
+    </g>
+  );
+}
 
 const TILE_ROTATION: Record<ExternalTile["side"], number> = {
   top: 0,
@@ -366,6 +487,7 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
   const swallowClick = useRef(false);
 
   const layout = useMemo(() => layoutUniverse(universe), [universe]);
+  const finishedLoading = useFinishedLoading(universe.scopes);
   const { forwards, externals, calls } = layout;
   const highlights = useMemo(
     () => universeHighlights(layout.planets, layout.forwards, layout.externals, layout.calls),
@@ -701,7 +823,9 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
                       key={forward.id}
                       d={path}
                       opacity={forwardEmphasis(forward)}
-                      className={`fill-none transition-opacity duration-200 ${ACTION_EDGE_CLASS_NAME[FORWARD_EDGE]}`}
+                      // A forward into a planet that just finished loading moves from its ring to
+                      // its event, so it fades in there instead of jumping.
+                      className={`fill-none transition-opacity duration-200 ${ACTION_EDGE_CLASS_NAME[FORWARD_EDGE]} ${finishedLoading.has(forward.toScopeId) ? "bo-planet-reveal" : ""}`}
                       strokeWidth={Math.max(1.8, MIN_SCREEN_STROKE / scale)}
                       strokeDasharray={ACTION_EDGE_DASH[FORWARD_EDGE]}
                       strokeLinecap="round"
@@ -729,6 +853,7 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
                         idPrefix={idPrefix}
                         lit={focusedScope === scope.id ? null : lit}
                         workflowScale={workflowScale}
+                        finishedLoading={finishedLoading.get(scope.id) ?? null}
                       />
                       {focusedScope === scope.id ? (
                         <circle
@@ -760,6 +885,9 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
                       <g
                         key={forward.id}
                         transform={`translate(${middle.x} ${middle.y}) scale(${grow}) translate(${-middle.x} ${-middle.y})`}
+                        className={
+                          finishedLoading.has(forward.toScopeId) ? "bo-planet-reveal" : undefined
+                        }
                       >
                         <rect
                           x={left}
