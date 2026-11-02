@@ -50,6 +50,11 @@ type OutboxFetchOptions = {
 };
 
 const DEFAULT_POLL_INTERVAL_MS = 1000;
+/**
+ * Fragno's outbox stream sends a heartbeat whenever it has had nothing to send for a moment, so a
+ * stream silent this long is dead, even if its connection never closed.
+ */
+const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 15_000;
 
 const ephemeralTableKey = (schema: string, table: string): string => `${schema}.${table}`;
 
@@ -75,6 +80,7 @@ export class LofiClient {
   private readonly outboxTransport: LofiOutboxTransport;
   private readonly pollIntervalMs: number;
   private readonly streamReconnectIntervalMs: number;
+  private readonly streamIdleTimeoutMs: number;
   private readonly limit: number;
   private readonly cursorKey?: string;
   private readonly ephemeralTableKeys: ReadonlySet<string>;
@@ -114,6 +120,7 @@ export class LofiClient {
     this.outboxTransport = options.outboxTransport ?? "poll";
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.streamReconnectIntervalMs = options.streamReconnectIntervalMs ?? this.pollIntervalMs;
+    this.streamIdleTimeoutMs = options.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
     this.limit = options.limit ?? FRAGNO_OUTBOX_PAGE_SIZE;
     this.cursorKey = options.cursorKey;
     this.ephemeralTableKeys = new Set(
@@ -457,7 +464,7 @@ export class LofiClient {
 
         // Applies what has arrived, up to `limit` entries at a time. During a catch-up the network
         // outpaces the adapter, so batches fill up; a live change is applied as soon as it arrives.
-        for await (const event of parseOutboxStream(response, signal)) {
+        for await (const event of parseOutboxStream(response, signal, this.streamIdleTimeoutMs)) {
           if (signal.aborted) {
             return;
           }
@@ -855,9 +862,14 @@ function toLofiMutation(mutation: OutboxMutation): LofiMutation {
   };
 }
 
+/**
+ * Reads the stream's frames. A read that waits `idleTimeoutMs` on the network fails, so a stream
+ * whose connection silently stopped delivering is reconnected instead of waited on forever.
+ */
 async function* parseOutboxStream(
   response: Response,
   signal: AbortSignal,
+  idleTimeoutMs: number,
 ): AsyncGenerator<OutboxStreamEvent> {
   if (!response.body) {
     throw new Error("Invalid outbox stream response body");
@@ -892,7 +904,12 @@ async function* parseOutboxStream(
       }
       let chunk: ReadableStreamReadResult<Uint8Array>;
       try {
-        chunk = await read;
+        // Timed only from here: while the consumer applies a batch, frames wait in the buffer.
+        chunk = await settleWithin(
+          read,
+          idleTimeoutMs,
+          `nothing arrived for ${Math.round(idleTimeoutMs / 1000)} s`,
+        );
       } catch (error) {
         if (signal.aborted || isAbortError(error)) {
           throw error;
@@ -953,11 +970,27 @@ function catchUpFraction(catchUp: { from: bigint; to: bigint }, applied: bigint)
   return Math.min(1, Math.max(0, fraction));
 }
 
+/** Settles as `promise` does, or rejects with `message` if it has not settled after `ms`. */
+function settleWithin<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error(message));
+      }, ms);
+    }),
+  ]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
 class OutboxStreamReadError extends Error {
   readonly originalError: unknown;
 
   constructor(cause: unknown) {
-    super("Outbox stream read failed");
+    // Replicas show the message while they reconnect, so it says what went wrong.
+    super(`Outbox stream read failed: ${cause instanceof Error ? cause.message : String(cause)}`);
     this.name = "OutboxStreamReadError";
     this.originalError = cause;
   }

@@ -917,6 +917,114 @@ describe("LofiClient", () => {
     expect(applied).toEqual([entry.versionstamp]);
   });
 
+  it("reconnects a stream that stops delivering without closing", async () => {
+    const entry = makeEntry("000000000000000000000001", "user-1");
+    const encoder = new TextEncoder();
+    const meta = new Map<string, string>();
+    const applied: string[] = [];
+    const errors: unknown[] = [];
+    let requestCount = 0;
+    const started = `${JSON.stringify({ type: "started", protocolVersion: 1, adapterIdentity: "source", catchUpTargetVersionstamp: null, catchUpPageSize: 50 })}\n`;
+
+    const fetcher = vi.fn(async () => {
+      requestCount += 1;
+      const first = requestCount === 1;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(started));
+            // The first stream goes silent, as a connection dropped along the way does.
+            if (!first) {
+              controller.enqueue(encoder.encode(`${JSON.stringify({ type: "entry", entry })}\n`));
+            }
+          },
+        }),
+        { status: 200 },
+      );
+    });
+
+    const client = new LofiClient({
+      outboxUrl: "https://example.com/_internal/outbox",
+      endpointName: "app-outbox",
+      outboxTransport: "stream",
+      streamReconnectIntervalMs: 1,
+      streamIdleTimeoutMs: 20,
+      adapter: sequentialBatches({
+        applyOutboxEntry: async ({ versionstamp }) => {
+          applied.push(versionstamp);
+          return { applied: true };
+        },
+        getMeta: async (key) => meta.get(key) ?? "vs-0",
+        setMeta: async (key, value) => {
+          meta.set(key, value);
+        },
+      }),
+      fetch: fetcher as unknown as typeof fetch,
+      onError: (error) => {
+        errors.push(error);
+      },
+    });
+
+    client.start();
+    await waitFor(() => applied.length === 1);
+    client.stop();
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(errors.map((error) => (error as Error).message)).toEqual([
+      "Outbox stream read failed: nothing arrived for 0 s",
+    ]);
+    expect(applied).toEqual([entry.versionstamp]);
+  });
+
+  it("keeps a stream that only sends heartbeats", async () => {
+    const encoder = new TextEncoder();
+    const errors: unknown[] = [];
+    let beats = 0;
+    const started = `${JSON.stringify({ type: "started", protocolVersion: 1, adapterIdentity: "source", catchUpTargetVersionstamp: null, catchUpPageSize: 50 })}\n`;
+
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal as AbortSignal | undefined;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(encoder.encode(started));
+            const timer = setInterval(() => {
+              beats += 1;
+              controller.enqueue(encoder.encode(`${JSON.stringify({ type: "heartbeat" })}\n`));
+            }, 5);
+            signal?.addEventListener("abort", () => clearInterval(timer), { once: true });
+          },
+        }),
+        { status: 200 },
+      );
+    });
+
+    const client = new LofiClient({
+      outboxUrl: "https://example.com/_internal/outbox",
+      endpointName: "app-outbox",
+      outboxTransport: "stream",
+      streamReconnectIntervalMs: 1,
+      streamIdleTimeoutMs: 50,
+      adapter: sequentialBatches({
+        applyOutboxEntry: async () => ({ applied: true }),
+        getMeta: async () => "vs-0",
+        setMeta: async () => undefined,
+      }),
+      fetch: fetcher as unknown as typeof fetch,
+      onError: (error) => {
+        errors.push(error);
+      },
+    });
+
+    client.start();
+    // Well past the idle timeout, in heartbeats.
+    await waitFor(() => beats >= 40);
+    client.stop();
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(errors).toEqual([]);
+  });
+
   it("can restart a stream immediately after stopping", async () => {
     const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const signal = init?.signal as AbortSignal | undefined;
