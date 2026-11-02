@@ -74,9 +74,18 @@ async function reverse(browser: ScenarioBrowser, entry: string, postingDate: str
   });
 }
 
-async function readDocument(browser: ScenarioBrowser, id: string): Promise<DocumentView> {
-  const page = await browser.navigate(`${BOOKS}/documents/${id}`);
+async function readDocument(
+  browser: ScenarioBrowser,
+  id: string,
+  books = BOOKS,
+): Promise<DocumentView> {
+  const page = await browser.navigate(`${books}/documents/${id}`);
   return (page.loaderData["documents/document"] as { document: DocumentView }).document;
+}
+
+/** The key prefix of the document's file, which is what its share opens. */
+function filePrefix(document: DocumentView): string {
+  return document.storageKey.slice(0, document.storageKey.lastIndexOf("/") + 1);
 }
 
 async function listDocuments(browser: ScenarioBrowser): Promise<DocumentView[]> {
@@ -141,7 +150,9 @@ test("a member uploads an invoice, books it from its page, and the entry links b
     });
     // The file is a blob of the administration's Backoffice project, where its agents work.
     expect(scenario.backoffice.blobKeys(CLIENT, ADMINISTRATION)).toEqual([
-      `documents/${id}/${await sha256(invoice.bytes)}/babbage-invoice-7.pdf`,
+      expect.stringMatching(
+        new RegExp(`^documents/${id}/[0-9a-f-]{36}/babbage-invoice-7\\.pdf$`, "u"),
+      ),
     ]);
     const file = await ada.download(`${BOOKS}/documents/${id}/file`);
     assert(file.status === 200);
@@ -411,6 +422,28 @@ test("files sent at once with one upload form record one document, which keeps i
       `${BOOKS}/documents/${same}`,
       `${BOOKS}/documents/${same}`,
     ]);
+    // A second send can store its file while the first's is being stored: each keeps its own.
+    const overtaken = await uploadFormId(ada);
+    const overtaking: ScenarioPage[] = [];
+    scenario.backoffice.beforeNextAnswer("blobs.completeUpload", async () => {
+      overtaking.push(await upload(ada, invoice, overtaken));
+    });
+    const first = await upload(ada, invoice, overtaken);
+    expect([first, ...overtaking].map((page) => page.path)).toEqual([
+      `${BOOKS}/documents/${overtaken}`,
+      `${BOOKS}/documents/${overtaken}`,
+    ]);
+    // The send that recorded second removes the file it stored.
+    expect(
+      scenario.backoffice
+        .blobKeys(CLIENT, ADMINISTRATION)
+        .filter((key) => key.startsWith(`documents/${overtaken}/`)),
+    ).toEqual([(await readDocument(ada, overtaken)).storageKey]);
+    const overtakenFile = await ada.download(`${BOOKS}/documents/${overtaken}/file`);
+    expect(await sha256(new Uint8Array(await overtakenFile.arrayBuffer()))).toBe(
+      await sha256(invoice.bytes),
+    );
+
     // Requests can also both find the document unrecorded and record it at the same moment.
     const recorded = await readDocument(ada, same);
     const books = scenario.env.BOOKS.getByName(administration.id);
@@ -438,7 +471,7 @@ test("files sent at once with one upload form record one document, which keeps i
     assert(file.status === 200);
     expect(await sha256(new Uint8Array(await file.arrayBuffer()))).toBe(document.sha256);
     expect((await listDocuments(ada)).map((listed) => listed.id).sort()).toEqual(
-      [same, again.id, other].sort(),
+      [same, overtaken, again.id, other].sort(),
     );
   });
 });
@@ -554,7 +587,7 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       prompter: "installation",
       status: "queued",
     });
-    const prefix = `documents/${id}/${await sha256(invoice.bytes)}/`;
+    const prefix = filePrefix(await readDocument(ada, id));
     const [mount, ...otherMounts] = scenario.backoffice.mountedShares(FIRM, FIRM_AGENT);
     expect(otherMounts).toEqual([]);
     expect(mount).toEqual({
@@ -1229,11 +1262,11 @@ test("the same document ID in two administrations reaches the firm's agent as tw
     const expected = [
       {
         administration: await administrationOf(BOOKS),
-        prefix: `documents/${id}/${await sha256(first.bytes)}/`,
+        prefix: filePrefix(await readDocument(ada, id)),
       },
       {
         administration: await administrationOf(other),
-        prefix: `documents/${id}/${await sha256(second.bytes)}/`,
+        prefix: filePrefix(await readDocument(ada, id, other)),
       },
     ];
     // Each prompt names its administration and the share of that administration's file.

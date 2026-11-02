@@ -199,7 +199,10 @@ const documentsFragmentDefinition = defineFragment("documents")
   .usesService<"ledger", LedgerServices>("ledger")
   .providesBaseService(({ defineService, serviceDeps }) =>
     defineService({
-      /** Records an uploaded document; recording the same one again does nothing. */
+      /**
+       * Records an uploaded document; recording the same one again does nothing. Returns the key
+       * of the file the document keeps, another upload's when that one recorded it first.
+       */
       recordDocument: function (document: NewDocument) {
         return this.serviceTx(documentsSchema)
           .retrieve((uow) =>
@@ -207,12 +210,12 @@ const documentsFragmentDefinition = defineFragment("documents")
               b.whereIndex("primary", (eb) => eb("id", "=", document.id)),
             ),
           )
-          .mutate(({ uow, retrieveResult: [existing] }) => {
+          .mutate(({ uow, retrieveResult: [existing] }): string => {
             if (existing) {
               if (existing.sha256 !== document.sha256) {
                 throw new DocumentError("DOCUMENT_ID_TAKEN");
               }
-              return;
+              return existing.storageKey;
             }
             uow.create(
               "document",
@@ -228,6 +231,7 @@ const documentsFragmentDefinition = defineFragment("documents")
               // the table's only unique key.
               { retryOnUniqueConflict: () => true },
             );
+            return document.storageKey;
           })
           .build();
       },

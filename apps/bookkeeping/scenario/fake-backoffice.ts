@@ -147,7 +147,10 @@ export class FakeBackoffice {
   >();
   /** Blobs by scope and key, e.g. the documents Bookkeeping stores in a project. */
   readonly #blobs = new Map<string, StoredBlob>();
-  /** Uploads not completed yet, by upload ID, with the bytes storage took for them, if any. */
+  /**
+   * Uploads not completed yet, by upload ID, with the bytes storage took for them, if any. As in
+   * Backoffice, another upload of the same key replaces one, which then cannot complete.
+   */
   readonly #uploads = new Map<
     string,
     { blobKey: string; contentType: string; bytes: Uint8Array<ArrayBuffer> | null }
@@ -930,6 +933,11 @@ export class FakeBackoffice {
         });
       case "blobs.createUpload":
         return respond("blobs.createUpload", body, ({ key: blobKey, contentType }) => {
+          for (const [replaced, upload] of this.#uploads) {
+            if (upload.blobKey === key(blobKey)) {
+              this.#uploads.delete(replaced);
+            }
+          }
           const uploadId = crypto.randomUUID();
           this.#uploads.set(uploadId, { blobKey: key(blobKey), contentType, bytes: null });
           return {
@@ -944,7 +952,7 @@ export class FakeBackoffice {
         return respond("blobs.completeUpload", body, ({ uploadId }) => {
           const upload = this.#uploads.get(uploadId);
           if (!upload || !upload.blobKey.startsWith(key(""))) {
-            throw new ApiError("not_found", `No upload ${uploadId} in this scope.`);
+            throw new ApiError("not_found", "UPLOAD_NOT_FOUND: The upload does not exist.");
           }
           if (upload.bytes === null) {
             throw new ApiError("invalid_request", "Storage holds no bytes for this upload yet.");
@@ -962,6 +970,10 @@ export class FakeBackoffice {
         return respond("blobs.get", body, ({ key: blobKey }) => {
           const blob = this.#blobs.get(key(blobKey));
           return blob ? this.#blobOf(blobKey, blob) : null;
+        });
+      case "blobs.delete":
+        return respond("blobs.delete", body, ({ key: blobKey }) => {
+          this.#blobs.delete(key(blobKey));
         });
       case "blobs.createDownloadUrl":
         return respond("blobs.createDownloadUrl", body, ({ key: blobKey }) => {
