@@ -114,6 +114,18 @@ function installedAppActivationFromActor(
   return match ? { appId: match[1], activation: Number(match[2]) } : null;
 }
 
+/**
+ * The principal as a delegate, when it is an installed app acting as itself, of work that follows
+ * from what it did; null for any other principal. A delegate only narrows what that work may do.
+ */
+export function installedAppAsDelegate(
+  principal: AutomationActor<"principal"> | null,
+): AutomationActor<"delegate"> | null {
+  return principal && installedAppActivationFromActor(principal)
+    ? { ...principal, role: "delegate" }
+    : null;
+}
+
 /** The installed app an execution acts through, as itself or for a user, or `null` for none. */
 export function installedAppIdOfActors(actors: AutomationActors): string | null {
   for (const actor of [actors.principal, ...actors.delegation]) {
