@@ -93,5 +93,15 @@ export const documentsSchema = schema("documents", (s) => {
       // Whether the file may still be shared with a firm's bookkeeping agent: set by each request,
       // cleared once its shares are revoked. Documents from before it was recorded may be shared.
       .alterTable("document", (t) => t.addColumn("shared", column("bool").defaultTo(true)))
+      // The generation of the client's management its latest request was asked under, as the
+      // Directory counts them; 0 for requests from before generations, which every change withdraws.
+      .alterTable("document", (t) =>
+        t.addColumn("requestGeneration", column("integer").defaultTo(0)),
+      )
+      // Its one row holds the latest generation of the client's management these books heard of. A
+      // request asked under an earlier one is refused: its firm may have been withdrawn already.
+      .addTable("management", (t) =>
+        t.addColumn("id", idColumn()).addColumn("generation", column("integer")),
+      )
   );
 });

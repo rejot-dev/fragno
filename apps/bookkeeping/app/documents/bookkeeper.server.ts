@@ -98,20 +98,18 @@ export async function setUpFirmAgent(context: OrganizationContext): Promise<void
  * Bookkeeping's installation in the administration's project, which shares the document, and in
  * the agent project of the firm keeping its books, which holds the agent. Bookkeeping prompts the
  * agent as its installation, not as the person, so the agent's calls to Bookkeeping can answer
- * reviews and change nothing else, whatever a document tells it.
+ * reviews and change nothing else, whatever a document tells it. `firmId` is the firm the request
+ * was recorded with, read once, so the request never reaches a firm it was not recorded for.
  */
 async function connectToAgent(
   context: BooksContext,
+  firmId: string | null,
 ): Promise<
   | { ok: true; administration: InstalledProject; agent: InstalledProject }
   | { ok: false; error: string }
 > {
   const { organization, administration } = context;
   const directory = env.DIRECTORY.getByName("directory");
-  // Read now, after the request was recorded, not when the page started: a change of firm records
-  // the new firm before it withdraws the former firm's requests, so this sees the new firm, or the
-  // request is withdrawn and its share revoked.
-  const firmId = (await directory.findClient(organization.id))?.firmId ?? null;
   if (firmId === null) {
     return {
       ok: false,
@@ -168,6 +166,12 @@ export async function askBookkeeper(
   // The firm's agent answers every administration of its clients, where a document's ID is unique
   // only in its own.
   const requestId = `document:${context.administration.id}:${document.id}:${ask === "first" ? "upload" : crypto.randomUUID()}`;
+  // Read now, not when the page started, and recorded with the request: a change of firm after
+  // this withdraws the request, and the books refuse it once they heard of a change.
+  const management = await env.DIRECTORY.getByName("directory").findClient(context.organization.id);
+  if (management === null) {
+    return { ok: false, error: "These books belong to no client Bookkeeping knows." };
+  }
   const recorded = await context.books.requestReview({
     documentId: document.id,
     request: {
@@ -177,6 +181,7 @@ export async function askBookkeeper(
       at: new Date().toISOString(),
     },
     first: ask === "first",
+    generation: management.generation,
   });
   if (!recorded.ok) {
     return { ok: false, error: recorded.message };
@@ -188,7 +193,7 @@ export async function askBookkeeper(
     return { ok: true };
   }
   try {
-    const connected = await connectToAgent(context);
+    const connected = await connectToAgent(context, management.firmId);
     if (!connected.ok) {
       return { ok: false, error: connected.error };
     }
@@ -240,7 +245,8 @@ export async function readBookkeeperProgress(
   requestId: string,
 ): Promise<BookkeeperProgress> {
   try {
-    const connected = await connectToAgent(context);
+    const client = await env.DIRECTORY.getByName("directory").findClient(context.organization.id);
+    const connected = await connectToAgent(context, client?.firmId ?? null);
     if (!connected.ok) {
       return { status: "unknown", message: connected.error };
     }

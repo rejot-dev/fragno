@@ -1096,6 +1096,102 @@ test("an upload under way when the firm's management ends is not shared with the
   });
 });
 
+test("a withdrawal that failed is retried, though the client has no member of its own to visit", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, firmPath } = await openBooks(scenario);
+    const { administration } = await readBooks(ada);
+    const id = await uploaded(ada, invoiceFixture);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toHaveLength(1);
+
+    // The firm's dashboard learns that management ended while the books cannot be reached to
+    // withdraw what the firm was asked. The dashboard no longer lists the client, so visiting it
+    // again cannot help, and the client has no member of its own.
+    scenario.backoffice.admin.setManager(CLIENT, null);
+    const recover = scenario.failCalls("BOOKS", "withdrawRequests");
+    expect(await ada.navigate(firmPath)).toMatchObject({
+      status: 200,
+      loaderData: { "firms/dashboard": { clients: [] } },
+    });
+    await ada.navigate(firmPath);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toHaveLength(1);
+
+    // Once the books can be reached, the Directory tries again a minute later.
+    recover();
+    scenario.advanceTime(60_000);
+    await scenario.runDueAlarms();
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(await scenario.env.BOOKS.getByName(administration.id).getDocument(id)).toMatchObject({
+      review: WITHDRAWN,
+      shared: false,
+    });
+  });
+});
+
+test("moving a client to another firm withdraws only what the former firm was asked", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { grace, ada } = await openBooks(scenario);
+    const charles = await inviteCharles(scenario, ada);
+    const { administration } = await readBooks(ada);
+    // Grace creates a second firm, whose owner opens it, which sets up its agent.
+    const secondPath = await scenario.createFirm(grace, "Babbage & Sons", "byron@example.test");
+    const second = secondPath.split("/")[2];
+    const { browser: byron } = await scenario.acceptInvitation("byron@example.test", "Ada Byron");
+    await byron.navigate(secondPath);
+    const asked = await uploaded(ada, pdf("Babbage Instruments, invoice 17"));
+
+    // The client moves to the second firm while the books cannot be reached to withdraw the first
+    // firm's requests. Charles's visit records the move, and his upload asks the second firm.
+    scenario.backoffice.admin.setManager(CLIENT, second);
+    const recover = scenario.failCalls("BOOKS", "withdrawRequests");
+    scenario.advanceTime(61_000);
+    const id = await uploaded(charles, invoiceFixture);
+    const [prompt] = scenario.backoffice.prompts(second, FIRM_AGENT);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toHaveLength(1);
+    expect(scenario.backoffice.mountedShares(second, FIRM_AGENT)).toHaveLength(1);
+
+    // Once the books can be reached, retrying withdraws the first firm's request, and leaves the
+    // second firm's to answer.
+    recover();
+    scenario.advanceTime(60_000);
+    await scenario.runDueAlarms();
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(scenario.backoffice.mountedShares(second, FIRM_AGENT)).toHaveLength(1);
+    expect(await readDocument(charles, asked)).toMatchObject({ review: WITHDRAWN });
+    expect(await readDocument(charles, id)).toMatchObject({
+      review: { status: "requested", requestId: prompt.requestId },
+    });
+    const secondAgent = scenario.agent("installation", {
+      organization: second,
+      project: FIRM_AGENT,
+    });
+    expect(
+      await secondAgent.call("documents.propose", {
+        administration: administration.id,
+        ...proposal(id, prompt.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
+      }),
+    ).toMatchObject({ status: 200 });
+  });
+});
+
+test("a request read under the former firm is not sent once its requests were withdrawn", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, firmPath } = await openBooks(scenario);
+    const charles = await inviteCharles(scenario, ada);
+    // Charles's upload read the firm, then management ends, and the firm's dashboard withdraws its
+    // requests, before his request is recorded.
+    scenario.beforeNextCall("BOOKS", "requestReview", async () => {
+      scenario.backoffice.admin.setManager(CLIENT, null);
+      await ada.navigate(firmPath);
+    });
+    const id = await uploaded(charles, invoiceFixture);
+    expect(scenario.backoffice.prompts(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
+    expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(await readDocument(charles, id)).toMatchObject({ review: null });
+  });
+});
+
 test("the same document ID in two administrations reaches the firm's agent as two documents", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { ada, clientPath } = await openBooks(scenario);
