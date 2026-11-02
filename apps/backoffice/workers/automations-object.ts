@@ -1,4 +1,9 @@
 import type {
+  AutomationForwardAccept,
+  AutomationForwardAcceptCreateInput,
+  AutomationForwardAcceptUpdateInput,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import type {
   AutomationEvent,
   AutomationEventDefinition,
   AutomationEventDefinitionUpdateInput,
@@ -87,6 +92,10 @@ import {
   type RevokeExternalIdentityInput,
   type RevokeExternalIdentityResult,
 } from "@/fragno/automation/external-identities";
+import type {
+  ForwardAcceptCreateOutcome,
+  ForwardAcceptUpdateOutcome,
+} from "@/fragno/automation/forward-accepts-storage-runtime";
 import {
   importLegacyPackageInstallations,
   type LegacyPackageImportOutcome,
@@ -1441,6 +1450,46 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
 
     return await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.deleteAcceptedShare(input),
+    );
+  }
+
+  async listForwardAccepts(): Promise<AutomationForwardAccept[]> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.listForwardAccepts(),
+    );
+  }
+
+  async createForwardAccept(
+    input: AutomationForwardAcceptCreateInput,
+  ): Promise<ForwardAcceptCreateOutcome> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.createForwardAccept(input),
+    );
+  }
+
+  async updateForwardAccept(
+    input: AutomationForwardAcceptUpdateInput,
+  ): Promise<ForwardAcceptUpdateOutcome> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.updateForwardAccept(input),
+    );
+  }
+
+  async deleteForwardAccept(input: { id: string }): Promise<boolean> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.deleteForwardAccept(input),
     );
   }
 

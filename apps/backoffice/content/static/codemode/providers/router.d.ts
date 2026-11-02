@@ -30,6 +30,26 @@ type RouterCodemodeProvider = {
    * Requires `router.modify`.
    */
   triggerNow(input: RouterTriggerNowInput): Promise<RouterTriggerNowOutput>;
+  /**
+   * List the forward accepts of this scope: which scopes of other owners may forward events into it, and which of their events it takes in.
+   * Requires `router.read`.
+   */
+  acceptsList(): Promise<RouterAcceptsListOutput>;
+  /**
+   * Let scopes of another owner forward events into this scope. 'from' names the senders: 'members', the personal scopes of the members of the organization that owns this scope, or one 'scope'. The matcher reads the forwarded event, such as $.source, $.eventType, or $.payload fields; null lets every event in. Forwards from System, and from scopes of this scope's own owner, need no accept.
+   * Requires `router.modify`.
+   */
+  acceptsCreate(input: RouterAcceptsCreateInput): Promise<RouterAcceptsCreateOutput>;
+  /**
+   * Update a forward accept of this scope. Disabling it, or narrowing it, makes the forwards it no longer lets in fail at the scope that sends them.
+   * Requires `router.modify`.
+   */
+  acceptsUpdate(input: RouterAcceptsUpdateInput): Promise<RouterAcceptsUpdateOutput>;
+  /**
+   * Idempotently delete a forward accept of this scope.
+   * Requires `router.modify`.
+   */
+  acceptsDelete(input: RouterAcceptsDeleteInput): Promise<RouterAcceptsDeleteOutput>;
 };
 declare const router: RouterCodemodeProvider;
 
@@ -422,6 +442,140 @@ type AutomationRouteTriggerInput =
             timeZone?: string;
           };
     };
+type AutomationForwardAccept = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  from: AutomationForwardSenders;
+  matcher: AutomationEventMatcher | null;
+  description: string | null;
+};
+type AutomationForwardSenders =
+  | {
+      kind: "members";
+    }
+  | {
+      kind: "scope";
+      scope:
+        | {
+            kind: "org";
+            orgId: string;
+            jurisdiction: "eu" | "us" | null;
+          }
+        | {
+            kind: "user";
+            userId: string;
+            jurisdiction: "eu" | "us" | null;
+          }
+        | {
+            kind: "app";
+            owner:
+              | {
+                  kind: "org";
+                  orgId: string;
+                  jurisdiction: "eu" | "us" | null;
+                }
+              | {
+                  kind: "user";
+                  userId: string;
+                  jurisdiction: "eu" | "us" | null;
+                };
+            appId: string;
+          }
+        | {
+            kind: "project";
+            owner:
+              | {
+                  kind: "org";
+                  orgId: string;
+                  jurisdiction: "eu" | "us" | null;
+                }
+              | {
+                  kind: "user";
+                  userId: string;
+                  jurisdiction: "eu" | "us" | null;
+                }
+              | {
+                  kind: "app";
+                  owner:
+                    | {
+                        kind: "org";
+                        orgId: string;
+                        jurisdiction: "eu" | "us" | null;
+                      }
+                    | {
+                        kind: "user";
+                        userId: string;
+                        jurisdiction: "eu" | "us" | null;
+                      };
+                  appId: string;
+                };
+            projectId: string;
+          };
+    };
+type AutomationForwardSendersInput =
+  | {
+      kind: "members";
+    }
+  | {
+      kind: "scope";
+      scope:
+        | {
+            kind: "org";
+            orgId: string;
+            jurisdiction?: "eu" | "us" | null;
+          }
+        | {
+            kind: "user";
+            userId: string;
+            jurisdiction?: "eu" | "us" | null;
+          }
+        | {
+            kind: "app";
+            owner:
+              | {
+                  kind: "org";
+                  orgId: string;
+                  jurisdiction?: "eu" | "us" | null;
+                }
+              | {
+                  kind: "user";
+                  userId: string;
+                  jurisdiction?: "eu" | "us" | null;
+                };
+            appId: string;
+          }
+        | {
+            kind: "project";
+            owner:
+              | {
+                  kind: "org";
+                  orgId: string;
+                  jurisdiction?: "eu" | "us" | null;
+                }
+              | {
+                  kind: "user";
+                  userId: string;
+                  jurisdiction?: "eu" | "us" | null;
+                }
+              | {
+                  kind: "app";
+                  owner:
+                    | {
+                        kind: "org";
+                        orgId: string;
+                        jurisdiction?: "eu" | "us" | null;
+                      }
+                    | {
+                        kind: "user";
+                        userId: string;
+                        jurisdiction?: "eu" | "us" | null;
+                      };
+                  appId: string;
+                };
+            projectId: string;
+          };
+    };
 type RouterListOutput = AutomationRoute[];
 type RouterGetInput = {
   id: string;
@@ -460,3 +614,28 @@ type RouterTriggerNowOutput = {
   accepted: true;
   eventId: string;
 } | null;
+type RouterAcceptsListOutput = AutomationForwardAccept[];
+type RouterAcceptsCreateInput = {
+  id: string;
+  name: string;
+  enabled?: boolean;
+  from: AutomationForwardSendersInput;
+  matcher?: AutomationEventMatcher | null;
+  description?: string | null;
+};
+type RouterAcceptsCreateOutput = AutomationForwardAccept;
+type RouterAcceptsUpdateInput = {
+  id: string;
+  name?: string;
+  enabled?: boolean;
+  from?: AutomationForwardSendersInput;
+  matcher?: AutomationEventMatcher | null;
+  description?: string | null;
+};
+type RouterAcceptsUpdateOutput = AutomationForwardAccept | null;
+type RouterAcceptsDeleteInput = {
+  id: string;
+};
+type RouterAcceptsDeleteOutput = {
+  deleted: true;
+};

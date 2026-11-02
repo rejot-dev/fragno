@@ -22,6 +22,7 @@ import {
   type BackofficeRootOwner,
   type BackofficeScopeIdNames,
   backofficeScopeContains,
+  backofficeScopePathSegment,
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { InstanceStatus } from "@fragno-dev/workflows/workflow";
@@ -77,6 +78,11 @@ import { createAutomationEventSourceServices } from "./event-sources-storage-run
 import { createAutomationEventServices } from "./events-storage-runtime";
 import { buildExternalIdentityBindingId, canLinkExternalIdentity } from "./external-identities";
 import { createExternalIdentityBindingServices } from "./external-identity-bindings-storage-runtime";
+import { forwardAccepted, forwardNeedsAccept } from "./forward-accepts";
+import {
+  createForwardAcceptServices,
+  forwardAcceptFromRow,
+} from "./forward-accepts-storage-runtime";
 import type {
   AutomationEventIngestionPayload,
   AutomationHookUnitOfWork,
@@ -109,6 +115,7 @@ import { automationFragmentSchema } from "./schema";
 import { createShareServices } from "./shares-storage-runtime";
 
 export type AutomationIngestResult = {
+  /** False only for a forwarded event none of this scope's forward accepts lets in. */
   accepted: boolean;
   eventId: string;
   scope: BackofficeContextScope;
@@ -162,8 +169,8 @@ export interface AutomationFragmentConfig {
   ownerScope: BackofficeContextScope;
 }
 
-const buildIngestResult = (event: AutomationEvent): AutomationIngestResult => ({
-  accepted: true,
+const buildIngestResult = (event: AutomationEvent, accepted: boolean): AutomationIngestResult => ({
+  accepted,
   eventId: event.id,
   scope: event.scope,
   source: event.source,
@@ -459,7 +466,13 @@ const handleForwardEventRouteAction = async ({
   if (scope.kind === "system") {
     await targetAutomations.commands.seedStarterAutomationRoutes();
   }
-  await targetAutomations.commands.ingestEvent(forwardedEvent);
+  const ingested = await targetAutomations.commands.ingestEvent(forwardedEvent);
+  if (!ingested.accepted) {
+    // The receiving scope decides what it takes in; retrying cannot change its mind.
+    throw new AutomationRouteFailedError(
+      `${backofficeScopePathSegment(scope)} accepts no ${event.source} ${event.eventType} event forwarded from ${backofficeScopePathSegment(ownerScope)}: none of its forward accepts lets it in.`,
+    );
+  }
   // The forwarded event lives in another scope's object, so this commit cannot include it. A
   // failure here replays the forward, which the target ignores once it holds the event.
   await commitDispatch({ kind: "event_forwarded", eventId: forwardedEvent.id, scope }, null);
@@ -755,6 +768,9 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     const routeDispatchServices = createAutomationRouteDispatchServices(defineService);
     const packageInstallationServices = createPackageInstallationServices(defineService);
     const shareServices = createShareServices(defineService);
+    const forwardAcceptServices = createForwardAcceptServices(defineService, {
+      ownerScope: config.ownerScope,
+    });
 
     return defineService({
       ...storeServices,
@@ -767,6 +783,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...routeDispatchServices,
       ...packageInstallationServices,
       ...shareServices,
+      ...forwardAcceptServices,
       seedStarterAutomationRoutes: function () {
         return this.serviceTx(automationFragmentSchema)
           .retrieve((uow) =>
@@ -860,11 +877,21 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               )
               .findFirst("automation_event", (b) =>
                 b.whereIndex("primary", (eb) => eb("id", "=", event.id)),
-              ),
+              )
+              // Only forwards need them, but a scope keeps few, and the read shares this round trip.
+              .find("automation_forward_accept", (b) => b.whereIndex("primary")),
           )
-          .mutate(({ uow, retrieveResult: [storedDefinition, existingEvent] }) => {
+          .mutate(({ uow, retrieveResult: [storedDefinition, existingEvent, acceptRows] }) => {
             if (existingEvent) {
-              return;
+              return true;
+            }
+            const { causation } = event;
+            if (
+              causation.kind === "forward" &&
+              forwardNeedsAccept(causation.from.scope, config.ownerScope) &&
+              !forwardAccepted(acceptRows.map(forwardAcceptFromRow), event, causation.from.scope)
+            ) {
+              return false;
             }
             const builtInDefinition = builtInEventDefinitionsById.get(
               buildAutomationEventDefinitionId(event.source, event.eventType),
@@ -875,8 +902,9 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               reclassificationChain,
               storedPayload: builtInDefinition?.storedPayload ?? null,
             });
+            return true;
           })
-          .transform(() => buildIngestResult(event))
+          .transform(({ mutateResult: accepted }) => buildIngestResult(event, accepted))
           .build();
       },
     });

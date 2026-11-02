@@ -1,4 +1,8 @@
 import type {
+  AutomationForwardAcceptCreateInput,
+  AutomationForwardAcceptUpdateInput,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import type {
   AutomationEvent,
   AutomationEventDefinitionUpdateInput,
 } from "@fragno-dev/backoffice-api/v0/events";
@@ -222,6 +226,22 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async deleteAcceptedShare(input: { shareId: string }) {
     return await this.#object.deleteAcceptedShare(input);
+  }
+
+  async listForwardAccepts() {
+    return await this.#object.listForwardAccepts();
+  }
+
+  async createForwardAccept(input: AutomationForwardAcceptCreateInput) {
+    return await this.#object.createForwardAccept(input);
+  }
+
+  async updateForwardAccept(input: AutomationForwardAcceptUpdateInput) {
+    return await this.#object.updateForwardAccept(input);
+  }
+
+  async deleteForwardAccept(input: { id: string }) {
+    return await this.#object.deleteForwardAccept(input);
   }
 
   async applyPackageInstallation(input: PackageInstallationInput) {

@@ -2,6 +2,8 @@
 /// <reference path="../../../content/static/codemode/providers/packages.d.ts" />
 // oxlint-disable-next-line typescript/triple-slash-reference -- Published codemode declarations define globals, not an importable module.
 /// <reference path="../../../content/static/codemode/providers/marketplace.d.ts" />
+// oxlint-disable-next-line typescript/triple-slash-reference -- Published codemode declarations define globals, not an importable module.
+/// <reference path="../../../content/static/codemode/providers/router.d.ts" />
 
 import { describe, expect, expectTypeOf, test, assert } from "vitest";
 
@@ -58,6 +60,19 @@ describe("runtime tool reference generation", () => {
     assert(publish.codemode.inputType.includes("packageRoot: string;"));
     assert(!publish.codemode.inputType.includes("packageRoot: unknown;"));
   });
+  test("forward accepts take senders as their input, without a jurisdiction", () => {
+    // The sender's scope defaults its jurisdiction, so the input form is a type of its own.
+    expectTypeOf<{
+      id: "alice";
+      name: "Alice";
+      from: { kind: "scope"; scope: { kind: "user"; userId: "alice" } };
+    }>().toExtend<RouterAcceptsCreateInput>();
+    expectTypeOf<{
+      kind: "scope";
+      scope: { kind: "user"; userId: "alice" };
+    }>().not.toExtend<AutomationForwardSenders>();
+  });
+
   test("generated package installation paths can be passed to filesystem tools", () => {
     expectTypeOf<PackagesInstallOutput["installationRoot"]>().toEqualTypeOf<string>();
     expectTypeOf<
