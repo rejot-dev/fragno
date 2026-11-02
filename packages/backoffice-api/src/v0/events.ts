@@ -30,12 +30,19 @@ export type AutomationEventParent = {
 
 /**
  * Why an event exists. Origins enter from outside automations, such as a webhook or a user
- * action. Routes derive events by forwarding or reclassifying their parent. Workflows fire events
- * while they run; a manually started workflow has no parent event.
+ * action. Routes derive events by reclassifying their parent, or forward it into another scope.
+ * Workflows fire events while they run; a manually started workflow has no parent event.
  */
 export type AutomationEventCausation =
   | { kind: "origin" }
   | { kind: "route"; routeId: string; parent: AutomationEventParent }
+  | {
+      kind: "forward";
+      /** The scope the event was forwarded from, and the route there that forwarded it. */
+      from: { scope: BackofficeContextScope; routeId: string; routeName: string };
+      /** Names events in `from.scope`, which the receiving scope cannot read. */
+      parent: AutomationEventParent;
+    }
   | {
       kind: "workflow";
       workflowName: string;
@@ -56,10 +63,14 @@ export type AutomationEvent = {
   causation: AutomationEventCausation;
 };
 
-/** Origin events, and events of manually started workflows, root their own causal tree. */
+/**
+ * Origin events, and events of manually started workflows, root their own causal tree. So do
+ * forwarded events: a scope holds only its own events, so the tree a forward continues stays in
+ * the scope it came from, which `causation.parent` names.
+ */
 export function automationEventRootId(event: Pick<AutomationEvent, "id" | "causation">): string {
   const { causation } = event;
-  return causation.kind === "origin" || causation.parent === null
+  return causation.kind === "origin" || causation.kind === "forward" || causation.parent === null
     ? event.id
     : causation.parent.rootEventId;
 }
@@ -108,6 +119,15 @@ export const automationEventCausationSchema: z.ZodType<AutomationEventCausation>
     z.strictObject({
       kind: z.literal("route"),
       routeId: z.string().trim().min(1),
+      parent: automationEventParentSchema,
+    }),
+    z.strictObject({
+      kind: z.literal("forward"),
+      from: z.strictObject({
+        scope: backofficeContextScopeSchema,
+        routeId: z.string().trim().min(1),
+        routeName: z.string().trim().min(1),
+      }),
       parent: automationEventParentSchema,
     }),
     z.strictObject({

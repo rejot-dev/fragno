@@ -439,6 +439,76 @@ type EventsListOutput = {
           };
         }
       | {
+          kind: "forward";
+          from: {
+            scope:
+              | {
+                  kind: "system";
+                }
+              | {
+                  kind: "org";
+                  orgId: string;
+                  jurisdiction: "eu" | "us" | null;
+                }
+              | {
+                  kind: "user";
+                  userId: string;
+                  jurisdiction: "eu" | "us" | null;
+                }
+              | {
+                  kind: "app";
+                  owner:
+                    | {
+                        kind: "org";
+                        orgId: string;
+                        jurisdiction: "eu" | "us" | null;
+                      }
+                    | {
+                        kind: "user";
+                        userId: string;
+                        jurisdiction: "eu" | "us" | null;
+                      };
+                  appId: string;
+                }
+              | {
+                  kind: "project";
+                  owner:
+                    | {
+                        kind: "org";
+                        orgId: string;
+                        jurisdiction: "eu" | "us" | null;
+                      }
+                    | {
+                        kind: "user";
+                        userId: string;
+                        jurisdiction: "eu" | "us" | null;
+                      }
+                    | {
+                        kind: "app";
+                        owner:
+                          | {
+                              kind: "org";
+                              orgId: string;
+                              jurisdiction: "eu" | "us" | null;
+                            }
+                          | {
+                              kind: "user";
+                              userId: string;
+                              jurisdiction: "eu" | "us" | null;
+                            };
+                        appId: string;
+                      };
+                  projectId: string;
+                };
+            routeId: string;
+            routeName: string;
+          };
+          parent: {
+            eventId: string;
+            rootEventId: string;
+          };
+        }
+      | {
           kind: "workflow";
           workflowName: string;
           instanceId: string;
@@ -785,6 +855,76 @@ type EventsGetOutput = {
     | {
         kind: "route";
         routeId: string;
+        parent: {
+          eventId: string;
+          rootEventId: string;
+        };
+      }
+    | {
+        kind: "forward";
+        from: {
+          scope:
+            | {
+                kind: "system";
+              }
+            | {
+                kind: "org";
+                orgId: string;
+                jurisdiction: "eu" | "us" | null;
+              }
+            | {
+                kind: "user";
+                userId: string;
+                jurisdiction: "eu" | "us" | null;
+              }
+            | {
+                kind: "app";
+                owner:
+                  | {
+                      kind: "org";
+                      orgId: string;
+                      jurisdiction: "eu" | "us" | null;
+                    }
+                  | {
+                      kind: "user";
+                      userId: string;
+                      jurisdiction: "eu" | "us" | null;
+                    };
+                appId: string;
+              }
+            | {
+                kind: "project";
+                owner:
+                  | {
+                      kind: "org";
+                      orgId: string;
+                      jurisdiction: "eu" | "us" | null;
+                    }
+                  | {
+                      kind: "user";
+                      userId: string;
+                      jurisdiction: "eu" | "us" | null;
+                    }
+                  | {
+                      kind: "app";
+                      owner:
+                        | {
+                            kind: "org";
+                            orgId: string;
+                            jurisdiction: "eu" | "us" | null;
+                          }
+                        | {
+                            kind: "user";
+                            userId: string;
+                            jurisdiction: "eu" | "us" | null;
+                          };
+                      appId: string;
+                    };
+                projectId: string;
+              };
+          routeId: string;
+          routeName: string;
+        };
         parent: {
           eventId: string;
           rootEventId: string;
