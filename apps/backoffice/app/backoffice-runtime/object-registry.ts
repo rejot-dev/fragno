@@ -171,6 +171,10 @@ import type {
 } from "@/fragno/durable-hooks";
 import type { GitHubInstallationOwner } from "@/fragno/github";
 import type {
+  GitHubInstallationMoveParams,
+  GitHubInstallationMoveState,
+} from "@/fragno/github-installation-move-workflow";
+import type {
   MarketplaceAddDraftVersionInput,
   MarketplaceArchiveListingInput,
   MarketplaceListingStorage,
@@ -744,6 +748,12 @@ export type AutomationsCommands = {
   /** Only System's Automations onboard people; starting again finds the onboarding started. */
   startUserOnboarding(input: { userId: string }): Promise<UserOnboardingState>;
   answerUserOnboarding(input: { userId: string; answer: OnboardingAnswer }): Promise<void>;
+  /** Only System's Automations move GitHub installations; moving again finds the move started. */
+  startGitHubInstallationMove(input: {
+    signInState: string;
+    move: GitHubInstallationMoveParams;
+  }): Promise<{ instanceId: string }>;
+  readGitHubInstallationMove(input: { instanceId: string }): Promise<GitHubInstallationMoveState>;
   /** Only singleton Automations may run bundled marketplace publication workflows. */
   requestStaticMarketplacePublications(input?: {
     force?: boolean;
@@ -973,6 +983,16 @@ export type GitHubWebhookRouterCommands = {
   storeInstallationClaimState(
     input: unknown,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "storeInstallationClaimState">>;
+  getPendingRepositorySignIn(
+    userId: string,
+    owner: GitHubInstallationOwner,
+    account: string,
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "getPendingRepositorySignIn">>;
+  addRepositoryToPendingSignIn(
+    userId: string,
+    owner: GitHubInstallationOwner,
+    repositoryFullName: string,
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "addRepositoryToPendingSignIn">>;
   resolveInstallationClaimState(
     input: unknown,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "resolveInstallationClaimState">>;
@@ -986,6 +1006,11 @@ export type GitHubWebhookRouterCommands = {
     installationId: string,
     owner: GitHubInstallationOwner,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "setInstallationOwner">>;
+  moveInstallationOwner(
+    installationId: string,
+    from: GitHubInstallationOwner,
+    to: GitHubInstallationOwner,
+  ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "moveInstallationOwner">>;
   getInstallationOwner(
     installationId: string,
   ): Promise<AwaitedMethodReturn<GitHubWebhookRouter, "getInstallationOwner">>;

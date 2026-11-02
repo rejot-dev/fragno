@@ -130,14 +130,18 @@ export const createWebhookProcessor = (
     };
     // Deliveries arrive in any order, so they prompt a sync instead of applying their payload.
     if (INSTALLATION_EVENTS.has(delivery.event)) {
+      // A delivery never claims an installation: one queued before it was released stays so.
       const synced = await syncInstallationFromGitHub(
         this.handlerTx.bind(this),
         services,
         delivery.installationId,
-        new Date(delivery.receivedAt),
+        { webhookReceivedAt: new Date(delivery.receivedAt), claim: null },
       );
-      // Throwing retries the delivery; a 404 already recorded the deletion.
-      if (!synced.ok && synced.code === "GITHUB_API_ERROR") {
+      // Throwing retries the delivery, with a fresh sync; a 404 already recorded the deletion.
+      if (
+        !synced.ok &&
+        (synced.code === "GITHUB_API_ERROR" || synced.code === "INSTALLATION_SYNC_CONFLICT")
+      ) {
         throw new Error(synced.message);
       }
     }

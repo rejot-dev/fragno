@@ -93,6 +93,9 @@ export const installationOutputSchema = z.object({
   createdAt: z.date(),
   updatedAt: z.date(),
   lastWebhookAt: z.date().nullable(),
+  releasedAt: z.date().nullable(),
+  /** Changes on every write; a claiming sync or a release names the version its caller read. */
+  version: z.number(),
 });
 
 export const repoSummarySchema = z.object({

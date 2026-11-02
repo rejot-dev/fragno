@@ -11,12 +11,9 @@ import {
   useOutletContext,
 } from "react-router";
 
-import { completeGitHubInstallCallback } from "@/fragno/github-install-callback";
+import { completeGitHubInstallCallback, startGitHubSignIn } from "@/fragno/github-access";
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
-import {
-  getGitHubDurableObject,
-  getGitHubWebhookRouterDurableObject,
-} from "@/worker-runtime/durable-objects";
+import { getGitHubWebhookRouterDurableObject } from "@/worker-runtime/durable-objects";
 
 import { formatTimestamp } from "../formatting";
 import type { Route } from "./+types/configuration";
@@ -26,7 +23,6 @@ import {
   fetchGitHubInstallationRepos,
   fetchGitHubInstallations,
   linkGitHubRepository,
-  startGitHubOAuth,
   unlinkGitHubRepository,
   type GitHubInstallationSummary,
   type GitHubRepositorySummary,
@@ -47,7 +43,7 @@ const INSTALL_FLOW_MESSAGES = {
   },
   installed_synced: {
     tone: "success",
-    message: "GitHub installation callback validated, linked to this workspace, and synced.",
+    message: "GitHub installation verified, linked to this workspace, and synced.",
   },
   installed_other_account: {
     tone: "warning",
@@ -204,14 +200,19 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
     try {
       const outcome = await completeGitHubInstallCallback({
         router: getGitHubWebhookRouterDurableObject(context).commands,
-        github: getGitHubDurableObject(context, owner).commands,
         callRoute: createGitHubRouteCaller(request, context, owner),
         userId: me.user.id,
         owner,
         state: callbackState,
         installationId: callbackInstallationId,
+        returnTo: requestUrl.pathname,
       });
-      return redirect(buildConfigurationRedirect(requestUrl, outcome));
+      // GitHub's sign-in shows whether the user reaches the installation before it is bound.
+      return redirect(
+        typeof outcome === "string"
+          ? buildConfigurationRedirect(requestUrl, outcome)
+          : outcome.authorizationUrl,
+      );
     } catch (error) {
       console.error("GitHub install callback processing threw", {
         owner: ownerSegment,
@@ -328,31 +329,23 @@ export async function action({ request, context, url }: Route.ActionArgs) {
 
   if (intent === "connect-existing-installation") {
     const returnTo = `${url.pathname}${url.search}`;
-    const claim = await startGitHubOAuth(request, context, owner, {
-      subjectId: me.user.id,
-      returnTo,
-    });
-    if (claim.error || !claim.result) {
-      return {
-        ok: false,
-        message: claim.error ?? "Failed to start installation restore.",
-      } satisfies GitHubConfigurationActionData;
-    }
-
-    const githubWebhookRouterDo = getGitHubWebhookRouterDurableObject(context);
     try {
-      await githubWebhookRouterDo.commands.storeInstallationClaimState({
-        state: claim.result.state,
+      const signIn = await startGitHubSignIn({
+        router: getGitHubWebhookRouterDurableObject(context).commands,
+        callRoute: createGitHubRouteCaller(request, context, owner),
         userId: me.user.id,
         owner,
+        purpose: { kind: "choose" },
         returnTo,
-        expiresAt: new Date(claim.result.expiresAt).getTime(),
       });
+      if (!signIn.ok) {
+        return { ok: false, message: signIn.message } satisfies GitHubConfigurationActionData;
+      }
+      return redirect(signIn.authorizationUrl);
     } catch (error) {
-      console.warn("Failed to store GitHub installation claim state", {
+      console.warn("Failed to start GitHub installation restore", {
         owner: ownerSegment,
         userId: me.user.id,
-        state: toStatePreview(claim.result.state),
         error,
       });
       return {
@@ -360,8 +353,6 @@ export async function action({ request, context, url }: Route.ActionArgs) {
         message: actionErrorMessage(error, "Failed to prepare GitHub installation restore."),
       } satisfies GitHubConfigurationActionData;
     }
-
-    return redirect(claim.result.authorizationUrl);
   }
 
   if (intent === "link-repo") {

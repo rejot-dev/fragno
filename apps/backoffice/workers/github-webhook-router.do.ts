@@ -85,6 +85,22 @@ export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
     return await this.#object.storeInstallationClaimState(input);
   }
 
+  async getPendingRepositorySignIn(
+    userId: string,
+    owner: GitHubInstallationOwner,
+    account: string,
+  ): Promise<{ authorizationUrl: string; repositories: string[] } | null> {
+    return await this.#object.getPendingRepositorySignIn(userId, owner, account);
+  }
+
+  async addRepositoryToPendingSignIn(
+    userId: string,
+    owner: GitHubInstallationOwner,
+    repositoryFullName: string,
+  ): Promise<{ authorizationUrl: string } | null> {
+    return await this.#object.addRepositoryToPendingSignIn(userId, owner, repositoryFullName);
+  }
+
   async resolveInstallationClaimState(
     input: ResolveInstallStateInput,
   ): Promise<InstallationClaimStateResolutionResult> {
@@ -106,6 +122,14 @@ export class GitHubWebhookRouter extends DurableObject<CloudflareEnv> {
     owner: GitHubInstallationOwner,
   ): ReturnType<GitHubWebhookRouterObject["setInstallationOwner"]> {
     return await this.#object.setInstallationOwner(installationId, owner);
+  }
+
+  async moveInstallationOwner(
+    installationId: string,
+    from: GitHubInstallationOwner,
+    to: GitHubInstallationOwner,
+  ): ReturnType<GitHubWebhookRouterObject["moveInstallationOwner"]> {
+    return await this.#object.moveInstallationOwner(installationId, from, to);
   }
 
   async getInstallationOwner(installationId: string): Promise<GitHubInstallationOwner | null> {

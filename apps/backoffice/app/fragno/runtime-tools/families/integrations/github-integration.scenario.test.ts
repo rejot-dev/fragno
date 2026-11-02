@@ -32,7 +32,13 @@ import {
   type BackofficeScenarioDefinitionInput,
 } from "@/fragno/automation/scenario";
 import type { GitHubFragment, GitHubInstallationOwner } from "@/fragno/github";
-import { completeGitHubInstallCallback } from "@/fragno/github-install-callback";
+import {
+  claimGitHubInstallation,
+  completeGitHubInstallCallback,
+  finishGitHubSignIn,
+  releaseGitHubInstallation,
+  type GitHubSignInOutcome,
+} from "@/fragno/github-access";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { bytesToHex } from "@/lib/crypto";
@@ -88,11 +94,26 @@ type FakeGitHub = {
   requests: string[];
   /** Restrictions requested for each installation token, in order. */
   tokenRequests: unknown[];
+  /** The app's installations the user who signs in to GitHub can access. */
+  userInstallations: (typeof acmeInstallation)[];
+  /** Runs as the app reads the installation, before GitHub answers; it can hold the answer. */
+  onInstallationRead?: () => Promise<void>;
 };
 
 const project = { id: 101, name: "project", full_name: "acme/project", private: false };
 const web = { id: 102, name: "web", full_name: "acme/web", private: true };
 const githubAccount = { login: "acme", id: 77, type: "Organization" };
+/** The app's installation on acme, as GitHub lists it to a user who can access it. */
+const acmeInstallation = {
+  id: Number(installationId),
+  app_id: 1,
+  app_slug: "in-memory-github-app",
+  account: githubAccount,
+  repository_selection: "selected",
+  permissions: { pull_requests: "read" },
+  events: ["pull_request"],
+  html_url: `https://github.com/organizations/acme/settings/installations/${installationId}`,
+};
 const pullRequestOpened = {
   action: "opened",
   installation: { id: Number(installationId) },
@@ -109,13 +130,29 @@ async function runGitHubIntegrationScenario<TVars extends Record<string, unknown
     suspended: false,
     requests: [],
     tokenRequests: [],
+    userInstallations: [],
   };
   const githubFetch: typeof fetch = async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
+    if (url.origin === "https://github.com" && url.pathname === "/login/oauth/access_token") {
+      return Response.json({ access_token: "user-token", token_type: "bearer", scope: "" });
+    }
     assert(url.origin === "https://api.github.com", `Unexpected GitHub request to ${url.origin}`);
+    if (request.headers.get("authorization") === "token user-token") {
+      if (url.pathname === "/user") {
+        return Response.json({ id: 10, login: "octo-dev" });
+      }
+      if (url.pathname === "/user/installations") {
+        return Response.json({
+          total_count: github.userInstallations.length,
+          installations: github.userInstallations,
+        });
+      }
+    }
     github.requests.push(`${request.method} ${url.pathname}`);
     if (request.method === "GET" && url.pathname === `/app/installations/${installationId}`) {
+      await github.onInstallationRead?.();
       return Response.json({
         id: Number(installationId),
         account: githubAccount,
@@ -261,17 +298,13 @@ async function deliverGitHubWebhook(
   return deliveryId;
 }
 
-/** Runs the setup callback's completion as the user who returns from GitHub to the workspace. */
-async function completeInstall(
-  ctx: BackofficeScenarioContext,
-  owner: GitHubInstallationOwner,
-  state: string,
-) {
+/** The GitHub object of a workspace and its routes, as the user returning from GitHub reaches them. */
+function githubOf(ctx: BackofficeScenarioContext, owner: GitHubInstallationOwner) {
   const execution = createBackofficeUserExecution({ scope: owner, userId: ownerUserId });
   const kernel = new BackofficeKernel(ctx.runtime.services);
   const github = kernel.scoped("GITHUB", owner, ctx.runtime.objects.github);
   const transport = authorizedBackofficeObjectHttp(github.http, execution);
-  return await completeGitHubInstallCallback({
+  return {
     router: ctx.runtime.objects.githubWebhookRouter.singleton().commands,
     github: github.commands,
     callRoute: createRouteCaller<GitHubFragment>({
@@ -282,12 +315,75 @@ async function completeInstall(
         return await transport.fetch(request);
       },
     }),
+  };
+}
+
+/** The user signs in on GitHub, which returns them to the OAuth callback; it finishes as there. */
+async function returnFromSignIn(
+  ctx: BackofficeScenarioContext,
+  owner: GitHubInstallationOwner,
+  authorizationUrl: string,
+): Promise<{ kind: "choose" } | GitHubSignInOutcome> {
+  const url = new URL(authorizationUrl);
+  assert(url.origin === "https://github.com" && url.pathname === "/login/oauth/authorize");
+  const state = url.searchParams.get("state");
+  assert(state);
+  const { router, github, callRoute } = githubOf(ctx, owner);
+  const resolved = await router.resolveInstallationClaimState({ state, userId: ownerUserId });
+  assert(resolved.ok, "The sign-in is bound to the user who started it");
+  return await finishGitHubSignIn({
+    router,
+    github,
+    callRoute,
+    userId: ownerUserId,
+    owner,
+    purpose: resolved.purpose,
+    state,
+    code: "oauth-code",
+  });
+}
+
+/**
+ * GitHub returns from its install page to the setup callback with an installation id, which
+ * Backoffice verifies with a sign-in it returns.
+ */
+async function returnFromInstall(
+  ctx: BackofficeScenarioContext,
+  owner: GitHubInstallationOwner,
+  installUrl: string,
+  returnedInstallationId = installationId,
+) {
+  const url = new URL(installUrl);
+  assert(url.pathname === "/apps/in-memory-github-app/installations/new");
+  const state = url.searchParams.get("state");
+  assert(state);
+  const { router, callRoute } = githubOf(ctx, owner);
+  const outcome = await completeGitHubInstallCallback({
+    router,
+    callRoute,
     userId: ownerUserId,
     owner,
     state,
-    installationId,
+    installationId: returnedInstallationId,
+    returnTo: "/backoffice/integrations/org/github-org/github/configuration",
   });
+  if (typeof outcome === "string") {
+    throw new Error(`The install callback failed: ${outcome}`);
+  }
+  return outcome.authorizationUrl;
 }
+
+const boundAcme = (linked: string[], missing: string[] = []) => ({
+  kind: "bound",
+  installation: {
+    id: installationId,
+    account: "acme",
+    url: acmeInstallation.html_url,
+  },
+  synced: true,
+  linked,
+  missing,
+});
 
 test("a repository becomes a connection after the GitHub App is installed, linked, used, and unlinked", async () => {
   let pullRequestDeliveryId = "";
@@ -347,25 +443,50 @@ test("a repository becomes a connection after the GitHub App is installed, linke
           expect(octoAuthorization).toMatchObject({ status: "needs-authorization" });
           assert(octoAuthorization.authorizationUrl !== authorization.authorizationUrl);
           expect(await user.json(setup("github#acme/project"))).toEqual(authorization);
-          const installUrl = new URL(authorization.authorizationUrl);
-          assert(installUrl.pathname === "/apps/in-memory-github-app/installations/new");
-          const state = installUrl.searchParams.get("state");
-          assert(state);
-          // GitHub returns to the setup callback after the user selects acme/project.
-          assert((await completeInstall(ctx, scope, state)) === "installed_synced");
-          expect(github.requests).toEqual([
-            `GET /app/installations/${installationId}`,
-            `POST /app/installations/${installationId}/access_tokens`,
-            "GET /installation/repositories",
-          ]);
-          // The callback used acme's link, so setup no longer offers it; octo's link is untouched.
+          // The link is a GitHub sign-in, which shows the installations the user reaches.
+          const signInUrl = new URL(authorization.authorizationUrl);
+          assert(signInUrl.origin === "https://github.com");
+          assert(signInUrl.searchParams.get("client_id") === "in-memory-github-app-client-id");
+
+          // The user reaches no installation on acme, so GitHub's install page is next.
+          const signedIn = await returnFromSignIn(ctx, scope, authorization.authorizationUrl);
+          assert(signedIn.kind === "install" && signedIn.account === "acme");
+          // That sign-in is used up; setup offers the install it led to.
+          expect(await user.json(setup("github#acme/project"))).toEqual({
+            ...authorization,
+            authorizationUrl: signedIn.installUrl,
+          });
+
+          // The user installs the app on acme; GitHub's redirect only claims the installation, so a
+          // sign-in verifies the user reaches it before it is bound.
+          github.userInstallations = [acmeInstallation];
+          const verifying = await returnFromInstall(ctx, scope, signedIn.installUrl);
           const router = ctx.runtime.objects.githubWebhookRouter.singleton().commands;
+          expect(await router.getInstallationOwner(installationId)).toBeNull();
+          expect(await returnFromSignIn(ctx, scope, verifying)).toEqual(
+            boundAcme(["acme/project"]),
+          );
+          expect(await router.getInstallationOwner(installationId)).toEqual(scope);
+          expect(github.requests).toEqual(
+            expect.arrayContaining([
+              `GET /app/installations/${installationId}`,
+              "GET /installation/repositories",
+            ]),
+          );
+          // acme's install link was used; octo's sign-in is untouched.
           expect(await router.getPendingInstall(ownerUserId, scope, "acme")).toBeNull();
           expect(await user.json(setup("github#octo/tools"))).toEqual(octoAuthorization);
-          // Choosing acme again on GitHub's page for octo's link is reported, not silently dropped.
-          const octoState = new URL(octoAuthorization.authorizationUrl).searchParams.get("state");
-          assert(octoState);
-          assert((await completeInstall(ctx, scope, octoState)) === "installed_other_account");
+          // Installing on acme from octo's link binds acme, and says octo/tools is not reachable.
+          const octoSignedIn = await returnFromSignIn(
+            ctx,
+            scope,
+            octoAuthorization.authorizationUrl,
+          );
+          assert(octoSignedIn.kind === "install");
+          const octoVerifying = await returnFromInstall(ctx, scope, octoSignedIn.installUrl);
+          expect(await returnFromSignIn(ctx, scope, octoVerifying)).toEqual(
+            boundAcme([], ["octo/tools"]),
+          );
           expect(await user.json(setup("github#octo/tools"))).toMatchObject({
             status: "needs-input",
             connectionId: "github#octo/tools",
@@ -587,14 +708,14 @@ test("a repository becomes a connection after the GitHub App is installed, linke
 });
 
 test("a personal workspace connects a repository and receives its webhooks", async () => {
-  await runGitHubIntegrationScenario(() => ({
+  await runGitHubIntegrationScenario((github) => ({
     name: "GitHub repository connections in a personal workspace",
     setup: ({ given }) => [
       given.auth.user({ id: ownerUserId, email: "owner@example.test" }),
       given.organization.exists({ id: scope.orgId, name: "GitHub Org" }),
     ],
     steps: ({ then, runner }) => [
-      then.assert("setup's install link returns to the personal workspace", async (ctx) => {
+      then.assert("an app already installed on GitHub links in one sign-in", async (ctx) => {
         const user = await createTerminal(
           ctx,
           createBackofficeUserExecution({ scope: personalScope, userId: ownerUserId }),
@@ -604,9 +725,11 @@ test("a personal workspace connects a repository and receives its webhooks", asy
         );
         const authorization = await user.json(setup("github#acme/project", { link: true }));
         expect(authorization).toMatchObject({ status: "needs-authorization" });
-        const state = new URL(authorization.authorizationUrl).searchParams.get("state");
-        assert(state);
-        assert((await completeInstall(ctx, personalScope, state)) === "installed_synced");
+        // Installed on GitHub directly, so no workspace knows the installation yet.
+        github.userInstallations = [acmeInstallation];
+        expect(await returnFromSignIn(ctx, personalScope, authorization.authorizationUrl)).toEqual(
+          boundAcme(["acme/project"]),
+        );
         expect(await user.json(setup("github#acme/project"))).toEqual({
           status: "ready",
           connectionId: "github#acme/project",
@@ -632,6 +755,259 @@ test("a personal workspace connects a repository and receives its webhooks", asy
           },
         },
       }),
+    ],
+  }));
+});
+
+test("an install redirect binds only an installation the signed-in user reaches", async () => {
+  await runGitHubIntegrationScenario((github) => ({
+    name: "GitHub install redirects are verified, and installations move between workspaces",
+    setup: ({ given }) => [
+      given.auth.user({ id: ownerUserId, email: "owner@example.test" }),
+      given.auth.organization({
+        id: scope.orgId,
+        slug: "github-org",
+        name: "GitHub Org",
+        ownerUserId,
+      }),
+    ],
+    steps: ({ then, runner }) => [
+      then.assert(
+        "a forged installation id fails the sign-in, and the installation stays unbound",
+        async (ctx) => {
+          const user = await createTerminal(
+            ctx,
+            createBackofficeUserExecution({ scope, userId: ownerUserId }),
+          );
+          const authorization = await user.json(setup("github#acme/project", { link: true }));
+          const signedIn = await returnFromSignIn(ctx, scope, authorization.authorizationUrl);
+          assert(signedIn.kind === "install");
+          // Instead of installing, the user returns to the callback with someone else's
+          // installation, which their GitHub account cannot access.
+          const verifying = await returnFromInstall(ctx, scope, signedIn.installUrl);
+          expect(await returnFromSignIn(ctx, scope, verifying)).toEqual({
+            kind: "not-verified",
+            installationId,
+          });
+          const router = ctx.runtime.objects.githubWebhookRouter.singleton().commands;
+          expect(await router.getInstallationOwner(installationId)).toBeNull();
+          expect(github.requests).toEqual([]);
+          const system = await createTerminal(ctx, createBackofficeSystemExecution(scope));
+          expect((await system.json("integrations.list")).connections).toEqual([]);
+        },
+      ),
+      then.assert(
+        "an installation another workspace uses is reported with that workspace",
+        async (ctx) => {
+          github.userInstallations = [acmeInstallation];
+          const personal = await createTerminal(
+            ctx,
+            createBackofficeUserExecution({ scope: personalScope, userId: ownerUserId }),
+          );
+          const personalLink = await personal.json(setup("github#acme/project", { link: true }));
+          expect(await returnFromSignIn(ctx, personalScope, personalLink.authorizationUrl)).toEqual(
+            boundAcme(["acme/project"]),
+          );
+
+          const user = await createTerminal(
+            ctx,
+            createBackofficeUserExecution({ scope, userId: ownerUserId }),
+          );
+          const authorization = await user.json(setup("github#acme/project", { link: true }));
+          expect(await returnFromSignIn(ctx, scope, authorization.authorizationUrl)).toEqual({
+            kind: "conflict",
+            installation: { id: installationId, account: "acme", url: acmeInstallation.html_url },
+            owner: personalScope,
+          });
+          const system = await createTerminal(ctx, createBackofficeSystemExecution(scope));
+          expect((await system.json("integrations.list")).connections).toEqual([]);
+        },
+      ),
+      then.assert(
+        "moving the installation disconnects it from the other workspace and links it here",
+        async (ctx) => {
+          // Meanwhile another sign-in in the old workspace reads its installation, then waits on
+          // GitHub until the move finished.
+          const personalUser = await createTerminal(
+            ctx,
+            createBackofficeUserExecution({ scope: personalScope, userId: ownerUserId }),
+          );
+          const lateLink = await personalUser.json(setup("github#acme/web", { link: true }));
+          let finishMove = () => {};
+          const moveDone = new Promise<void>((resolve) => {
+            finishMove = resolve;
+          });
+          let readGitHub = () => {};
+          const readingGitHub = new Promise<void>((resolve) => {
+            readGitHub = resolve;
+          });
+          github.onInstallationRead = async () => {
+            github.onInstallationRead = undefined;
+            readGitHub();
+            await moveDone;
+          };
+          const lateSignIn = returnFromSignIn(ctx, personalScope, lateLink.authorizationUrl);
+          await readingGitHub;
+
+          const automations = ctx.runtime.objects.automations.singleton().commands;
+          const move = {
+            installation: {
+              id: installationId,
+              accountId: String(githubAccount.id),
+              accountLogin: "acme",
+              accountType: "Organization",
+              htmlUrl: acmeInstallation.html_url,
+            },
+            from: personalScope,
+            to: scope,
+            repositories: ["acme/project"],
+          };
+          const started = await automations.startGitHubInstallationMove({
+            signInState: "move-sign-in",
+            move,
+          });
+          // The page submitted twice finds the move already started.
+          expect(
+            await automations.startGitHubInstallationMove({ signInState: "move-sign-in", move }),
+          ).toEqual(started);
+          await ctx.drain();
+          expect(await automations.readGitHubInstallationMove(started)).toEqual({
+            status: "moved",
+            outcome: boundAcme(["acme/project"]),
+          });
+          // A move from a workspace the installation no longer serves stops before changing anything.
+          const stale = await automations.startGitHubInstallationMove({
+            signInState: "stale-sign-in",
+            move: {
+              ...move,
+              from: { kind: "org", orgId: "elsewhere", jurisdiction: null },
+              to: personalScope,
+            },
+          });
+          await ctx.drain();
+          expect(await automations.readGitHubInstallationMove(stale)).toEqual({
+            status: "failed",
+            message: "The installation no longer serves the workspace it was moved from.",
+          });
+          // The late sign-in finds the installation moved, and does not take it back.
+          finishMove();
+          expect(await lateSignIn).toEqual({
+            kind: "conflict",
+            installation: { id: installationId, account: "acme", url: acmeInstallation.html_url },
+            owner: scope,
+          });
+          const { router } = githubOf(ctx, scope);
+          expect(await router.getInstallationOwner(installationId)).toEqual(scope);
+          const organization = await createTerminal(ctx, createBackofficeSystemExecution(scope));
+          expect(
+            (await organization.json("integrations.list")).connections.map(
+              (connection: { connectionId: string }) => connection.connectionId,
+            ),
+          ).toEqual(["github#acme/project"]);
+          const personal = await createTerminal(
+            ctx,
+            createBackofficeSystemExecution(personalScope),
+          );
+          expect((await personal.json("integrations.list")).connections).toEqual([]);
+          expect(
+            await personal.json(`integrations.get --connection-id 'github#acme/project'`),
+          ).toMatchObject({ configuration: { status: "missing" } });
+          // The old workspace's syncs leave the installation released.
+          const resync = await githubOf(ctx, personalScope).callRoute(
+            "POST",
+            "/installations/:installationId/sync",
+            { pathParams: { installationId } },
+          );
+          assert(resync.type === "error" && resync.error.code === "INSTALLATION_RELEASED");
+        },
+      ),
+      runner.drain(),
+      then.automation.event({
+        scope: personalScope,
+        where: { source: "integrations", eventType: "connection.disconnected" },
+        expected: { subject: { service: "github", connectionId: "github#acme/project" } },
+      }),
+      then.assert(
+        "a move back that a later move away overtakes cannot take the installation back",
+        async (ctx) => {
+          const organization = githubOf(ctx, scope);
+          const personal = githubOf(ctx, personalScope);
+          const installation = {
+            id: installationId,
+            accountId: String(githubAccount.id),
+            accountLogin: "acme",
+            accountType: "Organization",
+            htmlUrl: acmeInstallation.html_url,
+          };
+          // A move back to the personal workspace routes the installation there and releases it in
+          // the organization, then claims it in the personal workspace while GitHub answers slowly.
+          assert(
+            (await organization.router.moveInstallationOwner(installationId, scope, personalScope))
+              .ok,
+          );
+          expect(
+            await releaseGitHubInstallation({
+              router: organization.router,
+              callRoute: organization.callRoute,
+              installation,
+              owner: scope,
+            }),
+          ).toBeNull();
+          let answerGitHub = () => {};
+          const laterMoveDone = new Promise<void>((resolve) => {
+            answerGitHub = resolve;
+          });
+          let readGitHub = () => {};
+          const readingGitHub = new Promise<void>((resolve) => {
+            readGitHub = resolve;
+          });
+          github.onInstallationRead = async () => {
+            github.onInstallationRead = undefined;
+            readGitHub();
+            await laterMoveDone;
+          };
+          const returning = claimGitHubInstallation({
+            router: personal.router,
+            callRoute: personal.callRoute,
+            installationId,
+            owner: personalScope,
+          });
+          await readingGitHub;
+
+          // Meanwhile a later move takes it to the organization again.
+          const automations = ctx.runtime.objects.automations.singleton().commands;
+          const later = await automations.startGitHubInstallationMove({
+            signInState: "later-move-sign-in",
+            move: { installation, from: personalScope, to: scope, repositories: ["acme/project"] },
+          });
+          await ctx.drain();
+          expect(await automations.readGitHubInstallationMove(later)).toEqual({
+            status: "moved",
+            outcome: boundAcme(["acme/project"]),
+          });
+
+          // The move back's claim then conflicts, and claiming again finds it moved.
+          answerGitHub();
+          expect(await returning).toMatchObject({
+            kind: "failed",
+            failure: { code: "INSTALLATION_SYNC_CONFLICT" },
+          });
+          expect(
+            await claimGitHubInstallation({
+              router: personal.router,
+              callRoute: personal.callRoute,
+              installationId,
+              owner: personalScope,
+            }),
+          ).toEqual({ kind: "moved", owner: scope });
+          expect(await organization.router.getInstallationOwner(installationId)).toEqual(scope);
+          const personalTerminal = await createTerminal(
+            ctx,
+            createBackofficeSystemExecution(personalScope),
+          );
+          expect((await personalTerminal.json("integrations.list")).connections).toEqual([]);
+        },
+      ),
     ],
   }));
 });

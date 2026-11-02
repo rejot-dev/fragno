@@ -195,9 +195,21 @@ Webhooks and user authorization:
 Installations:
 
 - `GET /installations`
+- `GET /installations/:installationId` — includes the row's `version`, which changes on every write
 - `GET /installations/:installationId/repos`
 - `POST /installations/:installationId/sync` — re-read the installation and its repositories from
-  GitHub, as installation webhooks do
+  GitHub, as installation webhooks do. Answers `INSTALLATION_SYNC_CONFLICT` when another sync wrote
+  first; sync again. A released installation stays released (`INSTALLATION_RELEASED`) unless the
+  body claims it: `{ "claim": { "version": … } }`
+- `POST /installations/:installationId/release` — forget an installation that now serves another
+  store, given its `accountId`, `accountLogin`, `accountType`, and `version`: it counts as deleted,
+  its repositories and links are removed, and syncs, including ones that deliveries queued before
+  the release prompt, leave it so until one claims it
+
+A claim or release names the `version` the caller read, or `null` while the store has no row, and
+answers `INSTALLATION_SYNC_CONFLICT` once the row changed. Read it before confirming which store the
+installation serves, then write: a claim or release confirmed before the other one changed the row
+then cannot undo it. On a conflict, read, confirm, and write again.
 
 Repositories by ID:
 

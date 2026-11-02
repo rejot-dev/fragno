@@ -17,6 +17,7 @@ import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { GitHubFragment, GitHubInstallationOwner } from "@/fragno/github";
+import { startGitHubSignIn } from "@/fragno/github-access";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
 import { connectionStateOfInspection } from "./integration-events";
@@ -336,26 +337,60 @@ export function createGitHubIntegration({
       return fail(response);
     }
 
-    /** Install state is bound to the user who must complete GitHub's callback. */
-    async function pendingInstall(userId: string, account: string) {
-      const router = runtime.objects.githubWebhookRouter.singleton();
-      return await invoke(BACKOFFICE_PERMISSION.connections.manage, { owner: account }, () =>
-        router.commands.getPendingInstall(userId, owner, account),
+    /**
+     * The link the user last got to grant access on one account and the repositories it links: a
+     * GitHub sign-in, or the install it led to. Both are bound to the user who must complete them.
+     */
+    async function pendingGrant(userId: string, account: string) {
+      const router = runtime.objects.githubWebhookRouter.singleton().commands;
+      return await invoke(
+        BACKOFFICE_PERMISSION.connections.manage,
+        { owner: account },
+        async () => {
+          const signIn = await router.getPendingRepositorySignIn(userId, owner, account);
+          if (signIn) {
+            return { url: signIn.authorizationUrl, repositories: signIn.repositories };
+          }
+          const install = await router.getPendingInstall(userId, owner, account);
+          return install && { url: install.installUrl, repositories: install.repositories };
+        },
       );
     }
 
-    /** GitHub's install callback links the repository once the user grants access. */
-    async function requestInstall(userId: string, fullName: string) {
-      const router = runtime.objects.githubWebhookRouter.singleton();
-      const requested = await invoke(
+    /**
+     * A GitHub sign-in that links the repository through an installation the user reaches on its
+     * account, or installs the app there. The user's unfinished sign-in for the account is resumed.
+     */
+    async function requestGrant(userId: string, fullName: string) {
+      const router = runtime.objects.githubWebhookRouter.singleton().commands;
+      return await invoke(
         BACKOFFICE_PERMISSION.connections.manage,
         { repository: fullName },
-        () => router.commands.requestRepositoryInstall(userId, owner, fullName),
+        async () => {
+          const pending = await router.addRepositoryToPendingSignIn(userId, owner, fullName);
+          if (pending) {
+            return pending.authorizationUrl;
+          }
+          const started = await startGitHubSignIn({
+            router,
+            callRoute,
+            userId,
+            owner,
+            purpose: {
+              kind: "repositories",
+              request: {
+                owner: fullName.slice(0, fullName.indexOf("/")),
+                repositories: [fullName],
+              },
+            },
+            returnTo: "",
+          });
+          if (!started.ok) {
+            throw new BackofficeUnavailableError(started.message);
+          }
+          return started.authorizationUrl;
+        },
       );
-      if (!requested.ok) {
-        throw new BackofficeUnavailableError(requested.message);
-      }
-      return requested.installUrl;
     }
 
     function listPulls(
@@ -435,8 +470,8 @@ export function createGitHubIntegration({
       linkRepository,
       unlinkRepository,
       linkedRepositories,
-      pendingInstall,
-      requestInstall,
+      pendingGrant,
+      requestGrant,
       listPulls,
     };
   }
@@ -479,24 +514,23 @@ export function createGitHubIntegration({
         }
         const principal = context.execution.actors.principal;
         const userId = principal?.type === "user" ? principal.id : null;
-        const grantStep = access.status === "not-installed" ? "install" : "configure";
         const authorization = (authorizationUrl: string): IntegrationSetupProgress => ({
           status: "needs-authorization",
           connectionId,
-          instructions: `Open the link and ${grantStep === "install" ? "install the GitHub App" : "configure the GitHub App installation"} on ${owner}, selecting ${fullName}. Returning from GitHub links the repository; then run setup again to confirm.`,
+          instructions: `Open the link to grant the GitHub App access to ${fullName}. GitHub asks the user to sign in and, where needed, to install the app on ${owner} or add the repository to its installation. Returning to Backoffice links ${fullName}, or says why it cannot; then run setup again to confirm.`,
           authorizationUrl,
         });
         if (operation.kind === "check") {
-          const pending = userId === null ? null : await github.pendingInstall(userId, owner);
+          const pending = userId === null ? null : await github.pendingGrant(userId, owner);
           if (pending?.repositories.includes(fullName)) {
-            return authorization(pending.installUrl);
+            return authorization(pending.url);
           }
           return {
             status: "needs-input",
             connectionId,
             instructions:
               access.status === "not-installed"
-                ? `The GitHub App is not installed on ${owner} for this workspace. Submit { "link": true } to get a GitHub install link; returning from GitHub links ${fullName}.`
+                ? `The GitHub App is not installed on ${owner} for this workspace. Submit { "link": true } for a GitHub link that links ${fullName} through an installation the user already has on ${owner}, or installs the app there.`
                 : `The GitHub App installation on ${owner} cannot reach ${fullName}. Submit { "link": true } to get a GitHub link where the user adds it; returning from GitHub links it.`,
             inputSchema: z.toJSONSchema(githubLinkInputSchema, { io: "input" }),
             secretFields: [],
@@ -510,7 +544,7 @@ export function createGitHubIntegration({
               "Granting GitHub access requires a signed-in user, because GitHub returns the installation to the user who started it.",
           };
         }
-        return authorization(await github.requestInstall(userId, fullName));
+        return authorization(await github.requestGrant(userId, fullName));
       },
     },
     reconfigure: {

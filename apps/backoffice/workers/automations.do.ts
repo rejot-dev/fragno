@@ -30,6 +30,7 @@ import type {
 } from "@/fragno/automation/external-identities";
 import type { PackageInstallationInput } from "@/fragno/automation/package-installations";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
+import type { GitHubInstallationMoveParams } from "@/fragno/github-installation-move-workflow";
 import type { MarketplacePackagePublishRequest } from "@/fragno/marketplace/package-publishing";
 import type { OnboardingAnswer } from "@/fragno/onboarding/contracts";
 
@@ -77,6 +78,17 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async answerUserOnboarding(input: { userId: string; answer: OnboardingAnswer }) {
     await this.#object.answerUserOnboarding(input);
+  }
+
+  async startGitHubInstallationMove(input: {
+    signInState: string;
+    move: GitHubInstallationMoveParams;
+  }) {
+    return await this.#object.startGitHubInstallationMove(input);
+  }
+
+  async readGitHubInstallationMove(input: { instanceId: string }) {
+    return await this.#object.readGitHubInstallationMove(input);
   }
 
   async requestMarketplacePackagePublish(

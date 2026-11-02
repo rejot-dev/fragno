@@ -1,9 +1,10 @@
+import type { TableToColumnValues } from "@fragno-dev/db/query";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
 import { githubAppFragmentDefinition } from "../github/definition";
-import { syncInstallationFromGitHub } from "../github/installation-sync";
+import { releaseInstallation, syncInstallationFromGitHub } from "../github/installation-sync";
 import { githubAppSchema } from "../schema";
 import {
   installationOutputSchema,
@@ -12,6 +13,23 @@ import {
   repoWithLinksSchema,
   toExternalId,
 } from "./shared";
+
+type InstallationRow = TableToColumnValues<(typeof githubAppSchema)["tables"]["installation"]>;
+
+const toInstallationOutput = (installation: InstallationRow) => ({
+  id: toExternalId(installation.id),
+  accountId: installation.accountId,
+  accountLogin: installation.accountLogin,
+  accountType: installation.accountType,
+  status: installation.status,
+  permissions: installation.permissions,
+  events: installation.events,
+  createdAt: installation.createdAt,
+  updatedAt: installation.updatedAt,
+  lastWebhookAt: installation.lastWebhookAt,
+  releasedAt: installation.releasedAt,
+  version: installation.id.version,
+});
 
 export const githubAppInstallationRoutesFactory = defineRoutes(githubAppFragmentDefinition).create(
   ({ defineRoute, services }) => {
@@ -45,20 +63,31 @@ export const githubAppInstallationRoutesFactory = defineRoutes(githubAppFragment
             })
             .execute();
 
-          return json(
-            installations.map((installation) => ({
-              id: toExternalId(installation.id),
-              accountId: installation.accountId,
-              accountLogin: installation.accountLogin,
-              accountType: installation.accountType,
-              status: installation.status,
-              permissions: installation.permissions,
-              events: installation.events,
-              createdAt: installation.createdAt,
-              updatedAt: installation.updatedAt,
-              lastWebhookAt: installation.lastWebhookAt,
-            })),
-          );
+          return json(installations.map(toInstallationOutput));
+        },
+      }),
+      defineRoute({
+        method: "GET",
+        path: "/installations/:installationId",
+        outputSchema: installationOutputSchema,
+        errorCodes: ["INSTALLATION_NOT_FOUND"],
+        handler: async function ({ pathParams }, { json, error }) {
+          const [installation] = await this.handlerTx()
+            .retrieve(({ forSchema }) =>
+              forSchema(githubAppSchema).findFirst("installation", (b) =>
+                b.whereIndex("uniq_installation_id", (eb) =>
+                  eb("id", "=", pathParams.installationId),
+                ),
+              ),
+            )
+            .execute();
+          if (!installation) {
+            return error(
+              { message: "Installation not found.", code: "INSTALLATION_NOT_FOUND" },
+              { status: 404 },
+            );
+          }
+          return json(toInstallationOutput(installation));
         },
       }),
       defineRoute({
@@ -137,27 +166,71 @@ export const githubAppInstallationRoutesFactory = defineRoutes(githubAppFragment
       defineRoute({
         method: "POST",
         path: "/installations/:installationId/sync",
+        // Claiming mirrors an installation this store released, because it serves this store again.
+        // The claim names the installation row read before that was confirmed, and conflicts once
+        // the row changed.
+        inputSchema: z
+          .object({
+            claim: z.object({ version: z.number().int().nonnegative().nullable() }).optional(),
+          })
+          .optional(),
         outputSchema: z.object({
           added: z.number(),
           removed: z.number(),
           updated: z.number(),
         }),
-        errorCodes: ["GITHUB_API_ERROR", "INSTALLATION_NOT_FOUND"],
-        handler: async function ({ pathParams }, { json, error }) {
+        errorCodes: [
+          "GITHUB_API_ERROR",
+          "INSTALLATION_NOT_FOUND",
+          "INSTALLATION_SYNC_CONFLICT",
+          "INSTALLATION_RELEASED",
+        ],
+        handler: async function ({ pathParams, input }, { json, error }) {
+          const values = await input.valid();
           const syncResult = await syncInstallationFromGitHub(
             this.handlerTx.bind(this),
             services,
             pathParams.installationId,
-            null,
+            { webhookReceivedAt: null, claim: values?.claim ?? null },
           );
           if (!syncResult.ok) {
             return error(
               { message: syncResult.message, code: syncResult.code },
-              { status: syncResult.status === 404 ? 404 : 502 },
+              {
+                status:
+                  syncResult.status === 404 || syncResult.status === 409 ? syncResult.status : 502,
+              },
             );
           }
 
           return json(syncResult.result);
+        },
+      }),
+      defineRoute({
+        method: "POST",
+        path: "/installations/:installationId/release",
+        // The installation's account, recorded when this store never synced the installation, and
+        // the installation row read before confirming it serves another store.
+        inputSchema: z.object({
+          accountId: z.string(),
+          accountLogin: z.string(),
+          accountType: z.string(),
+          version: z.number().int().nonnegative().nullable(),
+        }),
+        outputSchema: z.object({ released: z.boolean() }),
+        errorCodes: ["INSTALLATION_SYNC_CONFLICT"],
+        handler: async function ({ pathParams, input }, { json, error }) {
+          const { version, ...account } = await input.valid();
+          const result = await releaseInstallation(
+            this.handlerTx.bind(this),
+            services,
+            { installationId: pathParams.installationId, ...account },
+            { version },
+          );
+          if (!result.ok) {
+            return error({ message: result.message, code: result.code }, { status: 409 });
+          }
+          return json({ released: result.released });
         },
       }),
     ];

@@ -128,6 +128,13 @@ import type { AcceptShareOutcome } from "@/fragno/automation/shares-storage-runt
 import { MEMBERS_STEWARD } from "@/fragno/automation/stewards";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
+  GITHUB_INSTALLATION_MOVE_WORKFLOW_NAME,
+  gitHubInstallationMoveInstanceId,
+  type GitHubInstallationMoveOutput,
+  type GitHubInstallationMoveParams,
+  type GitHubInstallationMoveState,
+} from "@/fragno/github-installation-move-workflow";
+import {
   captureBundledMarketplaceRelease,
   initializeMarketplaceListingRootFiles,
 } from "@/fragno/marketplace/bundled-release";
@@ -500,9 +507,13 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
    * jurisdiction.
    */
   async #onboardingRuntime() {
+    return await this.#systemRuntime("Onboarding runs only in System's Automations.");
+  }
+
+  async #systemRuntime(outsideSystem: string) {
     const scope = this.#requireScope();
     if (scope.kind !== "system") {
-      throw new Error("Onboarding runs only in System's Automations.");
+      throw new Error(outsideSystem);
     }
     await this.#ensureConfigured({ scope });
     return this.#host.requireConfigured("Automations runtime is not ready.").runtime;
@@ -606,6 +617,62 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
         return state;
       default:
         throw new Error("Unsupported onboarding state.", { cause: state satisfies never });
+    }
+  }
+
+  /**
+   * Starts moving a GitHub installation between workspaces, or finds the move this sign-in
+   * started. Callers check that the user may manage GitHub in both.
+   */
+  async startGitHubInstallationMove(input: {
+    signInState: string;
+    move: GitHubInstallationMoveParams;
+  }): Promise<{ instanceId: string }> {
+    const runtime = await this.#systemRuntime(
+      "GitHub installations move only in System's Automations.",
+    );
+    const instanceId = gitHubInstallationMoveInstanceId(
+      input.signInState,
+      input.move.installation.id,
+    );
+    await runtime.workflowsFragment.callServices(() =>
+      runtime.workflowsFragment.services.createBatch(GITHUB_INSTALLATION_MOVE_WORKFLOW_NAME, [
+        { id: instanceId, params: input.move },
+      ]),
+    );
+    return { instanceId };
+  }
+
+  async readGitHubInstallationMove(input: {
+    instanceId: string;
+  }): Promise<GitHubInstallationMoveState> {
+    const runtime = await this.#systemRuntime(
+      "GitHub installations move only in System's Automations.",
+    );
+    const status = await runtime.workflowsFragment.callServices(() =>
+      runtime.workflowsFragment.services.getInstanceStatus(
+        GITHUB_INSTALLATION_MOVE_WORKFLOW_NAME,
+        input.instanceId,
+      ),
+    );
+    switch (status.status) {
+      case "complete": {
+        const output = status.output as GitHubInstallationMoveOutput;
+        return output.moved
+          ? { status: "moved", outcome: output.outcome }
+          : { status: "failed", message: output.message };
+      }
+      case "errored":
+      case "terminated":
+        return { status: "failed", message: status.error?.message ?? "The move stopped." };
+      case "active":
+      case "paused":
+      case "waiting":
+        return { status: "moving" };
+      default:
+        throw new Error("Unsupported GitHub installation move status.", {
+          cause: status.status satisfies never,
+        });
     }
   }
 

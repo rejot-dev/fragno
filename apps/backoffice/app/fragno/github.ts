@@ -62,6 +62,7 @@ export function createGitHubServer(
     });
     for (const path of [
       "/installations",
+      "/installations/:installationId",
       "/installations/:installationId/repos",
       "/repositories/linked",
       "/repositories/:owner/:repo",
@@ -76,6 +77,7 @@ export function createGitHubServer(
     });
     for (const path of [
       "/installations/:installationId/sync",
+      "/installations/:installationId/release",
       "/oauth/start",
       "/oauth/complete",
       "/repositories/link",

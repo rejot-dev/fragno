@@ -7,6 +7,7 @@ import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import {
   createDurableHooksProcessor,
   type DurableHooksDispatcherDurableObjectHandler,
@@ -42,6 +43,13 @@ import {
 } from "@/fragno/automation/engine/codemode-invocation";
 import { defineCodemodeWorkflow } from "@/fragno/automation/engine/codemode-workflow";
 import { listAutomationEventDescriptors } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
+import {
+  defineGitHubInstallationMoveWorkflow,
+  GITHUB_INSTALLATION_MOVE_WORKFLOW_NAME,
+  GITHUB_INSTALLATION_RELEASE_STEP,
+  gitHubInstallationMoveDependencies,
+  type GitHubInstallationMoveParams,
+} from "@/fragno/github-installation-move-workflow";
 import { defineOnboardingWorkflow } from "@/fragno/onboarding/onboarding-workflow";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import type { PiAgentAddress, PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
@@ -190,6 +198,39 @@ export const createAutomationsRuntime = (
     }).notifyAgent({ agentName, routeId: null, event });
   }
 
+  /**
+   * A move that stopped before the old workspace forgot the installation leaves that workspace
+   * reaching its repositories, which an operator has to resolve: retry the failed step, or release
+   * the installation there. Delivery can repeat; so does the report.
+   */
+  async function reportUnfinishedGitHubMove(payload: WorkflowTerminalHookPayload) {
+    const { steps } = await workflowsFragment.callServices(() =>
+      workflowsFragment.services.listHistory({
+        workflowName: payload.workflowName,
+        instanceId: payload.instanceId,
+      }),
+    );
+    const released = steps.some(
+      ({ stepKey, status }) =>
+        stepKey === `do:${GITHUB_INSTALLATION_RELEASE_STEP}` && status === "completed",
+    );
+    const { installation, from, to } = payload.params as GitHubInstallationMoveParams;
+    console.error(
+      released
+        ? "GitHub installation move stopped after its release"
+        : "GitHub installation move stopped before its release; the old workspace still reaches its repositories",
+      {
+        instanceId: payload.instanceId,
+        installationId: installation.id,
+        from: backofficeScopePathSegment(from),
+        to: backofficeScopePathSegment(to),
+        status: payload.status,
+        error: payload.error ?? null,
+      },
+    );
+  }
+
+  const runtimeServices = config.runtime;
   const workflowsFragment = createWorkflowsFragment<BackofficeExecutionContext>(
     {
       workflows: {
@@ -201,6 +242,12 @@ export const createAutomationsRuntime = (
         ONBOARDING: defineOnboardingWorkflow({
           ownerScope: config.ownerScope,
           runtime: config.runtime,
+        }),
+        GITHUB_INSTALLATION_MOVE: defineGitHubInstallationMoveWorkflow({
+          ownerScope: config.ownerScope,
+          dependencies: runtimeServices
+            ? () => gitHubInstallationMoveDependencies(runtimeServices, config.kernel)
+            : null,
         }),
         MARKETPLACE_PACKAGE_INSTALL: defineMarketplacePackageInstallWorkflow({
           ownerScope: config.ownerScope,
@@ -241,6 +288,12 @@ export const createAutomationsRuntime = (
                   workflowInstanceId: payload.instanceId,
                 });
             }
+          }
+          if (
+            payload.workflowName === GITHUB_INSTALLATION_MOVE_WORKFLOW_NAME &&
+            (payload.status === "errored" || payload.status === "terminated")
+          ) {
+            await reportUnfinishedGitHubMove(payload);
           }
           if (payload.workflowName !== CODEMODE_WORKFLOW) {
             return;

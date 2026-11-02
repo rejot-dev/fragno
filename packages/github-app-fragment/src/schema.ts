@@ -98,5 +98,10 @@ export const githubAppSchema = schema("github-app-fragment", (s) => {
           .addColumn("processedAt", column("timestamp").nullable())
           .createIndex("idx_webhook_delivery_processedAt", ["processedAt"])
       );
-    });
+    })
+    .alterTable("installation", (t) =>
+      // Set when the installation went to serve another store; until this store claims it again,
+      // syncs leave it deleted here, so nothing here reaches its repositories.
+      t.addColumn("releasedAt", column("timestamp").nullable()),
+    );
 });
