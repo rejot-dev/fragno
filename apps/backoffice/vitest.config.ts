@@ -29,6 +29,11 @@ export default mergeConfig(
         resolveConfig("./wrangler.jsonc"),
         resolveConfig("./wrangler.web.jsonc"),
       ],
+      // `test:changed` selects tests by the modules each one loaded in its last run, which is
+      // faster than walking the import graph. CI restores the records of main's full run.
+      experimental: {
+        recordDependencies: true,
+      },
       coverage: {
         enabled: false,
         reportsDirectory: "./coverage",

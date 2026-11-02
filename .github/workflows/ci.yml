@@ -55,12 +55,33 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Find merge base
+        if: github.event_name == 'pull_request'
+        id: merge-base
+        run: echo "sha=$(git merge-base origin/main HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Backoffice's `test:changed` selects tests by the modules they loaded in the merge base's full
+      # run. Without that run's records, it runs every test.
+      - name: Restore Backoffice test dependencies
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: apps/backoffice/node_modules/.vite/vitest/*/dependencies.json
+          key: backoffice-test-dependencies-${{ steps.merge-base.outputs.sha }}
+
       # Pull requests run affected packages' tests, selecting within Backoffice; main runs every test
       # to catch what selection misses.
       - name: Run tests
         run:
           pnpm exec turbo run ${{ github.event_name == 'pull_request' && 'test:changed --affected'
           || 'test' }} --concurrency=80%
+
+      - name: Save Backoffice test dependencies
+        if: github.event_name == 'push' && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: apps/backoffice/node_modules/.vite/vitest/*/dependencies.json
+          key: backoffice-test-dependencies-${{ github.sha }}
 
       # Backoffice's `test:changed` skips the slow Cloudflare project, so pull requests run it here.
       - name: Run Backoffice Cloudflare tests

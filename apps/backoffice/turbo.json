@@ -19,7 +19,8 @@
       ]
     },
     "test": {
-      "dependsOn": ["^build", "static:generate"]
+      "dependsOn": ["^build", "static:generate"],
+      "outputs": ["node_modules/.vite/vitest/*/dependencies.json"]
     },
     "test:changed": {
       "dependsOn": ["^build", "static:generate"]

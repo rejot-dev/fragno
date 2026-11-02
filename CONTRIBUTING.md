@@ -115,6 +115,13 @@ imports reach a changed Backoffice file, including uncommitted and untracked fil
 suite instead when a dependency package, a repository file outside the workspaces, a deleted file,
 or a non-code file changed. Markdown is ignored unless a trigger matches.
 
+Vitest records the modules each Backoffice test file loads (`experimental.recordDependencies`) in
+`apps/backoffice/node_modules/.vite/vitest/*/dependencies.json`, and selection reads those records
+instead of walking the import graph. A test file without a record always runs, so the first
+`test:changed` after a fresh install runs every test. Records come from each file's last run, so
+after pulling, a test whose imports changed upstream may be skipped until it runs again; `test` on
+main still runs it. CI saves main's records and restores the merge base's records on pull requests.
+
 Selection follows imports, so a Backoffice test that reaches a file another way needs that file in
 `forceRerunTriggers` in `apps/backoffice/vitest.config.ts`. This covers `?raw` and
 `import.meta.glob` imports, files read with `fs`, and tests that run code in a subprocess.
