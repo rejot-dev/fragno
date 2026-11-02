@@ -22,6 +22,7 @@ jobs:
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_API: ${{ vars.TURBO_API }}
       TURBO_SCM_BASE: "origin/main"
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +64,7 @@ jobs:
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_API: ${{ vars.TURBO_API }}
       TURBO_SCM_BASE: "origin/main"
     steps:
       - uses: actions/checkout@v4
