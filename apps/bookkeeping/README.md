@@ -357,9 +357,9 @@ or admins opens the firm, since Backoffice creates a project as a member of the 
 Bookkeeping; until then, asking the agent says the firm has not set it up.
 
 To ask, Bookkeeping shares the document's folder from the administration's project with the firm's
-agent project (`state.share`), which mounts it read-only at `/shared/document-<hash>/`
-(`state.acceptShare`); asking again reuses the share that stands. A document's ID is unique only in
-its administration, and the firm's agent serves all its clients, so the mount's name hashes the
+agent project (`shares.create`), which mounts it read-only at `/shared/document-<hash>/`
+(`shares.accept`); asking again reuses the share that stands. A document's ID is unique only in its
+administration, and the firm's agent serves all its clients, so the mount's name hashes the
 administration's ID with the document's, and the prompt's request ID names both. Answering the
 review revokes the share, as does the document's page when it shows a document whose review was
 answered, or that was booked or dismissed, so the firm reads a client's file only while it is asked

@@ -44,7 +44,7 @@ import type { Reson8Runtime } from "./families/reson8-runtime";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
 import type { WebRuntime } from "./families/web-runtime";
 import type { FileLinkRuntime } from "./file-links-runtime";
-import type { FileShareRuntime } from "./file-shares-runtime";
+import type { ShareRuntime } from "./shares-runtime";
 
 export type RegisteredAutomationsRuntime = AutomationStoreRuntime & AutomationRouterRuntime;
 
@@ -61,7 +61,7 @@ export type BashHostContext = {
   backofficeKernel: BackofficeKernel;
   stateBackend?: BackofficeStateBackend;
   fileLinks?: { runtime: FileLinkRuntime } | null;
-  fileShares?: { runtime: FileShareRuntime } | null;
+  shares?: { runtime: ShareRuntime } | null;
   blobs?: { runtime: BlobsRuntime } | null;
   createBackofficeScopedContext(scope: BackofficeContextScope): BashHostContext;
   resolveRootOwner: BackofficeRootOwnerResolver;

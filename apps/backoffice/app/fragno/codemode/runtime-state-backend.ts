@@ -1,14 +1,14 @@
 import {
   type BackofficeRoutableScope,
-  backofficeContextScopesEqual,
   isBackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { AcceptedFileShare } from "@fragno-dev/backoffice-api/v0/state";
+import type { AcceptedShare } from "@fragno-dev/backoffice-api/v0/shares";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { createBackofficeStaticFileCollection } from "@/files/content/static";
+import { createAcceptedShares } from "@/fragno/runtime-tools/shares-runtime";
 
 import {
   createBackofficeStateBackend,
@@ -45,11 +45,7 @@ export function createRuntimeStateBackend({
   });
 }
 
-/**
- * The shares `scope` accepted. The sharing scope's share is the authority: this scope reads the
- * folder through it only while it stands and names this scope, whatever this scope's own record
- * says, and asks again on every use, so revoking takes effect at once.
- */
+/** The folders among the shares `scope` accepted; blob shares are read through blobs. */
 function acceptedSharedFolders({
   runtime,
   kernel,
@@ -59,36 +55,34 @@ function acceptedSharedFolders({
   kernel: BackofficeKernel;
   scope: BackofficeRoutableScope;
 }): SharedFolders {
-  const automations = (owner: BackofficeRoutableScope) =>
-    kernel.scoped("AUTOMATIONS", owner, runtime.objects.automations).commands;
-  // The share, while it stands and names this scope.
-  const standingShare = async (accepted: AcceptedFileShare) => {
-    const share = await automations(accepted.from).getFileShare({ shareId: accepted.shareId });
-    return share && backofficeContextScopesEqual(share.with, scope) ? share : null;
-  };
-  const folder = (accepted: AcceptedFileShare): SharedFolder => ({
+  const shares = createAcceptedShares({
+    scope,
+    automationsFor: (owner) =>
+      kernel.scoped("AUTOMATIONS", owner, runtime.objects.automations).commands,
+  });
+  const folder = (accepted: AcceptedShare): SharedFolder => ({
     name: accepted.name,
     async open() {
-      const share = await standingShare(accepted);
-      if (!share) {
+      const opened = await shares.openFolder(accepted);
+      if (!opened) {
         return null;
       }
       return {
         collection: createWorkspaceFileCollection(
-          kernel.scoped("UPLOAD", accepted.from, runtime.objects.upload).http,
-          share.path.slice(WORKSPACE_ROOT.length),
+          kernel.scoped("UPLOAD", opened.from, runtime.objects.upload).http,
+          opened.path.slice(WORKSPACE_ROOT.length),
         ),
-        standing: async () => (await standingShare(accepted)) !== null,
+        standing: async () => (await shares.openFolder(accepted)) !== null,
       };
     },
   });
   return {
     async list() {
-      return (await automations(scope).listAcceptedFileShares()).map(folder);
+      return (await shares.list()).filter(({ of }) => of.kind === "folder").map(folder);
     },
     async find(name) {
-      const accepted = await automations(scope).getAcceptedFileShareByName({ name });
-      return accepted ? folder(accepted) : null;
+      const accepted = await shares.find(name);
+      return accepted?.of.kind === "folder" ? folder(accepted) : null;
     },
   };
 }

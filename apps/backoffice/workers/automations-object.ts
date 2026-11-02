@@ -22,7 +22,7 @@ import {
   type BackofficeRoutableScope,
   backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { AcceptedFileShare, FileShare } from "@fragno-dev/backoffice-api/v0/state";
+import type { AcceptedShare, Share, SharedContents } from "@fragno-dev/backoffice-api/v0/shares";
 import { type InstanceStatus, WorkflowInstanceNotFoundError } from "@fragno-dev/workflows/workflow";
 import { RpcTarget } from "cloudflare:workers";
 
@@ -87,7 +87,6 @@ import {
   type RevokeExternalIdentityInput,
   type RevokeExternalIdentityResult,
 } from "@/fragno/automation/external-identities";
-import type { AcceptFileShareOutcome } from "@/fragno/automation/file-shares-storage-runtime";
 import {
   importLegacyPackageInstallations,
   type LegacyPackageImportOutcome,
@@ -116,6 +115,7 @@ import {
 } from "@/fragno/automation/package-installations";
 import type { PackageInstallationRecord } from "@/fragno/automation/package-installations-storage-runtime";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
+import type { AcceptShareOutcome } from "@/fragno/automation/shares-storage-runtime";
 import { MEMBERS_STEWARD } from "@/fragno/automation/stewards";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
@@ -1363,84 +1363,84 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     );
   }
 
-  async createFileShare(input: {
+  async createShare(input: {
     shareId: string;
-    path: string;
+    of: SharedContents;
     target: BackofficeRoutableScope;
-  }): Promise<FileShare> {
+  }): Promise<Share> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.createFileShare(input),
+      runtime.automationFragment.services.createShare(input),
     );
   }
 
-  async getFileShare(input: { shareId: string }): Promise<FileShare | null> {
+  async getShare(input: { shareId: string }): Promise<Share | null> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.getFileShare(input),
+      runtime.automationFragment.services.getShare(input),
     );
   }
 
-  async listFileShares(): Promise<FileShare[]> {
+  async listShares(): Promise<Share[]> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.listFileShares(),
+      runtime.automationFragment.services.listShares(),
     );
   }
 
-  async deleteFileShare(input: { shareId: string }): Promise<boolean> {
+  async deleteShare(input: { shareId: string }): Promise<boolean> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.deleteFileShare(input),
+      runtime.automationFragment.services.deleteShare(input),
     );
   }
 
-  async acceptFileShare(input: {
+  async acceptShare(input: {
     shareId: string;
     name: string;
     source: BackofficeRoutableScope;
-    path: string;
-  }): Promise<AcceptFileShareOutcome> {
+    of: SharedContents;
+  }): Promise<AcceptShareOutcome> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.acceptFileShare(input),
+      runtime.automationFragment.services.acceptShare(input),
     );
   }
 
-  async getAcceptedFileShareByName(input: { name: string }): Promise<AcceptedFileShare | null> {
+  async getAcceptedShareByName(input: { name: string }): Promise<AcceptedShare | null> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.getAcceptedFileShareByName(input),
+      runtime.automationFragment.services.getAcceptedShareByName(input),
     );
   }
 
-  async listAcceptedFileShares(): Promise<AcceptedFileShare[]> {
+  async listAcceptedShares(): Promise<AcceptedShare[]> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.listAcceptedFileShares(),
+      runtime.automationFragment.services.listAcceptedShares(),
     );
   }
 
-  async deleteAcceptedFileShare(input: { shareId: string }): Promise<boolean> {
+  async deleteAcceptedShare(input: { shareId: string }): Promise<boolean> {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
 
     return await runtime.automationFragment.callServices(() =>
-      runtime.automationFragment.services.deleteAcceptedFileShare(input),
+      runtime.automationFragment.services.deleteAcceptedShare(input),
     );
   }
 

@@ -7,6 +7,7 @@ import type {
   PackagesImportLegacyInput,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { SharedContents } from "@fragno-dev/backoffice-api/v0/shares";
 import { DurableObject } from "cloudflare:workers";
 
 import type {
@@ -182,41 +183,45 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
     return await this.#object.getPackageInstallationRecord(input);
   }
 
-  async createFileShare(input: { shareId: string; path: string; target: BackofficeRoutableScope }) {
-    return await this.#object.createFileShare(input);
+  async createShare(input: {
+    shareId: string;
+    of: SharedContents;
+    target: BackofficeRoutableScope;
+  }) {
+    return await this.#object.createShare(input);
   }
 
-  async getFileShare(input: { shareId: string }) {
-    return await this.#object.getFileShare(input);
+  async getShare(input: { shareId: string }) {
+    return await this.#object.getShare(input);
   }
 
-  async listFileShares() {
-    return await this.#object.listFileShares();
+  async listShares() {
+    return await this.#object.listShares();
   }
 
-  async deleteFileShare(input: { shareId: string }) {
-    return await this.#object.deleteFileShare(input);
+  async deleteShare(input: { shareId: string }) {
+    return await this.#object.deleteShare(input);
   }
 
-  async acceptFileShare(input: {
+  async acceptShare(input: {
     shareId: string;
     name: string;
     source: BackofficeRoutableScope;
-    path: string;
+    of: SharedContents;
   }) {
-    return await this.#object.acceptFileShare(input);
+    return await this.#object.acceptShare(input);
   }
 
-  async getAcceptedFileShareByName(input: { name: string }) {
-    return await this.#object.getAcceptedFileShareByName(input);
+  async getAcceptedShareByName(input: { name: string }) {
+    return await this.#object.getAcceptedShareByName(input);
   }
 
-  async listAcceptedFileShares() {
-    return await this.#object.listAcceptedFileShares();
+  async listAcceptedShares() {
+    return await this.#object.listAcceptedShares();
   }
 
-  async deleteAcceptedFileShare(input: { shareId: string }) {
-    return await this.#object.deleteAcceptedFileShare(input);
+  async deleteAcceptedShare(input: { shareId: string }) {
+    return await this.#object.deleteAcceptedShare(input);
   }
 
   async applyPackageInstallation(input: PackageInstallationInput) {

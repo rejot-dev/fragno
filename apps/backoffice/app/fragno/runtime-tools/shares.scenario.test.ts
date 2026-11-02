@@ -8,7 +8,7 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { AcceptedFileShare, FileShare } from "@fragno-dev/backoffice-api/v0/state";
+import type { AcceptedShare, Share } from "@fragno-dev/backoffice-api/v0/shares";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
@@ -19,6 +19,8 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import { createFakeR2, requestFromOutside, type FakeR2 } from "@/fragno/blobs-r2.test-utils";
+import { blobsR2BucketsFromEnv } from "@/fragno/blobs-server";
 import { loadBackofficePiSkills } from "@/fragno/pi/extensions/backoffice/skills";
 
 import { ApiObject } from "../../../workers/api-object";
@@ -26,12 +28,15 @@ import { AppInstallationsObject } from "../../../workers/app-installations-objec
 import { AppsObject } from "../../../workers/apps-object";
 import { AuthObject } from "../../../workers/auth-object";
 import { AutomationsObject } from "../../../workers/automations-object";
+import { BlobsObject } from "../../../workers/blobs-object";
 import { FormsObject } from "../../../workers/forms-object";
 import { McpObject } from "../../../workers/mcp-object";
 import { TelegramObject } from "../../../workers/telegram-object";
 import { UploadObject } from "../../../workers/upload-object";
 import { codemodeStateToolFamily } from "./codemode-state-runtime";
+import { blobsToolFamily } from "./families/blobs";
 import { modelsToolFamily } from "./families/models";
+import { sharesToolFamily } from "./families/shares";
 import { createCodemodeRouteBackedRuntimeContext } from "./route-backed-runtime-context";
 import { executeBackofficeRuntimeTool } from "./runtime-tools";
 import { createBackofficeToolContext } from "./tool-context";
@@ -67,9 +72,12 @@ function inScope(ctx: BackofficeScenarioContext, scope: BackofficeRoutableScope,
   });
   const tools = createBackofficeToolContext(context);
   const call = async (name: string, input: unknown): Promise<unknown> => {
-    const tool = [...codemodeStateToolFamily.tools, ...modelsToolFamily.tools].find(
-      (candidate) => candidate.id === name,
-    );
+    const tool = [
+      ...codemodeStateToolFamily.tools,
+      ...sharesToolFamily.tools,
+      ...blobsToolFamily.tools,
+      ...modelsToolFamily.tools,
+    ].find((candidate) => candidate.id === name);
     if (!tool) {
       throw new Error(`No tool ${name}.`);
     }
@@ -98,12 +106,12 @@ test("a folder one organization shares opens read-only in the other once it acce
           );
           await client.state.writeFile("/workspace/documents/d2/invoice.txt", "Invoice 43\n");
 
-          const share = (await client.call("state.share", {
-            path: "/workspace/documents/d1",
+          const share = (await client.call("shares.create", {
+            of: { kind: "folder", path: "/workspace/documents/d1" },
             with: { kind: "org", orgId: "firm" },
-          })) as FileShare;
+          })) as Share;
           expect(share).toMatchObject({
-            path: "/workspace/documents/d1/",
+            of: { kind: "folder", path: "/workspace/documents/d1/" },
             with: { kind: "org", orgId: "firm", jurisdiction: null },
           });
           const mounted = `/shared/${share.shareId}`;
@@ -117,18 +125,18 @@ test("a folder one organization shares opens read-only in the other once it acce
 
           // A scope the share does not name cannot accept it.
           await expect(
-            inOrganization(ctx, "other-firm", "bob").call("state.acceptShare", {
+            inOrganization(ctx, "other-firm", "bob").call("shares.accept", {
               from: { kind: "org", orgId: "client" },
               shareId: share.shareId,
             }),
           ).rejects.toMatchObject({ kind: "not_found" });
 
-          const accepted = (await unaccepted.call("state.acceptShare", {
+          const accepted = (await unaccepted.call("shares.accept", {
             from: { kind: "org", orgId: "client" },
             shareId: share.shareId,
-          })) as AcceptedFileShare;
+          })) as AcceptedShare;
           assert.equal(accepted.path, `${mounted}/`);
-          assert.equal(accepted.sourcePath, "/workspace/documents/d1/");
+          expect(accepted.of).toEqual({ kind: "folder", path: "/workspace/documents/d1/" });
 
           const firm = inOrganization(ctx, "firm", "ada");
           await expect(firm.state.readdir("/")).resolves.toEqual(["shared", "static", "workspace"]);
@@ -170,16 +178,16 @@ test("a folder one organization shares opens read-only in the other once it acce
           // A shared SKILL.md never becomes one of the firm's skills.
           assert.notProperty(await loadBackofficePiSkills(firm.state), "planted");
 
-          await expect(client.call("state.listShares", {})).resolves.toMatchObject({
+          await expect(client.call("shares.list", {})).resolves.toMatchObject({
             shared: [{ shareId: share.shareId }],
             accepted: [],
           });
-          await expect(firm.call("state.listShares", {})).resolves.toMatchObject({
+          await expect(firm.call("shares.list", {})).resolves.toMatchObject({
             shared: [],
             accepted: [{ shareId: share.shareId, from: { kind: "org", orgId: "client" } }],
           });
 
-          await client.call("state.revokeShare", { shareId: share.shareId });
+          await client.call("shares.revoke", { shareId: share.shareId });
           // An execution that opened the share before reads nothing more, not even what the
           // client writes after revoking it.
           await client.state.writeFile("/workspace/documents/d1/after-revoke.txt", "Later\n");
@@ -206,11 +214,11 @@ test("a folder one organization shares opens read-only in the other once it acce
             ["/workspace/made", "made"],
             ["/workspace/made/empty", "made-empty"],
           ] as const) {
-            const share = (await client.call("state.share", {
-              path,
+            const share = (await client.call("shares.create", {
+              of: { kind: "folder", path },
               with: { kind: "org", orgId: "firm" },
-            })) as FileShare;
-            await firm.call("state.acceptShare", {
+            })) as Share;
+            await firm.call("shares.accept", {
               from: { kind: "org", orgId: "client" },
               shareId: share.shareId,
               name,
@@ -227,20 +235,20 @@ test("a folder one organization shares opens read-only in the other once it acce
         then.assert("the scope's own accept and revoke show in the same execution", async (ctx) => {
           const client = inOrganization(ctx, "client", "ada");
           await client.state.writeFile("/workspace/soon/a.txt", "a");
-          const share = (await client.call("state.share", {
-            path: "/workspace/soon",
+          const share = (await client.call("shares.create", {
+            of: { kind: "folder", path: "/workspace/soon" },
             with: { kind: "org", orgId: "firm" },
-          })) as FileShare;
+          })) as Share;
           const firm = inOrganization(ctx, "firm", "ada");
 
           await expect(firm.state.exists("/shared/soon/a.txt")).resolves.toBe(false);
-          await firm.call("state.acceptShare", {
+          await firm.call("shares.accept", {
             from: { kind: "org", orgId: "client" },
             shareId: share.shareId,
             name: "soon",
           });
           await expect(firm.state.readFile("/shared/soon/a.txt")).resolves.toBe("a");
-          await firm.call("state.revokeShare", { shareId: share.shareId });
+          await firm.call("shares.revoke", { shareId: share.shareId });
           await expect(firm.state.readFile("/shared/soon/a.txt")).rejects.toMatchObject({
             code: "ENOENT",
           });
@@ -248,38 +256,38 @@ test("a folder one organization shares opens read-only in the other once it acce
         then.assert("accepting the same share twice at once mounts it once", async (ctx) => {
           const client = inOrganization(ctx, "client", "ada");
           await client.state.writeFile("/workspace/twice/a.txt", "a");
-          const share = (await client.call("state.share", {
-            path: "/workspace/twice",
+          const share = (await client.call("shares.create", {
+            of: { kind: "folder", path: "/workspace/twice" },
             with: { kind: "org", orgId: "firm" },
-          })) as FileShare;
+          })) as Share;
           const accept = () =>
-            inOrganization(ctx, "firm", "ada").call("state.acceptShare", {
+            inOrganization(ctx, "firm", "ada").call("shares.accept", {
               from: { kind: "org", orgId: "client" },
               shareId: share.shareId,
               name: "twice",
             });
-          const [first, second] = (await Promise.all([accept(), accept()])) as AcceptedFileShare[];
+          const [first, second] = (await Promise.all([accept(), accept()])) as AcceptedShare[];
           expect(second).toEqual(first);
           await expect(
             inOrganization(ctx, "firm", "ada").state.readFile("/shared/twice/a.txt"),
           ).resolves.toBe("a");
           // Later steps list the firm's mounts.
-          await client.call("state.revokeShare", { shareId: share.shareId });
+          await client.call("shares.revoke", { shareId: share.shareId });
         }),
         then.assert("the firm mounts shares under names it chooses", async (ctx) => {
           const client = inOrganization(ctx, "client", "ada");
           const firm = inOrganization(ctx, "firm", "ada");
           const share = async (path: string) =>
-            (await client.call("state.share", {
-              path,
+            (await client.call("shares.create", {
+              of: { kind: "folder", path },
               with: { kind: "org", orgId: "firm" },
-            })) as FileShare;
+            })) as Share;
           const accept = async (shareId: string, name?: string) =>
-            (await firm.call("state.acceptShare", {
+            (await firm.call("shares.accept", {
               from: { kind: "org", orgId: "client" },
               shareId,
               ...(name === undefined ? {} : { name }),
-            })) as AcceptedFileShare;
+            })) as AcceptedShare;
           const invoices = await share("/workspace/documents/d1");
           const later = await share("/workspace/documents/d2");
 
@@ -336,12 +344,12 @@ test("a folder one organization shares opens read-only in the other once it acce
             const books = project("firm", ctx.vars.firmProject);
             const client = inScope(ctx, ledger, "ada");
             await client.state.writeFile("/workspace/documents/d9/receipt.txt", "Receipt 9\n");
-            const share = (await client.call("state.share", {
-              path: "/workspace/documents/d9",
+            const share = (await client.call("shares.create", {
+              of: { kind: "folder", path: "/workspace/documents/d9" },
               with: books,
-            })) as FileShare;
+            })) as Share;
             const firm = inScope(ctx, books, "ada");
-            await firm.call("state.acceptShare", {
+            await firm.call("shares.accept", {
               from: ledger,
               shareId: share.shareId,
               name: "document-d9",
@@ -354,7 +362,7 @@ test("a folder one organization shares opens read-only in the other once it acce
             await expect(
               inOrganization(ctx, "firm", "ada").state.readdir("/shared"),
             ).resolves.not.toContain("document-d9");
-            await client.call("state.revokeShare", { shareId: share.shareId });
+            await client.call("shares.revoke", { shareId: share.shareId });
             await expect(
               inScope(ctx, books, "ada").state.readFile("/shared/document-d9/receipt.txt"),
             ).rejects.toMatchObject({ code: "ENOENT" });
@@ -368,8 +376,8 @@ test("a folder one organization shares opens read-only in the other once it acce
             projectId,
           });
           await expect(
-            client.call("state.share", {
-              path: "/workspace/documents",
+            client.call("shares.create", {
+              of: { kind: "folder", path: "/workspace/documents" },
               with: firmProject(String(ctx.vars.firmProject)),
             }),
           ).resolves.toMatchObject({ with: { kind: "project", projectId: ctx.vars.firmProject } });
@@ -384,7 +392,12 @@ test("a folder one organization shares opens read-only in the other once it acce
             [{ path: "/workspace/documents", with: { kind: "org", orgId: "nobody" } }, "not_found"],
             [{ path: "/workspace/documents", with: firmProject("no-such-project") }, "not_found"],
           ] as const) {
-            await expect(client.call("state.share", input)).rejects.toMatchObject({ kind });
+            await expect(
+              client.call("shares.create", {
+                of: { kind: "folder", path: input.path },
+                with: input.with,
+              }),
+            ).rejects.toMatchObject({ kind });
           }
         }),
       ],
@@ -417,12 +430,12 @@ test("a model reads an invoice another organization shared", async () => {
           async (ctx) => {
             const client = inOrganization(ctx, "client", "ada");
             await client.state.writeFile("/workspace/documents/d1/invoice.pdf", invoicePdf);
-            const share = (await client.call("state.share", {
-              path: "/workspace/documents/d1",
+            const share = (await client.call("shares.create", {
+              of: { kind: "folder", path: "/workspace/documents/d1" },
               with: { kind: "org", orgId: "firm" },
-            })) as FileShare;
+            })) as Share;
             const firm = inOrganization(ctx, "firm", "ada");
-            await firm.call("state.acceptShare", {
+            await firm.call("shares.accept", {
               from: { kind: "org", orgId: "client" },
               shareId: share.shareId,
               name: "client-d1",
@@ -451,6 +464,165 @@ test("a model reads an invoice another organization shared", async () => {
             });
           },
         ),
+      ],
+    }),
+  );
+});
+
+const blobBuckets = blobsR2BucketsFromEnv(
+  {
+    BLOBS_R2_BUCKET: "backoffice-blobs",
+    BLOBS_R2_ACCESS_KEY_ID: "access-key-1",
+    BLOBS_R2_SECRET_ACCESS_KEY: "secret-key-1",
+    BLOBS_R2_ENDPOINT: "https://account-1.r2.cloudflarestorage.com",
+    DOCS_PUBLIC_BASE_URL: "https://backoffice.example/",
+  },
+  "local",
+);
+assert(blobBuckets);
+
+/** Stores `bytes` as one of the scope's blobs, as a sandbox's `curl -T` would: through storage. */
+async function storeBlob(
+  r2: FakeR2,
+  scope: ReturnType<typeof inScope>,
+  key: string,
+  bytes: Uint8Array<ArrayBuffer>,
+) {
+  const upload = (await scope.call("blobs.createUpload", {
+    key,
+    contentType: "application/pdf",
+  })) as { uploadId: string; url: string; headers: Record<string, string> };
+  const put = await requestFromOutside(r2, upload.url, {
+    method: "PUT",
+    headers: upload.headers,
+    body: bytes,
+  });
+  assert(put.ok, `PUT failed with ${put.status}`);
+  await scope.call("blobs.completeUpload", { uploadId: upload.uploadId });
+}
+
+test("blobs one organization shares read under /shared in the other once it accepts, until revoked", async () => {
+  const r2 = createFakeR2(blobBuckets);
+  const scan = new TextEncoder().encode("%PDF-1.7 the scanned invoice");
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: {
+        ...scenarioObjects,
+        BLOBS: (input) =>
+          new BlobsObject({ ...input, storage: { buckets: blobBuckets, fetch: r2.fetch } }),
+      },
+      name: "Organizations share blobs",
+      setup: ({ given }) => [
+        given.organization.exists({ id: "client", name: "Client", ownerUserId: "ada" }),
+        given.organization.exists({ id: "firm", name: "Firm", ownerUserId: "ada" }),
+        given.organization.exists({ id: "other-firm", name: "Other firm", ownerUserId: "bob" }),
+      ],
+      steps: ({ then }) => [
+        then.assert("the firm reads the shared blobs and nothing else", async (ctx) => {
+          const client = inOrganization(ctx, "client", "ada");
+          await storeBlob(r2, client, "documents/d1/scan.pdf", scan);
+          await storeBlob(r2, client, "documents/d1/pages/2.pdf", scan);
+          await storeBlob(r2, client, "documents/d2/scan.pdf", scan);
+
+          const share = (await client.call("shares.create", {
+            of: { kind: "blobs", prefix: "documents/d1" },
+            with: { kind: "org", orgId: "firm" },
+          })) as Share;
+          expect(share.of).toEqual({ kind: "blobs", prefix: "documents/d1/" });
+
+          // Until the firm accepts, the share is not among its blobs.
+          const firm = inOrganization(ctx, "firm", "ada");
+          await expect(
+            firm.call("blobs.get", { key: `/shared/${share.shareId}/scan.pdf` }),
+          ).resolves.toBeNull();
+          await expect(
+            inOrganization(ctx, "other-firm", "bob").call("shares.accept", {
+              from: { kind: "org", orgId: "client" },
+              shareId: share.shareId,
+            }),
+          ).rejects.toMatchObject({ kind: "not_found" });
+
+          await expect(
+            firm.call("shares.accept", {
+              from: { kind: "org", orgId: "client" },
+              shareId: share.shareId,
+              name: "client-d1",
+            }),
+          ).resolves.toMatchObject({
+            of: { kind: "blobs", prefix: "documents/d1/" },
+            path: "/shared/client-d1/",
+          });
+
+          await expect(
+            firm.call("blobs.get", { key: "/shared/client-d1/scan.pdf" }),
+          ).resolves.toMatchObject({ key: "/shared/client-d1/scan.pdf", sizeBytes: scan.length });
+          await expect(
+            firm.call("blobs.list", { prefix: "/shared/client-d1/" }),
+          ).resolves.toMatchObject({
+            blobs: [
+              { key: "/shared/client-d1/pages/2.pdf" },
+              { key: "/shared/client-d1/scan.pdf" },
+            ],
+            cursor: null,
+          });
+          const range = (await firm.call("blobs.read", {
+            key: "/shared/client-d1/scan.pdf",
+            offset: 0,
+            length: scan.length,
+          })) as { content: Uint8Array };
+          expect(new Uint8Array(range.content)).toEqual(scan);
+          const download = (await firm.call("blobs.createDownloadUrl", {
+            key: "/shared/client-d1/scan.pdf",
+          })) as { url: string };
+          const downloaded = await requestFromOutside(r2, download.url);
+          expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(scan);
+
+          // The share's prefix is all it opens, and only for reading.
+          await expect(
+            firm.call("blobs.get", { key: "/shared/client-d1/../d2/scan.pdf" }),
+          ).rejects.toThrow();
+          await expect(firm.call("blobs.list", {})).resolves.toEqual({ blobs: [], cursor: null });
+          await expect(
+            firm.call("blobs.createUpload", {
+              key: "/shared/client-d1/planted.pdf",
+              contentType: "application/pdf",
+            }),
+          ).rejects.toMatchObject({ kind: "forbidden" });
+          await expect(
+            firm.call("blobs.delete", { key: "/shared/client-d1/scan.pdf" }),
+          ).rejects.toMatchObject({ kind: "forbidden" });
+          // Blobs are not files: the share is not among the firm's mounted folders.
+          await expect(firm.state.readdir("/shared")).resolves.toEqual([]);
+
+          await client.call("shares.revoke", { shareId: share.shareId });
+          await expect(
+            firm.call("blobs.get", { key: "/shared/client-d1/scan.pdf" }),
+          ).resolves.toBeNull();
+          await expect(
+            firm.call("blobs.read", { key: "/shared/client-d1/scan.pdf", offset: 0, length: 1 }),
+          ).rejects.toMatchObject({ kind: "not_found" });
+          await expect(firm.call("blobs.list", { prefix: "/shared/client-d1/" })).resolves.toEqual({
+            blobs: [],
+            cursor: null,
+          });
+        }),
+        then.assert("a shared folder is not read as blobs", async (ctx) => {
+          const client = inOrganization(ctx, "client", "ada");
+          await storeBlob(r2, client, "notes/a.pdf", scan);
+          await client.state.writeFile("/workspace/notes/a.pdf", "a");
+          const share = (await client.call("shares.create", {
+            of: { kind: "folder", path: "/workspace/notes" },
+            with: { kind: "org", orgId: "firm" },
+          })) as Share;
+          const firm = inOrganization(ctx, "firm", "ada");
+          await firm.call("shares.accept", {
+            from: { kind: "org", orgId: "client" },
+            shareId: share.shareId,
+            name: "notes",
+          });
+          await expect(firm.state.readFile("/shared/notes/a.pdf")).resolves.toBe("a");
+          await expect(firm.call("blobs.get", { key: "/shared/notes/a.pdf" })).resolves.toBeNull();
+        }),
       ],
     }),
   );

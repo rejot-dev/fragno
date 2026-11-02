@@ -38,7 +38,7 @@ type ModelsClassifyInput = {
         path: string;
       }
     | {
-        /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */
+        /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
         blob: string;
       }
   )[];
@@ -114,7 +114,7 @@ type ModelsExtractInput = {
         path: string;
       }
     | {
-        /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */
+        /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
         blob: string;
       }
   )[];

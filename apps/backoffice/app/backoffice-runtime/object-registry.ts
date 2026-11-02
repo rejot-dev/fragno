@@ -46,7 +46,7 @@ import {
   backofficeScopePathSegment,
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { AcceptedFileShare, FileShare } from "@fragno-dev/backoffice-api/v0/state";
+import type { AcceptedShare, Share, SharedContents } from "@fragno-dev/backoffice-api/v0/shares";
 import type { CodemodeHost } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
@@ -125,7 +125,6 @@ import type {
   RevokeExternalIdentityInput,
   RevokeExternalIdentityResult,
 } from "@/fragno/automation/external-identities";
-import type { AcceptFileShareOutcome } from "@/fragno/automation/file-shares-storage-runtime";
 import type { LegacyPackageImportOutcome } from "@/fragno/automation/legacy-package-installations";
 import type {
   PackageAutomationsUninstallation,
@@ -133,6 +132,7 @@ import type {
   PackageInstallationOutcome,
 } from "@/fragno/automation/package-installations";
 import type { PackageInstallationRecord } from "@/fragno/automation/package-installations-storage-runtime";
+import type { AcceptShareOutcome } from "@/fragno/automation/shares-storage-runtime";
 import type {
   BillingEventInput,
   BillingRecordEventResult,
@@ -799,26 +799,26 @@ export type AutomationsCommands = {
   getPackageInstallationRecord(input: {
     listingId: string;
   }): Promise<PackageInstallationRecord | null>;
-  /** Folders this scope shares, by share ID; deleting one revokes it. */
-  createFileShare(input: {
+  /** Folders and blobs this scope shares, by share ID; deleting one revokes it. */
+  createShare(input: {
     shareId: string;
-    path: string;
+    of: SharedContents;
     target: BackofficeRoutableScope;
-  }): Promise<FileShare>;
-  getFileShare(input: { shareId: string }): Promise<FileShare | null>;
-  listFileShares(): Promise<FileShare[]>;
-  deleteFileShare(input: { shareId: string }): Promise<boolean>;
+  }): Promise<Share>;
+  getShare(input: { shareId: string }): Promise<Share | null>;
+  listShares(): Promise<Share[]>;
+  deleteShare(input: { shareId: string }): Promise<boolean>;
   /** Shares other scopes offered and this scope accepted, by share ID. */
-  acceptFileShare(input: {
+  acceptShare(input: {
     shareId: string;
     name: string;
     source: BackofficeRoutableScope;
-    path: string;
-  }): Promise<AcceptFileShareOutcome>;
-  /** The share this scope mounts as /shared/<name>/. */
-  getAcceptedFileShareByName(input: { name: string }): Promise<AcceptedFileShare | null>;
-  listAcceptedFileShares(): Promise<AcceptedFileShare[]>;
-  deleteAcceptedFileShare(input: { shareId: string }): Promise<boolean>;
+    of: SharedContents;
+  }): Promise<AcceptShareOutcome>;
+  /** The share this scope reads at /shared/<name>/. */
+  getAcceptedShareByName(input: { name: string }): Promise<AcceptedShare | null>;
+  listAcceptedShares(): Promise<AcceptedShare[]>;
+  deleteAcceptedShare(input: { shareId: string }): Promise<boolean>;
   /** Records a package installation and syncs the routes and event definitions it declares here. */
   applyPackageInstallation(input: PackageInstallationInput): Promise<PackageInstallationOutcome>;
   uninstallPackage(input: { listingId: string }): Promise<PackageAutomationsUninstallation | null>;

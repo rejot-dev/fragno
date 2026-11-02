@@ -16,7 +16,7 @@ type BlobsCodemodeProvider = {
    */
   get(input: BlobsGetInput): Promise<BlobsGetOutput>;
   /**
-   * List this scope's blobs by key, optionally only those whose key starts with prefix.
+   * List this scope's blobs by key, optionally only those whose key starts with prefix. A prefix starting /shared/<name>/ lists the blobs of that accepted share instead.
    * Requires `upload.read`.
    */
   list(input: BlobsListInput): Promise<BlobsListOutput>;
@@ -39,7 +39,7 @@ type BlobsCodemodeProvider = {
 declare const blobs: BlobsCodemodeProvider;
 
 type BlobsCreateUploadInput = {
-  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */
+  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
   key: string;
   contentType?: string;
 };
@@ -67,7 +67,7 @@ type BlobsCompleteUploadOutput = {
   etag: string;
 };
 type BlobsGetInput = {
-  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */
+  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
   key: string;
 };
 type BlobsGetOutput = {
@@ -93,7 +93,7 @@ type BlobsListOutput = {
   cursor: string | null;
 };
 type BlobsCreateDownloadUrlInput = {
-  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */
+  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
   key: string;
 };
 type BlobsCreateDownloadUrlOutput = {
@@ -103,7 +103,7 @@ type BlobsCreateDownloadUrlOutput = {
   expiresAt: string;
 };
 type BlobsReadInput = {
-  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */
+  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
   key: string;
   offset: number;
   length: number;
@@ -114,6 +114,6 @@ type BlobsReadOutput = {
   etag: string;
 };
 type BlobsDeleteInput = {
-  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. */
+  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
   key: string;
 };

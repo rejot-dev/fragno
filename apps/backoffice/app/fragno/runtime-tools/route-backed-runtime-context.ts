@@ -7,6 +7,7 @@ import {
   backofficeScopeContains,
   isBackofficeRoutableScope,
   backofficeWorkspaceOrganization,
+  type BackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
@@ -83,7 +84,7 @@ import { createReson8Runtime } from "@/fragno/runtime-tools/families/reson8-runt
 import { createSandboxRuntime } from "@/fragno/runtime-tools/families/sandbox-runtime";
 import { createWebRuntime } from "@/fragno/runtime-tools/families/web-runtime";
 import { createFileLinkRuntime } from "@/fragno/runtime-tools/file-links-runtime";
-import { createFileShareRuntime } from "@/fragno/runtime-tools/file-shares-runtime";
+import { createAcceptedShares, createShareRuntime } from "@/fragno/runtime-tools/shares-runtime";
 
 import type { InteractiveRuntimeToolContext } from "./bash-host";
 import { buildJavaScriptModuleFile } from "./families/javascript-build";
@@ -286,6 +287,8 @@ const createRuntimeContext = ({
 
   const formsObjects = runtime.objects.forms;
   const uploadObject = () => kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload);
+  const automationsOf = (scope: BackofficeRoutableScope) =>
+    kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations).commands;
 
   return {
     execution,
@@ -307,15 +310,14 @@ const createRuntimeContext = ({
             }),
           }
         : null,
-    fileShares:
+    shares:
       runtime.config.bindings.upload &&
       runtime.config.bindings.auth &&
       isBackofficeRoutableScope(execution.scope)
         ? {
-            runtime: createFileShareRuntime({
+            runtime: createShareRuntime({
               scope: execution.scope,
-              automationsFor: (scope) =>
-                kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations).commands,
+              automationsFor: automationsOf,
               resolveRootOwner: async (owner) =>
                 await runtime.objects.auth.singleton().commands.findRootOwnerScope(owner),
             }),
@@ -323,10 +325,16 @@ const createRuntimeContext = ({
         : null,
     blobs:
       runtime.config.bindings.blobs &&
+      isBackofficeRoutableScope(execution.scope) &&
       isBackofficeObjectAvailableInContext("BLOBS", execution.scope)
         ? {
             runtime: createBlobsRuntime({
               object: () => kernel.scoped("BLOBS", execution.scope, runtime.objects.blobs).http,
+              shares: createAcceptedShares({
+                scope: execution.scope,
+                automationsFor: automationsOf,
+              }),
+              sharingObject: (scope) => kernel.scoped("BLOBS", scope, runtime.objects.blobs).http,
             }),
           }
         : null,

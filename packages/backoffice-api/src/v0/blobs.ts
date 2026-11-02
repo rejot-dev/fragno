@@ -18,7 +18,7 @@ export const blobKeySchema = z.lazy(() =>
     .min(1)
     .max(512)
     .describe(
-      "The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'.",
+      "The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav.",
     ),
 );
 
@@ -118,7 +118,7 @@ export const blobsOperations = {
   },
   "blobs.list": {
     description:
-      "List this scope's blobs by key, optionally only those whose key starts with prefix.",
+      "List this scope's blobs by key, optionally only those whose key starts with prefix. A prefix starting /shared/<name>/ lists the blobs of that accepted share instead.",
     permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: z.lazy(() =>
       z.strictObject({
