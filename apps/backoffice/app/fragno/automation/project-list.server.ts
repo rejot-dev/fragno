@@ -25,7 +25,7 @@ export async function loadAutomationProjectList(
     workerContext.runtime.objects.automations,
   );
   try {
-    const projects: { slug: string; name: string }[] = [];
+    const projects: { id: string; slug: string; name: string }[] = [];
     let cursor: string | null = null;
     do {
       const url = new URL("/api/automations/projects", request.url);
@@ -40,7 +40,7 @@ export async function loadAutomationProjectList(
       const page = projectPageSchema.parse(await response.json());
       for (const project of page.projects) {
         if (project.archivedAt === null) {
-          projects.push({ slug: project.slug, name: project.name });
+          projects.push({ id: project.projectId, slug: project.slug, name: project.name });
         }
       }
       cursor = page.hasNextPage ? page.nextCursor : null;

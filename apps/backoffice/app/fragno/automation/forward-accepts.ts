@@ -13,7 +13,7 @@ import {
 import { evaluateAutomationEventMatcher } from "./routing";
 
 /** Names a scope by its IDs alone: where its objects are kept does not change which scope it is. */
-function scopeIdentity(scope: BackofficeContextScope): string {
+export function scopeIdentity(scope: BackofficeContextScope): string {
   return formatBackofficeScopeSegment(scope, backofficeScopeReferenceCodec);
 }
 

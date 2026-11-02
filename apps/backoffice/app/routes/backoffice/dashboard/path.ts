@@ -23,10 +23,12 @@ const SELECTION_KIND_PARAM = "selection";
 const SELECTION_ID_PARAM = "selected";
 // The loader reads the selected workflow's source; the page derives it from the selection.
 export const WORKFLOW_SCRIPT_PARAM = "workflowScript";
+// Which view of the Map shows: its graph, or an organization's universe, which the loader reads.
+const MAP_VIEW_PARAM = "view";
 
 /**
  * Selecting in the orchestration graph only changes the URL; a route that shows it loads again
- * once the selected workflow's source does.
+ * once the selected workflow's source does, or the Map switches between its graph and universe.
  */
 export function shouldRevalidateOrchestration({
   currentUrl,
@@ -37,9 +39,8 @@ export function shouldRevalidateOrchestration({
   if (formMethod || currentUrl.pathname !== nextUrl.pathname) {
     return defaultShouldRevalidate;
   }
-  return (
-    currentUrl.searchParams.get(WORKFLOW_SCRIPT_PARAM) !==
-    nextUrl.searchParams.get(WORKFLOW_SCRIPT_PARAM)
+  return [WORKFLOW_SCRIPT_PARAM, MAP_VIEW_PARAM].some(
+    (param) => currentUrl.searchParams.get(param) !== nextUrl.searchParams.get(param),
   );
 }
 
@@ -133,6 +134,19 @@ export function dashboardOpenedRun(searchParams: URLSearchParams): WorkflowRunRe
 
 export function dashboardMapPath(scope: BackofficeRouteScope): string {
   return `${dashboardPath(scope)}/map`;
+}
+
+/** The Map's views; only an organization's Map has a universe. */
+export type DashboardMapView = "graph" | "universe";
+
+export function dashboardMapViewPath(scope: BackofficeRouteScope, view: DashboardMapView): string {
+  return view === "universe"
+    ? `${dashboardMapPath(scope)}?${MAP_VIEW_PARAM}=universe`
+    : dashboardMapPath(scope);
+}
+
+export function dashboardMapView(searchParams: URLSearchParams): DashboardMapView {
+  return searchParams.get(MAP_VIEW_PARAM) === "universe" ? "universe" : "graph";
 }
 
 /** The Map with a route, event, source, or target selected in its graph. */

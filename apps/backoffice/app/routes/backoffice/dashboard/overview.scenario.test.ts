@@ -1,6 +1,7 @@
 import { afterAll, assert, beforeAll, describe, test, vi } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 import {
@@ -10,6 +11,7 @@ import {
 } from "@fragno-private/backoffice-ui/pages/definition";
 import { pageRows, pageValue, type PageData } from "@fragno-private/backoffice-ui/pages/rows";
 import { BackofficeUiStoreRenderer } from "@fragno-private/backoffice-ui/renderer";
+import { layoutUniverse } from "@fragno-private/design-system/orchestration/orchestration-universe-model";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
@@ -61,6 +63,7 @@ import { piAgentListings, piAgentQueueStatus } from "../agents/agent-activity";
 import type { AutomationWorkflowRun } from "../automations/script-view/workflow-run-presentation";
 import { projectEventTraceList, type EventTraceSummary } from "./event-traces";
 import { orchestrationInletDetail, projectOrchestrationGraph } from "./orchestration-graph";
+import { projectOrchestrationUniverse } from "./orchestration-universe";
 import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -528,31 +531,40 @@ function nextMorning(now: number): string {
   return morning.toISOString();
 }
 
-/** The Map's orchestration graph, as its tab reads it from the replica. */
-async function readMap(ctx: BackofficeScenarioContext) {
-  const replica = ctx.lofi.automations.forOrg(orgId);
+/** A scope's orchestration graph as the Map reads it from the scope's replica, and its inputs. */
+async function readScopeGraph(
+  ctx: BackofficeScenarioContext,
+  graphScope: BackofficeContextScope,
+  scopeLabel: string,
+) {
+  const replica = ctx.lofi.automations.forScope(graphScope);
   await replica.drain();
   const now = ctx.runtime.now();
   const since = dashboardBucketStarts(now)[0] ?? now;
-  const [{ routes, recentEvents, forwardAccepts, recentForwards }, { activeWorkflows }] =
-    await Promise.all([
-      readAutomationReplica(replica.replica, "orchestrationGraphInputs", {
-        since,
-        ownerScope: scope,
-      }),
-      readAutomationReplica(replica.replica, "orchestrationRecords", undefined),
-    ]);
+  const [inputs, { activeWorkflows }] = await Promise.all([
+    readAutomationReplica(replica.replica, "orchestrationGraphInputs", {
+      since,
+      ownerScope: graphScope,
+    }),
+    readAutomationReplica(replica.replica, "orchestrationRecords", undefined),
+  ]);
   // Catalogs are left out so the graph holds only what this scope's data puts there.
   const graph = projectOrchestrationGraph({
-    scopeLabel: "Ada Labs",
+    scopeLabel,
     sources: [],
     eventDefinitions: [],
-    routes,
     activeWorkflows,
-    recentEvents,
-    forwardAccepts,
-    recentForwards,
+    ...inputs,
   });
+  return { graph, inputs, since, replica: replica.replica };
+}
+
+/** The Map's orchestration graph, as its tab reads it from the replica. */
+async function readMap(ctx: BackofficeScenarioContext) {
+  const {
+    graph,
+    inputs: { forwardAccepts, recentForwards },
+  } = await readScopeGraph(ctx, scope, "Ada Labs");
   return {
     routes: graph.routes.map(
       ({ eventId, priority, label, action }) =>
@@ -570,6 +582,77 @@ async function readMap(ctx: BackofficeScenarioContext) {
         ({ source, eventType, from }) => `${source}.${eventType} by ${from.routeName}`,
       ),
     })),
+  };
+}
+
+/**
+ * The organization's universe, as the person `viewer` sees it on its Map: a planet per scope, with
+ * the routes on it, and the forwards between planets. Each project's planet, and the person's own,
+ * is read from its replica if `read`.
+ */
+async function readUniverse(
+  ctx: BackofficeScenarioContext,
+  {
+    projects,
+    viewer,
+    read,
+  }: {
+    projects: readonly { scope: BackofficeContextScope; label: string }[];
+    viewer: { scope: BackofficeContextScope; label: string };
+    read: boolean;
+  },
+) {
+  const readScope = async (scopeToRead: { scope: BackofficeContextScope; label: string }) => {
+    if (!read) {
+      return { ...scopeToRead, read: null };
+    }
+    const { graph, inputs, replica, since } = await readScopeGraph(
+      ctx,
+      scopeToRead.scope,
+      scopeToRead.label,
+    );
+    return {
+      ...scopeToRead,
+      read: {
+        graph,
+        routes: inputs.routes,
+        deliveries: await readAutomationReplica(replica, "recentForwardDeliveries", { since }),
+      },
+    };
+  };
+  const organization = await readScopeGraph(ctx, scope, "Ada Labs");
+  const universe = projectOrchestrationUniverse({
+    organization: {
+      scope,
+      graph: organization.graph,
+      routes: organization.inputs.routes,
+      deliveries: await readAutomationReplica(organization.replica, "recentForwardDeliveries", {
+        since: organization.since,
+      }),
+    },
+    projects: await Promise.all(projects.map(readScope)),
+    viewer: await readScope(viewer),
+    recentForwards: organization.inputs.recentForwards,
+  });
+  // Forwards carried at the same moment have no order between them, so each list is sorted.
+  const sorted = (lines: string[]) => [...lines].sort();
+  return {
+    planets: universe.scopes.map(
+      ({ id, graph }) =>
+        `${id} ${graph.scopeLabel}: ${sorted(graph.routes.map(({ label }) => label)).join(", ") || "no routes"}`,
+    ),
+    forwards: sorted(
+      universe.forwards.map(
+        ({ routeId, fromScopeId, toScopeId }) => `${fromScopeId} → ${toScopeId} by ${routeId}`,
+      ),
+    ),
+    // What the universe draws: one forward per pair of planets and event carried between them.
+    drawn: sorted(
+      layoutUniverse(universe).forwards.map(
+        ({ fromScopeId, toScopeId, eventId }) =>
+          `${fromScopeId} → ${toScopeId} carrying ${eventId}`,
+      ),
+    ),
   };
 }
 
@@ -969,6 +1052,179 @@ describe("dashboard", () => {
               ],
             });
           }),
+        ],
+      }),
+    );
+  });
+
+  test("the universe joins the organization, its projects, and the members who forward in", async () => {
+    const personal = { kind: "user", userId: "user-1", jurisdiction: null } as const;
+    const system = { kind: "system" } as const;
+    const books = (projectId: unknown) =>
+      ({ kind: "project", owner: scope, projectId: String(projectId) }) as const;
+    const forwardRoute = (id: string, name: string, source: string, targetScope: string) =>
+      `router.create({
+        id: "${id}",
+        name: "${name}",
+        trigger: { kind: "event", source: "${source}", eventType: "received" },
+        action: { kind: "forward_event", targetScope: ${targetScope} },
+      })`;
+    const run = (
+      ctx: BackofficeScenarioContext,
+      runScope: BackofficeContextScope,
+      ...calls: string[]
+    ) =>
+      ctx.runCodemode({
+        scope: runScope,
+        code: `async () => { ${calls.map((call) => `await ${call};`).join(" ")} }`,
+      });
+    const fire = (source: string, payload: string) =>
+      `events.fire({ source: "${source}", eventType: "received", payload: ${payload} })`;
+    const toOrganization = `{ kind: "org", orgIdTemplate: "${orgId}" }`;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "an organization forwards to its project while a member and System forward to it",
+        setup: ({ given }) => [
+          given.organization.exists({ id: orgId, name: "Ada Labs", ownerUserId: "owner-1" }),
+          given.auth.user({ id: "user-1" }),
+          given.auth.member({ orgId, userId: "user-1" }),
+          given.codemode.run({
+            scope: personal,
+            code: `async () => {
+              await ${forwardRoute("balances-to-org", "Balances to Ada Labs", "bank", toOrganization)};
+              await router.create({
+                id: "ledger-to-org",
+                name: "Ledger to Ada Labs",
+                trigger: { kind: "event", source: "ledger", eventType: "*" },
+                action: { kind: "forward_event", targetScope: ${toOrganization} },
+              });
+              await router.create({
+                id: "tag-large-balances",
+                name: "Tag large balances",
+                trigger: { kind: "event", source: "bank", eventType: "received" },
+                action: {
+                  kind: "reclassify_event",
+                  source: "bank",
+                  eventType: "large",
+                  payload: { kind: "projection", fields: {} },
+                },
+              });
+            }`,
+          }),
+          given.codemode.run({
+            scope: system,
+            code: `async () => await ${forwardRoute("notices-to-org", "Notices to Ada Labs", "ops", toOrganization)}`,
+          }),
+          given.codemode.run({
+            scope,
+            code: `async () => await router.acceptsCreate({
+              id: "member-balances",
+              name: "Member balances",
+              from: { kind: "members" },
+              matcher: null,
+            })`,
+          }),
+        ],
+        steps: ({ when, then }) => [
+          when.project.create({
+            owner: scope,
+            name: "Books",
+            slug: "books",
+            createdByUserId: "owner-1",
+            captureIdAs: "books",
+          }),
+          then.assert("the organization routes leads to Books, naming it or not", async (ctx) => {
+            const project = `{ kind: "project", owner: ${toOrganization}, projectIdTemplate: "${String(ctx.vars.books)}" }`;
+            const anyProject = `{ kind: "project", owner: ${toOrganization}, projectIdTemplate: "\${event.payload.projectId}" }`;
+            await run(
+              ctx,
+              scope,
+              forwardRoute("leads-to-books", "Leads to Books", "crm", project),
+              forwardRoute(
+                "documents-to-project",
+                "Documents to their project",
+                "inbox",
+                anyProject,
+              ),
+            );
+            await run(
+              ctx,
+              books(ctx.vars.books),
+              forwardRoute("receipts-to-org", "Receipts to Ada Labs", "shop", toOrganization),
+            );
+          }),
+          then.assert("a member, System, and the organization forward", async (ctx) => {
+            await run(
+              ctx,
+              personal,
+              fire("bank", "{}"),
+              `events.fire({ source: "ledger", eventType: "deposit.received", payload: {} })`,
+              `events.fire({ source: "ledger", eventType: "balance.updated", payload: {} })`,
+            );
+            await run(ctx, system, fire("ops", "{}"));
+            await run(ctx, scope, fire("inbox", `{ projectId: "${String(ctx.vars.books)}" }`));
+            await ctx.drain();
+          }),
+          then.assert(
+            "the person looking and Books are planets beside the organization, and System is not",
+            async (ctx) => {
+              const booksId = `project:org:${scope.orgId}:${String(ctx.vars.books)}`;
+              const projects = [{ scope: books(ctx.vars.books), label: "Books" }];
+              const organizationDrawn = [
+                `org:org-1 → ${booksId} carrying crm:received`,
+                `org:org-1 → ${booksId} carrying inbox:received`,
+              ];
+              // Until Books is read, its planet is its name, which the organization's forwards
+              // still reach; until the person looking is read, they show as the organization
+              // knows them: their ledger route once for each type it forwarded.
+              const viewer = { scope: personal, label: "Ada" };
+              assert.deepEqual(await readUniverse(ctx, { projects, viewer, read: false }), {
+                planets: [
+                  "org:org-1 Ada Labs: Documents to their project, Leads to Books",
+                  `${booksId} Books: no routes`,
+                  "user:user-1 Ada: Balances to Ada Labs, Ledger to Ada Labs, Ledger to Ada Labs",
+                ],
+                forwards: [
+                  `org:org-1 → ${booksId} by documents-to-project`,
+                  `org:org-1 → ${booksId} by leads-to-books`,
+                  "user:user-1 → org:org-1 by balances-to-org|bank:received",
+                  "user:user-1 → org:org-1 by ledger-to-org|ledger:balance.updated",
+                  "user:user-1 → org:org-1 by ledger-to-org|ledger:deposit.received",
+                ],
+                drawn: [
+                  ...organizationDrawn,
+                  "user:user-1 → org:org-1 carrying bank:received",
+                  "user:user-1 → org:org-1 carrying ledger:balance.updated",
+                  "user:user-1 → org:org-1 carrying ledger:deposit.received",
+                ],
+              });
+              // Read, Books adds the forward its route names, and the person looking sees all of
+              // their own routes, which the organization never does, the ledger route on its
+              // wildcard event.
+              assert.deepEqual(await readUniverse(ctx, { projects, viewer, read: true }), {
+                planets: [
+                  "org:org-1 Ada Labs: Documents to their project, Leads to Books",
+                  `${booksId} Books: Receipts to Ada Labs`,
+                  "user:user-1 Ada: Balances to Ada Labs, Ledger to Ada Labs, Tag large balances",
+                ],
+                forwards: [
+                  `org:org-1 → ${booksId} by documents-to-project`,
+                  `org:org-1 → ${booksId} by leads-to-books`,
+                  `${booksId} → org:org-1 by receipts-to-org`,
+                  "user:user-1 → org:org-1 by balances-to-org",
+                  "user:user-1 → org:org-1 by ledger-to-org",
+                ],
+                drawn: [
+                  ...organizationDrawn,
+                  `${booksId} → org:org-1 carrying shop:received`,
+                  "user:user-1 → org:org-1 carrying bank:received",
+                  "user:user-1 → org:org-1 carrying ledger:*",
+                ],
+              });
+            },
+          ),
         ],
       }),
     );
