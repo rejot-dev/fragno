@@ -21,6 +21,17 @@ function isStoredReducedMotionChoice(value: unknown): value is StoredReducedMoti
   return value === "reduce" || value === "no-preference";
 }
 
+/**
+ * Whether motion is reduced: as chosen in the appearance menu, or as the system prefers until a
+ * choice is made. Animations run from script ask this, as CSS asks `motion-reduce:`.
+ */
+export function prefersReducedMotion(): boolean {
+  const choice = document.documentElement.dataset.reducedMotion;
+  return isStoredReducedMotionChoice(choice)
+    ? choice === "reduce"
+    : window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function applyReducedMotion(enabled: boolean) {
   document.documentElement.dataset.reducedMotion = enabled ? "reduce" : "no-preference";
 }

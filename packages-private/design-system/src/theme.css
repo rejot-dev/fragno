@@ -7,6 +7,32 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Motion follows the appearance menu's choice, which sets data-reduced-motion on the root, and the
+   system's preference until one is made, like the reduced-motion rule in components.css. */
+@custom-variant motion-reduce {
+  :root[data-reduced-motion="reduce"] & {
+    @slot;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-reduced-motion]) & {
+      @slot;
+    }
+  }
+}
+
+@custom-variant motion-safe {
+  :root[data-reduced-motion="no-preference"] & {
+    @slot;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    :root:not([data-reduced-motion]) & {
+      @slot;
+    }
+  }
+}
+
 /* Self-hosted so consumers can preload the latin file via brand-font.ts and the brand font is
    there for the first paint. The ranges mirror the fontsource subsets. The urls are relative
    because Tailwind inlines this file into the consumer's stylesheet and only rebases relative
