@@ -264,13 +264,10 @@ export function OrchestrationLayeredGraph({
       return {
         key: `${node.inlet.id}:${row.event.id}`,
         inlet: node.inlet,
-        eventId: row.event.id,
-        rowY,
         path: `M ${INLET_WIDTH} ${portY} C ${INLET_WIDTH + run} ${portY} ${sourceLeft - run} ${rowY} ${sourceLeft - 5} ${rowY}`,
       };
     });
   });
-  const inletFedRows = new Map(inletEdges.map((edge) => [edge.eventId, edge.rowY]));
 
   function onwardPath(route: OrchestrationRoute, y: number): string | null {
     if (route.action.kind === "reclassify_event") {
@@ -448,16 +445,6 @@ export function OrchestrationLayeredGraph({
                 />
               );
             })}
-            {[...inletFedRows].map(([eventId, y]) => (
-              <circle
-                key={eventId}
-                cx={eventLeft}
-                cy={y}
-                r={3}
-                opacity={opacityOf({ kind: "event", id: eventId })}
-                className="fill-violet-600/70 transition-opacity duration-200 dark:fill-violet-300/70"
-              />
-            ))}
             {lanes.map(({ route, y }) => {
               const onward = onwardPath(route, y);
               const dash = route.enabled ? ACTION_EDGE_DASH[route.action.kind] : DISABLED_EDGE_DASH;
