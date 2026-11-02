@@ -17,7 +17,6 @@ import type { WorkflowFileRouting } from "@/components/backoffice/files-explorer
 import type { FilesExplorerSearchGroup } from "@/components/backoffice/files-explorer/view";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { createUploadFileTree } from "@/file-collection/create-upload-file-tree";
-import { resolveSynchronizedFileTree } from "@/file-collection/resolve-synchronized-file-tree";
 import { getAutomationReplica, useAutomationRead } from "@/fragno/automation/lofi/replica";
 import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
 import { LofiReplicaGate, useLofiReplicaStatus } from "@/fragno/lofi/replica-gate";
@@ -149,14 +148,8 @@ function SynchronizedFilesExplorer({
     () => (files.status === "ready" ? createUploadFileTree(files.data) : null),
     [files],
   );
-  const synchronizedTree = resolveSynchronizedFileTree(
-    synchronizedSource.tree,
-    files.status === "error"
-      ? { status: "error", error: files.message }
-      : localTree
-        ? { status: "ready", tree: localTree }
-        : { status: "loading" },
-  );
+  // The server sends synchronized sources without a tree; only the replica lists their files.
+  const synchronizedTree = localTree ?? synchronizedSource.tree;
   const effectiveSources = useMemo<readonly FilesExplorerSource[]>(
     () =>
       sources.map((source) =>
@@ -172,19 +165,23 @@ function SynchronizedFilesExplorer({
       : status.error !== null
         ? `Workspace local synchronization failed and is retrying: ${status.error}`
         : null;
+  const canonicalSelectedPath =
+    localTree && selectedPath
+      ? canonicalTreePath(localTree, synchronizedSource.rootPath, selectedPath)
+      : selectedPath;
   const selectedPathError =
     localTree &&
-    selectedPath &&
-    isPathWithinRoot(selectedPath, synchronizedSource.rootPath) &&
-    !fileTreeContainsPath(localTree, synchronizedSource.rootPath, selectedPath)
-      ? `Path '${selectedPath}' could not be found.`
+    canonicalSelectedPath &&
+    isPathWithinRoot(canonicalSelectedPath, synchronizedSource.rootPath) &&
+    !fileTreeContainsPath(localTree, synchronizedSource.rootPath, canonicalSelectedPath)
+      ? `Path '${canonicalSelectedPath}' could not be found.`
       : null;
 
   return (
     <FilesExplorerRouteView
       {...props}
       sources={effectiveSources}
-      selectedPath={selectedPath}
+      selectedPath={canonicalSelectedPath}
       loadError={appendErrors(loadError, synchronizationError, selectedPathError)}
     />
   );
@@ -237,6 +234,18 @@ function hasUploadSynchronization(
   source: FilesExplorerSourceSnapshot,
 ): source is SynchronizedFilesExplorerSource {
   return source.synchronization?.kind === "upload";
+}
+
+/** Explorer URLs drop a directory's trailing slash, so only the tree can restore it. */
+function canonicalTreePath(tree: FilesExplorerSource["tree"], rootPath: string, path: string) {
+  if (!path.startsWith(`${rootPath}/`) || path.endsWith("/")) {
+    return path;
+  }
+
+  const relativePath = path.slice(rootPath.length + 1);
+  return tree.entries.some((entry) => entry.kind === "directory" && entry.path === relativePath)
+    ? `${path}/`
+    : path;
 }
 
 function fileTreeContainsPath(

@@ -97,7 +97,11 @@ export async function loadFilesExplorerData({
   return {
     sources: orderExplorerSources(synchronizedSources.sources),
     selectedPath,
-    selectedContent: selection ? await readSelectedTextContent(selection) : null,
+    selectedContent: selection
+      ? await readSelectedTextContent(selection)
+      : selectedPath
+        ? await readSynchronizedTextContent(loadedCollections.collections, selectedPath)
+        : null,
     loadError,
     searchQuery,
     searchGroups: search.groups,
@@ -153,13 +157,18 @@ async function loadCollectionSources(registrations: readonly FilesOverviewCollec
   errors: string[];
 }> {
   const results = await Promise.allSettled(
-    registrations.map(async (registration): Promise<LoadedCollection> => {
-      const tree = await registration.collection.getTree();
-      return {
+    registrations.map(
+      async (registration): Promise<LoadedCollection> => ({
         registration,
-        source: createExplorerSource(registration, tree),
-      };
-    }),
+        source: createExplorerSource(
+          registration,
+          // The browser builds synchronized trees from its replica, which lists every file.
+          registration.clientSynchronization
+            ? { entries: [] }
+            : await registration.collection.getTree(),
+        ),
+      }),
+    ),
   );
   const collections: LoadedCollection[] = [];
   const errors: string[] = [];
@@ -174,13 +183,6 @@ async function loadCollectionSources(registrations: readonly FilesOverviewCollec
     const title = registration?.rootTitle ?? "File collection";
     const message = result.reason instanceof Error ? result.reason.message : "Unknown error.";
     errors.push(`${title} could not be loaded: ${message}`);
-
-    if (registration?.clientSynchronization) {
-      collections.push({
-        registration,
-        source: createExplorerSource(registration, { entries: [] }),
-      });
-    }
   });
 
   return { collections, errors };
@@ -310,7 +312,7 @@ async function readSelectedTextContent(
 ): Promise<FilesExplorerSelectedContent | null> {
   if (
     selection.entry?.kind !== "file" ||
-    !isTextFile(selection.entry) ||
+    !isTextFile(selection.entry.path, selection.entry.contentType) ||
     (selection.entry.sizeBytes ?? 0) > FILES_EXPLORER_MAX_TEXT_PREVIEW_BYTES
   ) {
     return null;
@@ -327,19 +329,51 @@ async function readSelectedTextContent(
   };
 }
 
-function isTextFile(entry: Extract<FileTreeEntry, { kind: "file" }>): boolean {
-  if (entry.contentType?.startsWith("text/")) {
+/** Synchronized collections have no server tree, so the file's response decides its preview. */
+async function readSynchronizedTextContent(
+  collections: readonly LoadedCollection[],
+  selectedPath: string,
+): Promise<FilesExplorerSelectedContent | null> {
+  const collection = collections.find(
+    ({ registration, source }) =>
+      registration.clientSynchronization && selectedPath.startsWith(`${source.rootPath}/`),
+  );
+  if (!collection || selectedPath.endsWith("/")) {
+    return null;
+  }
+
+  const content = await collection.registration.collection.getFile(
+    selectedPath.slice(collection.source.rootPath.length + 1),
+  );
+  if (!content) {
+    return null;
+  }
+  if (
+    !isTextFile(selectedPath, content.contentType) ||
+    content.sizeBytes === null ||
+    content.sizeBytes > FILES_EXPLORER_MAX_TEXT_PREVIEW_BYTES
+  ) {
+    await content.body.cancel();
+    return null;
+  }
+
+  return {
+    path: selectedPath,
+    text: await new Response(content.body).text(),
+  };
+}
+
+function isTextFile(path: string, contentType: string | null): boolean {
+  if (contentType?.startsWith("text/")) {
     return true;
   }
   if (
-    entry.contentType &&
-    /(?:json|javascript|typescript|xml|yaml|toml|shellscript)/iu.test(entry.contentType)
+    contentType &&
+    /(?:json|javascript|typescript|xml|yaml|toml|shellscript)/iu.test(contentType)
   ) {
     return true;
   }
-  return /\.(?:md|mdx|txt|log|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|toml|ini|sh)$/iu.test(
-    entry.path,
-  );
+  return /\.(?:md|mdx|txt|log|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|toml|ini|sh)$/iu.test(path);
 }
 
 function orderExplorerSources(

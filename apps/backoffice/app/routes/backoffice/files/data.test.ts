@@ -204,6 +204,40 @@ describe("files explorer route data", () => {
     expect(getFile).not.toHaveBeenCalled();
   });
 
+  test("reads synchronized files without listing their collection", async () => {
+    const workspaceFiles = createStaticFileCollection({
+      "reports/q3.csv": { content: "month,total", contentType: "text/csv" },
+    });
+    createFilesOverviewCollectionsMock.mockResolvedValue([
+      {
+        rootPath: "/workspace",
+        rootTitle: "Workspace",
+        collection: {
+          ...workspaceFiles,
+          async getTree() {
+            throw new Error("Upload file listing exceeded its 1-page retrieval limit.");
+          },
+        },
+        clientSynchronization: { kind: "upload" },
+      },
+    ]);
+
+    const result = await loadFilesExplorerData({
+      request: new Request("https://backoffice.test/files/acme-org/workspace/reports/q3.csv"),
+      context: mockContext,
+      scope: { kind: "org", orgId: "acme-org", jurisdiction: null },
+      requestedPath: "/workspace/reports/q3.csv",
+    });
+
+    expect(result.sources.map((source) => source.tree)).toEqual([{ entries: [] }]);
+    assert(result.selectedPath === "/workspace/reports/q3.csv");
+    expect(result.selectedContent).toEqual({
+      path: "/workspace/reports/q3.csv",
+      text: "month,total",
+    });
+    assert(result.loadError === null);
+  });
+
   test("keeps available collections when another tree fails to load", async () => {
     createFilesOverviewCollectionsMock.mockResolvedValue([
       {
@@ -216,7 +250,7 @@ describe("files explorer route data", () => {
         rootTitle: "Workspace",
         collection: {
           async getTree() {
-            throw new Error("Upload file tree exceeded its 1-page retrieval limit.");
+            throw new Error("Collection is unavailable.");
           },
           async getFile() {
             return null;
@@ -232,9 +266,6 @@ describe("files explorer route data", () => {
     });
 
     expect(result.sources.map((source) => source.rootPath)).toEqual(["/static"]);
-    assert(
-      result.loadError ===
-        "Workspace could not be loaded: Upload file tree exceeded its 1-page retrieval limit.",
-    );
+    assert(result.loadError === "Workspace could not be loaded: Collection is unavailable.");
   });
 });
