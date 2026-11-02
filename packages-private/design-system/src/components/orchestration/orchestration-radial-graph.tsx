@@ -1,6 +1,7 @@
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { cn } from "../../cn";
+import { prefersReducedMotion } from "../controls/appearance-preferences";
 import {
   itemKey,
   ORCHESTRATION_TARGET_KIND_LABEL,
@@ -96,7 +97,7 @@ function useAnimatedLayout(target: OrchestrationRadialLayout): OrchestrationRadi
         frame = requestAnimationFrame(tick);
       }
     };
-    if (from !== target && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (from !== target && prefersReducedMotion()) {
       shownRef.current = target;
       setShown(target);
     } else if (from !== target) {
