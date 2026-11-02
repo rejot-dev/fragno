@@ -134,9 +134,10 @@ Backoffice signs a request carrying only the event's ID and sends it to the endp
 installation approved. The app then reads the event with `events.get`, under its own grants, in the
 route's scope. The route carries no authority; the installation needs `events.read`, and must reach
 the route's scope. An app may be notified of one event more than once, and events the app caused,
-even reclassified or forwarded, are never sent back to it. An installed app can create these routes
-for itself with `router.create` when it holds `router.modify`; it may change only those, and they
-may only notify it. Members may turn its routes on or off, or delete them, but not change them.
+even reclassified or forwarded, or the failures of routes acting on them, are never sent back to it.
+An installed app can create these routes for itself with `router.create` when it holds
+`router.modify`; it may change only those, and they may only notify it. Members may turn its routes
+on or off, or delete them, but not change them.
 
 ## Catalog versus delivery
 
@@ -225,7 +226,9 @@ missing evidence.
 ## Act when a route fails
 
 Each time a route fails for good, the scope records an `automations` `route.failed` event, caused by
-that route, so it appears under the route in the event's trace. Its payload is
+that route, so it appears under the route in the event's trace. Its actors keep the agents and
+installed apps the failed event acted through, as delegates, so routes acting on the failure may do
+no more than they could. Its payload is
 `{ route: { id, name }, event: { id, source, eventType }, error, failedAttempts }`. Route it like
 any event to be told about failures, for example with `notify_agent`, or match `$.payload.route.id`
 to watch one route. A retried route that fails again records another. A route that fails while

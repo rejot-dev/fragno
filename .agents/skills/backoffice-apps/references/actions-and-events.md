@@ -67,8 +67,9 @@ with `events.get` as its installation, in that scope. Request `events.read` to b
    member retries it with `events.routes.retry`. `events.get` returns `null` for an event that is
    not stored: answer 2xx, as nothing will change.
 
-Events the app causes, even reclassified or forwarded, are never sent back to it. An uninstalled
-app, or one without `events.read`, is skipped rather than failed.
+Events the app causes, even reclassified or forwarded, and the failures of routes acting on them,
+are never sent back to it. An uninstalled app, or one without `events.read`, is skipped rather than
+failed.
 
 **Complete when:** an event matching the app's route reaches its endpoint once accepted, the app
 reads it in the signed scope, and a repeated notification does not repeat its effect.

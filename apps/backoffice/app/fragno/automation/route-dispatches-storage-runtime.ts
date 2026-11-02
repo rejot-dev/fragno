@@ -10,6 +10,8 @@ import {
 
 import type { Cursor, DatabaseServiceContext, TxResult } from "@fragno-dev/db";
 
+import { installedAppAsDelegate } from "@/fragno/app-installations/authority";
+
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
 import type { AutomationHookUnitOfWork } from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
@@ -177,12 +179,16 @@ export function buildRouteFailedEvent({
       error,
       failedAttempts,
     },
-    // Keeps the delegates the failed event acted through, so an agent is not told of failures
-    // its own turns caused.
+    // Keeps whom the failed event acted through, so neither an agent nor an installed app is told
+    // of failures it caused. An app acting as itself was the event's principal; as a delegate it
+    // only narrows what routes acting on the failure may do, as when it acts for a user.
     actors: {
       initiator: AUTOMATION_SYSTEM_INITIATOR,
       principal: null,
-      delegation: event.actors.delegation,
+      delegation: [
+        ...event.actors.delegation,
+        ...[installedAppAsDelegate(event.actors.principal)].filter((actor) => actor !== null),
+      ],
     },
     subject: null,
     causation: { kind: "route", routeId: route.id, parent: automationEventParentOf(event) },
