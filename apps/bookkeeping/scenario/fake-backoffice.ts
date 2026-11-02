@@ -74,7 +74,8 @@ type Prompt = {
 type Share = {
   shareId: string;
   from: BackofficeRoutableScope;
-  path: string;
+  /** The key prefix of the blobs it opens. */
+  prefix: string;
   with: BackofficeRoutableScope;
   sharedAt: string;
 };
@@ -82,12 +83,13 @@ type AcceptedShare = {
   shareId: string;
   name: string;
   from: BackofficeRoutableScope;
-  /** The shared folder, as the sharing scope named it. */
-  path: string;
+  /** The shared blobs' key prefix, as the sharing scope named it. */
+  prefix: string;
   /** The accepting scope's workspace key. */
   scope: string;
   acceptedAt: string;
 };
+type StoredBlob = { bytes: Uint8Array<ArrayBuffer>; contentType: string; etag: string };
 /** Who a credential acts as: a user who authorized Bookkeeping, or Bookkeeping itself. */
 type Principal = { kind: "user"; userId: string } | { kind: "app" };
 
@@ -117,9 +119,6 @@ function slugify(name: string): string {
 
 const MANAGING_ROLES = new Set<Role>(["owner", "admin"]);
 
-/** Backoffice's workspace keeps each file in one Durable Object SQLite row. */
-const WORKSPACE_FILE_MAX_BYTES = 1_900_000;
-
 /**
  * Backoffice as Bookkeeping sees it over HTTP: OAuth sign-in, the credential exchange, the v0
  * operations Bookkeeping calls, and provisioning. Inputs and outputs go through
@@ -146,15 +145,22 @@ export class FakeBackoffice {
     string,
     { principal: Principal; scope: BackofficeContextScope; organizationId: string }
   >();
-  /** Workspace files by scope and path, e.g. those Bookkeeping stores in a project. */
-  readonly #files = new Map<string, Uint8Array>();
+  /** Blobs by scope and key, e.g. the documents Bookkeeping stores in a project. */
+  readonly #blobs = new Map<string, StoredBlob>();
+  /** Uploads not completed yet, by upload ID, with the bytes storage took for them, if any. */
+  readonly #uploads = new Map<
+    string,
+    { blobKey: string; contentType: string; bytes: Uint8Array<ArrayBuffer> | null }
+  >();
+  /** What each download URL reads, by its token: whatever the blob holds when it is read. */
+  readonly #downloads = new Map<string, string>();
   /** Agents defined in each workspace, by scope and name. */
   readonly #agents = new Map<string, PiAgentDefinitionCreate>();
   /** Prompts agents received, in the order they arrived. */
   readonly #prompts: Prompt[] = [];
   /**
-   * Folders one scope shares with another, by share ID; revoking the share deletes it. Bookkeeping
-   * shares no blobs, so neither does this fake.
+   * Blobs one scope shares with another, by share ID; revoking the share deletes it. Bookkeeping
+   * shares no folders, so neither does this fake.
    */
   readonly #shares = new Map<string, Share>();
   /** Shares scopes accepted, by the accepting scope and the name they mount the share under. */
@@ -341,22 +347,24 @@ export class FakeBackoffice {
   }
 
   /**
-   * The shares one of the organization's projects mounts and may read, by name, with the folder
-   * each opens: those it accepted whose sharing scope has not revoked them.
+   * The shares one of the organization's projects accepted and may read, by name, with the key
+   * prefix each opens: those whose sharing scope has not revoked them.
    */
-  mountedShares(slug: string, project: string): { name: string; path: string }[] {
+  mountedShares(slug: string, project: string): { name: string; prefix: string }[] {
     const scope = this.#projectFileKey(slug, project, "");
     return [...this.#acceptedShares.values()].flatMap((accepted) => {
       const share = this.#shares.get(accepted.shareId);
-      return accepted.scope === scope && share ? [{ name: accepted.name, path: share.path }] : [];
+      return accepted.scope === scope && share
+        ? [{ name: accepted.name, prefix: share.prefix }]
+        : [];
     });
   }
 
-  /** The folders one of the organization's projects shares and has not revoked. */
+  /** The key prefixes one of the organization's projects shares and has not revoked. */
   standingShares(slug: string, project: string): string[] {
     const scope = this.#projectFileKey(slug, project, "");
     return [...this.#shares.values()].flatMap((share) =>
-      `${backofficeScopePathSegment(share.from)} ` === scope ? [share.path] : [],
+      `${backofficeScopePathSegment(share.from)} ` === scope ? [share.prefix] : [],
     );
   }
 
@@ -373,33 +381,32 @@ export class FakeBackoffice {
     }));
   }
 
-  /** The file at `path` in the workspace of one of the organization's projects, if any. */
-  workspaceFile(slug: string, project: string, path: string): Uint8Array | undefined {
-    return this.#files.get(this.#projectFileKey(slug, project, path));
+  /** The bytes of one of the organization's projects' blobs, if it has one under `key`. */
+  blob(slug: string, project: string, key: string): Uint8Array | undefined {
+    return this.#blobs.get(this.#projectFileKey(slug, project, key))?.bytes;
   }
 
-  /** The paths of every file in the workspace of one of the organization's projects. */
-  workspacePaths(slug: string, project: string): string[] {
+  /** The keys of every blob of one of the organization's projects. */
+  blobKeys(slug: string, project: string): string[] {
     const prefix = this.#projectFileKey(slug, project, "");
-    return [...this.#files.keys()].flatMap((key) =>
+    return [...this.#blobs.keys()].flatMap((key) =>
       key.startsWith(prefix) ? [key.slice(prefix.length)] : [],
     );
   }
 
   /** An owner changes things in Backoffice's own UI. */
   readonly admin = {
-    /** Someone replaces a file in a project's workspace, or deletes it with null. */
-    replaceWorkspaceFile: (
-      slug: string,
-      project: string,
-      path: string,
-      bytes: Uint8Array | null,
-    ) => {
-      const key = this.#projectFileKey(slug, project, path);
+    /** Someone replaces one of a project's blobs, or deletes it with null. */
+    replaceBlob: (slug: string, project: string, key: string, bytes: Uint8Array | null) => {
+      const blobKey = this.#projectFileKey(slug, project, key);
       if (bytes === null) {
-        this.#files.delete(key);
+        this.#blobs.delete(blobKey);
       } else {
-        this.#files.set(key, bytes);
+        this.#blobs.set(blobKey, {
+          bytes: new Uint8Array(bytes),
+          contentType: "application/octet-stream",
+          etag: crypto.randomUUID(),
+        });
       }
     },
     /**
@@ -542,6 +549,11 @@ export class FakeBackoffice {
       if (url.pathname === "/api/backoffice/execution-token") {
         return await this.#executionToken(request);
       }
+      // Presigned storage URLs, which hold their authority: no credential.
+      const storage = /^\/storage\/(uploads|downloads)\/([^/]+)$/u.exec(url.pathname);
+      if (storage) {
+        return await this.#storage(request, storage[1] === "uploads", storage[2]);
+      }
       const provisioning = /^\/api\/v0\/provisioning\/([^/]+)$/u.exec(url.pathname);
       if (provisioning) {
         const response = await this.#provision(request, provisioning[1]);
@@ -575,6 +587,34 @@ export class FakeBackoffice {
       }
       throw error;
     }
+  }
+
+  async #storage(request: Request, upload: boolean, token: string): Promise<Response> {
+    if (upload && request.method === "PUT") {
+      const pending = this.#uploads.get(token);
+      if (!pending || request.headers.get("content-type") !== pending.contentType) {
+        return new Response(null, { status: 403 });
+      }
+      pending.bytes = new Uint8Array(await request.arrayBuffer());
+      return new Response(null, { status: 200 });
+    }
+    const blobKey = upload ? undefined : this.#downloads.get(token);
+    const blob = blobKey === undefined ? undefined : this.#blobs.get(blobKey);
+    if (request.method !== "GET" || blobKey === undefined) {
+      return new Response(null, { status: 403 });
+    }
+    return blob
+      ? new Response(blob.bytes, { headers: { "Content-Type": blob.contentType } })
+      : new Response(null, { status: 404 });
+  }
+
+  #blobOf(key: string, blob: StoredBlob) {
+    return {
+      key,
+      sizeBytes: blob.bytes.byteLength,
+      contentType: blob.contentType,
+      etag: blob.etag,
+    };
   }
 
   async #token(request: Request): Promise<Response> {
@@ -798,12 +838,12 @@ export class FakeBackoffice {
       case "shares.create":
         return respond("shares.create", body, (input) => {
           if (!isBackofficeRoutableScope(scope)) {
-            throw new ApiError("not_found", "Only workspaces share folders.");
+            throw new ApiError("not_found", "Only workspaces share blobs.");
           }
-          if (input.of.kind !== "folder") {
-            throw new ApiError("invalid_request", "This fake Backoffice shares only folders.");
+          if (input.of.kind !== "blobs") {
+            throw new ApiError("invalid_request", "This fake Backoffice shares only blobs.");
           }
-          const path = input.of.path;
+          const prefix = input.of.prefix;
           const target = backofficeScopePathSegment(input.with);
           const exists = [...this.#organizations.values()].some((organization) =>
             [...organization.projects.values()].some(
@@ -822,7 +862,7 @@ export class FakeBackoffice {
           const share: Share = {
             shareId: crypto.randomUUID(),
             from: scope,
-            path: path.endsWith("/") ? path : `${path}/`,
+            prefix: prefix.endsWith("/") ? prefix : `${prefix}/`,
             with: input.with,
             sharedAt: new Date().toISOString(),
           };
@@ -855,7 +895,7 @@ export class FakeBackoffice {
             shareId,
             name,
             from: share.from,
-            path: share.path,
+            prefix: share.prefix,
             scope: key(""),
             acceptedAt: new Date().toISOString(),
           };
@@ -888,21 +928,52 @@ export class FakeBackoffice {
             this.#acceptedShares.delete(accepted[0]);
           }
         });
-      case "state.writeFileBytes":
-        return respond("state.writeFileBytes", body, ({ path, content }) => {
-          const bytes = new Uint8Array(Buffer.from(content, "base64"));
-          if (bytes.byteLength > WORKSPACE_FILE_MAX_BYTES) {
-            throw new ApiError("invalid_request", "The file is too large to store.");
-          }
-          this.#files.set(key(path), bytes);
+      case "blobs.createUpload":
+        return respond("blobs.createUpload", body, ({ key: blobKey, contentType }) => {
+          const uploadId = crypto.randomUUID();
+          this.#uploads.set(uploadId, { blobKey: key(blobKey), contentType, bytes: null });
+          return {
+            uploadId,
+            key: blobKey,
+            url: `${this.origin}/storage/uploads/${uploadId}`,
+            headers: { "Content-Type": contentType },
+            expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+          };
         });
-      case "state.readFileBytes":
-        return respond("state.readFileBytes", body, ({ path }) => {
-          const bytes = this.#files.get(key(path));
-          if (!bytes) {
-            throw new ApiError("not_found", `ENOENT: read '${path}'`);
+      case "blobs.completeUpload":
+        return respond("blobs.completeUpload", body, ({ uploadId }) => {
+          const upload = this.#uploads.get(uploadId);
+          if (!upload || !upload.blobKey.startsWith(key(""))) {
+            throw new ApiError("not_found", `No upload ${uploadId} in this scope.`);
           }
-          return Buffer.from(bytes).toString("base64");
+          if (upload.bytes === null) {
+            throw new ApiError("invalid_request", "Storage holds no bytes for this upload yet.");
+          }
+          const blob = {
+            bytes: upload.bytes,
+            contentType: upload.contentType,
+            etag: crypto.randomUUID(),
+          };
+          this.#uploads.delete(uploadId);
+          this.#blobs.set(upload.blobKey, blob);
+          return this.#blobOf(upload.blobKey.slice(key("").length), blob);
+        });
+      case "blobs.get":
+        return respond("blobs.get", body, ({ key: blobKey }) => {
+          const blob = this.#blobs.get(key(blobKey));
+          return blob ? this.#blobOf(blobKey, blob) : null;
+        });
+      case "blobs.createDownloadUrl":
+        return respond("blobs.createDownloadUrl", body, ({ key: blobKey }) => {
+          if (!this.#blobs.has(key(blobKey))) {
+            throw new ApiError("not_found", `BLOB_NOT_FOUND: blob ${blobKey} does not exist.`);
+          }
+          const token = randomToken();
+          this.#downloads.set(token, key(blobKey));
+          return {
+            url: `${this.origin}/storage/downloads/${token}`,
+            expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+          };
         });
       default:
         throw new ApiError("not_found", `Operation '${operationId}' is not available here.`);
@@ -912,7 +983,7 @@ export class FakeBackoffice {
   #share(share: Share) {
     return {
       shareId: share.shareId,
-      of: { kind: "folder" as const, path: share.path },
+      of: { kind: "blobs" as const, prefix: share.prefix },
       with: share.with,
       sharedAt: share.sharedAt,
     };
@@ -924,7 +995,7 @@ export class FakeBackoffice {
       shareId: accepted.shareId,
       name: accepted.name,
       from: accepted.from,
-      of: { kind: "folder" as const, path: accepted.path },
+      of: { kind: "blobs" as const, prefix: accepted.prefix },
       path: `/shared/${accepted.name}/`,
       acceptedAt: accepted.acceptedAt,
     };

@@ -20,7 +20,7 @@ import {
   membershipThrough,
 } from "../directory/membership";
 import { exchangeForScope, isBackofficeUnavailable } from "./client";
-import { releaseDocument, sharedDocumentPath } from "./document-shares";
+import { releaseDocument, sharedDocumentKey } from "./document-shares";
 import { followManager } from "./management";
 
 /**
@@ -38,17 +38,17 @@ type Described = Awaited<ReturnType<Books["describe"]>>;
 type Person = { name: string };
 
 /**
- * Where a call runs: the administration's own project, whose workspace holds its documents' files,
- * or its firm's agent project, which reads a document's file where Bookkeeping shares it.
+ * Where a call runs: the administration's own project, whose blobs are its documents' files, or
+ * its firm's agent project, which reads a document's file where Bookkeeping shares it.
  */
 type Workplace = {
-  documentPath(document: { id: string; storageKey: string }): Promise<string>;
+  documentBlob(document: { id: string; storageKey: string }): Promise<string>;
 };
 
-const ADMINISTRATION_PROJECT: Workplace = { documentPath: async (document) => document.storageKey };
+const ADMINISTRATION_PROJECT: Workplace = { documentBlob: async (document) => document.storageKey };
 
 function firmAgentProject(administration: Administration): Workplace {
-  return { documentPath: (document) => sharedDocumentPath(administration.id, document) };
+  return { documentBlob: (document) => sharedDocumentKey(administration.id, document) };
 }
 
 /** Every action's input names the administration when the call runs in a firm's agent project. */
@@ -777,15 +777,15 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     id: "documents.get",
     label: "Describe a document",
     description:
-      "A document uploaded to the books, such as an invoice or receipt: where its file is, to read with models.extract, and whether it is to book, booked, or dismissed.",
+      "A document uploaded to the books, such as an invoice or receipt: the blob its file is, to read with models.extract, and whether it is to book, booked, or dismissed.",
     input: z.strictObject({ document: z.uuid().describe("The document's ID.") }),
     output: z.object({
       id: z.string(),
       filename: z.string(),
-      path: z
+      blob: z
         .string()
         .describe(
-          "The file's path: in the administration's own project, in its workspace; in a firm's agent project, where Bookkeeping shares it while the agent is asked about it.",
+          "The file's blob key, to give models.extract as { blob }: in the administration's own project, its own blob; in a firm's agent project, under /shared/, where Bookkeeping shares it while the agent is asked about it.",
         ),
       mediaType: z.enum(DOCUMENT_MEDIA_TYPES),
       uploadedAt: z.string().describe("When it was uploaded, as an ISO timestamp."),
@@ -817,7 +817,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
       return {
         id: document.id,
         filename: document.filename,
-        path: await workplace.documentPath(document),
+        blob: await workplace.documentBlob(document),
         mediaType: document.mediaType,
         uploadedAt: document.uploadedAt.toISOString(),
         uploadedBy: document.uploadedBy,

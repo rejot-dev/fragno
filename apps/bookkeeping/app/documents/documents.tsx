@@ -19,7 +19,7 @@ import { FormError } from "../books/forms";
 import type { BooksOutletContext } from "../books/layout";
 import type { Route } from "./+types/documents";
 import { askBookkeeper } from "./bookkeeper.server";
-import { readUploadForm, uploadDocument } from "./documents.server";
+import { DOCUMENT_MAX_SIZE, readUploadForm, uploadDocument } from "./documents.server";
 import { DocumentStatus } from "./status";
 
 export function meta() {
@@ -37,6 +37,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     documents: await books.listDocuments({ cursor }),
     paged: cursor !== null,
     documentId: crypto.randomUUID(),
+    documentMaxSize: DOCUMENT_MAX_SIZE,
   };
 }
 
@@ -60,7 +61,7 @@ export async function action({ request, params }: Route.ActionArgs): Promise<For
   const context = await requireBooksSubmission(request, params, "keep");
   const form = await readUploadForm(request);
   if (form === null) {
-    return { intent: UPLOAD, error: "Upload files of at most 1.9 MB." };
+    return { intent: UPLOAD, error: `Upload files of at most ${DOCUMENT_MAX_SIZE}.` };
   }
   const parsed = uploadSchema.safeParse(Object.fromEntries(form));
   if (!parsed.success) {
@@ -100,7 +101,7 @@ export default function DocumentsPage({ loaderData, actionData }: Route.Componen
             <div className="flex flex-wrap items-end gap-3">
               <Field
                 label="Upload a document"
-                description="An invoice or receipt: a PDF, or a PNG, JPEG, or WebP image of at most 1.9 MB."
+                description={`An invoice or receipt: a PDF, or a PNG, JPEG, or WebP image of at most ${loaderData.documentMaxSize}.`}
                 className="min-w-64 flex-1"
               >
                 <FileInput

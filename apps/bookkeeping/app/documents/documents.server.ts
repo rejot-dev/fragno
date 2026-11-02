@@ -1,12 +1,17 @@
 import { Buffer } from "node:buffer";
 
-import { BackofficeApiRequestError } from "@fragno-dev/backoffice-api/v0/client";
+import {
+  BackofficeApiRequestError,
+  type BackofficeApiClient,
+} from "@fragno-dev/backoffice-api/v0/client";
+import { MODELS_EXTRACT_FILE_LIMITS } from "@fragno-dev/backoffice-api/v0/models";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { DocumentView } from "../../workers/books/documents/documents";
 import type { DocumentMediaType } from "../../workers/books/documents/schema";
 import type { requireBooks } from "../books/books.server";
 import {
+  backofficeUnavailable,
   callBackoffice,
   connectAsUser,
   organizationNotFound,
@@ -15,10 +20,13 @@ import {
 type BooksContext = Awaited<ReturnType<typeof requireBooks>>;
 
 /**
- * The largest file Backoffice's workspace holds: it keeps each file in one Durable Object SQLite
- * row, which takes at most 2 MB.
+ * The largest document: the most the firm's bookkeeping agent reads of one, as `models.extract`
+ * reads at most this in a call. Documents are blobs, which hold far more.
  */
-export const DOCUMENT_MAX_BYTES = 1_900_000;
+const DOCUMENT_MAX_BYTES = MODELS_EXTRACT_FILE_LIMITS.totalBytes;
+
+/** The limit in MiB, which people read as MB. */
+export const DOCUMENT_MAX_SIZE = `${DOCUMENT_MAX_BYTES / 1024 ** 2} MB`;
 
 /** Room in an upload's body for the form's other fields and the multipart framing. */
 const UPLOAD_FORM_OVERHEAD_BYTES = 16 * 1024;
@@ -33,9 +41,22 @@ export async function readUploadForm(request: Request): Promise<FormData | null>
   if (Number(request.headers.get("content-length")) > limit || request.body === null) {
     return null;
   }
+  const body = await readUpTo(request.body, limit);
+  if (body === null) {
+    return null;
+  }
+  const headers = { "content-type": request.headers.get("content-type") ?? "" };
+  return await new Response(body, { headers }).formData();
+}
+
+/** A body's bytes, or null once it holds more than `limit`, having read no further. */
+async function readUpTo(
+  stream: ReadableStream,
+  limit: number,
+): Promise<Uint8Array<ArrayBuffer> | null> {
   const body = new Uint8Array(limit);
   let size = 0;
-  const reader: ReadableStreamDefaultReader<Uint8Array> = request.body.getReader();
+  const reader: ReadableStreamDefaultReader<Uint8Array> = stream.getReader();
   for (let read = await reader.read(); !read.done; read = await reader.read()) {
     if (size + read.value.byteLength > limit) {
       await reader.cancel();
@@ -44,8 +65,22 @@ export async function readUploadForm(request: Request): Promise<FormData | null>
     body.set(read.value, size);
     size += read.value.byteLength;
   }
-  const headers = { "content-type": request.headers.get("content-type") ?? "" };
-  return await new Response(body.subarray(0, size), { headers }).formData();
+  return body.slice(0, size);
+}
+
+/**
+ * Presigned storage URLs reach Backoffice's storage rather than Backoffice, so its client does not
+ * report them unreachable; this does, as it does Backoffice.
+ */
+async function fetchFromStorage(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw backofficeUnavailable();
+    }
+    throw error;
+  }
 }
 
 /**
@@ -67,7 +102,7 @@ async function connectToProject(request: Request, context: BooksContext) {
 }
 
 /**
- * Stores an uploaded file in the administration's Backoffice workspace and records it as a
+ * Stores an uploaded file as a blob of the administration's Backoffice project and records it as a
  * document under `id`, which the upload form chose. The file is stored first, so a document always
  * has its file; uploading again after a failure finishes the job and records the document once.
  * Returns why the file was refused instead.
@@ -82,7 +117,7 @@ export async function uploadDocument(
     return { ok: false, error: "Choose a file to upload." };
   }
   if (file.size > DOCUMENT_MAX_BYTES) {
-    return { ok: false, error: "Upload files of at most 1.9 MB." };
+    return { ok: false, error: `Upload files of at most ${DOCUMENT_MAX_SIZE}.` };
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
   const mediaType = sniffMediaType(bytes);
@@ -98,17 +133,15 @@ export async function uploadDocument(
       : { ok: false, error: "Another file was uploaded with this form. Upload it again." };
   }
   const filename = file.name.trim().slice(0, 255) || "document";
-  // Backoffice's writes have no precondition, so the path names the bytes: another file sent with
-  // this form at the same time is written beside this one, never over it.
-  const storageKey = `/workspace/documents/${id}/${sha256}/${storedFilename(filename)}`;
+  // Backoffice's writes have no precondition, so the key names the bytes: another file sent with
+  // this form at the same time is stored beside this one, never over it.
+  const storageKey = `documents/${id}/${sha256}/${storedFilename(filename)}`;
   const { backoffice, scope } = await connectToProject(request, context);
   try {
-    await callBackoffice(() =>
-      backoffice.call(scope, "state.writeFileBytes", {
-        path: storageKey,
-        content: Buffer.from(bytes).toString("base64"),
-      }),
-    );
+    const stored = await storeBlob(backoffice, scope, { key: storageKey, mediaType, bytes });
+    if (!stored.ok) {
+      return stored;
+    }
   } catch (error) {
     if (error instanceof BackofficeApiRequestError && error.code === "forbidden") {
       return { ok: false, error: `Backoffice did not store the file: ${error.message}` };
@@ -128,8 +161,35 @@ export async function uploadDocument(
 }
 
 /**
+ * Stores `bytes` as the project's blob `key`: Backoffice hands out a URL its storage takes the
+ * bytes at, so they never pass through Backoffice, and completing the upload makes the blob.
+ */
+async function storeBlob(
+  backoffice: BackofficeApiClient,
+  scope: BackofficeContextScope,
+  blob: { key: string; mediaType: DocumentMediaType; bytes: Uint8Array<ArrayBuffer> },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const upload = await callBackoffice(() =>
+    backoffice.call(scope, "blobs.createUpload", { key: blob.key, contentType: blob.mediaType }),
+  );
+  const stored = await fetchFromStorage(upload.url, {
+    method: "PUT",
+    headers: upload.headers,
+    body: blob.bytes,
+  });
+  if (!stored.ok) {
+    return { ok: false, error: `Backoffice's storage did not take the file (${stored.status}).` };
+  }
+  await callBackoffice(() =>
+    backoffice.call(scope, "blobs.completeUpload", { uploadId: upload.uploadId }),
+  );
+  return { ok: true };
+}
+
+/**
  * A document's file as it was uploaded: `changed` when its bytes in Backoffice are no longer the
- * ones uploaded, e.g. someone replaced the file there, and `missing` when it is gone.
+ * ones uploaded, e.g. someone replaced the blob there, and `missing` when it is gone. The bytes
+ * come straight from Backoffice's storage, read no further than the document's size.
  */
 export async function readDocumentFile(
   request: Request,
@@ -139,18 +199,29 @@ export async function readDocumentFile(
   { status: "ok"; bytes: Uint8Array<ArrayBuffer> } | { status: "changed" } | { status: "missing" }
 > {
   const { backoffice, scope } = await connectToProject(request, context);
-  let content: string;
-  try {
-    content = await callBackoffice(() =>
-      backoffice.call(scope, "state.readFileBytes", { path: document.storageKey }),
-    );
-  } catch (error) {
-    if (error instanceof BackofficeApiRequestError && error.code === "not_found") {
-      return { status: "missing" };
-    }
-    throw error;
+  const key = document.storageKey;
+  const blob = await callBackoffice(() => backoffice.call(scope, "blobs.get", { key }));
+  if (blob === null) {
+    return { status: "missing" };
   }
-  const bytes = new Uint8Array(Buffer.from(content, "base64"));
+  if (blob.sizeBytes !== document.sizeBytes) {
+    return { status: "changed" };
+  }
+  const { url } = await callBackoffice(() =>
+    backoffice.call(scope, "blobs.createDownloadUrl", { key }),
+  );
+  const response = await fetchFromStorage(url);
+  if (response.status === 404) {
+    return { status: "missing" };
+  }
+  if (!response.ok || response.body === null) {
+    throw backofficeUnavailable();
+  }
+  // The blob may have been replaced since Backoffice described it.
+  const bytes = await readUpTo(response.body, document.sizeBytes);
+  if (bytes === null) {
+    return { status: "changed" };
+  }
   const sha256 = Buffer.from(await crypto.subtle.digest("SHA-256", bytes)).toString("hex");
   return sha256 === document.sha256 ? { status: "ok", bytes } : { status: "changed" };
 }
@@ -175,7 +246,7 @@ function sniffMediaType(bytes: Uint8Array): DocumentMediaType | null {
   return null;
 }
 
-/** A filename safe in a workspace path: letters, digits, dots, dashes, and underscores. */
+/** A filename safe in a blob key: letters, digits, dots, dashes, and underscores. */
 function storedFilename(filename: string): string {
   const safe = filename
     .normalize("NFKD")
