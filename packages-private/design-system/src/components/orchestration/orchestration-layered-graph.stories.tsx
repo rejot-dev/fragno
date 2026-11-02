@@ -6,6 +6,7 @@ import { routeActionLabel } from "./orchestration-graph-parts";
 import {
   DENSE_GRAPH,
   EVERY_ACTION_GRAPH,
+  FORWARDED_IN_GRAPH,
   ORGANIZATION_GRAPH,
   usePulses,
 } from "./orchestration-graph-story-support";
@@ -26,6 +27,18 @@ function SelectionSummary({
       return [["Scope", graph.scopeLabel]];
     }
     switch (selected.kind) {
+      case "inlet": {
+        const inlet = graph.inlets.find((candidate) => candidate.id === selected.id);
+        return inlet
+          ? [
+              ["Inlet", inlet.label],
+              ["Senders", inlet.senders.label],
+              ["Status", inlet.status],
+              ["Matcher", inlet.matcher ?? "every event"],
+              ["Recent", String(inlet.recentCount)],
+            ]
+          : [];
+      }
       case "source": {
         const source = graph.sources.find((candidate) => candidate.id === selected.id);
         return [["Source", source?.label ?? selected.id]];
@@ -148,6 +161,20 @@ export const EveryActionKind = () => (
       },
       { label: "PR opened", eventId: "github:pull_request.opened", routeIds: ["pr-review"] },
       { label: "Intake form", eventId: "forms:response.submitted", routeIds: ["intake-forward"] },
+    ]}
+  />
+);
+
+export const ForwardedIn = () => (
+  <Frame
+    graph={FORWARDED_IN_GRAPH}
+    height="content"
+    simulations={[
+      {
+        label: "Member balance forwarded",
+        eventId: "bank:balance.updated",
+        routeIds: ["reconcile-member-balances"],
+      },
     ]}
   />
 );

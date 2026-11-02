@@ -271,6 +271,9 @@ function inspectorSelection(
   },
 ): OrchestrationInspectorSelection | null {
   switch (item.kind) {
+    // Projected graphs hold no inlets yet.
+    case "inlet":
+      return null;
     case "source": {
       const source = graph.sources.find((candidate) => candidate.id === item.id);
       if (!source) {

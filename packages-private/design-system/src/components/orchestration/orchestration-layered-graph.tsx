@@ -19,6 +19,7 @@ import {
   searchTerms,
   type OrchestrationGraph,
   type OrchestrationGraphItem,
+  type OrchestrationInlet,
   type OrchestrationRoute,
 } from "./orchestration-graph-model";
 import {
@@ -39,6 +40,8 @@ import {
   type LayeredUnroutedEvents,
 } from "./orchestration-layered-graph-model";
 
+const INLET_WIDTH = 196;
+const INLET_CURVE_RUN = 72;
 const SOURCE_WIDTH = 168;
 const SOURCE_EVENT_GAP = 6;
 const EVENT_WIDTH = 236;
@@ -62,9 +65,11 @@ const FOLD_ROW_CLASS_NAME =
 /**
  * Horizontal geometry for a given container width. Only the route lane and the curves stretch,
  * and both stop growing, so on wide screens the graph keeps its shape and leaves space on the right.
+ * `inletRun` is the room the inlet column takes on the left, nothing when there are no inlets.
  */
-function columnsFor(width: number) {
-  const eventLeft = SOURCE_WIDTH + SOURCE_EVENT_GAP;
+function columnsFor(width: number, inletRun: number) {
+  const sourceLeft = inletRun;
+  const eventLeft = sourceLeft + SOURCE_WIDTH + SOURCE_EVENT_GAP;
   const eventRight = eventLeft + EVENT_WIDTH;
   const routeLane = Math.max(
     MIN_ROUTE_LANE,
@@ -72,7 +77,17 @@ function columnsFor(width: number) {
   );
   const laneEnd = eventRight + routeLane;
   const targetLeft = Math.min(width - TARGET_WIDTH, laneEnd + MAX_CURVE_RUN);
-  return { eventLeft, eventRight, laneEnd, targetLeft };
+  return { sourceLeft, eventLeft, eventRight, laneEnd, targetLeft };
+}
+
+/**
+ * Who sends through an inlet, in a line, with what sets it apart from an accept that names its
+ * events: being off, needing no accept, or letting in events its edges cannot show.
+ */
+function inletSummary(inlet: OrchestrationInlet): string {
+  const status = inlet.status === "accepting" ? [] : [inlet.status];
+  const events = inlet.eventIds !== null ? [] : [inlet.matcher ? "filtered" : "every event"];
+  return [inlet.senders.label, ...status, ...events].join(" · ");
 }
 
 function useContainerWidth() {
@@ -84,7 +99,7 @@ function useContainerWidth() {
       return undefined;
     }
     const observer = new ResizeObserver(([entry]) => {
-      setWidth(Math.max(MIN_WIDTH, entry.contentRect.width));
+      setWidth(entry.contentRect.width);
     });
     observer.observe(element);
     return () => {
@@ -135,7 +150,8 @@ function ColumnHeader({ left, width, title }: { left: number; width: number; tit
 }
 
 /**
- * Sources, their events, and the workflows they reach, read left to right. Each route is an edge
+ * Sources, their events, and the workflows they reach, read left to right, with the inlets other
+ * scopes forward through on the far left, feeding the events they let in. Each route is an edge
  * labelled with its priority and name; workflows appear once, however many routes reach them, so
  * flows that meet across sources are visible. Hovering or selecting anything lights up everything
  * upstream and downstream of it, and a search narrows the graph to the flows it matches.
@@ -155,7 +171,7 @@ export function OrchestrationLayeredGraph({
   pulses: readonly OrchestrationPulse[];
 }) {
   const markerIdPrefix = useId();
-  const { ref, width } = useContainerWidth();
+  const { ref, width: measuredWidth } = useContainerWidth();
   const [hovered, setHovered] = useState<OrchestrationGraphItem | null>(null);
   const [query, setQuery] = useState("");
   const [showUnrouted, setShowUnrouted] = useState(false);
@@ -192,7 +208,12 @@ export function OrchestrationLayeredGraph({
     }
     return totals;
   }, [graph]);
-  const { eventLeft, eventRight, laneEnd, targetLeft } = columnsFor(width);
+  // A scope wired only through inlets, such as a catch-all accept, still has something to draw.
+  const empty = layout.sources.length === 0 && layout.inlets.length === 0;
+  const inletRun = layout.inlets.length > 0 ? INLET_WIDTH + INLET_CURVE_RUN : 0;
+  const minWidth = MIN_WIDTH + inletRun;
+  const width = Math.max(minWidth, measuredWidth);
+  const { sourceLeft, eventLeft, eventRight, laneEnd, targetLeft } = columnsFor(width, inletRun);
 
   const active = hovered ?? selected;
   const related = useMemo(
@@ -229,6 +250,27 @@ export function OrchestrationLayeredGraph({
       portYByRoute.set(route.id, node.top + ((index + 1) * node.height) / (incoming.length + 1));
     });
   }
+
+  // Inlet edges arrive at the source card level with the event they feed, and leave the inlet
+  // spread over its height in that order, so they never cross on the first stretch.
+  const inletEdges = layout.inlets.flatMap((node) => {
+    const rows = (node.inlet.eventIds ?? [])
+      .flatMap((eventId) => eventRows.get(eventId) ?? [])
+      .sort((left, right) => left.top - right.top);
+    return rows.map((row, index) => {
+      const portY = node.top + ((index + 1) * node.height) / (rows.length + 1);
+      const rowY = row.top + row.height / 2;
+      const run = (sourceLeft - INLET_WIDTH) / 2;
+      return {
+        key: `${node.inlet.id}:${row.event.id}`,
+        inlet: node.inlet,
+        eventId: row.event.id,
+        rowY,
+        path: `M ${INLET_WIDTH} ${portY} C ${INLET_WIDTH + run} ${portY} ${sourceLeft - run} ${rowY} ${sourceLeft - 5} ${rowY}`,
+      };
+    });
+  });
+  const inletFedRows = new Map(inletEdges.map((edge) => [edge.eventId, edge.rowY]));
 
   function onwardPath(route: OrchestrationRoute, y: number): string | null {
     if (route.action.kind === "reclassify_event") {
@@ -337,7 +379,7 @@ export function OrchestrationLayeredGraph({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto bg-[var(--bo-bg)]">
-        {layout.sources.length === 0 ? (
+        {empty ? (
           <div className="flex h-full min-h-32 flex-col items-center justify-center gap-2 text-sm text-[var(--bo-muted)]">
             {terms.length > 0 ? (
               <>
@@ -361,8 +403,8 @@ export function OrchestrationLayeredGraph({
           ref={ref}
           role="group"
           aria-label={`Automation orchestration for ${graph.scopeLabel}`}
-          className={cn("relative w-full select-none", layout.sources.length === 0 && "hidden")}
-          style={{ minWidth: MIN_WIDTH, height: totalHeight }}
+          className={cn("relative w-full select-none", empty && "hidden")}
+          style={{ minWidth, height: totalHeight }}
           onClick={() => {
             onSelect(null);
           }}
@@ -372,7 +414,10 @@ export function OrchestrationLayeredGraph({
             className="sticky top-0 z-10 bg-[var(--bo-bg)] shadow-[inset_0_-1px_0_var(--bo-border)]"
             style={{ height: STICKY_HEADER_HEIGHT }}
           >
-            <ColumnHeader left={0} width={SOURCE_WIDTH} title="Sources" />
+            {inletRun > 0 ? (
+              <ColumnHeader left={0} width={INLET_WIDTH} title="Forwarded in" />
+            ) : null}
+            <ColumnHeader left={sourceLeft} width={SOURCE_WIDTH} title="Sources" />
             <ColumnHeader left={eventLeft} width={EVENT_WIDTH} title="Events" />
             <ColumnHeader left={eventRight + 12} width={laneEnd - eventRight} title="Routes" />
             <ColumnHeader left={targetLeft} width={TARGET_WIDTH} title="Workflows" />
@@ -386,6 +431,33 @@ export function OrchestrationLayeredGraph({
             aria-hidden="true"
           >
             <ActionMarkerDefs idPrefix={markerIdPrefix} />
+            {inletEdges.map((edge) => {
+              const enabled = edge.inlet.status !== "disabled";
+              return (
+                <path
+                  key={edge.key}
+                  d={edge.path}
+                  opacity={opacityOf({ kind: "inlet", id: edge.inlet.id }) * (enabled ? 1 : 0.6)}
+                  className={cn(
+                    "fill-none transition-opacity duration-200",
+                    ACTION_EDGE_CLASS_NAME.forward_event,
+                  )}
+                  strokeWidth={isSelected({ kind: "inlet", id: edge.inlet.id }) ? 2.6 : 1.7}
+                  strokeDasharray={enabled ? undefined : DISABLED_EDGE_DASH}
+                  markerEnd={actionMarkerUrl(markerIdPrefix, "forward_event")}
+                />
+              );
+            })}
+            {[...inletFedRows].map(([eventId, y]) => (
+              <circle
+                key={eventId}
+                cx={eventLeft}
+                cy={y}
+                r={3}
+                opacity={opacityOf({ kind: "event", id: eventId })}
+                className="fill-violet-600/70 transition-opacity duration-200 dark:fill-violet-300/70"
+              />
+            ))}
             {lanes.map(({ route, y }) => {
               const onward = onwardPath(route, y);
               const dash = route.enabled ? ACTION_EDGE_DASH[route.action.kind] : DISABLED_EDGE_DASH;
@@ -451,6 +523,83 @@ export function OrchestrationLayeredGraph({
           </svg>
 
           <div className="absolute inset-x-0" style={{ top: HEADER_HEIGHT }}>
+            {layout.inlets.map((node) => {
+              const inletItem = { kind: "inlet", id: node.inlet.id } as const;
+              const disabled = node.inlet.status === "disabled";
+              return (
+                <button
+                  key={node.inlet.id}
+                  type="button"
+                  {...interactions(inletItem)}
+                  aria-label={`${node.inlet.label} inlet, ${inletSummary(node.inlet)}`}
+                  title={
+                    node.inlet.matcher
+                      ? `${node.inlet.label} · ${node.inlet.matcher}`
+                      : node.inlet.label
+                  }
+                  className={cn(
+                    "absolute flex items-center gap-2.5 rounded-[4px] border bg-[var(--bo-panel)] px-2.5 text-left transition-[opacity,box-shadow] duration-200 focus-visible:ring-2 focus-visible:ring-violet-600/30 focus-visible:outline-none",
+                    disabled
+                      ? "border-dashed border-[var(--bo-border-strong)]"
+                      : "border-violet-500/30 shadow-[0_1px_2px_rgb(0_0_0/0.04)] hover:shadow-[0_4px_14px_rgb(0_0_0/0.06)]",
+                    isSelected(inletItem) && TARGET_KIND_PRESENTATION.scope.ringClassName,
+                  )}
+                  style={{
+                    left: 0,
+                    top: node.top,
+                    width: INLET_WIDTH,
+                    height: node.height,
+                    opacity: opacityOf(inletItem),
+                  }}
+                >
+                  <span
+                    className={cn(
+                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px]",
+                      disabled
+                        ? "bg-[var(--bo-bg)] text-[var(--bo-muted-2)]"
+                        : TARGET_KIND_PRESENTATION.scope.badgeClassName,
+                    )}
+                  >
+                    <Icon
+                      name={node.inlet.senders.icon}
+                      className="h-3.5 w-3.5"
+                      strokeWidth={1.8}
+                    />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span
+                        className={cn(
+                          "min-w-0 truncate text-sm font-semibold",
+                          disabled ? "text-[var(--bo-muted)] line-through" : "text-[var(--bo-fg)]",
+                        )}
+                      >
+                        <Highlighted text={node.inlet.label} terms={terms} />
+                      </span>
+                      {node.inlet.matcher ? (
+                        <Icon
+                          name="filter"
+                          className="h-3 w-3 shrink-0 text-[var(--bo-muted-2)]"
+                          strokeWidth={2}
+                        />
+                      ) : null}
+                    </span>
+                    <span className="flex min-w-0 items-center gap-1.5 text-[11px] tabular-nums">
+                      <span className="min-w-0 truncate text-[var(--bo-muted-2)]">
+                        <Highlighted text={inletSummary(node.inlet)} terms={terms} />
+                      </span>
+                      {node.inlet.recentCount > 0 ? (
+                        <span className="flex shrink-0 items-center gap-1 text-[10px] text-[var(--bo-live)]">
+                          <span className="h-1.5 w-1.5 rounded-full bg-[var(--bo-live)]" />
+                          {node.inlet.recentCount}
+                        </span>
+                      ) : null}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+
             {layout.sources.map((block) => {
               const sourceItem = { kind: "source", id: block.source.id } as const;
               return (
@@ -464,7 +613,7 @@ export function OrchestrationLayeredGraph({
                       isSelected(sourceItem) && "ring-2 ring-lime-600/35",
                     )}
                     style={{
-                      left: 0,
+                      left: sourceLeft,
                       top: block.top,
                       width: SOURCE_WIDTH,
                       height: block.height,

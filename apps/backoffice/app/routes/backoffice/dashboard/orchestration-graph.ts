@@ -309,6 +309,8 @@ export function projectOrchestrationGraph({
 
   return {
     scopeLabel,
+    // Forward accepts are not projected yet.
+    inlets: [],
     sources: graphSources,
     events: [...events.values()],
     routes: graphRoutes,
