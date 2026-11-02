@@ -10,7 +10,7 @@ import type {
   OrchestrationGraphItem,
 } from "@fragno-private/design-system/orchestration/orchestration-graph-model";
 import { OrchestrationLayeredGraph } from "@fragno-private/design-system/orchestration/orchestration-layered-graph";
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { useSearchParams } from "react-router";
 
 import {
@@ -18,11 +18,6 @@ import {
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { useClock } from "@/components/backoffice/use-clock";
-import { useAutomationRead, type AutomationReadData } from "@/fragno/automation/lofi/replica";
-import {
-  listAutomationEventDescriptors,
-  listCapabilityEventSources,
-} from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 
 import type { AutomationScriptSourceRecord } from "../automations/data";
@@ -32,17 +27,15 @@ import {
   normalizedSourceId,
   orchestrationEventId,
   orchestrationInletDetail,
-  projectOrchestrationGraph,
   routeTargetId,
   routeTriggerEventId,
-  type OrchestrationCatalogEvent,
-  type OrchestrationCatalogSource,
   type OrchestrationForward,
 } from "./orchestration-graph";
 import {
   OrchestrationInspector,
   type OrchestrationInspectorSelection,
 } from "./orchestration-inspector";
+import type { OrchestrationUniverseScopes } from "./orchestration-universe-panel";
 import { dashboardBucketStarts } from "./overview";
 import {
   WORKFLOW_SCRIPT_PARAM,
@@ -50,6 +43,7 @@ import {
   dashboardSelectionPath,
   withDashboardSelection,
 } from "./path";
+import { useScopeOrchestrationGraph, type OrchestrationCatalog } from "./scope-orchestration-graph";
 
 const SELECTION_NAVIGATION = { replace: true, preventScrollReset: true } as const;
 const CLOCK_TICK_MS = 60_000;
@@ -59,11 +53,8 @@ export type OrchestrationLoaderData = {
   selectedScope: BackofficeScopeSelection;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
-};
-
-type OrchestrationCatalog = {
-  sources: readonly OrchestrationCatalogSource[];
-  eventDefinitions: readonly OrchestrationCatalogEvent[];
+  /** Null unless an organization's Map shows its universe. */
+  universe: OrchestrationUniverseScopes | null;
 };
 
 /**
@@ -72,74 +63,28 @@ type OrchestrationCatalog = {
  */
 function OrchestrationPanel({
   replica,
+  graph,
   routes,
-  recentEvents,
   forwardAccepts,
   recentForwards,
+  catalog,
+  errors,
   selectedScope,
   workflowSource,
   runtimeToolCatalog,
 }: {
   replica: LofiSqliteClient;
+  graph: OrchestrationGraph;
   routes: readonly AutomationRouteDefinition[];
-  recentEvents: readonly { source: string; eventType: string }[];
   forwardAccepts: readonly AutomationForwardAccept[];
   recentForwards: readonly OrchestrationForward[];
+  catalog: OrchestrationCatalog;
+  /** The records that could not be read, which the graph is drawn without. */
+  errors: readonly string[];
   selectedScope: BackofficeScopeSelection;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
 }) {
-  const { records, errors } = useOrchestrationRecords(replica);
-
-  // Registered capabilities describe what every scope can receive; a scope's own definitions add
-  // to them and take precedence.
-  const catalog = useMemo((): OrchestrationCatalog => {
-    const sources = new Map<string, OrchestrationCatalogSource>();
-    for (const source of listCapabilityEventSources()) {
-      sources.set(normalizedSourceId(source.source), {
-        id: normalizedSourceId(source.source),
-        label: source.label,
-        description: source.description,
-      });
-    }
-    for (const source of records.eventSources) {
-      sources.set(normalizedSourceId(source.id), { ...source, id: normalizedSourceId(source.id) });
-    }
-    const eventDefinitions = new Map<string, OrchestrationCatalogEvent>();
-    for (const definition of [...listAutomationEventDescriptors(), ...records.eventDefinitions]) {
-      eventDefinitions.set(orchestrationEventId(definition.source, definition.eventType), {
-        source: definition.source,
-        eventType: definition.eventType,
-        label: definition.label,
-        payloadSchema: definition.payloadSchema ?? null,
-      });
-    }
-    return { sources: [...sources.values()], eventDefinitions: [...eventDefinitions.values()] };
-  }, [records.eventSources, records.eventDefinitions]);
-
-  const graph = useMemo(
-    () =>
-      projectOrchestrationGraph({
-        scopeLabel: selectedScope.label,
-        sources: catalog.sources,
-        eventDefinitions: catalog.eventDefinitions,
-        routes,
-        activeWorkflows: records.activeWorkflows,
-        recentEvents,
-        forwardAccepts,
-        recentForwards,
-      }),
-    [
-      selectedScope.label,
-      catalog,
-      routes,
-      records.activeWorkflows,
-      recentEvents,
-      forwardAccepts,
-      recentForwards,
-    ],
-  );
-
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = dashboardSelection(searchParams);
   const inspected = requested
@@ -231,58 +176,37 @@ export function ScopeOrchestration({
   const now = useClock(CLOCK_TICK_MS);
   // The window start only moves when a new bucket begins, so the event read restarts rarely.
   const since = dashboardBucketStarts(now)[0] ?? now;
-  const inputs = useAutomationRead(replica, "orchestrationGraphInputs", {
+  const read = useScopeOrchestrationGraph(replica, {
+    scope: backofficeRuntimeScopeFromResolvedScope(loaderData.selectedScope),
+    scopeLabel: loaderData.selectedScope.label,
     since,
-    ownerScope: backofficeRuntimeScopeFromResolvedScope(loaderData.selectedScope),
   });
-  if (inputs.status === "error") {
+  if (read.status === "error") {
     return (
       <BackofficeSystemState
         tone="error"
         title="The orchestration graph could not be read."
-        description={inputs.message}
+        description={read.message}
       />
     );
   }
-  if (inputs.status === "loading") {
+  if (read.status === "loading") {
     return <PaneSpinner label="Reading routes and events" />;
   }
   return (
     <OrchestrationPanel
       replica={replica}
-      routes={inputs.data.routes}
-      recentEvents={inputs.data.recentEvents}
-      forwardAccepts={inputs.data.forwardAccepts}
-      recentForwards={inputs.data.recentForwards}
+      graph={read.graph}
+      routes={read.inputs.routes}
+      forwardAccepts={read.inputs.forwardAccepts}
+      recentForwards={read.inputs.recentForwards}
+      catalog={read.catalog}
+      errors={read.recordErrors}
       selectedScope={loaderData.selectedScope}
       workflowSource={loaderData.workflowSource}
       runtimeToolCatalog={loaderData.runtimeToolCatalog}
     />
   );
-}
-
-type OrchestrationRecords = AutomationReadData<"orchestrationRecords">;
-
-const NO_ORCHESTRATION_RECORDS: OrchestrationRecords = {
-  eventSources: [],
-  eventDefinitions: [],
-  activeWorkflows: [],
-};
-
-/**
- * The scope's own event sources and definitions, and its runs that have not finished, with the
- * names of those that could not be read. The graph draws what it has meanwhile.
- */
-function useOrchestrationRecords(replica: LofiSqliteClient): {
-  records: OrchestrationRecords;
-  errors: string[];
-} {
-  const read = useAutomationRead(replica, "orchestrationRecords", undefined);
-  return {
-    records: read.status === "ready" ? read.data : NO_ORCHESTRATION_RECORDS,
-    errors:
-      read.status === "error" ? ["Event sources", "event definitions", "running workflows"] : [],
-  };
 }
 
 /** What the inspector shows for a graph item; null when the item no longer exists. */

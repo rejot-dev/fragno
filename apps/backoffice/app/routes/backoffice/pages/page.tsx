@@ -33,7 +33,7 @@ export async function loader({ request, context, params, url }: Route.LoaderArgs
   const name = params["*"];
   const [{ result, build }, orchestration] = await Promise.all([
     loadPageRoute({ request, context, name }),
-    loadOrchestration({ context, url }),
+    loadOrchestration({ request, context, url }),
   ]);
   // Started once the route has loaded: when it throws, such as for a scope that does not
   // resolve, nothing would await them. Both stream, so the page responds without them; the

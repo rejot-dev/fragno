@@ -5,6 +5,7 @@ import type {
 import type {
   AutomationEvent,
   AutomationEventCausation,
+  AutomationRouteDispatchOutcome,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { AnyTable } from "@fragno-dev/db/schema";
@@ -377,6 +378,34 @@ export function readOrchestrationGraphInputs(
       },
     }),
   };
+}
+
+/**
+ * Where the scope's routes forwarded events since `since`, once per route and target scope: the
+ * targets their templates rendered, which the routes alone do not name.
+ */
+export function readRecentForwardDeliveries(
+  reader: LofiSqliteReader,
+  { since }: { since: number },
+): { routeId: string; scope: BackofficeContextScope }[] {
+  const dispatch = automationFragmentSchema.tables.automation_route_dispatch.columns;
+  const rows = reader.query({
+    sql: `SELECT "routeId", "outcome"
+          FROM ${automationTable("automation_route_dispatch")}
+          WHERE "dispatchedAt" >= ? AND "outcome" ->> '$.kind' = 'event_forwarded'`,
+    params: [since],
+    columns: { routeId: dispatch.routeId, outcome: dispatch.outcome },
+  });
+  const deliveries = new Map<string, { routeId: string; scope: BackofficeContextScope }>();
+  for (const { routeId, outcome } of rows) {
+    // The query keeps forwarding outcomes, which name the scope they delivered to.
+    const { scope } = outcome as Extract<
+      AutomationRouteDispatchOutcome,
+      { kind: "event_forwarded" }
+    >;
+    deliveries.set(JSON.stringify([routeId, scope]), { routeId, scope });
+  }
+  return [...deliveries.values()];
 }
 
 /** The scope's own event sources. Registered capabilities describe the rest. */

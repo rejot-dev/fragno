@@ -14,6 +14,7 @@ import {
   readLatestEventsOfType,
   readOrchestrationGraphInputs,
   readOrchestrationRecords,
+  readRecentForwardDeliveries,
   readStartedCodemodeRuns,
   readWorkflowRuns,
 } from "./reads";
@@ -38,6 +39,7 @@ export const automationReads = {
   automationRoutes: readAutomationRoutes,
   orchestrationRecords: readOrchestrationRecords,
   orchestrationGraphInputs: readOrchestrationGraphInputs,
+  recentForwardDeliveries: readRecentForwardDeliveries,
   latestEventsOfType: readLatestEventsOfType,
   workflowRuns: readWorkflowRuns,
   startedCodemodeRuns: readStartedCodemodeRuns,
