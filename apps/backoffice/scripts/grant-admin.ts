@@ -13,7 +13,7 @@ const USAGE =
   "Usage: pnpm --filter @fragno-apps/backoffice-rr admin:grant -- [--port PORT] [EMAIL]\n" +
   "EMAIL defaults to $USER@rejot.dev, the account dev-account:create makes.\n" +
   "Defaults to this worktree's dev server. Set BACKOFFICE_URL to target another origin, such as\n" +
-  "https://backoffice.rejot.dev.";
+  "https://leyway.com.";
 
 function fail(message: string): never {
   console.error(message);

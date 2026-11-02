@@ -661,7 +661,7 @@ describe("Backoffice extension scenarios", () => {
     const command = session.prompt("/backoffice");
     const menu = await opened.promise;
     expect(menu.lines()).toContain("→ Exit Backoffice (restore normal Pi)");
-    expect(menu.lines()).toContain("Backoffice Cloud (backoffice.rejot.dev)");
+    expect(menu.lines()).toContain("Backoffice Cloud (leyway.com)");
     expect(menu.lines()).toContain("Looking for local Backoffice servers…");
 
     answerProbe.resolve();
@@ -906,7 +906,7 @@ describe("Backoffice extension scenarios", () => {
       );
 
       // Re-entering continues the local fix in this session instead of starting a new one.
-      const cloudUrl = "https://backoffice.rejot.dev";
+      const cloudUrl = "https://leyway.com";
       const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
       await writeFile(
         join(directory, "backoffice-auth.json"),
@@ -946,7 +946,7 @@ describe("Backoffice extension scenarios", () => {
       expect(runtime.session.messages).toEqual(historyBeforeReentry);
       expect(notifications).toContain(`Connected to ${cloudUrl} with scope user:scenario-user.`);
       expect(runtime.session.getActiveToolNames()).toContain("backofficeCodemode");
-      assert(statuses.get("backoffice") === "backoffice:backoffice.rejot.dev");
+      assert(statuses.get("backoffice") === "backoffice:leyway.com");
       const reentered = await runtime.session.extensionRunner.emitBeforeAgentStart(
         "Continue in Backoffice",
         undefined,

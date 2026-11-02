@@ -28,13 +28,18 @@
     "DURABLE_OBJECT_JURISDICTIONS": "enforced",
     // Local servers started without the bridge's containers say "false", so sandbox starts fail at once.
     "SANDBOX_CONTAINERS": "true",
-    "DOCS_PUBLIC_BASE_URL": "https://backoffice.rejot.dev/",
+    "DOCS_PUBLIC_BASE_URL": "https://leyway.com/",
     "POSTHOG_HOST": "https://eu.i.posthog.com",
   },
   "secrets": {
     "required": ["BACKOFFICE_INTERNAL_REQUEST_SECRET", "RESON8_API_KEY"],
   },
   "routes": [
+    {
+      "pattern": "leyway.com",
+      "custom_domain": true,
+    },
+    // The former domain keeps serving: webhook URLs already handed to providers point at it.
     {
       "pattern": "backoffice.rejot.dev",
       "custom_domain": true,

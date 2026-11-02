@@ -98,7 +98,7 @@ beside `package.json` (see `.env.example`):
 
 - `VITE_POSTHOG_PROJECT_TOKEN`: the project's public client token, not a personal API key.
 - `VITE_POSTHOG_HOST`: the ingestion host, currently `https://eu.i.posthog.com`.
-- `VITE_POSTHOG_APP_ORIGIN`: the exact deployed origin, currently `https://backoffice.rejot.dev`.
+- `VITE_POSTHOG_APP_ORIGIN`: the exact deployed origin, currently `https://leyway.com`.
 
 These values are embedded at build time; setting Worker runtime secrets does not configure the
 browser SDK. Changes require rebuilding the frontend, and Turbo includes these values in its build

@@ -74,7 +74,7 @@ const BACKOFFICE_TOOL_NAMES = [
   "localFind",
   "localLs",
 ];
-const CLOUD_BACKOFFICE_URL = "https://backoffice.rejot.dev";
+const CLOUD_BACKOFFICE_URL = "https://leyway.com";
 // Matches Backoffice's own search tool: tuning knobs only invited unhelpful variations.
 const SEARCH_OPTIONS = { contextBefore: 2, contextAfter: 2, maxMatches: 30 };
 const BACKOFFICE_TOOL_NAMESPACE = {
@@ -146,7 +146,7 @@ const EXIT_CHOICE: BackofficeMenuChoice = {
 };
 const CLOUD_CHOICE: BackofficeMenuChoice = {
   kind: "remote",
-  label: "Backoffice Cloud (backoffice.rejot.dev)",
+  label: "Backoffice Cloud (leyway.com)",
   baseUrl: CLOUD_BACKOFFICE_URL,
 };
 

@@ -32,7 +32,7 @@ to other workspaces.
 <!-- prettier-ignore -->
 > [!TIP]
 > To use Backoffice without running it yourself, sign up at
-> [backoffice.rejot.dev](https://backoffice.rejot.dev).
+> [leyway.com](https://leyway.com).
 
 ## Overview
 

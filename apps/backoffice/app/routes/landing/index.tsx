@@ -10,7 +10,7 @@ export function meta() {
   const title = "Leyway — AI that shows its work";
   const description =
     "Describe how your business runs, and Leyway writes it as workflows you can read. They run the same way every time, ask before they act, and record every step.";
-  const ogImage = "https://backoffice.rejot.dev/og-image.png";
+  const ogImage = "https://leyway.com/og-image.png";
 
   return [
     { title },
