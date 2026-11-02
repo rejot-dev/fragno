@@ -238,7 +238,7 @@ export class Books extends DurableObject<CloudflareEnv> {
     );
   }
 
-  withdrawRequests(input: { reason: string }) {
+  withdrawRequests(input: Parameters<Documents["services"]["withdrawRequests"]>[0]) {
     return attempt(
       this.documents.callServices(() => this.documents.services.withdrawRequests(input)),
     );

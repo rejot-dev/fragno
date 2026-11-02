@@ -242,6 +242,8 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
   readonly #objectClass: DurableObjectClass<TObject, TEnv>;
   readonly #env: TEnv;
   readonly #objects = new Map<string, { state: FakeDurableObjectState; object: TObject }>();
+  readonly #failing = new Set<string>();
+  readonly #beforeNextCall = new Map<string, () => Promise<void>>();
 
   constructor(objectClass: DurableObjectClass<TObject, TEnv>, env: TEnv) {
     this.#objectClass = objectClass;
@@ -263,6 +265,36 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
     return [...this.#objects.values()];
   }
 
+  /**
+   * Calls to `method`, on any of the binding's objects, fail before reaching it, until the returned
+   * function is called.
+   */
+  failCalls(method: string): () => void {
+    this.#failing.add(method);
+    return () => {
+      this.#failing.delete(method);
+    };
+  }
+
+  /** `happen` runs before the next call to `method`, on any of the binding's objects, reaches it. */
+  beforeNextCall(method: string, happen: () => Promise<void>): void {
+    this.#beforeNextCall.set(method, happen);
+  }
+
+  /** Fires the alarms due at `now`, each cleared first, as the runtime does. */
+  async runDueAlarms(now: number): Promise<void> {
+    for (const { state, object } of this.#objects.values()) {
+      if (state.dueAlarm(now) === null) {
+        continue;
+      }
+      state.clearAlarm();
+      await state.ready;
+      // One at a time, so a scenario reads the same order each run.
+      // oxlint-disable-next-line no-await-in-loop
+      await (object as { alarm(): Promise<void> }).alarm();
+    }
+  }
+
   close(): void {
     for (const { state } of this.#objects.values()) {
       state.database.close();
@@ -270,6 +302,8 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
   }
 
   #stub({ state, object }: { state: FakeDurableObjectState; object: TObject }): TObject {
+    const failing = this.#failing;
+    const beforeNextCall = this.#beforeNextCall;
     return new Proxy(object, {
       get(target, property) {
         // RPC reaches an object's methods by name, whatever its class declares.
@@ -278,6 +312,14 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
           return value;
         }
         return async (...args: unknown[]) => {
+          if (typeof property === "string" && failing.has(property)) {
+            throw new Error("Network connection lost.");
+          }
+          const happen = typeof property === "string" ? beforeNextCall.get(property) : undefined;
+          if (happen) {
+            beforeNextCall.delete(property as string);
+            await happen();
+          }
           await state.ready;
           // Requests and responses stream across RPC; everything else is copied.
           const isFetch = property === "fetch";

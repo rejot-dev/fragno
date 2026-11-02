@@ -1,12 +1,17 @@
 import type { OrganizationRole } from "@fragno-dev/backoffice-api/v0/organization";
 import { DurableObject } from "cloudflare:workers";
 
+import { withdrawFormerRequests } from "../backoffice/management";
 import { applyMigrations } from "../migrations";
 import directoryMigration from "./migrations/0001-directory.sql?raw";
 import operatorsMigration from "./migrations/0002-operators.sql?raw";
 import firmAgentsMigration from "./migrations/0003-firm-agents.sql?raw";
 import firmAccessMigration from "./migrations/0004-firm-access.sql?raw";
 import unmanagedClientsMigration from "./migrations/0005-unmanaged-clients.sql?raw";
+import managerGenerationsMigration from "./migrations/0006-manager-generations.sql?raw";
+
+/** How long a withdrawal that failed waits before it is tried again. */
+const WITHDRAWAL_RETRY_MS = 60_000;
 
 /**
  * Operators run Bookkeeping; a firm keeps the books of its clients; a client is one business whose
@@ -24,6 +29,14 @@ export type Organization = { id: string; slug: string; name: string } & (
   | { kind: "firm" }
   | { kind: "client"; firmId: string | null }
 );
+
+/**
+ * Who manages a client, as Bookkeeping last recorded it: the firm, or none, and its generation,
+ * how many times that changed. A request records the generation it was asked under, which tells
+ * the requests of a former firm from those of the firm managing the client now, even one that
+ * managed it before.
+ */
+export type ClientManagement = { firmId: string | null; generation: number };
 
 /** The organizations Bookkeeping creates; Backoffice's administrator creates the operators'. */
 export type ProvisionedOrganization = Extract<Organization, { kind: "firm" | "client" }>;
@@ -142,6 +155,7 @@ export class Directory extends DurableObject<CloudflareEnv> {
         firmAgentsMigration,
         firmAccessMigration,
         unmanagedClientsMigration,
+        managerGenerationsMigration,
       ]);
     });
   }
@@ -297,34 +311,37 @@ export class Directory extends DurableObject<CloudflareEnv> {
     });
   }
 
-  /** The client's firm, or null for an organization that is no client Bookkeeping knows. */
-  findClient(clientId: string): { firmId: string | null } | null {
+  /** Who manages the client, or null for an organization that is no client Bookkeeping knows. */
+  findClient(clientId: string): ClientManagement | null {
     const [row] = this.ctx.storage.sql
-      .exec<{ firmId: string | null }>(
-        `SELECT "firmId" FROM "organization" WHERE "id" = ? AND "kind" = 'client'`,
+      .exec<{ firmId: string | null; managerGeneration: number }>(
+        `SELECT "firmId", "managerGeneration" FROM "organization"
+         WHERE "id" = ? AND "kind" = 'client'`,
         clientId,
       )
       .toArray();
-    return row ?? null;
+    return row ? { firmId: row.firmId, generation: row.managerGeneration } : null;
   }
 
   /**
    * Records the firm Backoffice says manages the client, by its `managingOrganizationId`: that
    * organization, or none when it is no firm Bookkeeping knows. Only while the client's firm is
    * still `expectedFirmId`, read before asking Backoffice: an answer that arrives after a newer one
-   * changed the firm changes nothing, and the next confirmation asks again. A change marks the
-   * former firm's requests to withdraw. Returns the client's firm now and whether its requests are
-   * still to withdraw, or null for an organization that is no client Bookkeeping knows.
+   * changed the firm changes nothing, and the next confirmation asks again. A change starts a new
+   * generation and marks the former firm's requests to withdraw, which this object's alarm retries
+   * until they are. Returns who manages the client now and whether requests of earlier generations
+   * are still to withdraw, or null for an organization that is no client Bookkeeping knows.
    */
-  followManager(input: {
+  async followManager(input: {
     clientId: string;
     expectedFirmId: string | null;
     managingOrganizationId: string | null;
-  }): { firmId: string | null; withdrawalPending: boolean } | null {
-    return this.ctx.storage.transactionSync(() => {
+  }): Promise<(ClientManagement & { withdrawalPending: boolean }) | null> {
+    const client = this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec(
         `UPDATE "organization" AS c
-         SET "firmId" = m."id", "withdrawalPending" = 1
+         SET "firmId" = m."id", "withdrawalPending" = 1,
+             "managerGeneration" = c."managerGeneration" + 1
          FROM (SELECT (SELECT f."id" FROM "organization" f
                        WHERE f."id" = ? AND f."kind" = 'firm') AS "id") AS m
          WHERE c."id" = ? AND c."kind" = 'client' AND c."firmId" IS ? AND c."firmId" IS NOT m."id"`,
@@ -333,26 +350,68 @@ export class Directory extends DurableObject<CloudflareEnv> {
         input.expectedFirmId,
       );
       const [row] = this.ctx.storage.sql
-        .exec<{ firmId: string | null; withdrawalPending: number }>(
-          `SELECT "firmId", "withdrawalPending" FROM "organization"
+        .exec<{ firmId: string | null; managerGeneration: number; withdrawalPending: number }>(
+          `SELECT "firmId", "managerGeneration", "withdrawalPending" FROM "organization"
            WHERE "id" = ? AND "kind" = 'client'`,
           input.clientId,
         )
         .toArray();
-      return row ? { firmId: row.firmId, withdrawalPending: row.withdrawalPending === 1 } : null;
+      return row
+        ? {
+            firmId: row.firmId,
+            generation: row.managerGeneration,
+            withdrawalPending: row.withdrawalPending === 1,
+          }
+        : null;
     });
+    if (client?.withdrawalPending) {
+      // Set before anyone tries the withdrawal: whoever changed the firm may fail before trying,
+      // and the client may have nobody left whose visit would.
+      await this.#retryWithdrawalsLater();
+    }
+    return client;
   }
 
   /**
-   * Records that the requests asked before the client's firm became `firmId` were withdrawn. A
-   * newer change, to another firm, keeps its own withdrawal pending.
+   * Records that the requests asked before the client's management reached `generation` were
+   * withdrawn. A newer change keeps its own withdrawal pending.
    */
-  endWithdrawal(input: { clientId: string; firmId: string | null }): void {
+  endWithdrawal(input: { clientId: string; generation: number }): void {
     this.ctx.storage.sql.exec(
-      `UPDATE "organization" SET "withdrawalPending" = 0 WHERE "id" = ? AND "firmId" IS ?`,
+      `UPDATE "organization" SET "withdrawalPending" = 0
+       WHERE "id" = ? AND "managerGeneration" = ?`,
       input.clientId,
-      input.firmId,
+      input.generation,
     );
+  }
+
+  /** Withdraws what is still to withdraw, and tries again later while any of it fails. */
+  async alarm(): Promise<void> {
+    const pending = () =>
+      this.ctx.storage.sql
+        .exec<{ clientId: string; generation: number }>(
+          `SELECT "id" AS "clientId", "managerGeneration" AS "generation" FROM "organization"
+           WHERE "withdrawalPending" = 1`,
+        )
+        .toArray();
+    await Promise.all(
+      pending().map((client) =>
+        withdrawFormerRequests(this.env, client).catch((error: unknown) => {
+          console.warn("Bookkeeping could not withdraw a former firm's requests yet.", error);
+        }),
+      ),
+    );
+    if (pending().length > 0) {
+      await this.#retryWithdrawalsLater();
+    }
+  }
+
+  async #retryWithdrawalsLater(): Promise<void> {
+    const at = Date.now() + WITHDRAWAL_RETRY_MS;
+    const scheduled = await this.ctx.storage.getAlarm();
+    if (scheduled === null || scheduled > at) {
+      await this.ctx.storage.setAlarm(at);
+    }
   }
 
   /**

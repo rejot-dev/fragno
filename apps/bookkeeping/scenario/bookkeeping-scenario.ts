@@ -298,7 +298,10 @@ export class BookkeepingScenario {
     bookkeepingOrigin: BOOKKEEPING_ORIGIN,
   });
   readonly env: CloudflareEnv;
-  readonly #namespaces: FakeDurableObjectNamespace<object, CloudflareEnv>[];
+  readonly #bindings: Record<
+    "AUTH" | "DIRECTORY" | "BOOKS",
+    FakeDurableObjectNamespace<object, CloudflareEnv>
+  >;
 
   constructor() {
     const vars = {
@@ -315,7 +318,7 @@ export class BookkeepingScenario {
       DIRECTORY: new FakeDurableObjectNamespace(Directory, env),
       BOOKS: new FakeDurableObjectNamespace(Books, env),
     };
-    this.#namespaces = Object.values(bindings);
+    this.#bindings = bindings;
     // The fakes serve the same calls as Cloudflare's namespaces; their types differ.
     this.env = Object.assign(
       env,
@@ -473,6 +476,35 @@ export class BookkeepingScenario {
     return new ScenarioAgent(this, { actor, organization, project });
   }
 
+  /**
+   * Calls to `method` on `binding`'s objects fail, as while they cannot be reached, until the
+   * returned function is called.
+   */
+  failCalls(binding: "DIRECTORY" | "BOOKS", method: string): () => void {
+    return this.#bindings[binding].failCalls(method);
+  }
+
+  /**
+   * `happen` runs before the next call to `method` reaches one of `binding`'s objects, e.g. a
+   * change elsewhere between reading the Directory and writing the books.
+   */
+  beforeNextCall(
+    binding: "DIRECTORY" | "BOOKS",
+    method: string,
+    happen: () => Promise<void>,
+  ): void {
+    this.#bindings[binding].beforeNextCall(method, happen);
+  }
+
+  /** Fires every object's alarm that is due by now, as the runtime does once time has passed. */
+  async runDueAlarms(): Promise<void> {
+    for (const namespace of Object.values(this.#bindings)) {
+      // One at a time, so a scenario reads the same order each run.
+      // oxlint-disable-next-line no-await-in-loop
+      await namespace.runDueAlarms(Date.now());
+    }
+  }
+
   /** Moves every clock forward: sessions, tokens, and confirmations. */
   advanceTime(ms: number): void {
     vi.setSystemTime(Date.now() + ms);
@@ -488,7 +520,7 @@ export class BookkeepingScenario {
   };
 
   close(): void {
-    for (const namespace of this.#namespaces) {
+    for (const namespace of Object.values(this.#bindings)) {
       namespace.close();
     }
   }

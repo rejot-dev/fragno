@@ -1,5 +1,12 @@
+import type { FragnoId } from "@fragno-dev/db/schema";
+
 import { defineFragment, instantiate } from "@fragno-dev/core";
-import { withDatabase, type FragnoPublicConfigWithDatabase, type TxResult } from "@fragno-dev/db";
+import {
+  withDatabase,
+  type FragnoPublicConfigWithDatabase,
+  type TxResult,
+  type TypedUnitOfWork,
+} from "@fragno-dev/db";
 import type { createLedgerFragment } from "@fragno-dev/ledger";
 
 import {
@@ -23,6 +30,9 @@ export const DOCUMENT_SOURCE_KIND = "document";
 
 const PAGE_SIZE = 50;
 
+/** The ID of the `management` table's one row. */
+const MANAGEMENT = "management";
+
 const documentErrorMessages = {
   DOCUMENT_NOT_FOUND: "This document does not exist.",
   DOCUMENT_ID_TAKEN: "Another file was uploaded with this form. Upload it again.",
@@ -30,6 +40,7 @@ const documentErrorMessages = {
   DOCUMENT_DISMISSED: "This document was dismissed.",
   REQUEST_NOT_AWAITED:
     "This request no longer awaits an answer: the document was answered, or asked about again, since.",
+  MANAGEMENT_CHANGED: "The firm keeping these books changed while asking. Ask again.",
 } as const;
 
 export type DocumentErrorCode = keyof typeof documentErrorMessages;
@@ -113,6 +124,26 @@ function awaitedRequest(
     documentState(document.dismissal, source).status === "to-book"
     ? review.requestId
     : null;
+}
+
+/**
+ * Records the latest generation of the client's management the books heard of. Every request and
+ * withdrawal writes it, even unchanged, so the two conflict and one retries instead of passing each
+ * other: a request recorded meanwhile would be missed by the withdrawal, or recorded after it.
+ */
+function recordLatestGeneration(
+  uow: TypedUnitOfWork<typeof documentsSchema>,
+  management: { id: FragnoId; generation: number } | null,
+  generation: number,
+) {
+  if (management === null) {
+    // Another request or withdrawal created it: retrying reads it.
+    uow.create("management", { id: MANAGEMENT, generation }, { retryOnUniqueConflict: () => true });
+    return;
+  }
+  uow.update("management", management.id, (b) =>
+    b.set({ generation: Math.max(generation, management.generation) }).check(),
+  );
 }
 
 /** Refuses booking a document that is booked or dismissed. */
@@ -313,42 +344,60 @@ const documentsFragmentDefinition = defineFragment("documents")
 
       /**
        * Records that the bookkeeping agent was asked to review a document to book, and that its file
-       * may be shared with it. Asking again replaces an earlier answer, and recording a request again
-       * does nothing; with `first`, so does a request for a document that has a review. Returns the
-       * review in effect.
+       * may be shared with it, under `generation` of the client's management, read before. Asking
+       * again replaces an earlier answer, and recording a request again does nothing; with `first`,
+       * so does a request for a document that has a review. Returns the review in effect.
        */
       requestReview: function (input: {
         documentId: string;
         request: ReviewRequest;
         first: boolean;
+        generation: number;
       }) {
-        const { documentId, request, first } = input;
+        const { documentId, request, first, generation } = input;
         return this.serviceTx(documentsSchema)
           .withServiceCalls(
             () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
           )
           .retrieve((uow) =>
-            uow.findFirst("document", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
-            ),
+            uow
+              .findFirst("document", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
+              )
+              .findFirst("management", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", MANAGEMENT)),
+              ),
           )
-          .mutate(({ uow, retrieveResult: [document], serviceIntermediateResult: [sources] }) => {
-            if (!document) {
-              throw new DocumentError("DOCUMENT_NOT_FOUND");
-            }
-            assertToBook(documentState(document.dismissal, sources[0] ?? null));
-            const current = document.review;
-            if (
-              current !== null &&
-              (first || (current.status === "requested" && current.requestId === request.requestId))
-            ) {
-              return current;
-            }
-            uow.update("document", document.id, (b) =>
-              b.set({ review: request, shared: true }).check(),
-            );
-            return request;
-          })
+          .mutate(
+            ({
+              uow,
+              retrieveResult: [document, management],
+              serviceIntermediateResult: [sources],
+            }) => {
+              if (!document) {
+                throw new DocumentError("DOCUMENT_NOT_FOUND");
+              }
+              assertToBook(documentState(document.dismissal, sources[0] ?? null));
+              // The firm read under an earlier generation may be one whose requests were withdrawn
+              // already, which would leave this one with it.
+              if (management && generation < management.generation) {
+                throw new DocumentError("MANAGEMENT_CHANGED");
+              }
+              recordLatestGeneration(uow, management, generation);
+              const current = document.review;
+              if (
+                current !== null &&
+                (first ||
+                  (current.status === "requested" && current.requestId === request.requestId))
+              ) {
+                return current;
+              }
+              uow.update("document", document.id, (b) =>
+                b.set({ review: request, shared: true, requestGeneration: generation }).check(),
+              );
+              return request;
+            },
+          )
           .build();
       },
 
@@ -391,15 +440,27 @@ const documentsFragmentDefinition = defineFragment("documents")
       },
 
       /**
-       * Withdraws every request awaiting an answer, so no answer to it counts, and returns the IDs of
-       * the documents whose files may still be shared: theirs, and answered ones whose shares were
-       * not revoked yet.
+       * Withdraws the requests awaiting an answer that were asked before the client's management
+       * reached `generation`, so no answer to them counts, and refuses requests asked under earlier
+       * generations from now on. Returns the IDs of the documents whose files may still be shared:
+       * every one whose file a request shared and no revocation since recorded unshared.
        */
-      withdrawRequests: function (input: { reason: string }) {
+      withdrawRequests: function (input: { reason: string; generation: number }) {
+        const { generation } = input;
         return this.serviceTx(documentsSchema)
-          .retrieve((uow) => uow.find("document", (b) => b.whereIndex("primary")))
-          .mutate(({ uow, retrieveResult: [documents] }) => {
-            const requested = documents.filter(({ review }) => review?.status === "requested");
+          .retrieve((uow) =>
+            uow
+              .find("document", (b) => b.whereIndex("primary"))
+              .findFirst("management", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", MANAGEMENT)),
+              ),
+          )
+          .mutate(({ uow, retrieveResult: [documents, management] }) => {
+            recordLatestGeneration(uow, management, generation);
+            const requested = documents.filter(
+              ({ review, requestGeneration }) =>
+                review?.status === "requested" && requestGeneration < generation,
+            );
             for (const document of requested) {
               uow.update("document", document.id, (b) =>
                 b

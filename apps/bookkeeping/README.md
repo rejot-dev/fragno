@@ -178,14 +178,17 @@ no firm manages, or one managed by an organization Bookkeeping does not know as 
 books with its own members and has no bookkeeping agent to ask. When Backoffice cannot list a firm's
 clients, its dashboard shows the clients the `Directory` knows. Bookkeeping records a change only if
 the client's firm is still the one it recorded before asking Backoffice, so an answer that arrives
-after a newer one changes nothing. A change records the new firm and marks the former firm's
-requests to withdraw, then withdraws them, then revokes the shares of every document whose file may
-still be shared: Backoffice keeps shares whoever manages the client, and a withdrawn request takes
-no answer, so its document's page revokes what could not be revoked then. A withdrawal that fails is
-retried at the next confirmation. Asking the agent reads the client's firm only after recording the
-request, so it sees the new firm, or its request is withdrawn. Operators manage no firms: an
-operator organization managing them would reach each firm's agent project and the skills in it.
-People sign up only through invitations: someone who signs in without one has no access yet.
+after a newer one changes nothing. A change records the new firm and starts a new generation of the
+client's management, then withdraws the requests asked under earlier generations, then revokes the
+shares of every document whose file may still be shared: Backoffice keeps shares whoever manages the
+client, and a withdrawn request takes no answer, so its document's page revokes what could not be
+revoked then. Requests asked of the new firm meanwhile stand. The `Directory` retries a withdrawal
+that fails with an alarm, every minute until it succeeds, as a client may have nobody left whose
+visit would. Asking the agent records the generation it read the client's firm under with the
+request, and the books refuse a request older than a change they heard of, so a request reaches the
+new firm, or none, or is withdrawn. Operators manage no firms: an operator organization managing
+them would reach each firm's agent project and the skills in it. People sign up only through
+invitations: someone who signs in without one has no access yet.
 
 **Creating a firm.** At `/operator/firms/new`, an operator gives the firm's name and the email of
 its owner, who need not have signed in yet. Bookkeeping provisions it with
