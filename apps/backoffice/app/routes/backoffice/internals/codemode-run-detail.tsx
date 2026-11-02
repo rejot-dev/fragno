@@ -1,14 +1,14 @@
 import { formatCodemodeLogLine } from "@fragno-dev/codemode/runtime-api";
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { CodeBlock } from "@fragno-private/design-system/code-block";
-import { DataTable } from "@fragno-private/design-system/data-table";
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { CodeBlock } from "@fragno-private/design-system/data/code-block";
+import { DataTable } from "@fragno-private/design-system/data/data-table";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import {
   SurfaceFacts,
   SurfacePanel,
   SurfacePanelBody,
-} from "@fragno-private/design-system/surface-panel";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { useLoaderData, useRevalidator } from "react-router";
 
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";

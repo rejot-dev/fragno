@@ -1,13 +1,13 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { PageHeading } from "@fragno-private/design-system/page-heading";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
 import {
   SurfaceCard,
   SurfaceFacts,
   SurfaceSection,
   SurfaceTable,
   SurfaceTableRow,
-} from "@fragno-private/design-system/surface-panel";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { Link, useOutletContext } from "react-router";
 import { z } from "zod";
 

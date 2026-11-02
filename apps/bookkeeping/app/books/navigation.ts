@@ -1,4 +1,4 @@
-import type { NavigationItem } from "@fragno-private/design-system/navigation-item";
+import type { NavigationItem } from "@fragno-private/design-system/navigation/navigation-item";
 
 /** An administration's books as sidebar destinations under `base`, the books' own path. */
 export function booksNavigation(base: string, pathname: string): NavigationItem[] {

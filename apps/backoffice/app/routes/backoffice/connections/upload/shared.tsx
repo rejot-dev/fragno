@@ -1,5 +1,5 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { BackofficePageHeader } from "@fragno-private/design-system/layout/page-header";
 import { isRouteErrorResponse } from "react-router";
 
 import { getRouteErrorMessage, getBackofficeOrganizationNotFound } from "../../route-errors";

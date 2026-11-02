@@ -1,13 +1,13 @@
-import { Field } from "@fragno-private/design-system/field";
-import { Input } from "@fragno-private/design-system/input";
-import { PageHeading } from "@fragno-private/design-system/page-heading";
-import { Select } from "@fragno-private/design-system/select";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { Select } from "@fragno-private/design-system/controls/select";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
+import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
 import {
   SurfaceCard,
   SurfaceTable,
   SurfaceTableRow,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { useState } from "react";
 import { Link, useOutletContext } from "react-router";
 import { z } from "zod";

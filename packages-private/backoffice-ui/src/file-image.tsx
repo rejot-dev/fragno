@@ -1,4 +1,4 @@
-import { ImagePreview } from "@fragno-private/design-system/image-preview";
+import { ImagePreview } from "@fragno-private/design-system/files/image-preview";
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
 
 type FileImageComponent = ComponentType<{ path: string; alt: string }>;

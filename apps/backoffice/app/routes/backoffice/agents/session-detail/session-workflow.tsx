@@ -1,14 +1,14 @@
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { pendingWaitEventTypes } from "@fragno-dev/workflows/pending-waits";
 import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
-import { ChatEventLink } from "@fragno-private/design-system/chat-divider";
+import { ChatEventLink } from "@fragno-private/design-system/agents/chat-divider";
 import {
   ChatWorkflow,
   ChatWorkflowInputRequest,
   type ChatWorkflowElement,
   type ChatWorkflowStatus,
-} from "@fragno-private/design-system/chat-workflow";
-import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-run-timeline";
+} from "@fragno-private/design-system/agents/chat-workflow";
+import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-runs/workflow-run-timeline";
 import {
   createContext,
   useCallback,

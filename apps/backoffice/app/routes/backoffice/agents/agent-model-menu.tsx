@@ -1,4 +1,4 @@
-import { ChatComposerModelMenu } from "@fragno-private/design-system/chat-composer";
+import { ChatComposerModelMenu } from "@fragno-private/design-system/agents/chat-composer";
 
 import { piAgentModelRef, piBuiltInAgentDefaultModel } from "@/fragno/pi/agent/agent-definitions";
 import {

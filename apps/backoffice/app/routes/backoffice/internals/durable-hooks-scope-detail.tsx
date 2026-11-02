@@ -1,13 +1,13 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { CodeBlock } from "@fragno-private/design-system/code-block";
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { CodeBlock } from "@fragno-private/design-system/data/code-block";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfaceFacts,
   SurfacePanel,
   SurfacePanelBody,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { useLocation, useOutletContext } from "react-router";
 
 import type { DurableHookQueueEntry } from "@/fragno/durable-hooks";

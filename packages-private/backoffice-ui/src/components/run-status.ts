@@ -1,5 +1,5 @@
 import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
-import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
+import type { BackofficeStatusTone } from "@fragno-private/design-system/feedback/status-tone";
 import { z } from "zod";
 
 /** How each status a workflow run can be in reads, wherever a run's status shows. */

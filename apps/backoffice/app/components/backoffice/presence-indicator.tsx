@@ -1,4 +1,4 @@
-import { PresenceStack } from "@fragno-private/design-system/presence-stack";
+import { PresenceStack } from "@fragno-private/design-system/feedback/presence-stack";
 import { useEffect } from "react";
 import { useFetcher } from "react-router";
 

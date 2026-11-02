@@ -1,6 +1,6 @@
-import { IconButton } from "@fragno-private/design-system/button";
+import { IconButton } from "@fragno-private/design-system/controls/button";
 import { Icon } from "@fragno-private/design-system/icon";
-import { SideDrawerHeader } from "@fragno-private/design-system/side-drawer";
+import { SideDrawerHeader } from "@fragno-private/design-system/overlays/side-drawer";
 import type { ReactNode } from "react";
 
 /** The agent drawer's toolbar: `options`, then the button that closes the drawer. */

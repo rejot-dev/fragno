@@ -4,23 +4,23 @@ import {
   ChatActivity,
   ChatActivityStep,
   type ChatActivityStatus,
-} from "@fragno-private/design-system/chat-activity";
-import { ChatMessageAttachments } from "@fragno-private/design-system/chat-attachment";
+} from "@fragno-private/design-system/agents/chat-activity";
+import { ChatMessageAttachments } from "@fragno-private/design-system/agents/chat-attachment";
 import {
   ChatEventDisclosure,
   ChatEventDivider,
   ChatEventLink,
-} from "@fragno-private/design-system/chat-divider";
+} from "@fragno-private/design-system/agents/chat-divider";
 import {
   ChatAssistantMessage,
   ChatMessageActions,
   ChatStoppedNotice,
   ChatTokenUsage,
   ChatUserMessage,
-} from "@fragno-private/design-system/chat-message";
-import { CopyButton } from "@fragno-private/design-system/copy-button";
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
-import { WorkingIndicator } from "@fragno-private/design-system/working-indicator";
+} from "@fragno-private/design-system/agents/chat-message";
+import { CopyButton } from "@fragno-private/design-system/controls/copy-button";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { WorkingIndicator } from "@fragno-private/design-system/feedback/working-indicator";
 import { Fragment } from "react";
 
 import { MessagePrimitive, useAuiState } from "@assistant-ui/react";

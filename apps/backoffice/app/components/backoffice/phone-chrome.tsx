@@ -1,14 +1,14 @@
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { Button } from "@fragno-private/design-system/button";
+import { Button } from "@fragno-private/design-system/controls/button";
 import { Icon } from "@fragno-private/design-system/icon";
-import { BottomNavigation } from "@fragno-private/design-system/navigation";
+import { BottomNavigation } from "@fragno-private/design-system/navigation/navigation";
 import {
   BottomNavigationButton,
   BottomNavigationItem,
   SidebarNavigationItem,
   type NavigationItem,
-} from "@fragno-private/design-system/navigation-item";
-import { Sheet, SheetSection } from "@fragno-private/design-system/sheet";
+} from "@fragno-private/design-system/navigation/navigation-item";
+import { Sheet, SheetSection } from "@fragno-private/design-system/overlays/sheet";
 import { useState } from "react";
 import { useLocation } from "react-router";
 

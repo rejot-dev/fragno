@@ -1,4 +1,4 @@
-import { ProgressMeter } from "@fragno-private/design-system/progress-meter";
+import { ProgressMeter } from "@fragno-private/design-system/data/progress-meter";
 
 import type { ComponentFn } from "@json-render/react";
 

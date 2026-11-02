@@ -1,15 +1,15 @@
-import { Button } from "@fragno-private/design-system/button";
-import { Checkbox } from "@fragno-private/design-system/checkbox";
 import { cn } from "@fragno-private/design-system/cn";
-import { Input } from "@fragno-private/design-system/input";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Checkbox } from "@fragno-private/design-system/controls/checkbox";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfacePanel,
   SurfacePanelFooter,
   SurfaceTable,
   SurfaceTableRow,
   type SurfaceTableColumn,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { usePostHog } from "@posthog/react/slim";
 import { useEffect, useMemo, useState } from "react";
 import {

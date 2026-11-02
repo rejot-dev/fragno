@@ -1,6 +1,6 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
 import { Icon } from "@fragno-private/design-system/icon";
-import { SurfaceSection } from "@fragno-private/design-system/surface-panel";
+import { SurfaceSection } from "@fragno-private/design-system/layout/surface-panel";
 
 import { documentPath } from "../books/books";
 

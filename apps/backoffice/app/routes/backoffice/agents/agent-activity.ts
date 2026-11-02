@@ -1,4 +1,4 @@
-import { formatRelativeTime } from "@fragno-private/design-system/relative-time";
+import { formatRelativeTime } from "@fragno-private/design-system/data/relative-time";
 
 import type { PiAgentRecord } from "@/fragno/pi/agent/pi-agent-records";
 

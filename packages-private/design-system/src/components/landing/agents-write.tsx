@@ -2,8 +2,8 @@ import { Tabs } from "@base-ui/react/tabs";
 import { useState } from "react";
 
 import { cn } from "../../cn";
-import { Button } from "../button";
-import { ChatAssistantMessage, ChatUserMessage } from "../chat-message";
+import { ChatAssistantMessage, ChatUserMessage } from "../agents/chat-message";
+import { Button } from "../controls/button";
 import { Icon, type IconName } from "../icon";
 import { LandingSection } from "./landing-section";
 

@@ -1,21 +1,21 @@
 import type { AutomationEventCausation } from "@fragno-dev/backoffice-api/v0/events";
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
-import { Button } from "@fragno-private/design-system/button";
-import { CausalFlameGraph } from "@fragno-private/design-system/causal-flame-graph";
+import { cn } from "@fragno-private/design-system/cn";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { CopyButton } from "@fragno-private/design-system/controls/copy-button";
+import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import type { BackofficeStatusTone } from "@fragno-private/design-system/feedback/status-tone";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
+import { Icon } from "@fragno-private/design-system/icon";
+import { underlineTabClassName } from "@fragno-private/design-system/navigation/underline-tab-class-name";
+import { CausalFlameGraph } from "@fragno-private/design-system/workflow-runs/causal-flame-graph";
 import {
   causalFlameNodeAt,
   causalFlamePath,
   type CausalFlameNode,
   type CausalFlameStatus,
-} from "@fragno-private/design-system/causal-flame-graph-model";
-import { cn } from "@fragno-private/design-system/cn";
-import { CopyButton } from "@fragno-private/design-system/copy-button";
-import { Icon } from "@fragno-private/design-system/icon";
-import { PaneSpinner } from "@fragno-private/design-system/pane-message";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { underlineTabClassName } from "@fragno-private/design-system/underline-tab-class-name";
+} from "@fragno-private/design-system/workflow-runs/causal-flame-graph-model";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useFetcher, useSearchParams } from "react-router";
 

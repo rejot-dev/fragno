@@ -1,15 +1,15 @@
-import { Button } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { Input } from "@fragno-private/design-system/input";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfacePanel,
   SurfacePanelBody,
   SurfaceTable,
   SurfaceTableRow,
   type SurfaceTableColumn,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { useState } from "react";
 import {
   data,

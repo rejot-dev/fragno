@@ -1,4 +1,4 @@
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import { Link } from "react-router";
 
 import type { DocumentView } from "../../workers/books/documents/documents";

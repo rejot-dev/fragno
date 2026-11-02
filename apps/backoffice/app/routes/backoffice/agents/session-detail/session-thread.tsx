@@ -1,10 +1,9 @@
-import { Button } from "@fragno-private/design-system/button";
 import {
   ChatAttachmentDropZone,
   ChatComposerAttachButton,
   ChatComposerAttachments,
   type ChatComposerAttachmentItem,
-} from "@fragno-private/design-system/chat-attachment";
+} from "@fragno-private/design-system/agents/chat-attachment";
 import {
   ChatComposer,
   ChatComposerButton,
@@ -14,8 +13,8 @@ import {
   ChatComposerStatus,
   ChatComposerToolbar,
   chatComposerInputClassName,
-} from "@fragno-private/design-system/chat-composer";
-import { ChatBoundaryDivider } from "@fragno-private/design-system/chat-divider";
+} from "@fragno-private/design-system/agents/chat-composer";
+import { ChatBoundaryDivider } from "@fragno-private/design-system/agents/chat-divider";
 import {
   ChatColumn,
   ChatHistoryControls,
@@ -25,10 +24,11 @@ import {
   ChatThread,
   ChatViewport,
   ChatViewportFooter,
-} from "@fragno-private/design-system/chat-thread";
-import { ContextUsageMeter } from "@fragno-private/design-system/context-usage-meter";
-import { OperationNotice } from "@fragno-private/design-system/operation-notice";
-import { RadioMenu, type RadioMenuOption } from "@fragno-private/design-system/radio-menu";
+} from "@fragno-private/design-system/agents/chat-thread";
+import { ContextUsageMeter } from "@fragno-private/design-system/agents/context-usage-meter";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { RadioMenu, type RadioMenuOption } from "@fragno-private/design-system/controls/radio-menu";
+import { OperationNotice } from "@fragno-private/design-system/feedback/operation-notice";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import {

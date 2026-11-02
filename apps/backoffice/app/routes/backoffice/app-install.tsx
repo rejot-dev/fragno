@@ -4,8 +4,8 @@ import type {
   AppActionsDeclaration,
   AppInstallationResourceScope,
 } from "@fragno-dev/backoffice-api/v0/apps";
-import { AuthorizationScreen } from "@fragno-private/design-system/authorization-screen";
-import { Button } from "@fragno-private/design-system/button";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { AuthorizationScreen } from "@fragno-private/design-system/layout/authorization-screen";
 import { useState } from "react";
 import {
   Form,

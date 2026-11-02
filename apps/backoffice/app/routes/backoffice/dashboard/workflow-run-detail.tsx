@@ -1,6 +1,6 @@
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
-import { PaneSpinner } from "@fragno-private/design-system/pane-message";
-import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-run-timeline";
+import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
+import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-runs/workflow-run-timeline";
 import { useMemo, useState, type ReactNode } from "react";
 
 import { formatTimestamp } from "../automations/formatting";

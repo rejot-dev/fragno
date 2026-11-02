@@ -1,15 +1,15 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { FileInput } from "@fragno-private/design-system/file-input";
-import { PageHeading } from "@fragno-private/design-system/page-heading";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { FileInput } from "@fragno-private/design-system/controls/file-input";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
+import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
 import {
   SurfaceCard,
   SurfacePanelBody,
   SurfacePanelFooter,
   SurfaceTable,
   SurfaceTableRow,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { Form, Link, redirect, useNavigation, useOutletContext } from "react-router";
 import { z } from "zod";
 

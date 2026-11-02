@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router";
 
-import { Button } from "../button";
+import { Button } from "../controls/button";
+import { BackofficeStatusLight } from "../feedback/status-light";
+import type { BackofficeStatusTone } from "../feedback/status-tone";
 import { Icon, type IconName } from "../icon";
-import { BackofficeStatusLight } from "../status-light";
-import type { BackofficeStatusTone } from "../status-tone";
 import { LandingSection } from "./landing-section";
 
 type Connection = {

@@ -1,4 +1,7 @@
-import { TerminalOverlay, TerminalScopeMenu } from "@fragno-private/design-system/terminal";
+import {
+  TerminalOverlay,
+  TerminalScopeMenu,
+} from "@fragno-private/design-system/overlays/terminal";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 

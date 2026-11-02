@@ -1,5 +1,5 @@
-import { Field } from "@fragno-private/design-system/field";
-import { Select as SelectControl } from "@fragno-private/design-system/select";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Select as SelectControl } from "@fragno-private/design-system/controls/select";
 
 import { useBoundProp, type ComponentFn } from "@json-render/react";
 

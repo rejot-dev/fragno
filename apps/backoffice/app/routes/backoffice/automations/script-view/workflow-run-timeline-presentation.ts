@@ -9,13 +9,13 @@ import {
   workflowRunNodesFromGraph,
   type WorkflowRunStepIteration,
   type WorkflowRunStepRuntime,
-} from "@fragno-private/design-system/workflow-run-timeline-graph";
+} from "@fragno-private/design-system/workflow-runs/workflow-run-timeline-graph";
 import type {
   WorkflowRunEvent as WorkflowRunTimelineEvent,
   WorkflowRunNode,
   WorkflowRunStep as WorkflowRunTimelineStep,
   WorkflowRunStepStatus as WorkflowRunTimelineStepStatus,
-} from "@fragno-private/design-system/workflow-run-timeline-model";
+} from "@fragno-private/design-system/workflow-runs/workflow-run-timeline-model";
 import { useMemo } from "react";
 
 import {

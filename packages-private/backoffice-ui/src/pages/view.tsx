@@ -1,4 +1,4 @@
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import { Component, useEffect, useMemo, type ReactNode } from "react";
 
 import { createStateStore } from "@json-render/react";

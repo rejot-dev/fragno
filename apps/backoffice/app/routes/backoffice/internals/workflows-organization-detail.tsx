@@ -1,9 +1,10 @@
 import { Tabs } from "@base-ui/react/tabs";
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { CodeBlock } from "@fragno-private/design-system/code-block";
-import { DetailList } from "@fragno-private/design-system/detail-list";
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { CodeBlock } from "@fragno-private/design-system/data/code-block";
+import { DetailList } from "@fragno-private/design-system/data/detail-list";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfaceFacts,
   SurfacePanel,
@@ -11,9 +12,11 @@ import {
   SurfaceTable,
   SurfaceTableRow,
   type SurfaceTableColumn,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
+} from "@fragno-private/design-system/layout/surface-panel";
+import {
+  UnderlineTab,
+  UnderlineTabList,
+} from "@fragno-private/design-system/navigation/underline-tabs";
 import { useLoaderData, useSearchParams } from "react-router";
 
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";

@@ -1,12 +1,12 @@
-import { Button } from "@fragno-private/design-system/button";
-import { Callout } from "@fragno-private/design-system/callout";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Callout } from "@fragno-private/design-system/feedback/callout";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import {
   SurfacePanelBody,
   SurfaceSection,
   SurfaceTable,
   SurfaceTableRow,
-} from "@fragno-private/design-system/surface-panel";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { useEffect } from "react";
 import { Form, useNavigation, useRevalidator } from "react-router";
 

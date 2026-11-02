@@ -1,16 +1,16 @@
-import { Button } from "@fragno-private/design-system/button";
-import { Checkbox } from "@fragno-private/design-system/checkbox";
-import { Field } from "@fragno-private/design-system/field";
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
-import { Input } from "@fragno-private/design-system/input";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Checkbox } from "@fragno-private/design-system/controls/checkbox";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfaceFacts,
   SurfacePanel,
   SurfacePanelBody,
   SurfacePanelRows,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { useState, type SubmitEvent } from "react";
 
 import type { BrowserRunSessions } from "@fragno-dev/cloudflare-fragment";

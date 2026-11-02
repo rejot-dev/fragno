@@ -1,4 +1,4 @@
-import { ChatArtifactToggle } from "@fragno-private/design-system/chat-activity";
+import { ChatArtifactToggle } from "@fragno-private/design-system/agents/chat-activity";
 
 import { useSessionWorkspaceNavigation } from "./workspace-context";
 

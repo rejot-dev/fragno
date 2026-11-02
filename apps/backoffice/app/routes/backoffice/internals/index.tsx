@@ -1,10 +1,10 @@
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import {
   SurfacePanel,
   SurfaceTable,
   SurfaceTableRow,
   type SurfaceTableColumn,
-} from "@fragno-private/design-system/surface-panel";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { Link, useOutletContext } from "react-router";
 
 import { internalsScopeBasePath } from "./internals-scope";

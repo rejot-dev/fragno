@@ -5,8 +5,8 @@ import { STATE_FILE_MAX_BYTES } from "@fragno-dev/backoffice-api/v0/state";
 import type {
   ChatComposerAttachmentItem,
   ChatMessageAttachmentItem,
-} from "@fragno-private/design-system/chat-attachment";
-import { formatBytes } from "@fragno-private/design-system/units";
+} from "@fragno-private/design-system/agents/chat-attachment";
+import { formatBytes } from "@fragno-private/design-system/forms/units";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {

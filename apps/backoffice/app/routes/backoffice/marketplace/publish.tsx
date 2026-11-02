@@ -2,13 +2,13 @@ import {
   MARKETPLACE_CATEGORIES,
   marketplaceVisibilitySchema,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { FormContainer } from "@fragno-private/design-system/form-container";
-import { Input } from "@fragno-private/design-system/input";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
-import { Select } from "@fragno-private/design-system/select";
-import { TextArea } from "@fragno-private/design-system/text-area";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { Select } from "@fragno-private/design-system/controls/select";
+import { TextArea } from "@fragno-private/design-system/controls/text-area";
+import { FormContainer } from "@fragno-private/design-system/forms/form-container";
+import { BackofficePageHeader } from "@fragno-private/design-system/layout/page-header";
 import { Form, redirect, useActionData, useNavigation } from "react-router";
 
 import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";

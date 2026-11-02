@@ -1,12 +1,12 @@
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import { Icon } from "@fragno-private/design-system/icon";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
 import {
   SurfaceFacts,
   SurfacePanel,
   SurfacePanelBody,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { useOutletContext } from "react-router";
 
 import {

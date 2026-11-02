@@ -1,6 +1,6 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { TextArea } from "@fragno-private/design-system/text-area";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { TextArea } from "@fragno-private/design-system/controls/text-area";
 import { useEffect, useRef, useState } from "react";
 import {
   Form,

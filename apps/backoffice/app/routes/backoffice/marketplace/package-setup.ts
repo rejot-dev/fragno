@@ -5,7 +5,10 @@ import type {
   AutomationRouteScopeTemplate,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type { MarketplacePackageDeclaration } from "@fragno-dev/backoffice-api/v0/marketplace";
-import type { PackageSetup, PackageSetupRoute } from "@fragno-private/design-system/package-setup";
+import type {
+  PackageSetup,
+  PackageSetupRoute,
+} from "@fragno-private/design-system/marketplace/package-setup";
 import type { ComponentProps } from "react";
 
 import { formatTimestamp } from "../automations/formatting";

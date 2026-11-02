@@ -8,12 +8,12 @@ import {
   type BackofficeContextScope,
   type BackofficeOrganizationContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import { Icon } from "@fragno-private/design-system/icon";
-import { Input } from "@fragno-private/design-system/input";
-import { PackageSetup } from "@fragno-private/design-system/package-setup";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { PackageSetup } from "@fragno-private/design-system/marketplace/package-setup";
 import { usePostHog } from "@posthog/react/slim";
 import { Suspense, useState } from "react";
 import {

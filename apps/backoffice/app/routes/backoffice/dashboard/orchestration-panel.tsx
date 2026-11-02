@@ -1,12 +1,12 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
+import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import type {
   OrchestrationGraph,
   OrchestrationGraphItem,
-} from "@fragno-private/design-system/orchestration-graph-model";
-import { OrchestrationLayeredGraph } from "@fragno-private/design-system/orchestration-layered-graph";
-import { PaneSpinner } from "@fragno-private/design-system/pane-message";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/orchestration/orchestration-graph-model";
+import { OrchestrationLayeredGraph } from "@fragno-private/design-system/orchestration/orchestration-layered-graph";
 import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router";
 

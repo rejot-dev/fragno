@@ -1,8 +1,8 @@
-import { Callout } from "@fragno-private/design-system/callout";
-import { ORGANIZATION_GRAPH } from "@fragno-private/design-system/orchestration-graph-story-support";
-import { OrchestrationLayeredGraph } from "@fragno-private/design-system/orchestration-layered-graph";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { backofficePageColumnClassName } from "@fragno-private/design-system/tab-header";
+import { Callout } from "@fragno-private/design-system/feedback/callout";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
+import { backofficePageColumnClassName } from "@fragno-private/design-system/navigation/tab-header";
+import { ORGANIZATION_GRAPH } from "@fragno-private/design-system/orchestration/orchestration-graph-story-support";
+import { OrchestrationLayeredGraph } from "@fragno-private/design-system/orchestration/orchestration-layered-graph";
 import { useEffect, useMemo, useState } from "react";
 
 import type { BackofficeUiLinkTarget } from "../../components/link";

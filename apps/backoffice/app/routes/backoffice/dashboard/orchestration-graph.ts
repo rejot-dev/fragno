@@ -10,7 +10,7 @@ import type {
   OrchestrationRoute,
   OrchestrationSource,
   OrchestrationTarget,
-} from "@fragno-private/design-system/orchestration-graph-model";
+} from "@fragno-private/design-system/orchestration/orchestration-graph-model";
 import { z } from "zod";
 
 import { formatTimestamp } from "../automations/formatting";

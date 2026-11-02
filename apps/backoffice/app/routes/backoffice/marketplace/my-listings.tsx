@@ -2,9 +2,9 @@ import {
   marketplaceVisibilitySchema,
   type MarketplaceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { Select } from "@fragno-private/design-system/select";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Select } from "@fragno-private/design-system/controls/select";
 import { Form, Link } from "react-router";
 
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";

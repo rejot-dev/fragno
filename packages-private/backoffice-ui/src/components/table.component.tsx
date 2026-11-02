@@ -1,4 +1,4 @@
-import { DataTable } from "@fragno-private/design-system/data-table";
+import { DataTable } from "@fragno-private/design-system/data/data-table";
 
 import type { ComponentFn } from "@json-render/react";
 

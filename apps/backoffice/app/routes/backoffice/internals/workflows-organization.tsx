@@ -1,12 +1,12 @@
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
-import { ListRow, RowList } from "@fragno-private/design-system/list-row";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { ListRow, RowList } from "@fragno-private/design-system/data/list-row";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfacePanel,
   SurfacePanelBody,
   SurfacePanelRows,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { Outlet, useLoaderData, useLocation, useParams } from "react-router";
 
 import { backofficeContextScopeLabel } from "@/backoffice-runtime/context";

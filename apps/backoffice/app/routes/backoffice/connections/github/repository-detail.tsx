@@ -1,4 +1,4 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
 import { useLoaderData, useOutletContext, useParams } from "react-router";
 
 import { formatTimestamp } from "../formatting";

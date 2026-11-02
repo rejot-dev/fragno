@@ -1,4 +1,4 @@
-import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+import { BackofficeTabHeader } from "@fragno-private/design-system/navigation/tab-header";
 
 /** Both settings pages open with these tabs, so moving between them keeps the content in place. */
 /** The user's own settings, which the sidebar's Settings opens in their personal workspace. */

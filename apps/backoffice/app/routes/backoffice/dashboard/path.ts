@@ -1,7 +1,7 @@
 import type {
   OrchestrationGraphItem,
   OrchestrationGraphItemKind,
-} from "@fragno-private/design-system/orchestration-graph-model";
+} from "@fragno-private/design-system/orchestration/orchestration-graph-model";
 import type { ShouldRevalidateFunctionArgs } from "react-router";
 
 import {

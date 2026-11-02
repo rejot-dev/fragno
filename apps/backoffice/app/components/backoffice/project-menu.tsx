@@ -6,7 +6,7 @@ import {
   SelectorMenuOption,
   SelectorMenuPopup,
   SelectorMenuTrigger,
-} from "@fragno-private/design-system/selector-menu";
+} from "@fragno-private/design-system/controls/selector-menu";
 import { Suspense, use, type ReactNode } from "react";
 import { useLocation } from "react-router";
 

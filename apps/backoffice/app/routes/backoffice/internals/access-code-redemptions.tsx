@@ -1,6 +1,7 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { CopyButton } from "@fragno-private/design-system/copy-button";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { CopyButton } from "@fragno-private/design-system/controls/copy-button";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfaceFacts,
   SurfacePanel,
@@ -8,8 +9,7 @@ import {
   SurfaceTable,
   SurfaceTableRow,
   type SurfaceTableColumn,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { useLoaderData, useLocation } from "react-router";
 
 import { buildAccessCodeSignUpUrl } from "@/fragno/access-codes/access-code";

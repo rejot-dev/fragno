@@ -1,11 +1,11 @@
-import { CopyButton } from "@fragno-private/design-system/copy-button";
+import { CopyButton } from "@fragno-private/design-system/controls/copy-button";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   FileTreeExplorer,
   type FileTreeExplorerNode,
-} from "@fragno-private/design-system/file-tree-explorer";
+} from "@fragno-private/design-system/files/file-tree-explorer";
 import { Icon, type IconName } from "@fragno-private/design-system/icon";
-import { Input } from "@fragno-private/design-system/input";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
 import { useMemo, useState, type ReactNode } from "react";
 import { Form, Link, type To } from "react-router";
 

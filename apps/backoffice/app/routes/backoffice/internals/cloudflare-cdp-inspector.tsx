@@ -1,9 +1,9 @@
-import { Button } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
-import { Input } from "@fragno-private/design-system/input";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import { SurfacePanel, SurfacePanelBody } from "@fragno-private/design-system/surface-panel";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { SurfacePanel, SurfacePanelBody } from "@fragno-private/design-system/layout/surface-panel";
 import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import { z } from "zod";
 

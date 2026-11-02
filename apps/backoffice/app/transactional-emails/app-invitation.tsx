@@ -4,7 +4,7 @@ import {
   EmailFootnote,
   EmailParagraph,
   TransactionalEmail,
-} from "@fragno-private/design-system/transactional-email";
+} from "@fragno-private/design-system/brand/transactional-email";
 
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 

@@ -1,5 +1,5 @@
 import type { LofiSqliteClient, LofiSqliteReplicaStatus } from "@fragno-dev/lofi/sqlite";
-import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
+import { BackofficeDownloadState } from "@fragno-private/design-system/feedback/download-state";
 import { useSyncExternalStore, type ReactNode } from "react";
 
 /** A connection to a replica worker, which reports the replica's status. */

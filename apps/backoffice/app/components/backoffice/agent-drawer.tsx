@@ -1,5 +1,5 @@
-import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/pane-message";
-import { SideDrawer } from "@fragno-private/design-system/side-drawer";
+import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
+import { SideDrawer } from "@fragno-private/design-system/overlays/side-drawer";
 import { lazy, Suspense, useState } from "react";
 
 import {

@@ -1,8 +1,8 @@
 import { ScrollArea } from "@base-ui/react/scroll-area";
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { Input } from "@fragno-private/design-system/input";
-import { TextArea } from "@fragno-private/design-system/text-area";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { TextArea } from "@fragno-private/design-system/controls/text-area";
 import { useEffect, useState } from "react";
 import { useFetcher, useLoaderData, useOutletContext, useParams } from "react-router";
 

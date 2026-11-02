@@ -1,5 +1,5 @@
 import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 
 import { RUN_STATUS_LIGHTS } from "./run-status";
 

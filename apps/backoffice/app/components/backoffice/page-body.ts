@@ -1,4 +1,4 @@
-import { backofficePageColumnClassName } from "@fragno-private/design-system/tab-header";
+import { backofficePageColumnClassName } from "@fragno-private/design-system/navigation/tab-header";
 
 /**
  * The content under a page's tab header. Its padding lines content up with the header's first tab.

@@ -1,10 +1,11 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Checkbox } from "@fragno-private/design-system/checkbox";
-import { CopyButton } from "@fragno-private/design-system/copy-button";
-import { Field } from "@fragno-private/design-system/field";
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
-import { Input } from "@fragno-private/design-system/input";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Checkbox } from "@fragno-private/design-system/controls/checkbox";
+import { CopyButton } from "@fragno-private/design-system/controls/copy-button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfacePanel,
   SurfacePanelBody,
@@ -12,8 +13,7 @@ import {
   SurfaceTable,
   SurfaceTableRow,
   type SurfaceTableColumn,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { Form, useActionData, useLoaderData, useLocation, useNavigation } from "react-router";
 import { z } from "zod";
 

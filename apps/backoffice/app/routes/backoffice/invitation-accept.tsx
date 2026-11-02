@@ -1,6 +1,6 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer } from "@fragno-private/design-system/form-container";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { FormContainer } from "@fragno-private/design-system/forms/form-container";
+import { BackofficePageHeader } from "@fragno-private/design-system/layout/page-header";
 import type { Invitation } from "better-auth/plugins/organization";
 import { useState } from "react";
 import { useLoaderData } from "react-router";

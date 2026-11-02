@@ -6,7 +6,7 @@ import {
   TerminalPrompt,
   TerminalSuggestion,
   TerminalSuggestions,
-} from "@fragno-private/design-system/terminal";
+} from "@fragno-private/design-system/overlays/terminal";
 import { useCallback, useEffect, useId, useMemo } from "react";
 import { useFetcher } from "react-router";
 

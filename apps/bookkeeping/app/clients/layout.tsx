@@ -1,5 +1,5 @@
 import type { OrganizationRole } from "@fragno-dev/backoffice-api/v0/organization";
-import type { NavigationItem } from "@fragno-private/design-system/navigation-item";
+import type { NavigationItem } from "@fragno-private/design-system/navigation/navigation-item";
 import { Outlet, useLocation } from "react-router";
 
 import type { SessionUser } from "../../workers/auth/auth";

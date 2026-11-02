@@ -1,11 +1,11 @@
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { Input } from "@fragno-private/design-system/input";
-import { PaneSpinner } from "@fragno-private/design-system/pane-message";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { TextArea } from "@fragno-private/design-system/text-area";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { TextArea } from "@fragno-private/design-system/controls/text-area";
+import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import { useMemo } from "react";
 import { Form, redirect, useActionData, useNavigation, useSearchParams } from "react-router";
 

@@ -1,4 +1,4 @@
-import { formatActivityDuration } from "@fragno-private/design-system/chat-activity";
+import { formatActivityDuration } from "@fragno-private/design-system/agents/chat-activity";
 
 import type { AgentTurnSegment, ToolCallPart } from "./agent-turn";
 import { normalizePiContent } from "./assistant-runtime";

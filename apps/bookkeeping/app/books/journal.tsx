@@ -1,15 +1,15 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { PageHeading } from "@fragno-private/design-system/page-heading";
-import { Select } from "@fragno-private/design-system/select";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Select } from "@fragno-private/design-system/controls/select";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
+import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
 import {
   SurfaceCard,
   SurfacePanelFooter,
   SurfaceTable,
   SurfaceTableGroupRow,
   SurfaceTableRow,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { Fragment } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router";
 

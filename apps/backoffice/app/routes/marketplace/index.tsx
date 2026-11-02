@@ -5,8 +5,8 @@ import {
   marketplaceSearchInputSchema,
   type MarketplaceListing,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Input } from "@fragno-private/design-system/input";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Input } from "@fragno-private/design-system/controls/input";
 import { Form, Link } from "react-router";
 
 import { MarketplaceListingCard } from "@/components/marketplace/listing-card";

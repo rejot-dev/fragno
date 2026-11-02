@@ -1,5 +1,5 @@
 import { backofficeScopeRootOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { backofficePageColumnClassName } from "@fragno-private/design-system/tab-header";
+import { backofficePageColumnClassName } from "@fragno-private/design-system/navigation/tab-header";
 import { Link } from "react-router";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";

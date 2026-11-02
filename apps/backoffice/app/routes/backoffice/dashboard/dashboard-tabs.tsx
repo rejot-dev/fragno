@@ -1,9 +1,9 @@
-import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+import { BackofficeTabHeader } from "@fragno-private/design-system/navigation/tab-header";
 import {
   TabPinMenu,
   TabPinMenuCode,
   type TabPinMenuItems,
-} from "@fragno-private/design-system/tab-pin-menu";
+} from "@fragno-private/design-system/navigation/tab-pin-menu";
 import { useEffect, useMemo } from "react";
 
 import {

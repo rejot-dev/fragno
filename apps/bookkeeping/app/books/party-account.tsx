@@ -1,7 +1,8 @@
-import { Button } from "@fragno-private/design-system/button";
-import { Input } from "@fragno-private/design-system/input";
-import { PageHeading } from "@fragno-private/design-system/page-heading";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
+import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
 import {
   SurfaceCard,
   SurfaceFacts,
@@ -9,8 +10,7 @@ import {
   SurfaceSection,
   SurfaceTable,
   SurfaceTableRow,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { Form, Link, useNavigation, useOutletContext } from "react-router";
 import { z } from "zod";
 

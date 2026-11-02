@@ -4,10 +4,10 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { absoluteFilePathSchema } from "@fragno-private/backoffice-ui/absolute-file-path";
 import { FileImageProvider } from "@fragno-private/backoffice-ui/file-image";
-import { ButtonLink } from "@fragno-private/design-system/button";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { ImagePreview } from "@fragno-private/design-system/files/image-preview";
+import { ImagePreviewCard } from "@fragno-private/design-system/files/image-preview-card";
 import { Icon } from "@fragno-private/design-system/icon";
-import { ImagePreview } from "@fragno-private/design-system/image-preview";
-import { ImagePreviewCard } from "@fragno-private/design-system/image-preview-card";
 import { createContext, useContext, type ReactNode } from "react";
 import { Link } from "react-router";
 

@@ -1,6 +1,9 @@
 import { BLOB_MAX_SIZE_BYTES } from "@fragno-dev/backoffice-api/v0/blobs";
-import { LargeFilesView, type LargeFileTransfer } from "@fragno-private/design-system/large-files";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
+import {
+  LargeFilesView,
+  type LargeFileTransfer,
+} from "@fragno-private/design-system/files/large-files";
 import { useState } from "react";
 import { useFetcher, useOutletContext, useRevalidator } from "react-router";
 

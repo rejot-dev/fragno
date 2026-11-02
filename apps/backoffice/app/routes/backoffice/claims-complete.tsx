@@ -1,6 +1,6 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer } from "@fragno-private/design-system/form-container";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { FormContainer } from "@fragno-private/design-system/forms/form-container";
+import { BackofficePageHeader } from "@fragno-private/design-system/layout/page-header";
 import { Form, useNavigation } from "react-router";
 
 import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";

@@ -1,11 +1,11 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Select } from "@fragno-private/design-system/controls/select";
 import { Icon } from "@fragno-private/design-system/icon";
 import {
   MobileNavigation,
   SidebarNavigation,
   type NavigationSection,
-} from "@fragno-private/design-system/navigation";
-import { Select } from "@fragno-private/design-system/select";
+} from "@fragno-private/design-system/navigation/navigation";
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router";
 

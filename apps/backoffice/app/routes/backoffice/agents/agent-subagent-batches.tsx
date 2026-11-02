@@ -3,14 +3,14 @@ import {
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { ChatEventDivider } from "@fragno-private/design-system/chat-divider";
+import { ChatEventDivider } from "@fragno-private/design-system/agents/chat-divider";
 import {
   ChatSubagentGroup,
   ChatSubagentsRunning,
   type ChatSubagentRun,
   type ChatSubagentRunStatus,
-} from "@fragno-private/design-system/chat-subagent-group";
-import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/pane-message";
+} from "@fragno-private/design-system/agents/chat-subagent-group";
+import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import {
   createContext,
   useCallback,

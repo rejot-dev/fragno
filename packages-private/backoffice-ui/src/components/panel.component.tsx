@@ -1,4 +1,4 @@
-import { Panel as PanelView, PanelFooter } from "@fragno-private/design-system/panel";
+import { Panel as PanelView, PanelFooter } from "@fragno-private/design-system/layout/panel";
 
 import type { ComponentFn } from "@json-render/react";
 

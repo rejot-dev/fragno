@@ -1,6 +1,6 @@
-import { Button } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { Input } from "@fragno-private/design-system/input";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
 import { env } from "cloudflare:workers";
 import { Form, redirect, useNavigation } from "react-router";
 import { z } from "zod";

@@ -1,6 +1,6 @@
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
+import { BackofficePageHeader } from "@fragno-private/design-system/layout/page-header";
+import { BackofficeTabHeader } from "@fragno-private/design-system/navigation/tab-header";
 import { isRouteErrorResponse, Outlet } from "react-router";
 
 import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";

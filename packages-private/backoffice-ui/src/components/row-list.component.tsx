@@ -1,4 +1,4 @@
-import { RowList as RowListView } from "@fragno-private/design-system/list-row";
+import { RowList as RowListView } from "@fragno-private/design-system/data/list-row";
 
 import type { ComponentFn } from "@json-render/react";
 

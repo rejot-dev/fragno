@@ -1,13 +1,13 @@
 import { oauthConsentPageSchema } from "@fragno-dev/backoffice-api/v0/account";
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { DetailList } from "@fragno-private/design-system/detail-list";
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { DetailList } from "@fragno-private/design-system/data/detail-list";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfacePanel,
   SurfacePanelBody,
   SurfacePanelFooter,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { Form, data, redirect, useNavigation } from "react-router";
 
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";

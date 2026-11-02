@@ -1,14 +1,14 @@
-import { Field } from "@fragno-private/design-system/field";
-import { Input } from "@fragno-private/design-system/input";
-import { PageHeading } from "@fragno-private/design-system/page-heading";
-import { Select } from "@fragno-private/design-system/select";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { Select } from "@fragno-private/design-system/controls/select";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
 import {
   SurfaceCard,
   SurfaceTable,
   SurfaceTableGroupRow,
   SurfaceTableRow,
-} from "@fragno-private/design-system/surface-panel";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { Fragment } from "react";
 import { Link, useOutletContext } from "react-router";
 import { z } from "zod";

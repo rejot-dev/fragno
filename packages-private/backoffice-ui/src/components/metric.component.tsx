@@ -1,4 +1,4 @@
-import { Metric as MetricView } from "@fragno-private/design-system/metric";
+import { Metric as MetricView } from "@fragno-private/design-system/data/metric";
 
 import type { ComponentFn } from "@json-render/react";
 

@@ -1,4 +1,4 @@
-import { Callout } from "@fragno-private/design-system/callout";
+import { Callout } from "@fragno-private/design-system/feedback/callout";
 import { Outlet } from "react-router";
 
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";

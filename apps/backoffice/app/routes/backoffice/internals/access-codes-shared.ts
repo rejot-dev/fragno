@@ -1,4 +1,4 @@
-import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
+import type { BackofficeStatusTone } from "@fragno-private/design-system/feedback/status-tone";
 
 import type { AccessCodeStatus } from "@/fragno/access-codes/contracts";
 

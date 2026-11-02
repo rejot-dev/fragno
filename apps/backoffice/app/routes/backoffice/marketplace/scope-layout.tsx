@@ -1,4 +1,4 @@
-import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+import { BackofficeTabHeader } from "@fragno-private/design-system/navigation/tab-header";
 import { Outlet } from "react-router";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";

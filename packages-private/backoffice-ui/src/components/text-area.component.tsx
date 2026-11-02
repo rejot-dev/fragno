@@ -1,5 +1,5 @@
-import { Field } from "@fragno-private/design-system/field";
-import { TextArea as TextAreaControl } from "@fragno-private/design-system/text-area";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { TextArea as TextAreaControl } from "@fragno-private/design-system/controls/text-area";
 
 import { useBoundProp, type ComponentFn } from "@json-render/react";
 

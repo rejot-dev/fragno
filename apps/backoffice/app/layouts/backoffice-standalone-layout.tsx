@@ -1,5 +1,5 @@
 import { Icon } from "@fragno-private/design-system/icon";
-import { StandalonePage } from "@fragno-private/design-system/standalone-page";
+import { StandalonePage } from "@fragno-private/design-system/layout/standalone-page";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 

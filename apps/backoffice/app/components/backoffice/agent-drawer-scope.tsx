@@ -1,7 +1,7 @@
-import { IconButtonLink } from "@fragno-private/design-system/button";
+import { IconButtonLink } from "@fragno-private/design-system/controls/button";
+import { Select } from "@fragno-private/design-system/controls/select";
+import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import { Icon } from "@fragno-private/design-system/icon";
-import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/pane-message";
-import { Select } from "@fragno-private/design-system/select";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";

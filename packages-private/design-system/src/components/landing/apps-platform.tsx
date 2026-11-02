@@ -1,9 +1,9 @@
 import { useState } from "react";
 
-import { Button } from "../button";
-import { Checkbox } from "../checkbox";
+import { Button } from "../controls/button";
+import { Checkbox } from "../controls/checkbox";
+import { RadioCards } from "../controls/radio-cards";
 import { Icon } from "../icon";
-import { RadioCards } from "../radio-cards";
 import { LandingSection } from "./landing-section";
 
 const PERMISSIONS = [
