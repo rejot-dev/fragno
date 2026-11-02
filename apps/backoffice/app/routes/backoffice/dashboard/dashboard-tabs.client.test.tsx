@@ -69,7 +69,7 @@ test("a pinned page stays a tab until a listing no longer has its source", async
 
   const { rerender } = render(openDashboard(listed("home", "reports/operations")));
   await step(() => {
-    fireEvent.click(screen.getByRole("button", { name: "Pages" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add page" }));
   });
   await step(() => {
     fireEvent.click(screen.getByRole("button", { name: "Pin Operations" }));

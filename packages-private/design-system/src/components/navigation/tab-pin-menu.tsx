@@ -4,8 +4,8 @@ import { Link } from "react-router";
 
 import { cn } from "../../cn";
 import { Icon, type IconName } from "../icon";
+import { browserTabClassName } from "./browser-tabs";
 import { tabMenuPopupClassName, tabMenuTitleClassName } from "./tab-menu-class-names";
-import { underlineTabClassName } from "./underline-tab-class-name";
 
 export type TabPinMenuItem = {
   id: string;
@@ -32,43 +32,39 @@ type TabPinMenuListProps = {
 };
 
 /**
- * A "+" at the end of an underline tab row that lists views the row does not hold by default, such
- * as files a person can open. Each opens from its row, and pinning one keeps it in the row as a
- * tab; the row owns which are pinned. Pass it as the row's `trailing`. The items arrive while the
- * row is already in use; the menu waits for them only once it opens.
+ * A tab, such as "Add page", that lists views a browser tab row does not hold by default, such as
+ * files a person can open. Each opens from its row, and pinning one keeps it in the row as a tab;
+ * the row owns which are pinned. Pass it as the tab header's `trailing`: at the row's end, the menu
+ * stays where it opened while pinning adds tabs. The items arrive while the row is already in use;
+ * the menu waits for them only once it opens.
  */
 export function TabPinMenu({
   title,
-  ariaLabel,
+  label,
   loading,
   ...list
 }: TabPinMenuListProps & {
   title: string;
-  ariaLabel: string;
+  label: string;
   loading: string;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger
-        aria-label={ariaLabel}
         className={cn(
-          underlineTabClassName("idle"),
-          "data-[popup-open]:text-[var(--bo-fg)] data-[popup-open]:after:bg-[var(--bo-accent)]",
+          browserTabClassName("idle"),
+          "data-[popup-open]:border-[color:var(--bo-border)] data-[popup-open]:border-b-transparent data-[popup-open]:bg-[var(--bo-bg)] data-[popup-open]:text-[var(--bo-fg)] data-[popup-open]:shadow-[var(--bo-selected-shadow)]",
         )}
       >
-        <Icon name="plus" />
+        <Icon name="plus" className="size-4 shrink-0" />
+        {label}
       </Popover.Trigger>
       <Popover.Portal style={{ position: "relative", zIndex: 2147483647 }}>
-        <Popover.Positioner
-          side="bottom"
-          align="start"
-          sideOffset={4}
-          style={{ zIndex: 2147483647 }}
-        >
+        <Popover.Positioner side="bottom" align="end" sideOffset={4} style={{ zIndex: 2147483647 }}>
           <Popover.Popup
             data-backoffice-root
-            className={cn(tabMenuPopupClassName, "w-[20rem] origin-top-left")}
+            className={cn(tabMenuPopupClassName, "w-[20rem] origin-top-right")}
           >
             <Popover.Title className={tabMenuTitleClassName}>{title}</Popover.Title>
             <Suspense fallback={<TabPinMenuNote tone="muted">{loading}</TabPinMenuNote>}>

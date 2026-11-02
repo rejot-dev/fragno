@@ -20,7 +20,7 @@ export function BackofficeTabHeader({
 }: {
   items: readonly OverflowTabRowItem[];
   ariaLabel: string;
-  /** Follows the last tab, such as a `TabPinMenu`. */
+  /** Ends the tab row at its right edge, such as a `TabPinMenu`. */
   trailing: ReactNode | null;
   options: ReactNode | null;
 }) {

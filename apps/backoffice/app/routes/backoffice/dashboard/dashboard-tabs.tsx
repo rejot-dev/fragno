@@ -117,7 +117,7 @@ export function DashboardTabs({
       trailing={
         <TabPinMenu
           title="Pages"
-          ariaLabel="Pages"
+          label="Add page"
           loading="Loading pages…"
           icon="file-text"
           items={menuItems}

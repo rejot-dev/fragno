@@ -83,7 +83,10 @@ export function OverflowTabRow({
   items: readonly OverflowTabRowItem[];
   ariaLabel: string;
   variant?: OverflowTabRowVariant;
-  /** Follows the last visible tab, such as a menu that opens more tabs; it never overflows. */
+  /**
+   * Ends the row at its right edge, such as a menu that opens more tabs, so it stays put as tabs
+   * come and go; it never overflows.
+   */
   trailing: ReactNode | null;
 }) {
   const railRef = useRef<HTMLDivElement>(null);
@@ -256,7 +259,7 @@ export function OverflowTabRow({
           ) : null}
 
           {hasTrailing ? (
-            <div ref={trailingRef} className="flex shrink-0 items-center">
+            <div ref={trailingRef} className="ml-auto flex shrink-0 items-center">
               {trailing}
             </div>
           ) : null}
