@@ -338,6 +338,7 @@ type ScenarioStep =
   | { type: "setStreamAvailable"; available: boolean }
   | { type: "breakStreamsOf"; tab: string }
   | { type: "failNextPoll" }
+  | { type: "setStreamStalled"; stalled: boolean }
   | { type: "deliverStreamInBursts" }
   | { type: "grantAbortedLockRequests" }
   | {
@@ -372,6 +373,14 @@ const setStreamAvailable = (available: boolean): ScenarioStep => ({
 const breakStreamsOf = (tab: string): ScenarioStep => ({ type: "breakStreamsOf", tab });
 /** Answers the next outbox poll with 503. */
 const failNextPoll = (): ScenarioStep => ({ type: "failNextPoll" });
+/**
+ * Holds back every byte of open and new streams without closing them, as a connection that dropped
+ * along the way does, heartbeats included. Lifting the stall delivers what was held.
+ */
+const setStreamStalled = (stalled: boolean): ScenarioStep => ({
+  type: "setStreamStalled",
+  stalled,
+});
 /**
  * Delivers stream bytes in bursts, so frames that follow one another, such as the last entries and
  * the caught-up marker, reach the client in one chunk.
@@ -458,6 +467,7 @@ async function runReplicaScenario(scenario: {
   let streamInBursts = false;
   let failPoll = false;
   const brokenStreams = new Set<string>();
+  const stall = createStall();
   const fetch = async (tab: string, input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input.toString());
     if (url.pathname.endsWith("/stream") && brokenStreams.has(tab)) {
@@ -493,7 +503,7 @@ async function runReplicaScenario(scenario: {
       }
     };
     init?.signal?.addEventListener("abort", end, { once: true });
-    const body = whileOpen(response.body, end);
+    const body = stall.wrap(whileOpen(response.body, end));
     return new Response(streamInBursts ? inBursts(body, 50) : body, response);
   };
   const files = await openLofiSqliteMemoryFiles({ statementDelayMs: scenario.statementDelayMs });
@@ -584,6 +594,9 @@ async function runReplicaScenario(scenario: {
       case "failNextPoll":
         failPoll = true;
         break;
+      case "setStreamStalled":
+        stall.set(step.stalled);
+        break;
       case "deliverStreamInBursts":
         streamInBursts = true;
         break;
@@ -668,6 +681,56 @@ function whileOpen(
       await reader.cancel(reason);
     },
   });
+}
+
+/** Streams that pass bytes on only while not stalled, and hold them meanwhile. */
+function createStall() {
+  let stalled = false;
+  const flushes = new Set<() => void>();
+  return {
+    set(next: boolean) {
+      stalled = next;
+      if (!stalled) {
+        for (const flush of flushes) {
+          flush();
+        }
+      }
+    },
+    wrap(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+      const reader = body.getReader();
+      const held: Uint8Array[] = [];
+      let flush: (() => void) | undefined;
+      return new ReadableStream({
+        start(controller) {
+          flush = () => {
+            for (const chunk of held.splice(0)) {
+              controller.enqueue(chunk);
+            }
+          };
+          flushes.add(flush);
+          void (async () => {
+            try {
+              for (let read = await reader.read(); !read.done; read = await reader.read()) {
+                held.push(read.value);
+                if (!stalled) {
+                  flush!();
+                }
+              }
+              flushes.delete(flush!);
+              controller.close();
+            } catch (error) {
+              flushes.delete(flush!);
+              controller.error(error);
+            }
+          })();
+        },
+        async cancel(reason) {
+          flushes.delete(flush!);
+          await reader.cancel(reason);
+        },
+      });
+    },
+  };
 }
 
 /** Holds bytes back and passes on everything received every `intervalMs` as one chunk. */
@@ -1595,6 +1658,47 @@ describe("SQLite replica", () => {
         setStreamAvailable(true),
         waitForRows("a", `SELECT "email" FROM "users_app"`, [{ email: "ada@example.com" }]),
         waitForRows("b", `SELECT "email" FROM "users_app"`, [{ email: "ada@example.com" }]),
+        waitForStatus("a", { phase: "caught-up", error: null }),
+        waitForStatus("b", { phase: "caught-up", error: null }),
+      ],
+    });
+  });
+
+  it("reports a stream that stops delivering to every tab, keeps the data, and recovers", async () => {
+    const stalled = {
+      phase: "caught-up",
+      error: expect.stringContaining("nothing arrived for 1 s"),
+    } as const;
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        openTab("a", replica({ streamIdleTimeoutMs: 1_000 })),
+        openTab("b", replica({ streamIdleTimeoutMs: 1_000 })),
+        write(appSchema, "ada", (uow) => {
+          uow.create("users", user("ada@example.com"));
+        }),
+        waitForRows("b", `SELECT "email" FROM "users_app"`, [{ email: "ada@example.com" }]),
+        waitForStatus("b", { phase: "caught-up", error: null }),
+        assertStep(async ({ errors }) => {
+          // The backend's heartbeats keep an idle stream well past the timeout.
+          await new Promise((resolve) => setTimeout(resolve, 2_500));
+          expect(errors).toEqual([]);
+        }),
+        setStreamStalled(true),
+        write(appSchema, "bob", (uow) => {
+          uow.create("users", user("bob@example.com"));
+        }),
+        waitForError("nothing arrived for 1 s"),
+        waitForStatus("a", stalled),
+        waitForStatus("b", stalled),
+        // The tabs keep showing what they had.
+        waitForRows("b", `SELECT "email" FROM "users_app"`, [{ email: "ada@example.com" }]),
+        setStreamStalled(false),
+        waitForRows("b", `SELECT "email" FROM "users_app" ORDER BY "email"`, [
+          { email: "ada@example.com" },
+          { email: "bob@example.com" },
+        ]),
         waitForStatus("a", { phase: "caught-up", error: null }),
         waitForStatus("b", { phase: "caught-up", error: null }),
       ],

@@ -24,6 +24,7 @@ export type LofiPollOutboxOptions = {
   pollIntervalMs?: number;
   outboxStreamUrl?: never;
   streamReconnectIntervalMs?: never;
+  streamIdleTimeoutMs?: never;
   onCatchUp?: never;
 };
 
@@ -31,6 +32,11 @@ export type LofiStreamOutboxOptions = {
   outboxTransport: "stream";
   outboxStreamUrl?: string;
   streamReconnectIntervalMs?: number;
+  /**
+   * How long the stream may deliver nothing, not even a heartbeat, before it counts as dropped and
+   * reconnects, reporting the failure to `onError`. Defaults to 15 seconds.
+   */
+  streamIdleTimeoutMs?: number;
   pollIntervalMs?: never;
   /**
    * Reports each stream's catch-up: when the server names the entries a new stream must replay,

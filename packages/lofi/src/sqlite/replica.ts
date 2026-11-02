@@ -49,6 +49,8 @@ export type LofiSqliteReplicaOptions = {
    * `intervalMs` from then on. A replica that caught up in an earlier session polls at once.
    */
   pollOnceCaughtUp?: { catchUpTurns: number; intervalMs: number };
+  /** How long the stream may deliver nothing before it reconnects; `LofiClient`'s default if unset. */
+  streamIdleTimeoutMs?: number;
 };
 
 /** Names the Web Locks replicas opened with `pollOnceCaughtUp` take turns on, `<name>:<turn>`. */
@@ -280,6 +282,7 @@ export async function openLofiSqliteReplicaOn(
         {
           outboxTransport: "stream",
           outboxStreamUrl: urls.outboxStream.toString(),
+          streamIdleTimeoutMs: options.streamIdleTimeoutMs,
           onCatchUp: (progress) => {
             onCatchUp(writer, progress);
           },
@@ -303,6 +306,7 @@ export async function openLofiSqliteReplicaOn(
           {
             outboxTransport: "stream",
             outboxStreamUrl: urls.outboxStream.toString(),
+            streamIdleTimeoutMs: options.streamIdleTimeoutMs,
             onCatchUp: (progress) => {
               onCatchUp(writer, progress);
               if (progress.status === "caught-up") {
