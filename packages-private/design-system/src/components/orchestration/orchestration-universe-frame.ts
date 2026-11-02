@@ -60,7 +60,7 @@ function spreadAlong(
     previous = index;
   }
   let next: number | null = null;
-  for (const index of order.toReversed()) {
+  for (const index of [...order].reverse()) {
     const { length } = wanted[index];
     const ceiling =
       next === null ? end - length / 2 : placed[next] - (wanted[next].length + length) / 2 - gap;
@@ -144,7 +144,7 @@ export function placeExternalTiles(
     }),
   );
   const bySide = new Map<Side, { external: OrchestrationExternal; at: number; length: number }[]>();
-  for (const { external, length, sides } of options.toSorted((a, b) =>
+  for (const { external, length, sides } of [...options].sort((a, b) =>
     a.regret === b.regret ? 0 : a.regret < b.regret ? 1 : -1,
   )) {
     const roomOf = (side: Side) => room.get(side) ?? 0;
