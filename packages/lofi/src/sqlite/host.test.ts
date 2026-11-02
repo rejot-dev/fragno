@@ -170,6 +170,8 @@ type ScenarioStep =
       fails?: string;
     }
   | { type: "closeTab"; tab: string }
+  /** The page closes its side through the client, as when nothing in it reads the replica. */
+  | { type: "closeFromPage"; tab: string }
   | {
       type: "watch";
       tab: string;
@@ -204,6 +206,7 @@ const failToOpenTab = (tab: string, expects: string, message: string): ScenarioS
 /** A tab whose worker runs but whose heartbeats never arrive, like a frozen leader's. */
 const openSilentTab = (tab: string): ScenarioStep => ({ type: "openTab", tab, beats: false });
 const closeTab = (tab: string): ScenarioStep => ({ type: "closeTab", tab });
+const closeFromPage = (tab: string): ScenarioStep => ({ type: "closeFromPage", tab });
 /** Subscribes to the view, like a mounted component. */
 const watch = (
   tab: string,
@@ -341,6 +344,19 @@ async function runScenario(steps: ScenarioStep[]): Promise<ScenarioContext> {
         await tab.close();
         break;
       }
+      case "closeFromPage": {
+        const tab = ctx.tabs.get(step.tab)!;
+        for (const [name, { unwatch }] of ctx.views) {
+          if (name.startsWith(`${step.tab}/`)) {
+            unwatch();
+            ctx.views.delete(name);
+          }
+        }
+        await tab.client.close();
+        ctx.tabs.delete(step.tab);
+        await tab.close();
+        break;
+      }
       case "watch": {
         const store = step.query(ctx.tabs.get(step.tab)!.client);
         const results: LofiSqliteViewResult<unknown>[] = [];
@@ -430,6 +446,26 @@ describe("Lofi SQLite host", () => {
         { email: "bob@example.com", active: false },
         { email: "cy@example.com", active: true },
       ]),
+      check((ctx) => {
+        assert.equal(ctx.databasesOpened, 2);
+      }),
+    ]);
+    expect(ctx.errors).toEqual([]);
+  });
+
+  it("hands the lead over once the leading page closes its worker", async () => {
+    const ctx = await runScenario([
+      openTab("a"),
+      openTab("b"),
+      watch("a", "users", usersView),
+      watch("b", "users", usersView),
+      waitForView("b", "users", []),
+      // The page of tab a stops reading, and closes its worker, which closes the replica.
+      closeFromPage("a"),
+      write("ada", (uow) => {
+        uow.create("users", { email: "ada@example.com", active: true });
+      }),
+      waitForView("b", "users", [{ email: "ada@example.com", active: true }]),
       check((ctx) => {
         assert.equal(ctx.databasesOpened, 2);
       }),

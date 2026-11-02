@@ -4,7 +4,9 @@ import { LofiClient } from "../client/client";
 import type {
   AnyLofiLocalProjection,
   LofiAdapter,
+  LofiCatchUpProgress,
   LofiEphemeralTable,
+  LofiOutboxTransportOptions,
   LofiSchemaRegistration,
 } from "../types";
 import { SqliteLofiAdapter, type LofiSqliteDatabase } from "./adapter";
@@ -39,7 +41,18 @@ export type LofiSqliteReplicaOptions = {
    * role again. Another tab takes over meanwhile.
    */
   retryDelayMs: number;
+  /**
+   * Keeps the replica from holding a connection open once it has caught up, for replicas a page
+   * opens beside the ones it needs where the browser opens only a few connections per origin, as
+   * over HTTP/1.1. The replica streams its catch-up only while it holds one of `catchUpTurns`
+   * turns, which every replica opened with this option at the origin shares, and polls every
+   * `intervalMs` from then on. A replica that caught up in an earlier session polls at once.
+   */
+  pollOnceCaughtUp?: { catchUpTurns: number; intervalMs: number };
 };
+
+/** Names the Web Locks replicas opened with `pollOnceCaughtUp` take turns on, `<name>:<turn>`. */
+const CATCH_UP_TURN_LOCK_NAME = "fragno-lofi:catch-up-turn";
 
 export type LofiSqliteReplicaDependencies = {
   openDatabase(options: {
@@ -199,6 +212,122 @@ export async function openLofiSqliteReplicaOn(
 
   const lifetime = new AbortController();
   const lockName = `fragno-lofi:${databaseName}`;
+  const onCatchUp = (writer: LofiAdapter, progress: LofiCatchUpProgress) => {
+    if (progress.status === "caught-up" && status.phase === "catching-up") {
+      // Failing to remember only shows the next session's download again.
+      void writer.setMeta(CAUGHT_UP_META_KEY, "true").catch(() => {});
+    }
+    report(
+      progress.status === "caught-up"
+        ? { phase: "caught-up", error: null }
+        : { phase: "catching-up", fraction: progress.fraction, error: null },
+    );
+  };
+  /**
+   * Synchronizes until `signal` aborts, resolving false, or an error stops it, resolving true.
+   * `onError` also hears the errors a stream retries on its own.
+   */
+  const synchronize = (
+    writer: LofiAdapter,
+    transport: LofiOutboxTransportOptions,
+    signal: AbortSignal,
+    onError?: (error: unknown) => void,
+  ) =>
+    new Promise<boolean>((resolve) => {
+      void whenAborted(signal).then(() => {
+        resolve(false);
+      });
+      new LofiClient({
+        ...transport,
+        outboxUrl: urls.outbox.toString(),
+        endpointName: LOFI_SQLITE_ENDPOINT_NAME,
+        adapter: writer,
+        fetch: options.fetch,
+        ephemeralTables: options.ephemeralTables,
+        onSyncApplied: (result) => {
+          if (status.error !== null) {
+            report({ ...status, error: null });
+          }
+          // A rebuild changes tables even in a batch whose entries were applied before.
+          const tables = adapter.takeChangedTables();
+          if (result.appliedDurableMutations === 0 && tables.length === 0) {
+            return;
+          }
+          notify({ tables });
+          post({ type: "changed", tables });
+        },
+        // A poll that finds nothing new also shows that synchronizing works again.
+        onSyncComplete: () => {
+          if (status.error !== null) {
+            report({ ...status, error: null });
+          }
+        },
+        onError: (error) => {
+          reportError(error);
+          onError?.(error);
+        },
+        onStopped: () => {
+          resolve(true);
+        },
+      }).start({ signal });
+    });
+  /** Synchronizes this tab's writer term until close or a stopping error. */
+  const synchronizeWhileElected = async (writer: LofiAdapter) => {
+    const polling = options.pollOnceCaughtUp;
+    if (!polling) {
+      await synchronize(
+        writer,
+        {
+          outboxTransport: "stream",
+          outboxStreamUrl: urls.outboxStream.toString(),
+          onCatchUp: (progress) => {
+            onCatchUp(writer, progress);
+          },
+        },
+        lifetime.signal,
+      );
+      return;
+    }
+    if (status.phase === "catching-up") {
+      // The turn's stream ends once caught up, with the replica, or on any error: a stream retrying
+      // on its own would keep the turn other replicas wait for, so the replica queues again.
+      let failed = false;
+      const streaming = new AbortController();
+      const endStream = () => {
+        streaming.abort();
+      };
+      lifetime.signal.addEventListener("abort", endStream, { once: true });
+      const stopped = await whileHoldingTurn(polling.catchUpTurns, lifetime.signal, () =>
+        synchronize(
+          writer,
+          {
+            outboxTransport: "stream",
+            outboxStreamUrl: urls.outboxStream.toString(),
+            onCatchUp: (progress) => {
+              onCatchUp(writer, progress);
+              if (progress.status === "caught-up") {
+                endStream();
+              }
+            },
+          },
+          streaming.signal,
+          () => {
+            failed = true;
+            endStream();
+          },
+        ),
+      );
+      lifetime.signal.removeEventListener("abort", endStream);
+      if (stopped !== false || failed || lifetime.signal.aborted) {
+        return;
+      }
+    }
+    await synchronize(
+      writer,
+      { outboxTransport: "poll", pollIntervalMs: polling.intervalMs },
+      lifetime.signal,
+    );
+  };
   const writeWhileElected = async () => {
     while (!lifetime.signal.aborted) {
       await navigator.locks.request(lockName, { signal: lifetime.signal }, async () => {
@@ -209,45 +338,7 @@ export async function openLofiSqliteReplicaOn(
         const term = startWriterTerm(adapter);
         writing = true;
         // Holding the lock until close or a stopping error keeps every other tab a reader.
-        await new Promise<void>((resolve) => {
-          void whenAborted(lifetime.signal).then(resolve);
-          new LofiClient({
-            outboxUrl: urls.outbox.toString(),
-            outboxStreamUrl: urls.outboxStream.toString(),
-            outboxTransport: "stream",
-            endpointName: LOFI_SQLITE_ENDPOINT_NAME,
-            adapter: term.adapter,
-            fetch: options.fetch,
-            ephemeralTables: options.ephemeralTables,
-            onSyncApplied: (result) => {
-              if (status.error !== null) {
-                report({ ...status, error: null });
-              }
-              // A rebuild changes tables even in a batch whose entries were applied before.
-              const tables = adapter.takeChangedTables();
-              if (result.appliedDurableMutations === 0 && tables.length === 0) {
-                return;
-              }
-              notify({ tables });
-              post({ type: "changed", tables });
-            },
-            onCatchUp: (progress) => {
-              if (progress.status === "caught-up" && status.phase === "catching-up") {
-                // Failing to remember only shows the next session's download again.
-                void term.adapter.setMeta(CAUGHT_UP_META_KEY, "true").catch(() => {});
-              }
-              report(
-                progress.status === "caught-up"
-                  ? { phase: "caught-up", error: null }
-                  : { phase: "catching-up", fraction: progress.fraction, error: null },
-              );
-            },
-            onError: reportError,
-            onStopped: () => {
-              resolve();
-            },
-          }).start({ signal: lifetime.signal });
-        });
+        await synchronizeWhileElected(term.adapter);
         writing = false;
         await term.end();
       });
@@ -366,6 +457,49 @@ function startWriterTerm(adapter: SqliteLofiAdapter): {
       await Promise.allSettled(pending);
     },
   };
+}
+
+/**
+ * Runs `run` while this replica holds one of `turns` catch-up turns, queued for every turn at once
+ * and taking whichever frees first. Resolves undefined without running it once `signal` aborts.
+ */
+async function whileHoldingTurn<T>(
+  turns: number,
+  signal: AbortSignal,
+  run: () => Promise<T>,
+): Promise<T | undefined> {
+  // Aborted once a turn is taken, which leaves the other turns' queues, or once `signal` aborts.
+  const queued = new AbortController();
+  const leave = () => {
+    queued.abort();
+  };
+  signal.addEventListener("abort", leave, { once: true });
+  try {
+    const requests = Array.from({ length: Math.max(1, turns) }, async (_, turn) => {
+      try {
+        return await navigator.locks.request(
+          `${CATCH_UP_TURN_LOCK_NAME}:${turn}`,
+          { signal: queued.signal },
+          async () => {
+            // Chrome can grant a request whose signal was already aborted; it gives the turn back.
+            if (queued.signal.aborted) {
+              return undefined;
+            }
+            leave();
+            return { result: await run() };
+          },
+        );
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return undefined;
+        }
+        throw error;
+      }
+    });
+    return (await Promise.all(requests)).find((taken) => taken !== undefined)?.result;
+  } finally {
+    signal.removeEventListener("abort", leave);
+  }
 }
 
 function whenAborted(signal: AbortSignal): Promise<void> {

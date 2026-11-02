@@ -325,6 +325,8 @@ type ScenarioContext = {
   usersAtClose: Map<string, number>;
   /** The SQL of every call any tab made to its database, in order. */
   databaseCalls: string[];
+  /** Outbox stream requests: how many were made, are open, and were open at once at most. */
+  streams: { requested: number; open: number; mostOpen: number };
   errors: unknown[];
   vars: Record<string, FragnoId[]>;
 };
@@ -334,6 +336,8 @@ type ScenarioStep =
   | { type: "closeTab"; tab: string }
   | { type: "closeTabAfterEntries"; tab: string; entries: number }
   | { type: "setStreamAvailable"; available: boolean }
+  | { type: "breakStreamsOf"; tab: string }
+  | { type: "failNextPoll" }
   | { type: "deliverStreamInBursts" }
   | { type: "grantAbortedLockRequests" }
   | {
@@ -364,6 +368,10 @@ const setStreamAvailable = (available: boolean): ScenarioStep => ({
   type: "setStreamAvailable",
   available,
 });
+/** Fails the tab's stream requests as a dropped connection does, which the stream retries itself. */
+const breakStreamsOf = (tab: string): ScenarioStep => ({ type: "breakStreamsOf", tab });
+/** Answers the next outbox poll with 503. */
+const failNextPoll = (): ScenarioStep => ({ type: "failNextPoll" });
 /**
  * Delivers stream bytes in bursts, so frames that follow one another, such as the last entries and
  * the caught-up marker, reach the client in one chunk.
@@ -448,9 +456,18 @@ async function runReplicaScenario(scenario: {
 
   let streamAvailable = true;
   let streamInBursts = false;
-  const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  let failPoll = false;
+  const brokenStreams = new Set<string>();
+  const fetch = async (tab: string, input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input.toString());
+    if (url.pathname.endsWith("/stream") && brokenStreams.has(tab)) {
+      throw new TypeError("Failed to fetch");
+    }
     if (!streamAvailable && url.pathname.endsWith("/stream")) {
+      return new Response("unavailable", { status: 503 });
+    }
+    if (failPoll && !url.pathname.endsWith("/stream")) {
+      failPoll = false;
       return new Response("unavailable", { status: 503 });
     }
     const response = await fragments[0]!.callRouteRaw(
@@ -461,9 +478,23 @@ async function runReplicaScenario(scenario: {
         signal: init?.signal ?? undefined,
       } as never,
     );
-    return streamInBursts && url.pathname.endsWith("/stream") && response.body
-      ? new Response(inBursts(response.body, 50), response)
-      : response;
+    if (!url.pathname.endsWith("/stream") || !response.body) {
+      return response;
+    }
+    const streams = ctx.streams;
+    streams.requested += 1;
+    streams.open += 1;
+    streams.mostOpen = Math.max(streams.mostOpen, streams.open);
+    let ended = false;
+    const end = () => {
+      if (!ended) {
+        ended = true;
+        streams.open -= 1;
+      }
+    };
+    init?.signal?.addEventListener("abort", end, { once: true });
+    const body = whileOpen(response.body, end);
+    return new Response(streamInBursts ? inBursts(body, 50) : body, response);
   };
   const files = await openLofiSqliteMemoryFiles({ statementDelayMs: scenario.statementDelayMs });
 
@@ -474,6 +505,7 @@ async function runReplicaScenario(scenario: {
     statuses: new Map(),
     usersAtClose: new Map(),
     databaseCalls: [],
+    streams: { requested: 0, open: 0, mostOpen: 0 },
     errors: [],
     vars: {},
   };
@@ -502,7 +534,8 @@ async function runReplicaScenario(scenario: {
           {
             ...step.replica,
             baseUrl: "http://replica.test",
-            fetch: fetch as typeof globalThis.fetch,
+            fetch: ((input: RequestInfo | URL, init?: RequestInit) =>
+              fetch(step.tab, input, init)) as typeof globalThis.fetch,
             onError: (error) => ctx.errors.push(error),
           },
           { openDatabase },
@@ -544,6 +577,12 @@ async function runReplicaScenario(scenario: {
       }
       case "setStreamAvailable":
         streamAvailable = step.available;
+        break;
+      case "breakStreamsOf":
+        brokenStreams.add(step.tab);
+        break;
+      case "failNextPoll":
+        failPoll = true;
         break;
       case "deliverStreamInBursts":
         streamInBursts = true;
@@ -601,6 +640,34 @@ async function runReplicaScenario(scenario: {
         break;
     }
   }
+}
+
+/** Passes `body` on, calling `onEnd` once it ends, fails, or is cancelled. */
+function whileOpen(
+  body: ReadableStream<Uint8Array>,
+  onEnd: () => void,
+): ReadableStream<Uint8Array> {
+  const reader = body.getReader();
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const read = await reader.read();
+        if (read.done) {
+          onEnd();
+          controller.close();
+        } else {
+          controller.enqueue(read.value);
+        }
+      } catch (error) {
+        onEnd();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      onEnd();
+      await reader.cancel(reason);
+    },
+  });
 }
 
 /** Holds bytes back and passes on everything received every `intervalMs` as one chunk. */
@@ -1387,6 +1454,112 @@ describe("SQLite replica", () => {
         assertStep(({ statuses }) => {
           // A complete, if older, copy opens at once; the stream replays what changed meanwhile.
           expect(statuses.get("returning")![0]).toEqual({ phase: "caught-up", error: null });
+        }),
+      ],
+    });
+  });
+
+  it("streams its catch-up only in its turn, then polls instead of holding a stream", async () => {
+    const entries = 40;
+    const polling = { catchUpTurns: 1, intervalMs: 20 };
+
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 1,
+      steps: [
+        ...Array.from({ length: entries }, (_, index) =>
+          write(appSchema, `user-${index}`, (uow) => {
+            uow.create("users", user(`user-${index}@example.com`));
+          }),
+        ),
+        // A local schema names another database, so the two replicas download apart.
+        openTab("projects", replica({ pollOnceCaughtUp: polling })),
+        openTab(
+          "members",
+          replica({ pollOnceCaughtUp: polling, localSchemas: [{ schema: statsSchema }] }),
+        ),
+        waitForStatus("projects", { phase: "caught-up", error: null }),
+        waitForStatus("members", { phase: "caught-up", error: null }),
+        assertStep(({ streams }) => {
+          expect(streams).toEqual({ requested: 2, open: 0, mostOpen: 1 });
+        }),
+        write(appSchema, "ada", (uow) => {
+          uow.create("users", user("ada@example.com"));
+        }),
+        waitForRows("projects", `SELECT count(*) AS "count" FROM "users_app"`, [
+          { count: entries + 1 },
+        ]),
+        waitForRows("members", `SELECT count(*) AS "count" FROM "users_app"`, [
+          { count: entries + 1 },
+        ]),
+        assertStep(({ streams, errors }) => {
+          expect(errors).toEqual([]);
+          expect(streams).toEqual({ requested: 2, open: 0, mostOpen: 1 });
+        }),
+      ],
+    });
+  });
+
+  it("polls at once when it caught up in an earlier session", async () => {
+    const polling = { catchUpTurns: 1, intervalMs: 20 };
+
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        openTab("first", replica({ pollOnceCaughtUp: polling })),
+        waitForStatus("first", { phase: "caught-up", error: null }),
+        closeTab("first"),
+        openTab("returning", replica({ pollOnceCaughtUp: polling })),
+        write(appSchema, "ada", (uow) => {
+          uow.create("users", user("ada@example.com"));
+        }),
+        waitForRows("returning", `SELECT "email" FROM "users_app"`, [{ email: "ada@example.com" }]),
+        assertStep(({ streams }) => {
+          expect(streams).toEqual({ requested: 1, open: 0, mostOpen: 1 });
+        }),
+      ],
+    });
+  });
+
+  it("gives its catch-up turn back while its stream fails, so other replicas catch up", async () => {
+    const polling = { catchUpTurns: 1, intervalMs: 20 };
+
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        write(appSchema, "ada", (uow) => {
+          uow.create("users", user("ada@example.com"));
+        }),
+        breakStreamsOf("broken"),
+        openTab("broken", replica({ pollOnceCaughtUp: polling })),
+        waitForError("Failed to fetch"),
+        openTab(
+          "healthy",
+          replica({ pollOnceCaughtUp: polling, localSchemas: [{ schema: statsSchema }] }),
+        ),
+        waitForStatus("healthy", { phase: "caught-up", error: null }),
+        waitForRows("healthy", `SELECT "email" FROM "users_app"`, [{ email: "ada@example.com" }]),
+      ],
+    });
+  });
+
+  it("clears a polling failure once a poll succeeds, with nothing new", async () => {
+    await runReplicaScenario({
+      serverSchemas: [appSchema],
+      statementDelayMs: 0,
+      steps: [
+        openTab("a", replica({ pollOnceCaughtUp: { catchUpTurns: 1, intervalMs: 20 } })),
+        waitForStatus("a", { phase: "caught-up", error: null }),
+        failNextPoll(),
+        waitForError("Outbox request failed: 503"),
+        waitForStatus("a", { phase: "caught-up", error: null }),
+        assertStep(({ statuses }) => {
+          expect(statuses.get("a")).toContainEqual({
+            phase: "caught-up",
+            error: expect.stringContaining("Outbox request failed: 503"),
+          });
         }),
       ],
     });
