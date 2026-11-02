@@ -51,12 +51,8 @@ export async function sharedDocumentPath(
 }
 
 async function sharesOf(administration: InstalledProject, document: Document) {
-  const { shared } = await administration.backoffice.call(
-    administration.scope,
-    "state.listShares",
-    {},
-  );
-  return shared.filter((share) => share.path === documentFolder(document));
+  const { shared } = await administration.backoffice.call(administration.scope, "shares.list", {});
+  return shared.filter(({ of }) => of.kind === "folder" && of.path === documentFolder(document));
 }
 
 /**
@@ -74,13 +70,13 @@ export async function shareDocument(input: {
   );
   const share =
     standing ??
-    (await administration.backoffice.call(administration.scope, "state.share", {
-      path: documentFolder(document),
+    (await administration.backoffice.call(administration.scope, "shares.create", {
+      of: { kind: "folder", path: documentFolder(document) },
       with: agent.scope,
     }));
   const name = await mountName(administration.scope.projectId, document);
   const accept = () =>
-    agent.backoffice.call(agent.scope, "state.acceptShare", {
+    agent.backoffice.call(agent.scope, "shares.accept", {
       from: administration.scope,
       shareId: share.shareId,
       name,
@@ -92,12 +88,12 @@ export async function shareDocument(input: {
       throw error;
     }
     // An earlier share of the document, revoked since, still holds the name.
-    const { accepted } = await agent.backoffice.call(agent.scope, "state.listShares", {});
+    const { accepted } = await agent.backoffice.call(agent.scope, "shares.list", {});
     await Promise.all(
       accepted
         .filter((candidate) => candidate.name === name)
         .map((stale) =>
-          agent.backoffice.call(agent.scope, "state.revokeShare", { shareId: stale.shareId }),
+          agent.backoffice.call(agent.scope, "shares.revoke", { shareId: stale.shareId }),
         ),
     );
     await accept();
@@ -108,7 +104,7 @@ async function revokeShares(administration: InstalledProject, document: Document
   const shares = await sharesOf(administration, document);
   await Promise.all(
     shares.map((share) =>
-      administration.backoffice.call(administration.scope, "state.revokeShare", {
+      administration.backoffice.call(administration.scope, "shares.revoke", {
         shareId: share.shareId,
       }),
     ),

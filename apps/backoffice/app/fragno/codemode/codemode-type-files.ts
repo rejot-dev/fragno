@@ -40,9 +40,11 @@ const CODEMODE_AUTHORED_REFERENCES = [
 ];
 const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
   state:
-    "Files in /workspace and /static, and links that share them. Read for file work beyond searching, reading, and writing, or to share or move files.",
+    "Files in /workspace and /static, and temporary links to them. Read for file work beyond searching, reading, and writing, or to link or move files.",
   blobs:
     "Large files kept outside /workspace, uploaded and downloaded through presigned storage URLs. Read to store or share a file too large for the workspace.",
+  shares:
+    "Read-only shares of /workspace folders and blobs with other scopes, read at /shared/<name>/. Read to give another scope access to files without copying them.",
   account:
     "Your own account: profile, organizations, invitations, authorized apps. Read when the user asks about themselves.",
   admin:

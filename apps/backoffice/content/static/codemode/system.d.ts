@@ -5,10 +5,12 @@
 /// <reference path="/static/codemode/ui.d.ts" />
 // Page builder: live queries bound to a ui. Read before writing a .page.js page.
 /// <reference path="/static/codemode/page.d.ts" />
-// Files in /workspace and /static, and links that share them. Read for file work beyond searching, reading, and writing, or to share or move files.
+// Files in /workspace and /static, and temporary links to them. Read for file work beyond searching, reading, and writing, or to link or move files.
 /// <reference path="/static/codemode/providers/state.d.ts" />
 // Large files kept outside /workspace, uploaded and downloaded through presigned storage URLs. Read to store or share a file too large for the workspace.
 /// <reference path="/static/codemode/providers/blobs.d.ts" />
+// Read-only shares of /workspace folders and blobs with other scopes, read at /shared/<name>/. Read to give another scope access to files without copying them.
+/// <reference path="/static/codemode/providers/shares.d.ts" />
 // Your own account: profile, organizations, invitations, authorized apps. Read when the user asks about themselves.
 /// <reference path="/static/codemode/providers/account.d.ts" />
 // System administration: organizations, sign-ups, app registrations, OAuth clients, Marketplace features. Read in System scope.
@@ -79,6 +81,7 @@ type BackofficeCodemodeScope =
 interface BackofficeCodemodeScopedProviders {
   state: StateCodemodeProvider;
   blobs: BlobsCodemodeProvider;
+  shares: SharesCodemodeProvider;
   account: AccountCodemodeProvider;
   admin: AdminCodemodeProvider;
   org: OrgCodemodeProvider;

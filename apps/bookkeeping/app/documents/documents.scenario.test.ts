@@ -725,7 +725,7 @@ test("the agent's answer counts only while the document awaits the request it an
 
     // A person answers whether asked or not, replacing the agent's answer. Its file is shared with
     // no one now, so answering asks Backoffice nothing about its shares.
-    const asked = scenario.backoffice.operationCount("state.listShares");
+    const asked = scenario.backoffice.operationCount("shares.list");
     const adaAgent = scenario.agent(
       { email: "ada@example.test" },
       { organization: CLIENT, project: ADMINISTRATION },
@@ -740,7 +740,7 @@ test("the agent's answer counts only while the document awaits the request it an
     expect(await readDocument(ada, id)).toMatchObject({
       review: { status: "declined", by: "Ada Lovelace via Backoffice" },
     });
-    expect(scenario.backoffice.operationCount("state.listShares")).toBe(asked);
+    expect(scenario.backoffice.operationCount("shares.list")).toBe(asked);
   });
 });
 
@@ -797,7 +797,7 @@ test("a document's page revokes the shares answering could not, then asks Backof
     const agent = await firmAgent(scenario, ada);
 
     // Backoffice is not reached when the answer revokes the document's shares.
-    scenario.backoffice.failNextRequest("state.listShares");
+    scenario.backoffice.failNextRequest("shares.list");
     expect(
       await agent.call(
         "documents.propose",
@@ -810,10 +810,10 @@ test("a document's page revokes the shares answering could not, then asks Backof
     // showing it again asks Backoffice nothing.
     await readDocument(ada, id);
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
-    const asked = scenario.backoffice.operationCount("state.listShares");
+    const asked = scenario.backoffice.operationCount("shares.list");
     expect(await readDocument(ada, id)).toMatchObject({ shared: false });
     await listDocuments(ada);
-    expect(scenario.backoffice.operationCount("state.listShares")).toBe(asked);
+    expect(scenario.backoffice.operationCount("shares.list")).toBe(asked);
   });
 });
 
@@ -827,7 +827,7 @@ test("a share made but not accepted for a request answered meanwhile is revoked"
     const id = await uploadFormId(ada);
     // Ada's own agent answers while Bookkeeping shares the file, and the firm's project cannot be
     // reached to accept the share.
-    scenario.backoffice.beforeNextAnswer("state.share", async () => {
+    scenario.backoffice.beforeNextAnswer("shares.create", async () => {
       expect(
         await adaAgent.call("documents.decline", {
           document: id,
@@ -836,7 +836,7 @@ test("a share made but not accepted for a request answered meanwhile is revoked"
         }),
       ).toEqual({ status: 200, body: { document: id, review: "declined" } });
     });
-    scenario.backoffice.failNextRequest("state.acceptShare");
+    scenario.backoffice.failNextRequest("shares.accept");
     await upload(ada, invoiceFixture, id);
 
     expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
@@ -855,7 +855,7 @@ test("revoking after an answer shares the file again for a newer request", async
     const agent = await firmAgent(scenario, ada);
     // Ada asks again while the answer's shares are being revoked, so her request reuses the share
     // being revoked.
-    scenario.backoffice.beforeNextAnswer("state.revokeShare", async () => {
+    scenario.backoffice.beforeNextAnswer("shares.revoke", async () => {
       await ada.submit(`${BOOKS}/documents/${id}`, { intent: "ask" });
     });
     expect(
@@ -884,10 +884,10 @@ test("a share made for a request answered meanwhile is revoked again", async () 
     const agent = await firmAgent(scenario, ada);
     // Ada asks again while the first answer's shares are being revoked, and the agent answers her
     // request while the revocation shares the file again for it.
-    scenario.backoffice.beforeNextAnswer("state.revokeShare", async () => {
+    scenario.backoffice.beforeNextAnswer("shares.revoke", async () => {
       await ada.submit(`${BOOKS}/documents/${id}`, { intent: "ask" });
       const second = scenario.backoffice.prompts(FIRM, FIRM_AGENT).at(-1)!;
-      scenario.backoffice.beforeNextAnswer("state.share", async () => {
+      scenario.backoffice.beforeNextAnswer("shares.create", async () => {
         expect(
           await agent.call("documents.decline", {
             document: id,
@@ -923,7 +923,7 @@ test("a request answered by a person while it is shared is neither left shared n
     );
     const id = await uploadFormId(ada);
     // Ada's own agent answers while Bookkeeping shares the file for the upload's request.
-    scenario.backoffice.beforeNextAnswer("state.share", async () => {
+    scenario.backoffice.beforeNextAnswer("shares.create", async () => {
       expect(
         await adaAgent.call("documents.decline", {
           document: id,
@@ -1017,7 +1017,7 @@ test("a firm's dashboard withdraws what it asked about a client it no longer man
     // The firm's dashboard learns that the firm no longer manages the client before anyone of the
     // client's does. It revokes the documents' shares, but cannot reach Backoffice for one of them.
     scenario.backoffice.admin.setManager(CLIENT, null);
-    scenario.backoffice.failNextRequest("state.listShares");
+    scenario.backoffice.failNextRequest("shares.list");
     expect(await ada.navigate(firmPath)).toMatchObject({
       loaderData: { "firms/dashboard": { clients: [] } },
     });
@@ -1040,7 +1040,7 @@ test("ending management revokes an answered document's shares that answering cou
     const id = await uploaded(ada, invoiceFixture);
     const [prompt] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
     const agent = await firmAgent(scenario, ada);
-    scenario.backoffice.failNextRequest("state.listShares");
+    scenario.backoffice.failNextRequest("shares.list");
     expect(
       await agent.call("documents.decline", {
         document: id,

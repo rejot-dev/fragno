@@ -19,6 +19,7 @@ import { piOperations } from "./pi";
 import { projectsOperations } from "./projects";
 import { reson8Operations } from "./reson8";
 import { sandboxOperations } from "./sandbox";
+import { sharesOperations } from "./shares";
 import { stateOperations } from "./state";
 import { storeOperations } from "./store";
 import { webOperations } from "./web";
@@ -48,6 +49,7 @@ export const backofficeApiV0 = {
     ...projectsOperations,
     ...reson8Operations,
     ...sandboxOperations,
+    ...sharesOperations,
     ...stateOperations,
     ...storeOperations,
     ...webOperations,

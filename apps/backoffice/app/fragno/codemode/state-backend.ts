@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { posix } from "node:path";
 
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
-import { SHARED_MOUNT_POINT } from "@fragno-dev/backoffice-api/v0/state";
+import { SHARED_MOUNT_POINT } from "@fragno-dev/backoffice-api/v0/shares";
 import {
   findTextLineIndex,
   getStaticGlobPrefix,

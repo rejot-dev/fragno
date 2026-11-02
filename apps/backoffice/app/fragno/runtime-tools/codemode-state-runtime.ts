@@ -8,7 +8,6 @@ import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 import { backofficeApiOperationToolFields } from "@/fragno/runtime-tools/runtime-tools";
 
 import type { FileLinkRuntime } from "./file-links-runtime";
-import type { FileShareRuntime } from "./file-shares-runtime";
 import {
   codemodeBytesSchema,
   createBackofficeCodemodeProviders,
@@ -22,7 +21,6 @@ export type StateToolContext = BackofficeToolContext<
   Record<string, unknown> & {
     state?: BackofficeStateBackend;
     fileLinks?: FileLinkRuntime;
-    fileShares?: FileShareRuntime;
   }
 >;
 
@@ -39,14 +37,6 @@ const getFileLinkRuntime = (context: StateToolContext): FileLinkRuntime => {
     throw new Error("File links are not available in this execution context.");
   }
   return context.runtimes.fileLinks;
-};
-
-// Shares, like file links, exist only between scopes with an Upload workspace.
-const getFileShareRuntime = (context: StateToolContext): FileShareRuntime => {
-  if (!context.runtimes.fileShares) {
-    throw new Error("File shares are not available in this execution context.");
-  }
-  return context.runtimes.fileShares;
 };
 
 const parseFileLink = (command: string) =>
@@ -302,41 +292,6 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
           format: (result, options) =>
             options.format === "json" ? { data: result } : { stdout: `${result.url}\n` },
         },
-      },
-    }),
-    defineBackofficeRuntimeTool({
-      ...backofficeApiOperationToolFields("state.share"),
-      namespace: "state",
-      name: "share",
-      getResource: ({ path }) => ({ path }),
-      execute: async (input, context: StateToolContext) =>
-        await getFileShareRuntime(context).share(input),
-    }),
-    defineBackofficeRuntimeTool({
-      ...backofficeApiOperationToolFields("state.acceptShare"),
-      namespace: "state",
-      name: "acceptShare",
-      execute: async (input, context: StateToolContext) => {
-        const accepted = await getFileShareRuntime(context).accept(input);
-        // The mount may have been looked up, and missed, earlier in this execution.
-        context.runtimes.state?.refreshMetadata();
-        return accepted;
-      },
-    }),
-    defineBackofficeRuntimeTool({
-      ...backofficeApiOperationToolFields("state.listShares"),
-      namespace: "state",
-      name: "listShares",
-      execute: async (_input, context: StateToolContext) =>
-        await getFileShareRuntime(context).list(),
-    }),
-    defineBackofficeRuntimeTool({
-      ...backofficeApiOperationToolFields("state.revokeShare"),
-      namespace: "state",
-      name: "revokeShare",
-      execute: async (input, context: StateToolContext) => {
-        await getFileShareRuntime(context).revoke(input);
-        context.runtimes.state?.refreshMetadata();
       },
     }),
   ],

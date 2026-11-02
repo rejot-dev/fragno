@@ -72,10 +72,11 @@ import type { ProjectsRuntime } from "./families/projects-runtime";
 import { reson8ToolFamily, type Reson8Runtime } from "./families/reson8";
 import { sandboxToolFamily } from "./families/sandbox";
 import type { SandboxRuntime } from "./families/sandbox-runtime";
+import { sharesToolFamily } from "./families/shares";
 import { webToolFamily, type WebRuntime } from "./families/web";
 import type { FileLinkRuntime } from "./file-links-runtime";
-import type { FileShareRuntime } from "./file-shares-runtime";
 import { type BackofficeRuntimeToolFamily, type BackofficeToolContext } from "./runtime-tools";
+import type { ShareRuntime } from "./shares-runtime";
 
 export type CoreBackofficeRuntimeMap = {
   state?: BackofficeStateBackend;
@@ -83,7 +84,7 @@ export type CoreBackofficeRuntimeMap = {
   imageViewer?: ImageViewer;
   workflowRunPresenter?: WorkflowRunPresenter;
   fileLinks?: FileLinkRuntime;
-  fileShares?: FileShareRuntime;
+  shares?: ShareRuntime;
   blobs?: BlobsRuntime;
   account?: AccountRuntime;
   admin?: AdminRuntime;
@@ -119,6 +120,7 @@ export const runtimeToolFamilies = [
   codemodeStateToolFamily,
   imageViewerToolFamily,
   blobsToolFamily,
+  sharesToolFamily,
   accountToolFamily,
   adminToolFamily,
   adminEventsToolFamily,

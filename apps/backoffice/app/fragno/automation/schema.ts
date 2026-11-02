@@ -311,7 +311,7 @@ export const automationFragmentSchema = schema("automations", (s) => {
       // Installations are recorded in marketplace-lock.json.
       .dropTable("marketplace_ingestion")
       // A /workspace folder this scope shares with another; deleting it revokes the share. The
-      // share's ID is the row's. Written and read only through `file-shares-storage-runtime`.
+      // share's ID is the row's. Written and read only through `shares-storage-runtime`.
       .addTable("file_share", (t) =>
         t
           .addColumn("id", idColumn())
@@ -340,6 +340,12 @@ export const automationFragmentSchema = schema("automations", (s) => {
         t
           .addColumn("name", column("string").defaultTo(""))
           .createIndex("idx_accepted_file_share_name", ["name"], { unique: true }),
+      )
+      // Shares open a /workspace folder or the blobs under a key prefix, which `path` then holds.
+      // The tables keep their names from before blob shares. Existing shares are folders.
+      .alterTable("file_share", (t) => t.addColumn("kind", column("string").defaultTo("folder")))
+      .alterTable("accepted_file_share", (t) =>
+        t.addColumn("kind", column("string").defaultTo("folder")),
       )
   );
 });
