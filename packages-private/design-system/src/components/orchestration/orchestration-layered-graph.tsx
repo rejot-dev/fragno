@@ -26,6 +26,7 @@ import {
   ACTION_EDGE_DASH,
   ActionMarkerDefs,
   actionMarkerUrl,
+  countLabel,
   DISABLED_EDGE_DASH,
   OrchestrationPulseAnimation,
   routeActionLabel,
@@ -57,10 +58,6 @@ const FOLD_ROW_HEIGHT = 30;
 const STICKY_HEADER_HEIGHT = HEADER_HEIGHT - 8;
 const FOLD_ROW_CLASS_NAME =
   "flex items-center gap-1.5 rounded-[4px] border border-dashed border-[var(--bo-border-strong)] px-2.5 text-xs text-[var(--bo-muted-2)] transition-colors hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none";
-
-function countLabel(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
-}
 
 /**
  * Horizontal geometry for a given container width. Only the route lane and the curves stretch,

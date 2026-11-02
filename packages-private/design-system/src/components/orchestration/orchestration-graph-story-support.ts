@@ -9,6 +9,7 @@ import type {
   OrchestrationTarget,
 } from "./orchestration-graph-model";
 import type { OrchestrationPulse } from "./orchestration-graph-parts";
+import type { OrchestrationUniverse } from "./orchestration-universe-model";
 
 // Fixtures and helpers shared by the orchestration graph stories, so every view renders the same
 // automation setup.
@@ -227,6 +228,219 @@ export const DENSE_GRAPH: OrchestrationGraph = (() => {
     );
   return { scopeLabel: "Dense scope", sources, events, routes, targets };
 })();
+
+function scopeTarget(id: string, label: string): OrchestrationTarget {
+  return { id, label, kind: "scope", activeCount: 0 };
+}
+
+const AUTH_SOURCE = source("auth", "Auth", "key");
+const SUBJECT_SCOPE = scopeTarget("subject", "The event's subject");
+
+// A system scope, an organization, two of its projects, and a member, wired the way Backoffice's
+// starter routes and a typical organization forward events between them.
+export const UNIVERSE: OrchestrationUniverse = {
+  scopes: [
+    {
+      id: "system",
+      graph: {
+        scopeLabel: "System",
+        sources: [AUTH_SOURCE, source("scheduler", "Scheduler", "calendar")],
+        events: [
+          event("auth", "organization.created", "Organization created", 1),
+          event("auth", "user.created", "User created", 3),
+          event("scheduler", "schedule:nightly-cleanup", "Nightly cleanup · 03:00 UTC"),
+        ],
+        routes: [
+          route(
+            "system-workspace-files",
+            "auth:organization.created",
+            "Initialize workspace files",
+            10,
+            {
+              kind: "start_workflow",
+              targetId: "workspace-file-initialization",
+            },
+          ),
+          route(
+            "system-forward-org",
+            "auth:organization.created",
+            "Hand new organizations over",
+            20,
+            {
+              kind: "forward_event",
+              targetId: SUBJECT_SCOPE.id,
+            },
+          ),
+          route("system-forward-user", "auth:user.created", "Hand new users over", 20, {
+            kind: "forward_event",
+            targetId: SUBJECT_SCOPE.id,
+          }),
+          route("system-cleanup", "scheduler:schedule:nightly-cleanup", "Nightly cleanup", 100, {
+            kind: "start_workflow",
+            targetId: "nightly-cleanup",
+          }),
+        ],
+        targets: [
+          workflow("workspace-file-initialization"),
+          workflow("nightly-cleanup", 1),
+          SUBJECT_SCOPE,
+        ],
+      },
+    },
+    {
+      id: "org",
+      graph: {
+        ...ORGANIZATION_GRAPH,
+        sources: [...ORGANIZATION_GRAPH.sources, AUTH_SOURCE],
+        events: [
+          ...ORGANIZATION_GRAPH.events,
+          event("auth", "organization.created", "Organization created", 1),
+          event("upload", "file.uploaded", "File uploaded", 6),
+        ],
+        routes: [
+          ...ORGANIZATION_GRAPH.routes,
+          route("org-onboarding", "auth:organization.created", "Onboard the organization", 100, {
+            kind: "start_workflow",
+            targetId: "organization-onboarding",
+          }),
+          route(
+            "org-intake",
+            "forms:response.submitted",
+            "Send intake to the website project",
+            100,
+            {
+              kind: "forward_event",
+              targetId: "project-website",
+            },
+          ),
+          route("org-receipts", "upload:file.uploaded", "Send receipts to bookkeeping", 100, {
+            kind: "forward_event",
+            targetId: "project-bookkeeping",
+          }),
+          route("org-owner-dm", "telegram:message.received", "Forward DMs to the owner", 200, {
+            kind: "forward_event",
+            targetId: "owner",
+          }),
+        ],
+        targets: [
+          ...ORGANIZATION_GRAPH.targets,
+          workflow("organization-onboarding"),
+          scopeTarget("project-website", "Project · website"),
+          scopeTarget("project-bookkeeping", "Project · bookkeeping"),
+          scopeTarget("owner", "User · owner"),
+        ],
+      },
+    },
+    {
+      id: "website",
+      graph: {
+        scopeLabel: "Website",
+        sources: [source("forms", "Forms", "file-text"), source("github", "GitHub", "git-branch")],
+        events: [
+          event("forms", "response.submitted", "Form response submitted", 3),
+          event("github", "webhook.received", "GitHub webhook received", 4),
+        ],
+        routes: [
+          route("website-triage", "forms:response.submitted", "Triage intake", 100, {
+            kind: "start_workflow",
+            targetId: "intake-triage",
+          }),
+          route("website-preview", "github:webhook.received", "Deploy previews", 100, {
+            kind: "start_workflow",
+            targetId: "deploy-preview",
+          }),
+        ],
+        targets: [workflow("intake-triage", 2), workflow("deploy-preview")],
+      },
+    },
+    {
+      id: "bookkeeping",
+      graph: {
+        scopeLabel: "Bookkeeping",
+        sources: [source("upload", "Upload", "upload"), source("resend", "Email", "mail")],
+        events: [
+          event("upload", "file.uploaded", "File uploaded", 6),
+          event("resend", "email.received", "Email received", 2),
+        ],
+        routes: [
+          route("bookkeeping-extract", "upload:file.uploaded", "Extract receipts", 100, {
+            kind: "start_workflow",
+            targetId: "receipt-extract",
+          }),
+          route("bookkeeping-invoices", "resend:email.received", "Read emailed invoices", 100, {
+            kind: "start_workflow",
+            targetId: "invoice-intake",
+          }),
+          route(
+            "bookkeeping-invoice-extract",
+            "resend:email.received",
+            "Extract attachments",
+            110,
+            {
+              kind: "start_workflow",
+              targetId: "receipt-extract",
+            },
+          ),
+        ],
+        targets: [workflow("receipt-extract", 1), workflow("invoice-intake")],
+      },
+    },
+    {
+      id: "user",
+      graph: {
+        scopeLabel: "wilco@rejot.dev",
+        sources: [AUTH_SOURCE, source("telegram", "Telegram", "send")],
+        events: [
+          event("auth", "user.created", "User created", 3),
+          event("telegram", "message.received", "Telegram message received", 2),
+        ],
+        routes: [
+          route("user-workspace", "auth:user.created", "Set up the personal workspace", 100, {
+            kind: "start_workflow",
+            targetId: "personal-workspace-setup",
+          }),
+          route("user-pi", "telegram:message.received", "Answer with Pi", 100, {
+            kind: "start_workflow",
+            targetId: "pi-session",
+          }),
+        ],
+        targets: [workflow("personal-workspace-setup"), workflow("pi-session", 1)],
+      },
+    },
+  ],
+  forwards: [
+    { routeId: "system-forward-org", fromScopeId: "system", toScopeId: "org" },
+    { routeId: "system-forward-user", fromScopeId: "system", toScopeId: "user" },
+    { routeId: "org-intake", fromScopeId: "org", toScopeId: "website" },
+    { routeId: "org-receipts", fromScopeId: "org", toScopeId: "bookkeeping" },
+    { routeId: "org-owner-dm", fromScopeId: "org", toScopeId: "user" },
+  ],
+  externals: [
+    { id: "telegram", label: "Telegram", icon: "send" },
+    { id: "email", label: "Email", icon: "mail" },
+    { id: "github", label: "GitHub", icon: "github" },
+    { id: "slack", label: "Slack", icon: "slack" },
+    { id: "models", label: "Models", icon: "cpu" },
+    { id: "stripe", label: "Stripe", icon: "credit-card" },
+    { id: "drive", label: "Google Drive", icon: "hard-drive" },
+  ],
+  calls: [
+    { scopeId: "system", workflowId: "workspace-file-initialization", externalId: "drive" },
+    { scopeId: "system", workflowId: "nightly-cleanup", externalId: "slack" },
+    { scopeId: "org", workflowId: "telegram-user-linking", externalId: "telegram" },
+    { scopeId: "org", workflowId: "telegram-user-pi-linking", externalId: "telegram" },
+    { scopeId: "org", workflowId: "organization-onboarding", externalId: "email" },
+    { scopeId: "org", workflowId: "organization-onboarding", externalId: "slack" },
+    { scopeId: "website", workflowId: "intake-triage", externalId: "email" },
+    { scopeId: "website", workflowId: "intake-triage", externalId: "models" },
+    { scopeId: "website", workflowId: "deploy-preview", externalId: "github" },
+    { scopeId: "bookkeeping", workflowId: "receipt-extract", externalId: "models" },
+    { scopeId: "bookkeeping", workflowId: "invoice-intake", externalId: "stripe" },
+    { scopeId: "bookkeeping", workflowId: "invoice-intake", externalId: "email" },
+    { scopeId: "user", workflowId: "pi-session", externalId: "models" },
+    { scopeId: "user", workflowId: "pi-session", externalId: "telegram" },
+  ],
+};
 
 export function usePulses() {
   const [pulses, setPulses] = useState<readonly OrchestrationPulse[]>([]);

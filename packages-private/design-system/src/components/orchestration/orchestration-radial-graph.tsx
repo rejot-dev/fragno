@@ -1,15 +1,6 @@
-import {
-  type KeyboardEvent,
-  type ReactNode,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { cn } from "../../cn";
-import { Icon, type IconName } from "../icon";
 import {
   itemKey,
   ORCHESTRATION_TARGET_KIND_LABEL,
@@ -36,9 +27,21 @@ import {
   layoutOrchestrationGraph,
   type OrchestrationRadialLayout,
 } from "./orchestration-radial-graph-model";
+import { HubDetail, SvgIcon } from "./orchestration-radial-parts";
+import {
+  annularSector,
+  degrees,
+  fitLabel,
+  isLeftHalf,
+  labelArc,
+  MONO_CHAR_WIDTH,
+  point,
+  polar,
+  polarLink,
+  SANS_CHAR_WIDTH,
+} from "./radial-geometry";
 
 const SIZE = 1320;
-const CENTER = SIZE / 2;
 const HUB_RADIUS = 92;
 const SOURCE_INNER = 104;
 const SOURCE_OUTER = 162;
@@ -52,89 +55,6 @@ const TARGET_RADIUS = 470;
 const TARGET_NODE_RADIUS = 17;
 const TARGET_LABEL_MAX_WIDTH = 160;
 const TRANSITION_MS = 520;
-// Rough glyph widths for the fonts used below; labels only need to avoid overflowing their slot.
-const MONO_CHAR_WIDTH = 6.7;
-const SANS_CHAR_WIDTH = 6.9;
-
-function polar(angle: number, radius: number): [number, number] {
-  return [CENTER + radius * Math.sin(angle), CENTER - radius * Math.cos(angle)];
-}
-
-function point(angle: number, radius: number): string {
-  const [x, y] = polar(angle, radius);
-  return `${x.toFixed(2)} ${y.toFixed(2)}`;
-}
-
-function degrees(angle: number): number {
-  return (angle * 180) / Math.PI;
-}
-
-function isLowerHalf(angle: number): boolean {
-  const normalized = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-  return normalized > Math.PI / 2 && normalized < (Math.PI * 3) / 2;
-}
-
-function isLeftHalf(angle: number): boolean {
-  const normalized = ((angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-  return normalized > Math.PI;
-}
-
-function annularSector(startAngle: number, endAngle: number, inner: number, outer: number): string {
-  const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
-  return [
-    `M ${point(startAngle, outer)}`,
-    `A ${outer} ${outer} 0 ${largeArc} 1 ${point(endAngle, outer)}`,
-    `L ${point(endAngle, inner)}`,
-    `A ${inner} ${inner} 0 ${largeArc} 0 ${point(startAngle, inner)}`,
-    "Z",
-  ].join(" ");
-}
-
-// Text on the lower half runs the other way round so it never reads upside down. Chrome does not
-// re-lay out a textPath when its path changes, so each label is keyed on the path it follows.
-function labelArc(startAngle: number, endAngle: number, radius: number): string {
-  const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
-  return isLowerHalf((startAngle + endAngle) / 2)
-    ? `M ${point(endAngle, radius)} A ${radius} ${radius} 0 ${largeArc} 0 ${point(startAngle, radius)}`
-    : `M ${point(startAngle, radius)} A ${radius} ${radius} 0 ${largeArc} 1 ${point(endAngle, radius)}`;
-}
-
-/**
- * A link drawn in polar space: it leaves and arrives along the radius and turns in between, so a
- * link between distant angles follows the ring instead of cutting a chord through the middle.
- * `bulge` pushes the turn outward, which lets a link return to a ring further in.
- */
-function polarLink(
-  fromAngle: number,
-  fromRadius: number,
-  toAngle: number,
-  toRadius: number,
-  bulge: number,
-): string {
-  const turn = shortestTurn(fromAngle, toAngle);
-  const steps = 16 + Math.ceil(Math.abs(turn) * 24);
-  const points: string[] = [];
-  for (let step = 0; step <= steps; step += 1) {
-    const t = step / steps;
-    const eased = t * t * (3 - 2 * t);
-    const radius = fromRadius + (toRadius - fromRadius) * t + bulge * Math.sin(Math.PI * t);
-    points.push(point(fromAngle + turn * eased, radius));
-  }
-  return `M ${points.join(" L ")}`;
-}
-
-function shortestTurn(from: number, to: number): number {
-  const delta = (((to - from) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2);
-  return delta - Math.PI;
-}
-
-function fitLabel(text: string, available: number, charWidth: number): string | null {
-  if (text.length * charWidth <= available) {
-    return text;
-  }
-  const characters = Math.floor(available / charWidth) - 1;
-  return characters < 4 ? null : `${text.slice(0, characters)}…`;
-}
 
 /**
  * Route pills stay horizontal so they read like the cards elsewhere in Backoffice. Their width is
@@ -188,50 +108,6 @@ function useAnimatedLayout(target: OrchestrationRadialLayout): OrchestrationRadi
   }, [target]);
 
   return shown;
-}
-
-function SvgIcon({
-  name,
-  x,
-  y,
-  size,
-  className,
-}: {
-  name: IconName;
-  x: number;
-  y: number;
-  size: number;
-  className: string;
-}) {
-  return (
-    <g transform={`translate(${x - size / 2} ${y - size / 2}) scale(${size / 24})`}>
-      <Icon name={name} className={className} strokeWidth={1.8} />
-    </g>
-  );
-}
-
-function HubDetail({
-  eyebrow,
-  title,
-  detail,
-}: {
-  eyebrow: string;
-  title: string;
-  detail: ReactNode;
-}) {
-  return (
-    <div className="flex h-full flex-col items-center justify-center px-3 text-center">
-      <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
-        {eyebrow}
-      </p>
-      <p className="mt-1 line-clamp-2 text-[15px] leading-tight font-semibold break-words text-[var(--bo-fg)]">
-        {title}
-      </p>
-      <div className="mt-1 line-clamp-2 text-[11px] leading-snug text-[var(--bo-muted)]">
-        {detail}
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -426,7 +302,7 @@ export function OrchestrationRadialGraph({
 
   return (
     <svg
-      viewBox={`0 0 ${SIZE} ${SIZE}`}
+      viewBox={`${-SIZE / 2} ${-SIZE / 2} ${SIZE} ${SIZE}`}
       role="group"
       aria-label={`Automation orchestration for ${graph.scopeLabel}`}
       className="h-auto w-full touch-manipulation select-none"
@@ -440,8 +316,8 @@ export function OrchestrationRadialGraph({
       {[ROUTE_RADIUS, TARGET_RADIUS].map((radius) => (
         <circle
           key={radius}
-          cx={CENTER}
-          cy={CENTER}
+          cx={0}
+          cy={0}
           r={radius}
           className="fill-none stroke-[var(--bo-border)]"
           strokeDasharray="2 6"
@@ -707,9 +583,7 @@ export function OrchestrationRadialGraph({
         const above = Math.cos(angle) > 0;
         const offset = TARGET_NODE_RADIUS + 10;
         const labelX = beside ? x + Math.sign(outwardX) * offset : x;
-        const labelRoom = beside
-          ? (outwardX > 0 ? SIZE - labelX : labelX) - 12
-          : TARGET_LABEL_MAX_WIDTH * 1.6;
+        const labelRoom = beside ? SIZE / 2 - Math.abs(labelX) - 12 : TARGET_LABEL_MAX_WIDTH * 1.6;
         const nameY = beside
           ? y - (target.activeCount > 0 ? 7 : 0)
           : above
@@ -803,14 +677,14 @@ export function OrchestrationRadialGraph({
       })}
 
       <circle
-        cx={CENTER}
-        cy={CENTER}
+        cx={0}
+        cy={0}
         r={HUB_RADIUS}
         className="fill-[var(--bo-panel)] stroke-[var(--bo-border)]"
       />
       <foreignObject
-        x={CENTER - HUB_RADIUS}
-        y={CENTER - HUB_RADIUS}
+        x={-HUB_RADIUS}
+        y={-HUB_RADIUS}
         width={HUB_RADIUS * 2}
         height={HUB_RADIUS * 2}
         className="pointer-events-none"
