@@ -7,6 +7,7 @@ import {
   type BackofficePermissionRequirement,
 } from "./shared/permissions";
 import { piAgentNameSchema } from "./shared/pi-agent-name";
+import { type BackofficeRoutableScope, backofficeRoutableScopeSchema } from "./shared/scope";
 
 export type AutomationExternalEntityRef<
   TSource extends string = string,
@@ -372,6 +373,31 @@ export type AutomationRouteDefinition = {
   steward: AutomationRouteSteward;
   metadata?: AutomationRouteMetadata | null;
   nextOccurrenceAt: string | null;
+};
+
+/**
+ * Who may forward events into a scope through one of its forward accepts: the personal scopes of
+ * the members of the organization that owns it, or one named scope.
+ */
+export type AutomationForwardSenders =
+  | { kind: "members" }
+  | { kind: "scope"; scope: BackofficeRoutableScope };
+
+/**
+ * Lets another owner's scope forward events into this one. An event forwarded from a scope with
+ * a different root owner, such as a member's personal scope forwarding into their organization, is
+ * only taken in when an enabled accept names its sender and its matcher lets the event through;
+ * otherwise the forwarding route fails. System, and the scopes of the receiving scope's own owner,
+ * forward without one.
+ */
+export type AutomationForwardAccept = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  from: AutomationForwardSenders;
+  /** Read against the forwarded event as it arrives; `null` lets every event of the senders in. */
+  matcher: AutomationEventMatcher | null;
+  description: string | null;
 };
 
 export const isAutomationActorProvenancePath = (path: string) =>
@@ -774,6 +800,63 @@ export const automationRouteUpdateInputSchema = z.lazy(() =>
 
 export type AutomationRouteCreateInput = z.infer<typeof automationRouteCreateInputSchema>;
 
+const automationForwardSendersSchema: z.ZodType<AutomationForwardSenders> = z
+  .lazy(() =>
+    z.discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("members") }),
+      z.strictObject({ kind: z.literal("scope"), scope: backofficeRoutableScopeSchema }),
+    ]),
+  )
+  .meta({ id: "AutomationForwardSenders", codemodeInputId: "AutomationForwardSendersInput" });
+
+export const automationForwardAcceptSchema: z.ZodType<AutomationForwardAccept> = z
+  .lazy(() =>
+    z.strictObject({
+      id: z.string().trim().min(1),
+      name: z.string().trim().min(1),
+      enabled: z.boolean(),
+      from: automationForwardSendersSchema,
+      matcher: automationEventMatcherSchema.nullable(),
+      description: z.string().nullable(),
+    }),
+  )
+  .meta({ id: "AutomationForwardAccept" });
+
+export const automationForwardAcceptCreateInputSchema = z.lazy(() =>
+  z.strictObject({
+    id: z.string().trim().min(1),
+    name: z.string().trim().min(1),
+    enabled: z.boolean().default(true),
+    from: automationForwardSendersSchema,
+    matcher: automationEventMatcherSchema.nullable().default(null),
+    description: z.string().nullable().default(null),
+  }),
+);
+
+export const automationForwardAcceptUpdateInputSchema = z.lazy(() =>
+  z
+    .strictObject({
+      id: z.string().trim().min(1),
+      name: z.string().trim().min(1).optional(),
+      enabled: z.boolean().optional(),
+      from: automationForwardSendersSchema.optional(),
+      matcher: automationEventMatcherSchema.nullable().optional(),
+      description: z.string().nullable().optional(),
+    })
+    .refine(
+      ({ id: _id, ...patch }) => Object.values(patch).some((value) => typeof value !== "undefined"),
+      { message: "At least one forward accept field must be provided." },
+    ),
+);
+
+export type AutomationForwardAcceptCreateInput = z.infer<
+  typeof automationForwardAcceptCreateInputSchema
+>;
+
+export type AutomationForwardAcceptUpdateInput = z.infer<
+  typeof automationForwardAcceptUpdateInputSchema
+>;
+
 export type AutomationRouteUpdateInput = z.infer<typeof automationRouteUpdateInputSchema>;
 
 export const automationRouterOperations = {
@@ -815,5 +898,32 @@ export const automationRouterOperations = {
     permissions: [BACKOFFICE_PERMISSION.router.modify],
     input: z.lazy(() => z.object({ id: z.string().trim().min(1) })),
     output: z.lazy(() => z.object({ accepted: z.literal(true), eventId: z.string() }).nullable()),
+  },
+  "router.accepts.list": {
+    description:
+      "List the forward accepts of this scope: which scopes of other owners may forward events into it, and which of their events it takes in.",
+    permissions: [BACKOFFICE_PERMISSION.router.read],
+    input: z.void(),
+    output: z.lazy(() => z.array(automationForwardAcceptSchema)),
+  },
+  "router.accepts.create": {
+    description:
+      "Let scopes of another owner forward events into this scope. 'from' names the senders: 'members', the personal scopes of the members of the organization that owns this scope, or one 'scope'. The matcher reads the forwarded event, such as $.source, $.eventType, or $.payload fields; null lets every event in. Forwards from System, and from scopes of this scope's own owner, need no accept.",
+    permissions: [BACKOFFICE_PERMISSION.router.modify],
+    input: automationForwardAcceptCreateInputSchema,
+    output: z.lazy(() => automationForwardAcceptSchema),
+  },
+  "router.accepts.update": {
+    description:
+      "Update a forward accept of this scope. Disabling it, or narrowing it, makes the forwards it no longer lets in fail at the scope that sends them.",
+    permissions: [BACKOFFICE_PERMISSION.router.modify],
+    input: automationForwardAcceptUpdateInputSchema,
+    output: z.lazy(() => automationForwardAcceptSchema.nullable()),
+  },
+  "router.accepts.delete": {
+    description: "Idempotently delete a forward accept of this scope.",
+    permissions: [BACKOFFICE_PERMISSION.router.modify],
+    input: z.lazy(() => z.object({ id: z.string().trim().min(1) })),
+    output: z.lazy(() => z.object({ deleted: z.literal(true) })),
   },
 } satisfies Record<string, BackofficeApiOperation>;

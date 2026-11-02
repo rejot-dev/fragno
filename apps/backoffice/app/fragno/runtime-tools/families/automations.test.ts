@@ -67,6 +67,10 @@ describe("automation runtime tools", () => {
       "router.update",
       "router.delete",
       "router.trigger-now",
+      "router.accepts.list",
+      "router.accepts.create",
+      "router.accepts.update",
+      "router.accepts.delete",
     ]);
     expect(automationWorkflowRuntimeTools.map((tool) => tool.adapters?.bash?.command)).toEqual([
       "workflow.instances.create",

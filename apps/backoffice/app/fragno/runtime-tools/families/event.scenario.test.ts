@@ -416,9 +416,11 @@ test("an agent reads where each route its event matched stands", async () => {
   );
 });
 
-test("a personal route forwards to its owner's organization until they leave it", async () => {
+test("an organization takes in what its members forward only while it accepts it", async () => {
   const personal = { kind: "user", userId: "user-1", jurisdiction: null } as const;
   const organization = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
+  const notAccepted =
+    "org:org-1 accepts no bank balance.updated event forwarded from user:user-1: none of its forward accepts lets it in.";
   const fireBalance = async (ctx: BackofficeScenarioContext, balanceCents: number) => {
     const fired = await ctx.runCodemode({
       scope: personal,
@@ -439,12 +441,15 @@ test("a personal route forwards to its owner's organization until they leave it"
       causation: AutomationEventCausation;
       routing: AutomationEventRouting;
     } | null;
+  const inOrganization = (ctx: BackofficeScenarioContext, code: string) =>
+    ctx.runCodemode({ scope: organization, code: `async () => await ${code}` });
 
   await runBackofficeScenario(
     defineBackofficeScenario({
       objects: scenarioObjects,
       name: "Forwarding from a personal scope to an organization",
-      // The forward after user-1 leaves the organization fails for good.
+      // Forwards the organization does not accept, and the one after user-1 leaves it, fail for
+      // good.
       options: { allowFailedDurableHooks: true },
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1", name: "ReJot", ownerUserId: "owner-1" }),
@@ -461,6 +466,34 @@ test("a personal route forwards to its owner's organization until they leave it"
         }),
       ],
       steps: ({ when, then }) => [
+        then.assert("until the organization accepts it, a balance stays home", async (ctx) => {
+          const eventId = await fireBalance(ctx, 500);
+          expect((await readEvent(ctx, personal, eventId))?.routing).toMatchObject({
+            routes: [{ routeId: "balances-to-org", status: "failed", error: notAccepted }],
+          });
+          expect(await readEvent(ctx, organization, eventId)).toBeNull();
+        }),
+        then.assert("the organization accepts its members' balances", async (ctx) => {
+          await inOrganization(
+            ctx,
+            `router.acceptsCreate({
+              id: "member-balances",
+              name: "Member balances",
+              from: { kind: "members" },
+              matcher: { path: "$.eventType", op: "eq", value: "balance.updated" },
+            })`,
+          );
+          expect((await inOrganization(ctx, "router.acceptsList()")).result).toEqual([
+            {
+              id: "member-balances",
+              name: "Member balances",
+              enabled: true,
+              from: { kind: "members" },
+              matcher: { path: "$.eventType", op: "eq", value: "balance.updated" },
+              description: null,
+            },
+          ]);
+        }),
         then.assert("a member's balance arrives, naming who forwarded it", async (ctx) => {
           const eventId = await fireBalance(ctx, 8709);
           expect((await readEvent(ctx, personal, eventId))?.routing).toMatchObject({
@@ -482,6 +515,24 @@ test("a personal route forwards to its owner's organization until they leave it"
             },
           });
         }),
+        then.assert(
+          "once the organization disables its accept, balances stay home",
+          async (ctx) => {
+            await inOrganization(
+              ctx,
+              `router.acceptsUpdate({ id: "member-balances", enabled: false })`,
+            );
+            const eventId = await fireBalance(ctx, 900);
+            expect((await readEvent(ctx, personal, eventId))?.routing).toMatchObject({
+              routes: [{ routeId: "balances-to-org", status: "failed", error: notAccepted }],
+            });
+            expect(await readEvent(ctx, organization, eventId)).toBeNull();
+            await inOrganization(
+              ctx,
+              `router.acceptsUpdate({ id: "member-balances", enabled: true })`,
+            );
+          },
+        ),
         when.auth.removeMember({ orgId: "org-1", userId: "user-1" }),
         then.assert("after leaving, the next balance stays home", async (ctx) => {
           const eventId = await fireBalance(ctx, 1200);

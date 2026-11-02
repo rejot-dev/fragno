@@ -1,4 +1,7 @@
 import type {
+  AutomationForwardAccept,
+  AutomationForwardAcceptCreateInput,
+  AutomationForwardAcceptUpdateInput,
   AutomationRouteDefinition,
   AutomationRouteCreateInput,
   AutomationRouteUpdateInput,
@@ -31,6 +34,12 @@ export type AutomationRouterRuntime = {
     accepted: true;
     eventId: string;
   } | null>;
+  listForwardAccepts(): Promise<AutomationForwardAccept[]>;
+  createForwardAccept(input: AutomationForwardAcceptCreateInput): Promise<AutomationForwardAccept>;
+  updateForwardAccept(
+    input: AutomationForwardAcceptUpdateInput,
+  ): Promise<AutomationForwardAccept | null>;
+  deleteForwardAccept(input: { id: string }): Promise<true>;
 };
 
 export const createUnavailableAutomationRouterRuntime = (
@@ -52,6 +61,18 @@ export const createUnavailableAutomationRouterRuntime = (
     throw new Error(message);
   },
   triggerScheduledRouteNow: async () => {
+    throw new Error(message);
+  },
+  listForwardAccepts: async () => {
+    throw new Error(message);
+  },
+  createForwardAccept: async () => {
+    throw new Error(message);
+  },
+  updateForwardAccept: async () => {
+    throw new Error(message);
+  },
+  deleteForwardAccept: async () => {
     throw new Error(message);
   },
 });
@@ -317,6 +338,160 @@ const routerTriggerNowTool = defineBackofficeRuntimeTool({
   },
 });
 
+const formatForwardSenders = (accept: AutomationForwardAccept) =>
+  accept.from.kind === "members" ? "members" : JSON.stringify(accept.from.scope);
+
+const formatForwardAcceptsTable = (accepts: AutomationForwardAccept[]) =>
+  ensureTrailingNewline(
+    accepts
+      .map((accept) =>
+        [
+          accept.id.padEnd(36, " "),
+          accept.enabled ? "on " : "off",
+          `from ${formatForwardSenders(accept)}`,
+        ].join("  "),
+      )
+      .join("\n"),
+  );
+
+const formatForwardAcceptText = (accept: AutomationForwardAccept) =>
+  ensureTrailingNewline(
+    [
+      `id: ${accept.id}`,
+      `name: ${accept.name}`,
+      `enabled: ${accept.enabled ? "yes" : "no"}`,
+      `from: ${formatForwardSenders(accept)}`,
+      `matcher: ${accept.matcher ? JSON.stringify(accept.matcher) : "every event"}`,
+      accept.description ? `description: ${accept.description}` : undefined,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
+const routerAcceptsListTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("router.accepts.list"),
+  namespace: "router",
+  name: "acceptsList",
+  execute: async (_input, context: AutomationRouterToolContext) =>
+    await getRuntime(context).listForwardAccepts(),
+  adapters: {
+    bash: {
+      command: "router.accepts.list",
+      help: {
+        summary: "router.accepts.list lists which scopes may forward events into this one.",
+        options: [],
+        examples: ["router.accepts.list", "router.accepts.list --format json"],
+      },
+      parse: defineNoInputArgsParser("router.accepts.list"),
+      outputOptions,
+      format: (accepts, options) =>
+        options.format === "json" || options.print
+          ? { data: accepts }
+          : { stdout: formatForwardAcceptsTable(accepts) },
+    },
+  },
+});
+
+const routerAcceptsCreateTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("router.accepts.create"),
+  namespace: "router",
+  name: "acceptsCreate",
+  execute: async (input, context: AutomationRouterToolContext) =>
+    await getRuntime(context).createForwardAccept(input),
+  adapters: {
+    bash: {
+      command: "router.accepts.create",
+      help: {
+        summary: "router.accepts.create lets scopes of another owner forward events into this one.",
+        options: [
+          {
+            name: "json",
+            required: true,
+            valueRequired: true,
+            valueName: "json",
+            description: "Forward accept JSON payload",
+          },
+        ],
+        examples: [
+          'router.accepts.create --json \'{"id":"member-messages","name":"Member Telegram messages","from":{"kind":"members"},"matcher":{"all":[{"path":"$.source","op":"eq","value":"telegram"},{"path":"$.eventType","op":"eq","value":"message.received"}]}}\'',
+        ],
+      },
+      parse: parseJsonPayload() as (args: string[]) => AutomationForwardAcceptCreateInput,
+      outputOptions: outputOptionsWithoutJsonPayload,
+      format: (accept, options) =>
+        options.format === "json" || options.print
+          ? { data: accept }
+          : { stdout: `Created forward accept ${accept.id}\n${formatForwardAcceptText(accept)}` },
+    },
+  },
+});
+
+const routerAcceptsUpdateTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("router.accepts.update"),
+  namespace: "router",
+  name: "acceptsUpdate",
+  execute: async (input, context: AutomationRouterToolContext) =>
+    await getRuntime(context).updateForwardAccept(input),
+  adapters: {
+    bash: {
+      command: "router.accepts.update",
+      help: {
+        summary: "router.accepts.update patches a forward accept from a JSON payload.",
+        options: [
+          {
+            name: "id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Forward accept id",
+          },
+          {
+            name: "json",
+            required: true,
+            valueRequired: true,
+            valueName: "json",
+            description: "Partial forward accept JSON payload",
+          },
+        ],
+        examples: ["router.accepts.update --id member-messages --json '{\"enabled\":false}'"],
+      },
+      parse: parseRouteUpdate as (args: string[]) => AutomationForwardAcceptUpdateInput,
+      outputOptions: outputOptionsWithoutJsonPayload,
+      format: (accept, options) =>
+        !accept
+          ? { stderr: "Forward accept not found.\n", exitCode: 1 }
+          : options.format === "json" || options.print
+            ? { data: accept }
+            : { stdout: `Updated forward accept ${accept.id}\n${formatForwardAcceptText(accept)}` },
+    },
+  },
+});
+
+const routerAcceptsDeleteTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("router.accepts.delete"),
+  namespace: "router",
+  name: "acceptsDelete",
+  execute: async (input, context: AutomationRouterToolContext) => {
+    return { deleted: await getRuntime(context).deleteForwardAccept(input) };
+  },
+  adapters: {
+    bash: {
+      command: "router.accepts.delete",
+      help: {
+        summary: "router.accepts.delete ensures a forward accept is absent.",
+        options: [
+          { name: "id", required: true, valueRequired: true, description: "Forward accept id" },
+        ],
+        examples: ["router.accepts.delete --id member-messages"],
+      },
+      parse: defineCliArgsParser<{ id: string }>("router.accepts.delete", {
+        id: { required: true },
+      }),
+      format: () => ({ stdout: "Deleted forward accept.\n" }),
+    },
+  },
+});
+
 export const automationRouterRuntimeTools = [
   routerListTool,
   routerGetTool,
@@ -324,6 +499,10 @@ export const automationRouterRuntimeTools = [
   routerUpdateTool,
   routerDeleteTool,
   routerTriggerNowTool,
+  routerAcceptsListTool,
+  routerAcceptsCreateTool,
+  routerAcceptsUpdateTool,
+  routerAcceptsDeleteTool,
 ] as const;
 
 export const automationRouterToolFamily = defineBackofficeRuntimeToolFamily({

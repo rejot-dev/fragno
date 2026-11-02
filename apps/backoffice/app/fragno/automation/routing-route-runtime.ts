@@ -25,6 +25,16 @@ const raiseRouteError = (status: number, message: string): never => {
   );
 };
 
+/** The error a caller sees for a forward accept the Automations object refused to write. */
+function refuseForwardAccept(reason: "exists" | "members-outside-organization", id: string): never {
+  throw reason === "exists"
+    ? new BackofficeOperationError("conflict", `Forward accept '${id}' already exists.`)
+    : new BackofficeOperationError(
+        "invalid_request",
+        "Only a scope an organization owns can accept forwards from its members; name the sending scope instead.",
+      );
+}
+
 export const createRouteBackedAutomationRouterRuntime = ({
   object,
   execution,
@@ -131,6 +141,22 @@ export const createRouteBackedAutomationRouterRuntime = ({
         backofficeOperationErrorKindForStatus(response.status),
         `Automations backend returned ${response.status}`,
       );
+    },
+    listForwardAccepts: async () => await object.commands.listForwardAccepts(),
+    createForwardAccept: async (input) => {
+      const outcome = await object.commands.createForwardAccept(input);
+      return outcome.ok ? outcome.accept : refuseForwardAccept(outcome.reason, input.id);
+    },
+    updateForwardAccept: async (input) => {
+      const outcome = await object.commands.updateForwardAccept(input);
+      if (outcome.ok) {
+        return outcome.accept;
+      }
+      return outcome.reason === "not-found" ? null : refuseForwardAccept(outcome.reason, input.id);
+    },
+    deleteForwardAccept: async (input) => {
+      await object.commands.deleteForwardAccept(input);
+      return true;
     },
   };
 };

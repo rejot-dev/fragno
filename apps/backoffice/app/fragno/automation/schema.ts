@@ -1,4 +1,6 @@
 import type {
+  AutomationEventMatcher,
+  AutomationForwardSenders,
   AutomationRouteAction,
   AutomationRouteTrigger,
   AutomationSteward,
@@ -346,6 +348,25 @@ export const automationFragmentSchema = schema("automations", (s) => {
       .alterTable("file_share", (t) => t.addColumn("kind", column("string").defaultTo("folder")))
       .alterTable("accepted_file_share", (t) =>
         t.addColumn("kind", column("string").defaultTo("folder")),
+      )
+      // Which scopes of other owners may forward events into this one, and which of their events
+      // it takes in. Written and read only through `forward-accepts-storage-runtime`.
+      .addTable("automation_forward_accept", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("name", column("string"))
+          .addColumn("enabled", column("bool"))
+          .addColumn("senders", jsonColumn<AutomationForwardSenders>())
+          .addColumn("matcher", jsonColumn<AutomationEventMatcher>().nullable())
+          .addColumn("description", column("text").nullable())
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .addColumn(
+            "updatedAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          ),
       )
   );
 });

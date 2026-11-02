@@ -3,7 +3,12 @@ import type {
   AccountProfile,
   OAuthConsentPage,
 } from "@fragno-dev/backoffice-api/v0/account";
-import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
+import type {
+  AutomationActors,
+  AutomationForwardAccept,
+  AutomationForwardAcceptCreateInput,
+  AutomationForwardAcceptUpdateInput,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import type {
   AutomationEvent,
   AutomationEventDefinition,
@@ -125,6 +130,10 @@ import type {
   RevokeExternalIdentityInput,
   RevokeExternalIdentityResult,
 } from "@/fragno/automation/external-identities";
+import type {
+  ForwardAcceptCreateOutcome,
+  ForwardAcceptUpdateOutcome,
+} from "@/fragno/automation/forward-accepts-storage-runtime";
 import type { LegacyPackageImportOutcome } from "@/fragno/automation/legacy-package-installations";
 import type {
   PackageAutomationsUninstallation,
@@ -819,6 +828,16 @@ export type AutomationsCommands = {
   getAcceptedShareByName(input: { name: string }): Promise<AcceptedShare | null>;
   listAcceptedShares(): Promise<AcceptedShare[]>;
   deleteAcceptedShare(input: { shareId: string }): Promise<boolean>;
+  /** Which scopes of other owners may forward events into this one, and what it takes in from them. */
+  listForwardAccepts(): Promise<AutomationForwardAccept[]>;
+  createForwardAccept(
+    input: AutomationForwardAcceptCreateInput,
+  ): Promise<ForwardAcceptCreateOutcome>;
+  updateForwardAccept(
+    input: AutomationForwardAcceptUpdateInput,
+  ): Promise<ForwardAcceptUpdateOutcome>;
+  /** Returns whether the accept existed. */
+  deleteForwardAccept(input: { id: string }): Promise<boolean>;
   /** Records a package installation and syncs the routes and event definitions it declares here. */
   applyPackageInstallation(input: PackageInstallationInput): Promise<PackageInstallationOutcome>;
   uninstallPackage(input: { listingId: string }): Promise<PackageAutomationsUninstallation | null>;

@@ -2680,6 +2680,133 @@
     ]
   },
   {
+    "command": "router.accepts.list",
+    "summary": "router.accepts.list lists which scopes may forward events into this one.",
+    "options": [
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "router.accepts.create",
+    "summary": "router.accepts.create lets scopes of another owner forward events into this one.",
+    "options": [
+      {
+        "name": "json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Forward accept JSON payload"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "router.accepts.update",
+    "summary": "router.accepts.update patches a forward accept from a JSON payload.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Forward accept id"
+      },
+      {
+        "name": "json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Partial forward accept JSON payload"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "router.accepts.delete",
+    "summary": "router.accepts.delete ensures a forward accept is absent.",
+    "options": [
+      {
+        "name": "id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Forward accept id"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "workflow.instances.create",
     "summary": "workflow.instances.create starts a saved workflow file by path.",
     "options": [

@@ -75,6 +75,26 @@ source scope and choose a target it may reach:
 
 Scope templates resolve identifiers; they do not grant access.
 
+A forward into another owner's scope, such as from a personal scope into an organization or from an
+organization into a member's personal scope, also needs the target's consent: an enabled forward
+accept in the target scope that names the sender and lets the event through. Without one the route
+fails, and once the target disables or narrows its accept, the forwards it no longer lets in fail.
+Forwards from System, and between scopes of one owner, need none. Create the accept in the target
+scope:
+
+```js
+await router.acceptsCreate({
+  id: "member-balances",
+  name: "Member balances",
+  from: { kind: "members" },
+  matcher: { path: "$.eventType", op: "eq", value: "balance.updated" },
+});
+```
+
+`members` names the personal scopes of the members of the organization that owns the target; name
+one sender instead with `{ kind: "scope", scope }`. The matcher reads the forwarded event; `null`
+lets every event of the senders in. `router.acceptsList` shows what a scope takes in.
+
 To deliver an event to the scope it is about, target its subject. Backoffice names that scope in
 full in `subject.scope`, so match on it:
 
