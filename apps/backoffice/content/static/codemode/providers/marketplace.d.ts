@@ -157,7 +157,8 @@ type AutomationRouteAction =
   | AutomationSendWorkflowEventAction
   | AutomationForwardEventAction
   | AutomationReclassifyEventAction
-  | AutomationNotifyAgentAction;
+  | AutomationNotifyAgentAction
+  | AutomationNotifyAppAction;
 type AutomationEventMatcher =
   | {
       actor:
@@ -235,6 +236,10 @@ type AutomationNotifyAgentAction = {
   kind: "notify_agent";
   agentName: string;
   authority: AutomationAuthorityMode;
+};
+type AutomationNotifyAppAction = {
+  kind: "notify_app";
+  appId: string;
 };
 type AutomationAuthorityMode =
   | {
