@@ -31,6 +31,9 @@ At the app endpoint:
 4. Handle ping without a domain mutation, dispatch known actions, and return the declared JSON
    output. Translate `AppActionRequestError` to its HTTP status; propagate unexpected failures.
 
+Backoffice waits 10 seconds for the whole answer and reads at most 1 MB of it. A slower answer
+counts as an unreachable endpoint; a larger one keeps its status but loses its body.
+
 The verifier parses the envelope, not the individual action's domain input schema. Establish that
 input's contract at the dispatch boundary. Mutation actions also need a retry/replay policy: the
 signed `jti` can deduplicate the same request, but does not make independently retried business
@@ -57,8 +60,9 @@ with `events.get` as its installation, in that scope. Request `events.read` to b
    it. The app becomes the route's steward: it changes only its own routes, and they may only notify
    it. Members may turn them on or off, or delete them.
 2. Handle `type: "event"` at the endpoint after verification. Delivery is at least once: dedupe on
-   the event ID, not the token's `jti`. Answer 2xx once the work is durably accepted; hand slow work
-   off rather than doing it in the request.
+   the event ID, not the token's `jti`. Answer 2xx once the work is durably accepted, within the
+   10-second deadline; hand slow work off rather than doing it in the request. A late answer is
+   retried like a 5xx, so the app is told again.
 3. Answer 5xx or 429 to be told again later; any other non-2xx fails the route for good until a
    member retries it with `events.routes.retry`. `events.get` returns `null` for an event that is
    not stored: answer 2xx, as nothing will change.
