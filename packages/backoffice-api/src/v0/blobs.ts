@@ -4,6 +4,7 @@ import type { BackofficeApiOperation } from "../api";
 import { base64BytesSchema } from "./shared/bytes";
 import { isoDateTimeOutputSchema } from "./shared/datetime";
 import { BACKOFFICE_PERMISSION } from "./shared/permissions";
+import { SHARE_NAME_MAX_LENGTH, SHARED_MOUNT_POINT } from "./shares";
 
 /** R2 accepts at most 5 GiB less 5 MiB in one PUT, and a blob uploads in one PUT. */
 export const BLOB_MAX_SIZE_BYTES = 5 * 1024 ** 3 - 5 * 1024 ** 2;
@@ -11,12 +12,26 @@ export const BLOB_MAX_SIZE_BYTES = 5 * 1024 ** 3 - 5 * 1024 ** 2;
 /** Bounds one read, whose bytes return inside the result. */
 export const BLOB_READ_MAX_BYTES = 1024 ** 2;
 
+/** The longest key of a scope's own blob. */
+const BLOB_KEY_MAX_LENGTH = 512;
+
+/**
+ * A shared blob's key is /shared/<name>/ followed by its key after the share's prefix, which may
+ * make it longer than the key itself, so it may hold that much more.
+ */
+const SHARED_BLOB_KEY_MAX_LENGTH =
+  `${SHARED_MOUNT_POINT}/`.length + SHARE_NAME_MAX_LENGTH + "/".length + BLOB_KEY_MAX_LENGTH;
+
 export const blobKeySchema = z.lazy(() =>
   z
     .string()
     .trim()
     .min(1)
-    .max(512)
+    .max(SHARED_BLOB_KEY_MAX_LENGTH)
+    .refine(
+      (key) => key.startsWith(`${SHARED_MOUNT_POINT}/`) || key.length <= BLOB_KEY_MAX_LENGTH,
+      `A blob's key holds at most ${BLOB_KEY_MAX_LENGTH} characters.`,
+    )
     .describe(
       "The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav.",
     ),

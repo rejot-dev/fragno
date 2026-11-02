@@ -42,11 +42,14 @@ const shareSchema = z.lazy(() =>
   }),
 );
 
+/** The longest name a scope reads a share under. */
+export const SHARE_NAME_MAX_LENGTH = 64;
+
 /** A segment of /shared, like a project slug: lowercase letters and digits joined by dashes. */
 const shareNameSchema = z.lazy(() =>
   z
     .string()
-    .max(64)
+    .max(SHARE_NAME_MAX_LENGTH)
     .regex(
       /^[a-z0-9]+(?:-[a-z0-9]+)*$/u,
       "Share names are lowercase letters and digits joined by dashes, such as client1-invoices.",
