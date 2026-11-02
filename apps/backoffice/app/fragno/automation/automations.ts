@@ -763,6 +763,17 @@ export const createAutomationsRuntime = (
       return updateRouteResponse;
     }
 
+    // Deleting needs no grants beyond the operation's own, but the writer decides whose routes go.
+    const deleteRouteResponse = await ifMatchesRoute("DELETE", "/routes/:routeId", async () => {
+      if (requestContext) {
+        setAutomationRouteMutationActors(request, requestContext.actors);
+      }
+      return undefined;
+    });
+    if (deleteRouteResponse) {
+      return deleteRouteResponse;
+    }
+
     const authorizeStoreMutation = async (readInput: () => Promise<{ key: string }>) => {
       if (!requestContext) {
         return error(

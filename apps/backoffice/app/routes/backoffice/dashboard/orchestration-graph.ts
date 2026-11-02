@@ -91,6 +91,8 @@ export function routeTargetId(action: TargetedRouteAction): string {
       return `scope:${JSON.stringify(action.targetScope)}`;
     case "notify_agent":
       return `agent:${action.agentName}`;
+    case "notify_app":
+      return `app:${action.appId}`;
   }
   throw new Error("Unsupported automation route action kind.");
 }
@@ -126,6 +128,8 @@ function routeTarget(
       return { id, label: forwardTargetLabel(action), kind: "scope", activeCount: 0 };
     case "notify_agent":
       return { id, label: action.agentName, kind: "agent", activeCount: 0 };
+    case "notify_app":
+      return { id, label: action.appId, kind: "app", activeCount: 0 };
   }
   throw new Error("Unsupported automation route action kind.");
 }

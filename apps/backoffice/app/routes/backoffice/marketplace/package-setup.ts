@@ -95,6 +95,8 @@ function describeAction(action: AutomationRouteAction): PackageSetupRoute["actio
       return { label: "Forward the event to", target: describeScopeTemplate(action.targetScope) };
     case "notify_agent":
       return { label: "Prompt agent", target: action.agentName };
+    case "notify_app":
+      return { label: "Notify app", target: action.appId };
     case "reclassify_event":
       return { label: "Reclassify as", target: `${action.source} · ${action.eventType}` };
   }

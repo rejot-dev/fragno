@@ -295,6 +295,15 @@ export type AutomationReclassifyEventAction = {
   payload: AutomationEventPayloadProjection;
 };
 
+/**
+ * Tells an installed app that the event exists, by POSTing its id to the app's endpoint. The app
+ * reads the event with events.get under its own grants, so the route carries no authority.
+ */
+export type AutomationNotifyAppAction = {
+  kind: "notify_app";
+  appId: string;
+};
+
 /** Delivers the event to an agent in the route's scope as a turn run with the route's authority. */
 export type AutomationNotifyAgentAction = {
   kind: "notify_agent";
@@ -307,7 +316,8 @@ export type AutomationRouteAction =
   | AutomationSendWorkflowEventAction
   | AutomationForwardEventAction
   | AutomationReclassifyEventAction
-  | AutomationNotifyAgentAction;
+  | AutomationNotifyAgentAction
+  | AutomationNotifyAppAction;
 
 /** The authority an action runs its work with, or null for actions that only move events. */
 export function automationRouteActionAuthority(
@@ -339,6 +349,12 @@ export type AutomationRouteTrigger = AutomationRouteEventTrigger | AutomationRou
  */
 export type AutomationSteward = { kind: "members" } | { kind: "package"; listingId: string };
 
+/**
+ * Routes have one more steward: an installed app, for the routes it writes with its own credential.
+ * Those routes only notify the app itself.
+ */
+export type AutomationRouteSteward = AutomationSteward | { kind: "app"; appId: string };
+
 export type AutomationRouteMetadata = {
   createdByActors: AutomationActors;
   updatedByActors: AutomationActors;
@@ -353,7 +369,7 @@ export type AutomationRouteDefinition = {
   enabled: boolean;
   priority: number;
   description?: string | null;
-  steward: AutomationSteward;
+  steward: AutomationRouteSteward;
   metadata?: AutomationRouteMetadata | null;
   nextOccurrenceAt: string | null;
 };
@@ -627,6 +643,15 @@ const automationNotifyAgentActionSchema = z
   )
   .meta({ id: "AutomationNotifyAgentAction" }) satisfies z.ZodType<AutomationNotifyAgentAction>;
 
+const automationNotifyAppActionSchema = z
+  .lazy(() =>
+    z.strictObject({
+      kind: z.literal("notify_app"),
+      appId: z.string().trim().min(1),
+    }),
+  )
+  .meta({ id: "AutomationNotifyAppAction" }) satisfies z.ZodType<AutomationNotifyAppAction>;
+
 export const automationRouteActionSchema = z
   .lazy(() =>
     z.discriminatedUnion("kind", [
@@ -635,6 +660,7 @@ export const automationRouteActionSchema = z
       automationForwardEventActionSchema,
       automationReclassifyEventActionSchema,
       automationNotifyAgentActionSchema,
+      automationNotifyAppActionSchema,
     ]),
   )
   .meta({ id: "AutomationRouteAction" }) satisfies z.ZodType<AutomationRouteAction>;
@@ -647,6 +673,16 @@ export const automationStewardSchema: z.ZodType<AutomationSteward> = z
     ]),
   )
   .meta({ id: "AutomationSteward" });
+
+const automationRouteStewardSchema: z.ZodType<AutomationRouteSteward> = z
+  .lazy(() =>
+    z.discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("members") }),
+      z.strictObject({ kind: z.literal("package"), listingId: z.string().trim().min(1) }),
+      z.strictObject({ kind: z.literal("app"), appId: z.string().trim().min(1) }),
+    ]),
+  )
+  .meta({ id: "AutomationRouteSteward" });
 
 const automationRouteMetadataSchema = z.lazy(() =>
   z.strictObject({
@@ -690,7 +726,7 @@ export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
       trigger: automationRouteTriggerSchema,
       action: automationRouteActionSchema,
       description: z.string().nullable().optional(),
-      steward: automationStewardSchema,
+      steward: automationRouteStewardSchema,
       metadata: automationRouteMetadataSchema.nullable(),
       nextOccurrenceAt: z.iso.datetime().nullable(),
     }),
@@ -754,21 +790,22 @@ export const automationRouterOperations = {
     output: z.lazy(() => automationRouteSchema.nullable()),
   },
   "router.create": {
-    description: "Create a database-backed automation routing rule.",
+    description:
+      "Create a database-backed automation routing rule. An installed app may only create notify_app routes to itself, which it then manages.",
     permissions: [BACKOFFICE_PERMISSION.router.modify],
     input: automationRouteCreateInputSchema,
     output: automationRouteSchema,
   },
   "router.update": {
     description:
-      "Update a database-backed automation routing rule. A route a package manages (steward kind 'package') only accepts enabling or disabling it; change its definition through the package.",
+      "Update a database-backed automation routing rule. A route a package or an installed app manages (steward kind 'package' or 'app') only accepts enabling or disabling it; change its definition through its steward.",
     permissions: [BACKOFFICE_PERMISSION.router.modify],
     input: automationRouteUpdateInputSchema,
     output: z.lazy(() => automationRouteSchema.nullable()),
   },
   "router.delete": {
     description:
-      "Idempotently delete a database-backed automation route. Routes a package manages are removed by uninstalling the package.",
+      "Idempotently delete a database-backed automation route. Routes a package manages are removed by uninstalling the package; members may delete an installed app's routes.",
     permissions: [BACKOFFICE_PERMISSION.router.modify],
     input: z.lazy(() => z.object({ id: z.string().trim().min(1) })),
     output: z.lazy(() => z.object({ deleted: z.literal(true) })),

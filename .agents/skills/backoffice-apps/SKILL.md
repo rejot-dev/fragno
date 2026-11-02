@@ -127,9 +127,9 @@ restrictions, and refusal, reauthorization, and unknown outcomes take distinct p
   install page and confirming access by pulling authority, not a webhook synchronization system.
   First-party apps also create tenants, projects, and invitations through
   [provisioning](references/provisioning.md).
-- **Agents calling the app or app-triggered automations:** read
-  [actions and events](references/actions-and-events.md). An action endpoint and an outgoing event
-  are different directions of integration; neither is a prerequisite for sign-in.
+- **Agents calling the app, the app reacting to Backoffice events, or app-triggered automations:**
+  read [actions and events](references/actions-and-events.md). Actions and event notifications reach
+  the app's endpoint; emitted events go the other way. None is a prerequisite for sign-in.
 - **Durable onboarding:** also read [Fragno Workflows](../fragno-workflows/SKILL.md) before
   implementing replayable steps. Bootstrap belongs in the app: the Backoffice tenant it would run in
   may not exist yet.

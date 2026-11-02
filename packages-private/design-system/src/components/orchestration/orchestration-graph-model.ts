@@ -16,6 +16,7 @@ export type OrchestrationRouteAction =
   | { kind: "send_workflow_event"; targetId: string; eventType: string }
   | { kind: "forward_event"; targetId: string }
   | { kind: "notify_agent"; targetId: string }
+  | { kind: "notify_app"; targetId: string }
   | { kind: "reclassify_event"; eventId: string };
 
 export type OrchestrationRoute = {
@@ -31,7 +32,7 @@ export type OrchestrationRoute = {
 export type OrchestrationTarget = {
   id: string;
   label: string;
-  kind: "workflow" | "scope" | "agent";
+  kind: "workflow" | "scope" | "agent" | "app";
   activeCount: number;
 };
 
@@ -40,6 +41,7 @@ export const ORCHESTRATION_TARGET_KIND_LABEL: Record<OrchestrationTarget["kind"]
   workflow: "Workflow",
   scope: "Forward target",
   agent: "Agent",
+  app: "App",
 };
 
 export type OrchestrationGraph = {

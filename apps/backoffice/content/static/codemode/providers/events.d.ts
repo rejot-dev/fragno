@@ -562,11 +562,18 @@ type EventsListOutput = {
                       agentName: string;
                     }
                   | {
+                      kind: "app_notified";
+                      appId: string;
+                    }
+                  | {
                       kind: "skipped";
                       reason:
                         | "no_linked_external_sender"
                         | "workflow_instance_unresolved"
-                        | "caused_by_notified_agent";
+                        | "caused_by_notified_agent"
+                        | "caused_by_notified_app"
+                        | "app_not_installed"
+                        | "app_cannot_read_events";
                     };
                 failedAttempts: number;
               }
@@ -907,11 +914,18 @@ type EventsGetOutput = {
                     agentName: string;
                   }
                 | {
+                    kind: "app_notified";
+                    appId: string;
+                  }
+                | {
                     kind: "skipped";
                     reason:
                       | "no_linked_external_sender"
                       | "workflow_instance_unresolved"
-                      | "caused_by_notified_agent";
+                      | "caused_by_notified_agent"
+                      | "caused_by_notified_app"
+                      | "app_not_installed"
+                      | "app_cannot_read_events";
                   };
               failedAttempts: number;
             }
@@ -1033,11 +1047,18 @@ type EventsRoutesListOutput = {
                 agentName: string;
               }
             | {
+                kind: "app_notified";
+                appId: string;
+              }
+            | {
                 kind: "skipped";
                 reason:
                   | "no_linked_external_sender"
                   | "workflow_instance_unresolved"
-                  | "caused_by_notified_agent";
+                  | "caused_by_notified_agent"
+                  | "caused_by_notified_app"
+                  | "app_not_installed"
+                  | "app_cannot_read_events";
               };
           failedAttempts: number;
         };
@@ -1156,11 +1177,18 @@ type EventsRoutesRetryOutput =
             agentName: string;
           }
         | {
+            kind: "app_notified";
+            appId: string;
+          }
+        | {
             kind: "skipped";
             reason:
               | "no_linked_external_sender"
               | "workflow_instance_unresolved"
-              | "caused_by_notified_agent";
+              | "caused_by_notified_agent"
+              | "caused_by_notified_app"
+              | "app_not_installed"
+              | "app_cannot_read_events";
           };
       failedAttempts: number;
     }

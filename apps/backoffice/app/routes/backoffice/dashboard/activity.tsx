@@ -1128,6 +1128,8 @@ function describeDispatchOutcome({ state }: EventTraceDispatch): string {
       return `Reclassified the event as ${outcome.eventId}`;
     case "agent_notified":
       return `Notified the ${outcome.agentName} agent`;
+    case "app_notified":
+      return `Notified app ${outcome.appId}`;
     case "skipped":
       return `Skipped: ${describeRouteDispatchSkipReason(outcome.reason)}`;
   }

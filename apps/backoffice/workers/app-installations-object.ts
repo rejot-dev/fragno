@@ -18,6 +18,7 @@ import {
   type BackofficeAppLookupInput,
 } from "@fragno-dev/backoffice-api/v0/apps";
 import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   backofficeContextScopesEqual,
   backofficeScopeRootOwner,
@@ -359,10 +360,28 @@ export class AppInstallationsObject
           "Backoffice app has not linked this installation to one of its accounts; finish the app's connect flow.",
         );
       }
+      // The app reads the event it is told about with events.read, so telling an app without it
+      // would only make it fail.
       if (
-        actions.kind === "none" ||
-        (request.type === "action" && !actions.actions.some(({ id }) => id === request.actionId))
+        request.type === "event" &&
+        !installation.grantedPermissions.some(
+          ({ namespace, permission }) =>
+            namespace === BACKOFFICE_PERMISSION.events.read.namespace &&
+            permission === BACKOFFICE_PERMISSION.events.read.permission,
+        )
       ) {
+        throw new BackofficeAppDomainError(
+          "APP_EVENTS_NOT_GRANTED",
+          "Backoffice app installation may not read events, so it is not told about them.",
+        );
+      }
+      if (actions.kind === "none") {
+        throw new BackofficeAppDomainError(
+          "APP_ENDPOINT_NOT_DECLARED",
+          "Backoffice app declares no endpoint, or this installation has not approved it.",
+        );
+      }
+      if (request.type === "action" && !actions.actions.some(({ id }) => id === request.actionId)) {
         throw new BackofficeAppDomainError(
           "APP_ACTION_NOT_FOUND",
           "Backoffice app action is not declared or not approved.",

@@ -11,17 +11,17 @@ type RouterCodemodeProvider = {
    */
   get(input: RouterGetInput): Promise<RouterGetOutput>;
   /**
-   * Create a database-backed automation routing rule.
+   * Create a database-backed automation routing rule. An installed app may only create notify_app routes to itself, which it then manages.
    * Requires `router.modify`.
    */
   create(input: RouterCreateInput): Promise<RouterCreateOutput>;
   /**
-   * Update a database-backed automation routing rule. A route a package manages (steward kind 'package') only accepts enabling or disabling it; change its definition through the package.
+   * Update a database-backed automation routing rule. A route a package or an installed app manages (steward kind 'package' or 'app') only accepts enabling or disabling it; change its definition through its steward.
    * Requires `router.modify`.
    */
   update(input: RouterUpdateInput): Promise<RouterUpdateOutput>;
   /**
-   * Idempotently delete a database-backed automation route. Routes a package manages are removed by uninstalling the package.
+   * Idempotently delete a database-backed automation route. Routes a package manages are removed by uninstalling the package; members may delete an installed app's routes.
    * Requires `router.modify`.
    */
   delete(input: RouterDeleteInput): Promise<RouterDeleteOutput>;
@@ -41,7 +41,7 @@ type AutomationRoute = {
   trigger: AutomationRouteTrigger;
   action: AutomationRouteAction;
   description?: string | null;
-  steward: AutomationSteward;
+  steward: AutomationRouteSteward;
   metadata: {
     createdByActors: AutomationActors;
     updatedByActors: AutomationActors;
@@ -74,14 +74,19 @@ type AutomationRouteAction =
   | AutomationSendWorkflowEventAction
   | AutomationForwardEventAction
   | AutomationReclassifyEventAction
-  | AutomationNotifyAgentAction;
-type AutomationSteward =
+  | AutomationNotifyAgentAction
+  | AutomationNotifyAppAction;
+type AutomationRouteSteward =
   | {
       kind: "members";
     }
   | {
       kind: "package";
       listingId: string;
+    }
+  | {
+      kind: "app";
+      appId: string;
     };
 type AutomationActors = {
   initiator:
@@ -206,6 +211,10 @@ type AutomationNotifyAgentAction = {
   kind: "notify_agent";
   agentName: string;
   authority: AutomationAuthorityMode;
+};
+type AutomationNotifyAppAction = {
+  kind: "notify_app";
+  appId: string;
 };
 type AutomationAuthorityMode =
   | {

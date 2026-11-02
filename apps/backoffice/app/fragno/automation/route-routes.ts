@@ -14,7 +14,7 @@ import { automationFragmentDefinition } from "./definition";
 import { isAutomationScheduleError } from "./route-triggers";
 import { AutomationRouteAuthorityError } from "./routing";
 import { type AuthorizeAutomationRouteAction } from "./routing-storage-runtime";
-import { AutomationStewardError, MEMBERS_STEWARD } from "./stewards";
+import { AutomationStewardError, automationRouteWriter } from "./stewards";
 
 const SYSTEM_ROUTE_MUTATION_ACTORS = {
   initiator: AUTOMATION_SYSTEM_INITIATOR,
@@ -127,7 +127,7 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
                   services.createRoute(
                     payload,
                     getAutomationRouteMutationActors(request),
-                    MEMBERS_STEWARD,
+                    automationRouteWriter(getAutomationRouteMutationActors(request)),
                   ),
                 ] as const,
             )
@@ -169,7 +169,7 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
                     { ...payload, id: pathParams.routeId },
                     getAutomationRouteMutationActors(request),
                     getAutomationRouteMutationActionAuthorizer(request),
-                    MEMBERS_STEWARD,
+                    automationRouteWriter(getAutomationRouteMutationActors(request)),
                   ),
                 ] as const,
             )
@@ -197,11 +197,17 @@ export const automationRouteRoutes = defineRoutes(automationFragmentDefinition).
       method: "DELETE",
       path: "/routes/:routeId",
       outputSchema: z.object({ deleted: z.literal(true) }),
-      handler: async function ({ pathParams }, { json, error }) {
+      handler: async function ({ pathParams, request }, { json, error }) {
         try {
           await this.handlerTx()
             .withServiceCalls(
-              () => [services.deleteRoute({ id: pathParams.routeId }, MEMBERS_STEWARD)] as const,
+              () =>
+                [
+                  services.deleteRoute(
+                    { id: pathParams.routeId },
+                    automationRouteWriter(getAutomationRouteMutationActors(request)),
+                  ),
+                ] as const,
             )
             .execute();
         } catch (cause) {

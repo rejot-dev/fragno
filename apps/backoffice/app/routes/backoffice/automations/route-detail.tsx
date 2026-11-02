@@ -69,7 +69,9 @@ export function AutomationRouteDetail({
             { label: "priority", value: String(route.priority) },
             ...(route.steward.kind === "package"
               ? [{ label: "managed by", value: route.steward.listingId }]
-              : []),
+              : route.steward.kind === "app"
+                ? [{ label: "managed by app", value: route.steward.appId }]
+                : []),
           ]}
         />
       </div>

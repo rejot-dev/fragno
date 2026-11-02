@@ -21,6 +21,8 @@ export type BackofficeAppErrorCode =
   | "APP_INSTALLATION_OUT_OF_SCOPE"
   | "APP_ACTIONS_REVISION_STALE"
   | "APP_ACTION_NOT_FOUND"
+  | "APP_ENDPOINT_NOT_DECLARED"
+  | "APP_EVENTS_NOT_GRANTED"
   | "APP_ENDPOINT_UNREACHABLE";
 
 const BACKOFFICE_APP_ERROR_KIND = {
@@ -40,6 +42,8 @@ const BACKOFFICE_APP_ERROR_KIND = {
   APP_INSTALLATION_OUT_OF_SCOPE: "forbidden",
   APP_ACTIONS_REVISION_STALE: "conflict",
   APP_ACTION_NOT_FOUND: "not_found",
+  APP_ENDPOINT_NOT_DECLARED: "not_found",
+  APP_EVENTS_NOT_GRANTED: "forbidden",
   APP_ENDPOINT_UNREACHABLE: "operation_failed",
 } as const satisfies Record<BackofficeAppErrorCode, BackofficeOperationErrorKind>;
 
