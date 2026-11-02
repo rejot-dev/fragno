@@ -18,6 +18,7 @@
     "./file-image": "./src/file-image.tsx",
     "./generated-ui-upload": "./src/generated-ui-upload.ts",
     "./link": "./src/components/link.ts",
+    "./markdown-text": "./src/markdown-text.tsx",
     "./render-context": "./src/render-context.tsx",
     "./renderer": "./src/renderer.tsx",
     "./result": "./src/result.ts",

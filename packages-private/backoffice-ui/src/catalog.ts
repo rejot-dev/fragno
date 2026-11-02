@@ -17,6 +17,7 @@ import { keyValueDefinition } from "./components/key-value";
 import { linkDefinition } from "./components/link";
 import { listDefinition } from "./components/list";
 import { listRowDefinition } from "./components/list-row";
+import { markdownDefinition } from "./components/markdown";
 import { metricDefinition } from "./components/metric";
 import { numberDefinition } from "./components/number";
 import { orchestrationDefinition } from "./components/orchestration";
@@ -51,6 +52,7 @@ export const backofficeUiComponentDefinitions = {
   Heading: headingDefinition,
   Text: textDefinition,
   Code: codeDefinition,
+  Markdown: markdownDefinition,
   Image: imageDefinition,
   Callout: calloutDefinition,
   Metric: metricDefinition,

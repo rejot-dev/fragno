@@ -149,6 +149,11 @@ const componentDemoInputs: ComponentDemoInput[] = [
     },
   },
   {
+    component: "Markdown",
+    category: "Content",
+    props: backofficeUiComponentDefinitions.Markdown.example,
+  },
+  {
     component: "Image",
     category: "Content",
     props: backofficeUiComponentDefinitions.Image.example,
