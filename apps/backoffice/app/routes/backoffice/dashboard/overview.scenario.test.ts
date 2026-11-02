@@ -60,7 +60,7 @@ import { UploadObject } from "../../../../workers/upload-object";
 import { piAgentListings, piAgentQueueStatus } from "../agents/agent-activity";
 import type { AutomationWorkflowRun } from "../automations/script-view/workflow-run-presentation";
 import { projectEventTraceList, type EventTraceSummary } from "./event-traces";
-import { projectOrchestrationGraph } from "./orchestration-graph";
+import { orchestrationInletDetail, projectOrchestrationGraph } from "./orchestration-graph";
 import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
@@ -534,10 +534,14 @@ async function readMap(ctx: BackofficeScenarioContext) {
   await replica.drain();
   const now = ctx.runtime.now();
   const since = dashboardBucketStarts(now)[0] ?? now;
-  const [{ routes, recentEvents }, { activeWorkflows }] = await Promise.all([
-    readAutomationReplica(replica.replica, "orchestrationGraphInputs", { since }),
-    readAutomationReplica(replica.replica, "orchestrationRecords", undefined),
-  ]);
+  const [{ routes, recentEvents, forwardAccepts, recentForwards }, { activeWorkflows }] =
+    await Promise.all([
+      readAutomationReplica(replica.replica, "orchestrationGraphInputs", {
+        since,
+        ownerScope: scope,
+      }),
+      readAutomationReplica(replica.replica, "orchestrationRecords", undefined),
+    ]);
   // Catalogs are left out so the graph holds only what this scope's data puts there.
   const graph = projectOrchestrationGraph({
     scopeLabel: "Ada Labs",
@@ -546,6 +550,8 @@ async function readMap(ctx: BackofficeScenarioContext) {
     routes,
     activeWorkflows,
     recentEvents,
+    forwardAccepts,
+    recentForwards,
   });
   return {
     routes: graph.routes.map(
@@ -557,6 +563,13 @@ async function readMap(ctx: BackofficeScenarioContext) {
       .filter(({ recentCount }) => recentCount > 0)
       .map(({ id, recentCount }) => `${id} ×${recentCount}`)
       .sort(),
+    // Each inlet with what the inspector lists as forwarded through it.
+    inlets: graph.inlets.map(({ id, label, senders, status, eventIds, recentCount }) => ({
+      inlet: `${label} (${senders.label}, ${status}) → ${eventIds?.join(", ") ?? "unnamed events"} ×${recentCount}`,
+      forwarded: orchestrationInletDetail(id, { forwardAccepts, recentForwards }).forwards.map(
+        ({ source, eventType, from }) => `${source}.${eventType} by ${from.routeName}`,
+      ),
+    })),
   };
 }
 
@@ -805,6 +818,7 @@ describe("dashboard", () => {
                   "integrations:connection.unavailable ×1",
                   "shop:order.placed ×1",
                 ],
+                inlets: [],
               });
             },
           ),
@@ -840,6 +854,121 @@ describe("dashboard", () => {
               });
             },
           ),
+        ],
+      }),
+    );
+  });
+
+  test("the Map shows where members and System forward into the organization", async () => {
+    const personal = { kind: "user", userId: "user-1", jurisdiction: null } as const;
+    const system = { kind: "system" } as const;
+    const inOrganization = (code: string) => ({ scope, code: `async () => await ${code}` });
+    const fire = (
+      fireScope: typeof personal | typeof system,
+      source: string,
+      eventType: string,
+    ) => ({
+      scope: fireScope,
+      code: `async () => await events.fire({ source: "${source}", eventType: "${eventType}", payload: {} })`,
+    });
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "a member and System forward into an organization that accepts some of it",
+        setup: ({ given }) => [
+          given.organization.exists({ id: orgId, name: "Ada Labs", ownerUserId: "owner-1" }),
+          given.auth.user({ id: "user-1" }),
+          given.auth.member({ orgId, userId: "user-1" }),
+          given.codemode.run({
+            scope: personal,
+            code: `async () => await router.create({
+              id: "balances-to-org",
+              name: "Balances to Ada Labs",
+              trigger: { kind: "event", source: "bank", eventType: "balance.updated" },
+              action: { kind: "forward_event", targetScope: { kind: "org", orgIdTemplate: "${orgId}" } },
+            })`,
+          }),
+          given.codemode.run({
+            scope: system,
+            code: `async () => await router.create({
+              id: "notices-to-org",
+              name: "Notices to Ada Labs",
+              trigger: { kind: "event", source: "ops", eventType: "notice.posted" },
+              action: { kind: "forward_event", targetScope: { kind: "org", orgIdTemplate: "${orgId}" } },
+            })`,
+          }),
+          given.codemode.run(
+            inOrganization(`router.acceptsCreate({
+              id: "member-balances",
+              name: "Member balances",
+              from: { kind: "members" },
+              matcher: { path: "$.eventType", op: "eq", value: "balance.updated" },
+            })`),
+          ),
+          given.codemode.run(
+            inOrganization(`router.acceptsCreate({
+              id: "member-receipts",
+              name: "Member receipts",
+              enabled: false,
+              from: { kind: "members" },
+              matcher: { all: [
+                { path: "$.source", op: "eq", value: "upload" },
+                { path: "$.eventType", op: "eq", value: "file.uploaded" },
+              ] },
+            })`),
+          ),
+          given.codemode.run(
+            inOrganization(`router.acceptsCreate({
+              id: "large-transfers",
+              name: "Large transfers",
+              from: { kind: "scope", scope: { kind: "user", userId: "user-2", jurisdiction: null } },
+              matcher: { path: "$.payload.amountCents", op: "exists" },
+            })`),
+          ),
+        ],
+        steps: ({ when, then }) => [
+          when.codemode.run(fire(personal, "bank", "balance.updated")),
+          when.codemode.run(fire(personal, "bank", "balance.updated")),
+          when.codemode.run(fire(system, "ops", "notice.posted")),
+          then.assert(
+            "each accept feeds the events it names, and System's forwards need none",
+            async (ctx) => {
+              assert.deepEqual((await readMap(ctx)).inlets, [
+                {
+                  inlet: "Large transfers (user:user-2, accepting) → unnamed events ×0",
+                  forwarded: [],
+                },
+                {
+                  inlet: "Member balances (Members, accepting) → bank:balance.updated ×2",
+                  forwarded: [
+                    "bank.balance.updated by Balances to Ada Labs",
+                    "bank.balance.updated by Balances to Ada Labs",
+                  ],
+                },
+                {
+                  inlet: "Member receipts (Members, disabled) → upload:file.uploaded ×0",
+                  forwarded: [],
+                },
+                {
+                  inlet: "From System (System, trusted) → ops:notice.posted ×1",
+                  forwarded: ["ops.notice.posted by Notices to Ada Labs"],
+                },
+              ]);
+            },
+          ),
+          when.codemode.run(
+            inOrganization(`router.acceptsUpdate({ id: "member-balances", enabled: false })`),
+          ),
+          then.assert("a disabled accept still shows what it let in", async (ctx) => {
+            assert.deepInclude((await readMap(ctx)).inlets, {
+              inlet: "Member balances (Members, disabled) → bank:balance.updated ×2",
+              forwarded: [
+                "bank.balance.updated by Balances to Ada Labs",
+                "bank.balance.updated by Balances to Ada Labs",
+              ],
+            });
+          }),
         ],
       }),
     );

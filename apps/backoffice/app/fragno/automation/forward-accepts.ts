@@ -38,21 +38,28 @@ export function forwardSendersFitScope(
 }
 
 /**
- * Whether an enabled accept takes in `event`, forwarded from `from`. That a personal scope's owner
- * is a member is for the forwarding scope to prove: it may only forward into an organization its
- * owner may emit events in.
+ * Whether `accept` names `from` as a sender and its matcher lets `event` through, enabled or not.
+ * That a personal scope's owner is a member is for the forwarding scope to prove: it may only
+ * forward into an organization its owner may emit events in.
  */
+export function forwardAcceptLetsIn(
+  accept: AutomationForwardAccept,
+  event: AutomationEvent,
+  from: BackofficeContextScope,
+): boolean {
+  return (
+    (accept.from.kind === "members"
+      ? from.kind === "user"
+      : scopeIdentity(accept.from.scope) === scopeIdentity(from)) &&
+    evaluateAutomationEventMatcher(accept.matcher, event)
+  );
+}
+
+/** Whether an enabled accept takes in `event`, forwarded from `from`. */
 export function forwardAccepted(
   accepts: readonly AutomationForwardAccept[],
   event: AutomationEvent,
   from: BackofficeContextScope,
 ): boolean {
-  return accepts.some(
-    (accept) =>
-      accept.enabled &&
-      (accept.from.kind === "members"
-        ? from.kind === "user"
-        : scopeIdentity(accept.from.scope) === scopeIdentity(from)) &&
-      evaluateAutomationEventMatcher(accept.matcher, event),
-  );
+  return accepts.some((accept) => accept.enabled && forwardAcceptLetsIn(accept, event, from));
 }

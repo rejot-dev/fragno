@@ -1,4 +1,7 @@
-import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type {
+  AutomationForwardAccept,
+  AutomationRouteDefinition,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
@@ -10,7 +13,10 @@ import { OrchestrationLayeredGraph } from "@fragno-private/design-system/orchest
 import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router";
 
-import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
+import {
+  backofficeRuntimeScopeFromResolvedScope,
+  type BackofficeScopeSelection,
+} from "@/backoffice-runtime/resolved-scope";
 import { useClock } from "@/components/backoffice/use-clock";
 import { useAutomationRead, type AutomationReadData } from "@/fragno/automation/lofi/replica";
 import {
@@ -25,11 +31,13 @@ import { filesScopeBasePath } from "../files/scope";
 import {
   normalizedSourceId,
   orchestrationEventId,
+  orchestrationInletDetail,
   projectOrchestrationGraph,
   routeTargetId,
   routeTriggerEventId,
   type OrchestrationCatalogEvent,
   type OrchestrationCatalogSource,
+  type OrchestrationForward,
 } from "./orchestration-graph";
 import {
   OrchestrationInspector,
@@ -66,6 +74,8 @@ function OrchestrationPanel({
   replica,
   routes,
   recentEvents,
+  forwardAccepts,
+  recentForwards,
   selectedScope,
   workflowSource,
   runtimeToolCatalog,
@@ -73,6 +83,8 @@ function OrchestrationPanel({
   replica: LofiSqliteClient;
   routes: readonly AutomationRouteDefinition[];
   recentEvents: readonly { source: string; eventType: string }[];
+  forwardAccepts: readonly AutomationForwardAccept[];
+  recentForwards: readonly OrchestrationForward[];
   selectedScope: BackofficeScopeSelection;
   workflowSource: AutomationScriptSourceRecord;
   runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
@@ -114,13 +126,25 @@ function OrchestrationPanel({
         routes,
         activeWorkflows: records.activeWorkflows,
         recentEvents,
+        forwardAccepts,
+        recentForwards,
       }),
-    [selectedScope.label, catalog, routes, records.activeWorkflows, recentEvents],
+    [
+      selectedScope.label,
+      catalog,
+      routes,
+      records.activeWorkflows,
+      recentEvents,
+      forwardAccepts,
+      recentForwards,
+    ],
   );
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = dashboardSelection(searchParams);
-  const inspected = requested ? inspectorSelection(requested, { graph, routes, catalog }) : null;
+  const inspected = requested
+    ? inspectorSelection(requested, { graph, routes, catalog, forwardAccepts, recentForwards })
+    : null;
   const selected = inspected ? requested : null;
 
   const workflowScriptPath = inspected ? selectionWorkflowScriptPath(inspected) : null;
@@ -208,7 +232,10 @@ export function ScopeOrchestration({
   const now = useClock(CLOCK_TICK_MS);
   // The window start only moves when a new bucket begins, so the event read restarts rarely.
   const since = dashboardBucketStarts(now)[0] ?? now;
-  const inputs = useAutomationRead(replica, "orchestrationGraphInputs", { since });
+  const inputs = useAutomationRead(replica, "orchestrationGraphInputs", {
+    since,
+    ownerScope: backofficeRuntimeScopeFromResolvedScope(loaderData.selectedScope),
+  });
   if (inputs.status === "error") {
     return (
       <BackofficeSystemState
@@ -226,6 +253,8 @@ export function ScopeOrchestration({
       replica={replica}
       routes={inputs.data.routes}
       recentEvents={inputs.data.recentEvents}
+      forwardAccepts={inputs.data.forwardAccepts}
+      recentForwards={inputs.data.recentForwards}
       selectedScope={loaderData.selectedScope}
       workflowSource={loaderData.workflowSource}
       runtimeToolCatalog={loaderData.runtimeToolCatalog}
@@ -264,16 +293,27 @@ function inspectorSelection(
     graph,
     routes,
     catalog,
+    forwardAccepts,
+    recentForwards,
   }: {
     graph: OrchestrationGraph;
     routes: readonly AutomationRouteDefinition[];
     catalog: OrchestrationCatalog;
+    forwardAccepts: readonly AutomationForwardAccept[];
+    recentForwards: readonly OrchestrationForward[];
   },
 ): OrchestrationInspectorSelection | null {
   switch (item.kind) {
-    // Projected graphs hold no inlets yet.
-    case "inlet":
-      return null;
+    case "inlet": {
+      const inlet = graph.inlets.find((candidate) => candidate.id === item.id);
+      return inlet
+        ? {
+            kind: "inlet",
+            inlet,
+            ...orchestrationInletDetail(inlet.id, { forwardAccepts, recentForwards }),
+          }
+        : null;
+    }
     case "source": {
       const source = graph.sources.find((candidate) => candidate.id === item.id);
       if (!source) {
@@ -353,6 +393,7 @@ function selectionWorkflowScriptPath(selection: OrchestrationInspectorSelection)
         : null;
     case "target":
       return selection.workflowScriptPath;
+    case "inlet":
     case "source":
     case "event":
       return null;

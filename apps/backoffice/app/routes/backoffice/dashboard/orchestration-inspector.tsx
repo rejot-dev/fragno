@@ -1,9 +1,14 @@
-import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type {
+  AutomationForwardAccept,
+  AutomationRouteDefinition,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { IconButton } from "@fragno-private/design-system/controls/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import {
   ORCHESTRATION_TARGET_KIND_LABEL,
+  type OrchestrationInlet,
   type OrchestrationTarget,
 } from "@fragno-private/design-system/orchestration/orchestration-graph-model";
 import { useMemo, type ReactNode } from "react";
@@ -22,13 +27,25 @@ import { jsonSchemaToTypeScript } from "@/lib/zod/zod-formatter";
 
 import type { AutomationScriptSourceRecord } from "../automations/data";
 import { formatTimestamp } from "../automations/formatting";
+import { AutomationEventMatcherDetail } from "../automations/route-configuration";
 import { AutomationRouteDetail } from "../automations/route-detail";
 import { useLinkedScrollViewports } from "../automations/script-view/linked-scroll";
 import { useScriptWorkflowRuns } from "../automations/script-view/use-script-workflow-runs";
 import { ScriptWorkflowGraph } from "../automations/script-view/workflow-graph";
-import type { OrchestrationCatalogEvent, OrchestrationCatalogSource } from "./orchestration-graph";
+import type {
+  OrchestrationCatalogEvent,
+  OrchestrationCatalogSource,
+  OrchestrationForward,
+} from "./orchestration-graph";
 
 export type OrchestrationInspectorSelection =
+  | {
+      kind: "inlet";
+      inlet: OrchestrationInlet;
+      // Null for a sender that needs no accept.
+      accept: AutomationForwardAccept | null;
+      forwards: readonly OrchestrationForward[];
+    }
   | {
       kind: "source";
       source: OrchestrationCatalogSource;
@@ -88,6 +105,7 @@ export function OrchestrationInspector({
       </div>
 
       <div className="backoffice-scroll min-h-0 flex-1 overflow-y-auto">
+        {selection.kind === "inlet" ? <InletInspector selection={selection} /> : null}
         {selection.kind === "source" ? <SourceInspector selection={selection} /> : null}
         {selection.kind === "event" ? (
           <RecentEventInspector eventDefinition={selection.eventDefinition} replica={replica} />
@@ -119,6 +137,88 @@ export function OrchestrationInspector({
         ) : null}
       </div>
     </aside>
+  );
+}
+
+const INLET_STATUS_LABEL: Record<OrchestrationInlet["status"], string> = {
+  accepting: "enabled",
+  disabled: "disabled",
+  trusted: "no accept needed",
+};
+
+function InletInspector({
+  selection,
+}: {
+  selection: Extract<OrchestrationInspectorSelection, { kind: "inlet" }>;
+}) {
+  const { inlet, accept, forwards } = selection;
+
+  return (
+    <div className="space-y-3 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold tracking-[0.22em] text-violet-700 uppercase dark:text-violet-300">
+            {accept ? "Forward accept" : "Trusted sender"}
+          </p>
+          <h2 className="mt-1 text-sm font-semibold break-all text-[var(--bo-fg)]">
+            {inlet.label}
+          </h2>
+          {accept ? (
+            <p className="mt-1 font-mono text-[10px] break-all text-[var(--bo-muted-2)]">
+              {accept.id}
+            </p>
+          ) : null}
+        </div>
+        <span
+          className={
+            inlet.status === "disabled"
+              ? "shrink-0 border border-[color:var(--bo-border)] px-2 py-1 text-[8px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase"
+              : "shrink-0 border border-violet-500/40 bg-violet-500/10 px-2 py-1 text-[8px] font-semibold tracking-[0.18em] text-violet-700 uppercase dark:text-violet-200"
+          }
+        >
+          {INLET_STATUS_LABEL[inlet.status]}
+        </span>
+      </div>
+      <p className="text-xs leading-5 text-[var(--bo-muted)]">
+        {accept
+          ? (accept.description ??
+            `Lets in what ${accept.from.kind === "members" ? "the members' personal scopes" : inlet.senders.label} forward${accept.matcher ? " and its matcher lets through" : ""}. Forwards it does not let in fail at the scope that sends them.`)
+          : `${inlet.senders.label} forwards into this scope without an accept: System, and the scopes of this scope's own owner, need none.`}
+      </p>
+
+      {accept?.matcher ? <AutomationEventMatcherDetail matcher={accept.matcher} /> : null}
+
+      <section>
+        <div className="flex items-center justify-between border-b border-[color:var(--bo-border)] pb-2">
+          <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+            Forwarded in the last day
+          </p>
+          <span className="text-xs text-[var(--bo-muted-2)] tabular-nums">{forwards.length}</span>
+        </div>
+        {forwards.length > 0 ? (
+          <ul className="divide-y divide-[color:var(--bo-border)]">
+            {forwards.map((forward) => (
+              <li key={forward.eventId} className="flex min-w-0 flex-col py-2">
+                <span className="truncate font-mono text-[11px] font-semibold text-[var(--bo-fg)]">
+                  {forward.source}.{forward.eventType}
+                </span>
+                <span className="truncate text-[11px] text-[var(--bo-muted)]">
+                  From {backofficeScopePathSegment(forward.from.scope)} by route{" "}
+                  {forward.from.routeName}
+                </span>
+                <span className="text-[11px] text-[var(--bo-muted-2)] tabular-nums">
+                  {formatTimestamp(forward.occurredAt)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="py-6 text-center text-sm text-[var(--bo-muted)]">
+            Nothing forwarded in the last day.
+          </p>
+        )}
+      </section>
+    </div>
   );
 }
 

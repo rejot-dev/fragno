@@ -1,4 +1,12 @@
-import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
+import type {
+  AutomationForwardAccept,
+  AutomationRouteDefinition,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import type {
+  AutomationEvent,
+  AutomationEventCausation,
+} from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { AnyTable } from "@fragno-dev/db/schema";
 import { lofiSqliteTableName, type LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
@@ -8,8 +16,10 @@ import {
   automationWorkflowRunsFromRecords,
   type WorkflowRunRecordSelector,
 } from "@/routes/backoffice/automations/script-view/workflow-run-records";
+import type { OrchestrationForward } from "@/routes/backoffice/dashboard/orchestration-graph";
 
 import { CODEMODE_WORKFLOW } from "../engine/codemode-invocation";
+import { forwardAcceptLetsIn, forwardNeedsAccept } from "../forward-accepts";
 import { automationRouteSteward, type StoredAutomationRouteMetadata } from "../route-records";
 import { automationFragmentSchema } from "../schema";
 
@@ -258,17 +268,104 @@ export function readWorkflowRuns(
   );
 }
 
+/** The scope's forward accepts, by name. */
+function readForwardAccepts(reader: LofiSqliteReader): AutomationForwardAccept[] {
+  const accept = automationFragmentSchema.tables.automation_forward_accept.columns;
+  return reader
+    .query({
+      sql: `SELECT "id", "name", "enabled", "senders", "matcher", "description"
+            FROM ${automationTable("automation_forward_accept")}
+            ORDER BY "name", "id"`,
+      params: [],
+      columns: {
+        id: "text",
+        name: accept.name,
+        enabled: accept.enabled,
+        senders: accept.senders,
+        matcher: accept.matcher,
+        description: accept.description,
+      },
+    })
+    .map(({ senders, ...row }) => ({ ...row, from: senders }));
+}
+
 /**
- * What the orchestration graph draws besides its records: the routes, and the source and type of
- * every event that occurred since `since`, in epoch milliseconds, once per event so the graph can
- * count them.
+ * The events forwarded into `ownerScope` since `since`, newest first, each with what lets it in.
+ * Matching runs here so the page gets no payloads, and against today's accepts, which may differ
+ * from those that let it in when it arrived.
+ */
+function readRecentForwards(
+  reader: LofiSqliteReader,
+  {
+    since,
+    ownerScope,
+    accepts,
+  }: {
+    since: number;
+    ownerScope: BackofficeContextScope;
+    accepts: readonly AutomationForwardAccept[];
+  },
+): OrchestrationForward[] {
+  const event = automationFragmentSchema.tables.automation_event.columns;
+  const rows = reader.query({
+    sql: `SELECT "id", "scope", "scopeRestriction", "source", "eventType", "occurredAt", "payload",
+            "actors", "subject", "causation"
+          FROM ${automationTable("automation_event")}
+          WHERE "occurredAt" >= ? AND "causation" ->> '$.kind' = 'forward'
+          ORDER BY "occurredAt" DESC, "id" DESC`,
+    params: [since],
+    columns: {
+      id: "text",
+      scope: event.scope,
+      scopeRestriction: event.scopeRestriction,
+      source: event.source,
+      eventType: event.eventType,
+      occurredAt: event.occurredAt,
+      payload: event.payload,
+      actors: event.actors,
+      subject: event.subject,
+      causation: event.causation,
+    },
+  });
+  return rows.map((row) => {
+    // Only the automations fragment writes events, and the query keeps forwarded ones.
+    const forwarded = { ...row, occurredAt: row.occurredAt.toISOString() } as AutomationEvent & {
+      causation: Extract<AutomationEventCausation, { kind: "forward" }>;
+    };
+    const { from } = forwarded.causation;
+    return {
+      eventId: forwarded.id,
+      source: forwarded.source,
+      eventType: forwarded.eventType,
+      occurredAt: forwarded.occurredAt,
+      from,
+      admittedBy: forwardNeedsAccept(from.scope, ownerScope)
+        ? {
+            kind: "accepts",
+            acceptIds: accepts
+              .filter((accept) => forwardAcceptLetsIn(accept, forwarded, from.scope))
+              .map((accept) => accept.id),
+          }
+        : { kind: "trusted" },
+    };
+  });
+}
+
+/**
+ * What the orchestration graph draws besides its records: the routes, the source and type of every
+ * event that occurred since `since`, in epoch milliseconds, once per event so the graph can count
+ * them, and where other scopes forward into `ownerScope`: its accepts, and what they forwarded
+ * since `since`.
  */
 export function readOrchestrationGraphInputs(
   reader: LofiSqliteReader,
-  { since }: { since: number },
+  { since, ownerScope }: { since: number; ownerScope: BackofficeContextScope },
 ) {
+  const forwardAccepts = readForwardAccepts(reader);
   return {
     routes: readAutomationRoutes(reader),
+    forwardAccepts,
+    recentForwards: readRecentForwards(reader, { since, ownerScope, accepts: forwardAccepts }),
     recentEvents: reader.query({
       sql: `SELECT "source", "eventType"
             FROM ${automationTable("automation_event")}
