@@ -253,6 +253,9 @@ const SKIP_REASON_LABEL: Record<AutomationRouteDispatchSkipReason, string> = {
   no_linked_external_sender: "No external sender linked to a user",
   workflow_instance_unresolved: "No workflow run matched the route's target",
   caused_by_notified_agent: "The agent's own turns caused the event",
+  caused_by_notified_app: "The app caused the event",
+  app_not_installed: "The app is not installed here",
+  app_cannot_read_events: "The app may not read events",
 };
 
 export function describeRouteDispatchSkipReason(reason: AutomationRouteDispatchSkipReason): string {
@@ -399,6 +402,11 @@ function traceEffects(
         }
         case "agent_notified":
           return { effect: { kind: "agent", label: outcome.agentName }, acted: true };
+        case "app_notified":
+          return {
+            effect: { kind: "route", label: `${routeName} notified ${outcome.appId}` },
+            acted: true,
+          };
         case "event_forwarded":
           return { effect: { kind: "route", label: `${routeName} forwarded` }, acted: true };
         case "event_reclassified":
@@ -650,6 +658,14 @@ export function projectEventTrace({
           ...route,
           // Turns are queued and answered later, so an answer roots a trace of its own.
           detail: `Notified ${outcome.agentName}; its answer starts its own trace`,
+          status: "ok",
+          children: caused,
+        };
+      case "app_notified":
+        return {
+          ...route,
+          // The app reads the event on its own server, so nothing it does joins this trace.
+          detail: `Notified app ${outcome.appId}`,
           status: "ok",
           children: caused,
         };

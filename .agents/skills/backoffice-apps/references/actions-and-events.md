@@ -40,6 +40,35 @@ operations idempotent. Short token expiry alone does not prevent repeats within 
 Backoffice, and wrong-tenant, tampered, expired, and wrong-audience requests cannot read or mutate
 another tenant's data.
 
+## Backoffice tells the app: event notifications
+
+Read the `notify_app` route action in
+[automation operations](../../../../packages/backoffice-api/src/v0/automation.ts), its dispatch in
+[automations](../../../../apps/backoffice/app/fragno/automation/definition.ts), and its scenario in
+[scenario-notify-app.test.ts](../../../../apps/backoffice/app/fragno/automation/scenario-notify-app.test.ts).
+
+Backoffice does not push events. A `notify_app` route sends the app's endpoint a signed
+`{ type: "event", eventId }` naming an event in the token's `scopeRestriction`; the app reads it
+with `events.get` as its installation, in that scope. Request `events.read` to be notified, and
+`router.read` and `router.modify` to manage the routes yourself:
+
+1. With an installation credential for the scope, `router.create` a route whose action is
+   `{ kind: "notify_app", appId }`, with a stable route ID; a conflict means an earlier attempt made
+   it. The app becomes the route's steward: it changes only its own routes, and they may only notify
+   it. Members may turn them on or off, or delete them.
+2. Handle `type: "event"` at the endpoint after verification. Delivery is at least once: dedupe on
+   the event ID, not the token's `jti`. Answer 2xx once the work is durably accepted; hand slow work
+   off rather than doing it in the request.
+3. Answer 5xx or 429 to be told again later; any other non-2xx fails the route for good until a
+   member retries it with `events.routes.retry`. `events.get` returns `null` for an event that is
+   not stored: answer 2xx, as nothing will change.
+
+Events the app causes, even reclassified or forwarded, are never sent back to it. An uninstalled
+app, or one without `events.read`, is skipped rather than failed.
+
+**Complete when:** an event matching the app's route reaches its endpoint once accepted, the app
+reads it in the signed scope, and a repeated notification does not repeat its effect.
+
 ## The app calls Backoffice: events and automation
 
 Read [event operations](../../../../packages/backoffice-api/src/v0/events.ts) and

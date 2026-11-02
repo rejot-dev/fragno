@@ -4,6 +4,7 @@ import {
   type AutomationAuthorityMode,
   type AutomationForwardEventAction,
   type AutomationNotifyAgentAction,
+  type AutomationNotifyAppAction,
   type AutomationReclassifyEventAction,
   type AutomationRouteDefinition,
   type AutomationSendWorkflowEventAction,
@@ -43,6 +44,9 @@ import { BackofficeKernel, BackofficeForbiddenError } from "@/backoffice-runtime
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { installedAppIdOfActors } from "@/fragno/app-installations/authority";
+import { appInstallationTargetScope } from "@/fragno/app-installations/contracts";
+import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import { piAgentNotificationEvent } from "@/fragno/pi/agent/pi-agent-contract";
@@ -506,6 +510,75 @@ const handleNotifyAgentRouteAction = async ({
   await commitDispatch({ kind: "agent_notified", agentName: action.agentName }, null);
 };
 
+/** The app answered its notification with a status no retry can change. */
+class AppRefusedNotificationError extends Error {
+  constructor(appId: string, status: number) {
+    super(`App ${appId} refused the event notification with HTTP ${status}.`);
+    this.name = "AppRefusedNotificationError";
+  }
+}
+
+const handleNotifyAppRouteAction = async ({
+  action,
+  event,
+  commitDispatch,
+  ownerScope,
+  runtime,
+}: RouteExecutionContext & {
+  action: AutomationNotifyAppAction;
+  ownerScope: BackofficeContextScope;
+  runtime: BackofficeRuntimeServices | undefined;
+}) => {
+  if (!runtime) {
+    throw new Error("Notifying apps requires Backoffice runtime services.");
+  }
+  // Everything the app causes, reclassified or forwarded too, keeps its installation among the
+  // actors. Never telling the app about such an event means no route can make it notify itself
+  // forever.
+  if (installedAppIdOfActors(event.actors) === action.appId) {
+    await commitDispatch({ kind: "skipped", reason: "caused_by_notified_app" }, null);
+    return;
+  }
+  // The event is stored in this scope, so the app reads it here.
+  const scope = appInstallationTargetScope(ownerScope);
+  if (scope === null) {
+    await commitDispatch({ kind: "skipped", reason: "app_not_installed" }, null);
+    return;
+  }
+  const result = await runtime.objects.appInstallations
+    .for(backofficeScopeRootOwner(scope))
+    .commands.callAppEndpoint({
+      appId: action.appId,
+      scopeRestriction: scope,
+      actor: { kind: "installation" },
+      request: { type: "event", eventId: event.id },
+    });
+  const code = result.ok ? null : result.error.code;
+  if (code === "APP_INSTALLATION_INACTIVE" || code === "APP_INSTALLATION_OUT_OF_SCOPE") {
+    await commitDispatch({ kind: "skipped", reason: "app_not_installed" }, null);
+    return;
+  }
+  if (code === "APP_EVENTS_NOT_GRANTED") {
+    await commitDispatch({ kind: "skipped", reason: "app_cannot_read_events" }, null);
+    return;
+  }
+  // Other failures throw, and their kind decides whether the route retries: an unreachable
+  // endpoint does, an app that declares none does not.
+  const { status } = requireBackofficeAppOperationValue(result);
+  if (status >= 500 || status === 408 || status === 429) {
+    throw new BackofficeOperationError(
+      "operation_failed",
+      `App ${action.appId} answered the event notification with HTTP ${status}.`,
+    );
+  }
+  if (status < 200 || status >= 300) {
+    throw new AppRefusedNotificationError(action.appId, status);
+  }
+  // The app was told outside this commit, so a failure here tells it again: apps take each event
+  // at least once.
+  await commitDispatch({ kind: "app_notified", appId: action.appId }, null);
+};
+
 const MAX_AUTOMATION_EVENT_RECLASSIFICATION_CHAIN_LENGTH = 32;
 
 /** A reclassification that would cycle or chain too long; retrying the route cannot change it. */
@@ -624,14 +697,15 @@ class AutomationWorkflowRunFinishedError extends Error {
 
 /**
  * Errors no retry can fix fail a route at once: invalid events, reclassification cycles, denied
- * access, missing targets, and workflow runs that finished. Anything else may be a dependency that
- * is restarting. Errors that crossed an object boundary lost their class and are retried, except a
- * finished run, which is known by its message.
+ * access, missing targets, workflow runs that finished, and apps refusing their notification.
+ * Anything else may be a dependency that is restarting. Errors that crossed an object boundary lost
+ * their class and are retried, except a finished run, which is known by its message.
  */
 function isRetryableRouteError(error: unknown): boolean {
   if (
     error instanceof AutomationRouteFailedError ||
     error instanceof AutomationWorkflowRunFinishedError ||
+    error instanceof AppRefusedNotificationError ||
     isWorkflowRunFinishedError(error)
   ) {
     return false;
@@ -984,6 +1058,15 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 await handleNotifyAgentRouteAction({
                   ...context,
                   action,
+                  runtime: config.runtime,
+                });
+                break;
+
+              case "notify_app":
+                await handleNotifyAppRouteAction({
+                  ...context,
+                  action,
+                  ownerScope: config.ownerScope,
                   runtime: config.runtime,
                 });
                 break;

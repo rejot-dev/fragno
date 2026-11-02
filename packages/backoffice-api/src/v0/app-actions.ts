@@ -21,6 +21,9 @@ export const appActionRequestSchema = z.lazy(() =>
       actionId: z.string().min(1),
       input: jsonValueSchema.describe("Validated against the action's declared input schema."),
     }),
+    // A notify_app route matched this event in the token's scopeRestriction. The event is not sent:
+    // the app reads it there with events.get, under its own grants. Delivery is at least once.
+    z.strictObject({ type: z.literal("event"), eventId: z.string().min(1) }),
   ]),
 );
 export type AppActionRequest = z.infer<typeof appActionRequestSchema>;

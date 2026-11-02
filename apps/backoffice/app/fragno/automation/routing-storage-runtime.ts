@@ -4,7 +4,7 @@ import {
   automationRouteCreateInputSchema,
   automationRouteUpdateInputSchema,
   type AutomationRouteCreateInput,
-  type AutomationSteward,
+  type AutomationRouteSteward,
   type AutomationRouteUpdateInput,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -24,7 +24,7 @@ import {
   assertAutomationRouteDoesNotReclassifyItself,
 } from "./routing";
 import { automationFragmentSchema } from "./schema";
-import { assertStewardWrite, stewardsEqual } from "./stewards";
+import { assertAppRouteNotifiesItself, assertStewardWrite, stewardsEqual } from "./stewards";
 
 type AutomationRouteServiceContext = DatabaseServiceContext<AutomationInternalHooks>;
 
@@ -41,7 +41,7 @@ const authoredRouteEqual = (
     trigger: unknown;
     action: unknown;
     description?: string | null;
-    steward: AutomationSteward;
+    steward: AutomationRouteSteward;
   },
   right: {
     name: string;
@@ -50,7 +50,7 @@ const authoredRouteEqual = (
     trigger: unknown;
     action: unknown;
     description?: string | null;
-    steward: AutomationSteward;
+    steward: AutomationRouteSteward;
   },
 ) =>
   left.name === right.name &&
@@ -109,7 +109,7 @@ export const createAutomationRouteServices = (
     createRoute(
       input: AutomationRouteCreateInput,
       actors: AutomationActors,
-      writer: AutomationSteward,
+      writer: AutomationRouteSteward,
     ) {
       const route = automationRouteCreateInputSchema.parse(input);
       if (route.trigger.kind === "schedule") {
@@ -125,6 +125,7 @@ export const createAutomationRouteServices = (
         trigger: route.trigger,
         action: route.action,
       });
+      assertAppRouteNotifiesItself({ routeId: route.id, writer, action: route.action });
 
       return this.serviceTx(automationFragmentSchema)
         .mutate(({ uow }) => {
@@ -173,7 +174,7 @@ export const createAutomationRouteServices = (
       input: AutomationRouteUpdateInput,
       actors: AutomationActors,
       authorizeAction: AuthorizeAutomationRouteAction,
-      writer: AutomationSteward,
+      writer: AutomationRouteSteward,
     ) {
       const patch = automationRouteUpdateInputSchema.parse(input);
       if (patch.trigger?.kind === "schedule") {
@@ -238,6 +239,7 @@ export const createAutomationRouteServices = (
             trigger: merged.trigger,
             action: merged.action,
           });
+          assertAppRouteNotifiesItself({ routeId: merged.id, writer, action: merged.action });
 
           const unchanged = authoredRouteEqual(current, { ...merged, steward });
           const requiresGrantAuthorization =
@@ -357,7 +359,7 @@ export const createAutomationRouteServices = (
         .build();
     },
 
-    deleteRoute({ id }: { id: string }, writer: AutomationSteward) {
+    deleteRoute({ id }: { id: string }, writer: AutomationRouteSteward) {
       return this.serviceTx(automationFragmentSchema)
         .retrieve((uow) =>
           uow
@@ -369,10 +371,12 @@ export const createAutomationRouteServices = (
             ),
         )
         .mutate(({ uow, retrieveResult: [route, scheduleState] }) => {
-          if (route) {
+          const steward = route ? normalizeAutomationRoute(route, scheduleState).steward : null;
+          // Members may remove an app's route, such as one an uninstalled app left behind.
+          if (steward && !(steward.kind === "app" && writer.kind === "members")) {
             assertStewardWrite({
               resource: `Automation route '${id}'`,
-              steward: normalizeAutomationRoute(route, scheduleState).steward,
+              steward,
               legacyListingId: null,
               writer,
               definitionChanged: true,

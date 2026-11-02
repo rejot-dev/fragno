@@ -27,6 +27,8 @@ export const automationRouteWorkflowIdentity = (
       return null;
     case "notify_agent":
       return null;
+    case "notify_app":
+      return null;
   }
 
   throw new Error("Unsupported automation route action kind.");
@@ -66,6 +68,9 @@ export const automationRouteWorkflowName = (route: AutomationRouteDefinition) =>
     return null;
   }
   if (action.kind === "notify_agent") {
+    return null;
+  }
+  if (action.kind === "notify_app") {
     return null;
   }
 

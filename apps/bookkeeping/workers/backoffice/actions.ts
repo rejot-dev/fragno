@@ -75,6 +75,10 @@ export async function handleBackofficeAction(
   if (call.type === "ping") {
     return Response.json({ ok: true });
   }
+  // Bookkeeping routes no events to itself, so a notification is someone else's mistake.
+  if (call.type === "event") {
+    return message(404, "Bookkeeping does not take Backoffice events.");
+  }
   if (call.actionId === "organization.get") {
     return Response.json(organization);
   }

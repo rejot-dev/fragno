@@ -122,6 +122,22 @@ it. Delivering one event through one route twice delivers it once. Only started 
 notifications; prompt an agent once first. Events an agent's own turns produced, even reclassified
 or forwarded, are never delivered to it.
 
+## Notify apps
+
+Use `notify_app` to tell an installed app that an event exists:
+
+```js
+const action = { kind: "notify_app", appId: "app-id" };
+```
+
+Backoffice signs a request carrying only the event's ID and sends it to the endpoint the app's
+installation approved. The app then reads the event with `events.get`, under its own grants, in the
+route's scope. The route carries no authority; the installation needs `events.read`, and must reach
+the route's scope. An app may be notified of one event more than once, and events the app caused,
+even reclassified or forwarded, are never sent back to it. An installed app can create these routes
+for itself with `router.create` when it holds `router.modify`; it may change only those, and they
+may only notify it. Members may turn its routes on or off, or delete them, but not change them.
+
 ## Catalog versus delivery
 
 `events.catalogList` and `events.catalogGet` describe event types and their schemas. `events.list`
@@ -163,10 +179,11 @@ the event matched, each with its `status`:
   such as a workflow run that does not exist yet, retry for up to roughly fifty minutes.
 - `completed`: `outcome` says what the route did, such as the workflow run it started or the derived
   event it produced. `failedAttempts` above zero means it only acted after retries.
-- `failed`: the route gave up on `error`, because no retry could fix it, such as a denied scope or a
-  workflow run that has finished (`INSTANCE_TERMINAL`), or it ran out of attempts. Fix what it
-  depends on, then run only this route again with `events.routesRetry({ eventId, routeId })`. Only
-  `failed` routes can be retried; a `retrying` route retries by itself.
+- `failed`: the route gave up on `error`, because no retry could fix it, such as a denied scope, a
+  workflow run that has finished (`INSTANCE_TERMINAL`), or an app refusing its notification, or it
+  ran out of attempts. Fix what it depends on, then run only this route again with
+  `events.routesRetry({ eventId, routeId })`. Only `failed` routes can be retried; a `retrying`
+  route retries by itself.
 
 Each route also has `routeName`, its name when it matched, since routes can be renamed or deleted
 later, and `matchedAt`.
@@ -190,13 +207,17 @@ Follow each outcome to the work it names:
   with id `<routeId>:<eventId>` names the step that took it; the steps after it are what the event
   set off. An event no step has taken yet is still pending.
 - `agent_notified`: the agent's answer is its own `pi` `turn.completed` event.
+- `app_notified`: the app accepted the notification; what it does next happens on its own server.
 - `event_reclassified` and `event_forwarded`: the event they name, with `events.get`; a forwarded
   event lives in its target scope.
 - `skipped`: the route chose not to act, for the `reason` given. `workflow_instance_unresolved`: the
   route's target rendered no workflow run, such as a `stored_instance_id` key with nothing stored
   under it yet. `no_linked_external_sender`: the route acts for the event's external sender, who is
   not linked to a Backoffice user. `caused_by_notified_agent`: the agent's own turns caused the
-  event, and an agent is never notified of those.
+  event, and an agent is never notified of those. `caused_by_notified_app`: the app caused the
+  event, and an app is never notified of those. `app_not_installed`: the app is not installed, or
+  its installation does not reach the scope. `app_cannot_read_events`: the installation lacks
+  `events.read`.
 
 Report ingestion and downstream execution separately, including failures, pending work, and any
 missing evidence.

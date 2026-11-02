@@ -104,7 +104,7 @@ function createLedgerApp() {
     }
     received.push(verified);
     const call = verified.request;
-    if (call.type === "ping") {
+    if (call.type !== "action") {
       return Response.json({ ok: true });
     }
     switch (call.actionId) {

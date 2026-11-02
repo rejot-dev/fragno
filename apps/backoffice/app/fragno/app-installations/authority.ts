@@ -2,7 +2,7 @@ import type {
   AppInstallationExternalAccount,
   BackofficeAppInstallation,
 } from "@fragno-dev/backoffice-api/v0/apps";
-import type { AutomationActor } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationActor, AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   backofficeScopeRootOwner,
@@ -112,6 +112,17 @@ function installedAppActivationFromActor(
   }
   const match = appInstallationActorIdPattern.exec(actor.id);
   return match ? { appId: match[1], activation: Number(match[2]) } : null;
+}
+
+/** The installed app an execution acts through, as itself or for a user, or `null` for none. */
+export function installedAppIdOfActors(actors: AutomationActors): string | null {
+  for (const actor of [actors.principal, ...actors.delegation]) {
+    const activation = actor ? installedAppActivationFromActor(actor) : null;
+    if (activation) {
+      return activation.appId;
+    }
+  }
+  return null;
 }
 
 /**

@@ -23,6 +23,7 @@ const actionDetailLabels = (labelSet: AutomationRouteDetailLabelSet) =>
         event: "Event",
         eventId: "Event ID",
         agent: "Agent",
+        app: "App",
       }
     : {
         workflow: "workflow",
@@ -36,6 +37,7 @@ const actionDetailLabels = (labelSet: AutomationRouteDetailLabelSet) =>
         event: "event",
         eventId: "event id",
         agent: "agent",
+        app: "app",
       };
 
 /** Whom a route acts as under its authority mode. */
@@ -120,6 +122,8 @@ export const automationRouteActionDetailRows = (
         ...authorityDetailRows(action.authority, labels),
         { label: labels.agent, value: action.agentName },
       ];
+    case "notify_app":
+      return [{ label: labels.app, value: action.appId }];
     case "reclassify_event":
       return [
         { label: "Output source", value: action.source },
@@ -146,6 +150,8 @@ export const automationRouteActionLabel = (route: AutomationRouteDefinition) => 
       return "Reclassify event";
     case "notify_agent":
       return "Notify agent";
+    case "notify_app":
+      return "Notify app";
   }
 
   throw new Error("Unsupported automation route action kind.");
