@@ -6,6 +6,7 @@ import type {
   LofiSqliteRequest,
   LofiSqliteResponse,
   LofiSqliteTabMessage,
+  LofiSqliteViewRequest,
   LofiSqliteViewResponse,
 } from "./protocol";
 import { registrationsNamingReplica } from "./rebuild";
@@ -38,7 +39,7 @@ export type LofiSqliteHost = {
   close(): Promise<void>;
 };
 
-type SubscribeRequest = Extract<LofiSqliteRequest, { type: "subscribe" }>;
+type SubscribeRequest = Extract<LofiSqliteViewRequest, { type: "subscribe" }>;
 
 /**
  * How a tab's turn at the leader lock ended: `timed out` if the leader went silent, `unavailable`
@@ -49,7 +50,7 @@ type Turn = "ended" | "unavailable" | "failed" | "timed out";
 /** The leader's side: one replica, and one instance of each engine for the views of every tab. */
 type Leader = {
   replica: LofiSqliteReplica;
-  handle(tab: string, request: LofiSqliteRequest): void;
+  handle(tab: string, request: LofiSqliteViewRequest): void;
   receive(message: LofiSqliteTabMessage): void;
   close(): Promise<void>;
 };
@@ -89,6 +90,12 @@ export function serveLofiSqlite(options: LofiSqliteHostOptions): LofiSqliteHost 
 
   options.port.onmessage = (event: MessageEvent<LofiSqliteRequest>) => {
     const request = event.data;
+    if (request.type === "close") {
+      void host.close().then(() => {
+        postToPage({ type: "closed" });
+      });
+      return;
+    }
     if (request.type === "subscribe") {
       views.set(request.id, request);
     } else {
@@ -271,7 +278,7 @@ export function serveLofiSqlite(options: LofiSqliteHostOptions): LofiSqliteHost 
     }
   });
 
-  return {
+  const host: LofiSqliteHost = {
     leading,
     async close() {
       lifetime.abort();
@@ -283,6 +290,7 @@ export function serveLofiSqlite(options: LofiSqliteHostOptions): LofiSqliteHost 
       ownChannel.close();
     },
   };
+  return host;
 }
 
 async function openLeader(
@@ -335,7 +343,7 @@ async function openLeader(
       });
   };
 
-  const handle = (tab: string, request: LofiSqliteRequest) => {
+  const handle = (tab: string, request: LofiSqliteViewRequest) => {
     watchTab(tab);
     const kinds = tabViews.get(tab)!;
     const key = viewKey(tab, request.id);

@@ -35,6 +35,12 @@ export type LofiSqliteClient = {
    * `lofiSqliteReadViews`. `query` must survive `postMessage`.
    */
   view<TData>(kind: string, query: unknown): LofiSqliteView<TData>;
+  /**
+   * Closes the worker's side: it stops answering, and if its tab leads, closes the replica and hands
+   * the lead to another tab. Resolves once it did, when the worker can be terminated. Views must
+   * be unsubscribed first.
+   */
+  close(): Promise<void>;
 };
 
 /**
@@ -49,6 +55,8 @@ export function connectLofiSqlite(options: {
 }): Promise<LofiSqliteClient> {
   const receivers = new Map<number, (response: LofiSqliteViewResponse) => void>();
   const statusListeners = new Set<() => void>();
+  let closed: Promise<void> | null = null;
+  let markClosed = () => {};
   let nextId = 0;
   const send = (request: LofiSqliteRequest) => {
     options.port.postMessage(request);
@@ -88,6 +96,13 @@ export function connectLofiSqlite(options: {
         };
       },
       view,
+      close() {
+        closed ??= new Promise((resolve) => {
+          markClosed = resolve;
+          send({ type: "close" });
+        });
+        return closed;
+      },
     };
 
     const updateStatus = (next: LofiSqliteReplicaStatus) => {
@@ -124,6 +139,9 @@ export function connectLofiSqlite(options: {
         case "data":
         case "error":
           receivers.get(response.id)?.(response);
+          break;
+        case "closed":
+          markClosed();
           break;
       }
     };
