@@ -44,6 +44,7 @@ export function shouldRevalidateOrchestration({
 }
 
 const SELECTION_KINDS: readonly OrchestrationGraphItemKind[] = [
+  "inlet",
   "source",
   "event",
   "route",

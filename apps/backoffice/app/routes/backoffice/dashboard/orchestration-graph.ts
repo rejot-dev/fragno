@@ -1,12 +1,18 @@
 import type {
   AutomationEventMatcher,
+  AutomationForwardAccept,
   AutomationRouteAction,
   AutomationRouteDefinition,
 } from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  backofficeScopePathSegment,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { IconName } from "@fragno-private/design-system/icon";
 import type {
   OrchestrationEvent,
   OrchestrationGraph,
+  OrchestrationInlet,
   OrchestrationRoute,
   OrchestrationSource,
   OrchestrationTarget,
@@ -26,6 +32,19 @@ export type OrchestrationCatalogEvent = {
   eventType: string;
   label: string;
   payloadSchema: unknown;
+};
+
+/**
+ * An event another scope forwarded into this one, and what lets it in: nothing for a sender that
+ * needs no accept, otherwise the scope's accepts that let it through today.
+ */
+export type OrchestrationForward = {
+  eventId: string;
+  source: string;
+  eventType: string;
+  occurredAt: string;
+  from: { scope: BackofficeContextScope; routeId: string; routeName: string };
+  admittedBy: { kind: "trusted" } | { kind: "accepts"; acceptIds: readonly string[] };
 };
 
 const SCHEDULER_SOURCE_ID = "scheduler";
@@ -185,6 +204,192 @@ function matcherSummary(matcher: AutomationEventMatcher): string {
     : `${matcher.path} ${matcher.op} ${JSON.stringify(matcher.value)}`;
 }
 
+const SCOPE_ICONS: Record<BackofficeContextScope["kind"], IconName> = {
+  system: "shield",
+  org: "briefcase",
+  user: "user",
+  project: "folder",
+  app: "box",
+};
+
+function acceptInletId(acceptId: string): string {
+  return `accept:${acceptId}`;
+}
+
+/** Senders that need no accept get one inlet each, holding what they forwarded. */
+function trustedInletId(scope: BackofficeContextScope): string {
+  return `trusted:${backofficeScopePathSegment(scope)}`;
+}
+
+function forwardInletIds(forward: OrchestrationForward): readonly string[] {
+  return forward.admittedBy.kind === "trusted"
+    ? [trustedInletId(forward.from.scope)]
+    : forward.admittedBy.acceptIds.map(acceptInletId);
+}
+
+/** The accept an inlet shows, null for a trusted sender's, and the recent forwards through it. */
+export function orchestrationInletDetail(
+  inletId: string,
+  {
+    forwardAccepts,
+    recentForwards,
+  }: {
+    forwardAccepts: readonly AutomationForwardAccept[];
+    recentForwards: readonly OrchestrationForward[];
+  },
+): { accept: AutomationForwardAccept | null; forwards: OrchestrationForward[] } {
+  return {
+    accept: forwardAccepts.find((accept) => acceptInletId(accept.id) === inletId) ?? null,
+    forwards: recentForwards.filter((forward) => forwardInletIds(forward).includes(inletId)),
+  };
+}
+
+/**
+ * The sources and types a matcher pins events to, as alternatives; null when it does not narrow
+ * them, so any event could match. Only equality on `$.source` and `$.eventType` pins anything.
+ */
+function matcherPins(
+  matcher: AutomationEventMatcher,
+): { source: string | null; eventType: string | null }[] | null {
+  if ("all" in matcher) {
+    let pins: { source: string | null; eventType: string | null }[] | null = null;
+    for (const partPins of matcher.all.map(matcherPins)) {
+      if (partPins === null) {
+        continue;
+      }
+      pins =
+        pins === null
+          ? partPins
+          : pins.flatMap((left) =>
+              partPins.flatMap((right) => {
+                const source = left.source ?? right.source;
+                const eventType = left.eventType ?? right.eventType;
+                // Two different values for one field cannot both hold.
+                return (left.source && right.source && left.source !== right.source) ||
+                  (left.eventType && right.eventType && left.eventType !== right.eventType)
+                  ? []
+                  : [{ source, eventType }];
+              }),
+            );
+    }
+    return pins;
+  }
+  if ("any" in matcher) {
+    const parts = matcher.any.map(matcherPins);
+    return parts.some((part) => part === null) ? null : parts.flatMap((part) => part ?? []);
+  }
+  if ("path" in matcher && matcher.op === "eq" && typeof matcher.value === "string") {
+    if (matcher.path === "$.source") {
+      return [{ source: matcher.value, eventType: null }];
+    }
+    if (matcher.path === "$.eventType") {
+      return [{ source: null, eventType: matcher.value }];
+    }
+  }
+  return null;
+}
+
+/** The events an accept's matcher names in full, by source and type. */
+function acceptNamedEvents(
+  matcher: AutomationEventMatcher | null,
+): { source: string; eventType: string }[] {
+  return (
+    (matcher === null ? null : matcherPins(matcher))?.flatMap(({ source, eventType }) =>
+      source !== null && eventType !== null ? [{ source, eventType }] : [],
+    ) ?? []
+  );
+}
+
+/**
+ * The events of `events` an accept's matcher lets in; null when the matcher does not say. A pin on
+ * only a source or a type reaches the events the graph knows, those every accept names included.
+ */
+function acceptEventIds(
+  matcher: AutomationEventMatcher | null,
+  events: ReadonlyMap<string, OrchestrationEvent>,
+): string[] | null {
+  const pins = matcher === null ? null : matcherPins(matcher);
+  if (pins === null || pins.some((pin) => pin.source === null && pin.eventType === null)) {
+    return null;
+  }
+  const ids = pins.flatMap(({ source, eventType }) => {
+    if (source !== null && eventType !== null) {
+      return [orchestrationEventId(source, eventType)];
+    }
+    return [...events.values()]
+      .filter((event) =>
+        source !== null
+          ? event.sourceId === normalizedSourceId(source)
+          : event.eventType === eventType,
+      )
+      .map((event) => event.id);
+  });
+  return [...new Set(ids)];
+}
+
+/** One inlet per accept, then one per trusted sender that forwarded something recently. */
+function projectInlets(
+  forwardAccepts: readonly AutomationForwardAccept[],
+  recentForwards: readonly OrchestrationForward[],
+  events: ReadonlyMap<string, OrchestrationEvent>,
+  addEvent: (source: string, eventType: string, label: string) => void,
+): OrchestrationInlet[] {
+  const forwardsByInlet = new Map<string, OrchestrationForward[]>();
+  for (const forward of recentForwards) {
+    for (const inletId of forwardInletIds(forward)) {
+      forwardsByInlet.set(inletId, [...(forwardsByInlet.get(inletId) ?? []), forward]);
+    }
+  }
+  // Every accept's named events come first, so a partial pin reaches them whatever the accepts'
+  // order.
+  for (const { source, eventType } of forwardAccepts.flatMap((accept) =>
+    acceptNamedEvents(accept.matcher),
+  )) {
+    addEvent(source, eventType, eventType);
+  }
+  const acceptInlets = forwardAccepts.map((accept): OrchestrationInlet => {
+    const id = acceptInletId(accept.id);
+    return {
+      id,
+      label: accept.name,
+      senders:
+        accept.from.kind === "members"
+          ? { label: "Members", icon: "users" }
+          : {
+              label: backofficeScopePathSegment(accept.from.scope),
+              icon: SCOPE_ICONS[accept.from.scope.kind],
+            },
+      status: accept.enabled ? "accepting" : "disabled",
+      eventIds: acceptEventIds(accept.matcher, events),
+      matcher: accept.matcher ? matcherSummary(accept.matcher) : null,
+      recentCount: forwardsByInlet.get(id)?.length ?? 0,
+    };
+  });
+  const trustedSenders = new Map(
+    recentForwards
+      .filter((forward) => forward.admittedBy.kind === "trusted")
+      .map((forward) => [trustedInletId(forward.from.scope), forward.from.scope]),
+  );
+  const trustedInlets = [...trustedSenders].map(([id, scope]): OrchestrationInlet => {
+    const forwards = forwardsByInlet.get(id) ?? [];
+    const label = scope.kind === "system" ? "System" : backofficeScopePathSegment(scope);
+    return {
+      id,
+      label: `From ${label}`,
+      senders: { label, icon: SCOPE_ICONS[scope.kind] },
+      status: "trusted",
+      eventIds: [
+        ...new Set(
+          forwards.map((forward) => orchestrationEventId(forward.source, forward.eventType)),
+        ),
+      ],
+      matcher: null,
+      recentCount: forwards.length,
+    };
+  });
+  return [...acceptInlets, ...trustedInlets];
+}
+
 function fallbackSourceLabel(source: string): string {
   return source
     .split(/[._-]/)
@@ -195,9 +400,10 @@ function fallbackSourceLabel(source: string): string {
 
 /**
  * The whole routing picture of a scope: every event a source can produce, whether or not anything
- * listens, every route on it, and the workflows and scopes those routes reach. Events that only
- * routes mention, such as schedules and reclassified events, are added so every route has both
- * ends, and so are events that arrived without being described anywhere.
+ * listens, every route on it, the workflows and scopes those routes reach, and the inlets other
+ * scopes forward through. Events that only routes or accepts mention, such as schedules and
+ * reclassified events, are added so every edge has both ends, and so are events that arrived
+ * without being described anywhere.
  */
 export function projectOrchestrationGraph({
   scopeLabel,
@@ -206,6 +412,8 @@ export function projectOrchestrationGraph({
   routes,
   activeWorkflows,
   recentEvents,
+  forwardAccepts,
+  recentForwards,
 }: {
   scopeLabel: string;
   sources: readonly OrchestrationCatalogSource[];
@@ -217,6 +425,8 @@ export function projectOrchestrationGraph({
     params: unknown;
   }[];
   recentEvents: readonly { source: string; eventType: string }[];
+  forwardAccepts: readonly AutomationForwardAccept[];
+  recentForwards: readonly OrchestrationForward[];
 }): OrchestrationGraph {
   const activeWorkflowScripts = activeWorkflows.map(({ params, ...instance }) => {
     const reference = codemodeWorkflowScriptReferenceSchema.safeParse(params);
@@ -261,6 +471,7 @@ export function projectOrchestrationGraph({
   for (const event of recentEvents) {
     addEvent(event.source, event.eventType, event.eventType);
   }
+  const inlets = projectInlets(forwardAccepts, recentForwards, events, addEvent);
 
   const sourceLabels = new Map(
     sources.map((source) => [normalizedSourceId(source.id), source.label]),
@@ -309,8 +520,7 @@ export function projectOrchestrationGraph({
 
   return {
     scopeLabel,
-    // Forward accepts are not projected yet.
-    inlets: [],
+    inlets,
     sources: graphSources,
     events: [...events.values()],
     routes: graphRoutes,
