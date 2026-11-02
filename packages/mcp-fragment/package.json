@@ -119,9 +119,9 @@
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^26.6.5",
-    "@vitest/coverage-istanbul": "^5.0.4",
+    "@vitest/coverage-istanbul": "catalog:",
     "tsdown": "^0.23.1",
-    "vitest": "^5.0.4"
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

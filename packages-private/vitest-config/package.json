@@ -26,12 +26,12 @@
     "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
-    "@vitest/coverage-istanbul": "^4.1.0"
+    "@vitest/coverage-istanbul": "catalog:"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@types/node": "^22.19.7",
-    "@vitest/ui": "^4.1.0",
+    "@vitest/ui": "catalog:",
     "glob": "^11.1.0",
     "nyc": "^17.1.0",
     "typescript": "catalog:"

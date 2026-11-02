@@ -44,7 +44,7 @@
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22",
-    "@vitest/coverage-istanbul": "^4.1.0",
+    "@vitest/coverage-istanbul": "catalog:",
     "vitest": "catalog:"
   },
   "engines": {

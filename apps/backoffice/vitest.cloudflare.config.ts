@@ -37,6 +37,8 @@ export default defineProject({
     // Use native workerd output (without test attribution) until cloudflare/workers-sdk#15719 is fixed.
     // Native output ignores `silent`; `vitest-console-setup.ts` applies it inside workerd.
     disableConsoleIntercept: true,
+    // Workers fail to read the transforms Vitest caches in `node_modules/.vitest-cache`.
+    fsModuleCache: false,
     globals: true,
     setupFiles: [
       "./workers/vitest-console-setup.ts",

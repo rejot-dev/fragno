@@ -73,7 +73,7 @@
     "@journeyapps/wa-sqlite": "^2.0.8",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.7",
-    "@vitest/coverage-istanbul": "^4.1.0",
+    "@vitest/coverage-istanbul": "catalog:",
     "better-sqlite3": "^12.6.2",
     "kysely": "^0.28.10",
     "tsdown": "^0.22.4",
