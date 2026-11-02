@@ -4,6 +4,7 @@ import type { IconName } from "../icon";
 import type {
   OrchestrationEvent,
   OrchestrationGraph,
+  OrchestrationInlet,
   OrchestrationRoute,
   OrchestrationSource,
   OrchestrationTarget,
@@ -91,6 +92,7 @@ const CATALOG_EVENTS = [
 
 export const ORGANIZATION_GRAPH: OrchestrationGraph = {
   scopeLabel: "Wilco's Organization",
+  inlets: [],
   sources: CATALOG_SOURCES,
   events: CATALOG_EVENTS,
   routes: [
@@ -226,8 +228,81 @@ export const DENSE_GRAPH: OrchestrationGraph = (() => {
         ),
       ),
     );
-  return { scopeLabel: "Dense scope", sources, events, routes, targets };
+  return { scopeLabel: "Dense scope", inlets: [], sources, events, routes, targets };
 })();
+
+function inlet(
+  id: string,
+  label: string,
+  senders: OrchestrationInlet["senders"],
+  status: OrchestrationInlet["status"],
+  eventIds: OrchestrationInlet["eventIds"],
+  fields: Partial<Pick<OrchestrationInlet, "matcher" | "recentCount">> = {},
+): OrchestrationInlet {
+  return { id, label, senders, status, eventIds, matcher: null, recentCount: 0, ...fields };
+}
+
+const MEMBERS = { label: "Members", icon: "users" } as const;
+
+// The organization as its members' personal scopes and System forward into it: one accept it
+// holds, one it switched off, System's forwards that need none, and an accept whose matcher only
+// reads payloads, so the graph cannot tell which events it lets in.
+export const FORWARDED_IN_GRAPH: OrchestrationGraph = {
+  ...ORGANIZATION_GRAPH,
+  inlets: [
+    inlet("member-balances", "Member balances", MEMBERS, "accepting", ["bank:balance.updated"], {
+      matcher: '$.eventType equals "balance.updated"',
+      recentCount: 3,
+    }),
+    inlet("member-receipts", "Member receipts", MEMBERS, "disabled", ["upload:file.uploaded"], {
+      matcher: '$.eventType equals "file.uploaded"',
+    }),
+    inlet(
+      "system",
+      "From System",
+      { label: "System", icon: "shield" },
+      "trusted",
+      ["auth:organization.created"],
+      { recentCount: 1 },
+    ),
+    inlet(
+      "jan-large-transfers",
+      "Jan's large transfers",
+      { label: "jan@rejot.dev", icon: "user" },
+      "accepting",
+      null,
+      { matcher: "$.payload.amountCents greaterThan 100000" },
+    ),
+  ],
+  sources: [
+    ...ORGANIZATION_GRAPH.sources,
+    source("bank", "Bank", "credit-card"),
+    source("auth", "Auth", "key"),
+  ],
+  events: [
+    ...ORGANIZATION_GRAPH.events,
+    event("bank", "balance.updated", "Bank balance updated", 3),
+    event("bank", "transaction.imported", "Bank transaction imported"),
+    event("auth", "organization.created", "Organization created", 1),
+    event("upload", "file.uploaded", "File uploaded"),
+  ],
+  routes: [
+    ...ORGANIZATION_GRAPH.routes,
+    route("reconcile-member-balances", "bank:balance.updated", "Reconcile member balances", 100, {
+      kind: "start_workflow",
+      targetId: "balance-reconcile",
+    }),
+    route("org-onboarding", "auth:organization.created", "Onboard the organization", 100, {
+      kind: "start_workflow",
+      targetId: "organization-onboarding",
+    }),
+  ],
+  targets: [
+    ...ORGANIZATION_GRAPH.targets,
+    workflow("balance-reconcile", 1),
+    workflow("organization-onboarding"),
+  ],
+};
 
 function scopeTarget(id: string, label: string): OrchestrationTarget {
   return { id, label, kind: "scope", activeCount: 0 };
@@ -244,6 +319,7 @@ export const UNIVERSE: OrchestrationUniverse = {
       id: "system",
       graph: {
         scopeLabel: "System",
+        inlets: [],
         sources: [AUTH_SOURCE, source("scheduler", "Scheduler", "calendar")],
         events: [
           event("auth", "organization.created", "Organization created", 1),
@@ -335,6 +411,7 @@ export const UNIVERSE: OrchestrationUniverse = {
       id: "website",
       graph: {
         scopeLabel: "Website",
+        inlets: [],
         sources: [source("forms", "Forms", "file-text"), source("github", "GitHub", "git-branch")],
         events: [
           event("forms", "response.submitted", "Form response submitted", 3),
@@ -357,6 +434,7 @@ export const UNIVERSE: OrchestrationUniverse = {
       id: "bookkeeping",
       graph: {
         scopeLabel: "Bookkeeping",
+        inlets: [],
         sources: [source("upload", "Upload", "upload"), source("resend", "Email", "mail")],
         events: [
           event("upload", "file.uploaded", "File uploaded", 6),
@@ -389,6 +467,7 @@ export const UNIVERSE: OrchestrationUniverse = {
       id: "user",
       graph: {
         scopeLabel: "wilco@rejot.dev",
+        inlets: [],
         sources: [AUTH_SOURCE, source("telegram", "Telegram", "send")],
         events: [
           event("auth", "user.created", "User created", 3),

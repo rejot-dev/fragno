@@ -44,8 +44,25 @@ export const ORCHESTRATION_TARGET_KIND_LABEL: Record<OrchestrationTarget["kind"]
   app: "App",
 };
 
+/**
+ * Where other scopes forward events into this one. `accepting` and `disabled` mirror the scope's
+ * forward accepts; `trusted` senders, such as System or a scope of the same owner, need none, so
+ * their inlets only exist once their forwards have arrived. An inlet feeds the events it lets in;
+ * `eventIds` is null when its matcher does not say which events those are.
+ */
+export type OrchestrationInlet = {
+  id: string;
+  label: string;
+  senders: { label: string; icon: IconName };
+  status: "accepting" | "disabled" | "trusted";
+  eventIds: readonly string[] | null;
+  matcher: string | null;
+  recentCount: number;
+};
+
 export type OrchestrationGraph = {
   scopeLabel: string;
+  inlets: readonly OrchestrationInlet[];
   sources: readonly OrchestrationSource[];
   events: readonly OrchestrationEvent[];
   routes: readonly OrchestrationRoute[];
@@ -55,7 +72,7 @@ export type OrchestrationGraph = {
 /** `routes` shows only what is wired; `catalog` shows every event a source can produce. */
 export type OrchestrationGraphMode = "routes" | "catalog";
 
-export type OrchestrationGraphItemKind = "source" | "event" | "route" | "target";
+export type OrchestrationGraphItemKind = "inlet" | "source" | "event" | "route" | "target";
 export type OrchestrationGraphItem = { kind: OrchestrationGraphItemKind; id: string };
 
 export function itemKey(item: OrchestrationGraphItem): string {
@@ -99,9 +116,18 @@ export function routedEventIds(routes: readonly OrchestrationRoute[]): Set<strin
   );
 }
 
+/** Events that take part in the graph: routed ones, and those other scopes may forward in. */
+export function wiredEventIds(graph: OrchestrationGraph): Set<string> {
+  return new Set([
+    ...routedEventIds(graph.routes),
+    ...graph.inlets.flatMap((inlet) => inlet.eventIds ?? []),
+  ]);
+}
+
 /**
  * Everything upstream and downstream of an item: what can trigger it and what it can cause. A
- * reclassified event counts as caused by the route that emits it.
+ * reclassified event counts as caused by the route that emits it, and a forwarded one as brought
+ * in by every inlet that lets it in.
  */
 export function relatedOrchestrationItems(
   graph: OrchestrationGraph,
@@ -115,6 +141,11 @@ export function relatedOrchestrationItems(
     const event = eventsById.get(eventId);
     if (event) {
       related.add(itemKey({ kind: "source", id: event.sourceId }));
+    }
+    for (const inlet of graph.inlets) {
+      if (inlet.eventIds?.includes(eventId)) {
+        related.add(itemKey({ kind: "inlet", id: inlet.id }));
+      }
     }
   }
   function addRouteChain(route: OrchestrationRoute) {
@@ -140,6 +171,11 @@ export function relatedOrchestrationItems(
   }
 
   switch (item.kind) {
+    case "inlet":
+      for (const eventId of graph.inlets.find((inlet) => inlet.id === item.id)?.eventIds ?? []) {
+        addDownstreamOfEvent(eventId);
+      }
+      break;
     case "source":
       for (const event of graph.events) {
         if (event.sourceId === item.id) {
@@ -191,6 +227,14 @@ export function searchOrchestrationGraph(
       }
     }
   }
+  for (const inlet of graph.inlets) {
+    consider({ kind: "inlet", id: inlet.id }, [
+      inlet.id,
+      inlet.label,
+      inlet.senders.label,
+      inlet.matcher ?? "",
+    ]);
+  }
   for (const source of graph.sources) {
     consider({ kind: "source", id: source.id }, [source.id, source.label]);
   }
@@ -214,6 +258,7 @@ export function searchOrchestrationGraph(
   const isKept = (kind: OrchestrationGraphItemKind, id: string) => kept.has(itemKey({ kind, id }));
   return {
     scopeLabel: graph.scopeLabel,
+    inlets: graph.inlets.filter((inlet) => isKept("inlet", inlet.id)),
     sources: graph.sources.filter((source) => isKept("source", source.id)),
     events: graph.events.filter((event) => isKept("event", event.id)),
     routes: graph.routes.filter((route) => isKept("route", route.id)),

@@ -1,9 +1,10 @@
 import {
-  routedEventIds,
   routesByEventId,
   targetPull,
+  wiredEventIds,
   type OrchestrationEvent,
   type OrchestrationGraph,
+  type OrchestrationInlet,
   type OrchestrationRoute,
   type OrchestrationSource,
   type OrchestrationTarget,
@@ -42,6 +43,8 @@ export type LayeredSourceBlock = {
 
 export type LayeredTargetNode = { target: OrchestrationTarget; top: number; height: number };
 
+export type LayeredInletNode = { inlet: OrchestrationInlet; top: number; height: number };
+
 /**
  * Shows or folds every unrouted event at once. It sits below the graph rather than in it, so it
  * stays in view however far the graph scrolls. `hiddenSources` are the sources that only appear
@@ -62,6 +65,7 @@ export type LayeredUnroutedEvents = "folded" | "expanded" | "inline";
 
 /** Vertical positions only: columns stretch with the container, so x belongs to the renderer. */
 export type OrchestrationLayeredLayout = {
+  inlets: readonly LayeredInletNode[];
   sources: readonly LayeredSourceBlock[];
   targets: readonly LayeredTargetNode[];
   unroutedFold: LayeredUnroutedFold | null;
@@ -79,6 +83,8 @@ const SOURCE_GAP = 18;
 const SOURCE_MIN_HEIGHT = 54;
 const TARGET_HEIGHT = 56;
 const TARGET_GAP = 14;
+const INLET_HEIGHT = 56;
+const INLET_GAP = 14;
 // Each pass moves sources, events, and targets towards what they connect to; a few are enough for
 // the dozens of routes a scope has.
 const ORDERING_PASSES = 4;
@@ -166,26 +172,69 @@ function desiredTargetCentres(blocks: readonly LayeredSourceBlock[]): Map<string
   return new Map([...sums].map(([id, { total, weight }]) => [id, total / weight]));
 }
 
-/** Stacks targets in order of where they want to be, pushing each down just enough to fit. */
+/**
+ * Stacks nodes in order of where they want to be, pushing each down just enough to fit. Nodes that
+ * want nothing follow the rest.
+ */
+function stackNodes<Node extends { id: string }>(
+  nodes: readonly Node[],
+  desired: ReadonlyMap<string, number>,
+  { height, gap }: { height: number; gap: number },
+): { node: Node; top: number }[] {
+  const ordered = [...nodes].sort((left, right) => {
+    const leftCentre = desired.get(left.id);
+    const rightCentre = desired.get(right.id);
+    if (leftCentre === undefined || rightCentre === undefined) {
+      return (
+        Number(leftCentre === undefined) - Number(rightCentre === undefined) ||
+        left.id.localeCompare(right.id)
+      );
+    }
+    return leftCentre - rightCentre || left.id.localeCompare(right.id);
+  });
+  const stacked: { node: Node; top: number }[] = [];
+  let floor = 0;
+  for (const node of ordered) {
+    const top = Math.max(floor, (desired.get(node.id) ?? floor + height / 2) - height / 2);
+    stacked.push({ node, top });
+    floor = top + height + gap;
+  }
+  return stacked;
+}
+
+/** Targets no shown route reaches are left out. */
 function placeTargets(
   targets: readonly OrchestrationTarget[],
   desired: ReadonlyMap<string, number>,
 ): LayeredTargetNode[] {
-  const ordered = targets
-    .filter((target) => desired.has(target.id))
-    .sort(
-      (left, right) =>
-        (desired.get(left.id) ?? 0) - (desired.get(right.id) ?? 0) ||
-        left.id.localeCompare(right.id),
-    );
-  const nodes: LayeredTargetNode[] = [];
-  let floor = 0;
-  for (const target of ordered) {
-    const top = Math.max(floor, (desired.get(target.id) ?? 0) - TARGET_HEIGHT / 2);
-    nodes.push({ target, top, height: TARGET_HEIGHT });
-    floor = top + TARGET_HEIGHT + TARGET_GAP;
-  }
-  return nodes;
+  return stackNodes(
+    targets.filter((target) => desired.has(target.id)),
+    desired,
+    { height: TARGET_HEIGHT, gap: TARGET_GAP },
+  ).map(({ node, top }) => ({ target: node, top, height: TARGET_HEIGHT }));
+}
+
+/** Each inlet asks to sit level with the events it feeds; one that feeds none still shows. */
+function placeInlets(
+  inlets: readonly OrchestrationInlet[],
+  blocks: readonly LayeredSourceBlock[],
+): LayeredInletNode[] {
+  const rowCentres = new Map(
+    blocks.flatMap((block) =>
+      block.rows.flatMap((row) =>
+        row.kind === "event" ? [[row.event.id, row.top + row.height / 2] as const] : [],
+      ),
+    ),
+  );
+  const desired = new Map(
+    inlets.flatMap((inlet) => {
+      const centre = mean((inlet.eventIds ?? []).flatMap((id) => rowCentres.get(id) ?? []));
+      return centre === null ? [] : [[inlet.id, centre] as const];
+    }),
+  );
+  return stackNodes(inlets, desired, { height: INLET_HEIGHT, gap: INLET_GAP }).map(
+    ({ node, top }) => ({ inlet: node, top, height: INLET_HEIGHT }),
+  );
 }
 
 function mean(values: readonly number[]): number | null {
@@ -201,27 +250,28 @@ export function layoutLayeredOrchestration(
 ): OrchestrationLayeredLayout {
   const showUnrouted = unrouted !== "folded";
   const eventRoutes = routesByEventId(graph.routes);
-  const routed = routedEventIds(graph.routes);
+  // Events other scopes may forward in show even without routes: nothing acting on them is news.
+  const wired = wiredEventIds(graph);
   const routeCountOf = (event: OrchestrationEvent) => eventRoutes.get(event.id)?.length ?? 0;
 
   const allSections: Section[] = graph.sources.map((source) => {
     const events = graph.events.filter((event) => event.sourceId === source.id);
-    const routedEvents = events.filter((event) => routed.has(event.id));
+    const wiredEvents = events.filter((event) => wired.has(event.id));
     const showsUnrouted = showUnrouted || expandedSourceIds.has(source.id);
     return {
       source,
-      events: (showsUnrouted ? events : routedEvents).sort(
+      events: (showsUnrouted ? events : wiredEvents).sort(
         (left, right) =>
           routeCountOf(right) - routeCountOf(left) || left.eventType.localeCompare(right.eventType),
       ),
-      unroutedCount: events.length - routedEvents.length,
+      unroutedCount: events.length - wiredEvents.length,
       showsUnrouted,
-      foldable: !showUnrouted && events.length > routedEvents.length,
-      routeCount: routedEvents.reduce((count, event) => count + routeCountOf(event), 0),
+      foldable: !showUnrouted && events.length > wiredEvents.length,
+      routeCount: wiredEvents.reduce((count, event) => count + routeCountOf(event), 0),
     };
   });
   const isShown = (section: Section) =>
-    showUnrouted || section.events.some((event) => routed.has(event.id));
+    showUnrouted || section.events.some((event) => wired.has(event.id));
   let sections = allSections
     .filter(isShown)
     .sort(
@@ -281,11 +331,10 @@ export function layoutLayeredOrchestration(
 
   const { blocks, height: sourcesHeight } = placeSections(sections, eventRoutes);
   const targets = placeTargets(graph.targets, desiredTargetCentres(blocks));
-  const targetsHeight = targets.reduce(
-    (bottom, node) => Math.max(bottom, node.top + node.height),
-    0,
-  );
-  const unroutedEventCount = graph.events.filter((event) => !routed.has(event.id)).length;
+  const inlets = placeInlets(graph.inlets, blocks);
+  const columnHeight = (nodes: readonly { top: number; height: number }[]) =>
+    nodes.reduce((bottom, node) => Math.max(bottom, node.top + node.height), 0);
+  const unroutedEventCount = graph.events.filter((event) => !wired.has(event.id)).length;
   const unroutedFold =
     unrouted === "inline" || unroutedEventCount === 0
       ? null
@@ -295,9 +344,10 @@ export function layoutLayeredOrchestration(
           hiddenSources,
         };
   return {
+    inlets,
     sources: blocks,
     targets,
     unroutedFold,
-    height: Math.max(sourcesHeight, targetsHeight),
+    height: Math.max(sourcesHeight, columnHeight(targets), columnHeight(inlets)),
   };
 }

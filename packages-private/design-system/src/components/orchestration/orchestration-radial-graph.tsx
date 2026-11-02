@@ -246,6 +246,9 @@ export function OrchestrationRadialGraph({
       );
     }
     switch (active.kind) {
+      // The radial graph draws no inlets, so none can be active.
+      case "inlet":
+        return null;
       case "source": {
         const source = sourcesById.get(active.id);
         const events = graph.events.filter((event) => event.sourceId === active.id);
