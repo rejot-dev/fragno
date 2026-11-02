@@ -70,6 +70,15 @@ import type { BackofficeObjectImplementation } from "./lib/backoffice-object-imp
  */
 const REGISTERED_APP_REUSE_MS = 60_000;
 
+/**
+ * How long an app has to answer in full. Whoever awaits the call waits with it, such as the
+ * automations hook runner, whose capacity a stalled app would otherwise hold for good.
+ */
+const APP_ENDPOINT_TIMEOUT_MS = 10_000;
+
+/** The most of an app's answer Backoffice reads, so an app cannot fill this object's memory. */
+const APP_ENDPOINT_MAX_ANSWER_BYTES = 1_000_000;
+
 /** Owner-scoped behavior shared by Cloudflare and file-backed SQLite. */
 export class AppInstallationsObject
   extends RpcTarget
@@ -80,6 +89,7 @@ export class AppInstallationsObject
   readonly #owner: AppInstallationOwner;
   readonly #fetch: typeof fetch;
   readonly #nowEpochMs: () => number;
+  readonly #endpointTimeoutMs: number;
   readonly #registeredApps = new Map<string, { app: BackofficeApp; readAtEpochMs: number }>();
   #fragment: AppInstallationsFragment | null = null;
 
@@ -89,6 +99,7 @@ export class AppInstallationsObject
     implementation,
     fetch: fetchImpl = fetch,
     nowEpochMs = Date.now,
+    endpointTimeoutMs = APP_ENDPOINT_TIMEOUT_MS,
   }: {
     state: BackofficeObjectState;
     runtime: BackofficeRuntimeServices;
@@ -96,9 +107,12 @@ export class AppInstallationsObject
     /** Reaches app action endpoints; tests substitute an in-process app. */
     fetch?: typeof fetch;
     nowEpochMs?: () => number;
+    /** Tests shorten it, as the deadline runs on real time. */
+    endpointTimeoutMs?: number;
   }) {
     super();
     this.#nowEpochMs = nowEpochMs;
+    this.#endpointTimeoutMs = endpointTimeoutMs;
     // workerd rejects the global fetch when it is invoked as a method of this object.
     this.#fetch = (input, init) => fetchImpl(input, init);
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "APP_INSTALLATIONS");
@@ -399,28 +413,34 @@ export class AppInstallationsObject
         scopeRestriction: input.scopeRestriction,
         bodySha256: await appActionBodySha256(body),
       });
-      let response: Response;
+      const signal = AbortSignal.timeout(this.#endpointTimeoutMs);
+      let status: number;
+      let text: string | null;
       try {
-        response = await this.#fetch(actions.endpointUrl, {
+        const response = await this.#fetch(actions.endpointUrl, {
           method: "POST",
           headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
           body,
+          signal,
         });
+        status = response.status;
+        text = await readAppAnswer(response, signal);
       } catch (error) {
         throw new BackofficeAppDomainError(
           "APP_ENDPOINT_UNREACHABLE",
-          `Backoffice app endpoint could not be reached: ${error instanceof Error ? error.message : String(error)}`,
+          signal.aborted
+            ? `Backoffice app endpoint did not answer within ${this.#endpointTimeoutMs} ms.`
+            : `Backoffice app endpoint could not be reached: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      const text = await response.text();
       let parsed: unknown = null;
       try {
-        parsed = JSON.parse(text);
+        parsed = text === null ? null : JSON.parse(text);
       } catch {
-        // A non-JSON answer is reported with its status alone.
+        // A non-JSON or oversized answer is reported with its status alone.
       }
       const json = jsonValueSchema.safeParse(parsed);
-      return { status: response.status, body: json.success ? json.data : null };
+      return { status, body: json.success ? json.data : null };
     });
   }
 
@@ -440,5 +460,40 @@ export class AppInstallationsObject
 
   async fetch(request: Request): Promise<Response> {
     return await this.#host.fetch(this.#getFragment(), request);
+  }
+}
+
+/**
+ * Reads an app's answer until `signal` aborts, which the body's own stream may not heed, or `null`
+ * for one too large to read.
+ */
+async function readAppAnswer(response: Response, signal: AbortSignal): Promise<string | null> {
+  signal.throwIfAborted();
+  if (response.body === null) {
+    return "";
+  }
+  const reader: ReadableStreamDefaultReader<Uint8Array> = response.body.getReader();
+  // Cancelling ends a pending read, which then sees the abort.
+  const cancel = () => void reader.cancel(signal.reason).catch(() => undefined);
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    const decoder = new TextDecoder();
+    let text = "";
+    let bytes = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      signal.throwIfAborted();
+      if (done) {
+        return text + decoder.decode();
+      }
+      bytes += value.byteLength;
+      if (bytes > APP_ENDPOINT_MAX_ANSWER_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    signal.removeEventListener("abort", cancel);
   }
 }

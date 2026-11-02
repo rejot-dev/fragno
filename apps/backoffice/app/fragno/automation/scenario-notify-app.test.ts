@@ -38,6 +38,7 @@ import {
 
 const org = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 const endpointUrl = "https://ledger.example/backoffice/actions";
+const endpointTimeoutMs = 1_000;
 const externalAccount = { id: "ledger-org-7", label: "Acme Books" };
 const grants = [
   BACKOFFICE_PERMISSION.router.read,
@@ -52,10 +53,13 @@ const inbox = (appId: string) => ({
   action: { kind: "notify_app", appId },
 });
 
-/** Ledger's server: verifies Backoffice's signature like any app, then answers as it is told to. */
+/**
+ * Ledger's server: verifies Backoffice's signature like any app, then answers as it is told to,
+ * or starts answering and never finishes.
+ */
 function createLedgerApp() {
   const notified: VerifiedAppActionRequest[] = [];
-  let status = 200;
+  let status: number | "stalled" = 200;
   let verify: ((request: Request) => Promise<VerifiedAppActionRequest>) | null = null;
   async function handle(runtime: BackofficeRuntimeServices, request: Request) {
     verify ??= createAppActionVerifier({
@@ -74,6 +78,15 @@ function createLedgerApp() {
       throw error;
     }
     notified.push(verified);
+    if (status === "stalled") {
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"received":'));
+          },
+        }),
+      );
+    }
     return Response.json({ received: true }, { status });
   }
   return {
@@ -84,7 +97,7 @@ function createLedgerApp() {
       );
     },
     handle,
-    answerWith(next: number) {
+    answerWith(next: number | "stalled") {
       status = next;
     },
   };
@@ -190,6 +203,7 @@ test("a notify_app route tells an installed app about events, which it reads und
         APP_INSTALLATIONS: (options) =>
           new AppInstallationsObject({
             ...options,
+            endpointTimeoutMs,
             fetch: async (input, init) =>
               await ledger.handle(options.runtime, new Request(input, init)),
           }),
@@ -407,6 +421,28 @@ test("a notify_app route tells an installed app about events, which it reads und
           });
           expect(ledger.notifiedOf("invoice-2")).toHaveLength(2);
         }),
+        then.assert(
+          "a Ledger that never finishes answering is given up on, and told again",
+          async (ctx) => {
+            ledger.answerWith("stalled");
+            await ctx.runtime.objects.automations
+              .for(org)
+              .commands.ingestEvent(invoicePaid("invoice-stalled"));
+            await ctx.drain();
+            const ledgerBash = await ledgerServer(ctx, appId);
+            expect(await inboxDispatch(ledgerBash, "invoice-stalled")).toMatchObject({
+              status: "retrying",
+              error: `Backoffice app endpoint did not answer within ${endpointTimeoutMs} ms.`,
+            });
+            ledger.answerWith(200);
+            ctx.runtime.advanceTime(2_000);
+            await ctx.drain();
+            expect(await inboxDispatch(ledgerBash, "invoice-stalled")).toMatchObject({
+              status: "completed",
+              outcome: { kind: "app_notified", appId },
+            });
+          },
+        ),
         then.assert("a refusing Ledger fails at once, until the owner retries it", async (ctx) => {
           ledger.answerWith(422);
           await ctx.runtime.objects.automations
