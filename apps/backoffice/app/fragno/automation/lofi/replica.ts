@@ -7,7 +7,7 @@ import {
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
-import { getWorkerReplica } from "@/fragno/lofi/browser-replica";
+import { getWorkerReplica, retainWorkerReplica } from "@/fragno/lofi/browser-replica";
 import { useLofiView } from "@/fragno/lofi/use-lofi-view";
 
 import type { automationReads } from "./replica-host";
@@ -15,18 +15,32 @@ import { AUTOMATION_READ_VIEWS, AUTOMATION_REPLICA_SCHEMAS } from "./replica-sch
 import { describeAutomationReplicaSource, type AutomationReplicaSource } from "./replica-source";
 import { automationViews } from "./views";
 
-/**
- * The scope's Automations replica in this tab, served by its replica worker, with the views its
- * projections keep. Tabs of one scope share the worker that leads.
- */
-export function getAutomationReplica(source: AutomationReplicaSource): Promise<LofiSqliteClient> {
+function automationWorkerReplica(source: AutomationReplicaSource) {
   const description = describeAutomationReplicaSource(source);
-  return getWorkerReplica({
+  return {
     target: { baseUrl: description.baseUrl, adapterIdentity: source.adapterIdentity },
     schemas: [...AUTOMATION_REPLICA_SCHEMAS, ...automationViews.localSchemas],
-    startWorker: (name) =>
+    startWorker: (name: string) =>
       new Worker(new URL("./replica.worker.ts", import.meta.url), { type: "module", name }),
-  });
+  };
+}
+
+/**
+ * The scope's Automations replica in this tab, served by its replica worker, with the views its
+ * projections keep, open for the life of the tab. Tabs of one scope share the worker that leads.
+ */
+export function getAutomationReplica(source: AutomationReplicaSource): Promise<LofiSqliteClient> {
+  return getWorkerReplica(automationWorkerReplica(source));
+}
+
+/** The current scope's replica, which stays open while the tab shows the scope. */
+function keepAutomationReplica(source: AutomationReplicaSource) {
+  return { replica: getAutomationReplica(source), release: () => {} };
+}
+
+/** Another scope's replica, which closes once nothing in the tab holds it. */
+function holdAutomationReplica(source: AutomationReplicaSource) {
+  return retainWorkerReplica(automationWorkerReplica(source));
 }
 
 type CurrentAutomationReplica = {
@@ -34,6 +48,8 @@ type CurrentAutomationReplica = {
   replica: LofiSqliteClient | null;
   /** Whether the replica holds everything its backend had when synchronization started. */
   caughtUp: boolean;
+  /** How much of the download a replica catching up holds, while that is known. */
+  fraction: number | null;
   /**
    * Why the replica cannot be read: the scope has none, it could not open, or its download fails
    * before it caught up, while it retries.
@@ -50,10 +66,34 @@ const noStatus = () => null;
  */
 export function useCurrentAutomationReplica(): CurrentAutomationReplica {
   const { automationReplicaSource } = useCurrentBackofficeContext();
-  const source = automationReplicaSource.status === "ready" ? automationReplicaSource.source : null;
+  return useOpenedReplica(
+    automationReplicaSource.status === "ready" ? automationReplicaSource.source : null,
+    automationReplicaSource.status === "unavailable" ? automationReplicaSource.message : null,
+    keepAutomationReplica,
+  );
+}
+
+/**
+ * Another scope's Automations replica, such as one of several a view draws at once, held while
+ * the calling component is mounted: its worker and stream close soon after nothing holds it.
+ * `unavailable` is why the server could not describe it, if it could not.
+ */
+export function useAutomationReplica(
+  source: AutomationReplicaSource | null,
+  unavailable: string | null,
+): CurrentAutomationReplica {
+  return useOpenedReplica(source, unavailable, holdAutomationReplica);
+}
+
+function useOpenedReplica(
+  source: AutomationReplicaSource | null,
+  unavailable: string | null,
+  open: (source: AutomationReplicaSource) => {
+    replica: Promise<LofiSqliteClient>;
+    release(): void;
+  },
+): CurrentAutomationReplica {
   const sourceKey = source ? describeAutomationReplicaSource(source).resourceKey : null;
-  const unavailable =
-    automationReplicaSource.status === "unavailable" ? automationReplicaSource.message : null;
   const [opened, setOpened] = useState<{
     sourceKey: string;
     replica: LofiSqliteClient | null;
@@ -67,7 +107,8 @@ export function useCurrentAutomationReplica(): CurrentAutomationReplica {
         cancelled = true;
       };
     }
-    void getAutomationReplica(source).then(
+    const opening = open(source);
+    void opening.replica.then(
       (replica) => {
         if (!cancelled) {
           setOpened({ sourceKey, replica, error: null });
@@ -85,8 +126,9 @@ export function useCurrentAutomationReplica(): CurrentAutomationReplica {
     );
     return () => {
       cancelled = true;
+      opening.release();
     };
-  }, [source, sourceKey]);
+  }, [source, sourceKey, open]);
 
   // A replica opened for another scope is not this one's.
   const current = opened?.sourceKey === sourceKey ? opened : null;
@@ -99,7 +141,12 @@ export function useCurrentAutomationReplica(): CurrentAutomationReplica {
   const caughtUp = status?.phase === "caught-up";
   // A replica that caught up keeps its views through later failures, which the stream retries.
   const downloadError = caughtUp ? null : (status?.error ?? null);
-  return { replica, caughtUp, error: unavailable ?? current?.error ?? downloadError };
+  return {
+    replica,
+    caughtUp,
+    fraction: status?.phase === "catching-up" ? status.fraction : null,
+    error: unavailable ?? current?.error ?? downloadError,
+  };
 }
 
 type AutomationReads = typeof automationReads;

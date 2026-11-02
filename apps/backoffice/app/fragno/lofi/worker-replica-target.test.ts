@@ -5,10 +5,19 @@ import { readWorkerReplicaName, workerReplicaName } from "./worker-replica-targe
 describe("worker replica names", () => {
   test("name the backend's URL and identity", () => {
     const target = { baseUrl: "/api/upload-scoped/org/acme", adapterIdentity: "do:abc" };
-    expect(readWorkerReplicaName(workerReplicaName(target))).toEqual(target);
-    expect(workerReplicaName(target)).not.toEqual(
-      workerReplicaName({ ...target, adapterIdentity: "do:def" }),
+    const streams = { pollsOnceCaughtUp: false };
+    expect(readWorkerReplicaName(workerReplicaName(target, streams))).toEqual(target);
+    expect(workerReplicaName(target, streams)).not.toEqual(
+      workerReplicaName({ ...target, adapterIdentity: "do:def" }, streams),
     );
+  });
+
+  test("name whether the replica polls once caught up", () => {
+    const target = { baseUrl: "/api/automations/org/acme", adapterIdentity: "do:abc" };
+    expect(readWorkerReplicaName(workerReplicaName(target, { pollsOnceCaughtUp: true }))).toEqual({
+      ...target,
+      pollOnceCaughtUp: { catchUpTurns: 2, intervalMs: 2_000 },
+    });
   });
 
   test("refuse a name without the identity", () => {
