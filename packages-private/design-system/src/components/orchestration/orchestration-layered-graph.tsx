@@ -151,8 +151,8 @@ function ColumnHeader({ left, width, title }: { left: number; width: number; tit
  * flows that meet across sources are visible. Hovering or selecting anything lights up everything
  * upstream and downstream of it, and a search narrows the graph to the flows it matches.
  *
- * Fills its container's height and scrolls inside it under sticky column headers, so give it a
- * bounded parent when it shares the page.
+ * In a parent of bounded height it fills that height and scrolls inside it under sticky column
+ * headers; otherwise it is as tall as its content.
  */
 export function OrchestrationLayeredGraph({
   graph,

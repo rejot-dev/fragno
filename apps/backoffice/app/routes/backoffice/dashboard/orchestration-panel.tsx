@@ -176,15 +176,14 @@ function OrchestrationPanel({
           {errors.join(", ")} could not be read, so the graph may be incomplete.
         </p>
       ) : null}
-      {/* Side by side the row takes a fixed height; stacked, each box takes its own. */}
+      {/* The graph is as tall as its content, so the page only scrolls when it needs to. Beside
+          it, the inspector keeps a fixed height and stays in view while the page scrolls. */}
       <div
         className={
-          inspected
-            ? "grid gap-3 2xl:h-[min(72vh,760px)] 2xl:grid-cols-[minmax(0,1fr)_28rem]"
-            : "grid"
+          inspected ? "grid items-start gap-3 2xl:grid-cols-[minmax(0,1fr)_28rem]" : "grid"
         }
       >
-        <div className="flex max-h-[min(72vh,760px)] min-h-0 min-w-0 flex-col">
+        <div className="flex min-w-0 flex-col">
           <OrchestrationLayeredGraph
             graph={graph}
             selected={selected}
@@ -193,7 +192,7 @@ function OrchestrationPanel({
           />
         </div>
         {inspected ? (
-          <div className="flex h-[min(72vh,760px)] min-h-0 2xl:h-auto">
+          <div className="flex h-[min(72vh,760px)] min-h-0 2xl:sticky 2xl:top-4">
             <OrchestrationInspector
               selection={inspected}
               workflowSource={workflowSource}
