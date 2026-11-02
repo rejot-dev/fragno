@@ -6,6 +6,7 @@ type PageLimits = {
   titleLength: 80;
   queries: 16;
   values: 32;
+  files: 8;
   sqlLength: 20000;
   params: 100;
   columns: 64;
@@ -16,7 +17,7 @@ type PageLimits = {
 };
 
 /** The version of the definition page.define writes. */
-type PageDefinitionVersion = 5;
+type PageDefinitionVersion = 6;
 
 /** A time as SQL reads it: milliseconds since the epoch. Declare its column "time" to show it. */
 type PageSqlTime = number;

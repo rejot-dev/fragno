@@ -1,20 +1,22 @@
 ---
 name: building-pages
 description:
-  "Pages: artifacts that show live automation data, written as /workspace/**/<name>.page.js with
-  page.define and SQL. Use when the user asks for a dashboard or an always-current view of runs,
-  events, routes, connections, agents, stored values, or data a workflow syncs from another system,
-  or to change one."
+  "Pages: artifacts that show live automation data and workspace files, written as
+  /workspace/**/<name>.page.js with page.define and SQL. Use when the user asks for a dashboard or
+  an always-current view of runs, events, routes, connections, agents, stored values, data a
+  workflow syncs from another system, or JSON, CSV, or Markdown files in the workspace, or to change
+  one."
 ---
 
 # Building pages
 
 A page is an artifact: one source module, `<name>.page.js` anywhere under `/workspace`, that
-default-exports `page.define(...)`: live SQL queries over the scope's relations, placed in a `ui`
-interface. When the page is opened, the system builds the source into the mirrored path under
-`/workspace/.build`, such as `/workspace/.build/reports/operations.page.json`, and rebuilds it
-whenever the source changes; the page runs its queries in the browser, over the scope's data as the
-browser keeps it, and re-renders as the data changes.
+default-exports `page.define(...)`: live SQL queries over the scope's relations, and the workspace
+files it shows, placed in a `ui` interface. When the page is opened, the system builds the source
+into the mirrored path under `/workspace/.build`, such as
+`/workspace/.build/reports/operations.page.json`, and rebuilds it whenever the source changes; the
+page runs its queries in the browser, over the scope's data as the browser keeps it, and re-renders
+as the data changes.
 
 ## Steps
 
@@ -26,9 +28,9 @@ browser keeps it, and re-renders as the data changes.
    - `bank-accounts.page.js`: figures projected from a synced system's versioned events;
    - `delivery-tracker.page.js`: one value a workflow keeps checking, with its history.
 
-   Complete when every value the page shows has a column in `PageRelations` to come from. A
-   connected service's data, such as bank balances or an order's status, comes from the events its
-   feed fires: build the feed first with
+   Complete when every value the page shows has a column in `PageRelations` or a workspace file to
+   come from. A connected service's data, such as bank balances or an order's status, comes from the
+   events its feed fires: build the feed first with
    `/static/skills/building-automations/references/syncing-external-data.md`.
 
 2. **Design.** Name the question the user opens the page to answer, such as "how much money do we
@@ -226,6 +228,29 @@ The title heads the page. Return the root element from the callback; `page.defin
 - `ui.when(ui.is(row.errored, { gt: 0 }), element)` shows an element while a live value matches.
 - `query.value(column, whenEmpty)` goes in a single-value prop, such as `ui.metric` `value`. It
   holds the column of the first row, or `whenEmpty` while the query has no rows.
+
+## Files
+
+- `file.csv(path, columns)`, `file.json(path)`, and `file.markdown(path, frontmatter)` show a file
+  under `/workspace`, read again whenever it changes. Use them for data people or workflows keep in
+  files, such as a budget spreadsheet, targets in JSON, or a plan in Markdown; data in the relations
+  comes from queries.
+- `file.csv` gives one row per record after the header row. `columns` names header cells and how
+  each reads, as a query's columns do without `{ rows }`: `"time"` reads ISO 8601 text such as
+  `2026-12-01`, `"boolean"` reads `true` or `false`, and an empty cell is null when its column may
+  be null. Pass the rows where a query's go, such as `ui.table` `rows` or `ui.each`.
+- `file.json` gives the file's JSON. Read fields as live values, such as `targets.revenue` for
+  `ui.metric` `value`; components check them as they render.
+- `file.markdown` gives `body`, the Markdown after its frontmatter, for `ui.markdown({ text })`, and
+  `frontmatter`, the YAML fields `frontmatter` declares, such as `{ owner: "string", due: "time" }`.
+  Declare fields without `?` and show each component that reads one inside
+  `ui.when(ui.is(plan.frontmatter.owner), element)`: a field reads as null while it or its file is
+  missing, and a field declared with `?` fits no prop that needs a value.
+- The build checks only that each path is under `/workspace`, so write the files the page reads. A
+  file that does not exist, or holds a value that does not fit its declaration, reads as empty until
+  it is fixed: no rows, null JSON, or an empty body with null fields. The rest of the page shows,
+  under a notice naming the file, row, and field. Word a CSV table's `empty` text so it reads true
+  then too, such as "No budget lines."
 
 ## Supported today
 

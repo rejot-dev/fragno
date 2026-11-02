@@ -1,6 +1,7 @@
 import type {
   PageColumn,
   PageColumns,
+  PageFileColumns,
   PageLiteral,
   PageQuery,
   PageScalarColumn,
@@ -51,6 +52,26 @@ export function pageRows(query: PageQuery, result: PageQueryResult): PageData[] 
         }),
       ]),
     ),
+  );
+}
+
+/**
+ * A record read from a file, such as a CSV row or Markdown's frontmatter, as its columns declare.
+ * Its values are JSON's, with times as milliseconds since the epoch; a field it lacks is null.
+ */
+export function pageFileRecord(
+  columns: PageFileColumns,
+  record: Readonly<Record<string, unknown>>,
+  path: string,
+): Record<string, PageData> {
+  return Object.fromEntries(
+    Object.entries(columns).map(([name, column]) => [
+      name,
+      decode(column, Object.hasOwn(record, name) ? record[name] : null, {
+        path: `${path}, field "${name}"`,
+        json: true,
+      }),
+    ]),
   );
 }
 

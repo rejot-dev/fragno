@@ -29,7 +29,7 @@ export function filesPreviewPath(scope: BackofficeResolvedScope, path: string): 
 }
 
 export const filesDownloadPath = (
-  scope: BackofficeScopeSelection,
+  scope: BackofficeResolvedScope,
   path: string,
   disposition: "attachment" | "inline",
 ): string => {

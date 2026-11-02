@@ -1,6 +1,6 @@
 /// <reference path="/static/codemode/page-schema.d.ts" />
-// The page builder. page.define records live SQL queries over the scope's relations and binds
-// their rows to a ui interface. Default-export it from a /workspace/**/<name>.page.js file; the
+// The page builder. page.define records live SQL queries over the scope's relations, and the
+// workspace files the page shows, and binds them to a ui interface. Default-export it from a /workspace/**/<name>.page.js file; the
 // system builds it when it opens. page-schema.d.ts declares the relations, their columns, the
 // functions queries cannot call, and PageLimits.
 
@@ -87,6 +87,23 @@ type PageQuery<TRow> = BackofficeUiLive<TRow[]> & {
   ): BackofficeUiLive<TRow[TField]>;
 };
 
+/**
+ * How a file's column reads: as a query's column does, without nested rows. In CSV, "number" reads
+ * numbers, "boolean" true or false, "time" ISO 8601 text such as 2026-11-02 or
+ * 2026-11-02T09:30:00Z, and "json" JSON text; an empty cell is null when its column may be null.
+ */
+type PageFileColumn = PageScalarColumn | `${PageScalarColumn}?` | readonly (string | null)[];
+type PageFileColumns = { readonly [name: string]: PageFileColumn };
+/**
+ * A file's JSON. Its fields, at any depth, are live values, such as targets.revenue. Nothing
+ * declares their types, so they fit any prop, and each component checks its props as it renders.
+ */
+// oxlint-disable-next-line typescript/no-explicit-any -- JSON has no declared type to check.
+type PageJson = BackofficeUiLive<any> & {
+  readonly [field: string]: PageJson;
+  readonly [index: number]: PageJson;
+};
+
 type PageContext = {
   /**
    * SQL over PageRelations, as a tagged template: sql`SELECT ... WHERE run.createdAt >= ${day}`.
@@ -105,6 +122,32 @@ type PageContext = {
    * bucket("run.createdAt", hours). Declare its column "time?", and group by it.
    */
   bucket(time: string | PageSql, intervals: PageIntervals): PageSql;
+  /**
+   * A file under /workspace the page shows, read again whenever it changes. At most
+   * PageLimits["files"] files. While a file does not exist,
+   * or does not hold what the page declares, it reads as empty: no rows, null JSON, or an empty
+   * body with null fields; the rest of the page shows, under a notice naming the problem.
+   */
+  file: {
+    /** The file's JSON, such as file.json("/workspace/finance/targets.json").revenue. */
+    json(path: string): PageJson;
+    /**
+     * One row per record after the header row, whose cells name the columns. Pass the rows to a
+     * prop that shows rows, such as ui.table rows, or repeat them with ui.each.
+     */
+    csv<const TColumns extends PageFileColumns>(
+      path: string,
+      columns: TColumns,
+    ): BackofficeUiRow<PageRow<TColumns>[]>;
+    /**
+     * The Markdown after its YAML frontmatter as body, for ui.markdown text, and the declared
+     * frontmatter fields as frontmatter; a missing field reads as null.
+     */
+    markdown<const TFrontmatter extends PageFileColumns = {}>(
+      path: string,
+      frontmatter?: TFrontmatter,
+    ): BackofficeUiRow<{ body: string; frontmatter: PageRow<TFrontmatter> }>;
+  };
 };
 
 /** A built page: its queries and the interface bound to them. */
@@ -116,14 +159,15 @@ type PageDefinition = {
     string,
     { query: string; field: string; whenEmpty: string | number | boolean | null }
   >;
+  files: Record<string, { path: string; format: "json" | "csv" | "markdown" }>;
   spec: { root: string; elements: Record<string, unknown> };
 };
 
 declare const page: {
   /**
    * Builds the page file. The title, at most PageLimits["titleLength"] characters, heads the page;
-   * build returns the root ui element, with queries in its props. At most PageLimits["queries"]
-   * queries.
+   * build returns the root ui element, with queries and files in its props. At most
+   * PageLimits["queries"] queries.
    */
   define(
     options: { title: string },

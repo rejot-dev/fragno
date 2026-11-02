@@ -4,6 +4,7 @@ import { parsePageDefinition, type PageLoad } from "@fragno-private/backoffice-u
 
 import {
   artifactBuildKey,
+  artifactBuildUpdatedAt,
   readArtifactBuild,
   writeArtifactBuild,
   type ArtifactBuildOutcome,
@@ -29,6 +30,12 @@ import { PAGE_QUERY_CATALOG, pageQueriesError } from "./page-queries.server";
 const BUILD_TIMEOUT_MS = 10_000;
 
 /**
+ * A loaded page, with when the build it came from was written, as `artifactBuildUpdatedAt` reports
+ * it. A browser reloads the page once the build is written after that.
+ */
+export type LoadedPage = { page: PageLoad; buildUpdatedAt: string | null };
+
+/**
  * Loads a page from its source, building it only when the source, a module it imports, the
  * builders, or the relations its queries read changed since the cached build. The build runs
  * without providers, so a source can only describe a page, never act with the viewer's authority.
@@ -43,7 +50,7 @@ export async function loadPage({
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
   sourcePath: string;
-}): Promise<PageLoad> {
+}): Promise<LoadedPage> {
   const viewer = createCodemodeRouteBackedRuntimeContext({
     emitter: { kind: "caller" },
     runtime,
@@ -52,13 +59,16 @@ export async function loadPage({
   });
   const state = viewer.stateBackend;
   if ((await state.stat(sourcePath))?.type !== "file") {
-    return { kind: "missing" };
+    return {
+      page: { kind: "missing" },
+      buildUpdatedAt: await artifactBuildUpdatedAt(state, sourcePath),
+    };
   }
 
   const code = pageBuildProgram(sourcePath);
   const imports = await readPageImports(sourcePath, (path) => state.readFile(path));
   if (imports.kind === "failed") {
-    return imports;
+    return { page: imports, buildUpdatedAt: await artifactBuildUpdatedAt(state, sourcePath) };
   }
   const { modules } = imports;
   const key = await artifactBuildKey(
@@ -66,13 +76,16 @@ export async function loadPage({
     modules,
   );
   const cached = await readArtifactBuild(state, sourcePath, key);
-  if (cached?.kind === "failed") {
-    return cached;
+  if (cached.outcome?.kind === "failed") {
+    return { page: cached.outcome, buildUpdatedAt: cached.updatedAt };
   }
   // A current build that no longer validates was edited by hand, so it is rebuilt.
-  const cachedDefinition = cached ? parsePageDefinition(cached.output) : null;
+  const cachedDefinition = cached.outcome ? parsePageDefinition(cached.outcome.output) : null;
   if (cachedDefinition?.kind === "valid") {
-    return { kind: "ready", definition: cachedDefinition.definition };
+    return {
+      page: { kind: "ready", definition: cachedDefinition.definition },
+      buildUpdatedAt: cached.updatedAt,
+    };
   }
 
   const run = await runBackofficeCodemode({
@@ -88,7 +101,10 @@ export async function loadPage({
   // Errors the source causes come back as its result, so a run error is the system's: an outage,
   // a limit, or a timeout. Caching it would keep the page broken after the system recovers.
   if (run.error !== undefined) {
-    return { kind: "failed", message: `The page could not be built right now: ${run.error}` };
+    return {
+      page: { kind: "failed", message: `The page could not be built right now: ${run.error}` },
+      buildUpdatedAt: cached.updatedAt,
+    };
   }
   const outcome = await buildOutcome(
     run.result,
@@ -100,8 +116,10 @@ export async function loadPage({
     kernel,
     execution: createBackofficeSystemExecution(execution.scope),
   });
-  await writeArtifactBuild(system.stateBackend, sourcePath, key, outcome);
-  return loadOutcome(outcome);
+  return {
+    page: loadOutcome(outcome),
+    buildUpdatedAt: await writeArtifactBuild(system.stateBackend, sourcePath, key, outcome),
+  };
 }
 
 /**

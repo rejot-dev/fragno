@@ -1,6 +1,8 @@
+import { isBackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
 import type { RouterContextProvider } from "react-router";
 
+import { artifactBuildPath } from "@/artifacts/build-cache.server";
 import { loadPage } from "@/artifacts/pages/build.server";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
@@ -8,6 +10,8 @@ import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/re
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { fetchUploadAdapterIdentity } from "@/fragno/upload/adapter-identity.server";
+import type { UploadReplicaSource } from "@/fragno/upload/lofi/replica";
 import {
   requireRouteScope,
   requireScopeSelection,
@@ -16,7 +20,13 @@ import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import { PAGE_SOURCES_GLOB, pageSourcePath } from "./path";
 
-/** Loads a page of the selected scope for the signed-in viewer; system scope has no workspace. */
+/** The build a page was loaded from: its file, and when it was written, or null without one. */
+export type PageBuildVersion = { path: string; updatedAt: string | null };
+
+/**
+ * Loads a page of the selected scope for the signed-in viewer, with the version of the build it
+ * shows; system scope has no workspace.
+ */
 export async function loadPageRoute({
   request,
   context,
@@ -25,15 +35,50 @@ export async function loadPageRoute({
   request: Request;
   context: Readonly<RouterContextProvider>;
   name: string;
-}): Promise<PageLoad> {
+}): Promise<{ result: PageLoad; build: PageBuildVersion | null }> {
   const scope = backofficeRuntimeScopeFromResolvedScope(requireScopeSelection(context));
   const sourcePath = pageSourcePath(name);
   if (scope.kind === "system" || sourcePath === null) {
-    return { kind: "missing" };
+    return { result: { kind: "missing" }, build: null };
   }
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const execution = await requireBackofficeContext(request, context, scope);
-  return await loadPage({ runtime, kernel, execution, sourcePath });
+  const { page, buildUpdatedAt } = await loadPage({ runtime, kernel, execution, sourcePath });
+  return {
+    result: page,
+    build: { path: artifactBuildPath(sourcePath), updatedAt: buildUpdatedAt },
+  };
+}
+
+/**
+ * Where the browser reads the scope's workspace files: the files a page shows, and the build it
+ * watches to reload.
+ */
+export type PageUploadSource =
+  | { kind: "none" }
+  | { kind: "ready"; source: UploadReplicaSource }
+  | { kind: "unavailable"; message: string };
+
+export async function loadPageUploadSource({
+  request,
+  context,
+}: {
+  request: Request;
+  context: Readonly<RouterContextProvider>;
+}): Promise<PageUploadSource> {
+  const scope = backofficeRuntimeScopeFromResolvedScope(requireScopeSelection(context));
+  if (!isBackofficeRoutableScope(scope)) {
+    return { kind: "none" };
+  }
+  try {
+    return {
+      kind: "ready",
+      source: { scope, adapterIdentity: await fetchUploadAdapterIdentity(request, context, scope) },
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { kind: "unavailable", message: `Workspace files are unavailable: ${reason}` };
+  }
 }
 
 export type PageSources =

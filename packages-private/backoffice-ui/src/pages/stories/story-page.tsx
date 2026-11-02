@@ -79,6 +79,8 @@ function ScopedPageView({ definition, scope }: { definition: PageDefinition; sco
     <PageView
       definition={definition}
       results={results}
+      // Story pages read no files.
+      files={{}}
       now={STORY_NOW}
       links={storyLink}
       widgets={storyWidgets}

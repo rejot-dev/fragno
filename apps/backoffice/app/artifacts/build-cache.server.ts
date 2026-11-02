@@ -36,22 +36,31 @@ export async function artifactBuildKey(
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-/** The cached outcome for these inputs, or null when the cache is missing, stale, or unreadable. */
+/**
+ * The cached outcome for these inputs, or null when the cache is missing, stale, or unreadable,
+ * with when the cache was written, as `artifactBuildUpdatedAt` reports it.
+ */
 export async function readArtifactBuild(
   state: BackofficeStateBackend,
   sourcePath: string,
   key: string,
-): Promise<ArtifactBuildOutcome | null> {
-  const path = artifactBuildPath(sourcePath);
-  if ((await state.stat(path))?.type !== "file") {
-    return null;
+): Promise<{ outcome: ArtifactBuildOutcome | null; updatedAt: string | null }> {
+  // Stated before reading: a build written between the two then reads as newer than this one,
+  // never as the one read.
+  const updatedAt = await artifactBuildUpdatedAt(state, sourcePath);
+  if (updatedAt === null) {
+    return { outcome: null, updatedAt };
   }
   let build: unknown;
   try {
-    build = JSON.parse(await state.readFile(path));
+    build = JSON.parse(await state.readFile(artifactBuildPath(sourcePath)));
   } catch {
-    return null;
+    return { outcome: null, updatedAt };
   }
+  return { outcome: cachedOutcome(build, key), updatedAt };
+}
+
+function cachedOutcome(build: unknown, key: string): ArtifactBuildOutcome | null {
   if (build === null || typeof build !== "object" || !("key" in build) || build.key !== key) {
     return null;
   }
@@ -68,13 +77,33 @@ export async function readArtifactBuild(
     : null;
 }
 
-/** Caches an outcome; `state` writes with the system's authority, since viewers may only read. */
+/**
+ * When a source's build was last written, as Upload records it, or null without one. A browser
+ * compares it with the build's row in its replica to tell a newer build from the one it shows.
+ */
+export async function artifactBuildUpdatedAt(
+  state: BackofficeStateBackend,
+  sourcePath: string,
+): Promise<string | null> {
+  const stat = await state.stat(artifactBuildPath(sourcePath));
+  return stat?.type === "file" ? stat.mtime.toISOString() : null;
+}
+
+/**
+ * Caches an outcome, and returns when the cache was written; `state` writes with the system's
+ * authority, since viewers may only read. Another build can land right after this one, so the
+ * time is this build's only while the cache still holds it; otherwise it is null, which is older
+ * than any build.
+ */
 export async function writeArtifactBuild(
   state: BackofficeStateBackend,
   sourcePath: string,
   key: string,
   outcome: ArtifactBuildOutcome,
-): Promise<void> {
+): Promise<string | null> {
   const build: ArtifactBuildFile = { version: 1, key, outcome };
-  await state.writeJson(artifactBuildPath(sourcePath), build, { spaces: 2 });
+  const content = JSON.stringify(build, null, 2);
+  await state.writeFile(artifactBuildPath(sourcePath), content);
+  const updatedAt = await artifactBuildUpdatedAt(state, sourcePath);
+  return (await state.readFile(artifactBuildPath(sourcePath))) === content ? updatedAt : null;
 }
