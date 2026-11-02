@@ -1,17 +1,31 @@
+import { Callout } from "@fragno-private/design-system/feedback/callout";
+import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
-import { Component, useEffect, useMemo, type ReactNode } from "react";
+import { Component, useEffect, useLayoutEffect, useMemo, type ReactNode } from "react";
 
 import { createStateStore } from "@json-render/react";
 
 import type { BackofficeUiHostWidgets, BackofficeUiLinks } from "../render-context";
 import { BackofficeUiStoreRenderer } from "../renderer";
-import { pageDataPath, pageValuePath, type PageDefinition } from "./definition";
+import {
+  pageDataPath,
+  pageFilePath,
+  pageValuePath,
+  type PageDefinition,
+  type PageFile,
+} from "./definition";
 import { pageRows, PageRowsError, pageValue, type PageData, type PageQueryResult } from "./rows";
 
 /** One query's live result, as the host maintains it. */
 export type PageQueryState =
   | { status: "loading" }
   | { status: "ready"; result: PageQueryResult }
+  | { status: "error"; message: string };
+
+/** One file's data, as the host reads and decodes it. */
+export type PageFileState =
+  | { status: "loading" }
+  | { status: "ready"; data: PageData }
   | { status: "error"; message: string };
 
 type PageViewProps = {
@@ -21,6 +35,11 @@ type PageViewProps = {
    * without one shows no rows yet.
    */
   results: Readonly<Record<string, PageQueryState>>;
+  /**
+   * Each file's data, by name. The page waits for every file's first state. A file that cannot be
+   * shown binds as empty, and a notice above the page says why.
+   */
+  files: Readonly<Record<string, PageFileState>>;
   /** The clock the page's relative times read, such as `useMinuteClock()`. */
   now: number;
   links: BackofficeUiLinks;
@@ -76,7 +95,7 @@ function PageFailure({ message }: { message: string }) {
   );
 }
 
-function PageContent({ definition, results, now, links, widgets }: PageViewProps) {
+function PageContent({ definition, results, files, now, links, widgets }: PageViewProps) {
   // Every query starts empty, so bound props hold rows and values before the first results arrive.
   const store = useMemo(() => {
     const created = createStateStore({});
@@ -105,18 +124,86 @@ function PageContent({ definition, results, now, links, widgets }: PageViewProps
     }
   }, [decoded, definition, store]);
 
+  const loaded = useMemo(() => loadedFiles(definition, files), [definition, files]);
+  // Before paint, so components never show a file's fields missing.
+  useLayoutEffect(() => {
+    if (loaded.kind === "loading") {
+      return;
+    }
+    for (const [name, data] of Object.entries(loaded.data)) {
+      store.set(pageFilePath(name), data);
+    }
+  }, [loaded, store]);
+
   if (decoded.kind === "failed") {
     return <PageFailure message={decoded.message} />;
   }
+  if (loaded.kind === "loading") {
+    return <PaneSpinner label="Reading the page's files" />;
+  }
   return (
-    <BackofficeUiStoreRenderer
-      spec={definition.spec}
-      store={store}
-      now={now}
-      links={links}
-      widgets={widgets}
-    />
+    <>
+      {loaded.problems.length > 0 ? (
+        <Callout tone="waiting" title="Some files cannot be shown">
+          <ul>
+            {loaded.problems.map((problem) => (
+              <li key={problem}>{problem}</li>
+            ))}
+          </ul>
+        </Callout>
+      ) : null}
+      <BackofficeUiStoreRenderer
+        spec={definition.spec}
+        store={store}
+        now={now}
+        links={links}
+        widgets={widgets}
+      />
+    </>
   );
+}
+
+/**
+ * Every file's data once each has a state. Files are kept by hand and come and go, so one that is
+ * missing or does not fit its declaration empties only what reads it, not the page.
+ */
+function loadedFiles(
+  definition: PageDefinition,
+  files: Readonly<Record<string, PageFileState>>,
+): { kind: "loaded"; data: Record<string, PageData>; problems: string[] } | { kind: "loading" } {
+  const data: Record<string, PageData> = {};
+  const problems: string[] = [];
+  for (const [name, file] of Object.entries(definition.files)) {
+    const state = Object.hasOwn(files, name) ? files[name] : undefined;
+    if (state === undefined || state.status === "loading") {
+      return { kind: "loading" };
+    }
+    if (state.status === "error") {
+      data[name] = emptyFileData(file);
+      problems.push(state.message);
+    } else {
+      data[name] = state.data;
+    }
+  }
+  // A problem of the whole workspace, such as its replica failing, is every file's.
+  return { kind: "loaded", data, problems: [...new Set(problems)] };
+}
+
+/** A file's data while it cannot be shown: no rows, no JSON, or no Markdown and no fields. */
+function emptyFileData(file: PageFile): PageData {
+  switch (file.format) {
+    case "json":
+      return null;
+    case "csv":
+      return [];
+    case "markdown":
+      return {
+        body: "",
+        frontmatter: Object.fromEntries(Object.keys(file.frontmatter).map((name) => [name, null])),
+      };
+    default:
+      throw new Error("Unsupported page file format.", { cause: file satisfies never });
+  }
 }
 
 /** The rows of every query that has a result, or why one cannot be shown. */

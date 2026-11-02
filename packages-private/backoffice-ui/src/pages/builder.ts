@@ -2,11 +2,12 @@ import { PAGE_DEFINITION_VERSION, PAGE_LIMITS } from "./definition";
 
 /**
  * Guest-side `page` builder. `sql` records a query's SQL as text with its interpolated values as
- * parameters, which are never written into the text, and `.columns` makes it a live query.
- * `page.define` renders the interface with `ui.render`, where each query or value a prop,
- * condition, or repeat reads becomes the state path the page fills. Every rule of the recorded
- * queries is the host's: `parsePageDefinition` validates the definition, and the host checks the
- * SQL against the scope's relations, in the build that produced it.
+ * parameters, which are never written into the text, and `.columns` makes it a live query. `file`
+ * names a workspace file the page shows, whose fields read as live values too. `page.define`
+ * renders the interface with `ui.render`, where each query, value, or file a prop, condition, or
+ * repeat reads becomes the state path the page fills. Every rule of the recorded queries is the
+ * host's: `parsePageDefinition` validates the definition, and the host checks the SQL against the
+ * scope's relations, in the build that produced it.
  */
 const PAGE_BUILDER_SOURCE = String.raw`({ version, listItems, legacy }) => (ui, live) => {
   const fragments = new WeakMap();
@@ -140,7 +141,39 @@ const PAGE_BUILDER_SOURCE = String.raw`({ version, listItems, legacy }) => (ui, 
     ]);
   };
 
-  const context = { sql, now: time(0), intervals, bucket };
+  // A file, and every field read from it, reads the file's state; the same file read twice is one.
+  const pointerSegment = (segment) => segment.replace(/~/g, "~0").replace(/\//g, "~1");
+  const fileRef = (described, path) => {
+    const ref = new Proxy(Object.freeze({}), {
+      get: (_, key) =>
+        typeof key !== "string" || key === "then" || key === "toJSON"
+          ? undefined
+          : fileRef(described, path + "/" + pointerSegment(key)),
+    });
+    live.set(ref, () => ({ $state: "/files/" + bound("files").file(described) + path }));
+    return ref;
+  };
+  const filePath = (path, label) =>
+    typeof path === "string" ? path : fail(label + " expects the file's path, such as \"/workspace/reports/budget.csv\".");
+  const fileColumns = (columns, label, example) =>
+    isRecord(columns) ? columns : fail(label + " declares the columns its rows show, such as " + example + ".");
+  const file = Object.freeze({
+    json: (path) => fileRef({ path: filePath(path, "file.json(path)"), format: "json" }, ""),
+    csv: (path, columns) =>
+      fileRef({
+        path: filePath(path, "file.csv(path, columns)"),
+        format: "csv",
+        columns: fileColumns(columns, "file.csv(path, columns)", "{ month: \"string\", amount: \"number\" }"),
+      }, ""),
+    markdown: (path, frontmatter = {}) =>
+      fileRef({
+        path: filePath(path, "file.markdown(path, frontmatter)"),
+        format: "markdown",
+        frontmatter: fileColumns(frontmatter, "file.markdown(path, frontmatter)", "{ owner: \"string\", due: \"time?\" }"),
+      }, ""),
+  });
+
+  const context = { sql, now: time(0), intervals, bucket, file };
   // Sources written for the builder of version 4 destructure its functions, which fail clearly.
   for (const name of legacy) {
     Object.defineProperty(context, name, {
@@ -159,8 +192,10 @@ const PAGE_BUILDER_SOURCE = String.raw`({ version, listItems, legacy }) => (ui, 
     const root = build(context);
     const queryNames = new Map();
     const valueNames = new Map();
+    const fileNames = new Map();
     const fileQueries = {};
     const fileValues = {};
+    const namedFiles = {};
     const nameQuery = (query) => {
       if (!queryNames.has(query)) {
         const name = "q" + queryNames.size;
@@ -180,6 +215,15 @@ const PAGE_BUILDER_SOURCE = String.raw`({ version, listItems, legacy }) => (ui, 
         }
         return valueNames.get(value);
       },
+      file: (described) => {
+        const key = JSON.stringify(described);
+        if (!fileNames.has(key)) {
+          const name = "f" + fileNames.size;
+          fileNames.set(key, name);
+          namedFiles[name] = described;
+        }
+        return fileNames.get(key);
+      },
     };
     try {
       rendered = ui.render(root);
@@ -187,7 +231,7 @@ const PAGE_BUILDER_SOURCE = String.raw`({ version, listItems, legacy }) => (ui, 
       binding = null;
     }
     if (Object.keys(rendered.state).length > 0) fail("Pages show data; they do not collect ui.form input.");
-    return { version, title: options.title, queries: fileQueries, values: fileValues, spec: rendered.spec };
+    return { version, title: options.title, queries: fileQueries, values: fileValues, files: namedFiles, spec: rendered.spec };
   };
 
   return Object.freeze({ define });

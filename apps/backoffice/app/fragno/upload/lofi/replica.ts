@@ -42,6 +42,11 @@ export function getUploadReplica(source: UploadReplicaSource): Promise<LofiSqlit
   });
 }
 
+/** A workspace file's key in the scope's Upload replica: its path without the root. */
+export function workspaceUploadKey(path: string): string {
+  return path.slice("/workspace/".length);
+}
+
 const uploadReadView = lofiSqliteReadViews<typeof uploadReads>(UPLOAD_READ_VIEWS);
 
 /** A live view of the files that finished uploading and were not deleted. */

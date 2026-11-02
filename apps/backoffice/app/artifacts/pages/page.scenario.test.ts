@@ -7,6 +7,7 @@ import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-
 import type { BackofficeUiLinkTarget } from "@fragno-private/backoffice-ui/link";
 import {
   pageDataPath,
+  pageFilePath,
   pageValuePath,
   type PageDefinition,
   type PageLoad,
@@ -31,9 +32,12 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import { readScenarioReplicaView } from "@/fragno/lofi/scenario-replica-database";
+import { readyUploadFilesView, workspaceUploadKey } from "@/fragno/upload/lofi/replica";
 import { listPageSources } from "@/routes/backoffice/pages/load.server";
 
-import { loadPage } from "./build.server";
+import { loadPage, type LoadedPage } from "./build.server";
+import { pageFileData } from "./page-files";
 import { checkPageSource } from "./page-source.test-support";
 
 const workers = vi.hoisted(() => ({
@@ -139,6 +143,41 @@ const paramsMetricPage = `export default page.define({ title: "Order params" }, 
   }),
 );
 `;
+
+/** A page of a CSV's rows, a JSON file's field, and a Markdown file's body and frontmatter. */
+const filesPage = `export default page.define({ title: "Q4" }, ({ file }) => {
+  const budget = file.csv("/workspace/finance/budget.csv", {
+    month: "string",
+    amount: "number",
+    approved: "boolean",
+    note: "string?",
+  });
+  const targets = file.json("/workspace/finance/targets.json");
+  const plan = file.markdown("/workspace/ops/q4-plan.md", { owner: "string", due: "time" });
+
+  return ui.stack({ gap: "md" }, [
+    ui.metric({ label: "Revenue target", value: targets.revenue }),
+    ui.table({
+      caption: "Budget",
+      columns: [
+        { key: "month", label: "Month" },
+        { key: "amount", label: "Amount" },
+        { key: "note", label: "Note" },
+      ],
+      rows: budget,
+    }),
+    ui.keyValue({ columns: 1, items: [{ key: "owner", label: "Owner", value: plan.frontmatter.owner }] }),
+    ui.markdown({ text: plan.body }),
+  ]);
+});
+`;
+
+const workspaceFiles = {
+  "finance/budget.csv":
+    'month,amount,approved,note\r\nOctober,1200.5,true,\r\n"November, early",900,false,"Says ""wait"""\r\n',
+  "finance/targets.json": JSON.stringify({ revenue: "€50k" }),
+  "ops/q4-plan.md": "---\nowner: Ada\ndue: 2026-12-01\n---\n# Q4 plan\n\nShip the tracker.\n",
+};
 
 const newestRunPage = `export default page.define({ title: "Newest run" }, ({ sql }) =>
   ui.table({
@@ -248,14 +287,21 @@ async function writePage(ctx: BackofficeScenarioContext, source: string) {
   };
 }
 
-/** Loads the page as its route does, building it when the cache does not match. */
-async function loadBuiltPage(ctx: BackofficeScenarioContext): Promise<PageLoad> {
+/**
+ * Loads the page as its route does, building it when the cache does not match, with when the build
+ * it shows was written.
+ */
+async function loadVersionedPage(ctx: BackofficeScenarioContext): Promise<LoadedPage> {
   return await loadPage({
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeSystemExecution(scope),
     sourcePath: SOURCE_PATH,
   });
+}
+
+async function loadBuiltPage(ctx: BackofficeScenarioContext): Promise<PageLoad> {
+  return (await loadVersionedPage(ctx)).page;
 }
 
 /** The outcome the system cached for the page. */
@@ -265,6 +311,18 @@ async function cachedOutcome(ctx: BackofficeScenarioContext): Promise<string> {
     code: `async () => (await state.readJson({ path: ${JSON.stringify(artifactBuildPath(SOURCE_PATH))} })).outcome.kind`,
   });
   return build.result as string;
+}
+
+/** When the page's build was written, as a browser's Upload replica holds it. */
+async function replicaBuildUpdatedAt(ctx: BackofficeScenarioContext): Promise<number> {
+  const upload = ctx.lofi.upload.forOrg(orgId);
+  await upload.drain();
+  const key = workspaceUploadKey(artifactBuildPath(SOURCE_PATH));
+  const build = (await readScenarioReplicaView(readyUploadFilesView(upload.replica))).find(
+    ({ fileKey }) => fileKey === key,
+  );
+  assert(build?.updatedAt !== undefined, "The replica has no build.");
+  return new Date(build.updatedAt).getTime();
 }
 
 /** Where the scenario's links lead, so assertions read which target each link names. */
@@ -277,10 +335,11 @@ function testLinks(target: BackofficeUiLinkTarget): string {
 
 /**
  * Renders a built page the way its route does, with each query's results read through the
- * scope's replica, and returns the markup with each query's rows.
+ * scope's replica and each file read from the workspace, and returns the markup with each query's
+ * rows and each file's data.
  */
 async function renderPage(ctx: BackofficeScenarioContext, definition: PageDefinition) {
-  const { queries, values, spec } = definition;
+  const { queries, values, files, spec } = definition;
   const handle = ctx.lofi.automations.forOrg(orgId);
   await handle.drain();
 
@@ -296,6 +355,15 @@ async function renderPage(ctx: BackofficeScenarioContext, definition: PageDefini
         store.set(pageValuePath(valueName), pageValue(value, rows));
       }
     }
+  }
+  const fileData: Record<string, PageData> = {};
+  for (const [name, file] of Object.entries(files)) {
+    const read = await ctx.runCodemode({
+      scope,
+      code: `async () => await state.readFile({ path: ${JSON.stringify(file.path)} })`,
+    });
+    fileData[name] = pageFileData(file, read.result as string);
+    store.set(pageFilePath(name), fileData[name]);
   }
   // Links render as router links, as they do inside the app.
   const markup = renderToStaticMarkup(
@@ -315,7 +383,7 @@ async function renderPage(ctx: BackofficeScenarioContext, definition: PageDefini
       }),
     ),
   );
-  return { markup, data };
+  return { markup, data, files: fileData };
 }
 
 /** Each table's rows by caption, as cell text joined with " | ". */
@@ -513,6 +581,130 @@ describe("workspace pages", () => {
               );
             },
           ),
+        ],
+      }),
+    );
+  });
+
+  test("a page shows workspace files as their formats and declarations read them", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: allLocalObjects,
+        env: codemodeEnv(),
+        name: "a quarter's page over a budget CSV, a targets JSON, and a plan in Markdown",
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ then }) => [
+          then.assert("the source checks against the declarations and builds", async (ctx) => {
+            await ctx.runCodemode({
+              scope,
+              code: `async () => {
+  for (const [path, content] of Object.entries(${JSON.stringify(workspaceFiles)})) {
+    await state.writeFile({ path: "/workspace/" + path, content });
+  }
+}`,
+            });
+            const { diagnostics, verifyError } = await writePage(ctx, filesPage);
+            assert.deepEqual(diagnostics, [], diagnostics.join("\n"));
+            assert.equal(verifyError, null);
+          }),
+          then.assert("the page shows each file as it reads", async (ctx) => {
+            const loaded = await loadBuiltPage(ctx);
+            assert(loaded.kind === "ready", JSON.stringify(loaded));
+            assert.deepEqual(
+              Object.values(loaded.definition.files).map(({ path, format }) => [path, format]),
+              [
+                ["/workspace/finance/targets.json", "json"],
+                ["/workspace/finance/budget.csv", "csv"],
+                ["/workspace/ops/q4-plan.md", "markdown"],
+              ],
+            );
+            const { markup, files } = await renderPage(ctx, loaded.definition);
+            assert.include(markup, "€50k");
+            assert.deepEqual(tables(markup), {
+              Budget: ["October | 1200.5 | ", "November, early | 900 | Says &quot;wait&quot;"],
+            });
+            assert.include(markup, "Ada");
+            assert.include(markup, "# Q4 plan");
+            // The frontmatter's date reads as a time, which pages bind as ISO 8601.
+            const plan = Object.values(files).find(
+              (data) => typeof data === "object" && data !== null && "body" in data,
+            ) as { frontmatter: { due: string } };
+            assert.equal(plan.frontmatter.due, "2026-12-01T00:00:00.000Z");
+          }),
+          then.assert(
+            "a frontmatter field the file leaves out reads as null, keeping the body",
+            async (ctx) => {
+              await ctx.runCodemode({
+                scope,
+                code: `async () => await state.writeFile({ path: "/workspace/ops/q4-plan.md", content: "---\\nowner: Ada\\n---\\n# Q4 plan\\n" })`,
+              });
+              const loaded = await loadBuiltPage(ctx);
+              assert(loaded.kind === "ready", JSON.stringify(loaded));
+              const { files } = await renderPage(ctx, loaded.definition);
+              const plan = Object.values(files).find(
+                (data) => typeof data === "object" && data !== null && "body" in data,
+              );
+              assert.deepEqual(plan, {
+                body: "# Q4 plan",
+                frontmatter: { owner: "Ada", due: null },
+              });
+            },
+          ),
+          then.assert("a file that does not fit its declaration names the cell", async (ctx) => {
+            await writePage(
+              ctx,
+              filesPage.replace('amount: "number"', 'amount: "number", region: "string"'),
+            );
+            const loaded = await loadBuiltPage(ctx);
+            assert(loaded.kind === "ready", JSON.stringify(loaded));
+            const error = await renderPage(ctx, loaded.definition).then(
+              () => null,
+              (failure: unknown) => (failure instanceof Error ? failure.message : String(failure)),
+            );
+            assert.equal(
+              error,
+              'The CSV\'s header has no "region" column. It has: month, amount, approved, note.',
+            );
+          }),
+          then.assert("a page reads files only under /workspace", async (ctx) => {
+            const { verifyError } = await writePage(
+              ctx,
+              filesPage.replace("/workspace/finance/targets.json", "/static/SYSTEM.md"),
+            );
+            assert.equal(verifyError, "files.f0.path: Pages read files under /workspace.");
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("an open page sees an agent's rebuild as newer than the build it loaded", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: allLocalObjects,
+        env: codemodeEnv(),
+        name: "a page open in the browser while an agent rebuilds it",
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          then.assert("the build the route loads is the one the replica holds", async (ctx) => {
+            // Saved without building, so opening the page builds it.
+            await writeSource(ctx, newestRunPage);
+            const built = await loadVersionedPage(ctx);
+            assert(built.page.kind === "ready", JSON.stringify(built.page));
+            assert(built.buildUpdatedAt !== null);
+            // Not later, so the page does not reload for the build its own load wrote. The replica's
+            // time can trail the file's: the outbox reserves its time before the row is written.
+            assert.isAtMost(await replicaBuildUpdatedAt(ctx), Date.parse(built.buildUpdatedAt));
+            // Opened again, the page comes from the cache, at the same version.
+            assert.equal((await loadVersionedPage(ctx)).buildUpdatedAt, built.buildUpdatedAt);
+            ctx.vars.served = Date.parse(built.buildUpdatedAt);
+          }),
+          when.time.advance("1 minute"),
+          then.assert("a rebuild reaches the replica as a later build", async (ctx) => {
+            const { verifyError } = await writePage(ctx, paramsMetricPage);
+            assert.equal(verifyError, null);
+            assert.isAbove(await replicaBuildUpdatedAt(ctx), ctx.vars.served as number);
+          }),
         ],
       }),
     );

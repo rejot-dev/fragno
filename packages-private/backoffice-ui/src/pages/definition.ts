@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { absoluteFilePathSchema } from "../absolute-file-path";
 import type { BackofficeUiSpec } from "../catalog";
 import { INTERVAL_LIMITS } from "../components/intervals";
 import { parseBackofficeUiResult } from "../result";
@@ -8,6 +9,7 @@ export const PAGE_LIMITS = {
   titleLength: 80,
   queries: 16,
   values: 32,
+  files: 8,
   /** Characters of one query's SQL. */
   sqlLength: 20_000,
   /** Values one query binds, a list counting as one: Durable Object SQLite binds at most 100. */
@@ -55,11 +57,29 @@ export type PageQuery = {
 /** One field of a query's first row, such as a count for a metric. */
 export type PageValue = { query: string; field: string; whenEmpty: PageLiteral };
 
-/** A built page: its title, named live queries and values, and the interface bound to them. */
+/** A column of a file's records, which hold text: a scalar or one of listed strings, never rows. */
+export type PageFileColumn = Exclude<PageColumn, { rows: PageColumns }>;
+
+export type PageFileColumns = { readonly [name: string]: PageFileColumn };
+
+/**
+ * A workspace file the page shows, read again as it changes: JSON as it parses; CSV as rows of
+ * its header's declared columns; Markdown as its body and its frontmatter's declared fields.
+ */
+export type PageFile =
+  | { path: string; format: "json" }
+  | { path: string; format: "csv"; columns: PageFileColumns }
+  | { path: string; format: "markdown"; frontmatter: PageFileColumns };
+
+/**
+ * A built page: its title, named live queries, values, and files, and the interface bound to
+ * them.
+ */
 export type PageDefinition = {
   title: string;
   queries: Record<string, PageQuery>;
   values: Record<string, PageValue>;
+  files: Record<string, PageFile>;
   spec: BackofficeUiSpec;
 };
 
@@ -83,8 +103,13 @@ export function pageValuePath(value: string): string {
   return `/values/${value}`;
 }
 
+/** Where a file's data lives in the interface's state, e.g. `{ "$state": "/files/f0" }`. */
+export function pageFilePath(file: string): string {
+  return `/files/${file}`;
+}
+
 /** Builds of an older version fail validation, so the system rebuilds them from source. */
-export const PAGE_DEFINITION_VERSION = 5;
+export const PAGE_DEFINITION_VERSION = 6;
 
 /** The scalar column types, as `PageScalarColumn` lists them. */
 export const PAGE_SCALAR_COLUMNS = ["string", "number", "boolean", "time", "json"] as const;
@@ -120,6 +145,39 @@ const columnSchema: z.ZodType<PageColumn> = z.lazy(() =>
   ),
 );
 
+const fileColumnSchema: z.ZodType<PageFileColumn> = z.union(
+  [
+    z.enum([...PAGE_SCALAR_COLUMNS, ...PAGE_SCALAR_COLUMNS.map((type) => `${type}?` as const)]),
+    z
+      .array(z.string().or(z.null()))
+      .min(1)
+      .max(PAGE_LIMITS.listItems, `Lists hold at most ${PAGE_LIMITS.listItems} items.`),
+  ],
+  {
+    error: `Declare a file's column as one of ${PAGE_SCALAR_COLUMNS.map((type) => `"${type}"`).join(", ")}, with ? when it may be null, or a list of the strings it holds.`,
+  },
+);
+
+const fileColumnsSchema = namedSchema(fileColumnSchema, PAGE_LIMITS.columns);
+
+const filePathSchema = absoluteFilePathSchema
+  .max(2048)
+  .refine((path) => path.startsWith("/workspace/"), "Pages read files under /workspace.");
+
+const fileSchema = z.discriminatedUnion(
+  "format",
+  [
+    z.strictObject({ path: filePathSchema, format: z.literal("json") }),
+    z.strictObject({ path: filePathSchema, format: z.literal("csv"), columns: fileColumnsSchema }),
+    z.strictObject({
+      path: filePathSchema,
+      format: z.literal("markdown"),
+      frontmatter: fileColumnsSchema,
+    }),
+  ],
+  { error: 'A file\'s format is "json", "csv", or "markdown".' },
+);
+
 const paramSchema = z.union([literalSchema, z.strictObject({ now: z.number() })], {
   error: "Expected a literal, or a time relative to now.",
 });
@@ -151,6 +209,7 @@ const pageFileSchema = z.strictObject({
     z.strictObject({ query: z.string(), field: z.string(), whenEmpty: literalSchema }),
     PAGE_LIMITS.values,
   ),
+  files: namedSchema(fileSchema, PAGE_LIMITS.files),
   spec: z.unknown(),
 });
 
@@ -176,7 +235,7 @@ export function parsePageDefinition(json: unknown): PageParseResult {
     const path = issue.path.map(String).join(".");
     return { kind: "invalid", message: path ? `${path}: ${issue.message}` : issue.message };
   }
-  const { title, queries, values, spec } = file.data;
+  const { title, queries, values, files, spec } = file.data;
   const problem = pageProblem(queries, values);
   if (problem !== null) {
     return { kind: "invalid", message: problem };
@@ -189,14 +248,14 @@ export function parsePageDefinition(json: unknown): PageParseResult {
   if (ui.kind === "invalid") {
     return { kind: "invalid", message: `spec: ${ui.message}` };
   }
-  const unbound = unboundStatePaths(ui.value.$ui.spec, { queries, values });
+  const unbound = unboundStatePaths(ui.value.$ui.spec, { queries, values, files });
   if (unbound.length > 0) {
     return {
       kind: "invalid",
-      message: `spec: ${unbound.join(", ")} name no query or value of this page.`,
+      message: `spec: ${unbound.join(", ")} name no query, value, or file of this page.`,
     };
   }
-  return { kind: "valid", definition: { title, queries, values, spec: ui.value.$ui.spec } };
+  return { kind: "valid", definition: { title, queries, values, files, spec: ui.value.$ui.spec } };
 }
 
 /** What the queries' declarations and the values break, named by where it sits, or null. */
@@ -243,17 +302,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/** State paths the spec reads, in props, conditions, and repeats, that name no query or value. */
+/**
+ * State paths the spec reads, in props, conditions, and repeats, that name no query, value, or
+ * file.
+ */
 function unboundStatePaths(
   spec: BackofficeUiSpec,
-  { queries, values }: Pick<PageDefinition, "queries" | "values">,
+  { queries, values, files }: Pick<PageDefinition, "queries" | "values" | "files">,
 ): string[] {
   const unbound = new Set<string>();
   const check = (path: string) => {
     const [, root, name] = path.split("/");
     const known =
       (root === "data" && name !== undefined && Object.hasOwn(queries, name)) ||
-      (root === "values" && name !== undefined && Object.hasOwn(values, name));
+      (root === "values" && name !== undefined && Object.hasOwn(values, name)) ||
+      (root === "files" && name !== undefined && Object.hasOwn(files, name));
     if (!known) {
       unbound.add(path);
     }

@@ -339,7 +339,7 @@ async function buildHomePage(ctx: BackofficeScenarioContext): Promise<PageDefini
     scope,
     code: `async () => await state.writeFile({ path: ${JSON.stringify(HOME_PAGE_PATH)}, content: ${JSON.stringify(HOME_PAGE_SOURCE)} })`,
   });
-  const loaded = await loadPage({
+  const { page: loaded } = await loadPage({
     runtime: ctx.runtime.services,
     kernel: new BackofficeKernel(ctx.runtime.services),
     execution: createBackofficeSystemExecution(scope),

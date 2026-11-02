@@ -181,6 +181,18 @@ page's interface.
   a cached build is checked again when its source or the relations change.
 - **Older pages.** Pages written for version 4, which queried TanStack DB's collections, fail their
   build with a message that says to rewrite their queries in SQL.
+- **Files.** A page may also show `/workspace` files, as JSON, CSV rows, or Markdown with its
+  frontmatter (`file` in `page.d.ts`). Their contents are not in either replica, so a page that
+  reads files also opens the scope's Upload replica, and `../../artifacts/pages/view.tsx` reads each
+  file through Files again whenever its row there changes. The browser parses them
+  (`../../artifacts/pages/page-files.ts`), and the page shows once every file has arrived. A file
+  that is missing or does not fit its declaration binds as empty, under a notice naming why, so it
+  empties only what reads it.
+- **Rebuilds.** Every page also opens the Upload replica to watch its build file under
+  `/workspace/.build`. The route returns when that build was written, read after any build its load
+  wrote; when the replica's row for it is later, someone rebuilt the page, such as an agent's
+  `artifacts.buildPage`, and the route revalidates once to show the new build. The replica can lag
+  behind the route, so an earlier row is ignored.
 
 On the production fixture of Oct 23, the example home page's eleven queries take 12 ms together the
 first time, deriving `agents` and `workflow_waits` included, and 4 ms after, in Node.

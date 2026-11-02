@@ -472,7 +472,7 @@ const createRuntimeContext = ({
           runtime: {
             loadPage: async (sourcePath) => {
               const { loadPage } = await import("@/artifacts/pages/build.server");
-              return await loadPage({ runtime, kernel, execution, sourcePath });
+              return (await loadPage({ runtime, kernel, execution, sourcePath })).page;
             },
           },
         }
