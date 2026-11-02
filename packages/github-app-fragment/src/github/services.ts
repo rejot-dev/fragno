@@ -55,7 +55,13 @@ export type GitHubInstallationSyncMutation = {
         existingInstallationId: FragnoId | null;
         details: GitHubInstallationDetails;
       }
-    | { kind: "deleted"; existingInstallationId: FragnoId };
+    | { kind: "deleted"; existingInstallationId: FragnoId }
+    /** The installation now serves another store; recorded even if this one never synced it. */
+    | {
+        kind: "released";
+        existingInstallationId: FragnoId | null;
+        account: GitHubInstallationAccount;
+      };
   now: Date;
   /** When a webhook delivery prompted the sync, which records it as the latest delivery. */
   webhookReceivedAt: Date | null;
@@ -77,6 +83,14 @@ export type GitHubInstallationSyncMutation = {
   linkStatusChanges: GitHubRepositoryLinkStatusChangedPayload[];
 };
 
+/** The GitHub account an installation belongs to. */
+export type GitHubInstallationAccount = {
+  installationId: string;
+  accountId: string;
+  accountLogin: string;
+  accountType: string;
+};
+
 export type GitHubAppFragmentServices = {
   app: ReturnType<typeof createGitHubApiClient>["app"];
   githubApiClient: ReturnType<typeof createGitHubApiClient>;
@@ -94,6 +108,8 @@ const toInstallationSyncUpdate = (
   status: installation.status,
   permissions: installation.permissions,
   events: installation.events,
+  // Only a sync that claims a released installation reaches one, and it serves this store again.
+  releasedAt: null,
   updatedAt: now,
 });
 
@@ -136,7 +152,10 @@ export const createGitHubServices = (
         .mutate(({ uow }) => {
           const { installation, webhookReceivedAt } = input;
           const delivery = webhookReceivedAt ? { lastWebhookAt: webhookReceivedAt } : {};
-          // Checks make a sync that read an older row retry with a fresh read of GitHub.
+          // Another sync can write between this one's read and write. A stale update fails its
+          // check, and creating a row it created fails as the same conflict, so the caller syncs
+          // again with a fresh read.
+          const created = { retryOnUniqueConflict: () => true };
           switch (installation.kind) {
             case "current":
               if (installation.existingInstallationId) {
@@ -149,22 +168,50 @@ export const createGitHubServices = (
                     .check(),
                 );
               } else {
-                uow.create("installation", {
-                  id: installation.details.id,
-                  accountId: installation.details.accountId,
-                  accountLogin: installation.details.accountLogin,
-                  accountType: installation.details.accountType,
-                  status: installation.details.status,
-                  permissions: installation.details.permissions,
-                  events: installation.details.events,
-                  lastWebhookAt: webhookReceivedAt,
-                });
+                uow.create(
+                  "installation",
+                  {
+                    id: installation.details.id,
+                    accountId: installation.details.accountId,
+                    accountLogin: installation.details.accountLogin,
+                    accountType: installation.details.accountType,
+                    status: installation.details.status,
+                    permissions: installation.details.permissions,
+                    events: installation.details.events,
+                    lastWebhookAt: webhookReceivedAt,
+                  },
+                  created,
+                );
               }
               break;
             case "deleted":
               uow.update("installation", installation.existingInstallationId, (b) =>
                 b.set({ status: "deleted", updatedAt: input.now, ...delivery }).check(),
               );
+              break;
+            case "released":
+              if (installation.existingInstallationId) {
+                uow.update("installation", installation.existingInstallationId, (b) =>
+                  b.set({ status: "deleted", releasedAt: input.now, updatedAt: input.now }).check(),
+                );
+              } else {
+                // A sync that read no row then conflicts with this one, and reads it released.
+                const { account } = installation;
+                uow.create(
+                  "installation",
+                  {
+                    id: account.installationId,
+                    accountId: account.accountId,
+                    accountLogin: account.accountLogin,
+                    accountType: account.accountType,
+                    status: "deleted",
+                    permissions: {},
+                    events: [],
+                    releasedAt: input.now,
+                  },
+                  created,
+                );
+              }
               break;
             default:
               throw new Error("Unknown installation sync.", {
@@ -173,7 +220,7 @@ export const createGitHubServices = (
           }
 
           for (const record of input.creates) {
-            uow.create("installation_repo", record);
+            uow.create("installation_repo", record, created);
           }
           for (const update of input.updates) {
             uow.update("installation_repo", update.id, (b) => b.set(update.data));

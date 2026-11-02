@@ -59,7 +59,9 @@ Take the highest rung that offers the requested service:
 1. **Backoffice**: a service from the native list. Fixed addresses such as `backoffice#telegram`
    appear as setup targets. For GitHub, address the repository as `github#owner/repo`, with GitHub's
    casing since addresses are case-sensitive; when the GitHub App cannot reach it yet, submitting
-   `{ link: true }` returns the GitHub link that grants access.
+   `{ link: true }` returns the GitHub link that grants access. The link signs the user in to
+   GitHub, then links the repository through an installation they already have, or asks them to
+   install the app or add the repository; the page they land on says which. Run setup again after.
 2. **Open Connector**: a service whose `id` names the provider, such as `gmail`, with
    `connector#n_…` targets. Use a target unchanged; each names one connection. The first target of a
    provider configuration is its default name, and every name already started follows it, so a

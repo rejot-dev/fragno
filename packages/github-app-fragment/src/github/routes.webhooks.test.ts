@@ -602,4 +602,201 @@ describe("github-app webhooks", () => {
       await scenario.test.cleanup();
     }
   });
+
+  describe("an installation released to another store", () => {
+    const account = { accountId: "1", accountLogin: "octo", accountType: "User" };
+
+    type RouteResult<TData = unknown> =
+      | { type: "json"; data: TData }
+      | { type: "error"; error: { code: string } };
+
+    /**
+     * The fragment's routes for installation 123, as the stores' callers use them. A release or
+     * claim names the row version read just before, unless a test passes an older one.
+     */
+    function routes(scenario: Awaited<ReturnType<typeof webhookScenario>>) {
+      const { githubApp } = scenario.fragments;
+      const pathParams = { installationId: "123" };
+      const version = async () => {
+        const read = (await githubApp.callRoute("GET", "/installations/:installationId", {
+          pathParams,
+        })) as RouteResult<{ version: number }>;
+        return read.type === "json" ? read.data.version : null;
+      };
+      const sync = (body?: { claim: { version: number | null } }) =>
+        githubApp.callRoute("POST", "/installations/:installationId/sync", {
+          pathParams,
+          ...(body ? { body } : {}),
+        }) as Promise<RouteResult>;
+      return {
+        version,
+        release: async (read?: number | null) =>
+          (await githubApp.callRoute("POST", "/installations/:installationId/release", {
+            pathParams,
+            body: { ...account, version: read === undefined ? await version() : read },
+          })) as RouteResult<{ released: boolean }>,
+        sync: () => sync(),
+        claim: async (read?: number | null) =>
+          await sync({ claim: { version: read === undefined ? await version() : read } }),
+        link: (repo: string) =>
+          githubApp.callRoute("POST", "/repositories/:owner/:repo/link", {
+            pathParams: { owner: "octo", repo },
+            body: {},
+          }) as Promise<RouteResult>,
+      };
+    }
+
+    it("stays released through a delivery queued before the release, and through syncs", async () => {
+      const github: FakeGitHubInstallation = {
+        account: octo,
+        suspended: false,
+        repositories: [repository(101, "api")],
+      };
+      const scenario = await webhookScenario(new Map([["123", github]]));
+      const { release, sync, link } = routes(scenario);
+      try {
+        await scenario.deliver("installation", "created", {
+          installation: installationPayload(123),
+        });
+        assert((await link("api")).type === "json");
+
+        // Accepted while the store still served the installation, then processed after.
+        await scenario.receive("installation_repositories", "added", {
+          installation: installationPayload(123),
+          repositories_added: [repository(101, "api")],
+          repositories_removed: [],
+        });
+        const released = await release();
+        assert(released.type === "json");
+        expect(released.data).toEqual({ released: true });
+        await drainDurableHooks(scenario.fragments.githubApp.fragment);
+
+        // GitHub still reports the installation active; this store does not.
+        expect(await scenario.installation("123")).toMatchObject({ status: "deleted" });
+        expect((await scenario.installation("123"))?.releasedAt).toBeInstanceOf(Date);
+        expect(await scenario.presentRepositories()).toEqual([]);
+        const linked = await link("api");
+        assert(linked.type === "error" && linked.error.code === "REPO_NOT_REACHABLE");
+        const synced = await sync();
+        assert(synced.type === "error" && synced.error.code === "INSTALLATION_RELEASED");
+        expect(await scenario.presentRepositories()).toEqual([]);
+        // Releasing again changes nothing.
+        const again = await release();
+        assert(again.type === "json");
+        expect(again.data).toEqual({ released: false });
+      } finally {
+        await scenario.test.cleanup();
+      }
+    });
+
+    it("is recorded even when this store never synced it, so a later delivery cannot add it", async () => {
+      const github: FakeGitHubInstallation = {
+        account: octo,
+        suspended: false,
+        repositories: [repository(101, "api")],
+      };
+      const scenario = await webhookScenario(new Map([["123", github]]));
+      const { release } = routes(scenario);
+      try {
+        await scenario.receive("installation", "created", {
+          installation: installationPayload(123),
+        });
+        assert((await release()).type === "json");
+        await drainDurableHooks(scenario.fragments.githubApp.fragment);
+
+        expect(await scenario.installation("123")).toMatchObject({
+          status: "deleted",
+          accountLogin: "octo",
+        });
+        expect(await scenario.presentRepositories()).toEqual([]);
+      } finally {
+        await scenario.test.cleanup();
+      }
+    });
+
+    it("a claim or release whose caller read the row before it changed conflicts", async () => {
+      const github: FakeGitHubInstallation = {
+        account: octo,
+        suspended: false,
+        repositories: [repository(101, "api")],
+      };
+      const scenario = await webhookScenario(new Map([["123", github]]));
+      const { version, release, claim } = routes(scenario);
+      try {
+        await scenario.deliver("installation", "created", {
+          installation: installationPayload(123),
+        });
+
+        // A claim confirmed while the store still served the installation, then a move released it.
+        const beforeRelease = await version();
+        assert((await release()).type === "json");
+        const staleClaim = await claim(beforeRelease);
+        assert(
+          staleClaim.type === "error" && staleClaim.error.code === "INSTALLATION_SYNC_CONFLICT",
+        );
+        expect(await scenario.installation("123")).toMatchObject({ status: "deleted" });
+        expect(await scenario.presentRepositories()).toEqual([]);
+
+        // A claim for a move back reads the released row, then a later move away releases it again.
+        const beforeLaterMove = await version();
+        const releasedAgain = await release();
+        assert(releasedAgain.type === "json");
+        expect(releasedAgain.data).toEqual({ released: false });
+        const overtaken = await claim(beforeLaterMove);
+        assert(overtaken.type === "error" && overtaken.error.code === "INSTALLATION_SYNC_CONFLICT");
+        expect(await scenario.installation("123")).toMatchObject({ status: "deleted" });
+
+        // A move back claims it; the first move's late release then conflicts.
+        const beforeClaim = await version();
+        assert((await claim()).type === "json");
+        const staleRelease = await release(beforeClaim);
+        assert(
+          staleRelease.type === "error" && staleRelease.error.code === "INSTALLATION_SYNC_CONFLICT",
+        );
+        expect(await scenario.installation("123")).toMatchObject({
+          status: "active",
+          releasedAt: null,
+        });
+        expect(await scenario.presentRepositories()).toEqual(["octo/api"]);
+      } finally {
+        await scenario.test.cleanup();
+      }
+    });
+
+    it("serves this store again once a sync claims it", async () => {
+      const github: FakeGitHubInstallation = {
+        account: octo,
+        suspended: false,
+        repositories: [repository(101, "api")],
+      };
+      const scenario = await webhookScenario(new Map([["123", github]]));
+      const { release, claim, link } = routes(scenario);
+      try {
+        await scenario.deliver("installation", "created", {
+          installation: installationPayload(123),
+        });
+        assert((await release()).type === "json");
+
+        const claimed = await claim();
+        assert(claimed.type === "json");
+        expect(await scenario.installation("123")).toMatchObject({
+          status: "active",
+          releasedAt: null,
+        });
+        expect(await scenario.presentRepositories()).toEqual(["octo/api"]);
+        assert((await link("api")).type === "json");
+
+        // Deliveries sync it as before.
+        github.repositories = [];
+        await scenario.deliver("installation_repositories", "removed", {
+          installation: installationPayload(123),
+          repositories_added: [],
+          repositories_removed: [repository(101, "api")],
+        });
+        expect(await scenario.presentRepositories()).toEqual([]);
+      } finally {
+        await scenario.test.cleanup();
+      }
+    });
+  });
 });

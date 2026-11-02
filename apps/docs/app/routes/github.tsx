@@ -49,8 +49,10 @@ const features: Feature[] = [
 const routeSurface = `POST /webhooks
 GET  /webhooks/deliveries/:deliveryId
 GET  /installations
+GET  /installations/:installationId
 GET  /installations/:installationId/repos
 POST /installations/:installationId/sync
+POST /installations/:installationId/release
 GET  /repositories/linked
 POST /repositories/link
 POST /repositories/unlink

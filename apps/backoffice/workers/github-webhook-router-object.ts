@@ -38,7 +38,22 @@ type StoredUserState = {
  * Repositories integration setup asked to link once GitHub's callback completes. A GitHub install
  * flow yields one installation on one account, so a request names that account.
  */
-type GitHubRepositoryInstallRequest = { owner: string; repositories: string[] };
+export type GitHubRepositoryInstallRequest = { owner: string; repositories: string[] };
+
+/**
+ * What a GitHub sign-in was started for. Installations are bound to a workspace only once the
+ * sign-in shows the user reaches them on GitHub. `choose` lists the installations the user
+ * reaches to pick from; `install` binds the one GitHub's install redirect named; `repositories`
+ * links repositories through the user's installation on their account, or installs the app there.
+ */
+export type GitHubSignInPurpose =
+  | { kind: "choose" }
+  | {
+      kind: "install";
+      installationId: string;
+      repositoryRequest: GitHubRepositoryInstallRequest | null;
+    }
+  | { kind: "repositories"; request: GitHubRepositoryInstallRequest };
 
 type StoredInstallState = StoredUserState & {
   /** Null for installs started from the GitHub configuration page. */
@@ -48,6 +63,11 @@ type StoredInstallState = StoredUserState & {
 type StoredInstallationClaimState = StoredUserState & {
   returnTo: string;
   completion?: unknown;
+  /** Absent for sign-ins started before purposes, which all let the user choose. */
+  purpose?: GitHubSignInPurpose;
+  authorizationUrl?: string;
+  /** What finishing the sign-in did, once it has; the sign-in's page shows it. */
+  outcome?: unknown;
 };
 
 export type CreateInstallUrlResult =
@@ -78,14 +98,18 @@ export type StoreInstallationClaimStateInput = {
   state: string;
   userId: string;
   owner: GitHubInstallationOwner;
+  /** Empty to return to the workspace's integrations. */
   returnTo: string;
   expiresAt: number;
+  purpose: GitHubSignInPurpose;
+  authorizationUrl: string;
 };
 
 export type StoreInstallationClaimCompletionInput = {
   state: string;
   userId: string;
   completion: unknown;
+  outcome?: unknown;
 };
 
 export type InstallStateResolutionResult =
@@ -106,6 +130,8 @@ export type InstallationClaimStateResolutionResult =
       owner: GitHubInstallationOwner;
       returnTo: string;
       completion: unknown;
+      purpose: GitHubSignInPurpose;
+      outcome: unknown;
     }
   | {
       ok: false;
@@ -135,6 +161,10 @@ const INSTALL_STATE_TTL_MS = 10 * 60 * 1000;
 const INSTALL_PENDING_KEY_PREFIX = "github-install-pending-v2:";
 const installPendingKey = (owner: GitHubInstallationOwner, userId: string, account: string) =>
   `${INSTALL_PENDING_KEY_PREFIX}${backofficeScopePathSegment(owner)}:${userId}:${account}`;
+/** Points at a user's newest unfinished repository sign-in per workspace and account. */
+const SIGN_IN_PENDING_KEY_PREFIX = "github-sign-in-pending-v1:";
+const signInPendingKey = (owner: GitHubInstallationOwner, userId: string, account: string) =>
+  `${SIGN_IN_PENDING_KEY_PREFIX}${backofficeScopePathSegment(owner)}:${userId}:${account}`;
 const installUrl = (appSlug: string, state: string) =>
   `https://github.com/apps/${appSlug}/installations/new?state=${encodeURIComponent(state)}`;
 // The key predates personal workspaces, when only organizations owned installations.
@@ -716,8 +746,82 @@ export class GitHubWebhookRouterObject {
       returnTo: input.returnTo.trim(),
       createdAt: Date.now(),
       expiresAt: input.expiresAt,
+      purpose: input.purpose,
+      authorizationUrl: input.authorizationUrl,
     } satisfies StoredInstallationClaimState);
+    if (input.purpose.kind === "repositories") {
+      await this.#state.storage.put(
+        signInPendingKey(input.owner, userId, input.purpose.request.owner),
+        state,
+      );
+    }
     return { ok: true };
+  }
+
+  /** The user's unfinished sign-in that links repositories of one account, and those repositories. */
+  async getPendingRepositorySignIn(
+    userId: string,
+    owner: GitHubInstallationOwner,
+    account: string,
+  ): Promise<{ authorizationUrl: string; repositories: string[] } | null> {
+    const pending = await this.#readPendingSignIn(userId.trim(), owner, account);
+    return (
+      pending && {
+        authorizationUrl: pending.authorizationUrl,
+        repositories: pending.request.repositories,
+      }
+    );
+  }
+
+  /**
+   * Adds a repository to the user's unfinished sign-in for its account, so repeated setup calls
+   * resume one GitHub sign-in. Null when there is none to resume.
+   */
+  async addRepositoryToPendingSignIn(
+    userId: string,
+    owner: GitHubInstallationOwner,
+    repositoryFullName: string,
+  ): Promise<{ authorizationUrl: string } | null> {
+    const account = repositoryFullName.slice(0, repositoryFullName.indexOf("/"));
+    const pending = await this.#readPendingSignIn(userId.trim(), owner, account);
+    if (pending === null) {
+      return null;
+    }
+    const { repositories } = pending.request;
+    if (!repositories.includes(repositoryFullName)) {
+      await this.#state.storage.put(`${INSTALLATION_CLAIM_STATE_KEY_PREFIX}${pending.state}`, {
+        ...pending.record,
+        purpose: {
+          kind: "repositories",
+          request: { owner: account, repositories: [...repositories, repositoryFullName] },
+        },
+      } satisfies StoredInstallationClaimState);
+    }
+    return { authorizationUrl: pending.authorizationUrl };
+  }
+
+  async #readPendingSignIn(userId: string, owner: GitHubInstallationOwner, account: string) {
+    const state = await this.#state.storage.get<string>(signInPendingKey(owner, userId, account));
+    if (!state) {
+      return null;
+    }
+    const record = await this.#state.storage.get<StoredInstallationClaimState>(
+      `${INSTALLATION_CLAIM_STATE_KEY_PREFIX}${state}`,
+    );
+    if (
+      record?.purpose?.kind !== "repositories" ||
+      !record.authorizationUrl ||
+      record.outcome !== undefined ||
+      record.expiresAt <= Date.now()
+    ) {
+      return null;
+    }
+    return {
+      state,
+      record,
+      request: record.purpose.request,
+      authorizationUrl: record.authorizationUrl,
+    };
   }
 
   async resolveInstallationClaimState(
@@ -752,6 +856,8 @@ export class GitHubWebhookRouterObject {
       owner: record.owner,
       returnTo: record.returnTo,
       completion: record.completion ?? null,
+      purpose: record.purpose ?? { kind: "choose" },
+      outcome: record.outcome ?? null,
     };
   }
 
@@ -775,7 +881,19 @@ export class GitHubWebhookRouterObject {
     await this.#state.storage.put(storageKey, {
       ...record,
       completion: input.completion,
+      ...(input.outcome === undefined ? {} : { outcome: input.outcome }),
     } satisfies StoredInstallationClaimState);
+    // A finished sign-in is not resumed: setup offers a new one.
+    if (input.outcome !== undefined && record.purpose?.kind === "repositories") {
+      const pendingKey = signInPendingKey(
+        record.owner,
+        record.userId,
+        record.purpose.request.owner,
+      );
+      if ((await this.#state.storage.get<string>(pendingKey)) === input.state.trim()) {
+        await this.#state.storage.delete(pendingKey);
+      }
+    }
     return { ok: true };
   }
 
@@ -815,6 +933,42 @@ export class GitHubWebhookRouterObject {
       await this.#state.storage.put(mappingKey, owner);
     }
 
+    return { ok: true };
+  }
+
+  /**
+   * Moves an installation to `to`, only while it still serves `from`. Moving it again once it
+   * serves `to` changes nothing, so a retried move succeeds.
+   */
+  async moveInstallationOwner(
+    installationId: string,
+    from: GitHubInstallationOwner,
+    to: GitHubInstallationOwner,
+  ): Promise<
+    | { ok: true }
+    | {
+        ok: false;
+        code: "MISSING_INSTALLATION_ID" | "INSTALLATION_OWNER_CONFLICT";
+        message: string;
+      }
+  > {
+    const normalizedInstallationId = installationId.trim();
+    if (!normalizedInstallationId) {
+      return { ok: false, code: "MISSING_INSTALLATION_ID", message: "Missing installation id." };
+    }
+    const mappingKey = `${INSTALLATION_OWNER_KEY_PREFIX}${normalizedInstallationId}`;
+    const existing = readInstallationOwner(await this.#state.storage.get(mappingKey));
+    if (existing && backofficeContextScopesEqual(existing, to)) {
+      return { ok: true };
+    }
+    if (!existing || !backofficeContextScopesEqual(existing, from)) {
+      return {
+        ok: false,
+        code: "INSTALLATION_OWNER_CONFLICT",
+        message: "The installation no longer serves the workspace it was moved from.",
+      };
+    }
+    await this.#state.storage.put(mappingKey, to);
     return { ok: true };
   }
 
