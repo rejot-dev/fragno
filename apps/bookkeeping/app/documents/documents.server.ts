@@ -233,9 +233,18 @@ export async function readDocumentFile(
   if (blob.sizeBytes !== document.sizeBytes) {
     return { status: "changed" };
   }
-  const { url } = await callBackoffice(() =>
-    backoffice.call(scope, "blobs.createDownloadUrl", { key }),
-  );
+  let url: string;
+  try {
+    ({ url } = await callBackoffice(() =>
+      backoffice.call(scope, "blobs.createDownloadUrl", { key }),
+    ));
+  } catch (error) {
+    // Deleted since Backoffice described it.
+    if (error instanceof BackofficeApiRequestError && error.code === "not_found") {
+      return { status: "missing" };
+    }
+    throw error;
+  }
   const response = await fetchFromStorage(url);
   if (response.status === 404) {
     return { status: "missing" };
