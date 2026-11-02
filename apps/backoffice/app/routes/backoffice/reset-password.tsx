@@ -100,7 +100,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export function meta() {
   return [
-    { title: "Choose a new Backoffice password" },
+    { title: "Choose a new Leyway password" },
     { name: "robots", content: "noindex, nofollow" },
     { name: "referrer", content: "no-referrer" },
   ];

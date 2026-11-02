@@ -86,7 +86,7 @@ function internalDestinations(
 
 export function meta() {
   return [
-    { title: "Backoffice Internals" },
+    { title: "Leyway Internals" },
     { name: "description", content: "Monitor internal backoffice services and queues." },
   ];
 }

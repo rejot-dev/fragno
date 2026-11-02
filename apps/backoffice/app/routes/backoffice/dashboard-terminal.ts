@@ -302,7 +302,7 @@ const createWelcomeEntry = (
   cwd: DEFAULT_CWD,
   ok: true,
   exitCode: 0,
-  output: `Backoffice terminal connected to the selected runtime-tool bash scope.
+  output: `Leyway terminal connected to the selected runtime-tool bash scope.
 Scope: ${scopeName ?? "unscoped"}
 Type a command and press Enter. End a line with \\ to continue it; run 'use' to switch scope.`,
   durationMs: 0,

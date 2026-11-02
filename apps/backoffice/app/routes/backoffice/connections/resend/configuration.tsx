@@ -363,7 +363,7 @@ export default function BackofficeOrganizationResendConfiguration() {
 
             <Field
               label="Webhook base URL"
-              description="Required. Use the public Backoffice origin or a tunnel URL."
+              description="Required. Use the public Leyway origin or a tunnel URL."
             >
               <Input
                 type="url"

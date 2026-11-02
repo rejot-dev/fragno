@@ -73,7 +73,7 @@ type UserInvitation = Extract<
 
 export function meta() {
   return [
-    { title: "Backoffice Organizations" },
+    { title: "Leyway Organizations" },
     { name: "description", content: "Manage organizations for the Fragno backoffice." },
   ];
 }

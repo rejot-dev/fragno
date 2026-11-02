@@ -298,7 +298,7 @@ export default function BackofficeMarketplaceManage({ loaderData }: Route.Compon
     <div className="space-y-4">
       <BackofficePageHeader
         breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
+          { label: "Leyway", to: "/backoffice" },
           { label: "Marketplace", to: "/backoffice/marketplace" },
           {
             label: "My listings",

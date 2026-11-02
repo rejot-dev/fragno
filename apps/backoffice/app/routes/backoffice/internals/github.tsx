@@ -134,7 +134,7 @@ const formatTimestamp = (value?: number | Date | null) => {
 
 export function meta() {
   return [
-    { title: "Backoffice Internals · GitHub" },
+    { title: "Leyway Internals · GitHub" },
     {
       name: "description",
       content: "Inspect GitHub app runtime config and singleton routing state.",

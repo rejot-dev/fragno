@@ -63,7 +63,7 @@ async function postUploadStep(
   if (!response.headers.get("content-type")?.includes("application/json")) {
     return {
       ok: false,
-      error: (await response.text()) || `Backoffice answered ${response.status}.`,
+      error: (await response.text()) || `Leyway answered ${response.status}.`,
     };
   }
   return (await response.json()) as LargeFileUploadResult;

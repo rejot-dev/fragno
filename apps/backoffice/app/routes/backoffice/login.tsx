@@ -152,11 +152,11 @@ const betterAuthErrorContent = {
   },
   email_not_found: {
     title: "No email address was provided",
-    message: "Make an email address available to Backoffice through your provider, then try again.",
+    message: "Make an email address available to Leyway through your provider, then try again.",
   },
   "email_doesn't_match": {
     title: "The account email does not match",
-    message: "Use the provider account connected to your Backoffice email address.",
+    message: "Use the provider account connected to your Leyway email address.",
   },
   unable_to_get_user_info: {
     title: "Your account details could not be loaded",
@@ -167,11 +167,11 @@ const betterAuthErrorContent = {
     message: "Sign in with your email and password before connecting this account.",
   },
   unable_to_create_user: {
-    title: "Your Backoffice account could not be created",
+    title: "Your Leyway account could not be created",
     message: "Try again or open your sign-up link again.",
   },
   unable_to_create_session: {
-    title: "A Backoffice session could not be created",
+    title: "A Leyway session could not be created",
     message: "Return to sign in and try again.",
   },
   account_not_linked: {
@@ -180,11 +180,11 @@ const betterAuthErrorContent = {
   },
   account_already_linked_to_different_user: {
     title: "This provider account is already linked",
-    message: "Sign in with the Backoffice account that is already connected to it.",
+    message: "Sign in with the Leyway account that is already connected to it.",
   },
   signup_disabled: {
     title: "Account creation is not available",
-    message: "Use an existing Backoffice account or open your sign-up link.",
+    message: "Use an existing Leyway account or open your sign-up link.",
   },
   ...ACCESS_CODE_ERROR_CONTENT,
 } satisfies Record<BetterAuthErrorCode, BackofficeLoginAuthError>;
@@ -199,7 +199,7 @@ function readBackofficeLoginAuthError(url: URL): BackofficeLoginAuthError | null
   if (!parsedErrorCode.success) {
     return {
       title: "Authentication could not be completed",
-      message: "Try again or use your Backoffice email and password to continue.",
+      message: "Try again or use your Leyway email and password to continue.",
     };
   }
 
@@ -309,10 +309,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
 }
 
 export function meta() {
-  return [
-    { title: "Backoffice Login" },
-    { name: "description", content: "Sign in to Backoffice." },
-  ];
+  return [{ title: "Leyway Login" }, { name: "description", content: "Sign in to Leyway." }];
 }
 
 export default function LoginPage() {
@@ -371,7 +368,7 @@ function BackofficeLogin({
             <span className="text-[var(--bo-muted-2)]">not a co-worker.</span>
           </h1>
           <p className="mt-7 max-w-xl text-sm leading-7 text-pretty text-[var(--bo-muted)]">
-            Backoffice uses models to translate intent, generate interfaces, and write workflows.
+            Leyway uses models to translate intent, generate interfaces, and write workflows.
             Execution remains deterministic, inspectable, and governed by your systems.
           </p>
         </section>

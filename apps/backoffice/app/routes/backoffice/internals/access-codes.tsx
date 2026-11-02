@@ -122,7 +122,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
 
 export function meta() {
   return [
-    { title: "Access codes · Backoffice Internals" },
+    { title: "Access codes · Leyway Internals" },
     {
       name: "description",
       content: "Create and revoke the access codes people sign up with.",

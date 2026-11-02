@@ -14,8 +14,8 @@ export function LandingHero() {
         <span className="text-[var(--bo-muted-2)]">its work.</span>
       </h1>
       <p className="mt-9 max-w-2xl text-[clamp(0.95rem,1.4vw,1.1rem)] leading-7 text-pretty text-[var(--bo-muted)]">
-        Describe how your business runs, and Backoffice writes it as workflows you can read. They
-        run the same way every time, ask before they act, and record every step.
+        Describe how your business runs, and Leyway writes it as workflows you can read. They run
+        the same way every time, ask before they act, and record every step.
       </p>
       <LandingCallsToAction className="mt-10" />
       <div className="mt-16 lg:mt-20">

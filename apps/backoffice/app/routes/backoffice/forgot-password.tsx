@@ -59,7 +59,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export function meta() {
   return [
-    { title: "Reset your Backoffice password" },
+    { title: "Reset your Leyway password" },
     { name: "robots", content: "noindex, nofollow" },
   ];
 }

@@ -76,7 +76,7 @@ export default function BackofficeMarketplaceFeatured({ loaderData }: Route.Comp
             <p className="mt-1 text-xs text-[var(--bo-muted)]">
               {isOrganizationCatalog
                 ? "Picked by your organization's admins."
-                : "Picked by the Backoffice team."}
+                : "Picked by the Leyway team."}
             </p>
           </div>
 

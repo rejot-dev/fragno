@@ -28,7 +28,7 @@ const ACCESS_CODE_REJECTIONS = {
 
 const ACCESS_CODE_REQUIRED = {
   error: "access_code_required",
-  errorDescription: "An access code is required to create a Backoffice account.",
+  errorDescription: "An access code is required to create a Leyway account.",
 } as const satisfies ValidateUserInfoResult;
 
 /** Why `carrier` does not admit an account, or null when `use` accepts its code. */

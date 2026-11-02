@@ -9,8 +9,7 @@ export type BreadcrumbItem = {
 };
 
 export function BackofficeBreadcrumbs({ items }: { items: BreadcrumbItem[] }) {
-  const visibleItems =
-    items.length > 1 && items[0]?.label === "Backoffice" ? items.slice(1) : items;
+  const visibleItems = items.length > 1 && items[0]?.label === "Leyway" ? items.slice(1) : items;
 
   return (
     <nav aria-label="Breadcrumb" className="text-xs font-medium">

@@ -4,6 +4,9 @@ Backoffice is the AI-native automation product in `apps/backoffice`: people desc
 business runs, and agents write it as workflows that run the same way every time, ask before they
 act, and record every step. This repository exists to build Backoffice.
 
+Backoffice ships as **Leyway** at leyway.com. Backoffice stays the name in code, APIs, and agent
+files; text people read in the product, such as UI copy, page titles, and emails, says Leyway.
+
 Fragno, the framework in `packages/`, is how we build it. Backoffice's features are built from
 Fragments: full-stack libraries spanning frontend hooks, backend routes, and database models. Change
 Fragno when Backoffice needs a primitive.

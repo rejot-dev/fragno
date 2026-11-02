@@ -92,7 +92,7 @@ export default function BackofficeAutomationClaimComplete({
   return (
     <div className="space-y-4">
       <BackofficePageHeader
-        breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Identity" }]}
+        breadcrumbs={[{ label: "Leyway", to: "/backoffice" }, { label: "Identity" }]}
         eyebrow="Identity"
         title={actionData?.ok ? "Identity link confirmed" : "Confirm identity link"}
         description={`Organization: ${loaderData.organization.name}`}

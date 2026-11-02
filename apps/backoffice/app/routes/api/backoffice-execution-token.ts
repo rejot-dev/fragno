@@ -37,7 +37,7 @@ export async function action({ request, context }: Route.ActionArgs) {
   const input = backofficeExecutionTokenRequestSchema.safeParse(body);
   if (!input.success) {
     return Response.json(
-      { error: "invalid_request", message: "scope must be a valid Backoffice scope or null." },
+      { error: "invalid_request", message: "scope must be a valid Leyway scope or null." },
       { status: 400, headers: { "cache-control": "no-store" } },
     );
   }

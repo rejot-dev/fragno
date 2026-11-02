@@ -94,7 +94,7 @@ function readOnboardingAnswer(
       const parsed = ONBOARDING_QUESTIONS.usage.schema.safeParse({ usage: form.get("usage") });
       return parsed.success
         ? { answer: { question: "usage", answer: parsed.data } }
-        : { answer: null, error: "Choose how you will use Backoffice." };
+        : { answer: null, error: "Choose how you will use Leyway." };
     }
     case "organization-name": {
       const parsed = ONBOARDING_QUESTIONS["organization-name"].schema.safeParse({
@@ -161,7 +161,7 @@ export async function action(args: Route.ActionArgs) {
 }
 
 export function meta() {
-  return [{ title: "Set up Backoffice" }];
+  return [{ title: "Set up Leyway" }];
 }
 
 export default function BackofficeOnboarding({ loaderData, actionData }: Route.ComponentProps) {
@@ -441,13 +441,13 @@ function UsageQuestion({ error }: { error: string | null }) {
   return (
     <QuestionForm
       question="usage"
-      title="How will you use Backoffice?"
-      description="This decides what Backoffice sets up for you. You can create more organizations later."
+      title="How will you use Leyway?"
+      description="This decides what Leyway sets up for you. You can create more organizations later."
       error={error}
       actions={<SubmitButton label="Continue" variant="accent" value={null} />}
     >
       <RadioCards
-        label="How you use Backoffice"
+        label="How you use Leyway"
         name="usage"
         value={usage}
         onValueChange={setUsage}
@@ -465,7 +465,7 @@ function UsageQuestion({ error }: { error: string | null }) {
           {
             value: "agency",
             label: "An agency",
-            description: "Run Backoffice for clients, each in an organization your agency manages.",
+            description: "Run Leyway for clients, each in an organization your agency manages.",
           },
         ]}
       />
@@ -535,7 +535,7 @@ function SettingUp() {
   return (
     <div className="space-y-4">
       <QuestionHeading
-        title="Setting up Backoffice"
+        title="Setting up Leyway"
         description="This takes a moment. The page continues on its own."
       />
       <WorkingIndicator>Working on your answers…</WorkingIndicator>

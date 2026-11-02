@@ -97,7 +97,7 @@ export function headers() {
 }
 
 export function meta() {
-  return [{ title: "Authorize application · Backoffice" }];
+  return [{ title: "Authorize application · Leyway" }];
 }
 
 export default function BackofficeOAuthConsent({
@@ -110,7 +110,7 @@ export default function BackofficeOAuthConsent({
     <AuthorizationScreen
       title="Authorize application"
       description={`${consent.clientName} is requesting access to your account.`}
-      eyebrow="Backoffice OAuth"
+      eyebrow="Leyway OAuth"
     >
       <div className="space-y-4">
         <p className="text-sm text-[var(--bo-muted)]">
@@ -193,7 +193,7 @@ export function ErrorBoundary() {
     <AuthorizationScreen
       title="Authorization unavailable"
       description="Return to the application and start a new login."
-      eyebrow="Backoffice OAuth"
+      eyebrow="Leyway OAuth"
     >
       <p role="alert" className="text-sm text-[var(--bo-failed)]">
         {isRouteErrorResponse(error) && typeof error.data === "string"

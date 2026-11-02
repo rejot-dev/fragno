@@ -251,7 +251,7 @@ describe("Auth Durable Object account creation policy", () => {
     assert(response.status === 403);
     await expect(response.json()).resolves.toMatchObject({
       code: "access_code_required",
-      message: "An access code is required to create a Backoffice account.",
+      message: "An access code is required to create a Leyway account.",
     });
   });
 
@@ -323,7 +323,7 @@ describe("Auth Durable Object account creation policy", () => {
     assert(callbackResponse.status === 302);
     assert.equal(
       callbackResponse.headers.get("location"),
-      "https://backoffice.example/backoffice/login?error=access_code_required&error_description=An+access+code+is+required+to+create+a+Backoffice+account.",
+      "https://backoffice.example/backoffice/login?error=access_code_required&error_description=An+access+code+is+required+to+create+a+Leyway+account.",
     );
     await expect(
       runtime.objects.auth.singleton().commands.grantBackofficeAdminByEmail({ email }),

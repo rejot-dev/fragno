@@ -49,7 +49,7 @@ export async function loader({ context, params, url }: Route.LoaderArgs) {
 }
 
 export function meta({ loaderData }: Route.MetaArgs) {
-  return [{ title: `${loaderData?.accessCode.label ?? "Access code"} · Backoffice Internals` }];
+  return [{ title: `${loaderData?.accessCode.label ?? "Access code"} · Leyway Internals` }];
 }
 
 export default function BackofficeInternalAccessCodeRedemptions() {

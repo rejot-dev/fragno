@@ -327,7 +327,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
         users: [{ id: user.id, email: user.email, role: "admin", status: "active" }],
       });
       const created = await authRequest(ctx, "/oauth2/create-client", {
-        client_name: "Fragno Backoffice Codemode",
+        client_name: "Leyway Codemode",
         software_id: "fragno-backoffice-codemode",
         scope: "openid offline_access backoffice",
         token_endpoint_auth_method: "none",

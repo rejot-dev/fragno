@@ -16,7 +16,7 @@ const SECTION_CODES: Record<string, string> = {
 };
 
 function resolveSectionCode(breadcrumbs: BreadcrumbItem[], eyebrow?: string) {
-  const sectionLabel = breadcrumbs.find((item) => item.label !== "Backoffice")?.label;
+  const sectionLabel = breadcrumbs.find((item) => item.label !== "Leyway")?.label;
   const source = typeof sectionLabel === "string" ? sectionLabel : eyebrow;
   if (!source) {
     return "SYS";

@@ -14,10 +14,10 @@ export function LandingFooter() {
             <Link
               to="/"
               className="inline-flex min-h-11 items-center gap-3 text-[10px] font-bold tracking-[0.12em] text-[var(--bo-fg)] uppercase no-underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
-              aria-label="Backoffice home"
+              aria-label="Leyway home"
             >
               <BackofficeFragmentMark size="md" />
-              Backoffice by ReJot
+              Leyway by ReJot
             </Link>
             <p className="max-w-xs text-[11px] leading-6 text-pretty text-[var(--bo-muted)]">
               AI that shows its work.

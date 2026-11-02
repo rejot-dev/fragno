@@ -41,7 +41,7 @@ const errorMessage = (error: unknown) =>
 
 export function meta(_: Route.MetaArgs) {
   return [
-    { title: "Backoffice Internals · Browser Run" },
+    { title: "Leyway Internals · Browser Run" },
     {
       name: "description",
       content: "Create and inspect Cloudflare Browser Run sessions and targets.",

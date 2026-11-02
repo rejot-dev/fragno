@@ -8,7 +8,7 @@ export function UploadHeader({ organizationLabel }: { organizationLabel: string 
   return (
     <BackofficePageHeader
       breadcrumbs={[
-        { label: "Backoffice", to: "/backoffice" },
+        { label: "Leyway", to: "/backoffice" },
         { label: "Internals", to: "/backoffice/internals" },
         { label: "Upload", to: "/backoffice/connections/upload" },
         { label: organizationLabel },

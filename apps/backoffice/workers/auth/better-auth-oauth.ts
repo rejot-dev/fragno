@@ -31,7 +31,7 @@ import type { BackofficeOAuthExecutionPolicy } from "./backoffice-execution-toke
 import { enforceBackofficeOAuthTokenResponseConsent } from "./better-auth-oauth-consent";
 
 const BACKOFFICE_CODEMODE_OAUTH_SOFTWARE_ID = "fragno-backoffice-codemode";
-const BACKOFFICE_CODEMODE_OAUTH_CLIENT_NAME = "Fragno Backoffice Codemode";
+const BACKOFFICE_CODEMODE_OAUTH_CLIENT_NAME = "Leyway Codemode";
 const BACKOFFICE_CODEMODE_OAUTH_BOOTSTRAP_SUBJECT = "fragno-backoffice-oauth-bootstrap";
 const BACKOFFICE_CODEMODE_OAUTH_SCOPES = ["openid", "offline_access", "backoffice"] as const;
 const BACKOFFICE_CODEMODE_OAUTH_SCOPE = BACKOFFICE_CODEMODE_OAUTH_SCOPES.join(" ");
@@ -124,7 +124,7 @@ async function ensureBackofficeOAuthResource(
     model: "oauthResource",
     data: {
       identifier: baseURL,
-      name: "Fragno Backoffice",
+      name: "Leyway",
       allowedScopes: [...BACKOFFICE_OAUTH_SCOPES],
       dpopBoundAccessTokensRequired: false,
       disabled: false,

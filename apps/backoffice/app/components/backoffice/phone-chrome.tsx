@@ -67,7 +67,7 @@ export function BackofficePhoneChrome({
       <header className="sticky top-0 z-30 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] pt-[env(safe-area-inset-top)] sm:hidden">
         <div className="flex h-14 items-center gap-3 pr-2 pl-4">
           <p className="min-w-0 flex-1 truncate text-base font-semibold">
-            {currentSection?.label ?? "Backoffice"}
+            {currentSection?.label ?? "Leyway"}
           </p>
           {workspaceLabel === null ? (
             <BackofficeAppearanceMenu me={me} isLoading={isLoading} trigger="icon" />
@@ -89,7 +89,7 @@ export function BackofficePhoneChrome({
 
       {/* Pages keep clear of it through --bo-shell-bottom. */}
       <div className="sm:hidden">
-        <BottomNavigation ariaLabel="Backoffice">
+        <BottomNavigation ariaLabel="Leyway">
           {sections.phone.tabs.map((item) => (
             <BottomNavigationItem key={item.label} item={item} />
           ))}

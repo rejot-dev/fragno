@@ -176,7 +176,7 @@ describe("Auth email verification scenarios", () => {
           when.auth.signUp({ email: "new-user@example.com" }),
           then.resend.queuedEmail({
             to: "new-user@example.com",
-            subject: "Verify your Backoffice email",
+            subject: "Verify your Leyway email",
             text: /\/backoffice\/verify-email\?userId=[^&]+&code=[A-Z0-9]+/u,
             idempotencyKey: /^auth:email-verification:[^:]+$/u,
           }),

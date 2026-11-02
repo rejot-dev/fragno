@@ -33,7 +33,7 @@ export function PiErrorBoundary({ error }: { error: unknown; params: unknown }) 
     <div className="space-y-4">
       <BackofficePageHeader
         breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
+          { label: "Leyway", to: "/backoffice" },
           { label: "Agents", to: "/backoffice/agents" },
           { label: "Error" },
         ]}

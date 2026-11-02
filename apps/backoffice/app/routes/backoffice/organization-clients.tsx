@@ -86,7 +86,7 @@ export default function BackofficeOrganizationClients({ actionData }: Route.Comp
             title={`${organization.name} manages no organizations.`}
             description={
               adding
-                ? "Add a client to run Backoffice for it. Your members act in it without being invited."
+                ? "Add a client to run Leyway for it. Your members act in it without being invited."
                 : "Its owners and admins add clients, which its members then act in without being invited."
             }
             flush

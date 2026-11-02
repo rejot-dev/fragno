@@ -29,7 +29,7 @@ export function loader({ params }: Route.LoaderArgs) {
 
 export function meta() {
   return [
-    { title: "Form · Backoffice" },
+    { title: "Form · Leyway" },
     { name: "description", content: "Submit a secure schema-backed form." },
   ];
 }

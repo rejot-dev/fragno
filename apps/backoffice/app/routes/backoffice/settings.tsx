@@ -28,8 +28,8 @@ import { SettingsTabs } from "./settings-tabs";
 
 export function meta() {
   return [
-    { title: "Backoffice Settings" },
-    { name: "description", content: "Inspect your effective Backoffice permissions." },
+    { title: "Leyway Settings" },
+    { name: "description", content: "Inspect your effective Leyway permissions." },
   ];
 }
 
@@ -101,7 +101,7 @@ function scopePresentation(
     case "system":
       return {
         label: "Global system",
-        detail: "Operations that affect the entire Backoffice installation.",
+        detail: "Operations that affect the entire Leyway installation.",
       };
     case "user":
       return {
@@ -230,7 +230,7 @@ export default function BackofficeSettings({ loaderData }: Route.ComponentProps)
 
   return (
     <div className="flex flex-1 flex-col">
-      <h1 className="sr-only">Backoffice settings</h1>
+      <h1 className="sr-only">Leyway settings</h1>
       <SettingsTabs active="permissions" />
       <div className={`${backofficePageBodyClassName} flex flex-col gap-4`}>
         <PermissionsSettings me={backofficeContext.me} authority={loaderData} />

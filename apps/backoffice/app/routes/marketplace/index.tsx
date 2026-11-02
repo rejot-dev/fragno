@@ -69,9 +69,8 @@ export async function loader({ context, url }: Route.LoaderArgs) {
 }
 
 export function meta() {
-  const title = "Marketplace · ReJot Backoffice";
-  const description =
-    "Browse workflows, skills, and supporting files published for ReJot Backoffice.";
+  const title = "Marketplace · Leyway";
+  const description = "Browse workflows, skills, and supporting files published for Leyway.";
   return [
     { title },
     { name: "description", content: description },
@@ -94,8 +93,8 @@ export default function PublicMarketplace({ loaderData }: Route.ComponentProps) 
           Marketplace
         </h1>
         <p className="mt-6 max-w-2xl text-[clamp(0.95rem,1.4vw,1.05rem)] leading-7 text-pretty text-[var(--bo-muted)]">
-          Workflows, skills, and supporting files shared by Backoffice publishers. Install any
-          package into your workspace and adapt it to your business.
+          Workflows, skills, and supporting files shared by Leyway publishers. Install any package
+          into your workspace and adapt it to your business.
         </p>
 
         <Form method="get" role="search" className="mt-10 flex max-w-2xl gap-2">

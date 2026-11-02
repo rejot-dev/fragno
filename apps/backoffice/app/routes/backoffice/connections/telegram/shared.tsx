@@ -100,7 +100,7 @@ export function TelegramErrorBoundary({
     <div className="space-y-4">
       <BackofficePageHeader
         breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
+          { label: "Leyway", to: "/backoffice" },
           { label: "Integrations", to: "/backoffice/integrations" },
           { label: "Telegram" },
         ]}

@@ -4,8 +4,8 @@ export default function BackofficeNotFound() {
   return (
     <div className="space-y-4">
       <BackofficePageHeader
-        breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Not found" }]}
-        eyebrow="Backoffice"
+        breadcrumbs={[{ label: "Leyway", to: "/backoffice" }, { label: "Not found" }]}
+        eyebrow="Leyway"
         title="Page not found"
         description="This backoffice route does not exist."
       />

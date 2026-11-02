@@ -3,7 +3,7 @@ export async function readBackofficeSessionExchangeErrorMessage(
 ): Promise<string> {
   const responseText = (await response.text()).trim();
   if (!responseText) {
-    return "Unable to prepare the Backoffice session.";
+    return "Unable to prepare the Leyway session.";
   }
   try {
     const payload = JSON.parse(responseText) as { message?: unknown };

@@ -112,8 +112,8 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export function meta() {
   return [
-    { title: "Verify your Backoffice email" },
-    { name: "description", content: "Confirm the email address for your Backoffice account." },
+    { title: "Verify your Leyway email" },
+    { name: "description", content: "Confirm the email address for your Leyway account." },
   ];
 }
 
@@ -121,7 +121,7 @@ const resultContent = {
   confirmation_recorded: {
     eyebrow: "Email verified",
     title: "Your email is verified.",
-    description: "Continue to sign in to Backoffice.",
+    description: "Continue to sign in to Leyway.",
   },
   already_confirmed: {
     eyebrow: "Already confirmed",
@@ -141,7 +141,7 @@ const resultContent = {
   incomplete: {
     eyebrow: "Link incomplete",
     title: "This verification link is incomplete.",
-    description: "Open the complete link from your Backoffice verification email.",
+    description: "Open the complete link from your Leyway verification email.",
   },
   resent: {
     eyebrow: "Request accepted",

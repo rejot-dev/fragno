@@ -13,10 +13,10 @@ const DEMO_CATEGORIES: BackofficeUiDemoCategory[] = ["Layout", "Content", "Data"
 
 export function meta() {
   return [
-    { title: "Generated UI Catalog · Backoffice Internals" },
+    { title: "Generated UI Catalog · Leyway Internals" },
     {
       name: "description",
-      content: "Preview every component in the production Backoffice generated UI catalog.",
+      content: "Preview every component in the production Leyway generated UI catalog.",
     },
   ];
 }

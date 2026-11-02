@@ -64,13 +64,13 @@ async function loadBackofficeDeviceAuthorization(
 
   const deviceAuthorization = deviceAuthorizationSchema.safeParse(await deviceResponse.json());
   if (!deviceAuthorization.success || deviceAuthorization.data.client_id !== config.clientId) {
-    throw new Response("This device authorization request is not available to Backoffice.", {
+    throw new Response("This device authorization request is not available to Leyway.", {
       status: 400,
     });
   }
 
   return {
-    clientName: "Fragno Backoffice Codemode",
+    clientName: "Leyway Codemode",
     userCode: userCode.data,
     scopes: deviceAuthorization.data.scope.split(/\s+/).filter(Boolean),
   };
@@ -124,8 +124,8 @@ export function headers() {
 
 export function meta() {
   return [
-    { title: "Authorize Fragno Backoffice Codemode" },
-    { name: "description", content: "Approve a local Backoffice codemode login." },
+    { title: "Authorize Leyway Codemode" },
+    { name: "description", content: "Approve a local Leyway codemode login." },
   ];
 }
 
@@ -172,7 +172,7 @@ export default function BackofficeDeviceAuthorization() {
             <p className="mt-1 text-sm text-[var(--bo-muted)]">{authorization.scopes.join(", ")}</p>
           </div>
           <p className="border border-[color:var(--bo-waiting)] bg-[var(--bo-waiting-bg)] p-3 text-sm leading-6 font-medium text-pretty text-[var(--bo-fg)]">
-            Approving grants this device full Backoffice access as your user. Only continue if you
+            Approving grants this device full Leyway access as your user. Only continue if you
             started this login from your local codemode CLI.
           </p>
           {actionData?.status === "error" ? (

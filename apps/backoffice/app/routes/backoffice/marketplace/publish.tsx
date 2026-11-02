@@ -130,7 +130,7 @@ export default function BackofficeMarketplacePublish({ loaderData }: Route.Compo
     <div className="space-y-4">
       <BackofficePageHeader
         breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
+          { label: "Leyway", to: "/backoffice" },
           { label: "Marketplace", to: "/backoffice/marketplace" },
           { label: "New draft" },
         ]}

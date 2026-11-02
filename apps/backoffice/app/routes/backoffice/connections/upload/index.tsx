@@ -36,7 +36,7 @@ export default function BackofficeConnectionsUpload() {
     <div className="space-y-4">
       <BackofficePageHeader
         breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
+          { label: "Leyway", to: "/backoffice" },
           { label: "Internals", to: "/backoffice/internals" },
           { label: "Upload" },
         ]}

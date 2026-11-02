@@ -606,7 +606,7 @@ test("a signed-in owner's return confirms the consent its path names and lands o
         expect(await returnFromProvider(other.returnUri)).toMatchObject({
           path: `${scopePath}/${other.connectionId}`,
           oauth: "error",
-          message: "Backoffice could not confirm this connection. Check its setup again.",
+          message: "Leyway could not confirm this connection. Check its setup again.",
         });
         // A request the gateway no longer knows has expired.
         gateway.requests.delete(other.requestId);

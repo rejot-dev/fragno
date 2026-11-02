@@ -52,7 +52,7 @@ const USER_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
 
 export function meta() {
   return [
-    { title: "System Users · Backoffice Internals" },
+    { title: "System Users · Leyway Internals" },
     { name: "description", content: "Inspect system users and manage their global roles." },
   ];
 }

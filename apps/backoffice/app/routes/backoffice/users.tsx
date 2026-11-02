@@ -30,7 +30,7 @@ const USERS = [
 
 export function meta() {
   return [
-    { title: "Backoffice Users" },
+    { title: "Leyway Users" },
     { name: "description", content: "Manage backoffice users and access." },
   ];
 }
@@ -39,7 +39,7 @@ export default function BackofficeUsers() {
   return (
     <div className="space-y-4">
       <BackofficePageHeader
-        breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Users" }]}
+        breadcrumbs={[{ label: "Leyway", to: "/backoffice" }, { label: "Users" }]}
         eyebrow="Roster"
         title="Steward access across docs and fragments."
         description="Keep access aligned with release responsibilities, audit schedules, and team structure."

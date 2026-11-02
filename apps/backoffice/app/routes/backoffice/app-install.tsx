@@ -115,7 +115,7 @@ export function headers() {
 }
 
 export function meta() {
-  return [{ title: "Install application · Backoffice" }];
+  return [{ title: "Install application · Leyway" }];
 }
 
 export default function BackofficeAppInstall({
@@ -138,7 +138,7 @@ export default function BackofficeAppInstall({
     <AuthorizationScreen
       title={`Install ${install.clientName}`}
       description={`${install.clientName} is asking to be installed for you or one of your organizations.`}
-      eyebrow="Backoffice apps"
+      eyebrow="Leyway apps"
     >
       <div className="space-y-4">
         <p className="text-sm text-[var(--bo-muted)]">
@@ -188,7 +188,7 @@ export default function BackofficeAppInstall({
             <>
               <input type="hidden" name="resources" value="owner" />
               <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-                {install.clientName} is part of Backoffice, so it gets everything it asks for in{" "}
+                {install.clientName} is part of Leyway, so it gets everything it asks for in{" "}
                 {personal ? "your personal workspace" : "this organization"}, without a review.
               </p>
             </>
@@ -391,7 +391,7 @@ export function ErrorBoundary() {
     <AuthorizationScreen
       title="Installation unavailable"
       description="Return to the application and start the installation again."
-      eyebrow="Backoffice apps"
+      eyebrow="Leyway apps"
     >
       <p role="alert" className="text-sm text-[var(--bo-failed)]">
         {isRouteErrorResponse(error) && typeof error.data === "string"

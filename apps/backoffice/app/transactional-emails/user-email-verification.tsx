@@ -27,7 +27,7 @@ export default function UserEmailVerificationEmail({
       preview="Confirm this email address before signing in."
       heading="Verify your email"
       brand={{ kind: "backoffice", homeUrl: publicBaseUrl }}
-      reason="You received this email because this address was used to create a Backoffice account. If that was not you, you can ignore it."
+      reason="You received this email because this address was used to create a Leyway account. If that was not you, you can ignore it."
     >
       <EmailParagraph>Confirm this email address before signing in.</EmailParagraph>
       <EmailButton href={verificationUrl}>Verify email</EmailButton>
@@ -52,7 +52,7 @@ export async function buildUserEmailVerificationEmail(
   const message = <UserEmailVerificationEmail {...props} />;
   return {
     to: props.email,
-    subject: "Verify your Backoffice email",
+    subject: "Verify your Leyway email",
     html: await render(message),
     text: await render(message, { plainText: true }),
     tags: [

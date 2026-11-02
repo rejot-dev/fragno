@@ -263,7 +263,7 @@ export default function BackofficeGitHubOAuthCallback() {
     <FormContainer
       title="Restore GitHub installation"
       eyebrow="Verified GitHub access"
-      description="Choose the installation to restore for this Backoffice workspace."
+      description="Choose the installation to restore for this Leyway workspace."
     >
       <p className="text-sm text-[var(--bo-muted)]">
         Signed in to GitHub as{" "}

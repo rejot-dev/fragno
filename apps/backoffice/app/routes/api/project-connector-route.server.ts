@@ -84,7 +84,7 @@ async function confirmConnectorReturn({
     console.error("Connector return could not confirm consent", error);
     outcome = {
       status: "error",
-      message: "Backoffice could not confirm this connection. Check its setup again.",
+      message: "Leyway could not confirm this connection. Check its setup again.",
     };
   }
   const response = returned(outcome);

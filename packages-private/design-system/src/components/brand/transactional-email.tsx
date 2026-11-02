@@ -139,7 +139,7 @@ function EmailHeader() {
                 color: PALETTE.foreground,
               }}
             >
-              ReJot Backoffice
+              Leyway
             </td>
           </tr>
         </tbody>
@@ -228,7 +228,7 @@ function EmailFooter({ reason, homeUrl }: { reason: string; homeUrl: string }) {
           color: PALETTE.foreground,
         }}
       >
-        Backoffice by ReJot
+        Leyway by ReJot
       </Text>
       <Text style={{ margin: 0, fontSize: "11px", lineHeight: "20px", color: PALETTE.muted }}>
         A controlled workspace for AI workflows.

@@ -106,8 +106,8 @@ export function ErrorBoundary() {
     >
       <div className="space-y-4">
         <BackofficePageHeader
-          breadcrumbs={[{ label: "Backoffice", to: "/backoffice" }, { label: "Error" }]}
-          eyebrow="Backoffice"
+          breadcrumbs={[{ label: "Leyway", to: "/backoffice" }, { label: "Error" }]}
+          eyebrow="Leyway"
           title={title}
           description={
             organizationNotFound

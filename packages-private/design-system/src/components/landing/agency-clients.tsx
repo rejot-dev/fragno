@@ -21,7 +21,7 @@ export function LandingAgencyClients() {
   return (
     <LandingSection
       id="landing-agency-clients"
-      title="Run Backoffice for your clients."
+      title="Run Leyway for your clients."
       visual={
         <div className="border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-5 sm:p-8">
           <div className="mx-auto flex max-w-sm items-center gap-4 border border-[color:var(--bo-accent)] bg-[var(--bo-panel)] p-4 shadow-[var(--bo-panel-shadow)]">

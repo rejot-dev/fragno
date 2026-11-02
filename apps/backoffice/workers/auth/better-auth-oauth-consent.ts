@@ -428,7 +428,7 @@ export function createBackofficeOAuthConsentPlugin(input: {
           if ((await listFirstPartyOAuthClientIds()).includes(clientId)) {
             throw new APIError("BAD_REQUEST", {
               message:
-                "This application is part of Backoffice, so its authorization cannot be revoked.",
+                "This application is part of Leyway, so its authorization cannot be revoked.",
             });
           }
           await context.context.adapter.transaction(async (adapter) => {

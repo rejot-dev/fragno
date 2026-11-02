@@ -34,7 +34,7 @@ const storyWidgets: BackofficeUiHostWidgets = {
   ),
   workflowResponse: ({ workflowName, instanceId }) => (
     <Callout tone="info" title="Response form">
-      Backoffice shows the form {workflowName} run {instanceId} asks you to answer here.
+      Leyway shows the form {workflowName} run {instanceId} asks you to answer here.
     </Callout>
   ),
 };

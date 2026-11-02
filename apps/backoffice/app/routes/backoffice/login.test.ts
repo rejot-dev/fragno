@@ -72,7 +72,7 @@ describe("backoffice login route", () => {
       oauthQuery: null,
       authError: {
         title: "Account creation is not available",
-        message: "Use an existing Backoffice account or open your sign-up link.",
+        message: "Use an existing Leyway account or open your sign-up link.",
       },
     });
   });
@@ -87,7 +87,7 @@ describe("backoffice login route", () => {
     ).resolves.toMatchObject({
       authError: {
         title: "Authentication could not be completed",
-        message: "Try again or use your Backoffice email and password to continue.",
+        message: "Try again or use your Leyway email and password to continue.",
       },
     });
   });

@@ -777,7 +777,7 @@ test("device consent is listed and revocation prevents refresh, pending redempti
       .parse(await requested.json());
     const url = new URL(`/backoffice/device?user_code=${device.user_code}`, origin);
     const review = await deviceLoader(routeArgs(ctx, new Request(url, { headers: { cookie } })));
-    assert.equal(review.clientName, "Fragno Backoffice Codemode");
+    assert.equal(review.clientName, "Leyway Codemode");
     const approved = await deviceAction(
       routeArgs(
         ctx,
@@ -815,7 +815,7 @@ test("device consent is listed and revocation prevents refresh, pending redempti
     expect(consent).toHaveLength(1);
     expect(consent[0]).toMatchObject({
       clientId: config.clientId,
-      clientName: "Fragno Backoffice Codemode",
+      clientName: "Leyway Codemode",
     });
     const pending = z.object({ device_code: z.string(), user_code: z.string() }).parse(
       await (

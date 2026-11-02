@@ -66,8 +66,7 @@ async function installProvisioned(
       ok: false,
       error: {
         code: "conflict",
-        message:
-          "The organization uninstalled this app; its owners install it again in Backoffice.",
+        message: "The organization uninstalled this app; its owners install it again in Leyway.",
       },
     };
   }

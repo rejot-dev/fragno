@@ -93,7 +93,7 @@ describe("Backoffice device approval route", () => {
     const result = await loader(routeArgs(new Request(deviceUrl)));
 
     expect(result).toEqual({
-      clientName: "Fragno Backoffice Codemode",
+      clientName: "Leyway Codemode",
       userCode: "ABCD-EFGH",
       scopes: ["openid", "offline_access", "backoffice"],
     });

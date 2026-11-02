@@ -171,7 +171,7 @@ describe("scope navigation scenarios", () => {
     "%s navigation reaches personal settings from owned descendants but not another member's",
     async (navigation) => {
       const router = await renderNavigation("/backoffice/dashboard/user/ada", navigation);
-      await screen.findByRole("navigation", { name: "Backoffice" });
+      await screen.findByRole("navigation", { name: "Leyway" });
 
       for (const scope of personalScopes("ada")) {
         await act(() =>
@@ -188,7 +188,7 @@ describe("scope navigation scenarios", () => {
         await act(() =>
           router.navigate(`/backoffice/dashboard/${backofficeRouteScopePath(scope)}`),
         );
-        expect(screen.getByRole("navigation", { name: "Backoffice" })).toBeTruthy();
+        expect(screen.getByRole("navigation", { name: "Leyway" })).toBeTruthy();
         expect(await querySettingsLink(navigation)).toBeNull();
       }
     },
@@ -237,7 +237,7 @@ describe("scope navigation scenarios", () => {
     async (navigation) => {
       const router = await renderNavigation("/backoffice/dashboard/user/ada", navigation);
       const tab = (name: string) =>
-        within(screen.getByRole("navigation", { name: "Backoffice" })).getByRole("link", { name });
+        within(screen.getByRole("navigation", { name: "Leyway" })).getByRole("link", { name });
       const follow = async (name: string) => {
         await act(async () => {
           fireEvent.click(tab(name));

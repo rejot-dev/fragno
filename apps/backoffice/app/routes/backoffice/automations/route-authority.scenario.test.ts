@@ -167,13 +167,13 @@ describe("route authority inspector scenario", () => {
                   expect(markup).toContain("connections.read\nupload.modify");
                   expect(markup).toContain("whitespace-pre-wrap");
                 } else if (id === "linked") {
-                  expect(markup).toContain("Backoffice user linked to the incoming sender");
+                  expect(markup).toContain("Leyway user linked to the incoming sender");
                   expect(rows).toContainEqual({
                     label: "Permissions",
                     value: "User's current permissions — no additional route restriction",
                   });
                 } else if (id === "delegated") {
-                  expect(markup).toContain("Backoffice user carried by the incoming event");
+                  expect(markup).toContain("Leyway user carried by the incoming event");
                   expect(markup).toContain("store.modify");
                   expect(rows).toContainEqual({
                     label: "Permission basis",

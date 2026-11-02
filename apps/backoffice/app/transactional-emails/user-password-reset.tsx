@@ -23,13 +23,13 @@ export default function UserPasswordResetEmail({
 }: UserPasswordResetEmailProps) {
   return (
     <TransactionalEmail
-      preview="Choose a new password for your Backoffice account."
+      preview="Choose a new password for your Leyway account."
       heading="Reset your password"
       brand={{ kind: "backoffice", homeUrl: publicBaseUrl }}
-      reason="You received this email because a password reset was requested for your Backoffice account. If that was not you, ignore this email. Your password will not change."
+      reason="You received this email because a password reset was requested for your Leyway account. If that was not you, ignore this email. Your password will not change."
     >
       <EmailParagraph>
-        Follow this link to choose a new password for your Backoffice account.
+        Follow this link to choose a new password for your Leyway account.
       </EmailParagraph>
       <EmailButton href={resetUrl}>Reset password</EmailButton>
       <EmailFootnote href={resetUrl}>
@@ -52,7 +52,7 @@ export async function buildUserPasswordResetEmail(
   const message = <UserPasswordResetEmail {...props} />;
   return {
     to: props.email,
-    subject: "Reset your Backoffice password",
+    subject: "Reset your Leyway password",
     html: await render(message),
     text: await render(message, { plainText: true }),
     tags: [

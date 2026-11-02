@@ -42,8 +42,8 @@ const actionDetailLabels = (labelSet: AutomationRouteDetailLabelSet) =>
 export function automationAuthorityActorLabel(kind: AutomationAuthorityMode["kind"]) {
   return {
     "organization-automation": "Organization-owned automation",
-    "linked-user": "Backoffice user linked to the incoming sender",
-    "delegated-user": "Backoffice user carried by the incoming event",
+    "linked-user": "Leyway user linked to the incoming sender",
+    "delegated-user": "Leyway user carried by the incoming event",
   }[kind];
 }
 

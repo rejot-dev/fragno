@@ -11,10 +11,10 @@ export function LandingHeader() {
       <Link
         to="/"
         className="flex min-h-11 items-center gap-3 text-[10px] font-bold tracking-[0.16em] text-[var(--bo-fg)] uppercase no-underline"
-        aria-label="ReJot Backoffice home"
+        aria-label="Leyway home"
       >
         <BackofficeFragmentMark size="md" />
-        <span className="hidden sm:inline">ReJot Backoffice</span>
+        <span className="hidden sm:inline">Leyway</span>
       </Link>
       <nav aria-label="Product" className="flex items-center">
         <Link to="/marketplace" className={navLinkClassName}>

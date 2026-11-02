@@ -181,8 +181,8 @@ export async function action({ request, context, url }: Route.ActionArgs) {
 
 export function meta() {
   return [
-    { title: "Backoffice Sign Up" },
-    { name: "description", content: "Create a Backoffice account." },
+    { title: "Leyway Sign Up" },
+    { name: "description", content: "Create a Leyway account." },
   ];
 }
 
@@ -237,7 +237,7 @@ export default function BackofficeSignUp() {
               <h1 className="mt-3 max-w-2xl text-[clamp(2.25rem,6vw,6rem)] leading-[0.92] font-[560] tracking-[-0.065em] text-balance">
                 You&rsquo;re invited.
                 <br />
-                <span className="text-[var(--bo-muted-2)]">Welcome to Backoffice.</span>
+                <span className="text-[var(--bo-muted-2)]">Welcome to Leyway.</span>
               </h1>
               <p className="mt-5 max-w-xl text-sm leading-7 text-pretty text-[var(--bo-muted)] lg:mt-7">
                 Your invitation is ready. Create your account to get started.
@@ -248,12 +248,12 @@ export default function BackofficeSignUp() {
               <h1 className="max-w-2xl text-[clamp(2.25rem,6vw,6rem)] leading-[0.92] font-[560] tracking-[-0.065em] text-balance">
                 Create your
                 <br />
-                <span className="text-[var(--bo-muted-2)]">Backoffice account.</span>
+                <span className="text-[var(--bo-muted-2)]">Leyway account.</span>
               </h1>
               <p className="mt-5 max-w-xl text-sm leading-7 text-pretty text-[var(--bo-muted)] lg:mt-7">
                 {access.kind === "access_code"
-                  ? "Backoffice is invitation-only for now. Sign up with the access code from your invitation."
-                  : "Register your email to access Backoffice."}
+                  ? "Leyway is invitation-only for now. Sign up with the access code from your invitation."
+                  : "Register your email to access Leyway."}
               </p>
             </>
           )}

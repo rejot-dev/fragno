@@ -168,7 +168,7 @@ export function BackofficeSidebarNav({
     <SidebarNavigation
       sections={[{ label: null, items: sections.primary }]}
       secondaryItems={sections.context}
-      ariaLabel="Backoffice"
+      ariaLabel="Leyway"
       collapsed={collapsed}
       onCollapsedChange={onCollapsedChange}
     />
@@ -176,9 +176,7 @@ export function BackofficeSidebarNav({
 }
 
 export function BackofficeMobileNav({ sections }: { sections: BackofficeSections }) {
-  return (
-    <MobileNavigation items={[...sections.primary, ...sections.context]} ariaLabel="Backoffice" />
-  );
+  return <MobileNavigation items={[...sections.primary, ...sections.context]} ariaLabel="Leyway" />;
 }
 
 export type BackofficeSections = {

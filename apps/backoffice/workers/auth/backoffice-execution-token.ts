@@ -183,7 +183,7 @@ async function exchangeFirstPartyUserToken(
   const scope = authority.scope;
   if (!scope) {
     throw new BackofficeExecutionTokenScopeError(
-      "Finish setting up Backoffice in the browser before using it here.",
+      "Finish setting up Leyway in the browser before using it here.",
     );
   }
   const issued = await issueBackofficeJwt(

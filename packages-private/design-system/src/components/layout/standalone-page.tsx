@@ -25,10 +25,10 @@ export function StandalonePage({
         <a
           href="/"
           className="flex min-h-11 items-center gap-3 text-[10px] font-bold tracking-[0.16em] text-[var(--bo-fg)] uppercase no-underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
-          aria-label="ReJot Backoffice home"
+          aria-label="Leyway home"
         >
           <BackofficeFragmentMark size="md" />
-          ReJot Backoffice
+          Leyway
         </a>
         {headerEnd}
       </header>

@@ -26,19 +26,19 @@ export function LandingAppsPlatform() {
   return (
     <LandingSection
       id="landing-apps-platform"
-      title="Build apps on Backoffice."
+      title="Build apps on Leyway."
       visual={
         <div className="grid gap-px border border-[color:var(--bo-border)] bg-[var(--bo-border)] lg:grid-cols-[0.45fr_0.55fr]">
           <div className="flex flex-col justify-between gap-8 bg-[var(--bo-panel-2)] p-6 sm:p-8">
             <ol className="space-y-5">
-              <AppStep icon="log-in" title="People sign in with Backoffice">
+              <AppStep icon="log-in" title="People sign in with Leyway">
                 No second account. The app gets who they are and which organizations they belong to.
               </AppStep>
               <AppStep icon="check-square" title="Owners install it for their organization">
                 They approve each permission and choose which projects the app can reach.
               </AppStep>
               <AppStep icon="message-circle" title="Agents can use what the app does">
-                Its actions become tools in Backoffice, within the access the owner approved.
+                Its actions become tools in Leyway, within the access the owner approved.
               </AppStep>
             </ol>
             <p className="text-xs leading-5 text-[var(--bo-muted)]">
@@ -125,9 +125,9 @@ export function LandingAppsPlatform() {
         </div>
       }
     >
-      Build your own product on Backoffice&rsquo;s accounts, organizations, and permissions. People
-      sign in with Backoffice, owners decide what your app may do, and your app&rsquo;s actions
-      become tools their agents can use.
+      Build your own product on Leyway&rsquo;s accounts, organizations, and permissions. People sign
+      in with Leyway, owners decide what your app may do, and your app&rsquo;s actions become tools
+      their agents can use.
     </LandingSection>
   );
 }

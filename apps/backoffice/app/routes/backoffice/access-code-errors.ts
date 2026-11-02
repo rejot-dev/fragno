@@ -2,7 +2,7 @@
 export const ACCESS_CODE_ERROR_CONTENT = {
   access_code_required: {
     title: "An access code is required",
-    message: "Creating a Backoffice account needs an access code. Ask an administrator for one.",
+    message: "Creating a Leyway account needs an access code. Ask an administrator for one.",
   },
   access_code_invalid: {
     title: "This access code is not valid",

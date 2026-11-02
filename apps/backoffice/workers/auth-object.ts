@@ -1084,7 +1084,7 @@ export class AuthObject implements AuthCommands {
     });
 
     const options = {
-      appName: "Fragno Backoffice",
+      appName: "Leyway",
       baseURL,
       basePath: "/api/auth",
       secret,

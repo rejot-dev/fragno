@@ -60,7 +60,7 @@ export function headers() {
 }
 
 export function meta() {
-  return [{ title: "Authorized applications · Backoffice" }];
+  return [{ title: "Authorized applications · Leyway" }];
 }
 
 export default function AuthorizedApplications({
@@ -86,9 +86,9 @@ export default function AuthorizedApplications({
               </p>
               <p className="text-xs text-[var(--bo-muted-2)]">
                 Revoking removes the authorization and this client&apos;s refresh and stored access
-                tokens, cancels pending device approvals, and blocks new Backoffice execution
+                tokens, cancels pending device approvals, and blocks new Leyway execution
                 credentials. Previously issued self-contained tokens may remain usable elsewhere
-                until they expire; existing Backoffice execution tokens expire within 15 minutes.
+                until they expire; existing Leyway execution tokens expire within 15 minutes.
               </p>
               {actionData ? <InlineAlert>{actionData.message}</InlineAlert> : null}
             </div>

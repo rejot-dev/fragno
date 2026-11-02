@@ -53,7 +53,7 @@ export async function loader({ params, context, url }: Route.LoaderArgs) {
 
 export function meta({ loaderData }: Route.MetaArgs) {
   if (!loaderData) {
-    return [{ title: "Marketplace · ReJot Backoffice" }];
+    return [{ title: "Marketplace · Leyway" }];
   }
   const title = `${loaderData.listing.name} · Marketplace`;
   return [
@@ -112,7 +112,7 @@ export default function PublicMarketplaceListing({ loaderData }: Route.Component
               variant="solid"
               className="shrink-0 self-start"
             >
-              Install in Backoffice
+              Install in Leyway
             </ButtonLink>
           </div>
 

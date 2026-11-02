@@ -150,7 +150,7 @@ test("password recovery delivers a reset link, changes the password, and revokes
         requestPasswordResetStep(),
         then.resend.queuedEmail({
           to: email,
-          subject: "Reset your Backoffice password",
+          subject: "Reset your Leyway password",
           text: /\/backoffice\/reset-password\?token=/u,
           idempotencyKey: /^auth:password-reset:/u,
         }),
@@ -197,7 +197,7 @@ test("password recovery adds a password to an account that has none", async () =
         requestPasswordResetStep(),
         then.resend.queuedEmail({
           to: email,
-          subject: "Reset your Backoffice password",
+          subject: "Reset your Leyway password",
           text: /\/backoffice\/reset-password\?token=/u,
           idempotencyKey: /^auth:password-reset:/u,
         }),

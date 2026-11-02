@@ -28,7 +28,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     <div className="space-y-4">
       <BackofficePageHeader
         breadcrumbs={[
-          { label: "Backoffice", to: "/backoffice" },
+          { label: "Leyway", to: "/backoffice" },
           { label: "Computers", to: "/backoffice/computers" },
           { label: "Error" },
         ]}
