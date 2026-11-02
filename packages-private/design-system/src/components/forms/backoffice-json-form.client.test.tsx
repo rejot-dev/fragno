@@ -6,7 +6,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 import { BackofficeJsonForm } from "./backoffice-json-form";
 
-afterEach(cleanup);
+// JSON Forms reports every change, including the one on mount, through a 10 ms debounce that
+// outlives unmounting. Letting it fire here keeps its state update from reaching React after the
+// test environment, and its window, are gone.
+const JSON_FORMS_CHANGE_DEBOUNCE_MS = 10;
+
+afterEach(async () => {
+  cleanup();
+  await new Promise((resolve) => setTimeout(resolve, JSON_FORMS_CHANGE_DEBOUNCE_MS * 2));
+});
 
 describe("BackofficeJsonForm", () => {
   test("renders generated text controls and submits valid data", async () => {
