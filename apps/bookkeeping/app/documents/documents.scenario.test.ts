@@ -139,9 +139,9 @@ test("a member uploads an invoice, books it from its page, and the entry links b
       source: null,
       state: { status: "to-book" },
     });
-    // The file lives in the administration's Backoffice project, where its agents work.
-    expect(scenario.backoffice.workspacePaths(CLIENT, ADMINISTRATION)).toEqual([
-      `/workspace/documents/${id}/${await sha256(invoice.bytes)}/babbage-invoice-7.pdf`,
+    // The file is a blob of the administration's Backoffice project, where its agents work.
+    expect(scenario.backoffice.blobKeys(CLIENT, ADMINISTRATION)).toEqual([
+      `documents/${id}/${await sha256(invoice.bytes)}/babbage-invoice-7.pdf`,
     ]);
     const file = await ada.download(`${BOOKS}/documents/${id}/file`);
     assert(file.status === 200);
@@ -270,7 +270,15 @@ test("a file changed or deleted in Backoffice is no longer shown as the document
     const id = await uploaded(ada, pdf("Babbage Instruments, invoice 9"));
     const path = (await readDocument(ada, id)).storageKey;
 
-    scenario.backoffice.admin.replaceWorkspaceFile(
+    // A file of the same size is caught by its bytes.
+    scenario.backoffice.admin.replaceBlob(
+      CLIENT,
+      ADMINISTRATION,
+      path,
+      pdf("Babbage Instruments, invoice 6").bytes,
+    );
+    assert((await ada.download(`${BOOKS}/documents/${id}/file`)).status === 409);
+    scenario.backoffice.admin.replaceBlob(
       CLIENT,
       ADMINISTRATION,
       path,
@@ -283,7 +291,7 @@ test("a file changed or deleted in Backoffice is no longer shown as the document
         "This document's file was changed in Backoffice after it was uploaded, so Bookkeeping no longer shows it.",
     );
 
-    scenario.backoffice.admin.replaceWorkspaceFile(CLIENT, ADMINISTRATION, path, null);
+    scenario.backoffice.admin.replaceBlob(CLIENT, ADMINISTRATION, path, null);
     const deleted = await ada.download(`${BOOKS}/documents/${id}/file`);
     assert(deleted.status === 404);
     assert((await deleted.text()) === "This document's file is no longer in Backoffice.");
@@ -299,13 +307,22 @@ test("only scans and photos are uploaded, and an upload that failed is finished 
     ).toMatchObject({
       actionData: { error: "Upload a PDF, or a PNG, JPEG, or WebP image." },
     });
-    const large = new Uint8Array(1_900_001);
+    const large = new Uint8Array(20 * 1024 * 1024 + 1);
     large.set(pdf("").bytes);
     expect(await upload(ada, { ...pdf(""), bytes: large })).toMatchObject({
-      actionData: { error: "Upload files of at most 1.9 MB." },
+      actionData: { error: "Upload files of at most 20 MB." },
     });
-    expect(scenario.backoffice.workspacePaths(CLIENT, ADMINISTRATION)).toEqual([]);
+    expect(scenario.backoffice.blobKeys(CLIENT, ADMINISTRATION)).toEqual([]);
     expect(await listDocuments(ada)).toEqual([]);
+
+    // Scans larger than a workspace file are blobs like any other.
+    const scan = new Uint8Array(5 * 1024 * 1024);
+    scan.set(pdf("A scanned ledger").bytes);
+    scan.fill(0x20, pdf("A scanned ledger").bytes.byteLength);
+    const scanned = await uploaded(ada, { ...pdf(""), bytes: scan });
+    const file = await ada.download(`${BOOKS}/documents/${scanned}/file`);
+    // Compared by digest: comparing 5 MB byte by byte takes seconds.
+    expect(await sha256(new Uint8Array(await file.arrayBuffer()))).toBe(await sha256(scan));
 
     // What a file is comes from its bytes, not the type the browser sends.
     const photo = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
@@ -327,10 +344,10 @@ test("only scans and photos are uploaded, and an upload that failed is finished 
       actionData: { error: "Another file was uploaded with this form. Upload it again." },
     });
     expect((await listDocuments(ada)).map((document) => document.id).sort()).toEqual(
-      [receipt, documentId].sort(),
+      [scanned, receipt, documentId].sort(),
     );
     expect(
-      scenario.backoffice.workspaceFile(
+      scenario.backoffice.blob(
         CLIENT,
         ADMINISTRATION,
         (await readDocument(ada, documentId)).storageKey,
@@ -439,8 +456,8 @@ test("an upload body larger than any document is refused without being read whol
     });
     expect(
       await ada.post(`${BOOKS}/documents`, endless, "multipart/form-data; boundary=unending"),
-    ).toMatchObject({ actionData: { error: "Upload files of at most 1.9 MB." } });
-    expect(sent).toBeLessThan(2 * 1024 * 1024);
+    ).toMatchObject({ actionData: { error: "Upload files of at most 20 MB." } });
+    expect(sent).toBeLessThan(21 * 1024 * 1024);
     expect(await listDocuments(ada)).toEqual([]);
   });
 });
@@ -537,12 +554,12 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       prompter: "installation",
       status: "queued",
     });
-    const folder = `/workspace/documents/${id}/${await sha256(invoice.bytes)}/`;
+    const prefix = `documents/${id}/${await sha256(invoice.bytes)}/`;
     const [mount, ...otherMounts] = scenario.backoffice.mountedShares(FIRM, FIRM_AGENT);
     expect(otherMounts).toEqual([]);
     expect(mount).toEqual({
       name: expect.stringMatching(/^document-[0-9a-f]{40}$/u),
-      path: folder,
+      prefix,
     });
     const sharedFile = `/shared/${mount!.name}/${INVOICE.number}.pdf`;
     expect(prompt.content).toContain(agent.administration.id);
@@ -568,7 +585,7 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     expect(await agent.call("documents.get", { document: id })).toEqual({
       status: 200,
       body: expect.objectContaining({
-        path: sharedFile,
+        blob: sharedFile,
         mediaType: "application/pdf",
         status: "to-book",
         bookedIn: null,
@@ -871,7 +888,7 @@ test("revoking after an answer shares the file again for a newer request", async
     // The revocation saw her request awaiting an answer and shared the file again.
     expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toHaveLength(1);
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([
-      { name: expect.stringMatching(/^document-/u), path: expect.stringContaining(id) },
+      { name: expect.stringMatching(/^document-/u), prefix: expect.stringContaining(id) },
     ]);
   });
 });
@@ -1081,7 +1098,7 @@ test("an upload under way when the firm's management ends is not shared with the
     const { ada, firmPath } = await openBooks(scenario);
     const charles = await inviteCharles(scenario, ada);
     // Management ends, and the firm's dashboard records it, while Charles's file is being written.
-    scenario.backoffice.beforeNextAnswer("state.writeFileBytes", async () => {
+    scenario.backoffice.beforeNextAnswer("blobs.completeUpload", async () => {
       scenario.backoffice.admin.setManager(CLIENT, null);
       await ada.navigate(firmPath);
     });
@@ -1212,21 +1229,21 @@ test("the same document ID in two administrations reaches the firm's agent as tw
     const expected = [
       {
         administration: await administrationOf(BOOKS),
-        folder: `/workspace/documents/${id}/${await sha256(first.bytes)}/`,
+        prefix: `documents/${id}/${await sha256(first.bytes)}/`,
       },
       {
         administration: await administrationOf(other),
-        folder: `/workspace/documents/${id}/${await sha256(second.bytes)}/`,
+        prefix: `documents/${id}/${await sha256(second.bytes)}/`,
       },
     ];
-    // Each prompt names its administration and the mount of that administration's file.
+    // Each prompt names its administration and the share of that administration's file.
     const mounts = scenario.backoffice.mountedShares(FIRM, FIRM_AGENT);
     expect(
       scenario.backoffice.prompts(FIRM, FIRM_AGENT).map((prompt) => ({
         administration: expected.find(({ administration }) =>
           prompt.content.includes(administration),
         )?.administration,
-        folder: mounts.find(({ name }) => prompt.content.includes(`/shared/${name}/`))?.path,
+        prefix: mounts.find(({ name }) => prompt.content.includes(`/shared/${name}/`))?.prefix,
       })),
     ).toEqual(expected);
   });
@@ -1299,7 +1316,7 @@ test("a request the agent never received, or failed, is asked again from the doc
     // Asking after the answer shares the file again, under the name the revoked share held.
     await ada.submit(`${BOOKS}/documents/${id}`, ask);
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([
-      { name: mount!.name, path: expect.stringMatching(`^/workspace/documents/${id}/`) },
+      { name: mount!.name, prefix: expect.stringMatching(`^documents/${id}/`) },
     ]);
 
     // A dismissed document is not proposed for, nor asked about, and its file is no longer

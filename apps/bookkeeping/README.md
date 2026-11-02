@@ -335,17 +335,20 @@ date it was first booked with. Reversing that reversal books the document again 
 refused unless the document is to book. A document that is not to be booked, such as a duplicate, is
 dismissed; a booked one is not. An entry's page links to the document it books.
 
-Documents' files live in the administration's Backoffice project, at
-`/workspace/documents/<document ID>/<SHA-256>/<filename>`, where its agents work too. Bookkeeping
-stores and reads them as the person, with `state.writeFileBytes` and `state.readFileBytes`, and
-serves them at `/documents/:documentId/file`. It accepts PDFs and PNG, JPEG, and WebP images, by
-their first bytes rather than the type the browser sends, of at most 1.9 MB: Backoffice keeps each
-workspace file in one Durable Object SQLite row. It records each file's SHA-256 hash, and refuses to
-show a file changed or deleted in Backoffice since its upload. The upload form carries an ID chosen
-when it was shown, and the file is stored before the document is recorded, so uploading again after
-a failure records the document once. Backoffice's writes have no precondition, so the path names the
-file's hash: another file sent with the same form is stored beside the document's, never over it.
-The upload's body is read only up to the largest upload, so a larger one is refused unread.
+Documents' files are blobs of the administration's Backoffice project, keyed
+`documents/<document ID>/<SHA-256>/<filename>`, where its agents work too. Bookkeeping stores them
+as the person: `blobs.createUpload` gives a presigned storage URL that Bookkeeping PUTs the bytes
+to, so they never pass through Backoffice, and `blobs.completeUpload` makes the blob. It serves them
+at `/documents/:documentId/file`, reading them from storage through `blobs.createDownloadUrl`. It
+accepts PDFs and PNG, JPEG, and WebP images, by their first bytes rather than the type the browser
+sends, of at most 20 MB: the most `models.extract` reads in one call, so the firm's agent can read
+any document. It records each file's SHA-256 hash, and refuses to show a file changed or deleted in
+Backoffice since its upload, reading no more of it than the document's size. The upload form carries
+an ID chosen when it was shown, and the file is stored before the document is recorded, so uploading
+again after a failure records the document once. Backoffice's writes have no precondition, so the
+key names the file's hash: another file sent with the same form is stored beside the document's,
+never over it. The upload's body is read only up to the largest upload, so a larger one is refused
+unread.
 
 #### The bookkeeping agent
 
@@ -356,29 +359,30 @@ client could read them. Bookkeeping provisions that project the first time one o
 or admins opens the firm, since Backoffice creates a project as a member of the firm who authorized
 Bookkeeping; until then, asking the agent says the firm has not set it up.
 
-To ask, Bookkeeping shares the document's folder from the administration's project with the firm's
-agent project (`shares.create`), which mounts it read-only at `/shared/document-<hash>/`
-(`shares.accept`); asking again reuses the share that stands. A document's ID is unique only in its
-administration, and the firm's agent serves all its clients, so the mount's name hashes the
-administration's ID with the document's, and the prompt's request ID names both. Answering the
-review revokes the share, as does the document's page when it shows a document whose review was
-answered, or that was booked or dismissed, so the firm reads a client's file only while it is asked
-about it. Each request records that the file may be shared, and a revocation records that it is not,
-so revoking asks Backoffice only while the file may be shared. A request asked while a revocation
-runs may reuse the share it revokes, so a revocation that finds a request awaiting an answer shares
-the file again. An answer may also come while the file is being shared for its request, before the
-share exists, so sharing records the file shared again afterwards, and revokes it again, without
-asking the agent, when the request no longer awaits an answer. Bookkeeping asks as its installation,
-not as the person, so the agent's calls to Bookkeeping arrive as the installation's: they read the
-books and answer reviews (`documents.propose` and `documents.decline`), and every other change is
-refused, whatever a document tells the agent. Bookkeeping defines the agent when the firm's project
-has none, granting it `upload.read`, `models.extract`, `integrations.read` (to read the actions'
-input schemas), and `integrations.execute`; a definition the firm's members changed in Backoffice is
-left as it is. So is one Bookkeeping defined before its definition changed: members update or delete
-it to get the new one. It then submits the prompt, naming the administration and where the file is
-shared, with `pi.prompt.submit` as a `subagent`: each document runs in a new conversation of the
-agent, beside the others, so documents uploaded together are read side by side and no document sees
-another's text. Backoffice bills the turn to the firm.
+To ask, Bookkeeping shares the blobs under the document's key prefix from the administration's
+project with the firm's agent project (`shares.create`), which reads them read-only as blob keys
+under `/shared/document-<hash>/` (`shares.accept`); asking again reuses the share that stands. A
+document's ID is unique only in its administration, and the firm's agent serves all its clients, so
+the share's name hashes the administration's ID with the document's, and the prompt's request ID
+names both. Answering the review revokes the share, as does the document's page when it shows a
+document whose review was answered, or that was booked or dismissed, so the firm reads a client's
+file only while it is asked about it. Each request records that the file may be shared, and a
+revocation records that it is not, so revoking asks Backoffice only while the file may be shared. A
+request asked while a revocation runs may reuse the share it revokes, so a revocation that finds a
+request awaiting an answer shares the file again. An answer may also come while the file is being
+shared for its request, before the share exists, so sharing records the file shared again
+afterwards, and revokes it again, without asking the agent, when the request no longer awaits an
+answer. Bookkeeping asks as its installation, not as the person, so the agent's calls to Bookkeeping
+arrive as the installation's: they read the books and answer reviews (`documents.propose` and
+`documents.decline`), and every other change is refused, whatever a document tells the agent.
+Bookkeeping defines the agent when the firm's project has none, granting it `upload.read`,
+`models.extract`, `integrations.read` (to read the actions' input schemas), and
+`integrations.execute`; a definition the firm's members changed in Backoffice is left as it is. So
+is one Bookkeeping defined before its definition changed: members update or delete it to get the new
+one. It then submits the prompt, naming the administration and where the file is shared, with
+`pi.prompt.submit` as a `subagent`: each document runs in a new conversation of the agent, beside
+the others, so documents uploaded together are read side by side and no document sees another's
+text. Backoffice bills the turn to the firm.
 
 The agent reads the document with `documents.get` and `models.extract`, the books with
 `books.describe` and `entries.list`, and answers with `documents.propose`, an entry as

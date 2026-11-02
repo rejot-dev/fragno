@@ -9,9 +9,10 @@ import { connectAsInstallation } from "./client";
 
 /**
  * A document's file reaches the bookkeeping agent of the firm keeping its books as a share of the
- * document's folder: from the administration's project to the firm's agent project, which mounts
- * it read-only under a name derived from the document. The client's workspace never holds the
- * firm's skills, and the firm reads only the documents it is asked about, while it is asked.
+ * blobs under the document's prefix: from the administration's project to the firm's agent
+ * project, which reads them read-only under a name derived from the document. The client's project
+ * never holds the firm's skills, and the firm reads only the documents it is asked about, while it
+ * is asked.
  */
 
 type Document = { id: string; storageKey: string };
@@ -23,9 +24,9 @@ export type InstalledProject = {
 };
 
 /**
- * The firm's agent mounts the documents of every administration of the firm's clients, and a
+ * The firm's agent reads the documents of every administration of the firm's clients, and a
  * document's ID is unique only in its administration, so the name derives from both. Both IDs
- * together are longer than a mount name may be, so they are hashed.
+ * together are longer than a share name may be, so they are hashed.
  */
 async function mountName(administrationId: string, document: Document): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -36,13 +37,13 @@ async function mountName(administrationId: string, document: Document): Promise<
   return `document-${hex.join("").slice(0, 40)}`;
 }
 
-/** The folder holding the document's file, which is all its share opens. */
-function documentFolder(document: Document): string {
+/** The key prefix of the document's file, which is all its share opens. */
+function documentPrefix(document: Document): string {
   return document.storageKey.slice(0, document.storageKey.lastIndexOf("/") + 1);
 }
 
-/** Where the firm's agent reads the file of a document of `administrationId` once it is shared. */
-export async function sharedDocumentPath(
+/** The blob key the firm's agent reads a document of `administrationId` by once it is shared. */
+export async function sharedDocumentKey(
   administrationId: string,
   document: Document,
 ): Promise<string> {
@@ -52,12 +53,12 @@ export async function sharedDocumentPath(
 
 async function sharesOf(administration: InstalledProject, document: Document) {
   const { shared } = await administration.backoffice.call(administration.scope, "shares.list", {});
-  return shared.filter(({ of }) => of.kind === "folder" && of.path === documentFolder(document));
+  return shared.filter(({ of }) => of.kind === "blobs" && of.prefix === documentPrefix(document));
 }
 
 /**
- * Shares the document's folder with the firm's agent project, which mounts it at
- * `sharedDocumentPath`. Sharing again, e.g. when asking again, reuses the share that stands.
+ * Shares the document's file with the firm's agent project, which reads it as
+ * `sharedDocumentKey`. Sharing again, e.g. when asking again, reuses the share that stands.
  */
 export async function shareDocument(input: {
   administration: InstalledProject;
@@ -71,7 +72,7 @@ export async function shareDocument(input: {
   const share =
     standing ??
     (await administration.backoffice.call(administration.scope, "shares.create", {
-      of: { kind: "folder", path: documentFolder(document) },
+      of: { kind: "blobs", prefix: documentPrefix(document) },
       with: agent.scope,
     }));
   const name = await mountName(administration.scope.projectId, document);
