@@ -1,4 +1,4 @@
-import { CheckboxField } from "@fragno-private/design-system/field";
+import { CheckboxField } from "@fragno-private/design-system/controls/field";
 
 import { useBoundProp, type ComponentFn } from "@json-render/react";
 

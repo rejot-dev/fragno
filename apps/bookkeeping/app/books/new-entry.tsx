@@ -1,11 +1,11 @@
-import { Button, ButtonLink, IconButton } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
+import { Button, ButtonLink, IconButton } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { Select } from "@fragno-private/design-system/controls/select";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import { Icon } from "@fragno-private/design-system/icon";
-import { Input } from "@fragno-private/design-system/input";
-import { PageHeading } from "@fragno-private/design-system/page-heading";
-import { Select } from "@fragno-private/design-system/select";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import { SurfaceCard, SurfacePanelBody } from "@fragno-private/design-system/surface-panel";
+import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
+import { SurfaceCard, SurfacePanelBody } from "@fragno-private/design-system/layout/surface-panel";
 import { useState } from "react";
 import { Form, redirect, useNavigation, useOutletContext } from "react-router";
 import { z } from "zod";

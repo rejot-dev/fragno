@@ -1,7 +1,7 @@
-import { Button } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { FormContainer } from "@fragno-private/design-system/form-container";
-import { Input } from "@fragno-private/design-system/input";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { FormContainer } from "@fragno-private/design-system/forms/form-container";
 import { useEffect, useState, type SubmitEvent } from "react";
 import { Form, useActionData, useNavigation, useOutletContext } from "react-router";
 

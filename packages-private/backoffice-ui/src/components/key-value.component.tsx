@@ -1,4 +1,4 @@
-import { KeyValueList } from "@fragno-private/design-system/key-value-list";
+import { KeyValueList } from "@fragno-private/design-system/data/key-value-list";
 
 import type { ComponentFn } from "@json-render/react";
 

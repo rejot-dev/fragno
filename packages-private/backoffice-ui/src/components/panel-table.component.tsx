@@ -4,7 +4,7 @@ import {
   PanelTableRow as PanelTableRowView,
   panelRowTitleClassName,
   type PanelTableColumn,
-} from "@fragno-private/design-system/panel";
+} from "@fragno-private/design-system/layout/panel";
 import { Children, createContext, useContext, type ReactNode } from "react";
 
 import type { ComponentFn } from "@json-render/react";

@@ -9,7 +9,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
-import type { CausalFlameNode } from "@fragno-private/design-system/causal-flame-graph-model";
+import type { CausalFlameNode } from "@fragno-private/design-system/workflow-runs/causal-flame-graph-model";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";

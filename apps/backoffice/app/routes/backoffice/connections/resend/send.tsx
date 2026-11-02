@@ -1,5 +1,5 @@
-import { Button } from "@fragno-private/design-system/button";
-import { FormContainer } from "@fragno-private/design-system/form-container";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { FormContainer } from "@fragno-private/design-system/forms/form-container";
 import { useEffect, useRef } from "react";
 import { useFetcher, useOutletContext } from "react-router";
 

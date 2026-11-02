@@ -1,5 +1,5 @@
 import type { PiManagerAgent } from "@fragno-dev/backoffice-api/v0/pi";
-import { PaneMessage } from "@fragno-private/design-system/pane-message";
+import { PaneMessage } from "@fragno-private/design-system/feedback/pane-message";
 import { useCallback, type ReactNode } from "react";
 import { useOutletContext, type ShouldRevalidateFunctionArgs } from "react-router";
 

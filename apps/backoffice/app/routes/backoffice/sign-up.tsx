@@ -1,9 +1,9 @@
 import "@fragno-private/design-system/components.css";
 
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { FormContainer } from "@fragno-private/design-system/form-container";
-import { Input } from "@fragno-private/design-system/input";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { FormContainer } from "@fragno-private/design-system/forms/form-container";
 import { useState } from "react";
 import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import { z } from "zod";

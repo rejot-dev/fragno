@@ -1,14 +1,14 @@
 import { useState, type SubmitEvent } from "react";
 
 import { cn } from "../../cn";
-import { Button } from "../button";
-import { DataTable } from "../data-table";
-import { Field } from "../field";
+import { Button } from "../controls/button";
+import { Field } from "../controls/field";
+import { Select } from "../controls/select";
+import { TextArea } from "../controls/text-area";
+import { DataTable } from "../data/data-table";
+import { KeyValueList } from "../data/key-value-list";
+import { BackofficeStatusLight } from "../feedback/status-light";
 import { Icon } from "../icon";
-import { KeyValueList } from "../key-value-list";
-import { Select } from "../select";
-import { BackofficeStatusLight } from "../status-light";
-import { TextArea } from "../text-area";
 import { LandingSection } from "./landing-section";
 
 type Decision = "approve" | "reject";

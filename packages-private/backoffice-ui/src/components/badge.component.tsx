@@ -1,4 +1,4 @@
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 
 import type { ComponentFn } from "@json-render/react";
 

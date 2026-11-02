@@ -1,14 +1,14 @@
-import { AppearanceOptions } from "@fragno-private/design-system/appearance-menu";
+import { AppearanceOptions } from "@fragno-private/design-system/controls/appearance-menu";
 import {
   appearanceThemeIcon,
   useAppearancePreferences,
-} from "@fragno-private/design-system/appearance-preferences";
-import { ButtonLink } from "@fragno-private/design-system/button";
+} from "@fragno-private/design-system/controls/appearance-preferences";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
 import {
   SelectorMenu,
   SelectorMenuPopup,
   SelectorMenuTrigger,
-} from "@fragno-private/design-system/selector-menu";
+} from "@fragno-private/design-system/controls/selector-menu";
 
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 

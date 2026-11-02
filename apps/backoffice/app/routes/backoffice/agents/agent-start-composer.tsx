@@ -1,14 +1,14 @@
-import { Button } from "@fragno-private/design-system/button";
 import {
   ChatAttachmentDropZone,
   ChatComposerAttachButton,
   ChatComposerAttachments,
-} from "@fragno-private/design-system/chat-attachment";
+} from "@fragno-private/design-system/agents/chat-attachment";
 import {
   ChatPromptField,
   ChatStartFooter,
   ChatStartPanel,
-} from "@fragno-private/design-system/chat-start";
+} from "@fragno-private/design-system/agents/chat-start";
+import { Button } from "@fragno-private/design-system/controls/button";
 import { useEffect, useMemo, useState } from "react";
 import { useFetcher } from "react-router";
 

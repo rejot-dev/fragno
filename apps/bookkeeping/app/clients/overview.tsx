@@ -1,6 +1,6 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { PageHeading } from "@fragno-private/design-system/page-heading";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
+import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
 import { env } from "cloudflare:workers";
 import { useOutletContext } from "react-router";
 

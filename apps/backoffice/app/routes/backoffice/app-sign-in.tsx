@@ -1,7 +1,7 @@
-import { AppAuthLayout } from "@fragno-private/design-system/app-auth-layout";
-import { Button } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { Input } from "@fragno-private/design-system/input";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { AppAuthLayout } from "@fragno-private/design-system/layout/app-auth-layout";
 import { useEffect, useState } from "react";
 import { Form, Link, useLocation, useNavigation } from "react-router";
 

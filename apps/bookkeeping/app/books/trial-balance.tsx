@@ -1,12 +1,12 @@
-import { PageHeading } from "@fragno-private/design-system/page-heading";
-import { Select } from "@fragno-private/design-system/select";
+import { Select } from "@fragno-private/design-system/controls/select";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
+import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
 import {
   SurfaceCard,
   SurfaceTable,
   SurfaceTableRow,
   SurfaceTableTotalRow,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { Link, useNavigate, useOutletContext } from "react-router";
 
 import { today } from "../../workers/books/fiscal-years";

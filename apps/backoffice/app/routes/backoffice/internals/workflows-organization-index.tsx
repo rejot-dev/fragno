@@ -1,4 +1,4 @@
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 
 export default function BackofficeWorkflowsOrganizationIndex() {
   return (

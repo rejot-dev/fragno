@@ -1,11 +1,11 @@
 import { useState } from "react";
 
-import { CausalFlameGraph } from "../causal-flame-graph";
+import { CausalFlameGraph } from "../workflow-runs/causal-flame-graph";
 import type {
   CausalFlameNode,
   CausalFlameStatus,
   CausalFlameTiming,
-} from "../causal-flame-graph-model";
+} from "../workflow-runs/causal-flame-graph-model";
 import { LandingSection } from "./landing-section";
 
 const T0 = Date.UTC(2026, 9, 28, 9, 12, 0);

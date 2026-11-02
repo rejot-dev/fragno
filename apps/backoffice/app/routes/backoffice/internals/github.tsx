@@ -1,7 +1,8 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { DetailList } from "@fragno-private/design-system/detail-list";
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { DetailList } from "@fragno-private/design-system/data/detail-list";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfaceFacts,
   SurfacePanel,
@@ -9,8 +10,7 @@ import {
   SurfaceTable,
   SurfaceTableRow,
   type SurfaceTableColumn,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { useLoaderData } from "react-router";
 
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";

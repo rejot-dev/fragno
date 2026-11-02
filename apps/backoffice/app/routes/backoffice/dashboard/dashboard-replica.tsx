@@ -1,7 +1,7 @@
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { BackofficeDownloadState } from "@fragno-private/design-system/feedback/download-state";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import { Fragment, Suspense, use, type ReactNode } from "react";
 
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";

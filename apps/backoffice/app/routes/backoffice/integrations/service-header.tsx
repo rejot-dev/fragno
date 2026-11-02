@@ -1,4 +1,4 @@
-import { BackofficeBreadcrumbs } from "@fragno-private/design-system/breadcrumbs";
+import { BackofficeBreadcrumbs } from "@fragno-private/design-system/navigation/breadcrumbs";
 import type { ReactNode } from "react";
 
 /** Header for a native service's own pages, which sit under the Integrations section. */

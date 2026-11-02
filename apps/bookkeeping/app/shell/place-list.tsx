@@ -1,5 +1,5 @@
 import { Icon, type IconName } from "@fragno-private/design-system/icon";
-import { SurfaceSection } from "@fragno-private/design-system/surface-panel";
+import { SurfaceSection } from "@fragno-private/design-system/layout/surface-panel";
 import { Link } from "react-router";
 
 /** A place listed to open: a firm, a client, or an administration, and whether the person may. */

@@ -1,10 +1,10 @@
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { BackofficeDownloadState } from "@fragno-private/design-system/download-state";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { BackofficeDownloadState } from "@fragno-private/design-system/feedback/download-state";
+import { formatBytes } from "@fragno-private/design-system/forms/units";
 import { Icon } from "@fragno-private/design-system/icon";
-import { Input } from "@fragno-private/design-system/input";
-import { formatBytes } from "@fragno-private/design-system/units";
 import {
   Suspense,
   use,

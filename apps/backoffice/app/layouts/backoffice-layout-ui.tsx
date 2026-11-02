@@ -1,6 +1,6 @@
 import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { BackofficePageHeader } from "@fragno-private/design-system/layout/page-header";
 import { usePostHog } from "@posthog/react/slim";
 import { type ReactNode, useEffect } from "react";
 import { Outlet, isRouteErrorResponse, useRouteError, useRouteLoaderData } from "react-router";

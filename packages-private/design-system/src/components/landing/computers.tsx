@@ -1,6 +1,6 @@
+import { BackofficeStatusLight } from "../feedback/status-light";
 import { Icon } from "../icon";
-import { BackofficeStatusLight } from "../status-light";
-import { TerminalLog, TerminalLogEntry } from "../terminal";
+import { TerminalLog, TerminalLogEntry } from "../overlays/terminal";
 import { LandingSection } from "./landing-section";
 
 const SANDBOX_FACTS = [

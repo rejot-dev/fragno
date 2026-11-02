@@ -1,7 +1,7 @@
 import "./app.css";
 
 import { brandFontLatinUrl } from "@fragno-private/design-system/brand-font";
-import { ButtonLink } from "@fragno-private/design-system/button";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
 import {
   Links,
   Meta,

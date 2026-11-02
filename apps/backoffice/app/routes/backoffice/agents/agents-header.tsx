@@ -1,4 +1,4 @@
-import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+import { BackofficeTabHeader } from "@fragno-private/design-system/navigation/tab-header";
 import type { ReactNode } from "react";
 
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";

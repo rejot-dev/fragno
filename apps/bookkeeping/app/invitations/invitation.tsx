@@ -1,5 +1,5 @@
 import { BackofficeApiRequestError } from "@fragno-dev/backoffice-api/v0/client";
-import { Button } from "@fragno-private/design-system/button";
+import { Button } from "@fragno-private/design-system/controls/button";
 import { env } from "cloudflare:workers";
 import { Form, Link, redirect, useNavigation } from "react-router";
 

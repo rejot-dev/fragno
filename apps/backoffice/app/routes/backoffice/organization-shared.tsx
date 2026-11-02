@@ -1,6 +1,6 @@
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
+import { BackofficeTabHeader } from "@fragno-private/design-system/navigation/tab-header";
 import { isRouteErrorResponse } from "react-router";
 
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";

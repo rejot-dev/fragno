@@ -1,6 +1,6 @@
 import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer } from "@fragno-private/design-system/form-container";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { FormContainer } from "@fragno-private/design-system/forms/form-container";
 import { useEffect } from "react";
 import {
   Form,

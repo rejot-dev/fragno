@@ -1,7 +1,7 @@
 import {
   ChatWorkspacePanel,
   ChatWorkspaceScroll,
-} from "@fragno-private/design-system/chat-workspace-panel";
+} from "@fragno-private/design-system/agents/chat-workspace-panel";
 
 import { ResultContent } from "./result-content";
 import type { SessionWorkspaceItem } from "./workspace-model";

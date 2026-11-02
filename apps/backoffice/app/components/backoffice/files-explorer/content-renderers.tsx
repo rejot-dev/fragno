@@ -3,11 +3,14 @@ import type {
   AutomationEventMatcher,
   AutomationRouteDefinition,
 } from "@fragno-dev/backoffice-api/v0/automation";
-import { ButtonLink } from "@fragno-private/design-system/button";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { SourceView } from "@fragno-private/design-system/data/source-view";
+import { Spinner } from "@fragno-private/design-system/feedback/spinner";
 import { Icon } from "@fragno-private/design-system/icon";
-import { SourceView } from "@fragno-private/design-system/source-view";
-import { Spinner } from "@fragno-private/design-system/spinner";
-import { UnderlineTab, UnderlineTabList } from "@fragno-private/design-system/underline-tabs";
+import {
+  UnderlineTab,
+  UnderlineTabList,
+} from "@fragno-private/design-system/navigation/underline-tabs";
 import { useState, type ReactNode } from "react";
 import { Streamdown } from "streamdown";
 

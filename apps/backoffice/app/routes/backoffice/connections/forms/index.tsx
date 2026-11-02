@@ -1,6 +1,6 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Input } from "@fragno-private/design-system/input";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import { useState, type SubmitEvent } from "react";
 
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";

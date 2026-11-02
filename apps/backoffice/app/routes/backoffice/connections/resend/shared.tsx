@@ -1,5 +1,5 @@
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { BackofficePageHeader } from "@fragno-private/design-system/page-header";
+import { BackofficePageHeader } from "@fragno-private/design-system/layout/page-header";
 import type { Dispatch, SetStateAction } from "react";
 import { isRouteErrorResponse } from "react-router";
 

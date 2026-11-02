@@ -1,4 +1,4 @@
-import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+import { BackofficeTabHeader } from "@fragno-private/design-system/navigation/tab-header";
 import { Outlet, useLocation } from "react-router";
 
 import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";

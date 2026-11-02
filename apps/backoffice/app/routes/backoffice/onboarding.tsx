@@ -1,12 +1,12 @@
 import "@fragno-private/design-system/components.css";
 
-import { Button } from "@fragno-private/design-system/button";
-import { Callout } from "@fragno-private/design-system/callout";
-import { Field } from "@fragno-private/design-system/field";
-import { Input } from "@fragno-private/design-system/input";
-import { RadioCards } from "@fragno-private/design-system/radio-cards";
-import { StandalonePageAccount } from "@fragno-private/design-system/standalone-page";
-import { WorkingIndicator } from "@fragno-private/design-system/working-indicator";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { RadioCards } from "@fragno-private/design-system/controls/radio-cards";
+import { Callout } from "@fragno-private/design-system/feedback/callout";
+import { WorkingIndicator } from "@fragno-private/design-system/feedback/working-indicator";
+import { StandalonePageAccount } from "@fragno-private/design-system/layout/standalone-page";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   data,

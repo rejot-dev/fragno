@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
 
-import { Button } from "../button";
-import { ChatActivity, ChatActivityStep } from "../chat-activity";
-import { ChatAssistantMessage, ChatUserMessage } from "../chat-message";
-import { ChatWorkflow, type ChatWorkflowElement, type ChatWorkflowStatus } from "../chat-workflow";
-import { Field } from "../field";
-import { KeyValueList } from "../key-value-list";
-import { ScrollablePre } from "../scrollable-pre";
-import { TextArea } from "../text-area";
-import { TonedPanel } from "../toned-panel";
+import { ChatActivity, ChatActivityStep } from "../agents/chat-activity";
+import { ChatAssistantMessage, ChatUserMessage } from "../agents/chat-message";
+import {
+  ChatWorkflow,
+  type ChatWorkflowElement,
+  type ChatWorkflowStatus,
+} from "../agents/chat-workflow";
+import { Button } from "../controls/button";
+import { Field } from "../controls/field";
+import { TextArea } from "../controls/text-area";
+import { KeyValueList } from "../data/key-value-list";
+import { ScrollablePre } from "../data/scrollable-pre";
+import { TonedPanel } from "../layout/toned-panel";
 
 const DRAFT_REPLY =
   "Hi Maya,\n\nThanks for getting in touch about Cedar Physio. I'd be glad to show you around. Does Tuesday or Wednesday next week work for a 30-minute call?\n\nThe Harbor team";

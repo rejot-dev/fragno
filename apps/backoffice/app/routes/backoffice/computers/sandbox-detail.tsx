@@ -1,6 +1,6 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Input } from "@fragno-private/design-system/input";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Form, Link, redirect, useFetcher, useNavigation, useOutletContext } from "react-router";
 

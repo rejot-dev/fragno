@@ -6,8 +6,8 @@ import {
   BackofficeUiErrorBoundary,
   BackofficeUiRenderer,
 } from "@fragno-private/backoffice-ui/renderer";
-import { InlineAlert } from "@fragno-private/design-system/inline-alert";
-import { SurfacePanel } from "@fragno-private/design-system/surface-panel";
+import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
+import { SurfacePanel } from "@fragno-private/design-system/layout/surface-panel";
 
 const DEMO_CATEGORIES: BackofficeUiDemoCategory[] = ["Layout", "Content", "Data", "Input"];
 

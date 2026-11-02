@@ -1,13 +1,13 @@
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
-import { ButtonLink } from "@fragno-private/design-system/button";
+import { RunStopControl } from "@fragno-private/design-system/agents/run-stop-control";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { ListRow, ListRowIcon, RowList } from "@fragno-private/design-system/data/list-row";
+import { formatRelativeTime } from "@fragno-private/design-system/data/relative-time";
+import { SparkBars } from "@fragno-private/design-system/data/spark-bars";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import type { BackofficeStatusTone } from "@fragno-private/design-system/feedback/status-tone";
 import { Icon } from "@fragno-private/design-system/icon";
-import { ListRow, ListRowIcon, RowList } from "@fragno-private/design-system/list-row";
-import { Panel, PanelFooter } from "@fragno-private/design-system/panel";
-import { formatRelativeTime } from "@fragno-private/design-system/relative-time";
-import { RunStopControl } from "@fragno-private/design-system/run-stop-control";
-import { SparkBars } from "@fragno-private/design-system/spark-bars";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
+import { Panel, PanelFooter } from "@fragno-private/design-system/layout/panel";
 import { useEffect, useRef } from "react";
 import { Link, useSearchParams } from "react-router";
 

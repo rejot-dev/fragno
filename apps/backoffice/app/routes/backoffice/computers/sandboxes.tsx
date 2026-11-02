@@ -1,4 +1,4 @@
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import { useEffect } from "react";
 import { Outlet, useOutletContext, useRevalidator } from "react-router";
 

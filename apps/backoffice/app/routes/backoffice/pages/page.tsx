@@ -1,7 +1,7 @@
 import type { PageDefinition, PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { PaneSpinner } from "@fragno-private/design-system/pane-message";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import { data } from "react-router";
 
 import { BackofficePageView } from "@/artifacts/pages/view";

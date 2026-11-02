@@ -1,4 +1,4 @@
-import { PageHeading } from "@fragno-private/design-system/page-heading";
+import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
 
 import { inviteToTeam, loadTeam } from "../members/members.server";
 import { TeamSection } from "../members/team";

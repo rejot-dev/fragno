@@ -1,14 +1,14 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { Input } from "@fragno-private/design-system/input";
-import { ProgressMeter } from "@fragno-private/design-system/progress-meter";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { ProgressMeter } from "@fragno-private/design-system/data/progress-meter";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfaceFacts,
   SurfacePanel,
   SurfaceTable,
   SurfaceTableRow,
   type SurfaceTableColumn,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { Form, useParams } from "react-router";
 
 import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";

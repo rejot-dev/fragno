@@ -1,13 +1,13 @@
-import { Button } from "@fragno-private/design-system/button";
-import { DetailList } from "@fragno-private/design-system/detail-list";
-import { Field } from "@fragno-private/design-system/field";
-import { Input } from "@fragno-private/design-system/input";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { DetailList } from "@fragno-private/design-system/data/detail-list";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import {
   SurfaceFacts,
   SurfacePanel,
   SurfacePanelBody,
-} from "@fragno-private/design-system/surface-panel";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { useEffect, useState, type SubmitEvent } from "react";
 import { Link, useOutletContext, useRevalidator } from "react-router";
 

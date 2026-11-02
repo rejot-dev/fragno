@@ -1,4 +1,4 @@
-import { BackofficeFragmentMark } from "@fragno-private/design-system/fragment-mark";
+import { BackofficeFragmentMark } from "@fragno-private/design-system/brand/fragment-mark";
 import { Link } from "react-router";
 
 const navLinkClassName =

@@ -1,5 +1,5 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { SurfacePanel } from "@fragno-private/design-system/surface-panel";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { SurfacePanel } from "@fragno-private/design-system/layout/surface-panel";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { backofficeConnectionCatalog } from "@/fragno/backoffice-capabilities/backoffice-capabilities";

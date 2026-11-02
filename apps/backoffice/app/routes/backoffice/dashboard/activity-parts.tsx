@@ -1,6 +1,6 @@
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import type { IconName } from "@fragno-private/design-system/icon";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import { formatWorkflowDuration } from "@fragno-private/design-system/workflow-run-timeline-model";
+import { formatWorkflowDuration } from "@fragno-private/design-system/workflow-runs/workflow-run-timeline-model";
 
 import { AUTOMATION_SCHEDULE_SOURCE } from "@/fragno/automation/route-triggers";
 import { backofficeCapabilities } from "@/fragno/backoffice-capabilities/backoffice-capabilities";

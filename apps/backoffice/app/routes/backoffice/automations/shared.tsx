@@ -1,4 +1,4 @@
-import { OverflowTabRow } from "@fragno-private/design-system/overflow-tab-row";
+import { OverflowTabRow } from "@fragno-private/design-system/navigation/overflow-tab-row";
 
 type AutomationSubpageTab = {
   id: string;

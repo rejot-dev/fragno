@@ -1,4 +1,4 @@
-import { CodeBlock } from "@fragno-private/design-system/code-block";
+import { CodeBlock } from "@fragno-private/design-system/data/code-block";
 
 import type { ComponentFn } from "@json-render/react";
 

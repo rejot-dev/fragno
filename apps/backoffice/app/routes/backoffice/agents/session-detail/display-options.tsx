@@ -1,8 +1,8 @@
 import {
   OptionsPopover,
   OptionsPopoverDownload,
-} from "@fragno-private/design-system/options-popover";
-import { Switch } from "@fragno-private/design-system/switch";
+} from "@fragno-private/design-system/controls/options-popover";
+import { Switch } from "@fragno-private/design-system/controls/switch";
 
 export function SessionDisplayOptions({
   exportFilename,

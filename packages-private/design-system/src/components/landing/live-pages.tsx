@@ -1,9 +1,9 @@
 import { cn } from "../../cn";
-import { DataTable } from "../data-table";
+import { DataTable } from "../data/data-table";
+import { Metric } from "../data/metric";
+import { StackedBarChart } from "../data/stacked-bar-chart";
+import { BackofficeStatusLight } from "../feedback/status-light";
 import { Icon } from "../icon";
-import { Metric } from "../metric";
-import { StackedBarChart } from "../stacked-bar-chart";
-import { BackofficeStatusLight } from "../status-light";
 import { LandingSection, LandingStage } from "./landing-section";
 
 const LEAD_SOURCES = [

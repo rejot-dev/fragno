@@ -1,4 +1,4 @@
-import { SparkBars as SparkBarsView } from "@fragno-private/design-system/spark-bars";
+import { SparkBars as SparkBarsView } from "@fragno-private/design-system/data/spark-bars";
 
 import type { ComponentFn } from "@json-render/react";
 

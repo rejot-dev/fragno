@@ -6,7 +6,7 @@ import {
   automationEventRoutesListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { CausalFlameNode } from "@fragno-private/design-system/causal-flame-graph-model";
+import type { CausalFlameNode } from "@fragno-private/design-system/workflow-runs/causal-flame-graph-model";
 
 import { queryAutomationReplica, readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";

@@ -1,5 +1,5 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
-import { FormContainer } from "@fragno-private/design-system/form-container";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { FormContainer } from "@fragno-private/design-system/forms/form-container";
 import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 
 import { BackofficeForbiddenError } from "@/backoffice-runtime/kernel";

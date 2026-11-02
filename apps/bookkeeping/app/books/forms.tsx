@@ -1,5 +1,5 @@
-import { Button, type ButtonVariant } from "@fragno-private/design-system/button";
-import { Dialog } from "@fragno-private/design-system/dialog";
+import { Button, type ButtonVariant } from "@fragno-private/design-system/controls/button";
+import { Dialog } from "@fragno-private/design-system/overlays/dialog";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Form, useNavigation } from "react-router";
 

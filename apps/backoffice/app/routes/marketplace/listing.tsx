@@ -1,7 +1,7 @@
 import "@fragno-private/design-system/components.css";
 
-import { ButtonLink } from "@fragno-private/design-system/button";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import { Link } from "react-router";
 
 import {

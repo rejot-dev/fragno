@@ -1,4 +1,4 @@
-import { ScrollablePre } from "@fragno-private/design-system/scrollable-pre";
+import { ScrollablePre } from "@fragno-private/design-system/data/scrollable-pre";
 
 import { formatJson, formatToolArgumentsDisplayText, getCodeArgument } from "./tool-arguments";
 

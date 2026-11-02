@@ -1,4 +1,4 @@
-import { StackedBarChart } from "@fragno-private/design-system/stacked-bar-chart";
+import { StackedBarChart } from "@fragno-private/design-system/data/stacked-bar-chart";
 
 import type { ComponentFn } from "@json-render/react";
 

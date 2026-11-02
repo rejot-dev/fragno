@@ -1,8 +1,8 @@
-import { Button } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { FormContainer } from "@fragno-private/design-system/form-container";
-import { Input } from "@fragno-private/design-system/input";
-import { Select } from "@fragno-private/design-system/select";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { Select } from "@fragno-private/design-system/controls/select";
+import { FormContainer } from "@fragno-private/design-system/forms/form-container";
 import { Form, useNavigation } from "react-router";
 
 import { ROLE_LABELS } from "../organizations/roles";

@@ -1,4 +1,4 @@
-import { ListRow as ListRowView, ListRowIcon } from "@fragno-private/design-system/list-row";
+import { ListRow as ListRowView, ListRowIcon } from "@fragno-private/design-system/data/list-row";
 
 import type { ComponentFn } from "@json-render/react";
 

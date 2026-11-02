@@ -1,4 +1,4 @@
-import { Button } from "@fragno-private/design-system/button";
+import { Button } from "@fragno-private/design-system/controls/button";
 import { useId, useState } from "react";
 
 import type { ComponentFn } from "@json-render/react";

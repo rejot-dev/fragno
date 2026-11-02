@@ -1,5 +1,5 @@
 import type { BackofficeUiParseResult } from "@fragno-private/backoffice-ui/result";
-import { ScrollablePre } from "@fragno-private/design-system/scrollable-pre";
+import { ScrollablePre } from "@fragno-private/design-system/data/scrollable-pre";
 
 import {
   normalizePiContent,

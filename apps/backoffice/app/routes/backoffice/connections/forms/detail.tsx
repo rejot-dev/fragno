@@ -1,6 +1,6 @@
-import { Button, ButtonLink } from "@fragno-private/design-system/button";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import { useEffect, useState } from "react";
 
 import type { FormResponse } from "@fragno-dev/forms";

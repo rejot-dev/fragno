@@ -1,14 +1,14 @@
-import { Button } from "@fragno-private/design-system/button";
-import { Input } from "@fragno-private/design-system/input";
-import { Select } from "@fragno-private/design-system/select";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { Select } from "@fragno-private/design-system/controls/select";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfacePanel,
   SurfacePanelFooter,
   SurfaceTable,
   SurfaceTableRow,
   type SurfaceTableColumn,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+} from "@fragno-private/design-system/layout/surface-panel";
 import { useState } from "react";
 import {
   useLoaderData,

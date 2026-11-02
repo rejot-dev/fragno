@@ -1,4 +1,4 @@
-import { ImagePreview } from "@fragno-private/design-system/image-preview";
+import { ImagePreview } from "@fragno-private/design-system/files/image-preview";
 import type { ComponentProps, ComponentType } from "react";
 import { Streamdown } from "streamdown";
 

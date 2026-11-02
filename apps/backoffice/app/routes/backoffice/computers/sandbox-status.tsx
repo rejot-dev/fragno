@@ -1,6 +1,6 @@
 import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import type { BackofficeStatusTone } from "@fragno-private/design-system/status-tone";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import type { BackofficeStatusTone } from "@fragno-private/design-system/feedback/status-tone";
 
 import type { SandboxInstanceStatus } from "@/sandbox/contracts";
 

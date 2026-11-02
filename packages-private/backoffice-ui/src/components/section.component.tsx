@@ -1,4 +1,4 @@
-import { TonedPanel } from "@fragno-private/design-system/toned-panel";
+import { TonedPanel } from "@fragno-private/design-system/layout/toned-panel";
 
 import type { ComponentFn } from "@json-render/react";
 

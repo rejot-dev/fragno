@@ -1,7 +1,7 @@
 import "@fragno-private/design-system/components.css";
 
-import { AuthorizationScreen } from "@fragno-private/design-system/authorization-screen";
-import { Button } from "@fragno-private/design-system/button";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { AuthorizationScreen } from "@fragno-private/design-system/layout/authorization-screen";
 import {
   Form,
   Link,

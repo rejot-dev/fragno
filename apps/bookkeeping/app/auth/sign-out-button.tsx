@@ -1,4 +1,4 @@
-import { Button } from "@fragno-private/design-system/button";
+import { Button } from "@fragno-private/design-system/controls/button";
 import { useState } from "react";
 
 import { authClient } from "./auth-client";

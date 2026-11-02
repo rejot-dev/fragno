@@ -7,7 +7,7 @@ import { render } from "@testing-library/react";
 
 const backofficeShellMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@fragno-private/design-system/page-header", () => ({
+vi.mock("@fragno-private/design-system/layout/page-header", () => ({
   BackofficePageHeader: () => null,
 }));
 

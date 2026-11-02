@@ -1,11 +1,11 @@
 import type { AutomationRouteDefinition } from "@fragno-dev/backoffice-api/v0/automation";
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
-import { IconButton } from "@fragno-private/design-system/button";
+import { IconButton } from "@fragno-private/design-system/controls/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import {
   ORCHESTRATION_TARGET_KIND_LABEL,
   type OrchestrationTarget,
-} from "@fragno-private/design-system/orchestration-graph-model";
+} from "@fragno-private/design-system/orchestration/orchestration-graph-model";
 import { useMemo, type ReactNode } from "react";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";

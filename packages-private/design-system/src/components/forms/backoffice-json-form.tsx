@@ -40,13 +40,13 @@ import {
   withJsonFormsLayoutProps as jsonFormsLayoutProps,
 } from "@jsonforms/react";
 
-import { Button } from "../button";
 import { ClientOnly } from "../client-only";
-import { CheckboxField, Field } from "../field";
+import { Button } from "../controls/button";
+import { CheckboxField, Field } from "../controls/field";
+import { Input } from "../controls/input";
+import { Select } from "../controls/select";
+import { TextArea } from "../controls/text-area";
 import { Icon } from "../icon";
-import { Input } from "../input";
-import { Select } from "../select";
-import { TextArea } from "../text-area";
 import {
   getBackofficeJsonFormErrorMessages,
   translateBackofficeJsonFormError,

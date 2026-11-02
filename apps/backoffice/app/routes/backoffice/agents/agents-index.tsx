@@ -1,7 +1,7 @@
-import { PaneSpinner } from "@fragno-private/design-system/pane-message";
-import { SparkBars } from "@fragno-private/design-system/spark-bars";
-import { BackofficeStatusLight } from "@fragno-private/design-system/status-light";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
+import { SparkBars } from "@fragno-private/design-system/data/spark-bars";
+import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
+import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import { Link, useOutletContext } from "react-router";
 
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";

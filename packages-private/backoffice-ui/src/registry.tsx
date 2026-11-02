@@ -1,4 +1,4 @@
-import { Callout } from "@fragno-private/design-system/callout";
+import { Callout } from "@fragno-private/design-system/feedback/callout";
 
 import { defineRegistry, type ComponentFn, type Components } from "@json-render/react";
 

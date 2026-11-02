@@ -1,5 +1,4 @@
 import { backofficeScopeOrganization } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { IconName } from "@fragno-private/design-system/icon";
 import {
   SelectorMenu,
   SelectorMenuButton,
@@ -9,7 +8,8 @@ import {
   SelectorMenuOption,
   SelectorMenuPopup,
   SelectorMenuTrigger,
-} from "@fragno-private/design-system/selector-menu";
+} from "@fragno-private/design-system/controls/selector-menu";
+import type { IconName } from "@fragno-private/design-system/icon";
 import { useLocation } from "react-router";
 
 import {

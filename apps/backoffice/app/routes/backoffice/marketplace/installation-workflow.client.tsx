@@ -1,5 +1,5 @@
 import { pendingWaitEventTypes } from "@fragno-dev/workflows/pending-waits";
-import { Button, ButtonLink, IconButton } from "@fragno-private/design-system/button";
+import { Button, ButtonLink, IconButton } from "@fragno-private/design-system/controls/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { use, type ReactNode } from "react";
 

@@ -1,14 +1,14 @@
-import { Checkbox } from "@fragno-private/design-system/checkbox";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { PaneSpinner } from "@fragno-private/design-system/pane-message";
+import { Checkbox } from "@fragno-private/design-system/controls/checkbox";
+import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
+import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import {
   SurfacePanel,
   SurfaceTable,
   SurfaceTableRow,
   type SurfaceTableColumn,
-} from "@fragno-private/design-system/surface-panel";
-import { BackofficeSystemState } from "@fragno-private/design-system/system-state";
-import { BackofficeTabHeader } from "@fragno-private/design-system/tab-header";
+} from "@fragno-private/design-system/layout/surface-panel";
+import { BackofficeTabHeader } from "@fragno-private/design-system/navigation/tab-header";
 import { Suspense, use, useState, type ReactNode } from "react";
 import { Link, Outlet, useParams, useSearchParams } from "react-router";
 

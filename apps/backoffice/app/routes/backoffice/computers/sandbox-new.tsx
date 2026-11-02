@@ -4,11 +4,11 @@ import {
   type SandboxImage,
   type SandboxInstanceType,
 } from "@fragno-apps/cf-sandbox-bridge/sandbox/sandbox-container-contract";
-import { Button } from "@fragno-private/design-system/button";
-import { Checkbox } from "@fragno-private/design-system/checkbox";
-import { Field } from "@fragno-private/design-system/field";
-import { Input } from "@fragno-private/design-system/input";
-import { TimeUnitField } from "@fragno-private/design-system/unit-fields";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Checkbox } from "@fragno-private/design-system/controls/checkbox";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { TimeUnitField } from "@fragno-private/design-system/forms/unit-fields";
 import { useState, type ReactNode } from "react";
 import { Form, Link, redirect, useNavigation, useOutletContext } from "react-router";
 

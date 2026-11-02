@@ -1,7 +1,7 @@
-import { Field } from "@fragno-private/design-system/field";
-import { Input } from "@fragno-private/design-system/input";
-import { Select } from "@fragno-private/design-system/select";
-import { TextArea } from "@fragno-private/design-system/text-area";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { Input } from "@fragno-private/design-system/controls/input";
+import { Select } from "@fragno-private/design-system/controls/select";
+import { TextArea } from "@fragno-private/design-system/controls/text-area";
 
 const SCHEDULE_UNIT_OPTIONS = [
   { label: "minutes", value: "minutes" },

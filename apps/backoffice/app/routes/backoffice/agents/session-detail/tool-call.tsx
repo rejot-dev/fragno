@@ -2,17 +2,17 @@ import {
   parseBackofficeUiResult,
   type BackofficeUiParseResult,
 } from "@fragno-private/backoffice-ui/result";
-import { Button } from "@fragno-private/design-system/button";
-import { ChatActivityStep } from "@fragno-private/design-system/chat-activity";
+import { ChatActivityStep } from "@fragno-private/design-system/agents/chat-activity";
 import {
   ChatCodemodeStep,
   codemodeCallHeadline,
   type ChatCodemodeCalls,
   type ChatCodemodeView,
-} from "@fragno-private/design-system/chat-codemode-step";
+} from "@fragno-private/design-system/agents/chat-codemode-step";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { ScrollablePre } from "@fragno-private/design-system/data/scrollable-pre";
 import type { IconName } from "@fragno-private/design-system/icon";
-import { LabeledSection } from "@fragno-private/design-system/labeled-section";
-import { ScrollablePre } from "@fragno-private/design-system/scrollable-pre";
+import { LabeledSection } from "@fragno-private/design-system/layout/labeled-section";
 import { useState } from "react";
 
 import type { ToolCallPart } from "./agent-turn";

@@ -1,4 +1,4 @@
-import { Callout as CalloutView } from "@fragno-private/design-system/callout";
+import { Callout as CalloutView } from "@fragno-private/design-system/feedback/callout";
 
 import type { ComponentFn } from "@json-render/react";
 

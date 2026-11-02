@@ -1,6 +1,6 @@
-import { Button } from "@fragno-private/design-system/button";
-import { Field } from "@fragno-private/design-system/field";
-import { FileInput } from "@fragno-private/design-system/file-input";
+import { Button } from "@fragno-private/design-system/controls/button";
+import { Field } from "@fragno-private/design-system/controls/field";
+import { FileInput } from "@fragno-private/design-system/controls/file-input";
 import { Icon } from "@fragno-private/design-system/icon";
 import { useEffect, useId, useRef, useState } from "react";
 

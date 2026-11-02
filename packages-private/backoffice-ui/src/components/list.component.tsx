@@ -1,4 +1,4 @@
-import { RecordList } from "@fragno-private/design-system/record-list";
+import { RecordList } from "@fragno-private/design-system/data/record-list";
 
 import type { ComponentFn } from "@json-render/react";
 

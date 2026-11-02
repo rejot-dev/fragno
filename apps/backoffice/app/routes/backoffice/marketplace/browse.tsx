@@ -1,4 +1,4 @@
-import { ButtonLink } from "@fragno-private/design-system/button";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
 import { useOutletContext } from "react-router";
 
 import { MarketplaceListingCard } from "@/components/marketplace/listing-card";

@@ -5,7 +5,7 @@ import {
   layoutWorkflowRun,
   reachedWorkflowEndIds,
   type WorkflowRunNode,
-} from "@fragno-private/design-system/workflow-run-timeline-model";
+} from "@fragno-private/design-system/workflow-runs/workflow-run-timeline-model";
 
 import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
 

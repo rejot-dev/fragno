@@ -1,7 +1,7 @@
 import type { PiManagerAgent, PiPromptReceipt } from "@fragno-dev/backoffice-api/v0/pi";
-import { ChatComposerModel } from "@fragno-private/design-system/chat-composer";
-import { ChatWorkspaceSplit } from "@fragno-private/design-system/chat-workspace-split";
-import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/pane-message";
+import { ChatComposerModel } from "@fragno-private/design-system/agents/chat-composer";
+import { ChatWorkspaceSplit } from "@fragno-private/design-system/agents/chat-workspace-split";
+import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import { usePostHog } from "@posthog/react/slim";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useFetcher } from "react-router";

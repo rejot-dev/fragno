@@ -9,7 +9,7 @@ import type { WorkflowInstanceStatus } from "@fragno-dev/workflows/workflow";
 import type {
   CausalFlameNode,
   CausalFlameStatus,
-} from "@fragno-private/design-system/causal-flame-graph-model";
+} from "@fragno-private/design-system/workflow-runs/causal-flame-graph-model";
 
 import { readRouteDispatchState } from "@/fragno/automation/route-dispatches-storage-runtime";
 
