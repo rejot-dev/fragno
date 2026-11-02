@@ -278,7 +278,8 @@ test("a document is booked once; reversing its entry lets it be booked again, an
 test("a file changed or deleted in Backoffice is no longer shown as the document", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { ada } = await openBooks(scenario);
-    const id = await uploaded(ada, pdf("Babbage Instruments, invoice 9"));
+    const invoice = pdf("Babbage Instruments, invoice 9");
+    const id = await uploaded(ada, invoice);
     const path = (await readDocument(ada, id)).storageKey;
 
     // A file of the same size is caught by its bytes.
@@ -302,7 +303,15 @@ test("a file changed or deleted in Backoffice is no longer shown as the document
         "This document's file was changed in Backoffice after it was uploaded, so Bookkeeping no longer shows it.",
     );
 
-    scenario.backoffice.admin.replaceBlob(CLIENT, ADMINISTRATION, path, null);
+    // Deleted while Bookkeeping reads it, after Backoffice described it.
+    scenario.backoffice.admin.replaceBlob(CLIENT, ADMINISTRATION, path, invoice.bytes);
+    scenario.backoffice.beforeNextAnswer("blobs.createDownloadUrl", async () => {
+      scenario.backoffice.admin.replaceBlob(CLIENT, ADMINISTRATION, path, null);
+    });
+    const vanished = await ada.download(`${BOOKS}/documents/${id}/file`);
+    assert(vanished.status === 404);
+    assert((await vanished.text()) === "This document's file is no longer in Backoffice.");
+
     const deleted = await ada.download(`${BOOKS}/documents/${id}/file`);
     assert(deleted.status === 404);
     assert((await deleted.text()) === "This document's file is no longer in Backoffice.");
