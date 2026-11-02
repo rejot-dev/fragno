@@ -129,6 +129,7 @@ const PlanetBody = memo(function PlanetBody({
   lit,
   workflowScale,
   finishedLoading,
+  focusRingWidth,
 }: {
   planet: UniversePlanet;
   idPrefix: string;
@@ -136,6 +137,8 @@ const PlanetBody = memo(function PlanetBody({
   workflowScale: number;
   /** The status a planet that just finished loading last showed, while its graph fades in. */
   finishedLoading: OrchestrationUniverseScopeStatus | null;
+  /** How wide the focused planet's orbit is drawn; null on every other planet. */
+  focusRingWidth: number | null;
 }) {
   const scopeId = planet.scope.id;
   return (
@@ -143,6 +146,15 @@ const PlanetBody = memo(function PlanetBody({
       <circle r={PLANET_HIT_RADIUS} className="fill-transparent" />
       {/* Solid behind the rings and workflows, so lines passing under a faded planet stay hidden. */}
       <circle r={PLANET_EVENT_EDGE_RADIUS + 2} className="fill-[var(--bo-bg)]" />
+      {/* Under the workflows' backdrops, so the orbit passes behind each workflow. */}
+      {focusRingWidth !== null ? (
+        <circle
+          r={PLANET_ORBIT_RADIUS}
+          className="pointer-events-none fill-none stroke-[var(--bo-accent)]/40"
+          strokeWidth={focusRingWidth}
+          strokeDasharray="10 8"
+        />
+      ) : null}
       {planet.layout.workflows.map(({ workflow, angle }) => {
         const [x, y] = polar(angle, PLANET_ORBIT_RADIUS);
         return (
@@ -854,15 +866,8 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
                         lit={focusedScope === scope.id ? null : lit}
                         workflowScale={workflowScale}
                         finishedLoading={finishedLoading.get(scope.id) ?? null}
+                        focusRingWidth={focusedScope === scope.id ? Math.max(2, 1.2 / scale) : null}
                       />
-                      {focusedScope === scope.id ? (
-                        <circle
-                          r={PLANET_ORBIT_RADIUS}
-                          className="pointer-events-none fill-none stroke-[var(--bo-accent)]/40"
-                          strokeWidth={Math.max(2, 1.2 / scale)}
-                          strokeDasharray="10 8"
-                        />
-                      ) : null}
                       {/* The focused planet shows whole; the corner card names it instead. */}
                       {scale < OVERVIEW_SCALE && focusedScope !== scope.id ? (
                         <ScopeNameTag label={label} grow={readable(24, MIN_TAG_FONT)} />
