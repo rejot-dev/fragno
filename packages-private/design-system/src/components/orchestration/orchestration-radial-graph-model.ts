@@ -9,6 +9,7 @@ import {
   type OrchestrationSource,
   type OrchestrationTarget,
 } from "./orchestration-graph-model";
+import { circularMean, shortestDelta, spreadAround } from "./radial-geometry";
 
 /**
  * Angles are radians, clockwise from 12 o'clock. Radii belong to the renderer, so the layout only
@@ -35,53 +36,6 @@ const FOCUSED_SOURCE_SCALE = 2.4;
 const TARGET_MIN_GAP = 0.22;
 
 export const HIDDEN_WEDGE_ID = "hidden";
-
-function normalizeAngle(angle: number): number {
-  const wrapped = angle % TAU;
-  return wrapped < 0 ? wrapped + TAU : wrapped;
-}
-
-function circularMean(samples: readonly { angle: number; weight: number }[]): number {
-  let x = 0;
-  let y = 0;
-  for (const { angle, weight } of samples) {
-    x += Math.sin(angle) * weight;
-    y += Math.cos(angle) * weight;
-  }
-  return normalizeAngle(Math.atan2(x, y));
-}
-
-/** Pushes neighbours apart around the ring until every pair is at least `gap` apart. */
-function spreadAround(angles: readonly number[], gap: number): number[] {
-  if (angles.length < 2) {
-    return [...angles];
-  }
-  const minGap = Math.min(gap, TAU / angles.length);
-  const order = angles.map((angle, index) => ({ angle: normalizeAngle(angle), index }));
-  order.sort((left, right) => left.angle - right.angle);
-  for (let iteration = 0; iteration < 60; iteration += 1) {
-    let moved = false;
-    for (let position = 0; position < order.length; position += 1) {
-      const current = order[position];
-      const next = order[(position + 1) % order.length];
-      const distance = normalizeAngle(next.angle - current.angle);
-      if (distance < minGap - 1e-6) {
-        const push = (minGap - distance) / 2;
-        current.angle -= push;
-        next.angle += push;
-        moved = true;
-      }
-    }
-    if (!moved) {
-      break;
-    }
-  }
-  const spread: number[] = [];
-  for (const { angle, index } of order) {
-    spread[index] = normalizeAngle(angle);
-  }
-  return spread;
-}
 
 export function layoutOrchestrationGraph(
   graph: OrchestrationGraph,
@@ -213,11 +167,6 @@ export function layoutOrchestrationGraph(
     })),
     hidden: hidden ? rotateArc(hidden) : null,
   };
-}
-
-function shortestDelta(from: number, to: number): number {
-  const delta = normalizeAngle(to - from);
-  return delta > Math.PI ? delta - TAU : delta;
 }
 
 function interpolateArc<T extends RadialArc>(from: RadialArc | undefined, to: T, t: number): T {

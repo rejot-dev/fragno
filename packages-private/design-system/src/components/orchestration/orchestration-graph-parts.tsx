@@ -77,6 +77,16 @@ export const TARGET_KIND_PRESENTATION: Record<
 
 export const DISABLED_EDGE_DASH = "3 4";
 
+/** A count with its noun, plural unless the count is one: "1 event", "3 events". */
+export function countLabel(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+/** How many events start how many workflows, in a sentence. */
+export function eventsStartWorkflows(eventCount: number, workflowCount: number): string {
+  return `${countLabel(eventCount, "event")} ${eventCount === 1 ? "starts" : "start"} ${countLabel(workflowCount, "workflow")}`;
+}
+
 export function routeActionLabel(action: OrchestrationRouteAction): string {
   return action.kind === "send_workflow_event"
     ? `Send ${action.eventType}`
