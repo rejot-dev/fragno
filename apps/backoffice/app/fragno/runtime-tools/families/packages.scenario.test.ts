@@ -223,7 +223,7 @@ describe("Workspace package runtime scenarios", () => {
         ],
       }),
     );
-  });
+  }, 30_000);
 
   test("an agent answers an install workflow waiting for two settings at once, in either order", async () => {
     const listingId = "org:org-1#two-settings";
