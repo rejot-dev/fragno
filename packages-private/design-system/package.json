@@ -21,6 +21,7 @@
     "./navigation/underline-tab-class-name": "./src/components/navigation/underline-tab-class-name.ts",
     "./orchestration/orchestration-graph-model": "./src/components/orchestration/orchestration-graph-model.ts",
     "./orchestration/orchestration-graph-story-support": "./src/components/orchestration/orchestration-graph-story-support.ts",
+    "./orchestration/orchestration-universe-model": "./src/components/orchestration/orchestration-universe-model.ts",
     "./workflow-runs/causal-flame-graph-model": "./src/components/workflow-runs/causal-flame-graph-model.ts",
     "./workflow-runs/workflow-run-timeline-model": "./src/components/workflow-runs/workflow-run-timeline-model.ts",
     "./workflow-runs/workflow-run-timeline-graph": "./src/components/workflow-runs/workflow-run-timeline-graph.ts",

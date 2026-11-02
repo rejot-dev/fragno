@@ -7,7 +7,19 @@ import {
   type WorkflowTriggerLayout,
 } from "./workflow-trigger-graph-model";
 
-export type OrchestrationUniverseScope = { id: string; graph: OrchestrationGraph };
+/**
+ * Whether a scope's graph is still being read: `loading` with the share read so far, if known,
+ * or `failed`. A scope without a status was read.
+ */
+export type OrchestrationUniverseScopeStatus =
+  | { kind: "loading"; fraction: number | null }
+  | { kind: "failed"; message: string };
+
+export type OrchestrationUniverseScope = {
+  id: string;
+  graph: OrchestrationGraph;
+  status?: OrchestrationUniverseScopeStatus;
+};
 
 /**
  * Where a scope's forward route delivers. Forward targets are templates such as "the event's
