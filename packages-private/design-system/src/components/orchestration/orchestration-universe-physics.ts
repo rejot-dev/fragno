@@ -20,7 +20,10 @@ const ALPHA_DECAY = 1 - ALPHA_MIN ** (1 / 300);
 
 /**
  * Where planets are seeded before the simulation settles them: the scope most forwards touch in
- * the middle, the rest in order on a ring around it.
+ * the middle, the rest in order on a ring around it. Planets seeded in a line stay in one, since
+ * every force between them runs along it, so a hub's two neighbours start as a wide triangle with
+ * it rather than on either side of it; a pair without a hub sits side by side, as views are wider
+ * than tall.
  */
 function seedPositions(
   scopes: readonly OrchestrationUniverseScope[],
@@ -47,8 +50,13 @@ function seedPositions(
   if (hub) {
     positions.set(hub.id, { x: 0, y: 0 });
   }
+  // Angles run clockwise from straight up.
+  const angleOf = (index: number) =>
+    ring.length === 2
+      ? (hub ? [-Math.PI / 3, Math.PI / 3] : [-Math.PI / 2, Math.PI / 2])[index]
+      : (index / ring.length) * Math.PI * 2;
   ring.forEach((scope, index) => {
-    const angle = (index / ring.length) * Math.PI * 2;
+    const angle = angleOf(index);
     positions.set(scope.id, { x: radius * Math.sin(angle), y: -radius * Math.cos(angle) });
   });
   return positions;
