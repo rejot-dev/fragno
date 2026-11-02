@@ -14,6 +14,7 @@ import {
   backofficeUnavailable,
   callBackoffice,
   connectAsUser,
+  isOutcomeUnknown,
   organizationNotFound,
 } from "../organizations/access.server";
 
@@ -133,9 +134,10 @@ export async function uploadDocument(
       : { ok: false, error: "Another file was uploaded with this form. Upload it again." };
   }
   const filename = file.name.trim().slice(0, 255) || "document";
-  // Backoffice's writes have no precondition, so the key names the bytes: another file sent with
-  // this form at the same time is stored beside this one, never over it.
-  const storageKey = `documents/${id}/${sha256}/${storedFilename(filename)}`;
+  // Each send stores its file under a key of its own: a second upload of a key replaces the first
+  // before it completes, so sends of this form at once, as a double click makes, would fail each
+  // other. Another file sent with this form is stored beside this one, never over it.
+  const storageKey = `documents/${id}/${crypto.randomUUID()}/${storedFilename(filename)}`;
   const { backoffice, scope } = await connectToProject(request, context);
   try {
     const stored = await storeBlob(backoffice, scope, { key: storageKey, mediaType, bytes });
@@ -157,7 +159,31 @@ export async function uploadDocument(
     storageKey,
     uploadedBy: context.user.name,
   });
-  return outcome.ok ? { ok: true } : { ok: false, error: outcome.message };
+  if (!outcome.ok) {
+    return { ok: false, error: outcome.message };
+  }
+  if (outcome.value !== storageKey) {
+    await removeUnrecordedFile(backoffice, scope, storageKey);
+  }
+  return { ok: true };
+}
+
+/**
+ * Removes a file another send of the form overtook, which recorded the document with its own.
+ * The upload succeeded all the same, so failing to remove it costs only storage.
+ */
+async function removeUnrecordedFile(
+  backoffice: BackofficeApiClient,
+  scope: BackofficeContextScope,
+  key: string,
+): Promise<void> {
+  try {
+    await backoffice.call(scope, "blobs.delete", { key });
+  } catch (error) {
+    if (!(isOutcomeUnknown(error) || error instanceof BackofficeApiRequestError)) {
+      throw error;
+    }
+  }
 }
 
 /**

@@ -336,7 +336,7 @@ refused unless the document is to book. A document that is not to be booked, suc
 dismissed; a booked one is not. An entry's page links to the document it books.
 
 Documents' files are blobs of the administration's Backoffice project, keyed
-`documents/<document ID>/<SHA-256>/<filename>`, where its agents work too. Bookkeeping stores them
+`documents/<document ID>/<random ID>/<filename>`, where its agents work too. Bookkeeping stores them
 as the person: `blobs.createUpload` gives a presigned storage URL that Bookkeeping PUTs the bytes
 to, so they never pass through Backoffice, and `blobs.completeUpload` makes the blob. It serves them
 at `/documents/:documentId/file`, reading them from storage through `blobs.createDownloadUrl`. It
@@ -345,10 +345,12 @@ sends, of at most 20 MB: the most `models.extract` reads in one call, so the fir
 any document. It records each file's SHA-256 hash, and refuses to show a file changed or deleted in
 Backoffice since its upload, reading no more of it than the document's size. The upload form carries
 an ID chosen when it was shown, and the file is stored before the document is recorded, so uploading
-again after a failure records the document once. Backoffice's writes have no precondition, so the
-key names the file's hash: another file sent with the same form is stored beside the document's,
-never over it. The upload's body is read only up to the largest upload, so a larger one is refused
-unread.
+again after a failure records the document once. Each send stores its file under a key of its own,
+as a second upload of a key replaces the first before it completes: sends of the same form at once,
+as a double click makes, would otherwise fail each other. The send that records the document second
+removes the file it stored, and another file sent with the same form is stored beside the
+document's, never over it. The upload's body is read only up to the largest upload, so a larger one
+is refused unread.
 
 #### The bookkeeping agent
 
