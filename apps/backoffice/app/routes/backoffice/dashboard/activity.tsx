@@ -1,4 +1,5 @@
 import type { AutomationEventCausation } from "@fragno-dev/backoffice-api/v0/events";
+import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { cn } from "@fragno-private/design-system/cn";
 import { Button } from "@fragno-private/design-system/controls/button";
@@ -1021,6 +1022,9 @@ function describeCausation(causation: AutomationEventCausation | null): string {
   }
   if (causation.kind === "route") {
     return `Derived by route ${causation.routeId} from ${causation.parent.eventId}`;
+  }
+  if (causation.kind === "forward") {
+    return `Forwarded from ${backofficeScopePathSegment(causation.from.scope)} by route ${causation.from.routeName}`;
   }
   return causation.parent === null
     ? `Fired by manually started run ${causation.instanceId}`

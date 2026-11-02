@@ -148,7 +148,8 @@ what each route it matched did, and the workflow runs those routes started show 
 ## Scope and pagination
 
 Select the scope that owns the delivery before inspecting it. For forwarded events, inspect the
-source and target scopes separately.
+source and target scopes separately; a forwarded event's `causation` names the scope and route it
+came from.
 
 Use `events.list({ limit: 50 })` to retrieve a page, newest first; each event carries the same
 `routing` as `events.get`. Match the records locally against the expected `source`, `eventType`,

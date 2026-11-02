@@ -448,7 +448,11 @@ const handleForwardEventRouteAction = async ({
       ? renderAutomationRawTemplateValue(action.idTemplate, event, route.id, routingKey)
       : event.id,
     scope,
-    causation: { kind: "route", routeId: route.id, parent: automationEventParentOf(event) },
+    causation: {
+      kind: "forward",
+      from: { scope: ownerScope, routeId: route.id, routeName: route.name },
+      parent: automationEventParentOf(event),
+    },
   } satisfies AutomationEvent;
 
   const targetAutomations = runtime.objects.automations.for(scope);

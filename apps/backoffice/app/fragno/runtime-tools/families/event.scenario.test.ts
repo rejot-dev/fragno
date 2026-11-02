@@ -1,6 +1,7 @@
 import { assert, expect, test, vi } from "vitest";
 
 import {
+  type AutomationEventCausation,
   automationEventListResultSchema,
   type AutomationEventRouting,
   automationEventRoutesListResultSchema,
@@ -433,7 +434,11 @@ test("a personal route forwards to its owner's organization until they leave it"
     id: string,
   ) =>
     (await ctx.runCodemode({ scope, code: `async () => await events.get({ id: "${id}" })` }))
-      .result as { payload: unknown; routing: AutomationEventRouting } | null;
+      .result as {
+      payload: unknown;
+      causation: AutomationEventCausation;
+      routing: AutomationEventRouting;
+    } | null;
 
   await runBackofficeScenario(
     defineBackofficeScenario({
@@ -456,7 +461,7 @@ test("a personal route forwards to its owner's organization until they leave it"
         }),
       ],
       steps: ({ when, then }) => [
-        then.assert("a member's balance arrives in the organization", async (ctx) => {
+        then.assert("a member's balance arrives, naming who forwarded it", async (ctx) => {
           const eventId = await fireBalance(ctx, 8709);
           expect((await readEvent(ctx, personal, eventId))?.routing).toMatchObject({
             status: "matched",
@@ -468,8 +473,13 @@ test("a personal route forwards to its owner's organization until they leave it"
               },
             ],
           });
-          expect((await readEvent(ctx, organization, eventId))?.payload).toEqual({
-            balanceCents: 8709,
+          expect(await readEvent(ctx, organization, eventId)).toMatchObject({
+            payload: { balanceCents: 8709 },
+            causation: {
+              kind: "forward",
+              from: { scope: personal, routeId: "balances-to-org", routeName: "Balances to ReJot" },
+              parent: { eventId, rootEventId: eventId },
+            },
           });
         }),
         when.auth.removeMember({ orgId: "org-1", userId: "user-1" }),
