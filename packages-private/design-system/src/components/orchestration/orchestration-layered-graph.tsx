@@ -47,10 +47,9 @@ const SOURCE_EVENT_GAP = 6;
 const EVENT_WIDTH = 236;
 const TARGET_WIDTH = 236;
 const MIN_ROUTE_LANE = 150;
-const MAX_ROUTE_LANE = 300;
 const MIN_CURVE_RUN = 90;
-// On wide screens workflows stay near their routes instead of drifting to the far edge.
-const MAX_CURVE_RUN = 240;
+// Room past the minimum goes to the route lane, where route names need it, not to the curves.
+const CURVE_RUN = 140;
 const MIN_WIDTH =
   SOURCE_WIDTH + SOURCE_EVENT_GAP + EVENT_WIDTH + MIN_ROUTE_LANE + MIN_CURVE_RUN + TARGET_WIDTH;
 const INITIAL_WIDTH = 1040;
@@ -63,20 +62,16 @@ const FOLD_ROW_CLASS_NAME =
   "flex items-center gap-1.5 rounded-[4px] border border-dashed border-[var(--bo-border-strong)] px-2.5 text-xs text-[var(--bo-muted-2)] transition-colors hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none";
 
 /**
- * Horizontal geometry for a given container width. Only the route lane and the curves stretch,
- * and both stop growing, so on wide screens the graph keeps its shape and leaves space on the right.
+ * Horizontal geometry for a given container width. Workflows keep to the right edge, and the route
+ * lane stretches to fill what the curves leave, so wider screens give route names room.
  * `inletRun` is the room the inlet column takes on the left, nothing when there are no inlets.
  */
 function columnsFor(width: number, inletRun: number) {
   const sourceLeft = inletRun;
   const eventLeft = sourceLeft + SOURCE_WIDTH + SOURCE_EVENT_GAP;
   const eventRight = eventLeft + EVENT_WIDTH;
-  const routeLane = Math.max(
-    MIN_ROUTE_LANE,
-    Math.min(MAX_ROUTE_LANE, width * 0.22, width - TARGET_WIDTH - MIN_CURVE_RUN - eventRight),
-  );
-  const laneEnd = eventRight + routeLane;
-  const targetLeft = Math.min(width - TARGET_WIDTH, laneEnd + MAX_CURVE_RUN);
+  const targetLeft = width - TARGET_WIDTH;
+  const laneEnd = eventRight + Math.max(MIN_ROUTE_LANE, targetLeft - eventRight - CURVE_RUN);
   return { sourceLeft, eventLeft, eventRight, laneEnd, targetLeft };
 }
 
