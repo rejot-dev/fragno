@@ -318,7 +318,8 @@
 }
 
 /* A universe planet that finished loading: its loading ring fades away as its graph, and the
-   forwards reaching it, fade in. */
+   forwards reaching it, fade in. A planet left out, such as a project found empty once read,
+   fades away whole the same way. */
 @keyframes bo-planet-reveal {
   from {
     opacity: 0;
