@@ -80,6 +80,7 @@ import type {
 
 import type { ClassifierResult } from "@earendil-works/pi-ai";
 
+import type { SiteBuildOutcome } from "@/artifacts/sites/build.server";
 import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { TelegramAutomationFileMetadata } from "@/backoffice-runtime/telegram-file-response";
 import type { AccessCodeCommands } from "@/fragno/access-codes/contracts";
@@ -680,6 +681,15 @@ export type CodemodeCommands = WarmableCommands &
     ): Promise<CodemodeExecution<TActivation>>;
     getRun(runId: string): Promise<CodemodeRunDetail | null>;
     listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage>;
+    /**
+     * Builds the site at `sitePath` as `context.execution`, one build of a site at a time. Its
+     * compile shares the slot of `parentRun`, the run whose tool call asked, if any.
+     */
+    buildSite(
+      sitePath: string,
+      context: BackofficeActionRpcContext,
+      parentRun: string | null,
+    ): Promise<SiteBuildOutcome>;
   };
 
 export type MarketplaceCommands = {

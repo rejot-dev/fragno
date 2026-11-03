@@ -198,22 +198,25 @@ Before the first release with blobs:
 
 2. In the Cloudflare dashboard, under **R2 > Manage API tokens**, create an API token with **Object
    Read & Write** on all three buckets. Note its access key ID and secret access key.
-3. Set the object Worker's secrets. The endpoint is the account's, without a jurisdiction;
+3. Set the secrets of both Workers: the object Worker keeps blobs and builds sites into the buckets,
+   and the web Worker serves sites from them. The endpoint is the account's, without a jurisdiction;
    Backoffice derives `https://<account-id>.eu.r2.cloudflarestorage.com` and the `us` endpoint from
    it.
 
    ```bash
-   pnpm exec wrangler secret put BLOBS_R2_ENDPOINT # https://<account-id>.r2.cloudflarestorage.com
-   pnpm exec wrangler secret put BLOBS_R2_ACCESS_KEY_ID
-   pnpm exec wrangler secret put BLOBS_R2_SECRET_ACCESS_KEY
+   for config in wrangler.jsonc wrangler.web.jsonc; do
+     pnpm exec wrangler secret put BLOBS_R2_ENDPOINT --config $config # https://<account-id>.r2.cloudflarestorage.com
+     pnpm exec wrangler secret put BLOBS_R2_ACCESS_KEY_ID --config $config
+     pnpm exec wrangler secret put BLOBS_R2_SECRET_ACCESS_KEY --config $config
+   done
    ```
 
 4. Release with `deploy:bootstrap` (see [Release](#release)), as blobs add the `Blobs` Durable
    Object class.
 
-`BLOBS_R2_BUCKET` is set in `wrangler.jsonc`. Clients reach the presigned URLs with `curl` and other
-non-browser tools, which need no CORS policy; a browser that moves blobs directly does, on each of
-the three buckets (`wrangler r2 bucket cors set ... --jurisdiction ...`).
+`BLOBS_R2_BUCKET` is set in `wrangler.jsonc` and `wrangler.web.jsonc`. Clients reach the presigned
+URLs with `curl` and other non-browser tools, which need no CORS policy; a browser that moves blobs
+directly does, on each of the three buckets (`wrangler r2 bucket cors set ... --jurisdiction ...`).
 
 ## Run on Node with file-backed SQLite
 

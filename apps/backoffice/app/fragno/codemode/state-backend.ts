@@ -173,7 +173,7 @@ export interface BackofficeStateBackend {
   /** Refresh cached metadata when an operation must detect writes from other executions. */
   refreshMetadata(): void;
   readFile(path: string): Promise<string>;
-  readFileBytes(path: string, maxBytes?: number): Promise<Uint8Array>;
+  readFileBytes(path: string, maxBytes?: number): Promise<Uint8Array<ArrayBuffer>>;
   writeFile(path: string, content: string): Promise<void>;
   writeFileBytes(path: string, content: Uint8Array): Promise<void>;
   appendFile(path: string, content: string | Uint8Array): Promise<void>;
@@ -262,7 +262,10 @@ export class StateFileReadLimitError extends Error {
   }
 }
 
-async function readStateFileBytes(content: FileContent, maxBytes: number): Promise<Uint8Array> {
+async function readStateFileBytes(
+  content: FileContent,
+  maxBytes: number,
+): Promise<Uint8Array<ArrayBuffer>> {
   const bytes = await readBoundedBytes(content.body, content.sizeBytes, maxBytes);
   if (bytes === null) {
     throw new StateFileReadLimitError(maxBytes);
@@ -286,7 +289,10 @@ class SystemStaticStateBackend implements BackofficeStateBackend {
     return await new Response((await this.#getFile(path)).body).text();
   }
 
-  async readFileBytes(path: string, maxBytes = Number.MAX_SAFE_INTEGER): Promise<Uint8Array> {
+  async readFileBytes(
+    path: string,
+    maxBytes = Number.MAX_SAFE_INTEGER,
+  ): Promise<Uint8Array<ArrayBuffer>> {
     return await readStateFileBytes(await this.#getFile(path), maxBytes);
   }
 
@@ -582,7 +588,10 @@ class UploadStaticStateBackend implements BackofficeStateBackend {
     return await new Response(content.body).text();
   }
 
-  async readFileBytes(path: string, maxBytes = Number.MAX_SAFE_INTEGER): Promise<Uint8Array> {
+  async readFileBytes(
+    path: string,
+    maxBytes = Number.MAX_SAFE_INTEGER,
+  ): Promise<Uint8Array<ArrayBuffer>> {
     return await readStateFileBytes(await this.#getFile(path), maxBytes);
   }
 

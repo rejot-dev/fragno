@@ -51,6 +51,14 @@ export type CodemodeRunHost = {
 // Tool calls run on the caller's side, so the caller, not the guest, knows which run started one.
 const runningTool = new AsyncLocalStorage<string>();
 
+/**
+ * The lease key of the run whose tool call is running here, if any, so that work the call hands to
+ * the Codemode object runs as that run's child.
+ */
+export function runningCodemodeRunKey(): string | null {
+  return runningTool.getStore() ?? null;
+}
+
 /** Creates a run's host; a run that its tools start, such as through js.run, is its child. */
 export function createCodemodeRunHost(
   { providers, redactedResults, toolCallLog }: CodemodeRunTools,

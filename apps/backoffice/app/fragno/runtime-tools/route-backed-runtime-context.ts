@@ -41,7 +41,10 @@ import {
 } from "@/fragno/automation/workflow-route-runtime";
 import { usageBillingForScope } from "@/fragno/billing/usage-billing";
 import type { CodemodeRun, CodemodeRunContext } from "@/fragno/codemode/codemode-fragment";
-import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
+import {
+  codemodeRunnerFor,
+  runningCodemodeRunKey,
+} from "@/fragno/codemode/codemode-object-execute";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import {
   createBackofficeSystemStateBackend,
@@ -483,7 +486,7 @@ const createRuntimeContext = ({
         fetch: runtime.webFetch,
       }),
     },
-    // Building a page runs codemode, and the build loads this module, so it is imported per use.
+    // Builds run codemode, and a page build loads this module, so builders are imported per use.
     artifacts: codemodeExecutor
       ? {
           runtime: {
@@ -491,6 +494,12 @@ const createRuntimeContext = ({
               const { loadPage } = await import("@/artifacts/pages/build.server");
               return (await loadPage({ runtime, kernel, execution, sourcePath })).page;
             },
+            buildSite: async (sitePath) =>
+              await codemodeObject().buildSite(
+                sitePath,
+                { execution, propagationContext: null },
+                runningCodemodeRunKey(),
+              ),
           },
         }
       : null,
