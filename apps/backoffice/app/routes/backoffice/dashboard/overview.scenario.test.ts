@@ -208,9 +208,10 @@ function connectionEvent(
   state: "ready" | "unavailable",
   connectionId: string,
   at: number,
+  name = connectionId,
 ) {
   return event(id, "integrations", `connection.${state}`, at, {
-    payload: { name: connectionId, authMethod: null },
+    payload: { name, authMethod: null },
     subject: { scope, service: connectionId.split("#", 1)[0], connectionId },
   });
 }
@@ -659,20 +660,25 @@ async function readUniverse(
           `${fromScopeId} → ${toScopeId} carrying ${eventId}`,
       ),
     ),
-    // The calls it draws, from workflows on planets to outside systems.
+    // The calls it draws, from workflows on planets to outside systems, which go by their names.
     calls: sorted(
-      layoutUniverse(universe).calls.map(
-        ({ scopeId, workflowId, externalId }) => `${scopeId} ${workflowId} → ${externalId}`,
-      ),
+      layoutUniverse(universe).calls.map(({ scopeId, workflowId, externalId }) => {
+        const external = universe.externals.find(({ id }) => id === externalId)!;
+        return `${scopeId} ${workflowId} → ${externalId} "${external.label}" ${external.icon}`;
+      }),
     ),
   };
 }
 
-/** The outside systems a scope's workflows call, from the scripts their last runs ran. */
+/**
+ * The outside systems a scope's workflows call, from the scripts their last runs ran, with its
+ * connections naming the integrations.
+ */
 async function readOutsideCalls(replica: Parameters<typeof readAutomationReplica>[0]) {
   return workflowOutsideCalls(
     await readAutomationReplica(replica, "latestWorkflowPrograms", undefined),
     runtimeToolWorkflowCatalog,
+    await readAutomationReplica(replica, "integrationConnections", undefined),
   );
 }
 
@@ -1254,12 +1260,17 @@ describe("dashboard", () => {
 
   test("the universe shows the outside systems its workflows called in their last runs", async () => {
     const path = "/workspace/automations/research-lead.workflow.js";
-    // The calls never run, since no lead asks for them; the script names them all the same.
+    // The calls never run, since no lead asks for them; the script names them all the same. The
+    // CRM is a connection of the organization's, and the lead's own connection is only known as
+    // the workflow runs.
     const researchLead = `export default defineWorkflow({ name: "research-lead" }, async (event, step) => {
   await step.do("research", async () => {
     if (event.payload.deep) {
       const page = await web.extract({ url: event.payload.url });
-      return await models.classify({ input: page, labels: ["hot", "cold"] });
+      const verdict = await models.classify({ input: page, labels: ["hot", "cold"] });
+      await integrations.execute({ connectionId: "api#crm", actionId: "notes.create", input: { verdict } });
+      await integrations.execute({ connectionId: event.payload.connection, actionId: "reply", input: {} });
+      return verdict;
     }
     return "skipped";
   });
@@ -1302,6 +1313,9 @@ describe("dashboard", () => {
               [],
             );
           }),
+          when.automation.ingestEvent(
+            connectionEvent("crm-ready", "ready", "api#crm", Date.now(), "CRM"),
+          ),
           when.workflow.createInstance({
             orgId,
             instanceId: "research-1",
@@ -1310,8 +1324,10 @@ describe("dashboard", () => {
           }),
           then.assert("its run names what it calls", async (ctx) => {
             assert.deepEqual((await readUniverse(ctx, { projects, viewer, read: false })).calls, [
-              `org:org-1 workflow:${path} → models`,
-              `org:org-1 workflow:${path} → web`,
+              `org:org-1 workflow:${path} → connection:api#crm "CRM" code`,
+              `org:org-1 workflow:${path} → integrations "Integrations" link`,
+              `org:org-1 workflow:${path} → models "Models" cpu`,
+              `org:org-1 workflow:${path} → web "Web" globe`,
             ]);
           }),
         ],

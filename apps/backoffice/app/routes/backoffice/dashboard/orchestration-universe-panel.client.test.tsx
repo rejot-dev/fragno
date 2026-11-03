@@ -9,12 +9,13 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 
-const { graphReads, deliveryReads, noPrograms } = vi.hoisted(() => ({
-  // What each replica's graph and delivery reads return, by the replica's name.
+const { graphReads, deliveryReads, connectionReads, noPrograms } = vi.hoisted(() => ({
+  // What each replica's graph, delivery, and connection reads return, by the replica's name.
   graphReads: new Map<string, unknown>(),
   deliveryReads: new Map<string, unknown>(),
-  // No workflow has run, so none calls an outside system. A read returns the same data until it
-  // changes, as a replica view does.
+  connectionReads: new Map<string, unknown>(),
+  // No workflow has run, so none calls an outside system, and there are no connections. A read
+  // returns the same data until it changes, as a replica view does.
   noPrograms: { status: "ready", data: [] },
 }));
 
@@ -29,7 +30,9 @@ vi.mock("@/fragno/automation/lofi/replica", () => ({
   useAutomationRead: (replica: string | null, read: string) =>
     read === "latestWorkflowPrograms"
       ? noPrograms
-      : ((replica && deliveryReads.get(replica)) ?? { status: "loading" }),
+      : read === "integrationConnections"
+        ? ((replica && connectionReads.get(replica)) ?? noPrograms)
+        : ((replica && deliveryReads.get(replica)) ?? { status: "loading" }),
 }));
 vi.mock("./scope-orchestration-graph", () => ({
   useScopeOrchestrationGraph: (replica: string | null) =>
@@ -96,6 +99,7 @@ function renderUniverse() {
 beforeEach(() => {
   graphReads.clear();
   deliveryReads.clear();
+  connectionReads.clear();
 });
 
 afterEach(cleanup);
@@ -125,5 +129,20 @@ test("warns that planets drawn without some of their records may be incomplete",
       "read, so the universe may be incomplete.",
   );
   // What was read is still drawn.
+  screen.getByText("Books");
+});
+
+test("draws a planet whose connections could not be read, and says so", () => {
+  graphReads.set("organization", readyGraph("Ada Labs"));
+  graphReads.set("books", readyGraph("Books"));
+  deliveryReads.set("organization", { status: "ready", data: [] });
+  deliveryReads.set("books", { status: "ready", data: [] });
+  connectionReads.set("books", { status: "error", message: "The replica is corrupt." });
+
+  renderUniverse();
+
+  screen.getByText(
+    "integration connections of Books could not be read, so the universe may be incomplete.",
+  );
   screen.getByText("Books");
 });
