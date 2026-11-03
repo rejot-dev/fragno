@@ -32,8 +32,8 @@ export function TwoScopes() {
 }
 
 /**
- * Forwards into a project that listens to none of their events land on its orbit, each on a
- * dashed ring of its own.
+ * Forwards into a project that listens to none of their events land side by side on a stretch of
+ * its orbit.
  */
 export function UnroutedForwards() {
   const organization = UNIVERSE.scopes.find((scope) => scope.id === "org")!;
