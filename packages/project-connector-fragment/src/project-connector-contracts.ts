@@ -100,6 +100,9 @@ export const projectConnectorNamedAccountSchema = z.strictObject({
   account: projectConnectorAccountSchema.nullable(),
 });
 
+/** Whether the name had a request or an account to delete. */
+export const projectConnectorConnectionDeletionSchema = z.strictObject({ deleted: z.boolean() });
+
 /** Account pagination is owned by the fragment rather than the provider gateway. */
 export const projectConnectorAccountsSchema = z.object({
   accounts: z.array(projectConnectorAccountSchema),

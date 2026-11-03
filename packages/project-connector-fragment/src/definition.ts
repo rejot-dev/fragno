@@ -19,6 +19,13 @@ export interface ProjectConnectorConnectionReadinessChangedPayload {
   ready: boolean;
 }
 
+export interface ProjectConnectorConnectionDeletedPayload {
+  externalUserId: string;
+  /** Provider service of the named connection's configuration, e.g. gmail. */
+  service: string;
+  connection: z.output<typeof projectConnectorNamedConnectionSchema>;
+}
+
 /** Integrators own authentication and restrict OAuth return URLs; project keys remain server-only. */
 export type ProjectConnectorFragmentConfig = ProjectConnectorClientConfig & {
   getExternalUserId: (headers: Headers) => string | null | Promise<string | null>;
@@ -33,10 +40,20 @@ export type ProjectConnectorFragmentConfig = ProjectConnectorClientConfig & {
     payload: ProjectConnectorConnectionReadinessChangedPayload,
     context: HookContext,
   ) => Promise<void> | void;
+  /**
+   * Fires when `DELETE /connections/by-name` removes a name that had a request or an account. The
+   * name has neither afterwards, until a new start.
+   */
+  onConnectionDeleted?: (
+    payload: ProjectConnectorConnectionDeletedPayload,
+    context: HookContext,
+  ) => Promise<void> | void;
 };
 
 type ProjectConnectorHooksMap = {
   onConnectionReadinessChanged: HookFn<ProjectConnectorConnectionReadinessChangedPayload>;
+  onConnectionDeleted: HookFn<ProjectConnectorConnectionDeletedPayload>;
+  deleteGatewayAccount: HookFn<{ id: string; providerConfigId: string; externalUserId: string }>;
 };
 
 /** OOMOL Project Connector dependencies and scoped account persistence. */
@@ -47,9 +64,18 @@ export const projectConnectorFragmentDefinition = defineFragment<ProjectConnecto
   .withDependencies(({ config }) => ({
     projectConnector: createProjectConnectorClient(config),
   }))
-  .provideHooks<ProjectConnectorHooksMap>(({ defineHook, config }) => ({
+  .provideHooks<ProjectConnectorHooksMap>(({ defineHook, config, deps }) => ({
     onConnectionReadinessChanged: defineHook(async function (payload) {
       await config.onConnectionReadinessChanged?.(payload, this);
+    }),
+    onConnectionDeleted: defineHook(async function (payload) {
+      await config.onConnectionDeleted?.(payload, this);
+    }),
+    // Runs after the disconnect commits, since a deleted credential cannot be restored if the
+    // disconnect then lost to a concurrent write. The gateway accepts repeated deletes, so retries
+    // are safe.
+    deleteGatewayAccount: defineHook(async function (account) {
+      await deps.projectConnector.deleteAccount(account);
     }),
   }))
   .build();

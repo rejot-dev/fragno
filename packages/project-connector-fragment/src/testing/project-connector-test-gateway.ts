@@ -113,10 +113,18 @@ export async function startProjectConnectorTestGateway() {
     connectedAccountId: string;
     input: Record<string, unknown>;
   }[] = [];
+  const deletions: {
+    connectedAccountId: string;
+    externalUserId: string;
+    providerConfigId: string;
+  }[] = [];
   const control: {
     actionFailure: "flat" | "envelope" | "text" | "malformed" | null;
+    deleteFailure: "flat" | null;
     profileUserId: string | null;
     requestReads: number;
+    /** Runs once before the next request read answers, to interleave another operation. */
+    beforeRequestRead: (() => Promise<void>) | null;
     discoveryFailure:
       | "flat"
       | "envelope"
@@ -134,8 +142,10 @@ export async function startProjectConnectorTestGateway() {
     redirectReads: number;
   } = {
     actionFailure: null,
+    deleteFailure: null,
     profileUserId: null,
     requestReads: 0,
+    beforeRequestRead: null,
     discoveryFailure: null,
     discoveryReads: 0,
     catalogReads: [],
@@ -283,12 +293,42 @@ export async function startProjectConnectorTestGateway() {
     }
     if (route === "connection-requests") {
       control.requestReads += 1;
+      const interleave = control.beforeRequestRead;
+      control.beforeRequestRead = null;
+      await interleave?.();
       const connection = requests.get(id);
       if (!connection) {
         failure("connection_request_not_found", 404);
         return;
       }
       json({ success: true, data: connection });
+      return;
+    }
+    if (req.method === "DELETE" && route === "connected-accounts") {
+      if (control.deleteFailure === "flat") {
+        failure("rate_limited", 429);
+        return;
+      }
+      const userId = url.searchParams.get("userId");
+      const providerConfigId = url.searchParams.get("providerConfigId");
+      const account = accounts.get(id);
+      // Like the hosted gateway: only another user's account fails, so deleting again succeeds.
+      if (
+        account &&
+        (userId !== account.externalUserId || providerConfigId !== account.providerConfigId)
+      ) {
+        failure("connected_account_not_found", 404);
+        return;
+      }
+      if (account) {
+        accounts.delete(id);
+        deletions.push({
+          connectedAccountId: id,
+          externalUserId: account.externalUserId,
+          providerConfigId: account.providerConfigId,
+        });
+      }
+      json({ success: true, data: { connectedAccountId: id, deleted: true } });
       return;
     }
     if (route === "connected-accounts" && segments[5] === "profile") {
@@ -380,6 +420,7 @@ export async function startProjectConnectorTestGateway() {
     providerConfigs,
     catalogActions,
     executions,
+    deletions,
     control,
     authorize(requestId: string, accountId: string) {
       const connection = requests.get(requestId);

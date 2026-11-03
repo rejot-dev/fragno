@@ -25,6 +25,7 @@ async function connectorScenario(
   const gateway = await startProjectConnectorTestGateway();
   cleanup.push(gateway.close);
   const onConnectionReadinessChanged = vi.fn();
+  const onConnectionDeleted = vi.fn();
   const setup = await buildDatabaseFragmentsTest()
     .withTestAdapter({ type: "kysely-sqlite" })
     .withDbRoundtripGuard({ maxRoundtrips: 1 })
@@ -38,6 +39,7 @@ async function connectorScenario(
           getExternalUserId: (headers) => headers.get("x-test-user"),
           allowedReturnUrls: (url) => url.toString() === returnUri,
           onConnectionReadinessChanged,
+          onConnectionDeleted,
         })
         .withRoutes([projectConnectorRoutes]),
       { migrateToVersion: schemaVersion },
@@ -47,7 +49,7 @@ async function connectorScenario(
   const { fragment, db } = setup.fragments.connector;
   async function call(
     externalUserId: string | null,
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "DELETE",
     route: string,
     body: unknown = null,
   ) {
@@ -101,7 +103,22 @@ async function connectorScenario(
     await drainDurableHooks(setup.fragments.connector.fragment);
     return onConnectionReadinessChanged.mock.calls.map(([payload]) => payload);
   }
-  return { gateway, setup, fragment, db, call, connect, bind, storedRequest, readinessChanges };
+  async function deletedConnections() {
+    await drainDurableHooks(setup.fragments.connector.fragment);
+    return onConnectionDeleted.mock.calls.map(([payload]) => payload);
+  }
+  return {
+    gateway,
+    setup,
+    fragment,
+    db,
+    call,
+    connect,
+    bind,
+    storedRequest,
+    readinessChanges,
+    deletedConnections,
+  };
 }
 
 afterEach(async () => {
@@ -844,8 +861,29 @@ describe("Project Connector connection scenarios", () => {
     const scenario = await connectorScenario("test-catalog-key", 2);
     // Existing starts do not acquire a new dependency on provider discovery.
     scenario.gateway.control.discoveryFailure = "not-found";
-    const first = await scenario.bind("alice", "legacy-work-1");
-    const second = await scenario.bind("alice", "legacy-work-2");
+    // Refresh reads tables that later versions add, so legacy bindings are written directly.
+    async function bindLegacy(accountId: string) {
+      const connection = await scenario.connect("alice");
+      scenario.gateway.authorize(connection.id, accountId);
+      const uow = scenario.db
+        .createUnitOfWork("bind-legacy-account")
+        .forSchema(projectConnectorSchema);
+      uow.update("connectionRequest", connection.id, (b) =>
+        b.set({ state: { status: "connected", connectedAccountId: accountId } }),
+      );
+      uow.create("connectedAccount", {
+        id: accountId,
+        projectId: connection.projectId,
+        providerConfigId: connection.providerConfigId,
+        externalUserId: "alice",
+        service: connection.service,
+        connectionName: connection.connectionName,
+      });
+      assert((await uow.executeMutations()).success);
+      return connection;
+    }
+    const first = await bindLegacy("legacy-work-1");
+    const second = await bindLegacy("legacy-work-2");
     const adapter = scenario.setup.test.adapter;
     assert(adapter.prepareMigrations);
     const { schema, namespace } = scenario.setup.fragments.connector.fragment.$internal.deps;
@@ -1213,6 +1251,206 @@ describe("Project Connector connection scenarios", () => {
       connection,
       ready: true,
     });
+  });
+
+  test("disconnecting a name deletes its account at the gateway after it commits, and its abandoned links never bind", async () => {
+    const scenario = await connectorScenario();
+    const connection = {
+      projectId: "project-1",
+      providerConfigId: "gmail-provider",
+      connectionName: "work",
+    };
+    const query = new URLSearchParams(connection).toString();
+    await scenario.bind("alice", "work-account");
+    await scenario.bind("alice", "personal-account", "personal");
+    await scenario.bind("bob", "bob-account");
+    // An additive start leaves a pending link beside the account.
+    const pending = await scenario.connect("alice");
+    expect(await scenario.call(null, "DELETE", `/connections/by-name?${query}`)).toMatchObject({
+      status: 401,
+      data: { code: "UNAUTHENTICATED" },
+    });
+
+    // The gateway deletes only after the local disconnect commits, and a failure there is retried.
+    scenario.gateway.control.deleteFailure = "flat";
+    expect(await scenario.call("alice", "DELETE", `/connections/by-name?${query}`)).toEqual({
+      status: 200,
+      data: { deleted: true },
+    });
+    expect(await scenario.call("alice", "GET", `/accounts/by-name?${query}`)).toEqual({
+      status: 200,
+      data: { account: null },
+    });
+    expect(await scenario.call("alice", "GET", `/connection-requests/by-name?${query}`)).toEqual({
+      status: 200,
+      data: { request: null },
+    });
+    await drainDurableHooks(scenario.fragment);
+    expect(scenario.gateway.deletions).toEqual([]);
+    scenario.gateway.control.deleteFailure = null;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 60_000);
+      await drainDurableHooks(scenario.fragment);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(scenario.gateway.deletions).toEqual([
+      {
+        connectedAccountId: "work-account",
+        externalUserId: "alice",
+        providerConfigId: "gmail-provider",
+      },
+    ]);
+    expect((await scenario.call("alice", "GET", "/accounts")).data).toMatchObject({
+      accounts: [{ id: "personal-account", connectionName: "personal" }],
+    });
+    expect((await scenario.call("bob", "GET", "/accounts")).data).toMatchObject({
+      accounts: [{ id: "bob-account", connectionName: "work" }],
+    });
+    // Consent through the abandoned link is never read or bound.
+    scenario.gateway.authorize(pending.id, "late-account");
+    expect(
+      await scenario.call("alice", "POST", `/connection-requests/${pending.id}/refresh`),
+    ).toMatchObject({ status: 404, data: { code: "REQUEST_NOT_FOUND" } });
+
+    expect(await scenario.call("alice", "DELETE", `/connections/by-name?${query}`)).toEqual({
+      status: 200,
+      data: { deleted: false },
+    });
+    expect(await scenario.deletedConnections()).toEqual([
+      { externalUserId: "alice", service: "gmail", connection },
+    ]);
+    // Starting again reports the name as a new connection.
+    await scenario.connect("alice");
+    expect((await scenario.readinessChanges()).at(-1)).toEqual({
+      externalUserId: "alice",
+      service: "gmail",
+      connection,
+      ready: false,
+    });
+  });
+
+  test("a disconnect never deletes an account that reauthorization moved to another name", async () => {
+    const named = (connectionName: string) =>
+      new URLSearchParams({
+        projectId: "project-1",
+        providerConfigId: "gmail-provider",
+        connectionName,
+      }).toString();
+
+    // Disconnecting the old name while the move is in flight wins: the move confirms nothing.
+    const racing = await connectorScenario();
+    await racing.bind("alice", "gmail-account", "work");
+    const moving = await racing.connect("alice", "personal");
+    racing.gateway.authorize(moving.id, "gmail-account");
+    let disconnected: unknown = null;
+    racing.gateway.control.beforeRequestRead = async () => {
+      disconnected = await racing.call("alice", "DELETE", `/connections/by-name?${named("work")}`);
+    };
+    expect(
+      await racing.call("alice", "POST", `/connection-requests/${moving.id}/refresh`),
+    ).toMatchObject({
+      status: 200,
+      data: { state: { status: "failed", errorCode: "account_disconnected" } },
+    });
+    expect(disconnected).toEqual({ status: 200, data: { deleted: true } });
+    expect((await racing.call("alice", "GET", "/accounts")).data).toMatchObject({ accounts: [] });
+    await drainDurableHooks(racing.fragment);
+    expect(racing.gateway.deletions).toMatchObject([{ connectedAccountId: "gmail-account" }]);
+
+    // Disconnecting the old name after the move leaves the account under its new name.
+    const settled = await connectorScenario();
+    await settled.bind("alice", "gmail-account", "work");
+    await settled.bind("alice", "gmail-account", "personal");
+    expect(await settled.call("alice", "DELETE", `/connections/by-name?${named("work")}`)).toEqual({
+      status: 200,
+      data: { deleted: true },
+    });
+    await drainDurableHooks(settled.fragment);
+    expect(settled.gateway.deletions).toEqual([]);
+    expect(
+      await settled.call("alice", "GET", `/accounts/by-name?${named("personal")}`),
+    ).toMatchObject({ status: 200, data: { account: { id: "gmail-account" } } });
+    expect(await settled.call("alice", "GET", "/accounts/gmail-account/profile")).toMatchObject({
+      status: 200,
+    });
+  });
+
+  test("a refresh never binds an account disconnected while it waited on the gateway", async () => {
+    const scenario = await connectorScenario();
+    const work = new URLSearchParams({
+      projectId: "project-1",
+      providerConfigId: "gmail-provider",
+      connectionName: "work",
+    }).toString();
+    const personal = await scenario.connect("alice", "personal");
+    scenario.gateway.authorize(personal.id, "gmail-account");
+    // The account is bound under another name and disconnected before the refresh writes.
+    scenario.gateway.control.beforeRequestRead = async () => {
+      await scenario.bind("alice", "gmail-account", "work");
+      expect(await scenario.call("alice", "DELETE", `/connections/by-name?${work}`)).toEqual({
+        status: 200,
+        data: { deleted: true },
+      });
+    };
+    expect(
+      await scenario.call("alice", "POST", `/connection-requests/${personal.id}/refresh`),
+    ).toMatchObject({
+      status: 200,
+      data: { state: { status: "failed", errorCode: "account_disconnected" } },
+    });
+    expect((await scenario.call("alice", "GET", "/accounts")).data).toMatchObject({
+      accounts: [],
+    });
+    await drainDurableHooks(scenario.fragment);
+    expect(scenario.gateway.deletions).toMatchObject([{ connectedAccountId: "gmail-account" }]);
+  });
+
+  test("consent from before a disconnect never restores the account, and fresh consent reconnects", async () => {
+    const scenario = await connectorScenario();
+    const named = (connectionName: string) =>
+      new URLSearchParams({
+        projectId: "project-1",
+        providerConfigId: "gmail-provider",
+        connectionName,
+      }).toString();
+    await scenario.bind("alice", "gmail-account", "work");
+    // Consent under another name confirms the same account, but is never refreshed.
+    const stale = await scenario.connect("alice", "personal");
+    scenario.gateway.authorize(stale.id, "gmail-account");
+    expect(await scenario.call("alice", "DELETE", `/connections/by-name?${named("work")}`)).toEqual(
+      { status: 200, data: { deleted: true } },
+    );
+    await drainDurableHooks(scenario.fragment);
+    expect(scenario.gateway.deletions).toMatchObject([{ connectedAccountId: "gmail-account" }]);
+
+    // The gateway still reports the old consent as connected after deleting its account.
+    expect(
+      await scenario.call("alice", "POST", `/connection-requests/${stale.id}/refresh`),
+    ).toMatchObject({
+      status: 200,
+      data: { state: { status: "failed", errorCode: "account_disconnected" } },
+    });
+    expect((await scenario.call("alice", "GET", "/accounts")).data).toMatchObject({
+      accounts: [],
+    });
+
+    // The gateway gives fresh consent a new account ID.
+    const fresh = await scenario.call("alice", "POST", "/connection-requests", {
+      service: "gmail",
+      connectionName: "personal",
+      returnUri,
+      replace: true,
+    });
+    const restarted = projectConnectorConnectionSchema.parse(fresh.data);
+    scenario.gateway.authorize(restarted.id, "fresh-account");
+    expect(
+      await scenario.call("alice", "POST", `/connection-requests/${restarted.id}/refresh`),
+    ).toMatchObject({ status: 200, data: { state: { status: "connected" } } });
+    expect(
+      await scenario.call("alice", "GET", `/accounts/by-name?${named("personal")}`),
+    ).toMatchObject({ status: 200, data: { account: { id: "fresh-account" } } });
   });
 
   test("confirming a replacing reauthorization leaves the name exactly one account", async () => {

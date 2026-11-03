@@ -170,6 +170,23 @@ user's other accounts under the name are removed. A replacing start always leave
 under the name, while additive starts leave several requests, so additive confirmations keep every
 account. The previous account stays usable until the replacement confirms.
 
+`DELETE /connections/by-name` with the same query removes the name: it deletes the name's accounts
+and every request locally and answers `{ deleted }`, false when the name had neither. Deleted
+requests never bind, like a replacing start's. Each deleted account is then deleted at the gateway
+by a durable hook, which retries failures; the gateway accepts repeated deletes. The gateway drops
+the account's credential, so its actions fail afterwards; whether the provider's own grant is
+revoked is up to the gateway.
+
+The gateway deletes only after the local deletion commits, because a deleted credential cannot be
+restored if the disconnect then loses to a concurrent write. The deleted account's ID stays recorded
+for good: the gateway keeps reporting consent that confirmed it as connected, under any name, so a
+refresh whose consent confirms a recorded ID fails with `account_disconnected` instead of binding a
+credential that no longer works, including when the disconnect commits while the refresh waits on
+the gateway. Fresh consent reconnects, since the gateway gives it a new account ID; this is observed
+gateway behavior, not documented. A refresh that moves an account to another name updates its
+binding in place, so a disconnect of the old name that read the account conflicts and retries rather
+than deleting it under its new name.
+
 If either lookup matches more than one record, it returns `CONNECTION_AMBIGUOUS` (409), even when
 only one request is pending. The fragment does not choose the newest record, prefer a status, or
 infer a current attempt; a replacing start is how a caller resolves the ambiguity. Lookups inspect
@@ -212,7 +229,8 @@ without reconciliation or a reset. Version 6 makes `connectionName` non-null on 
 accounts. Every start has required a name, so stored rows are expected to have one; the migration
 fails on a database that holds a null name. Version 7 adds `idx_request_external_user_id`
 (`externalUserId`, `id`), which gives the cross-name request listing a total order; it adds no
-columns. Existing duplicate names stay ambiguous until a replacing start.
+columns. Existing duplicate names stay ambiguous until a replacing start. Version 8 adds the
+`deletedAccount` table, which records every account a disconnect deleted.
 
 ### Readiness hook
 
@@ -225,6 +243,9 @@ other account. Further attempts for a name that already has an account fire noth
 does confirming a replacing request for such a name. The gateway does not notify the fragment of
 consent or revocation, so readiness changes only when `POST /connection-requests/:requestId/refresh`
 runs.
+
+`onConnectionDeleted` receives `{ externalUserId, service, connection }` when
+`DELETE /connections/by-name` removes a name that had a request or an account.
 
 ## Client flow
 
@@ -259,9 +280,9 @@ conventions.
 
 Client operations: `useProviderConfigs`, `useProviderActions`, `useStatus`, `useAccounts`,
 `useNamedAccount`, `useNamedConnectionRequest`, `useCurrentConnectionRequests`, `useProfile`,
-`connect`, `refreshConnection`, and `executeAction`. Refreshing a connection invalidates account and
-request stores. The account list is cursor-paginated (25 items per page); it lists local verified
-bindings, not live provider availability.
+`connect`, `refreshConnection`, `disconnect`, and `executeAction`. Refreshing or disconnecting a
+connection invalidates account and request stores. The account list is cursor-paginated (25 items
+per page); it lists local verified bindings, not live provider availability.
 
 ## Routes
 
@@ -276,6 +297,7 @@ bindings, not live provider availability.
 | POST   | `/connection-requests/:requestId/refresh`                                            | Verify gateway status and bind a completed account              |
 | GET    | `/accounts?cursor=...`                                                               | List this user's locally verified account bindings              |
 | GET    | `/accounts/by-name?projectId=...&providerConfigId=...&connectionName=...`            | Read an unambiguous confirmed account by exact name             |
+| DELETE | `/connections/by-name?projectId=...&providerConfigId=...&connectionName=...`         | Delete the name's accounts at the gateway and its local records |
 | GET    | `/accounts/:accountId/profile`                                                       | Read and verify the provider account profile                    |
 | POST   | `/accounts/:accountId/actions/:actionId`                                             | Execute `{ "input": { ... } }` using the saved selector         |
 
