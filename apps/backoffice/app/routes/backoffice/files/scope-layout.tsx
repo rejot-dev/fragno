@@ -17,6 +17,7 @@ export async function loader({ context, url }: Route.LoaderArgs) {
   return {
     origin: url.origin,
     selectedScope,
+    sites: runtime.config.sites,
     hasLargeFiles:
       runtime.config.bindings.blobs &&
       isBackofficeObjectAvailableInContext(
@@ -43,6 +44,7 @@ export default function BackofficeFilesScopeLayout({ loaderData }: Route.Compone
     scope: backofficeRuntimeScopeFromResolvedScope(selectedScope),
     selectedScope,
     origin: loaderData.origin,
+    sites: loaderData.sites,
   } satisfies FilesLayoutContext;
 
   return (

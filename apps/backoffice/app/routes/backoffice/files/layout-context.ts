@@ -6,4 +6,6 @@ export type FilesLayoutContext = {
   scope: BackofficeContextScope;
   selectedScope: BackofficeScopeSelection;
   origin: string;
+  /** Whether this deployment serves sites, which Files then links to. */
+  sites: boolean;
 };
