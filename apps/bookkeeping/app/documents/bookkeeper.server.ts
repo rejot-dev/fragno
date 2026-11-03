@@ -1,6 +1,7 @@
 import { BackofficeApiRequestError } from "@fragno-dev/backoffice-api/v0/client";
 import type {
   PiAgentActivity,
+  PiAgentDefinition,
   PiAgentDefinitionCreate,
   PiPromptStatus,
 } from "@fragno-dev/backoffice-api/v0/pi";
@@ -28,8 +29,8 @@ const BOOKKEEPING_CONNECTION_ID = "app#bookkeeping";
  * The Backoffice agent, in each firm's agent project, that reads its clients' documents and
  * proposes the entries booking them. It lives with the firm, so the skills the firm gives it never
  * reach a client's workspace; Bookkeeping shares each document's file with it while it is asked
- * about the document. Bookkeeping defines it there when it has none; a definition the firm's
- * members changed in Backoffice is theirs to keep.
+ * about the document. Bookkeeping keeps it defined as this (see `defineBookkeeper`); a definition
+ * the firm's members changed in Backoffice is theirs to keep.
  */
 const BOOKKEEPER: PiAgentDefinitionCreate = {
   agentName: "bookkeeper",
@@ -53,6 +54,46 @@ If the file is no invoice or receipt, or you cannot read it, call \`documents.de
   permissions: ["upload.read", "models.extract", "integrations.read", "integrations.execute"],
   model: null,
 };
+
+/** What Bookkeeping writes of a definition and compares, as one string. */
+function definitionFields({
+  description,
+  model,
+  permissions,
+  instructions,
+}: Pick<PiAgentDefinition, "description" | "model" | "permissions" | "instructions">): string {
+  return JSON.stringify({ description, model, permissions, instructions });
+}
+
+/**
+ * Defines the firm's agent as `BOOKKEEPER`, so changes to how Bookkeeping asks reach agents set up
+ * before them. An agent whose definition differs from the one Bookkeeping last wrote was changed by
+ * the firm's members, and is theirs to keep.
+ */
+async function defineBookkeeper(agent: InstalledProject, firmId: string): Promise<void> {
+  const directory = env.DIRECTORY.getByName("directory");
+  let written: PiAgentDefinition;
+  try {
+    written = await agent.backoffice.call(agent.scope, "pi.agent.create", BOOKKEEPER);
+  } catch (error) {
+    if (!(error instanceof BackofficeApiRequestError && error.code === "conflict")) {
+      throw error;
+    }
+    const stored = await agent.backoffice.call(agent.scope, "pi.agent.get", {
+      agentName: BOOKKEEPER.agentName,
+    });
+    const recorded = await directory.findFirmAgentDefinition(firmId);
+    if (recorded !== null && recorded !== definitionFields(stored)) {
+      return;
+    }
+    written =
+      definitionFields(stored) === definitionFields(BOOKKEEPER)
+        ? stored
+        : await agent.backoffice.call(agent.scope, "pi.agent.update", BOOKKEEPER);
+  }
+  // As Backoffice stored it, which is what later reads compare.
+  await directory.recordFirmAgentDefinition({ firmId, definition: definitionFields(written) });
+}
 
 /**
  * Why Backoffice did not do what was asked, for the person: unreachable, or its refusal, e.g. a
@@ -113,7 +154,7 @@ async function connectToAgent(
   context: BooksContext,
   firmId: string | null,
 ): Promise<
-  | { ok: true; administration: InstalledProject; agent: InstalledProject }
+  | { ok: true; firmId: string; administration: InstalledProject; agent: InstalledProject }
   | { ok: false; error: string }
 > {
   const { organization, administration } = context;
@@ -154,6 +195,7 @@ async function connectToAgent(
   }
   return {
     ok: true,
+    firmId,
     administration: { scope: administrationScope, backoffice: clientBackoffice },
     agent: { scope: agentScope, backoffice: firmBackoffice },
   };
@@ -204,14 +246,7 @@ export async function askBookkeeper(
       return { ok: false, error: connected.error };
     }
     const { agent } = connected;
-    try {
-      await agent.backoffice.call(agent.scope, "pi.agent.create", BOOKKEEPER);
-    } catch (error) {
-      // It exists, perhaps as the firm's members changed it.
-      if (!(error instanceof BackofficeApiRequestError && error.code === "conflict")) {
-        throw error;
-      }
-    }
+    await defineBookkeeper(agent, connected.firmId);
     const { organization, administration } = context;
     const awaited = await shareForRequest(env, {
       administration,

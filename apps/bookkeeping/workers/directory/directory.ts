@@ -9,6 +9,7 @@ import firmAgentsMigration from "./migrations/0003-firm-agents.sql?raw";
 import firmAccessMigration from "./migrations/0004-firm-access.sql?raw";
 import unmanagedClientsMigration from "./migrations/0005-unmanaged-clients.sql?raw";
 import managerGenerationsMigration from "./migrations/0006-manager-generations.sql?raw";
+import firmAgentDefinitionsMigration from "./migrations/0007-firm-agent-definitions.sql?raw";
 
 /** How long a withdrawal that failed waits before it is tried again. */
 const WITHDRAWAL_RETRY_MS = 60_000;
@@ -156,6 +157,7 @@ export class Directory extends DurableObject<CloudflareEnv> {
         firmAccessMigration,
         unmanagedClientsMigration,
         managerGenerationsMigration,
+        firmAgentDefinitionsMigration,
       ]);
     });
   }
@@ -578,6 +580,29 @@ export class Directory extends DurableObject<CloudflareEnv> {
       )
       .toArray();
     return row?.projectId ?? null;
+  }
+
+  /**
+   * The firm's agent's definition as Bookkeeping last wrote it; null when Bookkeeping recorded none,
+   * or the firm has no agent project.
+   */
+  findFirmAgentDefinition(firmId: string): string | null {
+    const [row] = this.ctx.storage.sql
+      .exec<{ definition: string | null }>(
+        `SELECT "definition" FROM "firm_agent" WHERE "firmId" = ?`,
+        firmId,
+      )
+      .toArray();
+    return row?.definition ?? null;
+  }
+
+  /** Records the firm's agent's definition as Bookkeeping wrote it. */
+  recordFirmAgentDefinition(input: { firmId: string; definition: string }): void {
+    this.ctx.storage.sql.exec(
+      `UPDATE "firm_agent" SET "definition" = ? WHERE "firmId" = ?`,
+      input.definition,
+      input.firmId,
+    );
   }
 
   /** The project holding the bookkeeping agent of the firm managing the client, once set up. */

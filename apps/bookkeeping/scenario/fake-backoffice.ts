@@ -414,6 +414,10 @@ export class FakeBackoffice {
 
   /** An owner changes things in Backoffice's own UI. */
   readonly admin = {
+    /** A member defines one of a project's agents, or changes its definition. */
+    defineAgent: (slug: string, project: string, definition: PiAgentDefinitionCreate) => {
+      this.#agents.set(this.#projectFileKey(slug, project, definition.agentName), definition);
+    },
     /** Someone replaces one of a project's blobs, or deletes it with null. */
     replaceBlob: (slug: string, project: string, key: string, bytes: Uint8Array | null) => {
       const blobKey = this.#projectFileKey(slug, project, key);
@@ -820,6 +824,25 @@ export class FakeBackoffice {
             steward: { kind: "members" },
             resolvedModel: "openai/gpt-6-luna",
           };
+        });
+      case "pi.agent.get":
+        return respond("pi.agent.get", body, ({ agentName }) => {
+          const definition = this.#agents.get(key(agentName));
+          if (!definition) {
+            throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
+          }
+          return { ...definition, steward: { kind: "members" as const } };
+        });
+      case "pi.agent.update":
+        return respond("pi.agent.update", body, (definition) => {
+          if (!this.#agents.has(key(definition.agentName))) {
+            throw new ApiError(
+              "not_found",
+              `No agent in this scope is named '${definition.agentName}'.`,
+            );
+          }
+          this.#agents.set(key(definition.agentName), definition);
+          return { ...definition, steward: { kind: "members" as const } };
         });
       case "pi.prompt.submit":
         return respond("pi.prompt.submit", body, ({ agentName, requestId, content, subagent }) => {

@@ -1379,6 +1379,30 @@ test("the same document ID in two administrations reaches the firm's agent as tw
   });
 });
 
+test("the firm's agent follows how Bookkeeping asks, until the firm's members change it", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    // An earlier Bookkeeping defined the agent, before it recorded the definitions it wrote.
+    scenario.backoffice.admin.defineAgent(FIRM, FIRM_AGENT, {
+      agentName: "bookkeeper",
+      description: "Reads the firm's clients' documents.",
+      model: null,
+      permissions: ["upload.read", "models.extract", "integrations.read", "integrations.execute"],
+      instructions: "Files under /shared are your firm's clients' documents: read them by path.",
+    });
+    await uploaded(ada, pdf("Babbage Instruments, invoice 14"));
+    const [current, ...others] = scenario.backoffice.agents(FIRM, FIRM_AGENT);
+    expect(others).toEqual([]);
+    expect(current.instructions).toContain("Blobs under /shared");
+
+    // The firm's members make the agent their own, which asking again keeps.
+    const theirs = { ...current, instructions: "Book every document in the general journal." };
+    scenario.backoffice.admin.defineAgent(FIRM, FIRM_AGENT, theirs);
+    await uploaded(ada, pdf("Babbage Instruments, invoice 15"));
+    expect(scenario.backoffice.agents(FIRM, FIRM_AGENT)).toEqual([theirs]);
+  });
+});
+
 test("a request the agent never received, or failed, is asked again from the document's page", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { ada } = await openBooks(scenario);
