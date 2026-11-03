@@ -254,6 +254,71 @@ test("Connector setup resumes consent across restarts and binds the account only
           ]);
         },
       ),
+      then.assert("disconnecting removes the account, and the name starts over", async (ctx) => {
+        const run = await ctx.runCodemode({
+          scope: owner,
+          code: `async () => {
+              const connectionId = ${JSON.stringify(workTarget)};
+              const disconnected = await integrations.disconnect({ connectionId, confirm: connectionId });
+              const again = await integrations.disconnect({ connectionId, confirm: connectionId });
+              let executed = null;
+              try {
+                await integrations.execute({ connectionId, actionId: "gmail.search_threads", input: { query: "is:unread" } });
+              } catch (error) {
+                executed = error.message;
+              }
+              return {
+                disconnected,
+                again,
+                executed,
+                listed: (await integrations.list({ cursor: null })).connections.map((connection) => connection.connectionId),
+                checked: await integrations.setup({ kind: "check", connectionId }),
+              };
+            }`,
+        });
+        expect(run.result).toMatchObject({
+          disconnected: { connectionId: workTarget, status: "disconnected" },
+          again: { connectionId: workTarget, status: "not-configured" },
+          executed: "Connector integration requires a confirmed account before action execution.",
+          listed: [target],
+          checked: { status: "needs-input" },
+        });
+      }),
+      runner.drain(),
+      then.assert("the gateway deletes only the disconnected account", () => {
+        expect(gateway.deletions).toEqual([
+          {
+            connectedAccountId: "work-account",
+            externalUserId: expect.any(String),
+            providerConfigId: "gmail-provider",
+          },
+        ]);
+        assert(gateway.accounts.has("gmail-account"));
+      }),
+      then.automation.event({
+        scope: owner,
+        where: { source: "integrations", eventType: "connection.disconnected" },
+        expected: { subject: { service: "gmail", connectionId: workTarget } },
+      }),
+      then.assert("the overview shows the disconnected name", async (ctx) => {
+        const replica = ctx.lofi.automations.forScope(owner);
+        await replica.drain();
+        const connections = await readAutomationReplica(
+          replica.replica,
+          "integrationConnections",
+          undefined,
+        );
+        expect(
+          connections
+            .map(({ connectionId, state }) => ({ connectionId, state }))
+            .sort((left, right) => left.connectionId.localeCompare(right.connectionId)),
+        ).toEqual(
+          [
+            { connectionId: target, state: "ready" },
+            { connectionId: workTarget, state: "disconnected" },
+          ].sort((left, right) => left.connectionId.localeCompare(right.connectionId)),
+        );
+      }),
     ],
   }));
 });
