@@ -31,8 +31,8 @@ import {
   defineBackofficeScenario,
   runBackofficeScenario,
 } from "@/fragno/automation/scenario";
+import { blobsR2BucketsFromEnv } from "@/fragno/blobs-r2-buckets";
 import { createFakeR2, requestFromOutside } from "@/fragno/blobs-r2.test-utils";
-import { blobsR2BucketsFromEnv } from "@/fragno/blobs-server";
 import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import {
   action as largeFileUploadsAction,

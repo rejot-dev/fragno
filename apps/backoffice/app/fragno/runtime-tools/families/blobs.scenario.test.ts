@@ -15,6 +15,7 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import { blobsR2BucketsFromEnv, type BlobsR2Buckets } from "@/fragno/blobs-r2-buckets";
 import {
   bucketUrl,
   createFakeR2,
@@ -22,7 +23,6 @@ import {
   requestFromOutside,
   type FakeR2,
 } from "@/fragno/blobs-r2.test-utils";
-import { blobsR2BucketsFromEnv, type BlobsR2Buckets } from "@/fragno/blobs-server";
 
 import { ApiObject } from "../../../../workers/api-object";
 import { AuthObject } from "../../../../workers/auth-object";
