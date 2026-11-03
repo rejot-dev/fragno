@@ -15,7 +15,11 @@ import type {
   OrganizationAccessRecord,
   OrganizationMembershipRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
-import type { PiAgentDefinitionCreate, PiPromptStatus } from "@fragno-dev/backoffice-api/v0/pi";
+import type {
+  PiAgentActivity,
+  PiAgentDefinitionCreate,
+  PiPromptStatus,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import { backofficeProvisioningOperations } from "@fragno-dev/backoffice-api/v0/provisioning";
 import {
   backofficeContextScopeSchema,
@@ -70,6 +74,8 @@ type Prompt = {
   subagent: boolean;
   prompter: Principal;
   status: PiPromptStatus;
+  /** The tools the agent ran answering it, as `pi.agent.activity` reads a subagent's. */
+  activity: PiAgentActivity;
 };
 type Share = {
   shareId: string;
@@ -347,6 +353,15 @@ export class FakeBackoffice {
       throw new Error(`No agent received prompt ${requestId}.`);
     }
     prompt.status = { requestId, ...status };
+  }
+
+  /** The agent answering the prompt submitted as `requestId` has run `activity` so far. */
+  reportActivity(requestId: string, activity: PiAgentActivity): void {
+    const prompt = this.#prompts.find((candidate) => candidate.requestId === requestId);
+    if (!prompt) {
+      throw new Error(`No agent received prompt ${requestId}.`);
+    }
+    prompt.activity = activity;
   }
 
   /**
@@ -822,6 +837,7 @@ export class FakeBackoffice {
               subagent: subagent ?? false,
               prompter: principal,
               status: { requestId: id, status: "queued" },
+              activity: { tools: [], omitted: 0 },
             });
           }
           return { requestId: id, status: "queued" as const };
@@ -838,6 +854,21 @@ export class FakeBackoffice {
                 prompt.requestId === requestId,
             )?.status ?? null,
         );
+      case "pi.agent.activity":
+        return respond("pi.agent.activity", body, ({ agentName, subagent }) => {
+          if (!this.#agents.has(key(agentName))) {
+            throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
+          }
+          const prompt = this.#prompts.find(
+            (candidate) =>
+              candidate.scope === key("") &&
+              candidate.agentName === agentName &&
+              candidate.subagent &&
+              candidate.requestId === subagent,
+          );
+          // A request that started no subagent has run nothing.
+          return prompt?.activity ?? { tools: [], omitted: 0 };
+        });
       case "shares.create":
         return respond("shares.create", body, (input) => {
           if (!isBackofficeRoutableScope(scope)) {
