@@ -31,6 +31,7 @@ import {
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import { type BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { readPiCompactionStatus } from "@/fragno/pi/agent/compaction-status";
+import { piConversationActivity } from "@/fragno/pi/agent/conversation-activity";
 import { listPiConversationMessages } from "@/fragno/pi/agent/conversation-messages";
 import { createPiConversationExportStream } from "@/fragno/pi/agent/conversation-streams";
 import {
@@ -792,6 +793,28 @@ export class PiObject extends RpcTarget implements PiAgent {
     }
     const { harness } = await this.#requireAgent(config);
     return await readPiCompactionStatus(harness, taskId);
+  }
+
+  async getActivity(config: PiAgentConfig, subagent: string | null) {
+    const { harness } = await this.#requireAgent(config);
+    const conversation = await this.#conversation(harness, z.string().nullable().parse(subagent));
+    // A request that started no subagent has run nothing.
+    if (!conversation) {
+      return { tools: [], omitted: 0 };
+    }
+    try {
+      const view = await conversation.viewState(BACKGROUND_CONTEXT);
+      try {
+        return piConversationActivity(view.value);
+      } finally {
+        view.dispose();
+      }
+    } catch (cause) {
+      if (!(cause instanceof PathError)) {
+        throw cause;
+      }
+      throw new PiConversationViewDamagedError(config.agentName, cause);
+    }
   }
 
   async getView(config: PiAgentConfig, subagent: string | null): Promise<unknown> {

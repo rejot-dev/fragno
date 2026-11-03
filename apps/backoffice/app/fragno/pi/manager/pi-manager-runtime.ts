@@ -1,5 +1,6 @@
 import { awaitWithContext } from "@earendil-works/chord/context";
 import {
+  type PiAgentActivity,
   type PiAgentCreated,
   type PiAgentDefinition,
   type PiAgentDefinitionCreate,
@@ -55,6 +56,11 @@ export type PiManagerListMessagesInput = {
   subagent: string | null;
 };
 export type PiManagerExportInput = { agentName: string; history: boolean };
+export type PiManagerActivityInput = {
+  agentName: string;
+  /** The request ID of the subagent whose work to read; null reads the agent's. */
+  subagent: string | null;
+};
 
 /** Structured manager failures survive runtime-tool and codemode boundaries. */
 export class PiManagerRuntimeRequestError extends BackofficeOperationError {
@@ -118,6 +124,8 @@ export type PiManagerRuntime = {
   backfillAgentEvents(): Promise<{ agents: PiAgentBackfilledEvent[] }>;
   /** What users and the agent said, oldest first; see `pi.agent.messages`. */
   listMessages(input: PiManagerListMessagesInput): Promise<PiAgentMessagePage>;
+  /** The tools the agent ran, oldest first; see `pi.agent.activity`. */
+  getActivity(input: PiManagerActivityInput): Promise<PiAgentActivity>;
   /** The agent's conversation as JSONL, newest entry last; see `pi.agent.export`. */
   exportConversation(input: PiManagerExportInput): Promise<string>;
 };
@@ -294,6 +302,10 @@ export function createPiManagerRuntime(input: {
         query.set("subagent", subagent);
       }
       return await request<PiAgentMessagePage>(`${agentRoute(agentName)}/messages?${query}`, null);
+    },
+    async getActivity({ agentName, subagent }) {
+      const query = subagent === null ? "" : `?${new URLSearchParams({ subagent })}`;
+      return await request<PiAgentActivity>(`${agentRoute(agentName)}/activity${query}`, null);
     },
     async exportConversation({ agentName, history }) {
       const query = new URLSearchParams({ history: String(history) });

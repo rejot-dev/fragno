@@ -76,6 +76,7 @@ const createPiRuntime = (): PiManagerRuntime => {
     stopAgent: async () => undefined,
     backfillAgentEvents: async () => ({ agents: [] }),
     listMessages: async () => ({ messages: [], before: null }),
+    getActivity: async () => ({ tools: [], omitted: 0 }),
     exportConversation: async () => "",
   };
 };

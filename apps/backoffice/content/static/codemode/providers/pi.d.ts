@@ -16,6 +16,11 @@ type PiCodemodeProvider = {
    */
   listMessages(input: PiListMessagesInput): Promise<PiListMessagesOutput>;
   /**
+   * What a started agent's conversation, or one of its subagents', does with its tools, by the agent's name: each tool it ran, oldest first, including those still running, and for each codemode run the calls it made, such as the skills it loaded, the files it read, and the integration actions it ran. Like the chat, it reads from the agent's newest compaction or clear on. Pass `subagent` to read a subagent, by the request ID that started it.
+   * Requires `pi.read`.
+   */
+  getActivity(input: PiGetActivityInput): Promise<PiGetActivityOutput>;
+  /**
    * Write a started agent's conversation to a JSONL file, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you. The file holds a header line, then the durable entries oldest first, including thinking, tool calls, and tool results. Like the chat, it holds the entries from the agent's newest compaction or clear on, with that compaction or clear; pass `history` for every entry.
    * Requires `pi.read` and `upload.modify`.
    */
@@ -122,6 +127,134 @@ type PiListMessagesOutput = {
       }
   )[];
   before: number | null;
+};
+type PiGetActivityInput = {
+  /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */
+  agentName: string;
+  /** The request ID that started a subagent of the agent, to read that subagent's work instead of the agent's. */
+  subagent?: string | null;
+};
+type PiGetActivityOutput = {
+  tools: {
+    toolCallId: string;
+    name: string;
+    status: "running" | "succeeded" | "failed";
+    calls: {
+      startedAt: number;
+      items: (
+        | {
+            subject:
+              | {
+                  kind: "skill";
+                  name: string;
+                }
+              | {
+                  kind: "read";
+                  path: string;
+                }
+              | {
+                  kind: "list";
+                  pattern: string;
+                }
+              | {
+                  kind: "search";
+                  keywords: string[];
+                  pattern: string;
+                }
+              | {
+                  kind: "action";
+                  connectionId: string;
+                  actionId: string;
+                  scope: string | null;
+                  input: string;
+                }
+              | {
+                  kind: "call";
+                  name: string;
+                  scope: string | null;
+                  input: string;
+                };
+            offsetMs: number;
+            status: "running";
+          }
+        | {
+            subject:
+              | {
+                  kind: "skill";
+                  name: string;
+                }
+              | {
+                  kind: "read";
+                  path: string;
+                }
+              | {
+                  kind: "list";
+                  pattern: string;
+                }
+              | {
+                  kind: "search";
+                  keywords: string[];
+                  pattern: string;
+                }
+              | {
+                  kind: "action";
+                  connectionId: string;
+                  actionId: string;
+                  scope: string | null;
+                  input: string;
+                }
+              | {
+                  kind: "call";
+                  name: string;
+                  scope: string | null;
+                  input: string;
+                };
+            offsetMs: number;
+            status: "succeeded";
+            durationMs: number;
+          }
+        | {
+            subject:
+              | {
+                  kind: "skill";
+                  name: string;
+                }
+              | {
+                  kind: "read";
+                  path: string;
+                }
+              | {
+                  kind: "list";
+                  pattern: string;
+                }
+              | {
+                  kind: "search";
+                  keywords: string[];
+                  pattern: string;
+                }
+              | {
+                  kind: "action";
+                  connectionId: string;
+                  actionId: string;
+                  scope: string | null;
+                  input: string;
+                }
+              | {
+                  kind: "call";
+                  name: string;
+                  scope: string | null;
+                  input: string;
+                };
+            offsetMs: number;
+            status: "failed";
+            durationMs: number;
+            error: string;
+          }
+      )[];
+      omitted: number;
+    } | null;
+  }[];
+  omitted: number;
 };
 type PiExportConversationInput = {
   /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */

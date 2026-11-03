@@ -1,8 +1,7 @@
+import type { CodemodeCalls } from "@fragno-dev/backoffice-api/v0/pi";
+
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import {
-  codemodeCallsDetailSchema,
-  type CodemodeCallsDetail,
-} from "@/fragno/pi/extensions/backoffice/codemode-call-details";
+import { getCodemodeCallsDetail } from "@/fragno/pi/extensions/backoffice/codemode-call-details";
 import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
 export type CodemodeResultDetails = {
@@ -12,7 +11,7 @@ export type CodemodeResultDetails = {
   /** The run an inline workflow started, then the saved runs the program showed. */
   runs: WorkflowRunReference[];
   /** Null for results recorded before calls were kept with them. */
-  calls: CodemodeCallsDetail | null;
+  calls: CodemodeCalls | null;
 };
 
 /** Conversations recorded before the tool was renamed to `codemode` call it `execCodeMode`. */
@@ -38,15 +37,6 @@ export function getCodemodeResultDetails(details: unknown): CodemodeResultDetail
     ],
     calls: getCodemodeCallsDetail(details),
   };
-}
-
-/** The calls in a codemode tool's details, final or while it runs. */
-export function getCodemodeCallsDetail(details: unknown): CodemodeCallsDetail | null {
-  if (!details || typeof details !== "object" || !("calls" in details)) {
-    return null;
-  }
-  const parsed = codemodeCallsDetailSchema.safeParse(details.calls);
-  return parsed.success ? parsed.data : null;
 }
 
 function parseShownRuns(value: unknown): WorkflowRunReference[] {

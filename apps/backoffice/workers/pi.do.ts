@@ -161,6 +161,9 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   ): Promise<PiAgentCompactionStatus | null> {
     return await this.#object.getCompaction(config, taskId);
   }
+  async getActivity(config: PiAgentConfig, subagent: string | null) {
+    return await this.#object.getActivity(config, subagent);
+  }
   async getView(config: PiAgentConfig, subagent: string | null): Promise<unknown> {
     return await this.#object.getView(config, subagent);
   }

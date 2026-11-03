@@ -3921,6 +3921,44 @@
     ]
   },
   {
+    "command": "pi.agent.activity",
+    "summary": "pi.agent.activity prints the tools an agent ran since its newest clear, oldest first, with each codemode run's calls.",
+    "options": [
+      {
+        "name": "agent",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "agent-name",
+        "description": "Agent name"
+      },
+      {
+        "name": "subagent",
+        "valueRequired": true,
+        "valueName": "request-id",
+        "description": "Print the work of the agent's subagent this request started"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "pi.agent.export",
     "summary": "pi.agent.export writes an agent's conversation since its newest compaction or clear, tool calls included, to a JSONL file, oldest entry first.",
     "options": [

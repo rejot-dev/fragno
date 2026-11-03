@@ -15,10 +15,11 @@ import type { IconName } from "@fragno-private/design-system/icon";
 import { LabeledSection } from "@fragno-private/design-system/layout/labeled-section";
 import { useState } from "react";
 
+import { getCodemodeCallsDetail } from "@/fragno/pi/extensions/backoffice/codemode-call-details";
+
 import type { ToolCallPart } from "./agent-turn";
 import type { PiToolCallArtifact } from "./assistant-runtime";
 import {
-  getCodemodeCallsDetail,
   getCodemodeResultDetails,
   isCodemodeTool,
   type CodemodeResultDetails,
