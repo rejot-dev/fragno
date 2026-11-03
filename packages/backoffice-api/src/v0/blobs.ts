@@ -33,7 +33,7 @@ export const blobKeySchema = z.lazy(() =>
       `A blob's key holds at most ${BLOB_KEY_MAX_LENGTH} characters.`,
     )
     .describe(
-      "The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav.",
+      "The blob's key. A scope's own blob has a key like recordings/2026-10-26.mp4: segments joined by slashes, none empty, '.' or '..'. A blob another scope shares has a key that starts /shared/<name>/, such as /shared/client1-calls/monday.wav: give it whole, leading slash included. Shared blobs are read-only.",
     ),
 );
 

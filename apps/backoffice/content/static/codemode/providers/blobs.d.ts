@@ -39,7 +39,7 @@ type BlobsCodemodeProvider = {
 declare const blobs: BlobsCodemodeProvider;
 
 type BlobsCreateUploadInput = {
-  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
+  /** The blob's key. A scope's own blob has a key like recordings/2026-10-26.mp4: segments joined by slashes, none empty, '.' or '..'. A blob another scope shares has a key that starts /shared/<name>/, such as /shared/client1-calls/monday.wav: give it whole, leading slash included. Shared blobs are read-only. */
   key: string;
   contentType?: string;
 };
@@ -67,7 +67,7 @@ type BlobsCompleteUploadOutput = {
   etag: string;
 };
 type BlobsGetInput = {
-  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
+  /** The blob's key. A scope's own blob has a key like recordings/2026-10-26.mp4: segments joined by slashes, none empty, '.' or '..'. A blob another scope shares has a key that starts /shared/<name>/, such as /shared/client1-calls/monday.wav: give it whole, leading slash included. Shared blobs are read-only. */
   key: string;
 };
 type BlobsGetOutput = {
@@ -93,7 +93,7 @@ type BlobsListOutput = {
   cursor: string | null;
 };
 type BlobsCreateDownloadUrlInput = {
-  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
+  /** The blob's key. A scope's own blob has a key like recordings/2026-10-26.mp4: segments joined by slashes, none empty, '.' or '..'. A blob another scope shares has a key that starts /shared/<name>/, such as /shared/client1-calls/monday.wav: give it whole, leading slash included. Shared blobs are read-only. */
   key: string;
 };
 type BlobsCreateDownloadUrlOutput = {
@@ -103,7 +103,7 @@ type BlobsCreateDownloadUrlOutput = {
   expiresAt: string;
 };
 type BlobsReadInput = {
-  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
+  /** The blob's key. A scope's own blob has a key like recordings/2026-10-26.mp4: segments joined by slashes, none empty, '.' or '..'. A blob another scope shares has a key that starts /shared/<name>/, such as /shared/client1-calls/monday.wav: give it whole, leading slash included. Shared blobs are read-only. */
   key: string;
   offset: number;
   length: number;
@@ -114,6 +114,6 @@ type BlobsReadOutput = {
   etag: string;
 };
 type BlobsDeleteInput = {
-  /** The blob's name within the scope, e.g. recordings/2026-10-26.mp4. Slash-separated segments, none empty, '.' or '..'. Blobs another scope shares, once accepted, are read-only under /shared/<name>/, e.g. /shared/client1-calls/monday.wav. */
+  /** The blob's key. A scope's own blob has a key like recordings/2026-10-26.mp4: segments joined by slashes, none empty, '.' or '..'. A blob another scope shares has a key that starts /shared/<name>/, such as /shared/client1-calls/monday.wav: give it whole, leading slash included. Shared blobs are read-only. */
   key: string;
 };
