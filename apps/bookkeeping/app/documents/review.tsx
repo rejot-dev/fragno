@@ -1,6 +1,7 @@
 import { Button } from "@fragno-private/design-system/controls/button";
 import { Callout } from "@fragno-private/design-system/feedback/callout";
 import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
+import { Icon } from "@fragno-private/design-system/icon";
 import {
   SurfacePanelBody,
   SurfaceSection,
@@ -16,7 +17,7 @@ import { accountLabel, formatDate, indexBooks } from "../books/books";
 import type { FormResult } from "../books/books.server";
 import { FormError } from "../books/forms";
 import type { BooksOutletContext } from "../books/layout";
-import type { BookkeeperProgress } from "./bookkeeper.server";
+import type { BookkeeperProgress, BookkeeperStep } from "./bookkeeper.server";
 
 /** The intent of the form asking the bookkeeping agent about the document. */
 export const ASK = "ask";
@@ -92,6 +93,66 @@ function requestState(progress: BookkeeperProgress): {
       };
   }
   throw new Error("Unsupported bookkeeper progress.");
+}
+
+/** What the agent does running each of Bookkeeping's actions, while it runs and once it did. */
+const ACTION_LABELS: Record<string, { running: string; done: string }> = {
+  "documents.get": { running: "Looking up the document", done: "Looked up the document" },
+  "books.describe": { running: "Reading the books", done: "Read the books" },
+  "entries.list": { running: "Looking at earlier entries", done: "Looked at earlier entries" },
+  "documents.propose": { running: "Proposing the entry", done: "Proposed the entry" },
+  "documents.decline": { running: "Declining the document", done: "Declined the document" },
+};
+
+function stepLine(step: BookkeeperStep): { label: string; running: boolean; failed: boolean } {
+  switch (step.kind) {
+    case "action": {
+      const label = ACTION_LABELS[step.actionId] ?? { running: step.actionId, done: step.actionId };
+      return step.status === "running"
+        ? { label: label.running, running: true, failed: false }
+        : step.status === "failed"
+          ? { label: `${label.running} failed`, running: false, failed: true }
+          : { label: label.done, running: false, failed: false };
+    }
+    case "read":
+      return step.status === "running"
+        ? { label: "Reading the file", running: true, failed: false }
+        : step.status === "failed"
+          ? { label: "Reading the file failed", running: false, failed: true }
+          : { label: "Read the file", running: false, failed: false };
+    case "work":
+      return { label: step.running ? "Working" : "Worked", running: step.running, failed: false };
+  }
+  throw new Error("Unsupported bookkeeper step.", { cause: step satisfies never });
+}
+
+/** The agent's work so far, oldest first, one line per step. */
+function BookkeeperSteps({ steps }: { steps: BookkeeperStep[] }) {
+  return (
+    <ol className="space-y-1 text-sm">
+      {steps.map((step, position) => {
+        const { label, running, failed } = stepLine(step);
+        return (
+          // Steps have no IDs, and a step keeps its place as the work goes on.
+          <li key={position} className="flex items-center gap-2">
+            <Icon
+              name={failed ? "x" : running ? "loader" : "check"}
+              className={
+                failed
+                  ? "size-3.5 text-[var(--bo-failed)]"
+                  : running
+                    ? "size-3.5 animate-spin text-[var(--bo-accent)]"
+                    : "size-3.5 text-[var(--bo-muted)]"
+              }
+            />
+            <span className={running ? "text-[var(--bo-fg)]" : "text-[var(--bo-muted)]"}>
+              {label}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
 }
 
 function ProposedLines({ entry, context }: { entry: ProposedEntry; context: BooksOutletContext }) {
@@ -177,12 +238,14 @@ export function BookkeeperReview({
   } else if (review.status === "requested") {
     // Read when the page loads, for every request still waiting.
     const state = requestState(progress!);
+    const steps = "steps" in progress! ? progress.steps : [];
     body = (
       <div className="space-y-2">
         <BackofficeStatusLight tone={state.tone}>{state.label}</BackofficeStatusLight>
         {state.detail === null ? null : (
           <p className="text-sm text-pretty text-[var(--bo-muted)]">{state.detail}</p>
         )}
+        {steps.length > 0 ? <BookkeeperSteps steps={steps} /> : null}
       </div>
     );
     actions = state.askAgain ? ask("Ask again") : null;

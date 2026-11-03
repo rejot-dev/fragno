@@ -397,17 +397,21 @@ Each document records its review: asked, under a request ID; the proposed entry;
 proposes none. The request is recorded before the agent is set up and asked, so one that never
 reached it shows. While it is unanswered the document's page asks Backoffice where it stands with
 `pi.prompt.get`: waiting, running, failed with the reason, finished without an answer, or never
-received; or that Backoffice cannot say, e.g. while it cannot be reached. The agent answers before
-its turn ends, so the page reads the document again before showing a finished turn without an
-answer. While waiting or running, the page asks again every 5 seconds while it is in view, since
-nothing tells Bookkeeping when the agent's turn ends. Any but the first two offer **Ask again**,
-which sends a new request. The prompt names its request, and the agent's answer names it back: an
-answer counts only while the document awaits that request, so an earlier request's subagent still
-running, or one that can no longer read the file once the first answer stopped sharing it, cannot
-replace the answer. A person's agent may answer without a request, replacing any answer. The upload
-asks under one request ID, and only while the document has no review, so sending it again, even
-twice at once, asks once and never undoes an answer. Booking or dismissing a document ends its
-review: the agent's actions refuse documents that are not to book.
+received; or that Backoffice cannot say, e.g. while it cannot be reached. For a request the agent
+received, it also lists the steps of the agent's work so far, from the subagent's
+`pi.agent.activity`: Bookkeeping's own actions it ran, its reads of the file with `models.extract`,
+and its other work, as work. What that work was stays on the server: it follows the firm's skills
+and instructions, which are the firm's, not the client's. The agent answers before its turn ends, so
+the page reads the document again before showing a finished turn without an answer. While waiting or
+running, the page asks again every 5 seconds while it is in view, since nothing tells Bookkeeping
+when the agent's turn ends. Any but the first two offer **Ask again**, which sends a new request.
+The prompt names its request, and the agent's answer names it back: an answer counts only while the
+document awaits that request, so an earlier request's subagent still running, or one that can no
+longer read the file once the first answer stopped sharing it, cannot replace the answer. A person's
+agent may answer without a request, replacing any answer. The upload asks under one request ID, and
+only while the document has no review, so sending it again, even twice at once, asks once and never
+undoes an answer. Booking or dismissing a document ends its review: the agent's actions refuse
+documents that are not to book.
 
 Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
 administration is created, and administrations from before a storage change do not open. Delete

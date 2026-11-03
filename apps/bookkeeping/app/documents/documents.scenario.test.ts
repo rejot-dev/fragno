@@ -3,6 +3,8 @@ import { assert, expect, test } from "vitest";
 import { Buffer } from "node:buffer";
 import { readFileSync } from "node:fs";
 
+import type { CodemodeCalls, CodemodeCallSubject } from "@fragno-dev/backoffice-api/v0/pi";
+
 import {
   runBookkeepingScenario,
   type BookkeepingScenario,
@@ -609,9 +611,82 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     expect(await readDocument(ada, id)).toMatchObject({
       review: { status: "requested", requestId: prompt.requestId, by: "Ada Lovelace" },
     });
-    expect(await readProgress(ada, id)).toEqual({ requestId: prompt.requestId, status: "queued" });
+    expect(await readProgress(ada, id)).toEqual({
+      requestId: prompt.requestId,
+      status: "queued",
+      steps: [],
+    });
     scenario.backoffice.settlePrompt(prompt.requestId, { status: "running" });
-    expect(await readProgress(ada, id)).toEqual({ requestId: prompt.requestId, status: "running" });
+    // The page shows the agent's work on the books as Bookkeeping's own actions and reads of the
+    // file; what the firm's skills and instructions have it do stays the firm's.
+    const call = (
+      subject: CodemodeCallSubject,
+      status: "running" | "succeeded" | "failed",
+    ): CodemodeCalls["items"][number] =>
+      status === "running"
+        ? { subject, offsetMs: 0, status }
+        : status === "succeeded"
+          ? { subject, offsetMs: 0, status, durationMs: 1 }
+          : { subject, offsetMs: 0, status, durationMs: 1, error: "secret-error" };
+    const action = (connectionId: string, actionId: string): CodemodeCallSubject => ({
+      kind: "action",
+      connectionId,
+      actionId,
+      scope: null,
+      input: "secret-input",
+    });
+    scenario.backoffice.reportActivity(prompt.requestId, {
+      tools: [
+        {
+          toolCallId: "1",
+          name: "codemode",
+          status: "succeeded",
+          calls: {
+            startedAt: 0,
+            items: [
+              call({ kind: "skill", name: "secret-skill" }, "succeeded"),
+              call({ kind: "read", path: "/workspace/secret-notes.md" }, "succeeded"),
+              call(action("app#bookkeeping", "documents.get"), "succeeded"),
+              call(action("app#bookkeeping", "books.describe"), "failed"),
+              call(action("app#bookkeeping", "books.describe"), "succeeded"),
+            ],
+            omitted: 0,
+          },
+        },
+        { toolCallId: "2", name: "bash", status: "succeeded", calls: null },
+        {
+          toolCallId: "3",
+          name: "codemode",
+          status: "running",
+          calls: {
+            startedAt: 0,
+            items: [
+              call(action("secret-connection", "secret-action"), "succeeded"),
+              call(
+                { kind: "call", name: "models.extract", scope: null, input: "secret-prompt" },
+                "running",
+              ),
+            ],
+            omitted: 0,
+          },
+        },
+      ],
+      omitted: 0,
+    });
+    const running = await ada.navigate(`${BOOKS}/documents/${id}`);
+    expect((running.loaderData["documents/document"] as { progress: unknown }).progress).toEqual({
+      requestId: prompt.requestId,
+      status: "running",
+      steps: [
+        { kind: "work", running: false },
+        { kind: "action", actionId: "documents.get", status: "succeeded" },
+        { kind: "action", actionId: "books.describe", status: "failed" },
+        { kind: "action", actionId: "books.describe", status: "succeeded" },
+        { kind: "work", running: false },
+        { kind: "read", status: "running" },
+      ],
+    });
+    expect(JSON.stringify(running.loaderData)).not.toMatch(/secret/u);
 
     // Bookkeeping prompts the agent as its installation, so its calls change nothing but reviews,
     // whatever a document tells it.
@@ -1331,6 +1406,7 @@ test("a request the agent never received, or failed, is asked again from the doc
       requestId: first.requestId,
       status: "failed",
       reason: "The model is unavailable.",
+      steps: [],
     });
 
     await ada.submit(`${BOOKS}/documents/${id}`, ask);
