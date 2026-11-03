@@ -13,14 +13,13 @@ import {
 } from "@fragno-private/design-system/orchestration/orchestration-graph-model";
 import { useMemo, type ReactNode } from "react";
 
-import { visualizeWorkflowSource } from "@fragno-dev/workflow-visualizer-tokens";
-
 import {
   backofficeRuntimeScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import { sendBackofficeWorkflowEvent } from "@/backoffice-ui/workflow-events.client";
 import { useAutomationRead } from "@/fragno/automation/lofi/replica";
+import { visualizeWorkflowScript } from "@/fragno/automation/workflow-visualizations";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 import { resolveWorkflowRuntimeToolCalls } from "@/fragno/runtime-tools/workflow-catalog";
 import { jsonSchemaToTypeScript } from "@/lib/zod/zod-formatter";
@@ -475,7 +474,7 @@ function WorkflowGraph({
   const runtimeScope = backofficeRuntimeScopeFromResolvedScope(scope);
   const currentScope = scope.kind === "system" ? undefined : scope;
   const visualization = useMemo(
-    () => visualizeWorkflowSource(absolutePath, source.script ?? ""),
+    () => visualizeWorkflowScript(absolutePath, source.script ?? ""),
     [absolutePath, source.script],
   );
   const runtimeToolCallsByStepId = useMemo(

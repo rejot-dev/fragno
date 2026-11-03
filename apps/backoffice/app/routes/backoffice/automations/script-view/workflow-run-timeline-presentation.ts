@@ -19,10 +19,11 @@ import type {
 import { useMemo } from "react";
 
 import {
-  visualizeWorkflowSource,
   type StepNode,
   type WorkflowVisualizationSnapshot,
 } from "@fragno-dev/workflow-visualizer-tokens";
+
+import { visualizeWorkflowScript } from "@/fragno/automation/workflow-visualizations";
 
 import { useWorkflowRunRecords } from "./use-script-workflow-runs";
 import {
@@ -81,7 +82,7 @@ export function useWorkflowRunTimelineProjection(
   const filename = instance?.codemode?.filename ?? null;
   const code = instance?.codemode?.code ?? null;
   const visualization = useMemo(
-    () => (filename === null || code === null ? null : visualizeWorkflowSource(filename, code)),
+    () => (filename === null || code === null ? null : visualizeWorkflowScript(filename, code)),
     [filename, code],
   );
   return useMemo(
