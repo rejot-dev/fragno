@@ -19,6 +19,7 @@ import {
   actionMarkerUrl,
   countLabel,
   eventsStartWorkflows,
+  TARGET_KIND_PRESENTATION,
 } from "./orchestration-graph-parts";
 import { SvgIcon } from "./orchestration-radial-parts";
 import { fitCamera, zoomAt, type Camera, type Size } from "./orchestration-universe-camera";
@@ -38,6 +39,7 @@ import {
   layoutUniverse,
   universeHighlights,
   universeItemKey,
+  workflowFocusId,
   type OrchestrationExternal,
   type OrchestrationUniverse,
   type OrchestrationUniverseScope,
@@ -65,8 +67,14 @@ import {
   type PlanetItemInteraction,
 } from "./workflow-trigger-planet";
 
-/** What someone points at or pins: a planet, or an outside system on the frame. */
-type UniverseFocus = { kind: "scope"; id: string } | { kind: "external"; id: string };
+/**
+ * What someone points at or pins: a planet, one workflow on a planet, by its `workflowFocusId`,
+ * or an outside system on the frame.
+ */
+type UniverseFocus =
+  | { kind: "scope"; id: string }
+  | { kind: "workflow"; id: string; scopeId: string; workflowId: string }
+  | { kind: "external"; id: string };
 
 // A press only becomes a drag once it moves this far, so a click on a planet still pins it.
 type Gesture = {
@@ -99,6 +107,9 @@ const WORKFLOW_LABEL_REACH = PLANET_ORBIT_RADIUS + 600;
 const MIN_SCREEN_STROKE = 0.9;
 // The whole planet answers the pointer, out to just past the workflows on its orbit.
 const PLANET_HIT_RADIUS = PLANET_ORBIT_RADIUS + 28;
+// Each workflow answers the pointer within a small orbit of its own, wider than its node, which
+// shows while it is focused.
+const WORKFLOW_HIT_RADIUS = PLANET_WORKFLOW_NODE_RADIUS + 16;
 const NO_ITEM_INTERACTION: PlanetItemInteraction = { kind: "none" };
 // The layout follows the view's shape in steps, so resizing does not stir it every pixel.
 const ASPECT_STEP = 0.1;
@@ -363,6 +374,40 @@ function describeFocus(
 ): { kind: string; icon: IconName; name: string; lines: string[] } {
   const scopeLabel = (scopeId: string) =>
     planets.find(({ scope }) => scope.id === scopeId)?.scope.graph.scopeLabel ?? scopeId;
+  const workflowOf = (scopeId: string, workflowId: string) =>
+    planets
+      .find(({ scope }) => scope.id === scopeId)
+      ?.layout.workflows.find(({ workflow }) => workflow.id === workflowId)?.workflow;
+  const workflowLabel = (scopeId: string, workflowId: string) =>
+    workflowOf(scopeId, workflowId)?.label ?? workflowId;
+  const externalLabel = (externalId: string) =>
+    externals.find(({ id }) => id === externalId)?.label ?? externalId;
+  if (focus.kind === "workflow") {
+    const planet = planets.find(({ scope }) => scope.id === focus.scopeId);
+    const startedBy = [
+      ...new Set(
+        planet?.layout.triggers
+          .filter(({ workflowId }) => workflowId === focus.workflowId)
+          .map(({ eventId }) => eventId),
+      ),
+    ].map(
+      (eventId) =>
+        planet?.layout.events.find(({ event }) => event.id === eventId)?.event.label ?? eventId,
+    );
+    const called = calls
+      .filter((call) => call.scopeId === focus.scopeId && call.workflowId === focus.workflowId)
+      .map((call) => externalLabel(call.externalId));
+    return {
+      kind: "Workflow",
+      icon: TARGET_KIND_PRESENTATION.workflow.icon,
+      name: workflowLabel(focus.scopeId, focus.workflowId),
+      lines: [
+        `In ${scopeLabel(focus.scopeId)}`,
+        ...(startedBy.length > 0 ? [`Started by ${listed(startedBy)}`] : []),
+        called.length > 0 ? `Calls ${listed(called)}` : "Calls no outside system",
+      ],
+    };
+  }
   if (focus.kind === "external") {
     const external = externals.find(({ id }) => id === focus.id);
     const callers = calls.filter((call) => call.externalId === focus.id);
@@ -375,7 +420,7 @@ function describeFocus(
         `Called by ${countLabel(callers.length, "workflow")} in ${countLabel(scopeIds.length, "scope")}`,
         ...scopeIds.map(
           (scopeId) =>
-            `${scopeLabel(scopeId)}: ${listed(callers.filter((call) => call.scopeId === scopeId).map((call) => call.workflowId))}`,
+            `${scopeLabel(scopeId)}: ${listed(callers.filter((call) => call.scopeId === scopeId).map((call) => workflowLabel(scopeId, call.workflowId)))}`,
         ),
       ],
     };
@@ -391,7 +436,7 @@ function describeFocus(
   ];
   const called = [
     ...new Set(calls.filter((call) => call.scopeId === focus.id).map((call) => call.externalId)),
-  ].map((externalId) => externals.find(({ id }) => id === externalId)?.label ?? externalId);
+  ].map(externalLabel);
   return {
     kind: "Scope",
     icon: "globe",
@@ -481,10 +526,11 @@ function FocusCard({
  * push each other apart and the ones that forward to each other pull together, so dragging one
  * moves its neighbours and letting go lets it drift into place. Drag the background to pan, and
  * pinch or hold ⌘/Ctrl while scrolling to zoom; the frame stays put. Hovering a planet lights up
- * what leaves it: the forwards, what they reach, and the systems its workflows and those reached
- * call. Hovering a system lights up what ends up calling it, back through the forwards. Clicking
- * pins either. A forward that nothing on the planet it reaches listens to lands on a stretch of
- * that planet's orbit.
+ * what leaves it: the forwards, what they reach, and the systems its workflows call. Hovering a
+ * workflow, within the small orbit round it, lights up what starts it and draws its calls out to
+ * the systems it reaches. Hovering a system draws the calls to it and lights up what ends up
+ * calling it, back through the forwards. Clicking pins any of them. A forward that nothing on the
+ * planet it reaches listens to lands on a stretch of that planet's orbit.
  */
 export function OrchestrationUniverseGraph({ universe }: { universe: OrchestrationUniverse }) {
   const idPrefix = useId();
@@ -555,8 +601,11 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
   const lit =
     focus === null
       ? null
-      : ((focus.kind === "scope" ? highlights.scopes : highlights.externals).get(focus.id) ??
-        NOTHING_LIT);
+      : ({
+          scope: highlights.scopes,
+          workflow: highlights.workflows,
+          external: highlights.externals,
+        }[focus.kind].get(focus.id) ?? NOTHING_LIT);
 
   function togglePin(target: UniverseFocus) {
     setPinned((current) => (sameFocus(current, target) ? null : target));
@@ -740,7 +789,8 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
     () => (shownCamera ? callRouter(field, planets, tiles, shownCamera) : null),
     [field, planets, tiles, shownCamera],
   );
-  // Calls only show for what is focused; at rest they would cross every planet.
+  // Calls only show for a focused workflow or outside system; at rest, or for a whole planet, they
+  // would cross every planet.
   const litCalls = useMemo(
     () => (lit ? calls.filter((call) => lit.has(callKey(call))) : NO_CALLS),
     [lit, calls],
@@ -893,6 +943,48 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
                       {scale < OVERVIEW_SCALE && focusedScope !== scope.id ? (
                         <ScopeNameTag label={label} grow={readable(24, MIN_TAG_FONT)} />
                       ) : null}
+                    </g>
+                  );
+                })}
+
+                {/* Over the planets, so each workflow answers the pointer within its own orbit. */}
+                {planets.map((planet) => {
+                  const { scope } = planet;
+                  const position = positionOf(scope.id);
+                  return (
+                    <g
+                      key={scope.id}
+                      data-planet={scope.id}
+                      transform={`translate(${position.x} ${position.y})`}
+                    >
+                      {planet.layout.workflows.map(({ workflow, angle }) => {
+                        const target = {
+                          kind: "workflow",
+                          id: workflowFocusId(scope.id, workflow.id),
+                          scopeId: scope.id,
+                          workflowId: workflow.id,
+                        } as const;
+                        const [x, y] = polar(angle, PLANET_ORBIT_RADIUS);
+                        return (
+                          <g
+                            key={workflow.id}
+                            transform={`translate(${x} ${y}) scale(${workflowScale})`}
+                            aria-label={`${workflow.label} workflow`}
+                            className="cursor-pointer outline-none"
+                            {...focusHandlers(target)}
+                          >
+                            <circle r={WORKFLOW_HIT_RADIUS} className="fill-transparent" />
+                            {sameFocus(focus, target) ? (
+                              <circle
+                                r={WORKFLOW_HIT_RADIUS}
+                                className="pointer-events-none fill-none stroke-[var(--bo-accent)]/60"
+                                strokeWidth={Math.max(1.5, 1.2 / (scale * workflowScale))}
+                                strokeDasharray="5 4"
+                              />
+                            ) : null}
+                          </g>
+                        );
+                      })}
                     </g>
                   );
                 })}

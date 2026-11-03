@@ -1,9 +1,49 @@
 import { assert, describe, expect, test } from "vitest";
 
 import type { OrchestrationGraph } from "./orchestration-graph-model";
-import { layoutUniverse, type OrchestrationUniverse } from "./orchestration-universe-model";
+import { UNIVERSE } from "./orchestration-graph-story-support";
+import {
+  callKey,
+  externalKey,
+  layoutUniverse,
+  universeHighlights,
+  workflowFocusId,
+  type OrchestrationUniverse,
+} from "./orchestration-universe-model";
 import { orbitLandings, routeForwards, universeField } from "./orchestration-universe-routes";
 import { normalizeAngle } from "./radial-geometry";
+
+/** The calls and outside systems lit when `focused` is. */
+function litCallsAndSystems(focused: ReadonlySet<string> | undefined) {
+  const { calls, externals } = layoutUniverse(UNIVERSE);
+  return {
+    calls: calls.filter((call) => focused?.has(callKey(call))).map(({ id }) => id),
+    systems: externals.filter(({ id }) => focused?.has(externalKey(id))).map(({ id }) => id),
+  };
+}
+
+describe("what focusing lights up", () => {
+  const { planets, forwards, externals, calls } = layoutUniverse(UNIVERSE);
+  const highlights = universeHighlights(planets, forwards, externals, calls);
+
+  test("a planet lights the systems its workflows call, but draws none of the calls", () => {
+    expect(litCallsAndSystems(highlights.scopes.get("org"))).toEqual({
+      calls: [],
+      systems: ["telegram", "email", "slack"],
+    });
+  });
+
+  test("a workflow draws its own calls only", () => {
+    expect(
+      litCallsAndSystems(
+        highlights.workflows.get(workflowFocusId("org", "organization-onboarding")),
+      ),
+    ).toEqual({
+      calls: ["org|organization-onboarding→email", "org|organization-onboarding→slack"],
+      systems: ["email", "slack"],
+    });
+  });
+});
 
 /** A scope whose only route forwards `eventIds` to `to`, or, without them, one with no routes. */
 function graph(scopeLabel: string, eventIds: readonly string[] = []): OrchestrationGraph {

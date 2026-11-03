@@ -209,6 +209,7 @@ function universeIndex(
       forwardsArriving.get(at(scopeId, eventId)) ?? [],
     forwardsFrom: grouped(forwards, (forward) => forward.fromScopeId),
     callsFrom: grouped(calls, (call) => call.scopeId),
+    callsOfWorkflow: grouped(calls, (call) => workflowFocusId(call.scopeId, call.workflowId)),
     callsTo: grouped(calls, (call) => call.externalId),
   };
 }
@@ -249,11 +250,17 @@ function lightEvent(
   }
 }
 
+/** Names one workflow of one planet among every planet's workflows. */
+export function workflowFocusId(scopeId: string, workflowId: string): string {
+  return `${scopeId}|${workflowId}`;
+}
+
 /**
- * What a scope sends elsewhere, as item, forward, call and external keys: its forwards, everything
- * the forwarded events reach and start in the scopes they land in, and the outside systems the
- * scope's own workflows call. What reached workflows call is left out, so only the scope's own
- * calls show. The scope's own items are left out too; whoever shows them decides how.
+ * What a scope sends elsewhere, as item, forward and external keys: its forwards, everything the
+ * forwarded events reach and start in the scopes they land in, and the outside systems the
+ * scope's own workflows call. The calls themselves are left out: they show for one workflow at a
+ * time, or else they would cross every planet. So are the scope's own items; whoever shows them
+ * decides how.
  */
 function outgoingItems(index: UniverseIndex, scopeId: string): Set<string> {
   const lit = new Set<string>();
@@ -273,6 +280,49 @@ function outgoingItems(index: UniverseIndex, scopeId: string): Set<string> {
     leave(scopeId, forward.eventId);
   }
   for (const call of index.callsFrom.get(scopeId) ?? []) {
+    lit.add(externalKey(call.externalId));
+  }
+  return lit;
+}
+
+/**
+ * Lights a workflow, the events that start it with their sources, and the forwards that carry
+ * those events in from other scopes, back to where they first arrive. `reached` keeps a trace that
+ * lights several workflows from walking an event twice.
+ */
+function lightWorkflow(
+  lit: Set<string>,
+  index: UniverseIndex,
+  reached: Set<string>,
+  scopeId: string,
+  workflowId: string,
+) {
+  function trace(scope: string, eventId: string) {
+    const key = `${scope}|${eventId}`;
+    if (reached.has(key)) {
+      return;
+    }
+    reached.add(key);
+    lightEvent(lit, index, scope, eventId, false);
+    for (const forward of index.forwardsArriving(scope, eventId)) {
+      lit.add(forwardKey(forward));
+      trace(forward.fromScopeId, eventId);
+    }
+  }
+  lit.add(universeItemKey({ scopeId, item: { kind: "target", id: workflowId } }));
+  for (const eventId of index.eventsOf(scopeId, workflowId)) {
+    trace(scopeId, eventId);
+  }
+}
+
+/**
+ * What one workflow takes part in, as item, forward, call and external keys: what starts it, as
+ * `lightWorkflow` lights it, and the outside systems it calls, with the calls.
+ */
+function workflowItems(index: UniverseIndex, scopeId: string, workflowId: string): Set<string> {
+  const lit = new Set<string>();
+  lightWorkflow(lit, index, new Set(), scopeId, workflowId);
+  for (const call of index.callsOfWorkflow.get(workflowFocusId(scopeId, workflowId)) ?? []) {
     lit.add(callKey(call));
     lit.add(externalKey(call.externalId));
   }
@@ -287,33 +337,20 @@ function outgoingItems(index: UniverseIndex, scopeId: string): Set<string> {
 function callingItems(index: UniverseIndex, externalId: string): Set<string> {
   const lit = new Set<string>([externalKey(externalId)]);
   const reached = new Set<string>();
-  function trace(scope: string, eventId: string) {
-    const key = `${scope}|${eventId}`;
-    if (reached.has(key)) {
-      return;
-    }
-    reached.add(key);
-    lightEvent(lit, index, scope, eventId, false);
-    for (const forward of index.forwardsArriving(scope, eventId)) {
-      lit.add(forwardKey(forward));
-      trace(forward.fromScopeId, eventId);
-    }
-  }
   for (const call of index.callsTo.get(externalId) ?? []) {
     lit.add(callKey(call));
-    lit.add(
-      universeItemKey({ scopeId: call.scopeId, item: { kind: "target", id: call.workflowId } }),
-    );
-    for (const eventId of index.eventsOf(call.scopeId, call.workflowId)) {
-      trace(call.scopeId, eventId);
-    }
+    lightWorkflow(lit, index, reached, call.scopeId, call.workflowId);
   }
   return lit;
 }
 
-/** What lights up when each planet or outside system is focused, worked out once for all. */
+/**
+ * What lights up when each planet, workflow, or outside system is focused, worked out once for
+ * all. Workflows go by `workflowFocusId`.
+ */
 export type UniverseHighlights = {
   scopes: ReadonlyMap<string, ReadonlySet<string>>;
+  workflows: ReadonlyMap<string, ReadonlySet<string>>;
   externals: ReadonlyMap<string, ReadonlySet<string>>;
 };
 
@@ -326,6 +363,14 @@ export function universeHighlights(
   const index = universeIndex(planets, forwards, calls);
   return {
     scopes: new Map(planets.map(({ scope }) => [scope.id, outgoingItems(index, scope.id)])),
+    workflows: new Map(
+      planets.flatMap(({ scope, layout }) =>
+        layout.workflows.map(({ workflow }) => [
+          workflowFocusId(scope.id, workflow.id),
+          workflowItems(index, scope.id, workflow.id),
+        ]),
+      ),
+    ),
     externals: new Map(externals.map(({ id }) => [id, callingItems(index, id)])),
   };
 }
