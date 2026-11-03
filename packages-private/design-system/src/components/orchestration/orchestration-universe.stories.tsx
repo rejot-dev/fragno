@@ -31,6 +31,43 @@ export function TwoScopes() {
   );
 }
 
+/**
+ * Forwards into a project that listens to none of their events land on its orbit, each on a
+ * dashed ring of its own.
+ */
+export function UnroutedForwards() {
+  const organization = UNIVERSE.scopes.find((scope) => scope.id === "org")!;
+  const website = UNIVERSE.scopes.find((scope) => scope.id === "website")!;
+  const forwarded = new Set(
+    organization.graph.routes
+      .filter(({ id }) => id === "org-intake" || id === "org-receipts")
+      .map(({ eventId }) => eventId),
+  );
+  return (
+    <div className="h-screen p-4">
+      <OrchestrationUniverseGraph
+        universe={{
+          ...UNIVERSE,
+          scopes: [
+            organization,
+            {
+              ...website,
+              graph: {
+                ...website.graph,
+                routes: website.graph.routes.filter(({ eventId }) => !forwarded.has(eventId)),
+              },
+            },
+          ],
+          forwards: [
+            { routeId: "org-intake", fromScopeId: "org", toScopeId: "website" },
+            { routeId: "org-receipts", fromScopeId: "org", toScopeId: "website" },
+          ],
+        }}
+      />
+    </div>
+  );
+}
+
 /** Scopes still being read ring their planet: by how far they got, or turning until that is known. */
 export function ReadingScopes() {
   const empty = (scopeLabel: string) => ({

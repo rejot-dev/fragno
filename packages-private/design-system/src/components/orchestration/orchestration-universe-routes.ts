@@ -9,7 +9,7 @@ import {
   type RouteStep,
   type RouteTarget,
 } from "./orchestration-universe-routing";
-import { bearing, offset, type Point } from "./radial-geometry";
+import { bearing, offset, shortestDelta, type Point } from "./radial-geometry";
 import { eventDepartureAngle } from "./workflow-trigger-graph-model";
 import {
   PLANET_EVENT_EDGE_RADIUS,
@@ -48,6 +48,14 @@ const FORWARD_APPROACH = -0.2;
 const FORWARD_EASE = 80;
 // How far out from the event a forward lines up to land on it, in world units.
 const FORWARD_LANDING = 60;
+// Forwards landing on the same planet's orbit from the same way spread this far apart, in radians,
+// over at most a quarter of the orbit, however many there are.
+const ORBIT_LANDING_SPREAD = 36 / PLANET_ORBIT_RADIUS;
+const MAX_ORBIT_LANDING_SPAN = Math.PI / 2;
+// The stretch of orbit drawn under landing forwards reaches this far past the outermost, in
+// radians, and the arrows stop this far out from it.
+const ORBIT_LANDING_MARGIN = 40 / PLANET_ORBIT_RADIUS;
+const ORBIT_LANDING_GAP = 4;
 
 /** How much workflows grow at a zoom, so their names stay readable without covering each other. */
 export function workflowGrowth(scale: number): number {
@@ -224,7 +232,71 @@ function planetLookup(planets: readonly UniversePlanet[]) {
   };
 }
 
-export type DrawnForward = { forward: UniverseForward; path: string; middle: Point };
+/**
+ * A forward's path and the middle of it, where its label goes. `landing` is the angle it lands at
+ * on the orbit of the planet it reaches when nothing there listens to its event; null when it
+ * lands on an event or on the ring of a planet still being read.
+ */
+export type DrawnForward = {
+  forward: UniverseForward;
+  path: string;
+  middle: Point;
+  landing: number | null;
+};
+
+/** The stretch of a planet's orbit that forwards nothing there listens to land on. */
+export type OrbitLanding = {
+  scopeId: string;
+  forwards: readonly UniverseForward[];
+  path: string;
+};
+
+/**
+ * One stretch of orbit per planet and planet sending to it, under the forwards from there that
+ * nothing on the planet listens to, so they have somewhere to land.
+ */
+export function orbitLandings(
+  field: RouteField,
+  planets: readonly UniversePlanet[],
+  drawn: readonly DrawnForward[],
+): OrbitLanding[] {
+  const lookup = planetLookup(planets);
+  const groups = new Map<
+    string,
+    { scopeId: string; forwards: UniverseForward[]; angles: number[] }
+  >();
+  for (const { forward, landing } of drawn) {
+    if (landing === null) {
+      continue;
+    }
+    const key = `${forward.fromScopeId}|${forward.toScopeId}`;
+    const group = groups.get(key) ?? { scopeId: forward.toScopeId, forwards: [], angles: [] };
+    group.forwards.push(forward);
+    group.angles.push(landing);
+    groups.set(key, group);
+  }
+  return [...groups.values()].flatMap(({ scopeId, forwards, angles }) => {
+    const index = lookup.indexOf(scopeId);
+    if (index === -1) {
+      return [];
+    }
+    const center = field.obstacles[index].center;
+    // Measured from the first, so a stretch across the top of the orbit does not wrap round it.
+    const deltas = angles.map((angle) => shortestDelta(angles[0], angle));
+    const from = angles[0] + Math.min(...deltas) - ORBIT_LANDING_MARGIN;
+    const to = angles[0] + Math.max(...deltas) + ORBIT_LANDING_MARGIN;
+    const start = offset(center, from, PLANET_ORBIT_RADIUS);
+    const end = offset(center, to, PLANET_ORBIT_RADIUS);
+    const large = to - from > Math.PI ? 1 : 0;
+    return [
+      {
+        scopeId,
+        forwards,
+        path: `M ${start.x} ${start.y} A ${PLANET_ORBIT_RADIUS} ${PLANET_ORBIT_RADIUS} 0 ${large} 1 ${end.x} ${end.y}`,
+      },
+    ];
+  });
+}
 
 /**
  * Each forward routed around every planet: out of its event, around whatever is in the way, and
@@ -239,7 +311,33 @@ export function routeForwards(
   forwards: readonly UniverseForward[],
 ): DrawnForward[] {
   const lookup = planetLookup(planets);
-  return forwards.flatMap((forward) => {
+  // Forwards from one planet that land on another's orbit would all land on one spot, so each gets
+  // its own, spread round the orbit either side of it.
+  const orbitLandings = new Map<string, string[]>();
+  for (const forward of forwards) {
+    const to = lookup.indexOf(forward.toScopeId);
+    if (
+      to !== -1 &&
+      planets[to].scope.status === undefined &&
+      !lookup.eventArc(forward.toScopeId, forward.eventId)
+    ) {
+      const pair = `${forward.fromScopeId}|${forward.toScopeId}`;
+      orbitLandings.set(pair, [...(orbitLandings.get(pair) ?? []), forward.id]);
+    }
+  }
+  const spreadOf = (forward: UniverseForward) => {
+    const landing = orbitLandings.get(`${forward.fromScopeId}|${forward.toScopeId}`) ?? [];
+    const index = landing.indexOf(forward.id);
+    if (index === -1) {
+      return 0;
+    }
+    const step = Math.min(
+      ORBIT_LANDING_SPREAD,
+      MAX_ORBIT_LANDING_SPAN / Math.max(1, landing.length - 1),
+    );
+    return (index - (landing.length - 1) / 2) * step;
+  };
+  return forwards.flatMap((forward): DrawnForward[] => {
     const from = lookup.indexOf(forward.fromScopeId);
     const to = lookup.indexOf(forward.toScopeId);
     if (from === -1 || to === -1) {
@@ -251,16 +349,18 @@ export function routeForwards(
     const departing = lookup.eventArc(forward.fromScopeId, forward.eventId);
     const arriving = lookup.eventArc(forward.toScopeId, forward.eventId);
     const departAngle = departing ? eventDepartureAngle(departing, outward) : outward;
-    const arriveAngle = arriving
-      ? eventDepartureAngle(arriving, outward + Math.PI)
-      : outward + Math.PI;
     // A planet still being read draws no events yet, so forwards land on the ring around it.
     const ringed = !arriving && planets[to].scope.status !== undefined;
+    const arriveAngle = arriving
+      ? eventDepartureAngle(arriving, outward + Math.PI)
+      : outward + Math.PI + spreadOf(forward);
+    // A forward nothing listens to stops just outside the stretch of orbit it lands on.
     const arriveRadius = arriving
       ? PLANET_EVENT_EDGE_RADIUS + 4
       : ringed
         ? PLANET_STATUS_RING_RADIUS + PLANET_STATUS_RING_WIDTH / 2 + 4
-        : PLANET_ORBIT_RADIUS;
+        : PLANET_ORBIT_RADIUS + ORBIT_LANDING_GAP;
+    const landing = arriving || ringed ? null : arriveAngle;
     const start = offset(fromCenter, departAngle, PLANET_EVENT_EDGE_RADIUS);
     const end = offset(toCenter, arriveAngle, arriveRadius);
     // A forward landing on an event, or on a planet's ring, crosses the workflow ring straight to
@@ -285,11 +385,12 @@ export function routeForwards(
             shrunk,
           )[0];
     if (!steps) {
-      return [{ forward, ...curveAcross(start, departAngle, end, arriveAngle) }];
+      return [{ forward, landing, ...curveAcross(start, departAngle, end, arriveAngle) }];
     }
     return [
       {
         forward,
+        landing,
         path: routePath(
           { center: start, radius: 0, outward: unit(departAngle), ease: FORWARD_EASE },
           steps,

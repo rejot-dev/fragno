@@ -48,6 +48,7 @@ import {
 } from "./orchestration-universe-model";
 import {
   callRouter,
+  orbitLandings,
   routeForwards,
   universeField,
   workflowGrowth,
@@ -482,7 +483,8 @@ function FocusCard({
  * pinch or hold ⌘/Ctrl while scrolling to zoom; the frame stays put. Hovering a planet lights up
  * what leaves it: the forwards, what they reach, and the systems its workflows and those reached
  * call. Hovering a system lights up what ends up calling it, back through the forwards. Clicking
- * pins either.
+ * pins either. A forward that nothing on the planet it reaches listens to lands on a stretch of
+ * that planet's orbit.
  */
 export function OrchestrationUniverseGraph({ universe }: { universe: OrchestrationUniverse }) {
   const idPrefix = useId();
@@ -730,6 +732,10 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
     () => routeForwards(field, planets, forwards),
     [field, planets, forwards],
   );
+  const landedOrbits = useMemo(
+    () => orbitLandings(field, planets, drawnForwards),
+    [field, planets, drawnForwards],
+  );
   const routeCalls = useMemo(
     () => (shownCamera ? callRouter(field, planets, tiles, shownCamera) : null),
     [field, planets, tiles, shownCamera],
@@ -830,19 +836,34 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
               >
                 {/* Forwards run under the planets; only their labels sit on top. */}
                 <g className="pointer-events-none">
-                  {drawnForwards.map(({ forward, path }) => (
+                  {/* Under the forwards that land on it, which nothing on the planet listens to. */}
+                  {landedOrbits.map(({ scopeId, forwards: landed, path }) => (
                     <path
-                      key={forward.id}
+                      key={`${scopeId}|${landed.map(({ id }) => id).join("|")}`}
                       d={path}
-                      opacity={forwardEmphasis(forward)}
-                      // A forward into a planet that just finished loading moves from its ring to
-                      // its event, so it fades in there instead of jumping.
-                      className={`fill-none transition-opacity duration-200 ${ACTION_EDGE_CLASS_NAME[FORWARD_EDGE]} ${finishedLoading.has(forward.toScopeId) ? "bo-planet-reveal" : ""}`}
-                      strokeWidth={Math.max(1.8, MIN_SCREEN_STROKE / scale)}
-                      strokeDasharray={ACTION_EDGE_DASH[FORWARD_EDGE]}
+                      opacity={Math.max(...landed.map(forwardEmphasis))}
+                      className={`fill-none stroke-[var(--bo-border-strong)] transition-opacity duration-200 ${finishedLoading.has(scopeId) ? "bo-planet-reveal" : ""}`}
+                      strokeWidth={Math.max(3, 2 / scale)}
                       strokeLinecap="round"
-                      markerEnd={actionMarkerUrl(idPrefix, FORWARD_EDGE)}
                     />
+                  ))}
+                  {drawnForwards.map(({ forward, path }) => (
+                    // A forward into a planet that just finished loading moves from its ring to its
+                    // event, so it fades in there instead of jumping.
+                    <g
+                      key={forward.id}
+                      opacity={forwardEmphasis(forward)}
+                      className={`transition-opacity duration-200 ${finishedLoading.has(forward.toScopeId) ? "bo-planet-reveal" : ""}`}
+                    >
+                      <path
+                        d={path}
+                        className={`fill-none ${ACTION_EDGE_CLASS_NAME[FORWARD_EDGE]}`}
+                        strokeWidth={Math.max(1.8, MIN_SCREEN_STROKE / scale)}
+                        strokeDasharray={ACTION_EDGE_DASH[FORWARD_EDGE]}
+                        strokeLinecap="round"
+                        markerEnd={actionMarkerUrl(idPrefix, FORWARD_EDGE)}
+                      />
+                    </g>
                   ))}
                 </g>
 
