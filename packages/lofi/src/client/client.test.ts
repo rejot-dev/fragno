@@ -710,6 +710,68 @@ describe("LofiClient", () => {
     ]);
   });
 
+  it("reports each page it commits, so a later page that fails hides none of them", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(typeof input === "string" ? input : input.toString());
+      if (url.searchParams.get("afterVersionstamp") === "vs-2") {
+        return new Response("unavailable", { status: 503 });
+      }
+      return new Response(
+        JSON.stringify([makeEntry("vs-1", "user-1"), makeEntry("vs-2", "user-2")]),
+        { status: 200 },
+      );
+    });
+    const meta = new Map<string, string>();
+    const applied: unknown[] = [];
+    const completed: unknown[] = [];
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: sequentialBatches({
+        applyOutboxEntry: async () => ({ applied: true }),
+        getMeta: async (key) => meta.get(key),
+        setMeta: async (key, value) => {
+          meta.set(key, value);
+        },
+      }),
+      fetch: fetcher as unknown as typeof fetch,
+      limit: 2,
+      onSyncApplied: (result) => {
+        applied.push(result);
+      },
+      onSyncComplete: (result) => {
+        completed.push(result);
+      },
+    });
+
+    await expect(client.syncOnce()).rejects.toThrow("503");
+
+    assert(meta.get("app-outbox::outbox") === "vs-2");
+    expect(applied).toEqual([{ appliedEntries: 2, lastVersionstamp: "vs-2" }]);
+    expect(completed).toEqual([{ appliedEntries: 2, lastVersionstamp: "vs-2" }]);
+  });
+
+  it("reports the end of a sync that finds nothing new", async () => {
+    const completed: unknown[] = [];
+    const client = new LofiClient({
+      outboxUrl: baseOutboxUrl,
+      endpointName: "app-outbox",
+      adapter: sequentialBatches({
+        applyOutboxEntry: async () => ({ applied: true }),
+        getMeta: async () => "vs-2",
+        setMeta: async () => undefined,
+      }),
+      fetch: (async () => new Response(JSON.stringify([]))) as typeof fetch,
+      onSyncComplete: (result) => {
+        completed.push(result);
+      },
+    });
+
+    await client.syncOnce();
+
+    expect(completed).toEqual([{ appliedEntries: 0, lastVersionstamp: undefined }]);
+  });
+
   it("streams entries from the outbox stream route", async () => {
     const firstStamp = "000000000000000000000001";
     const secondStamp = "000000000000000000000002";
