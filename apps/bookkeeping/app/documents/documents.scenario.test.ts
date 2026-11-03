@@ -709,6 +709,19 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
         review: "requested",
       }),
     });
+    // An agent that shortens the request's ID is told how to give it, not that the request is over.
+    const shortened = prompt.requestId.split(":").at(-1)!;
+    expect(
+      await agent.call("documents.propose", proposal(id, shortened, INVOICE_TOTAL, INVOICE_TOTAL)),
+    ).toEqual({
+      status: 422,
+      body: {
+        message: `${shortened} is no request about this document: give \`request\` whole, as the request names it, beginning document:${agent.administration.id}:${id}:.`,
+      },
+    });
+    expect(await readDocument(ada, id)).toMatchObject({
+      review: { status: "requested", requestId: prompt.requestId },
+    });
     expect(
       await agent.call(
         "documents.propose",
