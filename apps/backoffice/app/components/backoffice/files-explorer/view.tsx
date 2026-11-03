@@ -10,6 +10,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Form, Link, type To } from "react-router";
 
 import { artifactKind } from "@/artifacts/kinds";
+import { isSitePath } from "@/artifacts/sites/site-path";
 import type { FileTree, FileTreeEntry } from "@/file-collection/file-collection";
 
 import { resolveFilesContentRenderer, type WorkflowFileRouting } from "./content-renderers";
@@ -114,6 +115,8 @@ export type FilesExplorerViewProps = {
   workflowRouting: WorkflowFileRouting;
   /** Where a `/workspace` page file opens; null in hosts where pages do not open. */
   pageHref: ((sourcePath: string) => string) | null;
+  /** Where a `/workspace` site directory is served; null in hosts that do not serve sites. */
+  siteHref: ((sitePath: string) => string) | null;
 };
 
 export function FilesExplorerView({
@@ -135,6 +138,7 @@ export function FilesExplorerView({
   contentSearch,
   workflowRouting,
   pageHref,
+  siteHref,
 }: FilesExplorerViewProps) {
   const { tree, selectedDetail } = useMemo(
     () => createExplorerViewModel(sources, selectedPath, selectedContent),
@@ -262,6 +266,7 @@ export function FilesExplorerView({
                   headingLevel={detailHeadingLevel}
                   workflowRouting={workflowRouting}
                   pageHref={pageHref}
+                  siteHref={siteHref}
                 />
               ) : (
                 emptySelection
@@ -384,12 +389,14 @@ function ExplorerNodeDetailPanel({
   headingLevel,
   workflowRouting,
   pageHref,
+  siteHref,
 }: {
   detail: ExplorerNodeDetail;
   buildFileHref?: (path: string, disposition: "attachment" | "inline") => string;
   headingLevel: 2 | 3 | 4;
   workflowRouting: WorkflowFileRouting;
   pageHref: ((sourcePath: string) => string) | null;
+  siteHref: ((sitePath: string) => string) | null;
 }) {
   const selectedWorkflowRouting: WorkflowFileRouting =
     workflowRouting.status === "ready"
@@ -408,6 +415,10 @@ function ExplorerNodeDetailPanel({
     detail.node.path.startsWith("/workspace/")
       ? pageHref(detail.node.path)
       : null;
+  // Folder paths end in `/`; a site is named by its folder.
+  const sitePath = detail.node.kind === "directory" ? detail.node.path.replace(/\/$/u, "") : null;
+  const selectedSiteHref =
+    siteHref !== null && sitePath !== null && isSitePath(sitePath) ? siteHref(sitePath) : null;
   const fileHrefs =
     detail.node.kind === "file" && buildFileHref
       ? {
@@ -456,12 +467,21 @@ function ExplorerNodeDetailPanel({
               text={<FileHeaderCopyText wide="Copy contents" narrow="Contents" />}
             />
           )}
-          {downloadHref ? (
+          {selectedSiteHref ? (
+            // A site is its own app, served outside the router.
             <a
-              href={downloadHref}
-              aria-label="Download"
-              className="bo-control-surface inline-flex min-h-10 items-center gap-2 bg-[var(--bo-panel-2)] px-3.5 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] @max-lg/file-header:w-10 @max-lg/file-header:justify-center @max-lg/file-header:px-0"
+              href={selectedSiteHref}
+              target="_blank"
+              rel="noopener"
+              aria-label="Open site"
+              className={FILE_HEADER_LINK_CLASS_NAME}
             >
+              <Icon name="globe" className="h-3.5 w-3.5" />
+              <span className="@max-lg/file-header:hidden">Open site</span>
+            </a>
+          ) : null}
+          {downloadHref ? (
+            <a href={downloadHref} aria-label="Download" className={FILE_HEADER_LINK_CLASS_NAME}>
               <Icon name="download" className="h-3.5 w-3.5" />
               <span className="@max-lg/file-header:hidden">Download</span>
             </a>
@@ -510,6 +530,9 @@ function ExplorerNodeDetailPanel({
     </section>
   );
 }
+
+const FILE_HEADER_LINK_CLASS_NAME =
+  "bo-control-surface inline-flex min-h-10 items-center gap-2 bg-[var(--bo-panel-2)] px-3.5 text-[10px] font-semibold tracking-[0.2em] text-[var(--bo-muted)] uppercase transition-[scale,background-color,color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.96] @max-lg/file-header:w-10 @max-lg/file-header:justify-center @max-lg/file-header:px-0";
 
 /** Copy-button text that shortens to name only what it copies when the header is narrow. */
 function FileHeaderCopyText({ wide, narrow }: { wide: string; narrow: string }) {
