@@ -1,11 +1,12 @@
-# Backoffice
+# Leyway
 
-Backoffice is the AI-native automation product in `apps/backoffice`: people describe how their
-business runs, and agents write it as workflows that run the same way every time, ask before they
-act, and record every step. This repository exists to build Backoffice.
+Leyway (leyway.com) is the AI-native automation product in `apps/backoffice`: people describe how
+their business runs, and agents write it as workflows that run the same way every time, ask before
+they act, and record every step. This repository exists to build Leyway.
 
-Backoffice ships as **Leyway** at leyway.com. Backoffice stays the name in code, APIs, and agent
-files; text people read in the product, such as UI copy, page titles, and emails, says Leyway.
+Backoffice is Leyway's internal name. It stays the name in code, APIs, and agent files, including
+the rest of this file; text people read, such as UI copy, page titles, emails, and the root README,
+says Leyway.
 
 Fragno, the framework in `packages/`, is how we build it. Backoffice's features are built from
 Fragments: full-stack libraries spanning frontend hooks, backend routes, and database models. Change
@@ -14,25 +15,14 @@ Fragno when Backoffice needs a primitive.
 Pre 1.0 means FULL BREAKING CHANGES in Backoffice and Fragno, even in the data layer. We want to
 find the optimal API for our users.
 
-## Users
-
-- **You** are the agent building Backoffice; **we** are the human contributors directing and
-  reviewing the work.
-- **Authors** build Fragments, mostly us for Backoffice. Give them guardrails because they may not
-  inspect generated or agent-written code.
-- **Integrators** mount Fragments in applications, Backoffice first. Assume they rely on public
-  APIs, types, defaults, and documentation without reading implementation code.
-
-## Backoffice (BO)
-
-### Components
+## Components
 
 Add UI components to the private design system package (`packages-private/design-system`,
 `@fragno-private/design-system`) when they are reusable or need to be designed in Storybook,
 including landing page sections. Move an existing component there when Storybook work needs it.
 Components that depend on Backoffice runtime data or routes stay in `apps/backoffice`.
 
-### Tests
+## Tests
 
 In Backoffice, we test exclusively through scenario tests, unless specifically direct otherwise by me.
 
@@ -132,4 +122,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## References
 
-- **Apps built on Backoffice:** [`apps/bookkeeping (BK)`](apps/bookkeeping) is the example app.
+- **Apps built on Leyway:** [`apps/bookkeeping (BK)`](apps/bookkeeping) is the example app.

@@ -3,7 +3,7 @@
 
 <img src="apps/backoffice/public/favicon.svg" alt="" height="64" />
 
-# Backoffice
+# Leyway
 
 _An agent workspace where agents write the workflows that run your business._
 
@@ -14,7 +14,7 @@ _An agent workspace where agents write the workflows that run your business._
 [![Discord](https://img.shields.io/badge/Discord-ReJot-5865f2?style=flat-square&logo=discord&logoColor=fff)](https://discord.gg/jdXZxyGCnC)
 
 [Overview](#overview) • [How it works](#how-it-works) • [Get started](#get-started) •
-[Deploy](#deploy) • [Build on Backoffice](#build-on-backoffice) • [Repository](#repository)
+[Deploy](#deploy) • [Build on Leyway](#build-on-leyway) • [Repository](#repository)
 
 ![Orchestration view: event sources, their events, the routes that match them, and the workflows they start](assets/orchestration.webp)
 
@@ -23,15 +23,17 @@ routes; this view shows them read-only.</sub>
 
 </div>
 
-Backoffice is an agent workspace built around programmatic tool calling (`codemode`). You direct
-agents to create durable, deterministic workflows. Every component describes its tools in a `.d.ts`
-file, which agents read to write code and workflows. The system is event-based: you and your agents
-decide which events start which workflows. Each workspace is isolated, and can choose to send data
-to other workspaces.
+Leyway is an agent workspace built around programmatic tool calling (`codemode`). You direct agents
+to create durable, deterministic workflows. Every component describes its tools in a `.d.ts` file,
+which agents read to write code and workflows. The system is event-based: you and your agents decide
+which events start which workflows. Each workspace is isolated, and can choose to send data to other
+workspaces.
+
+In code, APIs, and paths such as `apps/backoffice`, Leyway is called Backoffice.
 
 <!-- prettier-ignore -->
 > [!TIP]
-> To use Backoffice without running it yourself, sign up at
+> To use Leyway without running it yourself, sign up at
 > [leyway.com](https://leyway.com).
 
 ## Overview
@@ -46,7 +48,7 @@ the same steps, and the run waits for your approval before the reminder goes out
 
 A workflow is plain JavaScript. Each `step.do` is durable: a run survives restarts and retries
 without repeating finished steps. This excerpt from the Telegram marketplace package links a chat to
-a Backoffice account:
+a Leyway account:
 
 ```js
 export default defineWorkflow({ name: "telegram-user-linking" }, async (event, step) => {
@@ -92,9 +94,9 @@ export default defineWorkflow({ name: "telegram-user-linking" }, async (event, s
 
 ## How it works
 
-Agents don't call one tool per turn. They write a program against typed providers, and Backoffice
-runs it in a sandbox (`codemode`). Saved as a workflow file, the same kind of code runs whenever a
-route matches an event. Every event keeps a trace of what it caused:
+Agents don't call one tool per turn. They write a program against typed providers, and Leyway runs
+it in a sandbox (`codemode`). Saved as a workflow file, the same kind of code runs whenever a route
+matches an event. Every event keeps a trace of what it caused:
 
 <table>
   <tr>
@@ -107,13 +109,13 @@ route matches an event. Every event keeps a trace of what it caused:
   </tr>
 </table>
 
-Backoffice is built from these concepts:
+Leyway is built from these concepts:
 
 | Concept  | What it is                                                                                                                                                                                                      |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Scope    | Where work belongs: a person, an organization, a project, or an installed app. Each scope keeps its own files, connections, routes, and workflow runs.                                                          |
 | Provider | A typed API that code calls as a global, such as `integrations`, `models`, or `store`. Agents read its declaration in [`content/static/codemode`](apps/backoffice/content/static/codemode) before writing code. |
-| Event    | A record that something happened, with its source, type, payload, and the people or systems involved. Integrations, forms, and Backoffice itself emit events.                                                   |
+| Event    | A record that something happened, with its source, type, payload, and the people or systems involved. Integrations, forms, and Leyway itself emit events.                                                       |
 | Route    | A rule that reacts to an event or a schedule. It starts a workflow, delivers the event to a running workflow, notifies an agent, or forwards the event to another scope.                                        |
 | Workflow | A `.workflow.js` file of durable steps. A workflow can sleep, wait for events, and show interfaces, such as a form that asks for your approval.                                                                 |
 | Agent    | A conversation that writes and runs code, and creates the routes and workflows above.                                                                                                                           |
@@ -126,7 +128,7 @@ Backoffice is built from these concepts:
 - [pnpm](https://pnpm.io) 11
 - An [OpenAI API key](https://platform.openai.com/api-keys), so agents can respond
 
-### Run Backoffice locally
+### Run Leyway locally
 
 1. Clone the repository and install the dependencies:
 
@@ -164,18 +166,17 @@ Backoffice is built from these concepts:
 
 ## Deploy
 
-Backoffice deploys to Cloudflare Workers: a web Worker, and an object Worker with Durable Objects
-and R2 for large files. See [Release](apps/backoffice/README.md#release) in the application's
-README.
+Leyway deploys to Cloudflare Workers: a web Worker, and an object Worker with Durable Objects and R2
+for large files. See [Release](apps/backoffice/README.md#release) in the application's README.
 
 <!-- prettier-ignore -->
 > [!IMPORTANT]
-> Backoffice needs a deployed [`cf-sandbox-bridge`](apps/cf-sandbox-bridge) to run code. Deploy it
-> before Backoffice.
+> Leyway needs a deployed [`cf-sandbox-bridge`](apps/cf-sandbox-bridge) to run code. Deploy it
+> before Leyway.
 
-## Build on Backoffice
+## Build on Leyway
 
-- **Apps** sign people in with Backoffice, are installed into organizations, and give agents their
+- **Apps** sign people in with Leyway, are installed into organizations, and give agents their
   actions. [Bookkeeping](apps/bookkeeping) is the reference app, and the
   [`backoffice-apps` skill](.agents/skills/backoffice-apps/SKILL.md) explains the integration.
 - **The HTTP API** is defined in [`@fragno-dev/backoffice-api`](packages/backoffice-api), with an
@@ -187,14 +188,14 @@ README.
 
 ## Repository
 
-| Path                                                               | Contents                                                   |
-| ------------------------------------------------------------------ | ---------------------------------------------------------- |
-| [`apps/backoffice`](apps/backoffice)                               | The Backoffice application                                 |
-| [`apps/cf-sandbox-bridge`](apps/cf-sandbox-bridge)                 | Code execution and sandboxed computers                     |
-| [`apps/bookkeeping`](apps/bookkeeping)                             | An accounting app built on Backoffice                      |
-| [`apps/backoffice-cli`](apps/backoffice-cli)                       | The command-line client                                    |
-| [`packages-private/design-system`](packages-private/design-system) | UI components and their Storybook                          |
-| [`packages`](packages)                                             | Fragno, and the Fragno libraries Backoffice's features use |
+| Path                                                               | Contents                                               |
+| ------------------------------------------------------------------ | ------------------------------------------------------ |
+| [`apps/backoffice`](apps/backoffice)                               | The Leyway application                                 |
+| [`apps/cf-sandbox-bridge`](apps/cf-sandbox-bridge)                 | Code execution and sandboxed computers                 |
+| [`apps/bookkeeping`](apps/bookkeeping)                             | An accounting app built on Leyway                      |
+| [`apps/backoffice-cli`](apps/backoffice-cli)                       | The command-line client                                |
+| [`packages-private/design-system`](packages-private/design-system) | UI components and their Storybook                      |
+| [`packages`](packages)                                             | Fragno, and the Fragno libraries Leyway's features use |
 
 ### Looking for Fragno?
 

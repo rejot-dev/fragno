@@ -2,9 +2,9 @@
 
 We welcome all contributions!
 
-This repository builds [Backoffice](README.md) and Fragno, the framework Backoffice is built with.
-The project overview, architecture, common commands, tools, and development practices can all be
-found in the [AGENTS.md](AGENTS.md) file.
+This repository builds [Leyway](README.md), called Backoffice in code, and Fragno, the framework
+Backoffice is built with. The project overview, architecture, common commands, tools, and
+development practices can all be found in the [AGENTS.md](AGENTS.md) file.
 
 ## Rules
 
@@ -44,7 +44,7 @@ If you want to contact us in a more casual manner than creating an issue, you ca
 
 1. Clone the repository
 1. Run `pnpm exec turbo build types:check test`
-1. Start Backoffice as described in [Run Backoffice locally](README.md#run-backoffice-locally)
+1. Start Backoffice as described in [Run Leyway locally](README.md#run-leyway-locally)
 
 ## Common Commands
 

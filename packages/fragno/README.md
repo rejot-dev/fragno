@@ -255,9 +255,8 @@ This repo ships complete examples and sample libraries:
 Fragno is an open source project. We welcome contributions! Fragno is licensed under the MIT
 License. See the [LICENSE](../../LICENSE.md) file for details.
 
-Fragno lives in the [Backoffice repository](https://github.com/rejot-dev/fragno), which uses it to
-build [Backoffice](https://leyway.com). See the [CONTRIBUTING](../../CONTRIBUTING.md) file for
-details.
+Fragno lives in the [Leyway repository](https://github.com/rejot-dev/fragno), which uses it to build
+[Leyway](https://leyway.com). See the [CONTRIBUTING](../../CONTRIBUTING.md) file for details.
 
 <p align="center">
   <img src="./assets/cake.png" alt="Have your cake and eat it, too" width="400" />
