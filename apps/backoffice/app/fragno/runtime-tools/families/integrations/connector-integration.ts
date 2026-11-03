@@ -476,8 +476,25 @@ export function createConnectorIntegration({
         runNamedSetup(context, decodeConnectorConnectionLocalId(localId), operation, "reconfigure"),
     },
     disconnect: {
-      kind: "unsupported",
-      reason: "The Connector source has no account removal operation.",
+      kind: "supported",
+      async run(context, { localId }) {
+        const address = decodeConnectorConnectionLocalId(localId);
+        const [, projectId, providerConfigId, connectionName] = address;
+        const selector = { projectId, providerConfigId, connectionName };
+        const access = createConnectorAccess(runtime, context);
+        const response = await access.invoke(
+          BACKOFFICE_PERMISSION.connections.manage,
+          selector,
+          () => access.callRoute("DELETE", "/connections/by-name", { query: selector }),
+        );
+        if (response.type !== "json" || !isSuccessStatus(response.status)) {
+          return access.fail(response);
+        }
+        return {
+          connectionId: encodeConnectorConnectionId(address),
+          status: response.data.deleted ? "disconnected" : "not-configured",
+        };
+      },
     },
     async discover(context) {
       if (context.execution.scope.kind !== "user" || !runtime.config.bindings.projectConnector) {

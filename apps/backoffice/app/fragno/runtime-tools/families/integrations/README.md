@@ -339,8 +339,11 @@ that is this deployment.
 
 Telegram and Resend reconfigure replace the stored configuration through the same command setup
 uses, and disconnect resets that configuration. Connector reconfigure consents again under the same
-name, as described in service-owned setup; its disconnect is unsupported, since the gateway owns
-credentials and the source has no account removal.
+name, as described in service-owned setup. Its disconnect deletes the name's accounts and requests,
+so an abandoned link never binds, and the Fragment's `onConnectionDeleted` hook records
+`disconnected`. A durable hook then deletes the accounts at the gateway, which drops their
+credentials, retrying failures. Consent that confirmed one of those accounts, even under another
+name, fails instead of binding it; fresh consent gets a new account and reconnects.
 
 MCP setup follows API setup with the MCP Fragment's auth modes: `type` selects `none`, `bearer`,
 `client_credentials`, or `oauth` beside `endpointUrl` and an optional `name`, and `secretFields`

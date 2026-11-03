@@ -140,6 +140,25 @@ export class ProjectConnectorObject extends RpcTarget implements ProjectConnecto
               { propagationContext: context.capturePropagationContext() },
             );
           },
+          onConnectionDeleted: async (payload, context) => {
+            await recordIntegrationConnectionState(
+              runtime.objects.automations.for(scope).commands,
+              {
+                id: context.hookId.toString(),
+                scope,
+                service: payload.service,
+                connectionId: encodeConnectorConnectionId([
+                  "named",
+                  payload.connection.projectId,
+                  payload.connection.providerConfigId,
+                  payload.connection.connectionName,
+                ]),
+                state: "disconnected",
+                occurredAt: context.createdAt,
+              },
+              { propagationContext: context.capturePropagationContext() },
+            );
+          },
           allowedReturnUrls: (redirectUri) =>
             isScopedPublicOAuthRedirectUriAllowed({
               publicOrigin: runtime.config.docsPublicBaseUrl,

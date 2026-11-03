@@ -48,6 +48,9 @@ export function createProjectConnectorServer(
     await ifMatchesRoute("GET", "/accounts/by-name", () => {
       access = BACKOFFICE_PERMISSION.connections.read;
     });
+    await ifMatchesRoute("DELETE", "/connections/by-name", () => {
+      access = BACKOFFICE_PERMISSION.connections.manage;
+    });
     await ifMatchesRoute("GET", "/accounts/:accountId/profile", () => {
       access = BACKOFFICE_PERMISSION.connections.read;
     });

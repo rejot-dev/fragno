@@ -177,11 +177,12 @@ Both operations replace or delete live credentials, so run them on the user's in
   for a later setup. Then delete its client with `state.rm({ path })`.
 
 Open Connector reconfigure takes `{ start: true }` and consents again under the same name: the
-current account keeps working until the new consent confirms and replaces it. Open Connector has no
-disconnect. A failed or expired Open Connector attempt needs no reconfigure: its setup check returns
-`needs-input` with the gateway's reason, and `{ start: true }` replaces the attempt. GitHub does not
-support reconfigure, since repository access is changed in the GitHub App's installation settings;
-its disconnect unlinks the repository from this organization.
+current account keeps working until the new consent confirms and replaces it. Open Connector
+disconnect deletes the account's credentials at the gateway and every attempt under the name, so
+links already sent no longer complete. A failed or expired Open Connector attempt needs no
+reconfigure: its setup check returns `needs-input` with the gateway's reason, and `{ start: true }`
+replaces the attempt. GitHub does not support reconfigure, since repository access is changed in the
+GitHub App's installation settings; its disconnect unlinks the repository from this organization.
 
 **Complete when** reconfiguration reaches `ready`, step 4 proves access again, and step 5
 regenerated the client; or disconnect returns `disconnected` or `not-configured` and the client file
