@@ -12,6 +12,7 @@ import type { FragnoRuntime } from "@fragno-dev/core";
 
 import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
+import { blobsR2BucketsFromEnv, type BlobsR2Access } from "@/fragno/blobs-r2-buckets";
 import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
 
 import {
@@ -47,6 +48,11 @@ export type BackofficeRuntimeConfig = {
   signUpAccessCodesRequired: boolean;
   /** Print outgoing email to the terminal, and skip delivery while Resend is unconfigured. */
   localEmailLog: boolean;
+  /**
+   * Whether Backoffice builds and serves sites. Until sites have their own domain they share
+   * Backoffice's origin, where a site's scripts run with the viewer's session.
+   */
+  sites: boolean;
   /** Whether PiManager runs Workers AI models, through the `AI` binding. */
   workersAi: boolean;
   /** The domain people's inbound addresses are on, such as ley.run; null when they have none. */
@@ -82,6 +88,12 @@ export type BackofficeRuntimeServices = {
   kernelObserver: BackofficeKernelObserver;
   codemodeExecutor: CodemodeExecutor | null;
   workerTypeChecker: WorkerTypeChecker | null;
+  /** Loads site Workers, or null where the runtime has no Worker Loader, as in Node. */
+  workerLoader: WorkerLoader | null;
+  /** Where site builds keep their snapshots: the blobs buckets, or null to keep them in the workspace. */
+  siteStorage: BlobsR2Access | null;
+  /** The cache site files are kept in once read, or null where the runtime has none, as in Node. */
+  siteFilesCache: Cache | null;
   /** Speech-to-text under the platform key; null when the deployment has none. */
   reson8: Reson8Fragment | null;
   /**
@@ -163,6 +175,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
   }),
   signUpAccessCodesRequired: parseSignUpAccessCodesRequired(env.SIGN_UP_ACCESS_CODES_REQUIRED),
   localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", env.LOCAL_EMAIL_LOG),
+  sites: parseBooleanEnv("SITES_ENABLED", env.SITES_ENABLED),
   workersAi: Boolean(env.AI),
   inboundEmailDomain: parseInboundEmailDomain(env.INBOUND_EMAIL_DOMAIN),
   bindings: {
@@ -185,6 +198,20 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
     sandbox: Boolean(env.SANDBOX),
   },
 });
+
+// Node tests build these services too, without the Cache API. DOM's CacheStorage, which this
+// project's types include, has no `default`.
+function cloudflareSiteFilesCache(): Cache | null {
+  return "caches" in globalThis ? (caches as unknown as { default: Cache }).default : null;
+}
+
+function cloudflareSiteStorage(env: CloudflareEnv): BlobsR2Access | null {
+  const buckets = blobsR2BucketsFromEnv(
+    env,
+    env.DURABLE_OBJECT_JURISDICTIONS === "local" ? "local" : "enforced",
+  );
+  return buckets ? { buckets, fetch } : null;
+}
 
 export const createCloudflareBackofficeRuntimeServices = (
   env: CloudflareEnv,
@@ -226,6 +253,9 @@ export const createCloudflareBackofficeRuntimeServices = (
     workerTypeChecker: env.CODEMODE_COMPILER
       ? createWorkerTypeCheckerServiceClient(env.CODEMODE_COMPILER)
       : null,
+    workerLoader: env.LOADER ?? null,
+    siteStorage: cloudflareSiteStorage(env),
+    siteFilesCache: cloudflareSiteFilesCache(),
     reson8: env.RESON8_API_KEY ? createReson8Server(env.RESON8_API_KEY) : null,
     // Deployed Workers cannot connect to private addresses, so their fetch stays public.
     webFetch: async (input, init) => await fetch(input, init),

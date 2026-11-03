@@ -1,5 +1,8 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeContextScopesEqual,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type {
   CodemodeCompletion,
   CodemodeExecutor,
@@ -17,9 +20,17 @@ import { z } from "zod";
 
 import { decodeCursor, type HookContext } from "@fragno-dev/db";
 
+import type { SiteBuildOutcome } from "@/artifacts/sites/build.server";
 import { reportFinishedCodemodeRuns } from "@/backoffice-runtime/backoffice-telemetry";
 import {
+  backofficeExecutionContextSchema,
+  backofficeExecutionScopeRestriction,
+  type BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import {
   requireBackofficeContextScopeFromDurableObjectId,
+  type BackofficeActionRpcContext,
   type CodemodeCommands,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
@@ -42,7 +53,7 @@ import {
   type CodemodeRunPageInput,
   type CodemodeRunStartedHookPayload,
 } from "@/fragno/codemode/codemode-fragment";
-import type { CodemodeRunLease } from "@/fragno/codemode/codemode-object-execute";
+import type { CodemodeRunLease, CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
 import { codemodeToolCallObserver } from "@/fragno/codemode/codemode-tool-call-observer";
 import { explainUnloadedSavedModule } from "@/fragno/codemode/saved-module-imports";
 import {
@@ -106,6 +117,10 @@ async function executeCodemodeRunActivation(
 
 // One scope's share of the bridge: a tenant's burst of runs cannot crowd out other tenants.
 const CODEMODE_SCOPE_MAX_ACTIVATIONS = 10;
+
+// Each site build holds a few of its files in this object's memory, which every run of the scope
+// shares, so a burst of builds waits rather than crowd out the scope's runs.
+const SITE_BUILDS_AT_ONCE = 2;
 
 /**
  * Admits a scope's guests first come, first served. Runs wait rather than fail, because an
@@ -190,7 +205,12 @@ function codemodeRunFailedEvent(
 export class CodemodeObject extends RpcTarget implements CodemodeCommands {
   readonly #host: FragmentDurableObjectHost<void, CodemodeFragment>;
   readonly #executor: CodemodeExecutor | null;
+  readonly #runtime: BackofficeRuntimeServices;
+  readonly #scope: BackofficeContextScope;
   readonly #nowEpochMs: () => number;
+  /** Each site's latest build, which the next build of that site waits for. */
+  readonly #siteBuilds = new Map<string, Promise<unknown>>();
+  readonly #siteBuildSlots = new CodemodeActivationSlots(SITE_BUILDS_AT_ONCE);
   readonly #slots = new CodemodeActivationSlots(CODEMODE_SCOPE_MAX_ACTIVATIONS);
   /** Each admitted run lends its slot to the runs its tool calls start, one at a time. */
   readonly #lentSlots = new Map<string, CodemodeActivationSlots>();
@@ -209,8 +229,10 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
   }) {
     super();
     this.#executor = runtime.codemodeExecutor;
+    this.#runtime = runtime;
     this.#nowEpochMs = nowEpochMs;
     const scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "CODEMODE");
+    this.#scope = scope;
     const billing = usageBillingForScope(runtime, scope);
     // Cloudflare bills each Dynamic Worker a run loads; a module build only compiles.
     async function billRunStarted(run: CodemodeRunStartedHookPayload, hook: HookContext) {
@@ -371,6 +393,91 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
       throw new Error("CODEMODE_RUN_CURSOR_INVALID");
     }
     return await fragment.callServices(() => fragment.services.listRuns({ page: "next", cursor }));
+  }
+
+  /**
+   * Builds run here, in the scope's object, rather than in the Worker that serves the request that
+   * asked, so a build's memory and time stay apart from serving Backoffice. Builds of one site run
+   * one at a time, so they never race for its pointer, and the scope runs `SITE_BUILDS_AT_ONCE`
+   * builds at once. A build takes its scope slot only once the site's previous build ended, so it
+   * never holds a slot that build waits for.
+   */
+  async buildSite(
+    sitePath: string,
+    context: BackofficeActionRpcContext,
+    parentRun: string | null,
+  ): Promise<SiteBuildOutcome> {
+    const execution = backofficeExecutionContextSchema.parse(context.execution);
+    if (!backofficeContextScopesEqual(execution.scope, this.#scope)) {
+      throw new Error("Sites are built by the Codemode object of their own scope.");
+    }
+    if (!this.#runtime.config.sites) {
+      throw new Error("This deployment does not serve sites.");
+    }
+    const previous = this.#siteBuilds.get(sitePath) ?? Promise.resolve();
+    const build = previous
+      .catch(() => {})
+      .then(async () => {
+        const release = await this.#siteBuildSlots.acquire();
+        try {
+          return await this.#buildSite(sitePath, execution, parentRun);
+        } finally {
+          release();
+        }
+      });
+    this.#siteBuilds.set(sitePath, build);
+    try {
+      return await build;
+    } finally {
+      if (this.#siteBuilds.get(sitePath) === build) {
+        this.#siteBuilds.delete(sitePath);
+      }
+    }
+  }
+
+  async #buildSite(
+    sitePath: string,
+    execution: BackofficeExecutionContext,
+    parentRun: string | null,
+  ): Promise<SiteBuildOutcome> {
+    const runtime = this.#runtime;
+    // Imported on first use, so an object that builds no site does not load the builder.
+    const [{ buildSite }, { createCodemodeRouteBackedRuntimeContext }] = await Promise.all([
+      import("@/artifacts/sites/build.server"),
+      import("@/fragno/runtime-tools/route-backed-runtime-context"),
+    ]);
+    const { stateBackend } = createCodemodeRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
+      runtime,
+      kernel: new BackofficeKernel(runtime),
+      execution,
+    });
+    if (!stateBackend) {
+      throw new Error("This runtime has no workspace to build sites from.");
+    }
+    // Compiles as a child of the run that asked, through this object rather than a stub to it.
+    const codemode: CodemodeRunner = {
+      run: (activation, origin, { host, lease, redactedResults }) =>
+        this.execute(
+          activation,
+          {
+            actors: execution.actors,
+            scopeRestriction: backofficeExecutionScopeRestriction(execution),
+            origin,
+          },
+          host,
+          { ...lease, parentKey: parentRun },
+          redactedResults,
+        ),
+    };
+    return await buildSite({
+      state: stateBackend,
+      codemode,
+      workerLoader: runtime.workerLoader,
+      siteStorage: runtime.siteStorage,
+      scope: execution.scope,
+      sitePath,
+    });
   }
 
   async warm(): Promise<void> {}

@@ -73,7 +73,8 @@ const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
   reson8: "Reson8 speech-to-text. Read to transcribe audio.",
   sandbox: "Cloudflare sandboxes with a real shell. Read when work needs command-line tools.",
   js: "Saved JavaScript: check, run, build modules, and inspect codemode runs. Read to save, run, or debug a script file.",
-  artifacts: "Page builds and their errors. Read to verify a page after writing it.",
+  artifacts:
+    "Page and site builds and their errors. Read to verify a page after writing it, or to build a site.",
   marketplace:
     "Marketplace packages: search, inspect, publish, feature. Read to find or publish a package.",
   packages:

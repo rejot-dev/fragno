@@ -94,6 +94,7 @@ export class AuthSqlHarnessDurableObject extends DurableObject<CloudflareEnv> {
         sandboxContainers: true,
         signUpAccessCodesRequired: true,
         localEmailLog: false,
+        sites: false,
         workersAi: false,
       },
       objects: {

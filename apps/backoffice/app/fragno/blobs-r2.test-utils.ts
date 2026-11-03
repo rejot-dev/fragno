@@ -53,6 +53,16 @@ export function createFakeR2(buckets: BlobsR2Buckets) {
 
     switch (request.method) {
       case "PUT": {
+        // Conditional writes, as R2 takes them: a PUT that names the object it expects fails if
+        // storage holds another, or, with `If-None-Match: *`, any.
+        const ifMatch = request.headers.get("if-match");
+        const ifNoneMatch = request.headers.get("if-none-match");
+        if (
+          (ifMatch !== null && ifMatch !== object?.etag) ||
+          (ifNoneMatch === "*" && object !== undefined)
+        ) {
+          return new Response("PreconditionFailed", { status: 412 });
+        }
         const bytes = new Uint8Array(await request.arrayBuffer());
         const etag = `"${await etagOf(bytes)}"`;
         objects.set(objectUrl, {

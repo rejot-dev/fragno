@@ -57,6 +57,9 @@
     // local .dev.vars says "local", as workerd does not implement jurisdictions.
     "DURABLE_OBJECT_JURISDICTIONS": "enforced",
     "LOCAL_EMAIL_LOG": "false",
+    // Sites share Backoffice's origin until they have their own domain, so only local .dev.vars
+    // turns them on.
+    "SITES_ENABLED": "false",
     // Local servers started without the bridge's containers say "false", so sandbox starts fail at once.
     "SANDBOX_CONTAINERS": "true",
     "DOCS_PUBLIC_BASE_URL": "https://leyway.com/",

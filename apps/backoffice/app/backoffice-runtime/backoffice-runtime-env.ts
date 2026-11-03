@@ -1,9 +1,15 @@
 import type { CodemodeExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 
+import type { BlobsR2Access } from "@/fragno/blobs-r2-buckets";
+
 /** Runtime bindings and configuration consumed by Backoffice objects and codemode execution. */
 export type BackofficeRuntimeEnv = {
   /** Runs guests in the codemode bridge; guests have no network egress beyond `web.*` tools. */
   codemode: CodemodeExecutor | null;
+  /** Loads site Workers, or null where the runtime has no Worker Loader. */
+  workerLoader: WorkerLoader | null;
+  /** Where site builds keep their snapshots, or null to keep them in the workspace. */
+  siteStorage: BlobsR2Access | null;
   DOCS_PUBLIC_BASE_URL?: string;
   TURNSTILE_SITEKEY?: string;
   GITHUB_CLIENT_ID?: string;
@@ -15,6 +21,7 @@ export type BackofficeRuntimeEnv = {
   SIGN_UP_ACCESS_CODES_REQUIRED?: string;
   LOCAL_EMAIL_LOG?: string;
   INBOUND_EMAIL_DOMAIN?: string;
+  SITES_ENABLED?: string;
   GITHUB_APP_ID?: string;
   GITHUB_APP_SLUG?: string;
   GITHUB_APP_CLIENT_ID?: string;

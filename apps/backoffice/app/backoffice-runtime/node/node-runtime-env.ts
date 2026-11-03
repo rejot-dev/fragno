@@ -12,7 +12,7 @@ import type { BackofficeRuntimeEnv } from "../backoffice-runtime-env";
 export type CreateNodeBackofficeRuntimeConfigurationInput = {
   bridgeUrl: string | undefined;
   bridgeApiKey: string | undefined;
-  env: Omit<BackofficeRuntimeEnv, "codemode">;
+  env: Omit<BackofficeRuntimeEnv, "codemode" | "workerLoader" | "siteStorage">;
 };
 
 export type NodeBackofficeRuntimeConfiguration = {
@@ -40,6 +40,9 @@ export function createNodeBackofficeRuntimeConfiguration(
     runtimeEnv: {
       ...input.env,
       codemode: createCodemodeNodeExecutor({ url: bridgeUrl, apiKey: bridgeApiKey }),
+      // Node cannot run site Workers, so it serves no sites to keep snapshots for.
+      workerLoader: null,
+      siteStorage: null,
     },
     workerTypeChecker: compiler.typeCheckFiles,
     createSandboxProviders(managerId) {
