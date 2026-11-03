@@ -124,9 +124,12 @@ async function readOrganizationsById(
   if (organizationIds.length === 0) {
     return new Map();
   }
+  const ids = [...new Set(organizationIds)];
   const organizations = await adapter.findMany<OrganizationRow>({
     model: "organization",
-    where: [{ field: "id", operator: "in", value: [...new Set(organizationIds)] }],
+    where: [{ field: "id", operator: "in", value: ids }],
+    // Better Auth returns 100 rows unless told otherwise.
+    limit: ids.length,
   });
   return new Map(organizations.map((organization) => [organization.id, organization]));
 }
@@ -299,6 +302,8 @@ export async function readOrganizationMemberPage(
           model: "user",
           select: ["id", "name", "email"],
           where: [{ field: "id", operator: "in", value: rows.map((member) => member.userId) }],
+          // Better Auth returns 100 rows unless told otherwise.
+          limit: rows.length,
         });
   const usersById = new Map(users.map((user) => [user.id, user]));
   return {
@@ -343,6 +348,8 @@ export async function readOrganizationMemberNumberedPage(
           model: "user",
           select: ["id", "name", "email"],
           where: [{ field: "id", operator: "in", value: members.map((member) => member.userId) }],
+          // Better Auth returns 100 rows unless told otherwise.
+          limit: members.length,
         });
   const usersById = new Map(users.map((user) => [user.id, user]));
   return {
