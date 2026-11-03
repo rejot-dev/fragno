@@ -118,7 +118,8 @@ export function useUniverseSimulation(
   }, [key, scopes, forwards, commit, heat]);
 
   // The view's shape is measured before the first paint, so an untouched layout settles into it
-  // straight away; a layout someone arranged drifts into the new shape instead.
+  // straight away; a layout someone arranged drifts into the new shape instead, as the rest do
+  // when planets join or leave, which changes the room too.
   const roomKey = `${room.halfWidth}|${room.halfHeight}`;
   const roomKeyRef = useRef(roomKey);
   useLayoutEffect(() => {
@@ -126,7 +127,7 @@ export function useUniverseSimulation(
       return;
     }
     roomKeyRef.current = roomKey;
-    if (untouchedRef.current) {
+    if (untouchedRef.current && keyRef.current === key) {
       const settled = settleUniverse(
         seedUniverse(scopes, forwards, new Map()),
         linksRef.current,
@@ -137,7 +138,7 @@ export function useUniverseSimulation(
     } else {
       heat(RESHAPE_ALPHA);
     }
-  }, [roomKey, room, scopes, forwards, commit, heat]);
+  }, [roomKey, room, key, scopes, forwards, commit, heat]);
 
   return {
     bodies,

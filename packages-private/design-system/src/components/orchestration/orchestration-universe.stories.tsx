@@ -131,6 +131,7 @@ const LOADING_LOOP_MS = 16_000;
  * loop; scopes without one were read before the universe opened.
  */
 const LOADING_SCHEDULE: Record<string, { known: number; caughtUp: number }> = {
+  drafts: { known: 1_000, caughtUp: 6_000 },
   website: { known: 2_000, caughtUp: 8_000 },
   bookkeeping: { known: 4_000, caughtUp: 14_000 },
 };
@@ -148,9 +149,16 @@ function loadingScope(scope: OrchestrationUniverseScope, elapsed: number) {
   return { ...scope, graph: empty, status: { kind: "loading", fraction } as const };
 }
 
+// A project with nothing in it, which fades away once read.
+const DRAFTS: OrchestrationUniverseScope = {
+  id: "drafts",
+  graph: { scopeLabel: "Drafts", inlets: [], sources: [], events: [], routes: [], targets: [] },
+};
+
 /**
  * The universe as it opens: projects ring while their replicas download, turning until they know
- * how far they got, and draw their graphs once caught up. It starts over every 16 seconds.
+ * how far they got, and draw their graphs once caught up; Drafts, read empty, fades away. It starts
+ * over every 16 seconds.
  */
 export function Loading() {
   const [elapsed, setElapsed] = useState(0);
@@ -165,9 +173,9 @@ export function Loading() {
   // System forwards into every organization, so an organization's universe leaves it out.
   const universe: OrchestrationUniverse = {
     ...UNIVERSE,
-    scopes: UNIVERSE.scopes
-      .filter((scope) => scope.id !== "system")
-      .map((scope) => loadingScope(scope, elapsed)),
+    scopes: [...UNIVERSE.scopes.filter((scope) => scope.id !== "system"), DRAFTS].map((scope) =>
+      loadingScope(scope, elapsed),
+    ),
     forwards: UNIVERSE.forwards.filter((forward) => forward.fromScopeId !== "system"),
   };
   return (

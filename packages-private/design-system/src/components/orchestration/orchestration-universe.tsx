@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 
+import { prefersReducedMotion } from "../controls/appearance-preferences";
 import { IconButton } from "../controls/button";
 import { Icon, type IconName } from "../icon";
 import {
@@ -121,6 +122,12 @@ const STATUS_LABEL_Y = 140;
 // How long a planet that finished loading fades from its ring to its graph, as .bo-planet-reveal
 // and .bo-planet-status-leave animate it, with time to spare.
 const REVEAL_MS = 900;
+// How long a planet left out of the universe, such as a project found empty once read, fades
+// where it was, as .bo-planet-status-leave animates it, with time to spare.
+const LEAVE_MS = 500;
+// How quickly the fitted view follows the planets as they move: the time it takes to close most
+// of the way, in milliseconds.
+const CAMERA_EASE_MS = 120;
 // The share of the ring the arc turning round a planet still being read covers.
 const LOADING_ARC = 0.2;
 const NO_TILES: readonly ExternalTile[] = [];
@@ -267,6 +274,84 @@ function useFinishedLoading(scopes: readonly OrchestrationUniverseScope[]) {
     }
   }, [scopes, reveal]);
   return revealing;
+}
+
+/**
+ * The planets just left out of the universe, such as a project found empty once read, as each was
+ * last drawn and where, so it fades away there while the rest close the gap it leaves. Measured
+ * before paint, so it never vanishes for a frame first.
+ */
+function useLeavingPlanets(
+  planets: readonly UniversePlanet[],
+  bodies: ReadonlyMap<string, Point>,
+): readonly { planet: UniversePlanet; position: Point }[] {
+  const [leaving, leave] = useFading<{ planet: UniversePlanet; position: Point }>(LEAVE_MS);
+  const drawn = useRef(new Map<string, { planet: UniversePlanet; position: Point }>());
+  useLayoutEffect(() => {
+    const ids = new Set(planets.map(({ scope }) => scope.id));
+    const left = [...drawn.current].filter(([id]) => !ids.has(id));
+    drawn.current = new Map(
+      planets.map((planet) => [
+        planet.scope.id,
+        { planet, position: bodies.get(planet.scope.id) ?? { x: 0, y: 0 } },
+      ]),
+    );
+    if (left.length > 0) {
+      leave(left);
+    }
+  }, [planets, bodies, leave]);
+  // A planet that comes back while it fades shows as itself.
+  return useMemo(() => {
+    const ids = new Set(planets.map(({ scope }) => scope.id));
+    return [...leaving].filter(([id]) => !ids.has(id)).map(([, gone]) => gone);
+  }, [leaving, planets]);
+}
+
+/**
+ * Follows `target`, easing towards it as it moves, so the view closes in smoothly once a planet
+ * leaves. A first camera, a new size, and reduced motion take it at once.
+ */
+function useEasedCamera(target: Camera | null, size: Size | null): Camera | null {
+  const [shown, setShown] = useState(target);
+  const shownRef = useRef(target);
+  const sizeRef = useRef(size);
+  useLayoutEffect(() => {
+    const from = shownRef.current;
+    const resized =
+      sizeRef.current?.width !== size?.width || sizeRef.current?.height !== size?.height;
+    sizeRef.current = size;
+    if (!target || !from || resized || prefersReducedMotion()) {
+      shownRef.current = target;
+      setShown(target);
+      return undefined;
+    }
+    let frame = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const step = 1 - Math.exp(-(now - last) / CAMERA_EASE_MS);
+      last = now;
+      const current = shownRef.current ?? target;
+      const next = {
+        x: current.x + (target.x - current.x) * step,
+        y: current.y + (target.y - current.y) * step,
+        scale: current.scale + (target.scale - current.scale) * step,
+      };
+      const arrived =
+        Math.abs(next.x - target.x) < 0.5 &&
+        Math.abs(next.y - target.y) < 0.5 &&
+        Math.abs(next.scale / target.scale - 1) < 0.001;
+      shownRef.current = arrived ? target : next;
+      setShown(shownRef.current);
+      if (!arrived) {
+        frame = requestAnimationFrame(tick);
+      }
+    };
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [target, size]);
+  return shown;
 }
 
 /**
@@ -591,6 +676,7 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
     [layout, resting, size],
   );
   const planets = atRest?.planets ?? layout.planets;
+  const leavingPlanets = useLeavingPlanets(planets, bodies);
   const tiles = atRest?.tiles ?? NO_TILES;
   const positions = useMemo(
     () => planets.map(({ scope }) => bodies.get(scope.id) ?? { x: 0, y: 0 }),
@@ -600,7 +686,8 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
     () => (size && positions.length > 0 ? fitCamera(positions, size) : null),
     [positions, size],
   );
-  const shownCamera = camera ?? fitted;
+  const easedFit = useEasedCamera(fitted, size);
+  const shownCamera = camera ?? easedFit;
   // The wheel listener reads the camera of the last committed render.
   const shownCameraRef = useRef(shownCamera);
   useLayoutEffect(() => {
@@ -929,6 +1016,25 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
                     </g>
                   ))}
                 </g>
+
+                {/* Planets just left out fade where they were, taking no room. */}
+                {leavingPlanets.map(({ planet, position }) => (
+                  <g
+                    key={planet.scope.id}
+                    transform={`translate(${position.x} ${position.y})`}
+                    className="bo-planet-status-leave pointer-events-none"
+                    aria-hidden
+                  >
+                    <PlanetBody
+                      planet={planet}
+                      idPrefix={idPrefix}
+                      lit={null}
+                      workflowScale={workflowScale}
+                      finishedLoading={null}
+                      focusRingWidth={null}
+                    />
+                  </g>
+                ))}
 
                 {planets.map((planet) => {
                   const { scope } = planet;
