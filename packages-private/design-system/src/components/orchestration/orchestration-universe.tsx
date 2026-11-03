@@ -2,6 +2,7 @@ import {
   type KeyboardEvent,
   memo,
   type PointerEvent as ReactPointerEvent,
+  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -120,7 +121,6 @@ const STATUS_LABEL_Y = 140;
 // How long a planet that finished loading fades from its ring to its graph, as .bo-planet-reveal
 // and .bo-planet-status-leave animate it, with time to spare.
 const REVEAL_MS = 900;
-const NO_STATUSES: ReadonlyMap<string, OrchestrationUniverseScopeStatus> = new Map();
 // The share of the ring the arc turning round a planet still being read covers.
 const LOADING_ARC = 0.2;
 const NO_TILES: readonly ExternalTile[] = [];
@@ -205,57 +205,68 @@ const PlanetBody = memo(function PlanetBody({
 });
 
 /**
- * The planets that finished loading in the last moments, with the status each last showed, so its
- * ring can fade away as its graph fades in. Measured before paint, so a planet that just finished
- * never shows its graph whole for a frame first.
+ * Values by ID that each last `durationMs` from when `add` starts them. Each keeps when it ends,
+ * so values added later, which can come many times a second, never restart it.
  */
-function useFinishedLoading(scopes: readonly OrchestrationUniverseScope[]) {
-  // Each reveal with when it ends, so other planets' progress, which changes the scopes many times
-  // a reveal, never restarts it.
-  const [revealing, setRevealing] = useState<
-    ReadonlyMap<string, { status: OrchestrationUniverseScopeStatus; until: number }>
-  >(new Map());
-  const loading = useRef(new Map<string, OrchestrationUniverseScopeStatus>());
-  useLayoutEffect(() => {
-    const until = performance.now() + REVEAL_MS;
-    const done = new Map<string, { status: OrchestrationUniverseScopeStatus; until: number }>();
-    for (const scope of scopes) {
-      const was = loading.current.get(scope.id);
-      if (was && !scope.status) {
-        done.set(scope.id, { status: was, until });
-      }
-    }
-    loading.current = new Map(
-      scopes.flatMap((scope) => (scope.status ? [[scope.id, scope.status] as const] : [])),
-    );
-    if (done.size > 0) {
-      setRevealing((current) => new Map([...current, ...done]));
-    }
-  }, [scopes]);
-  // One timer, for the reveal that ends first; ending it sets the next.
+function useFading<T>(durationMs: number) {
+  const [fading, setFading] = useState<ReadonlyMap<string, { value: T; until: number }>>(
+    () => new Map(),
+  );
+  const add = useCallback(
+    (entries: readonly (readonly [string, T])[]) => {
+      const until = performance.now() + durationMs;
+      setFading(
+        (current) =>
+          new Map([...current, ...entries.map(([id, value]) => [id, { value, until }] as const)]),
+      );
+    },
+    [durationMs],
+  );
+  // One timer, for the value that ends first; ending it sets the next.
   useEffect(() => {
-    if (revealing.size === 0) {
+    if (fading.size === 0) {
       return undefined;
     }
-    const next = Math.min(...[...revealing.values()].map(({ until }) => until));
+    const next = Math.min(...[...fading.values()].map(({ until }) => until));
     const timer = setTimeout(
       () => {
         const now = performance.now();
-        setRevealing((current) => new Map([...current].filter(([, { until }]) => until > now)));
+        setFading((current) => new Map([...current].filter(([, { until }]) => until > now)));
       },
       Math.max(0, next - performance.now()),
     );
     return () => {
       clearTimeout(timer);
     };
-  }, [revealing]);
-  return useMemo(
-    () =>
-      revealing.size === 0
-        ? NO_STATUSES
-        : new Map([...revealing].map(([id, { status }]) => [id, status] as const)),
-    [revealing],
+  }, [fading]);
+  const values = useMemo(
+    () => new Map([...fading].map(([id, { value }]) => [id, value] as const)),
+    [fading],
   );
+  return [values, add] as const;
+}
+
+/**
+ * The planets that finished loading in the last moments, with the status each last showed, so its
+ * ring can fade away as its graph fades in. Measured before paint, so a planet that just finished
+ * never shows its graph whole for a frame first.
+ */
+function useFinishedLoading(scopes: readonly OrchestrationUniverseScope[]) {
+  const [revealing, reveal] = useFading<OrchestrationUniverseScopeStatus>(REVEAL_MS);
+  const loading = useRef(new Map<string, OrchestrationUniverseScopeStatus>());
+  useLayoutEffect(() => {
+    const done = scopes.flatMap((scope) => {
+      const was = loading.current.get(scope.id);
+      return was && !scope.status ? [[scope.id, was] as const] : [];
+    });
+    loading.current = new Map(
+      scopes.flatMap((scope) => (scope.status ? [[scope.id, scope.status] as const] : [])),
+    );
+    if (done.length > 0) {
+      reveal(done);
+    }
+  }, [scopes, reveal]);
+  return revealing;
 }
 
 /**
