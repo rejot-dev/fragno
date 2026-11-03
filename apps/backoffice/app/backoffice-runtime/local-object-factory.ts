@@ -418,6 +418,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
         this.env.SIGN_UP_ACCESS_CODES_REQUIRED,
       ),
       localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", this.env.LOCAL_EMAIL_LOG),
+      sites: parseBooleanEnv("SITES_ENABLED", this.env.SITES_ENABLED),
       workersAi: this.#workersAi,
       inboundEmailDomain: parseInboundEmailDomain(this.env.INBOUND_EMAIL_DOMAIN),
       bindings: {

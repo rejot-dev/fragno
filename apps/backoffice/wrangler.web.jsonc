@@ -30,15 +30,26 @@
     // Keeps each organization's and user's Durable Objects in the jurisdiction they chose. Only
     // local .dev.vars says "local", as workerd does not implement jurisdictions.
     "DURABLE_OBJECT_JURISDICTIONS": "enforced",
+    // Sites share Backoffice's origin until they have their own domain, so only local .dev.vars
+    // turns them on.
+    "SITES_ENABLED": "false",
     // Local servers started without the bridge's containers say "false", so sandbox starts fail at once.
     "SANDBOX_CONTAINERS": "true",
     "DOCS_PUBLIC_BASE_URL": "https://leyway.com/",
     // People's inbound addresses; its MX records point at the platform Resend account.
     "INBOUND_EMAIL_DOMAIN": "ley.run",
     "POSTHOG_HOST": "https://eu.i.posthog.com",
+    // Site builds are kept in the blobs buckets, which this Worker reads site files from.
+    "BLOBS_R2_BUCKET": "rejot-backoffice-blobs",
   },
   "secrets": {
-    "required": ["BACKOFFICE_INTERNAL_REQUEST_SECRET", "RESON8_API_KEY"],
+    "required": [
+      "BACKOFFICE_INTERNAL_REQUEST_SECRET",
+      "RESON8_API_KEY",
+      "BLOBS_R2_ENDPOINT",
+      "BLOBS_R2_ACCESS_KEY_ID",
+      "BLOBS_R2_SECRET_ACCESS_KEY",
+    ],
   },
   "routes": [
     {
@@ -53,7 +64,9 @@
   ],
   // Tags telemetry with the deployed version, so errors and metrics can be compared per release.
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
-  // Codemode guests compile and run in the bridge, one request each; Backoffice loads none itself.
+  // Codemode guests compile and run in the bridge, one request each. This Worker loads only site
+  // Workers, per request, outside any Durable Object and its cap on concurrent Dynamic Workers.
+  "worker_loaders": [{ "binding": "LOADER" }],
   "services": [
     {
       "binding": "CODEMODE_COMPILER",
