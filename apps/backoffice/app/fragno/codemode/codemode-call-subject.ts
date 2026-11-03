@@ -1,34 +1,9 @@
+import type { CodemodeCallSubject } from "@fragno-dev/backoffice-api/v0/pi";
 import type { CodemodeToolCall } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 import { z } from "zod";
 
 // A subject is shown as one line, for as long as the conversation it is shown in exists.
 const MAX_INPUT_LENGTH = 160;
-
-export const codemodeCallSubjectSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("skill"), name: z.string() }),
-  z.object({ kind: z.literal("read"), path: z.string() }),
-  z.object({ kind: z.literal("list"), pattern: z.string() }),
-  z.object({ kind: z.literal("search"), keywords: z.array(z.string()), pattern: z.string() }),
-  z.object({
-    kind: z.literal("action"),
-    connectionId: z.string(),
-    actionId: z.string(),
-    /** The scope a context handle named, such as "org:acme"; null for the run's own scope. */
-    scope: z.string().nullable(),
-    /** The action's own input, cut to one line. */
-    input: z.string(),
-  }),
-  z.object({
-    kind: z.literal("call"),
-    /** `provider.tool`, as the program called it. */
-    name: z.string(),
-    scope: z.string().nullable(),
-    input: z.string(),
-  }),
-]);
-
-/** What a call did, as a reader of the run cares. */
-export type CodemodeCallSubject = z.infer<typeof codemodeCallSubjectSchema>;
 
 function oneLine(value: unknown) {
   let text: string;

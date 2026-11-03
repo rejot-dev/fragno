@@ -295,6 +295,16 @@ describe("runtime tool reference generation", () => {
           bashOptions: ["agent", "last", "before", "subagent"],
         },
         {
+          id: "pi.agent.activity",
+          namespace: "pi",
+          codemodeProvider: "pi",
+          codemodeTool: "getActivity",
+          inputType: "PiGetActivityInput",
+          outputType: "PiGetActivityOutput",
+          bashCommand: "pi.agent.activity",
+          bashOptions: ["agent", "subagent"],
+        },
+        {
           id: "pi.agent.export",
           namespace: "pi",
           codemodeProvider: "pi",

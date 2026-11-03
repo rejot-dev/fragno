@@ -2,6 +2,7 @@ import type { Op } from "@earendil-works/chord/delta";
 import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
 import { automationEventSchema, type AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type {
+  PiAgentActivity,
   PiAgentConfig,
   PiAgentMessagePage,
   PiAgentQueueEntry,
@@ -370,6 +371,11 @@ export type PiAgent = {
     config: PiAgentConfig,
     request: z.infer<typeof piAgentMessagePageRequestSchema>,
   ): Promise<PiAgentMessagePage>;
+  /**
+   * The tools the conversation, or by the request ID that started it a subagent's, ran; none for a
+   * request that started no subagent.
+   */
+  getActivity(config: PiAgentConfig, subagent: string | null): Promise<PiAgentActivity>;
   /** The conversation as JSONL; only `history` reaches past the newest compaction or reset. */
   exportEntries(config: PiAgentConfig, history: boolean): Promise<ReadableStream<Uint8Array>>;
   compact(

@@ -1,4 +1,8 @@
-import { piAgentMessagePageSchema, piPromptStatusSchema } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  piAgentActivitySchema,
+  piAgentMessagePageSchema,
+  piPromptStatusSchema,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
@@ -308,6 +312,34 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
               );
         }
         return json(await config.agent(agent).listMessages(agent, request.data));
+      },
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/agents/:agentName/activity",
+      queryParameters: ["subagent"],
+      outputSchema: piAgentActivitySchema,
+      errorCodes: ["AGENT_NOT_FOUND", PiConversationViewDamagedError.code],
+      handler: async function ({ pathParams, query }, { json, error }) {
+        const { definition, config: agent } = await this.handlerTx()
+          .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
+          .transform(({ serviceResult: [found] }) => found)
+          .execute();
+        // A deleted agent keeps its conversation, which stays readable; an agent with no turns yet,
+        // whose first prompt may wait, has run nothing.
+        if (!agent) {
+          return definition
+            ? json({ tools: [], omitted: 0 })
+            : error(
+                { code: "AGENT_NOT_FOUND", message: agentNotFoundMessage(pathParams.agentName) },
+                404,
+              );
+        }
+        try {
+          return json(await config.agent(agent).getActivity(agent, query.get("subagent")));
+        } catch (cause) {
+          return damagedViewResponse(cause, error);
+        }
       },
     }),
     defineRoute({

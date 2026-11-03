@@ -1299,6 +1299,11 @@ const createFakePiManagerApi = (
     async recordSubagent(config) {
       requireAgent(config);
     },
+    // The fake answers without tools.
+    async getActivity(config) {
+      requireAgent(config);
+      return { tools: [], omitted: 0 };
+    },
     async getView(config) {
       const fake = requireAgent(config);
       getViewCalls.push({ agentName: config.agentName });

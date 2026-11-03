@@ -1,3 +1,4 @@
+import type { CodemodeCallSubject } from "@fragno-dev/backoffice-api/v0/pi";
 import type { CodemodeToolResult } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { encodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
 import type {
@@ -5,7 +6,7 @@ import type {
   CodemodeToolCallObserver,
 } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 
-import { codemodeCallSubject, type CodemodeCallSubject } from "./codemode-call-subject";
+import { codemodeCallSubject } from "./codemode-call-subject";
 import type { CodemodeRunToolCall, CodemodeToolCallSettlement } from "./codemode-fragment";
 
 const TOOL_SUMMARY_MAX_LENGTH = 500;

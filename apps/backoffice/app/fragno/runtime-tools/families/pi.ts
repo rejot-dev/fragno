@@ -86,6 +86,10 @@ const parseAgentMessages = defineCliArgsParser<{
   before: { kind: "positiveInteger" },
   subagent: {},
 });
+const parseAgentActivity = defineCliArgsParser<{ agentName: string; subagent?: string }>(
+  "pi.agent.activity",
+  { agentName: { option: "agent", required: true }, subagent: {} },
+);
 const parseAgentExport = defineCliArgsParser<{ agentName: string; out: string; history: boolean }>(
   "pi.agent.export",
   {
@@ -503,6 +507,42 @@ const agentMessagesTool = defineBackofficeRuntimeTool({
   },
 });
 
+const agentActivityTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.activity"),
+  namespace: "pi",
+  name: "getActivity",
+  execute: async (input, context: PiToolContext) =>
+    await requirePiManagerRuntime(context.runtimes.pi).getActivity(input),
+  adapters: {
+    bash: {
+      command: "pi.agent.activity",
+      help: {
+        summary:
+          "pi.agent.activity prints the tools an agent ran since its newest clear, oldest first, with each codemode run's calls.",
+        options: [
+          {
+            name: "agent",
+            required: true,
+            valueRequired: true,
+            valueName: "agent-name",
+            description: "Agent name",
+          },
+          {
+            name: "subagent",
+            valueRequired: true,
+            valueName: "request-id",
+            description: "Print the work of the agent's subagent this request started",
+          },
+        ],
+        examples: ["pi.agent.activity --agent bookkeeper --subagent document-42"],
+      },
+      parse: parseAgentActivity,
+      outputOptions: jsonByDefaultOutputOptions,
+      format: (data) => ({ data }),
+    },
+  },
+});
+
 const agentExportTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.export"),
   namespace: "pi",
@@ -565,6 +605,7 @@ export const piRuntimeTools = [
   agentListTool,
   agentGetTool,
   agentMessagesTool,
+  agentActivityTool,
   agentExportTool,
   agentCreateTool,
   agentUpdateTool,

@@ -1686,6 +1686,81 @@ test("subagents an app starts each answer one task in a conversation of their ow
             messages: [{ role: "assistant", text: "Document 2 read." }],
           });
         }),
+        then.assert(
+          "a subagent's tools read by its request ID, with its calls",
+          async ({ runtime }) => {
+            const activity = async (query: string) => {
+              const response = await request(
+                runtime,
+                execution,
+                `/agents/reader/activity${query}`,
+                null,
+              );
+              assert.equal(response.status, 200, await response.clone().text());
+              return await response.json();
+            };
+            expect(await activity("?subagent=doc-1")).toEqual({
+              tools: [
+                {
+                  toolCallId: expect.any(String),
+                  name: "codemode",
+                  status: "failed",
+                  calls: {
+                    startedAt: expect.any(Number),
+                    items: [
+                      {
+                        subject: {
+                          kind: "call",
+                          name: "store.set",
+                          scope: null,
+                          input: expect.any(String),
+                        },
+                        offsetMs: expect.any(Number),
+                        status: "failed",
+                        durationMs: expect.any(Number),
+                        error: expect.stringContaining("not granted store.modify"),
+                      },
+                    ],
+                    omitted: 0,
+                  },
+                },
+              ],
+              omitted: 0,
+            });
+            // Neither the agent's own turn nor another subagent ran the tool.
+            expect(await activity("?subagent=doc-2")).toEqual({ tools: [], omitted: 0 });
+            expect(await activity("")).toEqual({ tools: [], omitted: 0 });
+            // An agent whose first prompt waits has run nothing; an unknown agent is not found.
+            const idle = await request(runtime, execution, "/agents", {
+              agentName: "idle",
+              description: "Has not started.",
+              model: null,
+              permissions: ["pi.read"],
+              instructions: "",
+            });
+            assert.equal(idle.status, 201, await idle.clone().text());
+            const idleActivity = await request(runtime, execution, "/agents/idle/activity", null);
+            expect(await idleActivity.json()).toEqual({ tools: [], omitted: 0 });
+            const unknown = await request(runtime, execution, "/agents/unknown/activity", null);
+            assert(unknown.status === 404);
+
+            const context = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
+              runtime: runtime.services,
+              kernel: new BackofficeKernel(runtime.services),
+              execution,
+            });
+            assert(context.stateBackend);
+            const { bash } = await createInteractiveBashHost({
+              context: { ...context, stateBackend: context.stateBackend },
+            });
+            const printed = await bash.exec("pi.agent.activity --agent reader --subagent doc-1");
+            assert.equal(printed.exitCode, 0, printed.stderr);
+            expect(JSON.parse(printed.stdout)).toMatchObject({
+              tools: [{ name: "codemode", calls: { items: [{ subject: { name: "store.set" } }] } }],
+            });
+          },
+        ),
         // A subagent runs as whoever started it, narrowed by the agent's definition.
         then.store.missing({ orgId: "org-1", key: "reader/result" }),
       ],

@@ -299,6 +299,105 @@ export const piAgentMessagePageSchema = z.lazy(() =>
 );
 export type PiAgentMessagePage = z.infer<typeof piAgentMessagePageSchema>;
 
+/** What one call of a codemode run did, as a reader of the run cares. */
+export const codemodeCallSubjectSchema = z.lazy(() =>
+  z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("skill"), name: z.string() }),
+    z.object({ kind: z.literal("read"), path: z.string() }),
+    z.object({ kind: z.literal("list"), pattern: z.string() }),
+    z.object({ kind: z.literal("search"), keywords: z.array(z.string()), pattern: z.string() }),
+    z.object({
+      kind: z.literal("action"),
+      connectionId: z.string(),
+      actionId: z.string(),
+      // Another scope a context handle named, such as "org:acme"; null for the run's own scope.
+      scope: z.string().nullable(),
+      // The action's own input, cut to one line.
+      input: z.string(),
+    }),
+    z.object({
+      kind: z.literal("call"),
+      // `provider.tool`, as the program called it.
+      name: z.string(),
+      scope: z.string().nullable(),
+      input: z.string(),
+    }),
+  ]),
+);
+export type CodemodeCallSubject = z.infer<typeof codemodeCallSubjectSchema>;
+
+const codemodeCallSchema = z.lazy(() =>
+  z.discriminatedUnion("status", [
+    z.object({
+      subject: codemodeCallSubjectSchema,
+      // When the call started, counted from the run's `startedAt`.
+      offsetMs: z.number(),
+      status: z.literal("running"),
+    }),
+    z.object({
+      subject: codemodeCallSubjectSchema,
+      offsetMs: z.number(),
+      status: z.literal("succeeded"),
+      durationMs: z.number(),
+    }),
+    z.object({
+      subject: codemodeCallSubjectSchema,
+      offsetMs: z.number(),
+      status: z.literal("failed"),
+      durationMs: z.number(),
+      error: z.string(),
+    }),
+  ]),
+);
+
+/**
+ * A codemode run's calls: when it started, its newest calls, oldest first, and how many earlier
+ * ones it left out.
+ */
+export const codemodeCallsSchema = z.lazy(() =>
+  z.object({
+    // Epoch milliseconds.
+    startedAt: z.number(),
+    items: z.array(codemodeCallSchema),
+    omitted: z.number().int().nonnegative(),
+  }),
+);
+export type CodemodeCalls = z.infer<typeof codemodeCallsSchema>;
+
+const activityInputSchema = z.lazy(() =>
+  readAgentInputSchema._zod.innerType.extend({
+    subagent: z
+      .string()
+      .trim()
+      .min(1)
+      .nullable()
+      .default(null)
+      .describe(
+        "The request ID that started a subagent of the agent, to read that subagent's work instead of the agent's.",
+      ),
+  }),
+);
+
+/**
+ * The tools a conversation ran, oldest first, from its newest compaction or clear on: running ones
+ * too, and what each codemode run called so far. `calls` is null for other tools.
+ */
+export const piAgentActivitySchema = z.lazy(() =>
+  z.object({
+    tools: z.array(
+      z.object({
+        toolCallId: z.string(),
+        name: z.string(),
+        status: z.enum(["running", "succeeded", "failed"]),
+        calls: codemodeCallsSchema.nullable(),
+      }),
+    ),
+    // The earliest tool runs, which `tools` leaves out.
+    omitted: z.number().int().nonnegative(),
+  }),
+);
+export type PiAgentActivity = z.infer<typeof piAgentActivitySchema>;
+
 const exportInputSchema = z.lazy(() =>
   readAgentInputSchema._zod.innerType.extend({
     out: z
@@ -359,6 +458,13 @@ export const piOperations = {
     permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: messagesListInputSchema,
     output: piAgentMessagePageSchema,
+  },
+  "pi.agent.activity": {
+    description:
+      "What a started agent's conversation, or one of its subagents', does with its tools, by the agent's name: each tool it ran, oldest first, including those still running, and for each codemode run the calls it made, such as the skills it loaded, the files it read, and the integration actions it ran. Like the chat, it reads from the agent's newest compaction or clear on. Pass `subagent` to read a subagent, by the request ID that started it.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read],
+    input: activityInputSchema,
+    output: piAgentActivitySchema,
   },
   "pi.agent.export": {
     description:
