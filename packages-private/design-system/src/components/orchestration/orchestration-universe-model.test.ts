@@ -111,6 +111,52 @@ function stretchEnds(path: string): number[] {
   );
 }
 
+/** A scope whose one route starts a workflow. */
+function workflowGraph(scopeLabel: string): OrchestrationGraph {
+  return {
+    ...graph(scopeLabel),
+    events: [
+      { id: "bank:paid", sourceId: "bank", eventType: "paid", label: "Paid", recentCount: 0 },
+    ],
+    routes: [
+      {
+        id: "file-receipt",
+        eventId: "bank:paid",
+        label: "File the receipt",
+        priority: 100,
+        enabled: true,
+        matcher: null,
+        action: { kind: "start_workflow", targetId: "workflow:file" },
+      },
+    ],
+    targets: [{ id: "workflow:file", label: "File", kind: "workflow", activeCount: 0 }],
+  };
+}
+
+describe("planets with nothing on them", () => {
+  test("take no room, unless they are still being read or failed to be", () => {
+    const universe = unroutedUniverse(1);
+    const { planets } = layoutUniverse({
+      ...universe,
+      scopes: [
+        ...universe.scopes,
+        { id: "empty", graph: graph("Empty") },
+        { id: "unused", graph: { ...workflowGraph("Unused"), routes: [] } },
+        { id: "busy", graph: workflowGraph("Busy") },
+        { id: "reading", graph: graph("Reading"), status: { kind: "loading", fraction: null } },
+        { id: "broken", graph: graph("Broken"), status: { kind: "failed", message: "Gone" } },
+      ],
+    });
+    expect(planets.map(({ scope }) => scope.id)).toEqual([
+      "member",
+      "org",
+      "busy",
+      "reading",
+      "broken",
+    ]);
+  });
+});
+
 describe("forwards that nothing listens to", () => {
   test("spread over at most a quarter of the orbit, on a stretch under every one of them", () => {
     const { drawn, landed } = routedUnrouted(unroutedUniverse(36));

@@ -547,7 +547,9 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
   const swallowClick = useRef(false);
 
   const layout = useMemo(() => layoutUniverse(universe), [universe]);
-  const finishedLoading = useFinishedLoading(universe.scopes);
+  // Only the planets drawn take room, so an empty scope leaves no gap.
+  const scopes = useMemo(() => layout.planets.map(({ scope }) => scope), [layout]);
+  const finishedLoading = useFinishedLoading(scopes);
   const { forwards, externals, calls } = layout;
   const highlights = useMemo(
     () => universeHighlights(layout.planets, layout.forwards, layout.externals, layout.calls),
@@ -567,7 +569,7 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
           ASPECT_STEP,
       ) * ASPECT_STEP
     : DEFAULT_ASPECT;
-  const simulation = useUniverseSimulation(universe.scopes, forwards, aspect);
+  const simulation = useUniverseSimulation(scopes, forwards, aspect);
   const { bodies, resting } = simulation;
   const positionOf = (scopeId: string): Point => bodies.get(scopeId) ?? { x: 0, y: 0 };
 
@@ -1068,6 +1070,12 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
           );
         })}
       </svg>
+
+      {layout.planets.length === 0 ? (
+        <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-8 text-center text-sm text-[var(--bo-muted)]">
+          No scope here starts a workflow or forwards events yet.
+        </p>
+      ) : null}
 
       {focus ? (
         <FocusCard
