@@ -19,6 +19,7 @@ import {
   projectConnectorConnectInputSchema,
   projectConnectorConnectionSchema,
   projectConnectorConnectionRequestsSchema,
+  projectConnectorConnectionDeletionSchema,
   projectConnectorProfileSchema,
   projectConnectorExecutionSchema,
   type ProjectConnectorConnectionState,
@@ -385,6 +386,13 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                       eb("externalUserId", "=", externalUserId),
                     )
                     .select(["id", "projectId", "providerConfigId", "service", "connectionName"]),
+                )
+                .find("deletedAccount", (b) =>
+                  b
+                    .whereIndex("idx_deleted_account_external_user_id", (eb) =>
+                      eb("externalUserId", "=", externalUserId),
+                    )
+                    .select(["id"]),
                 ),
             )
             .afterRetrieve(async (_uow, [saved]) => {
@@ -403,11 +411,22 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                 remote,
               );
             })
-            .mutate(({ forSchema, retrieveResult: [saved, accounts] }) => {
+            .mutate(({ forSchema, retrieveResult: [saved, accounts, deleted] }) => {
               if (!saved || saved.externalUserId !== externalUserId) {
                 return null;
               }
-              const state = confirmed ?? saved.state;
+              const reported: ProjectConnectorConnectionState = confirmed ?? saved.state;
+              // The gateway keeps reporting consent that confirmed an account a disconnect deleted,
+              // even under another name, which would bind a credential that no longer works.
+              const state: ProjectConnectorConnectionState =
+                reported.status === "connected" &&
+                deleted.some((account) => account.id.toString() === reported.connectedAccountId)
+                  ? {
+                      status: "failed",
+                      errorCode: "account_disconnected",
+                      errorMessage: "The account was disconnected while consent completed.",
+                    }
+                  : reported;
               const uow = forSchema(projectConnectorSchema);
               if (saved.state.status === "initiated" && state.status !== "initiated") {
                 uow.update("connectionRequest", saved.id, (b) => b.set({ state }).check());
@@ -415,10 +434,6 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                   const existing = accounts.find(
                     (account) => account.id.toString() === state.connectedAccountId,
                   );
-                  // Reauthorization replaces only the same owned account ID, not other accounts sharing its name.
-                  if (existing) {
-                    uow.delete("connectedAccount", existing.id, (b) => b.check());
-                  }
                   const sameName =
                     (named: (typeof accounts)[number] | typeof saved) =>
                     (other: (typeof accounts)[number]) =>
@@ -435,15 +450,29 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
                       }
                     }
                   }
-                  // An incoming ID belonging to another user must fail the create, never replace their binding.
-                  uow.create("connectedAccount", {
-                    id: state.connectedAccountId,
+                  // The read misses a deletion committed while the gateway answered, such as of
+                  // another name the account was bound and disconnected under meanwhile.
+                  uow.checkAbsent("deletedAccount", "primary", { id: state.connectedAccountId });
+                  const binding = {
                     projectId: saved.projectId,
                     providerConfigId: saved.providerConfigId,
-                    externalUserId: saved.externalUserId,
                     service: saved.service,
                     connectionName: saved.connectionName,
-                  });
+                  };
+                  if (existing) {
+                    // Reauthorization rebinds only the same owned account ID, not other accounts
+                    // sharing its name. Updating in place advances the row's version, so a
+                    // disconnect of its old name that read it conflicts instead of deleting it here.
+                    uow.update("connectedAccount", existing.id, (b) => b.set(binding).check());
+                  } else {
+                    // An incoming ID belonging to another user must fail the create, never replace
+                    // their binding.
+                    uow.create("connectedAccount", {
+                      id: state.connectedAccountId,
+                      externalUserId: saved.externalUserId,
+                      ...binding,
+                    });
+                  }
                   // Reauthorization can move the account to this name, leaving its old name without one.
                   if (
                     existing &&
@@ -613,6 +642,85 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
               }
             : null,
         });
+      },
+    }),
+    defineRoute({
+      method: "DELETE",
+      path: "/connections/by-name",
+      queryParameters: ["projectId", "providerConfigId", "connectionName"],
+      outputSchema: projectConnectorConnectionDeletionSchema,
+      errorCodes: ["UNAUTHENTICATED", "INVALID_SELECTOR"],
+      handler: async function ({ headers, query }, { json, error }) {
+        const externalUserId = await config.getExternalUserId(headers);
+        if (!externalUserId) {
+          return error({ code: "UNAUTHENTICATED", message: "Authentication required" }, 401);
+        }
+        const selector = projectConnectorNamedConnectionSchema.safeParse({
+          projectId: query.get("projectId"),
+          providerConfigId: query.get("providerConfigId"),
+          connectionName: query.get("connectionName"),
+        });
+        if (!selector.success) {
+          return error(
+            { code: "INVALID_SELECTOR", message: "Invalid named connection selector" },
+            400,
+          );
+        }
+        const named = selector.data;
+        const deleted = await this.handlerTx()
+          .retrieve(({ forSchema }) =>
+            forSchema(projectConnectorSchema)
+              .find("connectedAccount", (b) =>
+                b.whereIndex("idx_account_named_connection", (eb) =>
+                  eb.and(
+                    eb("externalUserId", "=", externalUserId),
+                    eb("projectId", "=", named.projectId),
+                    eb("providerConfigId", "=", named.providerConfigId),
+                    eb("connectionName", "=", named.connectionName),
+                  ),
+                ),
+              )
+              .find("connectionRequest", (b) =>
+                b
+                  .whereIndex("idx_request_named_connection", (eb) =>
+                    eb.and(
+                      eb("externalUserId", "=", externalUserId),
+                      eb("projectId", "=", named.projectId),
+                      eb("providerConfigId", "=", named.providerConfigId),
+                      eb("connectionName", "=", named.connectionName),
+                    ),
+                  )
+                  .select(["id", "service"]),
+              ),
+          )
+          .mutate(({ forSchema, retrieveResult: [accounts, requests] }) => {
+            const service = accounts[0]?.service ?? requests[0]?.service;
+            if (service === undefined) {
+              return false;
+            }
+            const uow = forSchema(projectConnectorSchema);
+            for (const account of accounts) {
+              uow.delete("connectedAccount", account.id, (b) => b.check());
+              // The gateway deletes the credential only once this commits, and the record keeps
+              // refresh from binding the account again, then and afterwards.
+              const deleted = {
+                id: account.id.toString(),
+                providerConfigId: account.providerConfigId,
+                externalUserId,
+              };
+              uow.create("deletedAccount", deleted);
+              uow.triggerHook("deleteGatewayAccount", deleted);
+            }
+            // Requests go too: the gateway keeps a confirmed request pointing at the deleted
+            // account, and a deleted request never binds.
+            for (const request of requests) {
+              uow.delete("connectionRequest", request.id, (b) => b.check());
+            }
+            uow.triggerHook("onConnectionDeleted", { externalUserId, service, connection: named });
+            return true;
+          })
+          .execute();
+        return json({ deleted });
       },
     }),
     defineRoute({

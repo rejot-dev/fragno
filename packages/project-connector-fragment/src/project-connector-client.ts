@@ -45,6 +45,11 @@ const projectConnectorDiscoveryEnvelopeSchema = z.object({
   }),
 });
 
+const projectConnectorAccountDeletionEnvelopeSchema = z.object({
+  success: z.literal(true),
+  data: z.object({ connectedAccountId: z.string().min(1), deleted: z.literal(true) }),
+});
+
 const projectConnectorCatalogActionSchema = projectConnectorActionSchema.extend({
   description: z
     .string()
@@ -163,17 +168,19 @@ async function fetchProjectConnectorWithoutRedirects(
   return response;
 }
 
-async function fetchProjectConnectorProviderConfigs(
+/** Calls a SaaS route the SDK does not wrap; redirects must not forward the project key elsewhere. */
+async function fetchProjectConnectorSaas<T>(
   config: Pick<ProjectConnectorClientConfig, "baseUrl" | "apiKey">,
-) {
-  // The SDK has no discovery method; redirects must not forward the project key elsewhere.
+  request: { method: "GET" | "DELETE"; path: string },
+  envelopeSchema: z.ZodType<T>,
+): Promise<T> {
   const signal = AbortSignal.timeout(30_000);
   let response: Response;
   try {
     response = await fetchProjectConnectorWithoutRedirects(
-      `${config.baseUrl}/saas/oauth/provider-configs`,
+      `${config.baseUrl}/saas${request.path}`,
       {
-        method: "GET",
+        method: request.method,
         headers: { authorization: `Bearer ${config.apiKey}` },
         signal,
       },
@@ -213,7 +220,19 @@ async function fetchProjectConnectorProviderConfigs(
       response.status,
     );
   }
-  return parseProjectConnectorResponse(projectConnectorDiscoveryEnvelopeSchema, payload).data;
+  return parseProjectConnectorResponse(envelopeSchema, payload);
+}
+
+async function fetchProjectConnectorProviderConfigs(
+  config: Pick<ProjectConnectorClientConfig, "baseUrl" | "apiKey">,
+) {
+  // The SDK has no discovery method.
+  const envelope = await fetchProjectConnectorSaas(
+    config,
+    { method: "GET", path: "/oauth/provider-configs" },
+    projectConnectorDiscoveryEnvelopeSchema,
+  );
+  return envelope.data;
 }
 
 /** Project Connector adapter with retries disabled and project keys confined to server requests. */
@@ -348,6 +367,28 @@ export function createProjectConnectorClient(
         throw error;
       }
       return parseProjectConnectorResponse(projectConnectorConnectionRequestSchema, request);
+    },
+    /**
+     * Deletes the account's credential at the gateway; actions and profile reads then fail with
+     * connected_account_not_found. The SDK has no deletion method. Deleting an account again, or one
+     * the gateway never knew, also succeeds; another user's account fails.
+     */
+    async deleteAccount(account: { externalUserId: string; providerConfigId: string; id: string }) {
+      const query = new URLSearchParams({
+        providerConfigId: account.providerConfigId,
+        userId: account.externalUserId,
+      });
+      const envelope = await fetchProjectConnectorSaas(
+        { apiKey, baseUrl },
+        {
+          method: "DELETE",
+          path: `/connected-accounts/${encodeURIComponent(account.id)}?${query}`,
+        },
+        projectConnectorAccountDeletionEnvelopeSchema,
+      );
+      if (envelope.data.connectedAccountId !== account.id) {
+        throw new ProjectConnectorClientError("account_identity_mismatch", 502);
+      }
     },
     async getProfile(accountId: string) {
       const profile = await callProjectConnector(() =>

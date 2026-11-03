@@ -49,6 +49,12 @@ export function createProjectConnectorFragmentClients(fragnoConfig: FragnoPublic
         invalidate("GET", "/connection-requests/current", {});
       },
     ),
+    disconnect: builder.createMutator("DELETE", "/connections/by-name", (invalidate) => {
+      invalidate("GET", "/accounts", {});
+      invalidate("GET", "/accounts/by-name", {});
+      invalidate("GET", "/connection-requests/by-name", {});
+      invalidate("GET", "/connection-requests/current", {});
+    }),
     executeAction: builder.createMutator("POST", "/accounts/:accountId/actions/:actionId"),
   };
 }

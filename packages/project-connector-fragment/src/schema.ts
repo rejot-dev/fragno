@@ -56,5 +56,14 @@ export const projectConnectorSchema = schema("project-connector-fragment", (s) =
     // Listing a user's requests across names needs a total order, which the named index lacks.
     .alterTable("connectionRequest", (t) =>
       t.createIndex("idx_request_external_user_id", ["externalUserId", "id"]),
+    )
+    // Every account a disconnect deleted. The gateway keeps reporting consent that confirmed one
+    // as connected, so refresh must never bind these IDs again; fresh consent gets a new ID.
+    .addTable("deletedAccount", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("providerConfigId", column("string"))
+        .addColumn("externalUserId", column("string"))
+        .createIndex("idx_deleted_account_external_user_id", ["externalUserId", "id"]),
     ),
 );
