@@ -74,6 +74,11 @@ const SOURCE_ICONS: Record<string, IconName> = {
   mcp: "disc",
 };
 
+/** The icon of a service that sends events, such as Telegram or GitHub, if it has one of its own. */
+export function serviceIcon(service: string): IconName | undefined {
+  return SOURCE_ICONS[normalizedSourceId(service)];
+}
+
 /** Event sources are matched case-insensitively, so every id in the graph uses the folded form. */
 export function normalizedSourceId(source: string): string {
   return source.trim().toLowerCase();

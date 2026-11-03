@@ -18,10 +18,7 @@ import type {
 import { scopeIdentity } from "@/fragno/automation/forward-accepts";
 
 import { orchestrationEventId, type OrchestrationForward } from "./orchestration-graph";
-import {
-  ORCHESTRATION_OUTSIDE_SYSTEMS,
-  type WorkflowOutsideCall,
-} from "./orchestration-outside-systems";
+import type { WorkflowOutsideCall } from "./orchestration-outside-systems";
 
 /** Where a scope's routes forwarded to since the universe's window began. */
 type UniverseDeliveries = readonly { routeId: string; scope: BackofficeContextScope }[];
@@ -313,14 +310,33 @@ export function projectOrchestrationUniverse({
         ]),
       ).values(),
     ],
-    // The universe shows the systems that workflows on its planets call.
-    externals: ORCHESTRATION_OUTSIDE_SYSTEMS,
-    calls: [
+    ...outsideSystems([
       { scope: organization.scope, read: organization },
       ...projects,
       ...(viewer ? [viewer] : []),
-    ].flatMap(({ scope, read }) =>
-      (read?.calls ?? []).map((call) => ({ scopeId: scopeIdentity(scope), ...call })),
-    ),
+    ]),
+  };
+}
+
+/**
+ * The systems that workflows on the universe's planets call, by name, and the calls. A connection
+ * two scopes call by the same address shows once, by the name the first of them gives it.
+ */
+function outsideSystems(
+  scopes: readonly { scope: BackofficeContextScope; read: UniverseScopeRecords | null }[],
+): Pick<OrchestrationUniverse, "externals" | "calls"> {
+  const scoped = scopes.flatMap(({ scope, read }) =>
+    (read?.calls ?? []).map((call) => ({ scopeId: scopeIdentity(scope), ...call })),
+  );
+  const externals = new Map(
+    scoped.map(({ external }) => [external.id, external] as const).reverse(),
+  );
+  return {
+    externals: [...externals.values()].sort((left, right) => left.label.localeCompare(right.label)),
+    calls: scoped.map(({ scopeId, workflowId, external }) => ({
+      scopeId,
+      workflowId,
+      externalId: external.id,
+    })),
   };
 }

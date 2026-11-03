@@ -16,7 +16,7 @@ import { useAutomationRead, useAutomationReplica } from "@/fragno/automation/lof
 import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
 import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 
-import { workflowOutsideCalls } from "./orchestration-outside-systems";
+import { workflowOutsideCalls, type WorkflowConnections } from "./orchestration-outside-systems";
 import { projectOrchestrationUniverse, type UniverseReadScope } from "./orchestration-universe";
 import { dashboardBucketStarts } from "./overview";
 import { useScopeOrchestrationGraph } from "./scope-orchestration-graph";
@@ -57,22 +57,45 @@ function unreadRecords(recordErrors: readonly string[]): string | null {
   return recordErrors.length > 0 ? recordErrors.join(", ") : null;
 }
 
+// Shared, so a failed read of connections keeps the calls the same from one render to the next.
+const NO_CONNECTIONS: WorkflowConnections = [];
+
 /**
  * The outside systems a scope's workflows call, from the scripts their last runs ran, which the
- * replica keeps: null until read, and none, with the error, when they could not be read.
+ * replica keeps, with the scope's connections naming the integrations they reach: null until read,
+ * and none, with the error, when the scripts could not be read. Connections that could not be read
+ * go by their addresses.
  */
 function useWorkflowOutsideCalls(
   replica: LofiSqliteClient | null,
   catalog: readonly RuntimeToolWorkflowDescriptor[],
 ) {
   const programs = useAutomationRead(replica, "latestWorkflowPrograms", undefined);
+  const connections = useAutomationRead(replica, "integrationConnections", undefined);
   const programsData = programs.status === "ready" ? programs.data : null;
+  const connectionsData =
+    connections.status === "ready"
+      ? connections.data
+      : connections.status === "error"
+        ? NO_CONNECTIONS
+        : null;
   const failed = programs.status === "error";
   const calls = useMemo(
-    () => (programsData ? workflowOutsideCalls(programsData, catalog) : failed ? [] : null),
-    [programsData, failed, catalog],
+    () =>
+      failed
+        ? []
+        : programsData && connectionsData
+          ? workflowOutsideCalls(programsData, catalog, connectionsData)
+          : null,
+    [programsData, connectionsData, failed, catalog],
   );
-  return { calls, recordErrors: failed ? ["workflow scripts"] : [] };
+  return {
+    calls,
+    recordErrors: [
+      ...(failed ? ["workflow scripts"] : []),
+      ...(connections.status === "error" ? ["integration connections"] : []),
+    ],
+  };
 }
 
 /**
