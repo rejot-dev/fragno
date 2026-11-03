@@ -21,14 +21,17 @@ import type {
 } from "@/fragno/runtime-tools/runtime-tools";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
-import type { CodemodeRunToolCall } from "./codemode-fragment";
 import {
   codemodeProviderManifest,
   executeCodemodeInObject,
   type CodemodeRunner,
   type CodemodeRunTools,
 } from "./codemode-object-execute";
-import { createCodemodeToolCallLog, type CodemodeToolCallLog } from "./codemode-tool-call-observer";
+import {
+  createCodemodeToolCallLog,
+  type CodemodeLoggedToolCall,
+  type CodemodeToolCallLog,
+} from "./codemode-tool-call-observer";
 import { readSavedModuleImports } from "./saved-module-imports";
 
 export type RunBackofficeCodemodeInput = {
@@ -39,7 +42,7 @@ export type RunBackofficeCodemodeInput = {
   families: readonly BackofficeRuntimeToolFamily[];
   toolContext: CoreBackofficeToolContext;
   /** Sees the run's calls as each starts and settles, such as to show them while the run continues. */
-  onToolCalls?: (calls: readonly CodemodeRunToolCall[]) => void;
+  onToolCalls?: (calls: readonly CodemodeLoggedToolCall[]) => void;
 };
 
 export type BackofficeCodemodeProvidersInput = {
@@ -58,7 +61,7 @@ export type BackofficeCodemodeExecuteResult = ExecuteResult & {
   runId: string;
   errorDetails: CodemodeWireError | null;
   /** Oldest first, as the run's guest made them. */
-  toolCalls: readonly CodemodeRunToolCall[];
+  toolCalls: readonly CodemodeLoggedToolCall[];
   workflowDefinition?: BackofficeCodemodeWorkflowDefinition;
   /** Saved modules the code imported; a workflow it defines pins these when scheduled. */
   modules: Record<string, string>;

@@ -217,6 +217,67 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
             },
           });
         }),
+        then.assert(
+          "calls read as what they did however long their input, and a long run keeps its newest",
+          async (ctx) => {
+            const tool = executionTool(
+              ctx,
+              createBackofficeUserExecution({ scope: owner, userId: "owner" }),
+            );
+            const deepSkill = `/workspace/${"deep/".repeat(110)}skills/filing/SKILL.md`;
+            const long = await tool.execute(
+              {
+                code: `async () => {
+                  await state.readFile({ path: ${JSON.stringify(deepSkill)} }).catch(() => null);
+                  await integrations
+                    .execute({ input: { note: "${"n".repeat(600)}" }, connectionId: "app#bookkeeping", actionId: "documents.get" })
+                    .catch(() => null);
+                }`,
+              },
+              toolApi("long-inputs"),
+              BACKGROUND_CONTEXT,
+            );
+            expect(long).toMatchObject({
+              details: {
+                calls: {
+                  items: [
+                    { subject: { kind: "skill", name: "filing" } },
+                    {
+                      subject: {
+                        kind: "action",
+                        connectionId: "app#bookkeeping",
+                        actionId: "documents.get",
+                        scope: null,
+                      },
+                    },
+                  ],
+                  omitted: 0,
+                },
+              },
+            });
+
+            const many = await tool.execute(
+              {
+                code: `async () => {
+                  for (let call = 0; call < 55; call++) {
+                    await state.readFile({ path: "/workspace/many/" + call + ".md" }).catch(() => null);
+                  }
+                }`,
+              },
+              toolApi("many-calls"),
+              BACKGROUND_CONTEXT,
+            );
+            assert(many.details && typeof many.details === "object" && "calls" in many.details);
+            const calls = many.details.calls as {
+              items: { subject: { kind: string; path: string } }[];
+              omitted: number;
+            };
+            assert(calls.omitted === 5);
+            expect(calls.items.map((call) => call.subject.path)).toEqual(
+              Array.from({ length: 50 }, (_, call) => `/workspace/many/${call + 5}.md`),
+            );
+          },
+        ),
         then.assert("discovery calls read as the files and skills they looked at", async (ctx) => {
           const tool = executionTool(
             ctx,

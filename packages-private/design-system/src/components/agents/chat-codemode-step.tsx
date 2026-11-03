@@ -15,6 +15,16 @@ export type ChatCodemodeCallSubject =
   | { kind: "list"; pattern: string }
   | { kind: "search"; keywords: readonly string[]; pattern: string }
   | {
+      kind: "action";
+      /** The connection whose action ran, such as "app#bookkeeping". */
+      connectionId: string;
+      actionId: string;
+      /** A scope other than the run's own, such as "org:acme"; null for the run's scope. */
+      scope: string | null;
+      /** A one-line summary of the action's input. */
+      input: string;
+    }
+  | {
       kind: "call";
       /** The tool as the program called it, such as "crm.contacts.list". */
       name: string;
@@ -42,7 +52,7 @@ export type ChatCodemodeCalls = {
   startedAt: Date;
   /** Oldest first. */
   items: readonly ChatCodemodeCall[];
-  /** Calls the run made that its record does not list. */
+  /** Calls the run made before the first its record lists. */
   unrecorded: number;
 };
 
@@ -91,6 +101,13 @@ function callLine(subject: ChatCodemodeCallSubject): CallLine {
         detail: `${subject.keywords.map((keyword) => JSON.stringify(keyword)).join(" ")} in ${subject.pattern}`,
         code: false,
       };
+    case "action":
+      return {
+        icon: "zap",
+        title: { running: subject.actionId, succeeded: subject.actionId, failed: subject.actionId },
+        detail: subject.input,
+        code: true,
+      };
     case "call":
       return {
         icon: "corner-down-right",
@@ -107,6 +124,8 @@ export function codemodeCallHeadline(subject: ChatCodemodeCallSubject) {
   switch (subject.kind) {
     case "skill":
       return `Loading the ${subject.name} skill`;
+    case "action":
+      return `Running ${subject.actionId} on ${subject.connectionId}`;
     case "call":
       return `Calling ${subject.name}`;
     case "read":
@@ -145,6 +164,24 @@ function CallBar({ call, spanMs }: { call: ChatCodemodeCall; spanMs: number }) {
   );
 }
 
+/** Where a call reached beyond the program: another scope, and an action's connection. */
+function callTags(subject: ChatCodemodeCallSubject): string[] {
+  switch (subject.kind) {
+    case "action":
+      return subject.scope === null
+        ? [subject.connectionId]
+        : [subject.scope, subject.connectionId];
+    case "call":
+      return subject.scope === null ? [] : [subject.scope];
+    case "skill":
+    case "read":
+    case "list":
+    case "search":
+      return [];
+  }
+  throw new Error("Unsupported codemode call.", { cause: subject satisfies never });
+}
+
 function CallRow({ call, spanMs }: { call: ChatCodemodeCall; spanMs: number }) {
   const { icon, title, detail, code } = callLine(call.subject);
   const running = call.status === "running";
@@ -180,11 +217,14 @@ function CallRow({ call, spanMs }: { call: ChatCodemodeCall; spanMs: number }) {
         >
           {running ? <span className="bo-shimmer-text">{title.running}</span> : title[call.status]}
         </span>
-        {call.subject.kind === "call" && call.subject.scope !== null ? (
-          <span className="shrink-0 border border-[color:var(--bo-border)] px-1 font-mono text-[10px] text-[var(--bo-muted)]">
-            {call.subject.scope}
+        {callTags(call.subject).map((tag) => (
+          <span
+            key={tag}
+            className="shrink-0 border border-[color:var(--bo-border)] px-1 font-mono text-[10px] text-[var(--bo-muted)]"
+          >
+            {tag}
           </span>
-        ) : null}
+        ))}
         <code
           className={cn(
             "min-w-0 flex-1 truncate font-mono text-[10px] text-[var(--bo-muted-2)]",
@@ -268,12 +308,21 @@ function CallList({
   const { items, unrecorded } = calls;
   const [expanded, setExpanded] = useState(false);
   const folded = !expanded && items.length > FOLD_AFTER;
-  // A folded list still shows every failure, since failures are what a reader looks for.
+  // A folded list still shows every failure, since failures are what a reader looks for, and
+  // what runs now.
   const shown = folded
-    ? items.filter((call, index) => index < FOLDED_CALLS || call.status === "failed")
+    ? items.filter(
+        (call, index) =>
+          index < FOLDED_CALLS || call.status === "failed" || call.status === "running",
+      )
     : items;
   return (
     <>
+      {unrecorded > 0 ? (
+        <div className="flex min-h-6 items-center pl-5 text-[10px] text-[var(--bo-muted-2)]">
+          {unrecorded} earlier not recorded
+        </div>
+      ) : null}
       <ol>
         {shown.map((call, index) => {
           const skipped =
@@ -286,20 +335,17 @@ function CallList({
           );
         })}
       </ol>
-      {folded || unrecorded > 0 ? (
-        <div className="flex min-h-6 items-center gap-3 pl-5 text-[10px] text-[var(--bo-muted-2)]">
-          {folded ? (
-            <button
-              type="button"
-              className="font-medium text-[var(--bo-accent-fg)] hover:underline"
-              onClick={() => {
-                setExpanded(true);
-              }}
-            >
-              Show all {items.length}
-            </button>
-          ) : null}
-          {unrecorded > 0 ? <span>{unrecorded} more not recorded</span> : null}
+      {folded ? (
+        <div className="flex min-h-6 items-center pl-5 text-[10px] text-[var(--bo-muted-2)]">
+          <button
+            type="button"
+            className="font-medium text-[var(--bo-accent-fg)] hover:underline"
+            onClick={() => {
+              setExpanded(true);
+            }}
+          >
+            Show all {items.length}
+          </button>
         </div>
       ) : null}
     </>

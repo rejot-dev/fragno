@@ -81,8 +81,9 @@ const REMINDERS: SampleCall[] = [
   {
     id: "r2",
     subject: {
-      kind: "call",
-      name: "bookkeeping.invoices.list",
+      kind: "action",
+      connectionId: "app#bookkeeping",
+      actionId: "invoices.list",
       scope: null,
       input: '{"status":"unpaid"}',
     },
