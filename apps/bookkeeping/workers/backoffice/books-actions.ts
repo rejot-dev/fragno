@@ -22,6 +22,7 @@ import {
 import { exchangeForScope, isBackofficeUnavailable } from "./client";
 import { releaseDocument, sharedDocumentKey } from "./document-shares";
 import { followManager } from "./management";
+import { documentRequestPrefix } from "./review-requests";
 
 /**
  * The actions Backoffice agents keep an administration's books with. They run in the
@@ -65,21 +66,35 @@ const administrationInput = z
  * installation so that it can answer reviews and nothing else, answers the request asking it; a
  * person answers whether asked or not.
  */
-type Answerer = { kind: "bookkeeping-agent" } | { kind: "person"; person: Person };
+type Answerer =
+  | { kind: "bookkeeping-agent"; administrationId: string }
+  | { kind: "person"; person: Person };
 
-/** The request an answer is to, and who gave it. */
+/**
+ * The request an answer about `documentId` is to, and who gave it. The agent's must be one about
+ * the document, so an ID it shortened or garbled is refused as one it can fix, not as a request
+ * answered or asked again since, which it is to give up on.
+ */
 function answering(
   answerer: Answerer,
+  documentId: string,
   request: string | null,
 ): { request: string | null; by: string } {
   switch (answerer.kind) {
     case "person":
       return { request, by: answerer.person.name };
-    case "bookkeeping-agent":
+    case "bookkeeping-agent": {
       if (request === null) {
         refuse("Give the ID of the request you answer as `request`: the request names it.");
       }
+      const prefix = documentRequestPrefix(answerer.administrationId, documentId);
+      if (!request.startsWith(prefix)) {
+        refuse(
+          `${request} is no request about this document: give \`request\` whole, as the request names it, beginning ${prefix}.`,
+        );
+      }
       return { request, by: "the bookkeeping agent" };
+    }
   }
   throw new Error("Unsupported answerer.");
 }
@@ -1040,7 +1055,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     }),
     output: z.object({ document: z.string(), review: z.literal("proposed") }),
     async run(books, input, answerer) {
-      const { request, by } = answering(answerer, input.request);
+      const { request, by } = answering(answerer, input.document, input.request);
       const described = await books.describe();
       const index = indexBooks(described);
       const journal = index.journal(input.entry.journal);
@@ -1105,7 +1120,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     }),
     output: z.object({ document: z.string(), review: z.literal("declined") }),
     async run(books, input, answerer) {
-      const { request, by } = answering(answerer, input.request);
+      const { request, by } = answering(answerer, input.document, input.request);
       await requireDocument(books, input.document);
       settled(
         await books.answerReview({
@@ -1422,7 +1437,10 @@ export async function runBooksAction(
     if (action.access === "review" && claims.actor.kind === "installation") {
       return Response.json(
         await answerThenRelease(env, administration, () =>
-          action.run(books, actionInput, { kind: "bookkeeping-agent" }),
+          action.run(books, actionInput, {
+            kind: "bookkeeping-agent",
+            administrationId: administration.id,
+          }),
         ),
       );
     }
