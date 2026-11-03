@@ -1,6 +1,5 @@
 ---
 "@fragno-dev/lofi": patch
-"@fragno-dev/lofi-zql": patch
 ---
 
 feat: `@fragno-dev/lofi/sqlite/worker` runs the SQLite replica in a dedicated worker per tab, where
