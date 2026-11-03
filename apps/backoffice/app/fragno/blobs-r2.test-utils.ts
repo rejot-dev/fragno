@@ -1,6 +1,6 @@
 import { assert } from "vitest";
 
-import type { BlobsR2Bucket, BlobsR2Buckets } from "@/fragno/blobs-server";
+import type { BlobsR2Bucket, BlobsR2Buckets } from "@/fragno/blobs-r2-buckets";
 
 export function bucketUrl(bucket: BlobsR2Bucket) {
   return `${bucket.endpoint.replace(/\/$/, "")}/${bucket.bucket}/`;

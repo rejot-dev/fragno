@@ -7,11 +7,11 @@ import {
   objectScopeToContextScope,
   type BlobsCommands,
 } from "@/backoffice-runtime/object-registry";
+import type { BlobsR2Access } from "@/fragno/blobs-r2-buckets";
 import {
   createBlobsServer,
   scopeStorageKeyPrefix,
   type BlobsFragment,
-  type BlobsR2Buckets,
 } from "@/fragno/blobs-server";
 import {
   loadDurableHook,
@@ -42,7 +42,7 @@ export class BlobsObject implements BlobsCommands {
     state: BackofficeObjectState & Pick<DurableObjectState, "id">;
     implementation: BackofficeObjectImplementation;
     /** Null when the deployment has no R2 buckets for blobs. */
-    storage: { buckets: BlobsR2Buckets; fetch: typeof fetch } | null;
+    storage: BlobsR2Access | null;
   }) {
     const objectName = state.id.name;
     const scope = objectName ? decodeBackofficeObjectScope(objectName) : null;

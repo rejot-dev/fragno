@@ -19,8 +19,8 @@ import {
   runBackofficeScenario,
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
+import { blobsR2BucketsFromEnv } from "@/fragno/blobs-r2-buckets";
 import { createFakeR2, requestFromOutside, type FakeR2 } from "@/fragno/blobs-r2.test-utils";
-import { blobsR2BucketsFromEnv } from "@/fragno/blobs-server";
 import { loadBackofficePiSkills } from "@/fragno/pi/extensions/backoffice/skills";
 
 import { ApiObject } from "../../../workers/api-object";
