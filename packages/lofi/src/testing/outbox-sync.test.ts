@@ -176,8 +176,12 @@ describe("outbox sync integration", () => {
       expect(result.appliedEntries).toBe(expectedEntries.length);
       expect(result.lastVersionstamp).toBe(expectedEntries.at(-1)?.versionstamp);
       expect(await adapter.getMeta("app::outbox")).toBe(expectedEntries.at(-1)?.versionstamp);
-      expect(onSyncApplied).toHaveBeenCalledTimes(1);
-      expect(onSyncApplied).toHaveBeenCalledWith(result);
+      // Each page commits on its own, so each is reported as it commits.
+      expect(onSyncApplied.mock.calls).toEqual(
+        expectedEntries.map((entry) => [
+          { appliedEntries: 1, lastVersionstamp: entry.versionstamp },
+        ]),
+      );
 
       expect(requests).toHaveLength(expectedEntries.length + 1);
       expect(requests[0]?.after).toBeNull();

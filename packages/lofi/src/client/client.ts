@@ -286,6 +286,8 @@ export class LofiClient {
       ...(this.ephemeralTableKeys.size > 0 ? { appliedDurableMutations } : {}),
       ...(aborted ? { aborted } : {}),
     });
+    // Whether a committed page was reported; a sync that commits none reports its end once.
+    let reported = false;
 
     try {
       for await (const page of this.fetchPages({ cursor, limit: this.limit, signal })) {
@@ -301,13 +303,34 @@ export class LofiClient {
           deliverEphemeral,
           signal,
         });
+        let pageEntries = 0;
+        let pageDurableMutations = 0;
         for (const result of results) {
           lastVersionstamp = result.lastVersionstamp;
           cursor = result.lastVersionstamp;
           if (result.applied) {
-            appliedEntries += 1;
-            appliedDurableMutations += result.appliedDurableMutations;
+            pageEntries += 1;
+            pageDurableMutations += result.appliedDurableMutations;
           }
+        }
+        appliedEntries += pageEntries;
+        appliedDurableMutations += pageDurableMutations;
+        // Each page commits on its own, so it is reported at once, as the stream reports a batch:
+        // a later page that fails, or an abort, must not hide what this one committed.
+        const last = results.at(-1);
+        if (last) {
+          const pageResult: LofiSyncResult = {
+            appliedEntries: pageEntries,
+            lastVersionstamp: last.lastVersionstamp,
+            ...(this.ephemeralTableKeys.size > 0
+              ? { appliedDurableMutations: pageDurableMutations }
+              : {}),
+          };
+          if (pageEntries > 0) {
+            await this.onSyncApplied?.(pageResult);
+          }
+          await this.onSyncComplete?.(pageResult);
+          reported = true;
         }
 
         if (signal.aborted) {
@@ -330,12 +353,9 @@ export class LofiClient {
     }
 
     const result = currentResult();
-
-    if (appliedEntries > 0) {
-      await this.onSyncApplied?.(result);
+    if (!reported) {
+      await this.onSyncComplete?.(result);
     }
-    await this.onSyncComplete?.(result);
-
     return result;
   }
 
