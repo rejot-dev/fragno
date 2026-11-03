@@ -1,4 +1,4 @@
-import { blobsR2BucketsFromEnv } from "@/fragno/blobs-server";
+import { blobsR2BucketsFromEnv } from "@/fragno/blobs-r2-buckets";
 import { createPiAgentDependencies } from "@/fragno/pi/agent/pi-agent-harness";
 import {
   createPiClassifier,
