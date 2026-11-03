@@ -128,6 +128,12 @@ function universeCalls(
   return [...calls.values()];
 }
 
+/**
+ * The planets with their layouts, the forwards between them, and the calls out to outside systems.
+ * A planet only draws the events something uses, so a scope read without workflows that no forward
+ * leaves or reaches would be an empty circle: it is left out, and takes no room. A scope still
+ * being read, or that failed to be, stays, showing its status.
+ */
 export function layoutUniverse(universe: OrchestrationUniverse): {
   planets: UniversePlanet[];
   forwards: UniverseForward[];
@@ -135,7 +141,10 @@ export function layoutUniverse(universe: OrchestrationUniverse): {
   calls: UniverseCall[];
 } {
   const forwards = universeForwards(universe);
-  const planets = universe.scopes.map((scope) => {
+  const linked = new Set(
+    forwards.flatMap(({ fromScopeId, toScopeId }) => [fromScopeId, toScopeId]),
+  );
+  const allPlanets = universe.scopes.map((scope) => {
     const destinations = new Map<string, Set<string>>();
     for (const forward of forwards) {
       if (forward.fromScopeId === scope.id) {
@@ -154,6 +163,9 @@ export function layoutUniverse(universe: OrchestrationUniverse): {
       forwardCounts,
     };
   });
+  const planets = allPlanets.filter(
+    ({ scope, layout }) => scope.status || linked.has(scope.id) || layout.workflows.length > 0,
+  );
   const calls = universeCalls(universe, planets);
   const called = new Set(calls.map((call) => call.externalId));
   return {

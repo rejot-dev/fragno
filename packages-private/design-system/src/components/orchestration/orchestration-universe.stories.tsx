@@ -68,6 +68,25 @@ export function UnroutedForwards() {
   );
 }
 
+/** Scopes that neither start a workflow nor forward an event are left out, so nothing shows. */
+export function NothingYet() {
+  return (
+    <div className="h-screen p-4">
+      <OrchestrationUniverseGraph
+        universe={{
+          scopes: UNIVERSE.scopes.map((scope) => ({
+            ...scope,
+            graph: { ...scope.graph, routes: [] },
+          })),
+          forwards: [],
+          externals: UNIVERSE.externals,
+          calls: [],
+        }}
+      />
+    </div>
+  );
+}
+
 /** Scopes still being read ring their planet: by how far they got, or turning until that is known. */
 export function ReadingScopes() {
   const empty = (scopeLabel: string) => ({
