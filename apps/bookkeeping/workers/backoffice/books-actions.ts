@@ -252,10 +252,7 @@ function indexBooks(books: Described) {
       refuse(`The books have no currency ${currency}.`),
     journalCode: codeOf(books.journals),
     accountCode: codeOf(books.accounts),
-    partyAccountOf: (id: string) => {
-      const { role, code } = partyAccounts.find((account) => account.id === id)!;
-      return { role, code };
-    },
+    partyCodeOf: (id: string) => partyAccounts.find((account) => account.id === id)!.code,
     valueOf: (id: string) => values.find((value) => value.id === id)!,
     /** Rules keyed by dimension code, as agents name them, from the ledger's by dimension ID. */
     rulesByCode: (rules: Record<string, "required" | "forbidden">) =>
@@ -300,6 +297,40 @@ const cursor = z
   .nullable()
   .describe("Null for the first page; the previous page's cursor for the next.");
 
+/**
+ * A line of an entry, as entries are written and read alike: a line read from an entry posts
+ * unchanged. A line in the books' functional currency has neither a currency nor a functional
+ * amount.
+ */
+const entryLineInput = z.strictObject({
+  account: z.string().trim().min(1).max(20).describe("The account's code."),
+  side: z.enum(sides),
+  amount: decimal.describe("In the line's currency."),
+  currency: z.string().nullable().describe("Null for the books' functional currency."),
+  functionalAmount: decimal
+    .nullable()
+    .describe(
+      "The amount in the functional currency, for lines in another currency; null otherwise.",
+    ),
+  description: z.string().trim().max(500),
+  party: z
+    .string()
+    .trim()
+    .min(1)
+    .max(20)
+    .nullable()
+    .describe(
+      "On receivable and payable accounts, the code of the customer or supplier; null on other accounts.",
+    ),
+  dueDate: z.iso
+    .date()
+    .nullable()
+    .describe("When a customer's or supplier's line falls due; null for the posting date."),
+  dimensions: z
+    .record(z.string(), z.string())
+    .describe("Value codes by dimension code, as the account's dimension rules ask."),
+});
+
 const entryOutput = z.object({
   journal: z.string(),
   number: z.number().int(),
@@ -310,21 +341,28 @@ const entryOutput = z.object({
   postedAt: z.string().describe("When it was posted, as an ISO timestamp."),
   reverses: z.number().int().nullable().describe("The number of the entry this one reverses."),
   reversedBy: z.number().int().nullable().describe("The number of the entry reversing this one."),
-  lines: z.array(
-    z.object({
-      account: z.string(),
-      description: z.string(),
-      side: z.enum(sides),
-      amount: z.string(),
-      currency: z.string(),
-      functionalAmount: z.string().describe("The amount in the books' functional currency."),
-      party: z.object({ role: z.enum(partyRoles), code: z.string() }).nullable(),
-      dimensions: z.record(z.string(), z.string()).describe("Value codes by dimension code."),
-    }),
-  ),
+  lines: z.array(entryLineInput),
 });
 
 type EntryView = Awaited<ReturnType<Books["listEntries"]>>["items"][number];
+
+/** A line's currency and functional amount as lines are written: both null in the functional one. */
+function currencyOf(
+  line: { currency: string; functionalAmountMinor: bigint },
+  index: Index,
+  books: Described,
+): { currency: string | null; functionalAmount: string | null } {
+  if (line.currency === books.functionalCurrency) {
+    return { currency: null, functionalAmount: null };
+  }
+  return {
+    currency: line.currency,
+    functionalAmount: decimalAmount(
+      line.functionalAmountMinor,
+      index.minorUnitDigits(books.functionalCurrency),
+    ),
+  };
+}
 
 function entryOutputOf(
   entry: EntryView,
@@ -344,15 +382,12 @@ function entryOutputOf(
     reversedBy: entry.reversedBy?.entryNumber ?? null,
     lines: entry.lines.map((line) => ({
       account: index.accountCode(line.accountId),
-      description: line.description,
       side: line.side,
       amount: decimalAmount(line.amountMinor, index.minorUnitDigits(line.currency)),
-      currency: line.currency,
-      functionalAmount: decimalAmount(
-        line.functionalAmountMinor,
-        index.minorUnitDigits(books.functionalCurrency),
-      ),
-      party: line.openItem && index.partyAccountOf(line.openItem.partyAccountId),
+      ...currencyOf(line, index, books),
+      description: line.description,
+      party: line.openItem && index.partyCodeOf(line.openItem.partyAccountId),
+      dueDate: line.openItem?.dueDate ?? null,
       dimensions: Object.fromEntries(
         line.dimensionValueIds.map((valueId) => {
           const value = index.valueOf(valueId);
@@ -374,38 +409,7 @@ const entryInput = z.strictObject({
     .nullable()
     .describe("Unique in the journal, e.g. an invoice number; null for none."),
   description: z.string().trim().min(1).max(500),
-  lines: z
-    .array(
-      z.strictObject({
-        account: z.string().trim().min(1).max(20).describe("The account's code."),
-        side: z.enum(sides),
-        amount: decimal.describe("In the line's currency."),
-        currency: z.string().nullable().describe("Null for the books' functional currency."),
-        functionalAmount: decimal
-          .nullable()
-          .describe(
-            "The amount in the functional currency, for lines in another currency; null otherwise.",
-          ),
-        description: z.string().trim().max(500),
-        party: z
-          .string()
-          .trim()
-          .min(1)
-          .max(20)
-          .nullable()
-          .describe(
-            "On receivable and payable accounts, the code of the customer or supplier; null on other accounts.",
-          ),
-        dueDate: z.iso
-          .date()
-          .nullable()
-          .describe("When a customer's or supplier's line falls due; null for the posting date."),
-        dimensions: z
-          .record(z.string(), z.string())
-          .describe("Value codes by dimension code, as the account's dimension rules ask."),
-      }),
-    )
-    .min(2),
+  lines: z.array(entryLineInput).min(2),
 });
 
 type PostingLine = Parameters<Books["postEntry"]>[0]["lines"][number];
@@ -434,8 +438,8 @@ function ledgerLinesOf(
     if (foreign !== (line.functionalAmount !== null)) {
       refuse(
         foreign
-          ? `${label} is in ${currency}: give its functional amount in ${described.functionalCurrency}.`
-          : `${label} is in the functional currency: its functional amount is null.`,
+          ? `${label} is in ${currency}: give its functionalAmount, in ${described.functionalCurrency}.`
+          : `${label} is in the books' functional currency, ${currency}: give functionalAmount null.`,
       );
     }
     const partyRole =
@@ -651,8 +655,8 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
           description: z.string(),
           side: z.enum(sides),
           amount: z.string(),
-          currency: z.string(),
-          functionalAmount: z.string(),
+          currency: entryLineInput.shape.currency,
+          functionalAmount: entryLineInput.shape.functionalAmount,
         }),
       ),
       cursor: z.string().nullable(),
@@ -670,11 +674,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
           description: line.description,
           side: line.side,
           amount: decimalAmount(line.amountMinor, index.minorUnitDigits(line.currency)),
-          currency: line.currency,
-          functionalAmount: decimalAmount(
-            line.functionalAmountMinor,
-            index.minorUnitDigits(described.functionalCurrency),
-          ),
+          ...currencyOf(line, index, described),
         })),
         cursor: page.cursor,
       };

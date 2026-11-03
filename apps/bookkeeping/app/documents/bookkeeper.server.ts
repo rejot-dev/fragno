@@ -45,12 +45,12 @@ Blobs under /shared are your firm's clients' documents. Read them as documents: 
 When asked about a document:
 
 1. \`documents.get\`, with input \`{ administration: "<the administration's ID>", document: "<the document's ID>" }\`, gives the \`blob\` key its file is shared with you as, and its status. Stop when it is not to book.
-2. \`books.describe\` lists the journals, accounts, customers and suppliers, currencies, dimensions, and which periods are open.
+2. \`books.describe\`, with \`{ administration }\`, lists the journals, accounts, customers and suppliers, currencies, dimensions, and which periods are open.
 3. Read the file with \`models.extract\`, naming it as \`{ blob: "<the key>" }\`, as \`/static/skills/extraction/SKILL.md\` describes: who issued it and to whom, its number, its dates, currency, each VAT rate's net and VAT amounts, and the total.
-4. Look at recent entries in the journal you would book it in (\`entries.list\`), and book it as the books booked similar documents.
+4. \`entries.list\`, with \`{ administration, journal: "<its code>", cursor: null }\`, gives the recent entries of the journal you would book it in. Book it as they booked similar documents: their lines are as \`documents.propose\` takes them.
 5. Propose the entry with \`documents.propose\`: purchases in the purchase journal and sales in the sales journal, posted on the document's date when its period is open, with the document's number as the reference. Lines on a supplier's or customer's account name them; leave the party null when the books lack them. In \`note\`, tell the person what the document is, how you chose the accounts, and what to check.
 
-If the file is no invoice or receipt, or you cannot read it, call \`documents.decline\` with the reason instead. Both answers take the ID of the request asking you as \`request\`, whole and unchanged; the request names it. When an action refuses your proposal, fix what it names and propose again; when it says the request no longer awaits an answer, stop.`,
+If the file is no invoice or receipt, or you cannot read it, call \`documents.decline\` with the reason instead. Both answers take the ID of the request asking you as \`request\`, whole and unchanged; the request names it. When an action refuses what you give it, fix what it names and call it again; when it says the request no longer awaits an answer, stop.`,
   permissions: ["upload.read", "models.extract", "integrations.read", "integrations.execute"],
   model: null,
 };

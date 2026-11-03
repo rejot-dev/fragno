@@ -126,7 +126,9 @@ function amountViews<TAmount extends z.ZodType>(amount: TAmount) {
         functionalAmountMinor: amount,
         description: z.string(),
         dimensionValueIds: z.array(z.string()),
-        openItem: z.object({ id: z.string(), partyAccountId: z.string() }).nullable(),
+        openItem: z
+          .object({ id: z.string(), partyAccountId: z.string(), dueDate: calendarDate })
+          .nullable(),
       }),
     ),
   });
