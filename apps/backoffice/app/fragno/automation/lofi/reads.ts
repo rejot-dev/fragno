@@ -15,6 +15,7 @@ import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import type { AutomationWorkflowRun } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 import {
   automationWorkflowRunsFromRecords,
+  codemodeRunProgram,
   type WorkflowRunRecordSelector,
 } from "@/routes/backoffice/automations/script-view/workflow-run-records";
 import type { OrchestrationForward } from "@/routes/backoffice/dashboard/orchestration-graph";
@@ -448,6 +449,30 @@ export function readWorkflowsInStatus(reader: LofiSqliteReader, statuses: readon
       remoteWorkflowName: instance.remoteWorkflowName,
       params: instance.params,
     },
+  });
+}
+
+/**
+ * Each workflow script's source as it last ran, by path: what a run keeps of the script it ran.
+ * Scripts that never ran are not here.
+ */
+export function readLatestWorkflowPrograms(
+  reader: LofiSqliteReader,
+): { filename: string; code: string }[] {
+  const instance = workflowsSchema.tables.workflow_instance.columns;
+  // With max(), SQLite takes the other columns from the row holding the maximum.
+  const rows = reader.query({
+    sql: `SELECT "params" ->> '$.program.filename' AS "filename", "params", max("createdAt")
+          FROM ${workflowTable("workflow_instance")}
+          WHERE "workflowName" = ? AND "params" ->> '$.program.filename' IS NOT NULL
+          GROUP BY "filename"
+          ORDER BY "filename"`,
+    params: [CODEMODE_WORKFLOW],
+    columns: { params: instance.params },
+  });
+  return rows.flatMap(({ params }) => {
+    const program = codemodeRunProgram(params);
+    return program ? [program] : [];
   });
 }
 

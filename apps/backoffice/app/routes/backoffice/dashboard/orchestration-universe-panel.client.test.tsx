@@ -9,10 +9,13 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 
-const { graphReads, deliveryReads } = vi.hoisted(() => ({
+const { graphReads, deliveryReads, noPrograms } = vi.hoisted(() => ({
   // What each replica's graph and delivery reads return, by the replica's name.
   graphReads: new Map<string, unknown>(),
   deliveryReads: new Map<string, unknown>(),
+  // No workflow has run, so none calls an outside system. A read returns the same data until it
+  // changes, as a replica view does.
+  noPrograms: { status: "ready", data: [] },
 }));
 
 // A replica here is only its name, which picks the reads above.
@@ -23,8 +26,10 @@ vi.mock("@/fragno/automation/lofi/replica", () => ({
     fraction: null,
     error: null,
   }),
-  useAutomationRead: (replica: string | null) =>
-    (replica && deliveryReads.get(replica)) ?? { status: "loading" },
+  useAutomationRead: (replica: string | null, read: string) =>
+    read === "latestWorkflowPrograms"
+      ? noPrograms
+      : ((replica && deliveryReads.get(replica)) ?? { status: "loading" }),
 }));
 vi.mock("./scope-orchestration-graph", () => ({
   useScopeOrchestrationGraph: (replica: string | null) =>
@@ -83,6 +88,7 @@ function renderUniverse() {
       replica={"organization" as never}
       selectedScope={selectedScope}
       scopes={{ projects: [books] as never, viewer: null, problems: [] }}
+      runtimeToolCatalog={[]}
     />,
   );
 }

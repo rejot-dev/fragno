@@ -6,17 +6,31 @@ import { z } from "zod";
 
 import type { AutomationWorkflowRun } from "./workflow-run-presentation";
 
+const codemodeProgramSchema = z.union([
+  // Snapshots from before workflow modules store their source as one expression. They also
+  // carry the modules it imports, so they are told apart by their code, not their modules.
+  z.object({ filename: z.string(), code: z.string() }),
+  z
+    .object({ filename: z.string(), modules: z.record(z.string(), z.string()) })
+    // A program's own module holds its source.
+    .transform(({ filename, modules }) => ({ filename, code: modules[filename] ?? null })),
+]);
+
+/**
+ * The workflow script a Codemode run ran, from the run's params: its path and source. Null for runs
+ * of other workflows, and for snapshots missing the script's own module.
+ */
+export function codemodeRunProgram(params: unknown): { filename: string; code: string } | null {
+  const parsed = z.object({ program: codemodeProgramSchema }).safeParse(params);
+  if (!parsed.success || parsed.data.program.code === null) {
+    return null;
+  }
+  return { filename: parsed.data.program.filename, code: parsed.data.program.code };
+}
+
 // Instance params are opaque to the workflow runtime; only Codemode runs carry a program.
 const codemodeWorkflowRunParamsSchema = z.object({
-  program: z.union([
-    // Snapshots from before workflow modules store their source as one expression. They also
-    // carry the modules it imports, so they are told apart by their code, not their modules.
-    z.object({ filename: z.string(), code: z.string() }),
-    z
-      .object({ filename: z.string(), modules: z.record(z.string(), z.string()) })
-      // A program's own module holds its source.
-      .transform(({ filename, modules }) => ({ filename, code: modules[filename] ?? null })),
-  ]),
+  program: codemodeProgramSchema,
   trigger: z.discriminatedUnion("type", [
     z.object({
       type: z.literal("event"),

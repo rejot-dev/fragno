@@ -42,6 +42,7 @@ import {
 } from "@/fragno/automation/scenario";
 import { currentWorkflowWaits } from "@/fragno/automation/workflow-waits";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
+import { runtimeToolWorkflowCatalog } from "@/fragno/runtime-tools/workflow-catalog.server";
 
 import { ApiObject } from "../../../../workers/api-object";
 import { AppInstallationsObject } from "../../../../workers/app-installations-object";
@@ -63,6 +64,7 @@ import { piAgentListings, piAgentQueueStatus } from "../agents/agent-activity";
 import type { AutomationWorkflowRun } from "../automations/script-view/workflow-run-presentation";
 import { projectEventTraceList, type EventTraceSummary } from "./event-traces";
 import { orchestrationInletDetail, projectOrchestrationGraph } from "./orchestration-graph";
+import { workflowOutsideCalls } from "./orchestration-outside-systems";
 import { projectOrchestrationUniverse } from "./orchestration-universe";
 import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
 
@@ -617,6 +619,7 @@ async function readUniverse(
         graph,
         routes: inputs.routes,
         deliveries: await readAutomationReplica(replica, "recentForwardDeliveries", { since }),
+        calls: await readOutsideCalls(replica),
       },
     };
   };
@@ -629,6 +632,7 @@ async function readUniverse(
       deliveries: await readAutomationReplica(organization.replica, "recentForwardDeliveries", {
         since: organization.since,
       }),
+      calls: await readOutsideCalls(organization.replica),
     },
     projects: await Promise.all(projects.map(readScope)),
     viewer: await readScope(viewer),
@@ -653,7 +657,21 @@ async function readUniverse(
           `${fromScopeId} → ${toScopeId} carrying ${eventId}`,
       ),
     ),
+    // The calls it draws, from workflows on planets to outside systems.
+    calls: sorted(
+      layoutUniverse(universe).calls.map(
+        ({ scopeId, workflowId, externalId }) => `${scopeId} ${workflowId} → ${externalId}`,
+      ),
+    ),
   };
+}
+
+/** The outside systems a scope's workflows call, from the scripts their last runs ran. */
+async function readOutsideCalls(replica: Parameters<typeof readAutomationReplica>[0]) {
+  return workflowOutsideCalls(
+    await readAutomationReplica(replica, "latestWorkflowPrograms", undefined),
+    runtimeToolWorkflowCatalog,
+  );
 }
 
 /** The Agents directory, one line per agent: its activity and the turns it ended per hour. */
@@ -1199,6 +1217,7 @@ describe("dashboard", () => {
                   "user:user-1 → org:org-1 carrying ledger:balance.updated",
                   "user:user-1 → org:org-1 carrying ledger:deposit.received",
                 ],
+                calls: [],
               });
               // Read, Books adds the forward its route names, and the person looking sees all of
               // their own routes, which the organization never does, the ledger route on its
@@ -1222,9 +1241,77 @@ describe("dashboard", () => {
                   "user:user-1 → org:org-1 carrying bank:received",
                   "user:user-1 → org:org-1 carrying ledger:*",
                 ],
+                calls: [],
               });
             },
           ),
+        ],
+      }),
+    );
+  });
+
+  test("the universe shows the outside systems its workflows called in their last runs", async () => {
+    const path = "/workspace/automations/research-lead.workflow.js";
+    // The calls never run, since no lead asks for them; the script names them all the same.
+    const researchLead = `export default defineWorkflow({ name: "research-lead" }, async (event, step) => {
+  await step.do("research", async () => {
+    if (event.payload.deep) {
+      const page = await web.extract({ url: event.payload.url });
+      return await models.classify({ input: page, labels: ["hot", "cold"] });
+    }
+    return "skipped";
+  });
+});`;
+    const projects: { scope: BackofficeContextScope; label: string }[] = [];
+    const viewer = {
+      scope: { kind: "user", userId: "user-1", jurisdiction: null } as const,
+      label: "Ada",
+    };
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        env: { codemode: createCodemodeNodeExecutor(codemodeServer) },
+        name: "an organization's lead research reaches the web and models",
+        files: backofficeFiles.custom({
+          workspace: { "automations/research-lead.workflow.js": researchLead },
+        }),
+        setup: ({ given }) => [
+          given.organization.exists({ id: orgId, name: "Ada Labs" }),
+          given.router.route({
+            orgId,
+            id: "research-leads",
+            name: "Research leads",
+            enabled: true,
+            priority: 100,
+            trigger: { kind: "event", source: "crm", eventType: "lead.created", matcher: null },
+            action: {
+              kind: "start_workflow",
+              authority: { kind: "organization-automation", grants: [] },
+              workflowScriptPath: path,
+              instanceIdTemplate: "research-${event.id}",
+            },
+          }),
+        ],
+        steps: ({ when, then }) => [
+          then.assert("a workflow that never ran calls nothing yet", async (ctx) => {
+            assert.deepEqual(
+              (await readUniverse(ctx, { projects, viewer, read: false })).calls,
+              [],
+            );
+          }),
+          when.workflow.createInstance({
+            orgId,
+            instanceId: "research-1",
+            path,
+            event: event("lead-1", "crm", "lead.created", Date.now()),
+          }),
+          then.assert("its run names what it calls", async (ctx) => {
+            assert.deepEqual((await readUniverse(ctx, { projects, viewer, read: false })).calls, [
+              `org:org-1 workflow:${path} → models`,
+              `org:org-1 workflow:${path} → web`,
+            ]);
+          }),
         ],
       }),
     );

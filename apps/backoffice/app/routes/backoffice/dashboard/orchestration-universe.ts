@@ -18,23 +18,31 @@ import type {
 import { scopeIdentity } from "@/fragno/automation/forward-accepts";
 
 import { orchestrationEventId, type OrchestrationForward } from "./orchestration-graph";
+import {
+  ORCHESTRATION_OUTSIDE_SYSTEMS,
+  type WorkflowOutsideCall,
+} from "./orchestration-outside-systems";
 
 /** Where a scope's routes forwarded to since the universe's window began. */
 type UniverseDeliveries = readonly { routeId: string; scope: BackofficeContextScope }[];
 
+/** What the universe reads of a scope: its graph, routes, deliveries, and workflows' calls. */
+type UniverseScopeRecords = {
+  graph: OrchestrationGraph;
+  routes: readonly AutomationRouteDefinition[];
+  deliveries: UniverseDeliveries;
+  /** The outside systems its workflows call, as their last runs ran them. */
+  calls: readonly WorkflowOutsideCall[];
+};
+
 /**
  * A scope the universe reads from its own replica, as it does the organization's projects and the
- * person looking: its graph, routes, and deliveries once read, or null until then, with how far
- * reading got.
+ * person looking: what it holds once read, or null until then, with how far reading got.
  */
 export type UniverseReadScope = {
   scope: BackofficeContextScope;
   label: string;
-  read: {
-    graph: OrchestrationGraph;
-    routes: readonly AutomationRouteDefinition[];
-    deliveries: UniverseDeliveries;
-  } | null;
+  read: UniverseScopeRecords | null;
   status?: OrchestrationUniverseScopeStatus;
 };
 
@@ -197,12 +205,7 @@ export function projectOrchestrationUniverse({
   recentForwards,
 }: {
   /** The organization, which is always read: the universe opens with it. */
-  organization: {
-    scope: BackofficeContextScope;
-    graph: OrchestrationGraph;
-    routes: readonly AutomationRouteDefinition[];
-    deliveries: UniverseDeliveries;
-  };
+  organization: UniverseScopeRecords & { scope: BackofficeContextScope };
   projects: readonly UniverseReadScope[];
   /** The person looking, whose personal scope they can read, unlike other members'. */
   viewer: UniverseReadScope | null;
@@ -297,7 +300,14 @@ export function projectOrchestrationUniverse({
         ]),
       ).values(),
     ],
-    externals: [],
-    calls: [],
+    // The universe shows the systems that workflows on its planets call.
+    externals: ORCHESTRATION_OUTSIDE_SYSTEMS,
+    calls: [
+      { scope: organization.scope, read: organization },
+      ...projects,
+      ...(viewer ? [viewer] : []),
+    ].flatMap(({ scope, read }) =>
+      (read?.calls ?? []).map((call) => ({ scopeId: scopeIdentity(scope), ...call })),
+    ),
   };
 }

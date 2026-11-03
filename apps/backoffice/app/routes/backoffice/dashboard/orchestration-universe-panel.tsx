@@ -14,7 +14,9 @@ import { useClock } from "@/components/backoffice/use-clock";
 import { scopeIdentity } from "@/fragno/automation/forward-accepts";
 import { useAutomationRead, useAutomationReplica } from "@/fragno/automation/lofi/replica";
 import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
+import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 
+import { workflowOutsideCalls } from "./orchestration-outside-systems";
 import { projectOrchestrationUniverse, type UniverseReadScope } from "./orchestration-universe";
 import { dashboardBucketStarts } from "./overview";
 import { useScopeOrchestrationGraph } from "./scope-orchestration-graph";
@@ -54,6 +56,24 @@ function unreadRecords(recordErrors: readonly string[]): string | null {
 }
 
 /**
+ * The outside systems a scope's workflows call, from the scripts their last runs ran, which the
+ * replica keeps: null until read, and none, with the error, when they could not be read.
+ */
+function useWorkflowOutsideCalls(
+  replica: LofiSqliteClient | null,
+  catalog: readonly RuntimeToolWorkflowDescriptor[],
+) {
+  const programs = useAutomationRead(replica, "latestWorkflowPrograms", undefined);
+  const programsData = programs.status === "ready" ? programs.data : null;
+  const failed = programs.status === "error";
+  const calls = useMemo(
+    () => (programsData ? workflowOutsideCalls(programsData, catalog) : failed ? [] : null),
+    [programsData, failed, catalog],
+  );
+  return { calls, recordErrors: failed ? ["workflow scripts"] : [] };
+}
+
+/**
  * Reads one scope's graph, routes, and deliveries from its own replica and hands them up; it draws
  * nothing itself, so the universe can draw every planet together. The replica stays open while
  * this is mounted.
@@ -64,6 +84,7 @@ function ScopeGraphReader({
   label,
   source,
   since,
+  catalog,
   onRead,
 }: {
   scopeId: string;
@@ -71,33 +92,40 @@ function ScopeGraphReader({
   label: string;
   source: AutomationReplicaSource;
   since: number;
+  catalog: readonly RuntimeToolWorkflowDescriptor[];
   onRead: (scopeId: string, read: ScopeRead) => void;
 }) {
   const opened = useAutomationReplica(source, null);
   const read = useScopeOrchestrationGraph(opened.replica, { scope, scopeLabel: label, since });
   const deliveries = useAutomationRead(opened.replica, "recentForwardDeliveries", { since });
+  const outside = useWorkflowOutsideCalls(opened.replica, catalog);
   const error =
     opened.error ??
     (read.status === "error" ? read.message : null) ??
     (deliveries.status === "error" ? deliveries.message : null);
   // A replica still catching up would redraw the planet with every batch, so it shows once caught up.
-  const caughtUp = opened.caughtUp && read.status === "ready" && deliveries.status === "ready";
+  const caughtUp =
+    opened.caughtUp &&
+    read.status === "ready" &&
+    deliveries.status === "ready" &&
+    outside.calls !== null;
   const graph = caughtUp ? read.graph : null;
   const routes = caughtUp ? read.inputs.routes : null;
   const delivered = caughtUp ? deliveries.data : null;
+  const calls = caughtUp ? outside.calls : null;
   // A phrase rather than the list, which is a new array every render.
-  const unread = caughtUp ? unreadRecords(read.recordErrors) : null;
+  const unread = caughtUp ? unreadRecords([...read.recordErrors, ...outside.recordErrors]) : null;
   const fraction = opened.fraction;
   useEffect(() => {
     onRead(
       scopeId,
       error !== null
         ? { kind: "failed", message: error }
-        : graph && routes && delivered
-          ? { graph, routes, deliveries: delivered, unreadRecords: unread }
+        : graph && routes && delivered && calls
+          ? { graph, routes, deliveries: delivered, calls, unreadRecords: unread }
           : { kind: "loading", fraction },
     );
-  }, [scopeId, graph, routes, delivered, unread, error, fraction, onRead]);
+  }, [scopeId, graph, routes, delivered, calls, unread, error, fraction, onRead]);
   return null;
 }
 
@@ -112,10 +140,13 @@ export function OrganizationUniverse({
   replica,
   selectedScope,
   scopes,
+  runtimeToolCatalog,
 }: {
   replica: LofiSqliteClient;
   selectedScope: BackofficeScopeSelection;
   scopes: OrchestrationUniverseScopes;
+  /** The runtime tools workflows call, which name the outside systems they reach. */
+  runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
 }) {
   const now = useClock(CLOCK_TICK_MS);
   // The window start only moves when a new bucket begins, so the reads restart rarely.
@@ -130,6 +161,8 @@ export function OrganizationUniverse({
     since,
   });
   const deliveries = useAutomationRead(replica, "recentForwardDeliveries", { since });
+  const outside = useWorkflowOutsideCalls(replica, runtimeToolCatalog);
+  const organizationCalls = outside.calls;
   const readScopes = useMemo(() => {
     // The loader describes runtime scopes the person can read, never System.
     const describe = ({ label, source }: UniverseScopeSource) => {
@@ -153,7 +186,7 @@ export function OrganizationUniverse({
   const organizationInputs = organization.status === "ready" ? organization.inputs : null;
   const deliveriesData = deliveries.status === "ready" ? deliveries.data : null;
   const universe = useMemo(() => {
-    if (!organizationGraph || !organizationInputs || !deliveriesData) {
+    if (!organizationGraph || !organizationInputs || !deliveriesData || !organizationCalls) {
       return null;
     }
     const readScope = ({
@@ -170,6 +203,7 @@ export function OrganizationUniverse({
         graph: organizationGraph,
         routes: organizationInputs.routes,
         deliveries: deliveriesData,
+        calls: organizationCalls,
       },
       projects: readScopes.projects.map(readScope),
       viewer: readScopes.viewer && readScope(readScopes.viewer),
@@ -180,6 +214,7 @@ export function OrganizationUniverse({
     organizationGraph,
     organizationInputs,
     deliveriesData,
+    organizationCalls,
     readScopes,
     scopeReads,
   ]);
@@ -194,6 +229,7 @@ export function OrganizationUniverse({
         label={read.label}
         source={read.source}
         since={since}
+        catalog={runtimeToolCatalog}
         onRead={onScopeRead}
       />
     ),
@@ -222,7 +258,10 @@ export function OrganizationUniverse({
     }
   };
   if (organization.status === "ready") {
-    missed(unreadRecords(organization.recordErrors), selectedScope.label);
+    missed(
+      unreadRecords([...organization.recordErrors, ...outside.recordErrors]),
+      selectedScope.label,
+    );
   }
   for (const { scopeId, label } of [
     ...readScopes.projects,

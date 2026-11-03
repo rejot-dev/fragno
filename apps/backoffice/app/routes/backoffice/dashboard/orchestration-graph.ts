@@ -97,11 +97,16 @@ export function routeTriggerEventId(route: AutomationRouteDefinition): string {
 /** Every action except reclassify ends at a target. */
 type TargetedRouteAction = Exclude<AutomationRouteAction, { kind: "reclassify_event" }>;
 
+/** The target node of the workflow a script defines. */
+export function workflowTargetId(workflowScriptPath: string): string {
+  return `workflow:${workflowScriptPath}`;
+}
+
 /** Routes that reach the same workflow or scope share one target node. */
 export function routeTargetId(action: TargetedRouteAction): string {
   switch (action.kind) {
     case "start_workflow":
-      return `workflow:${action.workflowScriptPath}`;
+      return workflowTargetId(action.workflowScriptPath);
     case "send_workflow_event":
       return action.target.kind === "instance_id"
         ? `instance:${action.target.template}`
