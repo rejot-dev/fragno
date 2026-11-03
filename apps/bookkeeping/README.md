@@ -256,6 +256,9 @@ administration's Backoffice project, where the signed project picks the books; o
 every input names the administration as `administration` and Bookkeeping checks that it is one of
 the firm's clients'. Calls in any other scope are refused. Inputs name accounts, journals,
 customers, suppliers, and dimensions by code and amounts as decimals; `books.describe` lists them.
+Entries read as they are written: a line `entries.list` or `entries.get` gives posts unchanged, so
+an agent books a document by copying the lines of a similar entry. A line in the books' functional
+currency gives neither its currency nor a functional amount.
 
 | Access                       | Actions                                                                                                                                                          |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |

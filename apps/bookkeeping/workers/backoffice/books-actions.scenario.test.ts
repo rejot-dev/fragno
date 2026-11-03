@@ -40,6 +40,68 @@ async function practiceWithBooks(scenario: BookkeepingScenario) {
   return { ada, clientPath, books };
 }
 
+test("an entry's lines, as an agent reads them, post unchanged", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    await practiceWithBooks(scenario);
+    const project = { organization: CLIENT, project: "Analytical Engines" };
+    const charlesAgent = scenario.agent({ email: "charles@example.test" }, project);
+    const year = new Date().getUTCFullYear();
+    await charlesAgent.call("parties.create", {
+      party: { name: "Lady Byron" },
+      role: "customer",
+      code: "C001",
+      controlAccount: null,
+    });
+    await charlesAgent.call("entries.post", {
+      journal: "SAL",
+      postingDate: `${year}-03-10`,
+      reference: "INV-1",
+      description: "Invoice 1",
+      lines: [
+        { ...line("1300", "debit", "121.00", "C001"), dueDate: `${year}-04-09` },
+        line("8000", "credit", "100"),
+        line("1700", "credit", "21.00"),
+      ],
+    });
+
+    const read = await charlesAgent.call("entries.get", { journal: "SAL", number: 1 });
+    const { lines } = read.body as { lines: unknown[] };
+    expect(lines).toEqual([
+      { ...line("1300", "debit", "121.00", "C001"), dueDate: `${year}-04-09` },
+      line("8000", "credit", "100.00"),
+      line("1700", "credit", "21.00"),
+    ]);
+    expect(
+      await charlesAgent.call("entries.post", {
+        journal: "SAL",
+        postingDate: `${year}-03-11`,
+        reference: "INV-2",
+        description: "Invoice 2",
+        lines,
+      }),
+    ).toEqual({ status: 200, body: { journal: "SAL", number: 2 } });
+
+    // A line in the books' own currency takes no functional amount, and says so.
+    expect(
+      await charlesAgent.call("entries.post", {
+        journal: "SAL",
+        postingDate: `${year}-03-12`,
+        reference: "INV-3",
+        description: "Invoice 3",
+        lines: [
+          { ...line("1300", "debit", "121.00", "C001"), functionalAmount: "121.00" },
+          line("8000", "credit", "121.00"),
+        ],
+      }),
+    ).toEqual({
+      status: 422,
+      body: {
+        message: "Line 1 is in the books' functional currency, EUR: give functionalAmount null.",
+      },
+    });
+  });
+});
+
 test("people's agents keep the books through Backoffice, within what the person may do", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { ada, books } = await practiceWithBooks(scenario);
@@ -129,7 +191,7 @@ test("people's agents keep the books through Backoffice, within what the person 
         reference: "INV-1",
         postedBy: "Charles Babbage via Backoffice",
         lines: [
-          { account: "1300", amount: "121.00", party: { role: "customer", code: "C001" } },
+          { account: "1300", amount: "121.00", party: "C001" },
           { account: "8000", amount: "100.00", party: null },
           { account: "1700", amount: "21.00", party: null },
         ],

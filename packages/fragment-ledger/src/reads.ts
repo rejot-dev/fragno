@@ -573,7 +573,7 @@ function readEntries<T>(
               .joinOne("openItem", "openItem", (openItem) =>
                 openItem
                   .onIndex("idx_open_item_line", (eb) => eb("lineId", "=", eb.parent("id")))
-                  .select(["id"])
+                  .select(["id", "dueDate"])
                   .joinOne("partyAccount", "partyAccount", (partyAccount) =>
                     partyAccount
                       .onIndex("primary", (eb) => eb("id", "=", eb.parent("partyAccountId")))
@@ -625,6 +625,7 @@ function readEntries<T>(
               openItem: line.openItem && {
                 id: line.openItem.id.valueOf(),
                 partyAccountId: line.openItem.partyAccount!.id.valueOf(),
+                dueDate: line.openItem.dueDate,
               },
             })),
           };
