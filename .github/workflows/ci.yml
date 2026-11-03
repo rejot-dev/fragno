@@ -33,6 +33,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -88,6 +89,8 @@ jobs:
       # Backoffice's `test:changed` skips the slow Cloudflare project, so pull requests run it here.
       - name: Run Backoffice Cloudflare tests
         if: github.event_name == 'pull_request'
+        # Takes about a minute, but once stalled for over an hour with no output.
+        timeout-minutes: 10
         run:
           pnpm exec turbo run test:cloudflare --affected --filter=@fragno-apps/backoffice-rr
           --concurrency=80%
