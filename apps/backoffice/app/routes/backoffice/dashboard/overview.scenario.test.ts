@@ -637,6 +637,8 @@ async function readUniverse(
     projects: await Promise.all(projects.map(readScope)),
     viewer: await readScope(viewer),
     recentForwards: organization.inputs.recentForwards,
+    // Only the person looking forwards in, and they go by their own name.
+    memberNames: {},
   });
   // Forwards carried at the same moment have no order between them, so each list is sorted.
   const sorted = (lines: string[]) => [...lines].sort();

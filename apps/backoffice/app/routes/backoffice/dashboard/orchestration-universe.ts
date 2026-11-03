@@ -144,6 +144,7 @@ function memberRouteId(forward: OrchestrationForward): string {
  */
 function memberGraph(
   scope: BackofficeContextScope,
+  scopeLabel: string,
   forwards: readonly OrchestrationForward[],
   organization: OrchestrationGraph,
 ): OrchestrationGraph {
@@ -178,7 +179,7 @@ function memberGraph(
     (id): OrchestrationSource => organizationSources.get(id) ?? { id, label: id, icon: "shield" },
   );
   return {
-    scopeLabel: backofficeScopePathSegment(scope),
+    scopeLabel,
     inlets: [],
     sources,
     events: [...events.values()],
@@ -203,6 +204,7 @@ export function projectOrchestrationUniverse({
   projects,
   viewer,
   recentForwards,
+  memberNames,
 }: {
   /** The organization, which is always read: the universe opens with it. */
   organization: UniverseScopeRecords & { scope: BackofficeContextScope };
@@ -211,7 +213,13 @@ export function projectOrchestrationUniverse({
   viewer: UniverseReadScope | null;
   /** What was forwarded into the organization. */
   recentForwards: readonly OrchestrationForward[];
+  /** The names of the organization's members, by user ID, which their planets go by. */
+  memberNames: Readonly<Record<string, string>>;
 }): OrchestrationUniverse {
+  // A member the organization has no name for, such as one who left, goes by their scope.
+  const memberLabel = (scope: BackofficeContextScope) =>
+    (scope.kind === "user" ? memberNames[scope.userId] : undefined) ??
+    backofficeScopePathSegment(scope);
   const organizationId = scopeIdentity(organization.scope);
   const viewerId = viewer ? scopeIdentity(viewer.scope) : null;
   const forwards: UniverseForward[] = [
@@ -270,7 +278,12 @@ export function projectOrchestrationUniverse({
         .filter(([id]) => !(showsViewer && id === viewerId))
         .map(([id, member]) => ({
           id,
-          graph: memberGraph(member.scope, member.forwards, organization.graph),
+          graph: memberGraph(
+            member.scope,
+            memberLabel(member.scope),
+            member.forwards,
+            organization.graph,
+          ),
         })),
       // Until their scope is read, the person looking shows as the organization knows them.
       ...(showsViewer && viewer && viewerId
@@ -281,10 +294,10 @@ export function projectOrchestrationUniverse({
                 ? {
                     ...memberGraph(
                       viewer.scope,
+                      viewer.label,
                       memberForwards.get(viewerId)!.forwards,
                       organization.graph,
                     ),
-                    scopeLabel: viewer.label,
                   }
                 : null,
             ),

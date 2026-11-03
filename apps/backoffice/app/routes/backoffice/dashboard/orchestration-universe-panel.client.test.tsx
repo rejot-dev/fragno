@@ -87,7 +87,7 @@ function renderUniverse() {
     <OrganizationUniverse
       replica={"organization" as never}
       selectedScope={selectedScope}
-      scopes={{ projects: [books] as never, viewer: null, problems: [] }}
+      scopes={{ projects: [books] as never, viewer: null, memberNames: {}, problems: [] }}
       runtimeToolCatalog={[]}
     />,
   );

@@ -20,6 +20,8 @@ import type { OrchestrationUniverseScopes } from "./orchestration-universe-panel
 import { WORKFLOW_SCRIPT_PARAM, dashboardMapView } from "./path";
 
 const EMPTY_WORKFLOW_SOURCE = { script: null, scriptError: null };
+// How many members' names the universe names planets with; it shows few members as planets.
+const UNIVERSE_MEMBER_NAMES = 200;
 
 /**
  * The organization's projects and the person looking, each with where its replica is served, which
@@ -31,12 +33,18 @@ async function loadUniverseScopes(
   context: Readonly<RouterContextProvider>,
   organization: Extract<BackofficeScopeSelection, { kind: "org" }>,
 ): Promise<OrchestrationUniverseScopes> {
-  const [viewer, list] = await Promise.all([
+  const [viewer, list, members] = await Promise.all([
     loadUniverseViewer(request, context),
     loadAutomationProjectList(request, context.get(BackofficeWorkerContext), organization),
+    loadUniverseMemberNames(context, organization.organization.id),
   ]);
   if (list.kind === "failed") {
-    return { projects: [], viewer: viewer.scope, problems: [list.message, ...viewer.problems] };
+    return {
+      projects: [],
+      viewer: viewer.scope,
+      memberNames: members.names,
+      problems: [list.message, ...viewer.problems, ...members.problems],
+    };
   }
   const described = await Promise.allSettled(
     list.projects.map(async (project) => ({
@@ -51,13 +59,47 @@ async function loadUniverseScopes(
   return {
     projects: described.flatMap((result) => (result.status === "fulfilled" ? [result.value] : [])),
     viewer: viewer.scope,
+    memberNames: members.names,
     problems: [
       ...described.flatMap((result, index) =>
         result.status === "rejected" ? [`${list.projects[index]?.name} could not be read.`] : [],
       ),
       ...viewer.problems,
+      ...members.problems,
     ],
   };
+}
+
+/**
+ * The names of the organization's members, by user ID: their name, or their email without one.
+ * The oldest members come first; members past them go without, and their planets by their scope.
+ * When the directory does not answer, nobody is named, and the universe says why.
+ */
+export async function loadUniverseMemberNames(
+  context: Readonly<RouterContextProvider>,
+  organizationId: string,
+): Promise<{ names: Record<string, string>; problems: string[] }> {
+  try {
+    const { members } = await context
+      .get(BackofficeWorkerContext)
+      .runtime.objects.auth.singleton()
+      .commands.listOrganizationMembersByPage({
+        organizationId,
+        page: 1,
+        pageSize: UNIVERSE_MEMBER_NAMES,
+      });
+    return {
+      names: Object.fromEntries(members.map(({ userId, name, email }) => [userId, name || email])),
+      problems: [],
+    };
+  } catch (error) {
+    return {
+      names: {},
+      problems: [
+        `Members' names could not be read, so their planets go by their scopes: ${error instanceof Error ? error.message : String(error)}`,
+      ],
+    };
+  }
 }
 
 /** The person looking, whose personal scope they can read; none before onboarding creates it. */

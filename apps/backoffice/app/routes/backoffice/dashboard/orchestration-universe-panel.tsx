@@ -33,6 +33,8 @@ export type OrchestrationUniverseScopes = {
   projects: readonly UniverseScopeSource[];
   /** The person looking, whose personal scope they can read; null before they have one. */
   viewer: UniverseScopeSource | null;
+  /** The names of the organization's members, by user ID, for the members who forward into it. */
+  memberNames: Readonly<Record<string, string>>;
   /** What could not be described, such as a project whose backend did not answer. */
   problems: readonly string[];
 };
@@ -208,6 +210,7 @@ export function OrganizationUniverse({
       projects: readScopes.projects.map(readScope),
       viewer: readScopes.viewer && readScope(readScopes.viewer),
       recentForwards: organizationInputs.recentForwards,
+      memberNames: scopes.memberNames,
     });
   }, [
     organizationScope,
@@ -217,6 +220,7 @@ export function OrganizationUniverse({
     organizationCalls,
     readScopes,
     scopeReads,
+    scopes.memberNames,
   ]);
 
   // Scopes start reading with the universe, before the organization's graph is drawn.
