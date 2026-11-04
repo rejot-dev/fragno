@@ -73,9 +73,12 @@ know it exists. **Get started** sends them to Backoffice's sign-in, which Bookke
 [first-party branding](../backoffice/app/fragno/apps/README.md#first-party-apps) makes look like
 Bookkeeping. They enter their email and the 6-digit code Backoffice emails them in Bookkeeping's
 name; a new address gets an account. They then return here signed in, and get a local Bookkeeping
-account on their first sign-in. `backoffice:connect` registers the branding, with `/logo.svg` and
-`/help` from `public/` and `app/public/help.tsx`. The same authorization also lets Bookkeeping's
-server act for that person in their firms and clients (see [Firms and clients](#firms-and-clients)).
+account on their first sign-in. Every sign-in asks Backoffice to ask who is signing in
+(`prompt=login`), even while its own session lasts, so logging out of Bookkeeping, at `/account`,
+signs the person out as far as they can tell; Backoffice's session stays for Backoffice itself.
+`backoffice:connect` registers the branding, with `/logo.svg` and `/help` from `public/` and
+`app/public/help.tsx`. The same authorization also lets Bookkeeping's server act for that person in
+their firms and clients (see [Firms and clients](#firms-and-clients)).
 
 `pnpm --dir apps/bookkeeping backoffice:connect` sets all of these up (see
 [Registering with Backoffice](#registering-with-backoffice)). To configure them by hand, set these
@@ -232,8 +235,8 @@ Backoffice then emails the invitation in Bookkeeping's name with `invitations.se
 `/invitations/:invitationId`; the page shows the link too, to send by hand when Backoffice cannot
 email, as a local Backoffice without Resend cannot. The invited person signs in there, with
 Backoffice's sign-in page already showing the invited address; someone signed in with another
-address is offered to log out first, and Backoffice then asks them to sign in rather than return the
-other account, since the invited address is the login hint. They then join: Bookkeeping calls
+address is offered to log out first, and Backoffice then asks them to sign in, as every sign-in
+does, with the invited address as the login hint. They then join: Bookkeeping calls
 `invitations.accept`, and Backoffice checks that the invitation is for their verified address.
 Someone who signs in without the link finds their unexpired invitations on `/start`. Invitations
 made in Backoffice itself show on the members page without a link; their invitees find the

@@ -4,9 +4,8 @@ import { useState } from "react";
 import { authClient } from "./auth-client";
 
 /**
- * Ends Bookkeeping's session in this browser, then opens `then`. Backoffice's own session is not
- * affected, but signing in again with another address as the login hint still reaches Backoffice's
- * sign-in page: Backoffice asks to sign in when the hint names someone else.
+ * Ends Bookkeeping's session in this browser, then opens `then`. Backoffice's own session lasts, but
+ * signing in again asks who you are all the same (see `prompt` in `workers/auth/auth.ts`).
  */
 export function SignOutButton({ then }: { then: string }) {
   const [pending, setPending] = useState(false);

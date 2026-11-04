@@ -87,6 +87,9 @@ export class Auth extends DurableObject<CloudflareEnv> {
               tokenUrl: `${backofficeURL}/api/auth/oauth2/token`,
               userInfoUrl: `${backofficeURL}/api/auth/oauth2/userinfo`,
               tokenEndpointAuth: { method: "client_secret_basic" },
+              // Backoffice's sign-in is Bookkeeping's, so signing in asks who you are even while
+              // Backoffice's session lasts: logging out of Bookkeeping ends it for the person.
+              prompt: "login",
               // `backoffice` lets the server exchange this token for organization-bound app credentials.
               scopes: ["openid", "profile", "email", "offline_access", "backoffice"],
               // Backoffice only accepts access tokens issued for its own resource.
