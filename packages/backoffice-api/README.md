@@ -57,8 +57,7 @@ transfer APIs will replace it for large files. Errors return `{ error: { code, m
 
 `pi.agent.watch` follows an agent's conversation and queue live over a WebSocket, which is not an
 operation: open it with `GET /api/<version>/scopes/<scope>/pi.agent.watch?agentName=<agentName>`, an
-upgrade, and a bearer token. It needs `pi.read` in the scope. Since browsers cannot send a
-WebSocket's headers, it is for servers:
+upgrade, and a bearer token. It needs `pi.read` in the scope. A server connects with its token:
 
 ```ts
 import { applyImmutable, type Op } from "@earendil-works/chord/delta";
@@ -90,6 +89,26 @@ as one with an invalid credential, answers with an error like an operation's. A 
 an agent that has had no turns, and a name no agent has close the socket with
 `PI_AGENT_WATCH_REFUSED` and the reason. The credential is only checked on connecting, so an open
 socket outlives it.
+
+Browsers cannot send a WebSocket's headers, so an app's server asks `pi.agent.watchTicket` for a
+ticket, and its page connects with `ticket=<ticket>` instead of the bearer token:
+
+```ts
+// On the app's server, with the credential it acts for the person with:
+const { ticket } = await backoffice.call(scope, "pi.agent.watchTicket", { agentName: "assistant" });
+
+// In the browser:
+const query = new URLSearchParams({ agentName: "assistant", ticket });
+const socket = new WebSocket(
+  `wss://backoffice.example/api/v0/scopes/${backofficeScopePathSegment(scope)}/pi.agent.watch?${query}`,
+);
+```
+
+The ticket opens that agent's socket with the permissions of the credential that asked for it,
+checked again on connecting, and only within a minute: reconnecting needs a new one. It opens the
+socket only from pages on the app's registered OAuth redirect URIs' origins, or from clients that
+send no origin, such as servers. A ticket that has expired or is not one answers
+`authentication_failed`; one for another agent or scope, or used from another origin, `forbidden`.
 
 ## Client
 

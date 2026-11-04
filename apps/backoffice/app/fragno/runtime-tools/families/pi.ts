@@ -90,6 +90,9 @@ const parseAgentActivity = defineCliArgsParser<{ agentName: string; subagent?: s
   "pi.agent.activity",
   { agentName: { option: "agent", required: true }, subagent: {} },
 );
+const parseAgentWatchTicket = defineCliArgsParser<PiManagerAgentInput>("pi.agent.watchTicket", {
+  agentName: { option: "agent", required: true },
+});
 const parseAgentExport = defineCliArgsParser<{ agentName: string; out: string; history: boolean }>(
   "pi.agent.export",
   {
@@ -543,6 +546,36 @@ const agentActivityTool = defineBackofficeRuntimeTool({
   },
 });
 
+const agentWatchTicketTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.watchTicket"),
+  namespace: "pi",
+  name: "getWatchTicket",
+  execute: async (input, context: PiToolContext) =>
+    await requirePiManagerRuntime(context.runtimes.pi).issueWatchTicket(input),
+  adapters: {
+    bash: {
+      command: "pi.agent.watchTicket",
+      help: {
+        summary:
+          "pi.agent.watchTicket prints a one-minute ticket that opens pi.agent.watch for an agent without a bearer credential.",
+        options: [
+          {
+            name: "agent",
+            required: true,
+            valueRequired: true,
+            valueName: "agent-name",
+            description: "Agent name",
+          },
+        ],
+        examples: ["pi.agent.watchTicket --agent assistant"],
+      },
+      parse: parseAgentWatchTicket,
+      outputOptions: jsonByDefaultOutputOptions,
+      format: (data) => ({ data }),
+    },
+  },
+});
+
 const agentExportTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.export"),
   namespace: "pi",
@@ -606,6 +639,7 @@ export const piRuntimeTools = [
   agentGetTool,
   agentMessagesTool,
   agentActivityTool,
+  agentWatchTicketTool,
   agentExportTool,
   agentCreateTool,
   agentUpdateTool,
