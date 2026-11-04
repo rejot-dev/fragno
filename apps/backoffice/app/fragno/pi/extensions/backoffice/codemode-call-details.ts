@@ -1,4 +1,4 @@
-import { codemodeCallsSchema, type CodemodeCalls } from "@fragno-dev/backoffice-api/v0/pi";
+import type { CodemodeCalls } from "@fragno-dev/backoffice-api/v0/pi";
 
 import type { CodemodeLoggedToolCall } from "@/fragno/codemode/codemode-tool-call-observer";
 
@@ -36,16 +36,4 @@ export function codemodeCallsDetail(
     }),
     omitted: Math.max(0, calls.length - MAX_CALLS),
   };
-}
-
-/**
- * The calls a tool's details recorded, final or while it runs: a codemode run's. Other tools, and
- * codemode results from before calls were kept with them, have none.
- */
-export function getCodemodeCallsDetail(details: unknown): CodemodeCalls | null {
-  if (!details || typeof details !== "object" || !("calls" in details)) {
-    return null;
-  }
-  const parsed = codemodeCallsSchema.safeParse(details.calls);
-  return parsed.success ? parsed.data : null;
 }

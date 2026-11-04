@@ -23,6 +23,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { WorkersAiBinding } from "@fragno-dev/cloudflare-fragment/workers-ai";
 import { sanitizeToolName } from "@fragno-dev/codemode/runtime-api";
+import { renderPiNotificationRequest } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
@@ -96,7 +97,6 @@ import {
 import {
   piNotificationInput,
   piNotificationRequestId,
-  renderPiNotificationRequest,
 } from "@/fragno/pi/agent/pi-agent-notification-entry";
 import { piAgentTurnCompletedEvent } from "@/fragno/pi/agent/pi-agent-turn-events";
 import {

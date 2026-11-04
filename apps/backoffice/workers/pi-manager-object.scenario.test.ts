@@ -8,6 +8,10 @@ import type { AutomationRouteCreateInput } from "@fragno-dev/backoffice-api/v0/a
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiManagerAgent, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
 import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  PI_NOTIFICATION_ENTRY_KIND,
+  renderPiNotificationRequest,
+} from "@fragno-private/backoffice-conversation/format/notification-entry";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
@@ -56,10 +60,6 @@ import {
 import { BUILT_IN_PI_AGENT_DEFINITIONS } from "@/fragno/pi/agent/agent-definitions";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import type { PiAgentViewFrame } from "@/fragno/pi/agent/pi-agent-contract";
-import {
-  PI_NOTIFICATION_ENTRY_KIND,
-  renderPiNotificationRequest,
-} from "@/fragno/pi/agent/pi-agent-notification-entry";
 
 import {
   createPiScenarioDependencies,

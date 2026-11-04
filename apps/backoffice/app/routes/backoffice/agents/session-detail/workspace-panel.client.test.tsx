@@ -2,11 +2,11 @@
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import type { SessionWorkspaceItem } from "@fragno-private/backoffice-chat/workspace/workspace-model";
 import { useState } from "react";
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import type { SessionWorkspaceItem } from "./workspace-model";
 import { SessionWorkspacePanel } from "./workspace-panel";
 
 afterEach(cleanup);

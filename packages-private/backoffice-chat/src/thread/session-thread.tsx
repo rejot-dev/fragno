@@ -1,3 +1,9 @@
+import type {
+  PiCompactionMessageMetadata,
+  PiConversationQueueLabel,
+  PiNotificationsMessageMetadata,
+  PiResetMessageMetadata,
+} from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
 import {
   ChatAttachmentDropZone,
   ChatComposerAttachButton,
@@ -39,25 +45,14 @@ import {
   useThreadViewport,
 } from "@assistant-ui/react";
 
-import {
-  SubagentBatchMessage,
-  SubagentsAtWork,
-  type PiSubagentBatchMessageMetadata,
-} from "../agent-subagent-batches";
-import type {
-  PiCompactionMessageMetadata,
-  PiConversationQueueLabel,
-  PiNotificationsMessageMetadata,
-  PiResetMessageMetadata,
-} from "./assistant-runtime";
+import { useChatExtensions } from "../extensions";
 import {
   AssistantMessage,
   CompactionMessage,
   NotificationsMessage,
   ResetMessage,
   UserMessage,
-} from "./messages";
-import { SessionWorkflowInputRequests } from "./session-workflow";
+} from "../messages/messages";
 
 const OUT_OF_CONTEXT_HISTORY =
   "Earlier messages are still visible but out of context for the agent due to compaction or a reset.";
@@ -278,6 +273,7 @@ export function SessionThread({
   /** Null where the agent cannot read uploaded files. */
   attachments: ComposerAttachments | null;
 }) {
+  const { composerHeader } = useChatExtensions();
   const disabled = disabledReason !== null;
   // Clearing takes no text, so nothing can be written for it.
   // Compaction instructions and clearing say nothing to the agent, so carry no files.
@@ -354,13 +350,7 @@ export function SessionThread({
                   {({ message }) => {
                     const systemKind =
                       message.role === "system"
-                        ? (
-                            message.metadata.custom as
-                              | PiCompactionMessageMetadata
-                              | PiNotificationsMessageMetadata
-                              | PiResetMessageMetadata
-                              | PiSubagentBatchMessageMetadata
-                          ).kind
+                        ? (message.metadata.custom as ChatSystemMessageMetadata).kind
                         : null;
                     // A context that starts at a reset needs one boundary, not the reset's marker too.
                     if (message.id === activeContextStartMessageId && systemKind === "reset") {
@@ -419,8 +409,7 @@ export function SessionThread({
               <ThreadPrimitive.ViewportFooter asChild>
                 <ChatViewportFooter alert={error}>
                   <ScrollToLatest />
-                  <SubagentsAtWork />
-                  <SessionWorkflowInputRequests />
+                  {composerHeader}
                   <ComposerPrimitive.Root
                     onSubmit={(event) => {
                       if (composerAction === "message") {
@@ -578,22 +567,17 @@ export function SessionThread({
   );
 }
 
-/**
- * System messages are compactions, resets, events, or subagent batches; their metadata names which.
- */
-function SystemMessage({
-  kind,
-}: {
-  kind: (
-    | PiCompactionMessageMetadata
-    | PiNotificationsMessageMetadata
-    | PiResetMessageMetadata
-    | PiSubagentBatchMessageMetadata
-  )["kind"];
-}) {
+/** The chat's own system messages, or those of a kind the host adds, such as subagent batches. */
+type ChatSystemMessageMetadata =
+  | PiCompactionMessageMetadata
+  | PiNotificationsMessageMetadata
+  | PiResetMessageMetadata
+  | { kind: string };
+
+/** System messages are compactions, resets, events, or the host's; their metadata names which. */
+function SystemMessage({ kind }: { kind: ChatSystemMessageMetadata["kind"] }) {
+  const { systemMessages } = useChatExtensions();
   switch (kind) {
-    case "subagents":
-      return <SubagentBatchMessage />;
     case "notifications":
       return <NotificationsMessage />;
     case "compaction":
@@ -601,5 +585,9 @@ function SystemMessage({
     case "reset":
       return <ResetMessage />;
   }
-  throw new Error("Unsupported system message kind.");
+  const HostMessage = systemMessages[kind];
+  if (HostMessage === undefined) {
+    throw new Error("Unsupported system message kind.");
+  }
+  return <HostMessage />;
 }

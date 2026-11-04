@@ -4,9 +4,8 @@ import {
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { WorkflowTerminalHookPayload } from "@fragno-dev/workflows/workflow";
+import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import { z } from "zod";
-
-import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
 
 /**
  * Where a codemode workflow reports when it ends: a completion event for the workflow that waits on

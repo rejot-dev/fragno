@@ -1,11 +1,21 @@
-import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
+import type { CodemodeRun } from "@fragno-private/backoffice-conversation/format/codemode-result";
+import type {
+  PiAgentNotification,
+  PiNotificationReference,
+} from "@fragno-private/backoffice-conversation/format/notification-entry";
+import {
+  notificationRequestLabel,
+  type PiAssistantMessageMetadata,
+  type PiCompactionMessageMetadata,
+  type PiNotificationsMessageMetadata,
+  type PiUserMessageMetadata,
+} from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
+import { useMarkdownText } from "@fragno-private/backoffice-ui/markdown-text";
 import {
   ChatActivity,
   ChatActivityStep,
   type ChatActivityStatus,
 } from "@fragno-private/design-system/agents/chat-activity";
-import { ChatMessageAttachments } from "@fragno-private/design-system/agents/chat-attachment";
 import {
   ChatEventDisclosure,
   ChatEventDivider,
@@ -25,41 +35,28 @@ import { Fragment } from "react";
 
 import { MessagePrimitive, useAuiState } from "@assistant-ui/react";
 
-import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
-import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
-import { FileScopeProvider, useFileScope } from "@/components/backoffice/file-scope";
-import { workflowCompletionFromNotification } from "@/fragno/automation/workflow-reply";
-import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
-import type { PiNotificationReference } from "@/fragno/pi/agent/pi-agent-notification-entry";
-import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
-
-import { sentAttachmentItems } from "../agent-attachments";
-import {
-  ToolCallSubagents,
-  useSubagentReports,
-  type SubagentReport,
-} from "../agent-subagent-batches";
-import { agentTurn, liveHeadline, type AgentTurnStep, type ToolCallPart } from "./agent-turn";
-import {
-  notificationRequestLabel,
-  type PiAssistantMessageMetadata,
-  type PiCompactionMessageMetadata,
-  type PiNotificationsMessageMetadata,
-  type PiUserMessageMetadata,
-} from "./assistant-runtime";
-import { MarkdownText, MessageImage } from "./message-content";
-import { ResultContent } from "./result-content";
-import { SessionWorkflow, useSessionRun } from "./session-workflow";
+import { useChatExtensions, type ChatSubagentReport } from "../extensions";
 import {
   ToolCallStep,
   toolCallPresentation,
   toolHeadline,
   toolWorkspaceOptions,
   type ToolCallPresentation,
-} from "./tool-call";
-import { ToolWorkspaceSelector, type ToolWorkspaceSelectorOption } from "./tool-workspace-selector";
+} from "../tools/tool-call";
+import {
+  ToolWorkspaceSelector,
+  type ToolWorkspaceSelectorOption,
+} from "../workspace/tool-workspace-selector";
+import { useSessionWorkspaceNavigation } from "../workspace/workspace-context";
+import { agentTurn, liveHeadline, type AgentTurnStep, type ToolCallPart } from "./agent-turn";
+import { MessageImage } from "./markdown";
 import { turnTranscript } from "./turn-transcript";
-import { useSessionWorkspaceNavigation } from "./workspace-context";
+
+/** A message's text, as the host renders Markdown. */
+function MarkdownTextPart({ text }: { text: string }) {
+  const MarkdownText = useMarkdownText();
+  return <MarkdownText text={text} />;
+}
 
 export function UserMessage() {
   const createdAt = useAuiState((state) => state.message.createdAt);
@@ -68,20 +65,20 @@ export function UserMessage() {
   );
   // A message of only files has no text to show.
   const written = useAuiState((state) => state.message.parts.length > 0);
-  const scope = useFileScope();
+  const { UserAttachments } = useChatExtensions();
 
   return (
     <MessagePrimitive.Root asChild>
       <ChatUserMessage
         time={createdAt ?? null}
         attachments={
-          scope === null || attachments.length === 0 ? null : (
-            <ChatMessageAttachments attachments={sentAttachmentItems(scope, attachments)} />
+          UserAttachments === null || attachments.length === 0 ? null : (
+            <UserAttachments attachments={attachments} />
           )
         }
       >
         {written ? (
-          <MessagePrimitive.Parts components={{ Text: MarkdownText, Image: MessageImage }} />
+          <MessagePrimitive.Parts components={{ Text: MarkdownTextPart, Image: MessageImage }} />
         ) : null}
       </ChatUserMessage>
     </MessagePrimitive.Root>
@@ -109,6 +106,8 @@ export function AssistantMessage({
   const parts = useAuiState((state) => state.message.parts);
   const running = useAuiState((state) => state.message.status?.type === "running");
   const navigation = useSessionWorkspaceNavigation();
+  const { WorkflowRun, ToolCallFollowUps } = useChatExtensions();
+  const MarkdownText = useMarkdownText();
 
   const segments = agentTurn(parts, running);
   const turn = segments.map((segment) =>
@@ -290,12 +289,19 @@ export function AssistantMessage({
                     ))}
                   </ChatActivity>
                 )}
-                {segment.workflowRuns.map((run) => (
-                  <SessionWorkflow key={run.instanceId} run={run} />
-                ))}
-                {segment.tools.map((tool) => (
-                  <ToolCallSubagents key={tool.part.toolCallId} toolCallId={tool.part.toolCallId} />
-                ))}
+                {WorkflowRun === null
+                  ? null
+                  : segment.workflowRuns.map((run) => (
+                      <WorkflowRun key={run.instanceId} run={run} />
+                    ))}
+                {ToolCallFollowUps === null
+                  ? null
+                  : segment.tools.map((tool) => (
+                      <ToolCallFollowUps
+                        key={tool.part.toolCallId}
+                        toolCallId={tool.part.toolCallId}
+                      />
+                    ))}
               </Fragment>
             );
           })}
@@ -339,8 +345,8 @@ function runsLastShowing(tools: readonly TurnTool[]) {
 }
 
 /** A run shown more than once in a list is one card, where it was shown last. */
-function lastShownRuns(runs: readonly WorkflowRunReference[]) {
-  const last = new Map<string, WorkflowRunReference>();
+function lastShownRuns(runs: readonly CodemodeRun[]) {
+  const last = new Map<string, CodemodeRun>();
   for (const run of runs) {
     last.delete(run.instanceId);
     last.set(run.instanceId, run);
@@ -359,6 +365,7 @@ type TurnTool = {
 };
 
 function TurnStep({ step, tools }: { step: AgentTurnStep; tools: ReadonlyMap<string, TurnTool> }) {
+  const MarkdownText = useMarkdownText();
   if (step.kind === "thought") {
     return (
       <ChatActivityStep
@@ -414,6 +421,7 @@ export function CompactionMessage() {
   const summary = useAuiState((state) =>
     state.message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("\n"),
   );
+  const MarkdownText = useMarkdownText();
 
   return (
     <MessagePrimitive.Root asChild>
@@ -472,6 +480,7 @@ function NotificationsLine({
   handling: boolean;
   time: Date | null;
 }) {
+  const { useSubagentReports, NotificationLine } = useChatExtensions();
   const reports = useSubagentReports(notifications);
   const [first] = notifications;
   if (first === undefined || handling) {
@@ -525,7 +534,7 @@ function notificationKey({ routeId, event }: PiAgentNotification) {
 /** "2 subagents finished", or "3 notifications" for events of different kinds. */
 function notificationsTitle(
   notifications: readonly PiAgentNotification[],
-  reports: readonly (SubagentReport | null)[],
+  reports: readonly (ChatSubagentReport | null)[],
 ) {
   const outcomes = new Set(reports.map((report) => report?.outcome ?? null));
   if (notifications.length === 1) {
@@ -542,7 +551,7 @@ function notificationsTitle(
 }
 
 /** A subagent's report, which leads to its card rather than repeat its answer. */
-function SubagentReportLine({ report, time }: { report: SubagentReport; time: Date | null }) {
+function SubagentReportLine({ report, time }: { report: ChatSubagentReport; time: Date | null }) {
   const marker =
     report.outcome === "finished"
       ? "live"
@@ -565,89 +574,5 @@ function SubagentReportLine({ report, time }: { report: SubagentReport; time: Da
       action="Show"
       onShow={report.show}
     />
-  );
-}
-
-/**
- * An event delivered to the agent; expanding it shows the event's subject and payload. A
- * workflow's completion opens on its output when the output is an interface.
- */
-function NotificationLine({
-  notification,
-  time,
-}: {
-  notification: PiAgentNotification;
-  time: Date | null;
-}) {
-  const { resolvedScope, resolveScope } = useCurrentBackofficeContext();
-  const agentScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
-  const completion = workflowCompletionFromNotification(notification.event, agentScope);
-  // The conversation's runs are the agent's scope's; a run elsewhere may share an instance ID.
-  const local = completion !== null && backofficeContextScopesEqual(completion.scope, agentScope);
-  const run = useSessionRun(local ? completion.instanceId : null);
-  const completionUi = completion === null ? null : parseBackofficeUiResult(completion.output);
-  const output =
-    completion !== null && completionUi !== null && completionUi.kind !== "ordinary"
-      ? {
-          parsed: completionUi,
-          value: completion.output,
-          // The run's files are in the scope it ran in.
-          fileScope: resolveScope(completion.scope),
-        }
-      : null;
-  const title = `${notification.event.source} · ${notification.event.eventType}`;
-
-  // The run's card above holds its output, so the event leads back to it rather than repeat it.
-  if (completion !== null && run !== null) {
-    return (
-      <ChatEventLink
-        marker="live"
-        title={title}
-        note={completion.workflowName}
-        time={time}
-        action={output === null ? "View run" : "View result"}
-        onShow={run.show}
-      />
-    );
-  }
-
-  return (
-    <ChatEventDisclosure
-      defaultOpen={output !== null}
-      marker="notification"
-      title={title}
-      note={
-        completion !== null
-          ? completion.workflowName
-          : notification.routeId === null
-            ? null
-            : `via ${notification.routeId}`
-      }
-      time={time}
-    >
-      {output !== null ? (
-        <FileScopeProvider scope={output.fileScope}>
-          <ResultContent parsedValue={output.parsed} showRawValue={false} value={output.value}>
-            {null}
-          </ResultContent>
-        </FileScopeProvider>
-      ) : (
-        <>
-          <p className="mb-2 text-[10px] text-[var(--bo-muted-2)]">
-            Event {notification.event.id},{" "}
-            {notification.routeId === null
-              ? "addressed to this agent."
-              : "delivered by an automation route."}
-          </p>
-          <pre className="overflow-x-auto text-xs leading-5 whitespace-pre-wrap text-[var(--bo-muted)]">
-            {JSON.stringify(
-              { subject: notification.event.subject, payload: notification.event.payload },
-              null,
-              2,
-            )}
-          </pre>
-        </>
-      )}
-    </ChatEventDisclosure>
   );
 }

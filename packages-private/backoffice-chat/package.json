@@ -1,0 +1,61 @@
+{
+  "name": "@fragno-private/backoffice-chat",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The chat with a Backoffice agent: the thread, turns, tool calls, and composer that show its conversation, for Backoffice and the apps that embed it.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages-private/backoffice-chat"
+  },
+  "type": "module",
+  "exports": {
+    "./extensions": "./src/extensions.tsx",
+    "./messages/agent-turn": "./src/messages/agent-turn.ts",
+    "./messages/markdown": "./src/messages/markdown.tsx",
+    "./messages/messages": "./src/messages/messages.tsx",
+    "./styles.css": "./src/styles.css",
+    "./thread/display-options": "./src/thread/display-options.tsx",
+    "./thread/session-thread": "./src/thread/session-thread.tsx",
+    "./tools/result-content": "./src/tools/result-content.tsx",
+    "./workspace/workspace-context": "./src/workspace/workspace-context.tsx",
+    "./workspace/workspace-model": "./src/workspace/workspace-model.ts"
+  },
+  "scripts": {
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@assistant-ui/react": "^0.15.1",
+    "@earendil-works/pi-durable": "1.4.0",
+    "@fragno-dev/backoffice-api": "workspace:*",
+    "@fragno-private/backoffice-conversation": "workspace:*",
+    "@fragno-private/backoffice-ui": "workspace:*",
+    "@fragno-private/design-system": "workspace:*",
+    "streamdown": "^2.5.0"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "happy-dom": "^20.3.3",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router": "^8.2.0",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router": "^8.0.0"
+  }
+}

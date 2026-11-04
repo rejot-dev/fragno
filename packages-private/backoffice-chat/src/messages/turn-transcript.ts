@@ -1,9 +1,9 @@
+import { normalizePiContent } from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
 import { formatActivityDuration } from "@fragno-private/design-system/agents/chat-activity";
 
+import { formatJson, formatResultValue, getCodeArgument } from "../tools/tool-arguments";
+import { toolCallPresentation } from "../tools/tool-call";
 import type { AgentTurnSegment, ToolCallPart } from "./agent-turn";
-import { normalizePiContent } from "./assistant-runtime";
-import { formatJson, formatResultValue, getCodeArgument } from "./tool-arguments";
-import { toolCallPresentation } from "./tool-call";
 
 /**
  * A settled turn as Markdown, for pasting into an issue or another chat: every thought, tool

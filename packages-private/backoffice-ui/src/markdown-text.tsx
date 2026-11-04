@@ -1,6 +1,6 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
 
-type MarkdownTextComponent = ComponentType<{ text: string }>;
+type MarkdownTextComponent = ComponentType<{ text: string; className?: string }>;
 
 /** Outside Backoffice, such as in Storybook, Markdown shows as its source text. */
 function PlainMarkdownText({ text }: { text: string }) {

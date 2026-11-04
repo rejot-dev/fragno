@@ -1,12 +1,12 @@
-import type { BackofficeUiParseResult } from "@fragno-private/backoffice-ui/result";
-import { ScrollablePre } from "@fragno-private/design-system/data/scrollable-pre";
-
 import {
   normalizePiContent,
   type PiContentBlock,
   type ToolResultMessage,
-} from "./assistant-runtime";
-import { MessageImage } from "./message-content";
+} from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
+import type { BackofficeUiParseResult } from "@fragno-private/backoffice-ui/result";
+import { ScrollablePre } from "@fragno-private/design-system/data/scrollable-pre";
+
+import { MessageImage } from "../messages/markdown";
 import { RawValueDisclosure, ResultContent } from "./result-content";
 import { formatResultValue } from "./tool-arguments";
 

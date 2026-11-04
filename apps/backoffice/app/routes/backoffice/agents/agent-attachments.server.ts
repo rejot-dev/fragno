@@ -1,14 +1,14 @@
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  PI_AGENT_MAX_ATTACHMENTS,
+  piAgentAttachmentsKeyPrefix,
+  type PiAgentAttachment,
+} from "@fragno-private/backoffice-conversation/format/prompt-attachments";
 import { absoluteFilePathSchema } from "@fragno-private/backoffice-ui/absolute-file-path";
 import type { RouterContextProvider } from "react-router";
 import { z } from "zod";
 
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import {
-  PI_AGENT_MAX_ATTACHMENTS,
-  piAgentAttachmentsKeyPrefix,
-  type PiAgentAttachment,
-} from "@/fragno/pi/agent/pi-agent-attachments";
 import { throwOnRouteRuntimeError } from "@/fragno/runtime-tools/runtime-errors";
 import { createUploadRouteCaller } from "@/fragno/upload-server";
 import { openLargeFiles } from "@/routes/backoffice/files/large-files.server";

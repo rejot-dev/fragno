@@ -1,4 +1,11 @@
 import {
+  getCodemodeResultDetails,
+  isCodemodeTool,
+  type CodemodeResultDetails,
+  getCodemodeCallsDetail,
+} from "@fragno-private/backoffice-conversation/format/codemode-result";
+import type { PiToolCallArtifact } from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
+import {
   parseBackofficeUiResult,
   type BackofficeUiParseResult,
 } from "@fragno-private/backoffice-ui/result";
@@ -15,21 +22,16 @@ import type { IconName } from "@fragno-private/design-system/icon";
 import { LabeledSection } from "@fragno-private/design-system/layout/labeled-section";
 import { useState } from "react";
 
-import { getCodemodeCallsDetail } from "@/fragno/pi/extensions/backoffice/codemode-call-details";
-
-import type { ToolCallPart } from "./agent-turn";
-import type { PiToolCallArtifact } from "./assistant-runtime";
+import type { ToolCallPart } from "../messages/agent-turn";
 import {
-  getCodemodeResultDetails,
-  isCodemodeTool,
-  type CodemodeResultDetails,
-} from "./codemode-result";
+  ToolWorkspaceSelector,
+  type ToolWorkspaceSelectorOption,
+} from "../workspace/tool-workspace-selector";
+import type { SessionWorkspaceNavigation } from "../workspace/workspace-context";
+import { generatedUiWorkspaceId } from "../workspace/workspace-model";
 import { getCodeArgument, formatJson } from "./tool-arguments";
 import { ToolResultContent } from "./tool-result-content";
 import { ToolArgumentsBlock } from "./tool-result-details";
-import { ToolWorkspaceSelector, type ToolWorkspaceSelectorOption } from "./tool-workspace-selector";
-import type { SessionWorkspaceNavigation } from "./workspace-context";
-import { generatedUiWorkspaceId } from "./workspace-model";
 
 const ordinaryResultPresentation: BackofficeUiParseResult = { kind: "ordinary" };
 

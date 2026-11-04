@@ -2,6 +2,12 @@ import { BLOB_MAX_SIZE_BYTES } from "@fragno-dev/backoffice-api/v0/blobs";
 import { piAgentPermissionGrantRequirements } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { STATE_FILE_MAX_BYTES } from "@fragno-dev/backoffice-api/v0/state";
+import {
+  PI_AGENT_MAX_ATTACHMENTS,
+  piAgentAttachmentsKeyPrefix,
+  type PiAgentAttachment,
+  type PiAgentAttachmentLocation,
+} from "@fragno-private/backoffice-conversation/format/prompt-attachments";
 import type {
   ChatComposerAttachmentItem,
   ChatMessageAttachmentItem,
@@ -13,12 +19,6 @@ import {
   backofficeRuntimeScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
-import {
-  PI_AGENT_MAX_ATTACHMENTS,
-  piAgentAttachmentsKeyPrefix,
-  type PiAgentAttachment,
-  type PiAgentAttachmentLocation,
-} from "@/fragno/pi/agent/pi-agent-attachments";
 import { createScopedUploadHelpers } from "@/fragno/upload-client";
 import { workspaceFileName } from "@/lib/workspace-file-name";
 import { discardLargeFile, uploadLargeFile } from "@/routes/backoffice/files/large-file-upload";

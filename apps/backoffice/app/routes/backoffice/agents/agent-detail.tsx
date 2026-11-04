@@ -1,4 +1,8 @@
 import type { PiManagerAgent } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  createSessionWorkspaceState,
+  type SessionWorkspaceStateUpdate,
+} from "@fragno-private/backoffice-chat/workspace/workspace-model";
 import { PaneMessage } from "@fragno-private/design-system/feedback/pane-message";
 import { useCallback, type ReactNode } from "react";
 import { useOutletContext, type ShouldRevalidateFunctionArgs } from "react-router";
@@ -19,10 +23,6 @@ import {
   resetPiManagerAgent,
   stopPiManagerAgent,
 } from "./data";
-import {
-  createSessionWorkspaceState,
-  type SessionWorkspaceStateUpdate,
-} from "./session-detail/workspace-model";
 
 export async function action(args: Route.ActionArgs): Promise<PiAgentActionData> {
   const { request, params, context } = args;

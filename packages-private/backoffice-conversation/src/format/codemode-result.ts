@@ -1,15 +1,17 @@
-import type { CodemodeCalls } from "@fragno-dev/backoffice-api/v0/pi";
+import { codemodeCallsSchema, type CodemodeCalls } from "@fragno-dev/backoffice-api/v0/pi";
 
-import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
-import { getCodemodeCallsDetail } from "@/fragno/pi/extensions/backoffice/codemode-call-details";
-import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
+/**
+ * A workflow run a codemode program started or showed. Saved and inline workflows run on the same
+ * codemode host, so a run is only its instance.
+ */
+export type CodemodeRun = { instanceId: string };
 
 export type CodemodeResultDetails = {
   hasResult: boolean;
   logs: string[];
   result: unknown;
   /** The run an inline workflow started, then the saved runs the program showed. */
-  runs: WorkflowRunReference[];
+  runs: CodemodeRun[];
   /** Null for results recorded before calls were kept with them. */
   calls: CodemodeCalls | null;
 };
@@ -39,7 +41,7 @@ export function getCodemodeResultDetails(details: unknown): CodemodeResultDetail
   };
 }
 
-function parseShownRuns(value: unknown): WorkflowRunReference[] {
+function parseShownRuns(value: unknown): CodemodeRun[] {
   if (value == null) {
     return [];
   }
@@ -49,8 +51,7 @@ function parseShownRuns(value: unknown): WorkflowRunReference[] {
   return value.map((run: unknown) => parseWorkflowRunReference(run, "shownRuns"));
 }
 
-// Saved and inline workflows run on the same codemode host, so a handle is only its instance.
-function parseWorkflowRunReference(value: unknown, field: string): WorkflowRunReference {
+function parseWorkflowRunReference(value: unknown, field: string): CodemodeRun {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw invalidWorkflowRunReferenceError(field);
   }
@@ -60,11 +61,23 @@ function parseWorkflowRunReference(value: unknown, field: string): WorkflowRunRe
     throw invalidWorkflowRunReferenceError(field);
   }
 
-  return { workflowName: CODEMODE_WORKFLOW, instanceId: candidate.instanceId };
+  return { instanceId: candidate.instanceId };
 }
 
 function invalidWorkflowRunReferenceError(field: string) {
   return new TypeError(
     `Invalid codemode result details.${field}: expected a non-empty instanceId string`,
   );
+}
+
+/**
+ * The calls a tool's details recorded, final or while it runs: a codemode run's. Other tools, and
+ * codemode results from before calls were kept with them, have none.
+ */
+export function getCodemodeCallsDetail(details: unknown): CodemodeCalls | null {
+  if (!details || typeof details !== "object" || !("calls" in details)) {
+    return null;
+  }
+  const parsed = codemodeCallsSchema.safeParse(details.calls);
+  return parsed.success ? parsed.data : null;
 }

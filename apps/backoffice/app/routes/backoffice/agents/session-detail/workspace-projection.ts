@@ -1,12 +1,17 @@
-import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
-
+import {
+  generatedUiWorkspaceId,
+  type SessionWorkspaceItem,
+} from "@fragno-private/backoffice-chat/workspace/workspace-model";
+import {
+  getCodemodeResultDetails,
+  isCodemodeTool,
+} from "@fragno-private/backoffice-conversation/format/codemode-result";
 import type {
   PiConversationMessage,
   PiDraftAgentMessage,
   ToolResultMessage,
-} from "./assistant-runtime";
-import { getCodemodeResultDetails, isCodemodeTool } from "./codemode-result";
-import { generatedUiWorkspaceId, type SessionWorkspaceItem } from "./workspace-model";
+} from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
+import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 
 export function projectSessionWorkspaceItems({
   draftAgentMessage,

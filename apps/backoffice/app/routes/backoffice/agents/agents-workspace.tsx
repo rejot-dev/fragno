@@ -1,3 +1,9 @@
+import {
+  createSessionWorkspaceState,
+  type SessionWorkspaceState,
+  type SessionWorkspaceStateBySession,
+  type SessionWorkspaceStateUpdate,
+} from "@fragno-private/backoffice-chat/workspace/workspace-model";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Outlet } from "react-router";
 
@@ -8,12 +14,6 @@ import { useAutomationRead, useCurrentAutomationReplica } from "@/fragno/automat
 
 import { dashboardBucketStarts } from "../dashboard/overview";
 import type { PiAgentDirectoryState, PiAgentsOutletContext } from "./agent-types";
-import {
-  createSessionWorkspaceState,
-  type SessionWorkspaceState,
-  type SessionWorkspaceStateBySession,
-  type SessionWorkspaceStateUpdate,
-} from "./session-detail/workspace-model";
 import { SessionListSplit } from "./session-list-split";
 import type { PiLayoutContext } from "./shared";
 

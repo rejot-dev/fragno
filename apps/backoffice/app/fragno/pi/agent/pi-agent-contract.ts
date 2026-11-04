@@ -1,6 +1,6 @@
 import type { Op } from "@earendil-works/chord/delta";
 import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
-import { automationEventSchema, type AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type {
   PiAgentActivity,
   PiAgentConfig,
@@ -12,6 +12,10 @@ import type {
 import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { backofficePermissionRequirementSchema } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  piAgentNotificationSchema,
+  type PiAgentNotification,
+} from "@fragno-private/backoffice-conversation/format/notification-entry";
 import { z } from "zod";
 
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
@@ -117,25 +121,6 @@ export const piQueuedSubagentSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("dropped"), reason: z.string() }),
 ]);
 export type PiQueuedSubagent = z.infer<typeof piQueuedSubagentSchema>;
-
-/**
- * An event delivered to an agent, by an Automations route or, with no route, addressed to the
- * agent itself, as a workflow it started reports back. The route and event IDs name its turn.
- */
-export const piAgentNotificationSchema = z.lazy(() =>
-  z.object({
-    routeId: z.string().min(1).nullable(),
-    event: automationEventSchema._zod.innerType.pick({
-      id: true,
-      source: true,
-      eventType: true,
-      occurredAt: true,
-      subject: true,
-      payload: true,
-    }),
-  }),
-);
-export type PiAgentNotification = z.infer<typeof piAgentNotificationSchema>;
 
 /** What a notification delivers of a recorded event; its actors and scope stay behind. */
 export function piAgentNotificationEvent(event: AutomationEvent): PiAgentNotification["event"] {

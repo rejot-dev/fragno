@@ -10,14 +10,14 @@ import type {
   LiveState,
 } from "@earendil-works/pi-durable";
 
-import { piCompactionSummary } from "@/fragno/pi/agent/compaction-summary";
-import { parsePiAgentPrompt, type PiAgentAttachment } from "@/fragno/pi/agent/pi-agent-attachments";
-import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
+import { piCompactionSummary } from "../format/compaction-summary";
 import {
+  type PiAgentNotification,
   parsePiNotificationRequest,
   PI_NOTIFICATION_ENTRY_KIND,
   type PiNotificationReference,
-} from "@/fragno/pi/agent/pi-agent-notification-entry";
+} from "../format/notification-entry";
+import { parsePiAgentPrompt, type PiAgentAttachment } from "../format/prompt-attachments";
 
 /** A compaction summary, shown in the transcript where Pi compacted the context. */
 export type PiCompactionMessage = {

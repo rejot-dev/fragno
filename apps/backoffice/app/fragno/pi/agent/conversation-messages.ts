@@ -1,5 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { PiAgentMessage, PiAgentMessagePage } from "@fragno-dev/backoffice-api/v0/pi";
+import { piCompactionSummary } from "@fragno-private/backoffice-conversation/format/compaction-summary";
+import { parsePiNotificationRequest } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import type { z } from "zod";
 
 import {
@@ -12,10 +14,8 @@ import {
   type EntryRecord,
 } from "@earendil-works/pi-durable";
 
-import { piCompactionSummary } from "./compaction-summary";
 import { piConversationReachQuery, readPiConversationReach } from "./conversation-reach";
 import type { piAgentMessagePageRequestSchema } from "./pi-agent-contract";
-import { parsePiNotificationRequest } from "./pi-agent-notification-entry";
 
 const ENTRY_SCAN_PAGE_SIZE = 64;
 

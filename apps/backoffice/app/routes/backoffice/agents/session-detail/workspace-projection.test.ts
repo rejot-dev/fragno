@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import { generatedUiWorkspaceId } from "./workspace-model";
+import { generatedUiWorkspaceId } from "@fragno-private/backoffice-chat/workspace/workspace-model";
+
 import { projectSessionWorkspaceItems } from "./workspace-projection";
 
 const generatedUiResult = {

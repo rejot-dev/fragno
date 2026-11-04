@@ -79,6 +79,8 @@
     "@fragno-dev/upload": "workspace:*",
     "@fragno-dev/workflow-visualizer-tokens": "workspace:*",
     "@fragno-dev/workflows": "workspace:*",
+    "@fragno-private/backoffice-chat": "workspace:*",
+    "@fragno-private/backoffice-conversation": "workspace:*",
     "@fragno-private/backoffice-ui": "workspace:*",
     "@fragno-private/design-system": "workspace:*",
     "@hono/node-server": "^1.19.14",

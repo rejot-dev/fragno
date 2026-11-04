@@ -14,6 +14,7 @@ import {
 } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 import type { WorkflowTerminalHookPayload } from "@fragno-dev/workflows/workflow";
+import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";
@@ -52,7 +53,7 @@ import {
 } from "@/fragno/github-installation-move-workflow";
 import { defineOnboardingWorkflow } from "@/fragno/onboarding/onboarding-workflow";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
-import type { PiAgentAddress, PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 
 import { isMarketplaceInstallationWorkflowInstanceId } from "./marketplace-package-install-identity";

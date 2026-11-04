@@ -3,6 +3,7 @@ import { assert, expect, onTestFinished, test } from "vitest";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 
 import { instantiate } from "@fragno-dev/core";
 import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
@@ -15,7 +16,6 @@ import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import type {
   PiAgent,
   PiAgentAddress,
-  PiAgentNotification,
   PiAgentPrompt,
   PiAgentSteer,
   PiAgentTurn,

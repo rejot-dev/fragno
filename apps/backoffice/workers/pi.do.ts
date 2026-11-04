@@ -1,5 +1,6 @@
 import { boundOutput } from "@earendil-works/chord/output";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import { DurableObject } from "cloudflare:workers";
 import type { PostHog } from "posthog-node";
 import type { z } from "zod";
@@ -10,7 +11,6 @@ import type {
   PiAgentPrompt,
   PiAgentSteer,
   PiAgentWork,
-  PiAgentNotification,
   piAgentEntryPageRequestSchema,
   piAgentMessagePageRequestSchema,
   piAgentCompactionSchema,

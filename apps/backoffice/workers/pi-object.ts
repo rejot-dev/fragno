@@ -10,6 +10,13 @@ import {
   backofficeContextScopeSchema,
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  piAgentNotificationSchema,
+  type PiAgentNotification,
+  PI_NOTIFICATION_ENTRY_KIND,
+  renderPiNotification,
+  renderPiNotificationRequest,
+} from "@fragno-private/backoffice-conversation/format/notification-entry";
 import { RpcTarget } from "cloudflare:workers";
 import { z } from "zod";
 
@@ -38,7 +45,6 @@ import {
   piAgentCompactionSchema,
   piAgentEntryPageRequestSchema,
   piAgentMessagePageRequestSchema,
-  piAgentNotificationSchema,
   piAgentPromptSchema,
   piAgentSteerSchema,
   piQueuedSubagentSchema,
@@ -47,7 +53,6 @@ import {
   PiConversationViewDamagedError,
   type PiAgent,
   type PiAgentCompactionStatus,
-  type PiAgentNotification,
   type PiAgentPrompt,
   type PiAgentSteer,
   type PiAgentSubmission,
@@ -64,11 +69,8 @@ import {
   type PiAgentDependencies,
 } from "@/fragno/pi/agent/pi-agent-harness";
 import {
-  PI_NOTIFICATION_ENTRY_KIND,
   piNotificationInput,
   piNotificationRequestId,
-  renderPiNotification,
-  renderPiNotificationRequest,
 } from "@/fragno/pi/agent/pi-agent-notification-entry";
 import { mayJoinPiAgentTurn } from "@/fragno/pi/agent/pi-agent-queue-rules";
 import {

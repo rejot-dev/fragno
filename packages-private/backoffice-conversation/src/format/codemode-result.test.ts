@@ -11,12 +11,12 @@ describe("getCodemodeResultDetails", () => {
     expect(getCodemodeResultDetails(details).runs).toEqual([]);
   });
 
-  test("maps the public instance handle to the internal codemode host", () => {
+  test("reads the run the program started by its instance", () => {
     expect(
       getCodemodeResultDetails({
         run: { instanceId: "workflow-instance" },
       }).runs,
-    ).toEqual([{ workflowName: "codemode-script", instanceId: "workflow-instance" }]);
+    ).toEqual([{ instanceId: "workflow-instance" }]);
   });
 
   test("follows the inline run with the saved runs the program showed", () => {
@@ -25,11 +25,7 @@ describe("getCodemodeResultDetails", () => {
         run: { instanceId: "inline" },
         shownRuns: [{ instanceId: "nightly-sync" }, { instanceId: "mirror" }],
       }).runs,
-    ).toEqual([
-      { workflowName: "codemode-script", instanceId: "inline" },
-      { workflowName: "codemode-script", instanceId: "nightly-sync" },
-      { workflowName: "codemode-script", instanceId: "mirror" },
-    ]);
+    ).toEqual([{ instanceId: "inline" }, { instanceId: "nightly-sync" }, { instanceId: "mirror" }]);
   });
 
   test("keeps historical handles compatible without trusting their workflow name", () => {
@@ -37,7 +33,7 @@ describe("getCodemodeResultDetails", () => {
       getCodemodeResultDetails({
         run: { workflowName: "legacy-host", instanceId: "workflow-instance" },
       }).runs,
-    ).toEqual([{ workflowName: "codemode-script", instanceId: "workflow-instance" }]);
+    ).toEqual([{ instanceId: "workflow-instance" }]);
   });
 
   test.each([
@@ -46,7 +42,7 @@ describe("getCodemodeResultDetails", () => {
     {},
     { workflowName: "codemode-script" },
     { instanceId: " " },
-    { workflowName: "codemode-script", instanceId: " " },
+    { instanceId: " " },
   ])("throws when a present workflow run reference is malformed: %j", (run) => {
     expect(() => getCodemodeResultDetails({ run })).toThrow(
       new TypeError("Invalid codemode result details.run: expected a non-empty instanceId string"),

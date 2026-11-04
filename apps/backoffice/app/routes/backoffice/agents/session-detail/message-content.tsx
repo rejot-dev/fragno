@@ -1,6 +1,8 @@
-import { ImagePreview } from "@fragno-private/design-system/files/image-preview";
-import type { ComponentProps, ComponentType } from "react";
-import { Streamdown } from "streamdown";
+import {
+  MarkdownImage,
+  MarkdownText as ChatMarkdownText,
+} from "@fragno-private/backoffice-chat/messages/markdown";
+import type { ComponentType } from "react";
 
 import {
   FileImage,
@@ -21,26 +23,15 @@ const markdownComponents = {
   "unavailable-image": MarkdownImage,
 };
 
-function MarkdownImage({ src, alt = "" }: ComponentProps<"img">) {
-  return <ImagePreview src={typeof src === "string" && src ? src : null} alt={alt} />;
-}
-
-export function MarkdownText({ text, className = "" }: { text: string; className?: string }) {
+/** Markdown whose workspace paths link to, and show, the scope's files. */
+export function MarkdownText({ text, className }: { text: string; className?: string }) {
   return (
-    <Streamdown
-      mode="streaming"
-      className={`bo-session-markdown text-pretty ${className}`}
-      controls={{ code: true, table: true }}
+    <ChatMarkdownText
+      text={text}
+      className={className}
       components={markdownComponents}
       remarkPlugins={remarkPlugins}
       rehypePlugins={rehypePlugins}
-      skipHtml
-    >
-      {text}
-    </Streamdown>
+    />
   );
-}
-
-export function MessageImage({ image }: { image: string }) {
-  return <ImagePreview src={image} alt="Message attachment" />;
 }
