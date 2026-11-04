@@ -94,8 +94,17 @@ export class Books extends DurableObject<CloudflareEnv> {
 
   /** Everything the books' pages name and choose from, read together. */
   async describe() {
+    return (await this.describeWithTrialBalances([])).described;
+  }
+
+  /**
+   * The books as `describe` gives them, with the trial balance through each of `periodIds`, all
+   * read in one transaction: a report that adds up several balances sees the books at one moment,
+   * never with an entry posted between two of its reads.
+   */
+  async describeWithTrialBalances(periodIds: readonly string[]) {
     const services = this.ledger.services;
-    const [ledger, currencies, fiscalYears, accounts, journals, dimensions, parties] =
+    const [ledger, currencies, fiscalYears, accounts, journals, dimensions, parties, ...balances] =
       await this.ledger.callServices(() => [
         services.getLedger(),
         services.listCurrencies(),
@@ -104,8 +113,12 @@ export class Books extends DurableObject<CloudflareEnv> {
         services.listJournals(),
         services.listDimensions(),
         services.listParties(),
+        ...periodIds.map((periodId) => services.getTrialBalance({ periodId })),
       ]);
-    return { ...ledger, currencies, fiscalYears, accounts, journals, dimensions, parties };
+    return {
+      described: { ...ledger, currencies, fiscalYears, accounts, journals, dimensions, parties },
+      trialBalances: new Map(periodIds.map((periodId, position) => [periodId, balances[position]])),
+    };
   }
 
   listEntries(input: Input<"listEntries">) {

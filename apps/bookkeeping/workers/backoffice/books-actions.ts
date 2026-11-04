@@ -10,7 +10,7 @@ import { z } from "zod";
 
 import type { Books, Outcome } from "../books/books";
 import { DOCUMENT_MEDIA_TYPES } from "../books/documents/schema";
-import { dayAfter, PERIOD_LENGTHS, periodEndDates } from "../books/fiscal-years";
+import { dayAfter, PERIOD_LENGTHS, periodEndDates, today } from "../books/fiscal-years";
 import { decimalAmount, parseAmount } from "../books/money";
 import { CONTROL_ROLES, usualControlAccount } from "../books/parties";
 import type { Administration } from "../directory/directory";
@@ -487,6 +487,146 @@ async function requireDocument(books: BooksStub, id: string) {
   return (await books.getDocument(id)) ?? refuse(`The books have no document ${id}.`);
 }
 
+const documentOutput = z.object({
+  id: z.string(),
+  filename: z.string(),
+  blob: z
+    .string()
+    .describe(
+      "The file's blob key, to give models.extract as { blob }: in the administration's own project, its own blob; in a firm's agent project, under /shared/, where Bookkeeping shares it while the agent is asked about it.",
+    ),
+  mediaType: z.enum(DOCUMENT_MEDIA_TYPES),
+  uploadedAt: z.string().describe("When it was uploaded, as an ISO timestamp."),
+  uploadedBy: z.string(),
+  status: z.enum(["to-book", "booked", "dismissed"]),
+  bookedIn: z
+    .object({ journal: z.string(), number: z.number().int() })
+    .nullable()
+    .describe("The entry booking it, while it is booked."),
+  documentDate: z.iso
+    .date()
+    .nullable()
+    .describe("The date it was first booked with, which booking it again keeps."),
+  review: z
+    .enum(["requested", "proposed", "declined", "withdrawn"])
+    .nullable()
+    .describe(
+      "Whether the bookkeeping agent was asked about it, proposed an entry, or proposed none, or whether the request was withdrawn unanswered.",
+    ),
+});
+
+type DocumentView = NonNullable<Awaited<ReturnType<Books["getDocument"]>>>;
+
+async function documentOutputOf(
+  document: DocumentView,
+  index: Index,
+  workplace: Workplace,
+): Promise<z.input<typeof documentOutput>> {
+  const { state, source } = document;
+  const booking =
+    state.status === "booked" ? source!.entries.find((entry) => entry.id === state.entryId)! : null;
+  return {
+    id: document.id,
+    filename: document.filename,
+    blob: await workplace.documentBlob(document),
+    mediaType: document.mediaType,
+    uploadedAt: document.uploadedAt.toISOString(),
+    uploadedBy: document.uploadedBy,
+    status: state.status,
+    bookedIn: booking && {
+      journal: index.journalCode(booking.journalId),
+      number: booking.entryNumber,
+    },
+    documentDate: source?.documentDate ?? null,
+    review: document.review?.status ?? null,
+  };
+}
+
+/** An account's amount in a report, on the side it normally carries. */
+const reportLine = z.object({
+  code: z.string(),
+  name: z.string(),
+  amount: z.string().describe("Negative when the account carries its other side."),
+});
+
+/** Each account's debit and credit totals in the functional currency, by account ID. */
+type Totals = Map<string, { debitMinor: bigint; creditMinor: bigint }>;
+
+/**
+ * The period whose trial balance holds the fiscal year's totals through `periodNumber`; null
+ * before its first period, which has none.
+ */
+function periodThrough(year: Described["fiscalYears"][number], periodNumber: number) {
+  return year.periods.find((row) => row.number === periodNumber)?.id ?? null;
+}
+
+/**
+ * The books with the totals through each of `periodIds`, read at one moment, so a report that
+ * combines them never counts an entry posted between two reads; a null period has none.
+ */
+async function readTotals(books: BooksStub, periodIds: readonly (string | null)[]) {
+  const { described, trialBalances } = await books.describeWithTrialBalances(
+    periodIds.filter((periodId) => periodId !== null),
+  );
+  return {
+    described,
+    totalsThrough(periodId: string | null): Totals {
+      const rows = periodId === null ? [] : (trialBalances.get(periodId) ?? []);
+      return new Map(rows.map((row) => [row.accountId, row]));
+    },
+  };
+}
+
+/** `totals` with `other` added, or taken away. */
+function combine(totals: Totals, other: Totals, sign: 1n | -1n): Totals {
+  const combined: Totals = new Map(totals);
+  for (const [accountId, row] of other) {
+    const total = combined.get(accountId) ?? { debitMinor: 0n, creditMinor: 0n };
+    combined.set(accountId, {
+      debitMinor: total.debitMinor + sign * row.debitMinor,
+      creditMinor: total.creditMinor + sign * row.creditMinor,
+    });
+  }
+  return combined;
+}
+
+/**
+ * The accounts of `types` with what they carry in `totals`, on their usual side: debit for assets
+ * and expenses, credit otherwise. Accounts that carry nothing are left out.
+ */
+function reportLines(
+  totals: Totals,
+  described: Described,
+  types: readonly (typeof accountTypes)[number][],
+): { lines: z.input<typeof reportLine>[]; totalMinor: bigint } {
+  const digits = indexBooks(described).minorUnitDigits(described.functionalCurrency);
+  let totalMinor = 0n;
+  const lines = described.accounts.flatMap((account) => {
+    const total = totals.get(account.id);
+    if (!types.includes(account.type) || total === undefined) {
+      return [];
+    }
+    const debit = account.type === "asset" || account.type === "expense";
+    const amountMinor = debit
+      ? total.debitMinor - total.creditMinor
+      : total.creditMinor - total.debitMinor;
+    if (amountMinor === 0n) {
+      return [];
+    }
+    totalMinor += amountMinor;
+    return [{ code: account.code, name: account.name, amount: decimalAmount(amountMinor, digits) }];
+  });
+  return { lines, totalMinor };
+}
+
+/** What revenue less expenses came to in `totals`. */
+function resultMinor(totals: Totals, described: Described): bigint {
+  return (
+    reportLines(totals, described, ["revenue"]).totalMinor -
+    reportLines(totals, described, ["expense"]).totalMinor
+  );
+}
+
 const BOOKS_ACTION_LIST: BooksAction[] = [
   readAction({
     id: "books.describe",
@@ -796,60 +936,225 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
   }),
 
   readAction({
+    id: "reports.profit-and-loss",
+    label: "Profit and loss",
+    description:
+      "Revenue and expenses by account, in the functional currency, and the result they come to, over a range of periods of one fiscal year.",
+    input: z.strictObject({
+      fiscalYear: z.string().describe("The fiscal year's name."),
+      fromPeriod: z.number().int().positive().describe("The first period's number."),
+      toPeriod: z.number().int().positive().describe("The last period's number."),
+    }),
+    output: z.object({
+      currency: z.string(),
+      from: z.iso.date(),
+      to: z.iso.date(),
+      revenue: z.array(reportLine),
+      expenses: z.array(reportLine),
+      totals: z.object({
+        revenue: z.string(),
+        expenses: z.string(),
+        result: z.string().describe("Revenue less expenses: a profit, or a loss when negative."),
+      }),
+    }),
+    async run(books, input) {
+      const named = indexBooks(await books.describe());
+      const year = named.fiscalYear(input.fiscalYear);
+      const from = named.period(input.fiscalYear, input.fromPeriod);
+      const to = named.period(input.fiscalYear, input.toPeriod);
+      if (from.number > to.number) {
+        refuse("The first period comes after the last.");
+      }
+      const through = periodThrough(year, to.number);
+      const before = periodThrough(year, from.number - 1);
+      // The periods only name the balances: the report is of the books read with them.
+      const read = await readTotals(books, [through, before]);
+      const { described } = read;
+      const index = indexBooks(described);
+      const totals = combine(read.totalsThrough(through), read.totalsThrough(before), -1n);
+      const digits = index.minorUnitDigits(described.functionalCurrency);
+      const revenue = reportLines(totals, described, ["revenue"]);
+      const expenses = reportLines(totals, described, ["expense"]);
+      return {
+        currency: described.functionalCurrency,
+        from: from.startDate,
+        to: to.endDate,
+        revenue: revenue.lines,
+        expenses: expenses.lines,
+        totals: {
+          revenue: decimalAmount(revenue.totalMinor, digits),
+          expenses: decimalAmount(expenses.totalMinor, digits),
+          result: decimalAmount(revenue.totalMinor - expenses.totalMinor, digits),
+        },
+      };
+    },
+  }),
+
+  readAction({
+    id: "reports.balance-sheet",
+    label: "Balance sheet",
+    description:
+      "Assets, liabilities, and equity by account, in the functional currency, at the end of a period: every fiscal year until then counts, and the results of earlier years and of this year so far stand in equity.",
+    input: z.strictObject({
+      fiscalYear: z.string().describe("The fiscal year's name."),
+      period: z.number().int().positive().describe("The period at whose end to report."),
+    }),
+    output: z.object({
+      currency: z.string(),
+      at: z.iso.date().describe("The period's last day."),
+      assets: z.array(reportLine),
+      liabilities: z.array(reportLine),
+      equity: z.array(reportLine),
+      resultOfEarlierYears: z.string(),
+      resultThisYear: z.string(),
+      totals: z.object({
+        assets: z.string(),
+        liabilities: z.string(),
+        equity: z.string().describe("Equity's accounts with both results."),
+      }),
+    }),
+    async run(books, input) {
+      const naming = await books.describe();
+      const named = indexBooks(naming);
+      const year = named.fiscalYear(input.fiscalYear);
+      const period = named.period(input.fiscalYear, input.period);
+      // Each earlier year whole: the books carry no closing entries over into the next.
+      const earlierYears = naming.fiscalYears
+        .filter((earlierYear) => earlierYear.endDate < year.startDate)
+        .map((earlierYear) =>
+          periodThrough(earlierYear, Math.max(...earlierYear.periods.map((row) => row.number))),
+        );
+      const through = periodThrough(year, period.number);
+      // The periods only name the balances: the report is of the books read with them.
+      const read = await readTotals(books, [...earlierYears, through]);
+      const { described } = read;
+      const index = indexBooks(described);
+      const earlier = earlierYears.reduce<Totals>(
+        (totals, periodId) => combine(totals, read.totalsThrough(periodId), 1n),
+        new Map(),
+      );
+      const thisYear = read.totalsThrough(through);
+      const all = combine(earlier, thisYear, 1n);
+      const digits = index.minorUnitDigits(described.functionalCurrency);
+      const assets = reportLines(all, described, ["asset"]);
+      const liabilities = reportLines(all, described, ["liability"]);
+      const equity = reportLines(all, described, ["equity"]);
+      const earlierResult = resultMinor(earlier, described);
+      const yearResult = resultMinor(thisYear, described);
+      return {
+        currency: described.functionalCurrency,
+        at: period.endDate,
+        assets: assets.lines,
+        liabilities: liabilities.lines,
+        equity: equity.lines,
+        resultOfEarlierYears: decimalAmount(earlierResult, digits),
+        resultThisYear: decimalAmount(yearResult, digits),
+        totals: {
+          assets: decimalAmount(assets.totalMinor, digits),
+          liabilities: decimalAmount(liabilities.totalMinor, digits),
+          equity: decimalAmount(equity.totalMinor + earlierResult + yearResult, digits),
+        },
+      };
+    },
+  }),
+
+  readAction({
+    id: "parties.list",
+    label: "List customers and suppliers",
+    description:
+      "Every customer and supplier with what is outstanding with them per currency, and how much of it is overdue today: what customers owe, and what is owed to suppliers. Read one's items with parties.open-items.",
+    input: z.strictObject({}),
+    output: z.object({
+      today: z.iso.date(),
+      parties: z.array(
+        z.object({
+          name: z.string(),
+          role: z.enum(partyRoles),
+          code: z.string(),
+          outstanding: z
+            .array(z.object({ currency: z.string(), amount: z.string(), overdue: z.string() }))
+            .describe(
+              "Per currency: what customers owe, or is owed to suppliers; negative when it runs the other way, such as a customer's credit.",
+            ),
+        }),
+      ),
+    }),
+    async run(books) {
+      const described = await books.describe();
+      const index = indexBooks(described);
+      const now = today();
+      const accounts = described.parties.flatMap((party) =>
+        party.accounts.map((account) => ({ ...account, party })),
+      );
+      return {
+        today: now,
+        parties: await Promise.all(
+          accounts.map(async (account) => {
+            const items = await books.listOpenItems({ partyAccountId: account.id });
+            // What the party's usual side carries: customers owe debits, suppliers are owed credits.
+            const usual = account.role === "customer" ? "debit" : "credit";
+            const byCurrency = new Map<string, { amount: bigint; overdue: bigint }>();
+            for (const item of items) {
+              const signed = item.side === usual ? item.outstandingMinor : -item.outstandingMinor;
+              const total = byCurrency.get(item.currency) ?? { amount: 0n, overdue: 0n };
+              total.amount += signed;
+              if (item.dueDate < now) {
+                total.overdue += signed;
+              }
+              byCurrency.set(item.currency, total);
+            }
+            return {
+              name: account.party.name,
+              role: account.role,
+              code: account.code,
+              outstanding: [...byCurrency]
+                .filter(([, total]) => total.amount !== 0n || total.overdue !== 0n)
+                .map(([currency, total]) => {
+                  const digits = index.minorUnitDigits(currency);
+                  return {
+                    currency,
+                    amount: decimalAmount(total.amount, digits),
+                    overdue: decimalAmount(total.overdue, digits),
+                  };
+                }),
+            };
+          }),
+        ),
+      };
+    },
+  }),
+
+  readAction({
     id: "documents.get",
     label: "Describe a document",
     description:
       "A document uploaded to the books, such as an invoice or receipt: the blob its file is, to read with models.extract, and whether it is to book, booked, or dismissed.",
     input: z.strictObject({ document: z.uuid().describe("The document's ID.") }),
-    output: z.object({
-      id: z.string(),
-      filename: z.string(),
-      blob: z
-        .string()
-        .describe(
-          "The file's blob key, to give models.extract as { blob }: in the administration's own project, its own blob; in a firm's agent project, under /shared/, where Bookkeeping shares it while the agent is asked about it.",
-        ),
-      mediaType: z.enum(DOCUMENT_MEDIA_TYPES),
-      uploadedAt: z.string().describe("When it was uploaded, as an ISO timestamp."),
-      uploadedBy: z.string(),
-      status: z.enum(["to-book", "booked", "dismissed"]),
-      bookedIn: z
-        .object({ journal: z.string(), number: z.number().int() })
-        .nullable()
-        .describe("The entry booking it, while it is booked."),
-      documentDate: z.iso
-        .date()
-        .nullable()
-        .describe("The date it was first booked with, which booking it again keeps."),
-      review: z
-        .enum(["requested", "proposed", "declined", "withdrawn"])
-        .nullable()
-        .describe(
-          "Whether the bookkeeping agent was asked about it, proposed an entry, or proposed none, or whether the request was withdrawn unanswered.",
-        ),
-    }),
+    output: documentOutput,
     async run(books, input, workplace) {
       const document = await requireDocument(books, input.document);
-      const { state, source } = document;
+      return await documentOutputOf(document, indexBooks(await books.describe()), workplace);
+    },
+  }),
+
+  readAction({
+    id: "documents.list",
+    label: "List documents",
+    description:
+      "The documents uploaded to the books, newest first, 50 at a time, as documents.get describes them: what they are, whether they are to book, booked, or dismissed, and the blob of each file. Pass the returned cursor to read the next page.",
+    input: z.strictObject({ cursor }),
+    output: z.object({
+      documents: z.array(documentOutput),
+      cursor: z.string().nullable().describe("Null on the last page."),
+    }),
+    async run(books, input, workplace) {
       const index = indexBooks(await books.describe());
-      const booking =
-        state.status === "booked"
-          ? source!.entries.find((entry) => entry.id === state.entryId)!
-          : null;
+      const page = await books.listDocuments({ cursor: input.cursor });
       return {
-        id: document.id,
-        filename: document.filename,
-        blob: await workplace.documentBlob(document),
-        mediaType: document.mediaType,
-        uploadedAt: document.uploadedAt.toISOString(),
-        uploadedBy: document.uploadedBy,
-        status: state.status,
-        bookedIn: booking && {
-          journal: index.journalCode(booking.journalId),
-          number: booking.entryNumber,
-        },
-        documentDate: source?.documentDate ?? null,
-        review: document.review?.status ?? null,
+        documents: await Promise.all(
+          page.items.map((document) => documentOutputOf(document, index, workplace)),
+        ),
+        cursor: page.cursor,
       };
     },
   }),

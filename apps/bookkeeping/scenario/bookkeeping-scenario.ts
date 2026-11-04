@@ -511,6 +511,19 @@ export class BookkeepingScenario {
     this.#bindings[binding].beforeNextCall(method, happen);
   }
 
+  /**
+   * `happen` runs between two calls to `binding`'s objects: once `count` more reached them, before
+   * the next, whichever methods they call; e.g. a posting while a report reads the books. Returns
+   * what cancels it, should the calls end first.
+   */
+  afterCalls(
+    binding: "DIRECTORY" | "BOOKS",
+    count: number,
+    happen: () => Promise<void>,
+  ): () => void {
+    return this.#bindings[binding].afterCalls(count, happen);
+  }
+
   /** Fires every object's alarm that is due by now, as the runtime does once time has passed. */
   async runDueAlarms(): Promise<void> {
     for (const namespace of Object.values(this.#bindings)) {
