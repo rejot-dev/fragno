@@ -1,8 +1,8 @@
 import {
   piPromptReceiptOutputSchema,
   type PiAgentDefinitionCreate,
-  type PiAgentMessagePage,
   type PiManagerAgent,
+  type PiAgentMessagePage,
 } from "@fragno-dev/backoffice-api/v0/pi";
 
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
@@ -148,7 +148,7 @@ const definitionOptions = [
   },
 ];
 
-/** The scope configuration an agent runs with; its conversation's provisioning stays internal. */
+/** The scope configuration an agent runs with; a list leaves out whether each is provisioned. */
 function agentDefinition({ provisioned: _provisioned, ...definition }: PiManagerAgent) {
   return definition;
 }
@@ -206,13 +206,14 @@ const agentGetTool = defineBackofficeRuntimeTool({
   namespace: "pi",
   name: "getAgent",
   execute: async (input, context: PiToolContext) => {
-    return agentDefinition(await requirePiManagerRuntime(context.runtimes.pi).getAgent(input));
+    return await requirePiManagerRuntime(context.runtimes.pi).getAgent(input);
   },
   adapters: {
     bash: {
       command: "pi.agent.get",
       help: {
-        summary: "pi.agent.get retrieves an agent's definition.",
+        summary:
+          "pi.agent.get retrieves an agent's definition, and whether its conversation is provisioned.",
         options: [
           {
             name: "agent",

@@ -3840,7 +3840,7 @@
   },
   {
     "command": "pi.agent.get",
-    "summary": "pi.agent.get retrieves an agent's definition.",
+    "summary": "pi.agent.get retrieves an agent's definition, and whether its conversation is provisioned.",
     "options": [
       {
         "name": "agent",

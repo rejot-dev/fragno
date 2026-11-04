@@ -450,10 +450,11 @@ export const piOperations = {
     output: piAgentDirectoryOutputSchema,
   },
   "pi.agent.get": {
-    description: "Get one defined agent.",
+    description:
+      "Get one defined agent, and whether its conversation is provisioned: its first prompt provisions it, and `pi.agent.watch` opens only then.",
     permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: agentInputSchema,
-    output: piAgentDefinitionSchema,
+    output: piManagerAgentSchema,
   },
   "pi.agent.create": {
     description:

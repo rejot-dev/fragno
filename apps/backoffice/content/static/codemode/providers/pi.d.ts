@@ -6,7 +6,7 @@ type PiCodemodeProvider = {
    */
   listAgents(input: PiListAgentsInput): Promise<PiListAgentsOutput>;
   /**
-   * Get one defined agent.
+   * Get one defined agent, and whether its conversation is provisioned: its first prompt provisions it, and `pi.agent.watch` opens only then.
    * Requires `pi.read`.
    */
   getAgent(input: PiGetAgentInput): Promise<PiGetAgentOutput>;
@@ -107,6 +107,7 @@ type PiGetAgentOutput = {
   instructions: string;
   agentName: string;
   steward: PiAgentSteward;
+  provisioned: boolean;
 };
 type PiListMessagesInput = {
   /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */
