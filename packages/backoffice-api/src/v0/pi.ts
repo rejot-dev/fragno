@@ -310,6 +310,43 @@ export const piAgentMessagePageSchema = z.lazy(() =>
 );
 export type PiAgentMessagePage = z.infer<typeof piAgentMessagePageSchema>;
 
+const historyInputSchema = z.lazy(() =>
+  readAgentInputSchema._zod.innerType.extend({
+    before: z
+      .number()
+      .int()
+      .positive()
+      .describe(
+        "The entry where the active context begins, which `pi.agent.watch`'s view leads with as its first entry's `head`: the page reads the entries before it.",
+      ),
+    cursor: z
+      .string()
+      .min(1)
+      .nullable()
+      .default(null)
+      .describe("A previous page's `cursor`, to read further back; null for the newest page."),
+    pageSize: z
+      .number()
+      .int()
+      .min(1)
+      .max(256)
+      .default(100)
+      .describe("How many entries the page holds at most."),
+  }),
+);
+
+/** A page of a conversation from before its active context, newest entry first. */
+export const piAgentHistoryPageSchema = z.lazy(() =>
+  z.object({
+    entries: z.array(z.unknown()).describe("Pi Durable's `EntryRecord`s, newest first."),
+    cursor: z
+      .string()
+      .nullable()
+      .describe("The next page's cursor; null once the page reached the conversation's start."),
+  }),
+);
+export type PiAgentHistoryPage = z.infer<typeof piAgentHistoryPageSchema>;
+
 /** What one call of a codemode run did, as a reader of the run cares. */
 export const codemodeCallSubjectSchema = z.lazy(() =>
   z.discriminatedUnion("kind", [
@@ -483,6 +520,13 @@ export const piOperations = {
     permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: messagesListInputSchema,
     output: piAgentMessagePageSchema,
+  },
+  "pi.agent.history": {
+    description:
+      "Read a page of a started agent's conversation from before its newest compaction or clear, newest entry first, as Pi Durable's entries with thinking, tool calls, and tool results: the history `pi.agent.watch`'s view leaves out, for a chat that shows it. Pass `before` where the view's active context begins, and each page's `cursor` to read further back. To read what was said since the newest compaction, use `pi.agent.messages`.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read],
+    input: historyInputSchema,
+    output: piAgentHistoryPageSchema,
   },
   "pi.agent.activity": {
     description:

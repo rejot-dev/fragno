@@ -16,6 +16,11 @@ type PiCodemodeProvider = {
    */
   listMessages(input: PiListMessagesInput): Promise<PiListMessagesOutput>;
   /**
+   * Read a page of a started agent's conversation from before its newest compaction or clear, newest entry first, as Pi Durable's entries with thinking, tool calls, and tool results: the history `pi.agent.watch`'s view leaves out, for a chat that shows it. Pass `before` where the view's active context begins, and each page's `cursor` to read further back. To read what was said since the newest compaction, use `pi.agent.messages`.
+   * Requires `pi.read`.
+   */
+  listHistory(input: PiListHistoryInput): Promise<PiListHistoryOutput>;
+  /**
    * What a started agent's conversation, or one of its subagents', does with its tools, by the agent's name: each tool it ran, oldest first, including those still running, and for each codemode run the calls it made, such as the skills it loaded, the files it read, and the integration actions it ran. Like the chat, it reads from the agent's newest compaction or clear on. Pass `subagent` to read a subagent, by the request ID that started it.
    * Requires `pi.read`.
    */
@@ -138,6 +143,22 @@ type PiListMessagesOutput = {
       }
   )[];
   before: number | null;
+};
+type PiListHistoryInput = {
+  /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */
+  agentName: string;
+  /** The entry where the active context begins, which `pi.agent.watch`'s view leads with as its first entry's `head`: the page reads the entries before it. */
+  before: number;
+  /** A previous page's `cursor`, to read further back; null for the newest page. */
+  cursor?: string | null;
+  /** How many entries the page holds at most. */
+  pageSize?: number;
+};
+type PiListHistoryOutput = {
+  /** Pi Durable's `EntryRecord`s, newest first. */
+  entries: unknown[];
+  /** The next page's cursor; null once the page reached the conversation's start. */
+  cursor: string | null;
 };
 type PiGetActivityInput = {
   /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */

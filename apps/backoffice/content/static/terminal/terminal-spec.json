@@ -3921,6 +3921,57 @@
     ]
   },
   {
+    "command": "pi.agent.history",
+    "summary": "pi.agent.history prints a page of an agent's conversation from before its newest compaction or clear, newest entry first, as Pi Durable's entries.",
+    "options": [
+      {
+        "name": "agent",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "agent-name",
+        "description": "Agent name"
+      },
+      {
+        "name": "before",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "entry-id",
+        "description": "The entry where the active context begins"
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "A previous page's cursor, to read further back"
+      },
+      {
+        "name": "page-size",
+        "valueRequired": true,
+        "valueName": "count",
+        "description": "How many entries to print, up to 256; default 100"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "pi.agent.activity",
     "summary": "pi.agent.activity prints the tools an agent ran since its newest clear, oldest first, with each codemode run's calls.",
     "options": [

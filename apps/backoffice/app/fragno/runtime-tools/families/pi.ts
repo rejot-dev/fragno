@@ -90,6 +90,17 @@ const parseAgentMessages = defineCliArgsParser<{
   before: { kind: "positiveInteger" },
   subagent: {},
 });
+const parseAgentHistory = defineCliArgsParser<{
+  agentName: string;
+  before: number;
+  cursor?: string;
+  pageSize?: number;
+}>("pi.agent.history", {
+  agentName: { option: "agent", required: true },
+  before: { kind: "positiveInteger", required: true },
+  cursor: {},
+  pageSize: { option: "page-size", kind: "positiveInteger" },
+});
 const parseAgentActivity = defineCliArgsParser<{ agentName: string; subagent?: string }>(
   "pi.agent.activity",
   { agentName: { option: "agent", required: true }, subagent: {} },
@@ -552,6 +563,55 @@ const agentMessagesTool = defineBackofficeRuntimeTool({
   },
 });
 
+const agentHistoryTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.history"),
+  namespace: "pi",
+  name: "listHistory",
+  execute: async (input, context: PiToolContext) =>
+    await requirePiManagerRuntime(context.runtimes.pi).listHistory(input),
+  adapters: {
+    bash: {
+      command: "pi.agent.history",
+      help: {
+        summary:
+          "pi.agent.history prints a page of an agent's conversation from before its newest compaction or clear, newest entry first, as Pi Durable's entries.",
+        options: [
+          {
+            name: "agent",
+            required: true,
+            valueRequired: true,
+            valueName: "agent-name",
+            description: "Agent name",
+          },
+          {
+            name: "before",
+            required: true,
+            valueRequired: true,
+            valueName: "entry-id",
+            description: "The entry where the active context begins",
+          },
+          {
+            name: "cursor",
+            valueRequired: true,
+            valueName: "cursor",
+            description: "A previous page's cursor, to read further back",
+          },
+          {
+            name: "page-size",
+            valueRequired: true,
+            valueName: "count",
+            description: "How many entries to print, up to 256; default 100",
+          },
+        ],
+        examples: ["pi.agent.history --agent assistant --before 42"],
+      },
+      parse: parseAgentHistory,
+      outputOptions: jsonByDefaultOutputOptions,
+      format: (data) => ({ data }),
+    },
+  },
+});
+
 const agentActivityTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.activity"),
   namespace: "pi",
@@ -680,6 +740,7 @@ export const piRuntimeTools = [
   agentListTool,
   agentGetTool,
   agentMessagesTool,
+  agentHistoryTool,
   agentActivityTool,
   agentWatchTicketTool,
   agentExportTool,

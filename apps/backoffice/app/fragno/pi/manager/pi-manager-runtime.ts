@@ -6,6 +6,7 @@ import {
   type PiAgentDefinition,
   type PiAgentDefinitionCreate,
   type PiManagerAgent,
+  type PiAgentHistoryPage,
   type PiAgentMessagePage,
   type PiManagerAgentDirectory,
   type PiPromptReceipt,
@@ -60,6 +61,12 @@ export type PiManagerListMessagesInput = {
   before: number | null;
   /** The request ID of the subagent whose conversation to read; null reads the agent's. */
   subagent: string | null;
+};
+export type PiManagerHistoryInput = {
+  agentName: string;
+  before: number;
+  cursor: string | null;
+  pageSize: number;
 };
 export type PiManagerExportInput = { agentName: string; history: boolean };
 export type PiManagerActivityInput = {
@@ -132,6 +139,8 @@ export type PiManagerRuntime = {
   backfillAgentEvents(): Promise<{ agents: PiAgentBackfilledEvent[] }>;
   /** What users and the agent said, oldest first; see `pi.agent.messages`. */
   listMessages(input: PiManagerListMessagesInput): Promise<PiAgentMessagePage>;
+  /** The conversation before its active context, newest first; see `pi.agent.history`. */
+  listHistory(input: PiManagerHistoryInput): Promise<PiAgentHistoryPage>;
   /** The tools the agent ran, oldest first; see `pi.agent.activity`. */
   getActivity(input: PiManagerActivityInput): Promise<PiAgentActivity>;
   /** The agent's conversation as JSONL, newest entry last; see `pi.agent.export`. */
@@ -324,6 +333,17 @@ export function createPiManagerRuntime(input: {
         query.set("subagent", subagent);
       }
       return await request<PiAgentMessagePage>(`${agentRoute(agentName)}/messages?${query}`, null);
+    },
+    async listHistory({ agentName, before, cursor, pageSize }) {
+      const query = new URLSearchParams({ before: String(before), pageSize: String(pageSize) });
+      if (cursor !== null) {
+        query.set("cursor", cursor);
+      }
+      const page = await request<PiAgentHistoryPage>(
+        `${agentRoute(agentName)}/entries?${query}`,
+        null,
+      );
+      return { entries: page.entries, cursor: page.cursor };
     },
     async getActivity({ agentName, subagent }) {
       const query = subagent === null ? "" : `?${new URLSearchParams({ subagent })}`;

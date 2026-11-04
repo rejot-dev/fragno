@@ -105,6 +105,10 @@ What Backoffice writes into a conversation, beside Pi Durable's own entries, rea
 
 A change to these formats is a change to the API, with its changeset.
 
+The view holds the conversation from its newest compaction or clear on; it leads with that entry's
+`head`. A chat that shows earlier history pages back from there with `pi.agent.history`, passing
+`before: view.entries[0].head` and each page's `cursor`, newest entry first.
+
 Browsers cannot send a WebSocket's headers, so an app's server asks `pi.agent.watchTicket` for a
 ticket, and its page connects with `ticket=<ticket>` instead of the bearer token:
 
