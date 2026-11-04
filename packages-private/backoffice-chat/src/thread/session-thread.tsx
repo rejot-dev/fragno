@@ -65,6 +65,19 @@ const CLEARED_HISTORY =
 /** What the composer's send does; clearing the context is no mode, it happens as it is chosen. */
 export type ComposerAction = "message" | "compact";
 
+/** What the reader does with the agent's context from the composer: compact it, or clear it. */
+export type ContextControls = {
+  action: ComposerAction;
+  onActionChange: (value: ComposerAction) => void;
+  onCompact: () => unknown;
+  /** Starts the agent on a new, empty context; earlier messages stay in its history. */
+  onClear: () => unknown;
+  compactionError: string | null;
+  compactionNotice: string | null;
+  /** `window` is null when the session's model is missing from the available catalog. */
+  usage: { tokens: number; window: number | null };
+};
+
 /** Files waiting to go with the next message; they upload as soon as they are added. */
 export type ComposerAttachments = {
   items: readonly ChatComposerAttachmentItem[];
@@ -154,11 +167,14 @@ function SendButton({
 
 /** A paused queue resumes with an empty composer; a message resumes it too, at the queue's end. */
 function SendOrResume({
+  joined,
   disabled,
   paused,
   onResume,
   sendFiles,
 }: {
+  /** Joined to the menu of what the composer sends. */
+  joined: boolean;
   disabled: boolean;
   paused: boolean;
   onResume: () => unknown;
@@ -167,12 +183,75 @@ function SendOrResume({
   const empty = useAuiState((state) => state.composer.isEmpty);
   if (paused && empty && sendFiles === null) {
     return (
-      <ChatComposerButton tone="accent" joined disabled={disabled} onClick={() => void onResume()}>
+      <ChatComposerButton
+        tone="accent"
+        joined={joined}
+        disabled={disabled}
+        onClick={() => void onResume()}
+      >
         Resume
       </ChatComposerButton>
     );
   }
-  return <SendButton label="Send" joined disabled={disabled} sendFiles={sendFiles} />;
+  return <SendButton label="Send" joined={joined} disabled={disabled} sendFiles={sendFiles} />;
+}
+
+/** Sends or compacts, as the reader chose from its menu, which also clears the context. */
+function ComposerActionSplit({
+  context,
+  disabled,
+  readyForInput,
+  compacting,
+  paused,
+  onResume,
+  sendFiles,
+}: {
+  context: ContextControls;
+  disabled: boolean;
+  readyForInput: boolean;
+  compacting: boolean;
+  paused: boolean;
+  onResume: () => unknown;
+  sendFiles: (() => void) | null;
+}) {
+  return (
+    <ChatComposerSplit>
+      {context.action === "compact" ? (
+        <ChatComposerButton
+          tone="accent"
+          joined
+          disabled={disabled || !readyForInput || compacting}
+          onClick={() => void context.onCompact()}
+        >
+          Compact
+        </ChatComposerButton>
+      ) : (
+        <SendOrResume
+          joined
+          disabled={disabled}
+          paused={paused}
+          onResume={onResume}
+          sendFiles={sendFiles}
+        />
+      )}
+      <RadioMenu
+        label="Choose composer action"
+        heading="Composer action"
+        trigger={{ kind: "accent" }}
+        side="top"
+        disabled={disabled}
+        value={context.action}
+        options={composerActionOptions(readyForInput, context.usage.tokens === 0)}
+        onValueChange={(value) => {
+          if (value === "clear") {
+            void context.onClear();
+          } else {
+            context.onActionChange(value);
+          }
+        }}
+      />
+    </ChatComposerSplit>
+  );
 }
 
 /** Speech lands in the composer as the user talks; nothing is sent until they send it. */
@@ -204,8 +283,6 @@ export function SessionThread({
   onResume,
   model,
   needsNudge,
-  onCompact,
-  onClear,
   onContinue,
   onStop,
   readyForInput,
@@ -215,16 +292,12 @@ export function SessionThread({
   showToolCalls,
   showUsage,
   statusText,
-  composerAction,
   compacting,
-  compactionError,
-  compactionNotice,
-  contextUsage,
+  context,
   activeContextStartMessageId,
   hasMoreHistory,
   historyLoading,
   historyError,
-  onComposerActionChange,
   onLoadMoreHistory,
   dictation,
   attachments,
@@ -242,9 +315,6 @@ export function SessionThread({
   /** The model answering, or a control choosing it; null shows none. */
   model: ReactNode;
   needsNudge: boolean;
-  onCompact: () => unknown;
-  /** Starts the agent on a new, empty context; earlier messages stay in its history. */
-  onClear: () => unknown;
   onContinue: () => unknown;
   onStop: () => unknown;
   readyForInput: boolean;
@@ -255,25 +325,23 @@ export function SessionThread({
   showToolCalls: boolean;
   showUsage: boolean;
   statusText: string | null;
-  composerAction: ComposerAction;
+  /** The agent's context is being compacted, whoever started it. */
   compacting: boolean;
-  compactionError: string | null;
-  compactionNotice: string | null;
-  /** `window` is null when the session's model is missing from the available catalog. */
-  contextUsage: { tokens: number; window: number | null };
+  /** Null where the reader leaves the agent's context to the agent. */
+  context: ContextControls | null;
   /** The message the context divider precedes; null while no earlier history is shown. */
   activeContextStartMessageId: string | null;
   hasMoreHistory: boolean;
   historyLoading: boolean;
   historyError: string | null;
-  onComposerActionChange: (value: ComposerAction) => void;
   onLoadMoreHistory: () => Promise<void>;
   /** Whether the runtime has a dictation adapter to drive the microphone button. */
   dictation: boolean;
   /** Null where the agent cannot read uploaded files. */
   attachments: ComposerAttachments | null;
 }) {
-  const { composerHeader } = useChatExtensions();
+  const { agentLabel, composerHeader } = useChatExtensions();
+  const composerAction = context?.action ?? "message";
   const disabled = disabledReason !== null;
   // Clearing takes no text, so nothing can be written for it.
   // Compaction instructions and clearing say nothing to the agent, so carry no files.
@@ -385,21 +453,21 @@ export function SessionThread({
                       description="Selecting history and writing a durable summary…"
                     />
                   </ChatThreadNotice>
-                ) : compactionError ? (
+                ) : context?.compactionError ? (
                   <ChatThreadNotice>
                     <OperationNotice
                       tone="failed"
                       title="Context compaction failed"
-                      description={compactionError}
-                      onRetry={onCompact}
+                      description={context.compactionError}
+                      onRetry={context.onCompact}
                     />
                   </ChatThreadNotice>
-                ) : compactionNotice ? (
+                ) : context?.compactionNotice ? (
                   <ChatThreadNotice>
                     <OperationNotice
                       tone="neutral"
                       title="Context was not compacted"
-                      description={compactionNotice}
+                      description={context.compactionNotice}
                     />
                   </ChatThreadNotice>
                 ) : null}
@@ -412,12 +480,12 @@ export function SessionThread({
                   {composerHeader}
                   <ComposerPrimitive.Root
                     onSubmit={(event) => {
-                      if (composerAction === "message") {
+                      if (context === null || composerAction === "message") {
                         return;
                       }
                       event.preventDefault();
                       if (composerAction === "compact" && readyForInput && !compacting) {
-                        void onCompact();
+                        void context.onCompact();
                       }
                     }}
                     asChild
@@ -440,10 +508,10 @@ export function SessionThread({
                           disabled
                             ? disabledReason
                             : composerAction === "compact"
-                              ? "Tell Pi what the compaction summary must preserve"
+                              ? `Tell ${agentLabel} what the compaction summary must preserve`
                               : running
-                                ? "Steer Pi; it reads this after the current step"
-                                : "Message Pi"
+                                ? `Steer ${agentLabel}; it reads this after the current step`
+                                : `Message ${agentLabel}`
                         }
                         rows={1}
                         className={chatComposerInputClassName}
@@ -458,10 +526,12 @@ export function SessionThread({
                               />
                             )}
                             {model}
-                            <ContextUsageMeter
-                              tokens={contextUsage.tokens}
-                              contextWindow={contextUsage.window}
-                            />
+                            {context === null ? null : (
+                              <ContextUsageMeter
+                                tokens={context.usage.tokens}
+                                contextWindow={context.usage.window}
+                              />
+                            )}
                             {disabled ? (
                               <ChatComposerStatus working={false}>
                                 {disabledReason}
@@ -512,44 +582,25 @@ export function SessionThread({
                                     Stop
                                   </ChatComposerButton>
                                 ) : null}
-                                <ChatComposerSplit>
-                                  {composerAction === "compact" ? (
-                                    <ChatComposerButton
-                                      tone="accent"
-                                      joined
-                                      disabled={disabled || !readyForInput || compacting}
-                                      onClick={() => void onCompact()}
-                                    >
-                                      Compact
-                                    </ChatComposerButton>
-                                  ) : (
-                                    <SendOrResume
-                                      disabled={disabled}
-                                      paused={paused}
-                                      onResume={onResume}
-                                      sendFiles={sendFiles}
-                                    />
-                                  )}
-                                  <RadioMenu
-                                    label="Choose composer action"
-                                    heading="Composer action"
-                                    trigger={{ kind: "accent" }}
-                                    side="top"
+                                {context === null ? (
+                                  <SendOrResume
+                                    joined={false}
                                     disabled={disabled}
-                                    value={composerAction}
-                                    options={composerActionOptions(
-                                      readyForInput,
-                                      contextUsage.tokens === 0,
-                                    )}
-                                    onValueChange={(value) => {
-                                      if (value === "clear") {
-                                        void onClear();
-                                      } else {
-                                        onComposerActionChange(value);
-                                      }
-                                    }}
+                                    paused={paused}
+                                    onResume={onResume}
+                                    sendFiles={sendFiles}
                                   />
-                                </ChatComposerSplit>
+                                ) : (
+                                  <ComposerActionSplit
+                                    context={context}
+                                    disabled={disabled}
+                                    readyForInput={readyForInput}
+                                    compacting={compacting}
+                                    paused={paused}
+                                    onResume={onResume}
+                                    sendFiles={sendFiles}
+                                  />
+                                )}
                               </>
                             )}
                           </>

@@ -702,8 +702,6 @@ function AgentConversationThread({
         onResume={handleResume}
         model={model.control}
         needsNudge={false}
-        onCompact={handleCompact}
-        onClear={handleClear}
         onContinue={() => undefined}
         onStop={handleStop}
         readyForInput={!running}
@@ -713,21 +711,22 @@ function AgentConversationThread({
         showToolCalls={displayOptions.showToolCalls}
         showUsage={displayOptions.showUsage}
         statusText={statusText}
-        composerAction={composerAction}
         compacting={compacting}
-        compactionError={compaction.request.status === "failed" ? compaction.request.message : null}
-        compactionNotice={
-          compaction.request.status === "unchanged" ? compaction.request.message : null
-        }
-        contextUsage={{
-          tokens: contextTokens,
-          window: model.contextWindow,
+        context={{
+          action: composerAction,
+          onActionChange: setComposerAction,
+          onCompact: handleCompact,
+          onClear: handleClear,
+          compactionError:
+            compaction.request.status === "failed" ? compaction.request.message : null,
+          compactionNotice:
+            compaction.request.status === "unchanged" ? compaction.request.message : null,
+          usage: { tokens: contextTokens, window: model.contextWindow },
         }}
         activeContextStartMessageId={activeContextStartMessageId}
         hasMoreHistory={history.hasMore}
         historyLoading={history.loading}
         historyError={history.error}
-        onComposerActionChange={setComposerAction}
         onLoadMoreHistory={history.loadMore}
       />
     </AgentSubagentsProvider>

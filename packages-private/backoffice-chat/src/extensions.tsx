@@ -17,6 +17,8 @@ export type ChatSubagentReport = {
  * Without one, the chat shows less of the conversation, never something else.
  */
 export type ChatExtensions = {
+  /** What the thread calls the agent, e.g. as its messages' author. */
+  agentLabel: string;
   /** The files a user's message carried; null shows none. */
   UserAttachments: ComponentType<{ attachments: readonly PiAgentAttachment[] }> | null;
   /** A run a codemode program started or showed, after the work that showed it last. */
@@ -39,6 +41,7 @@ const noSubagentReports: ChatExtensions["useSubagentReports"] = (notifications) 
   notifications.map(() => null);
 
 const ChatExtensionsContext = createContext<ChatExtensions>({
+  agentLabel: "Pi",
   UserAttachments: null,
   WorkflowRun: null,
   ToolCallFollowUps: null,
