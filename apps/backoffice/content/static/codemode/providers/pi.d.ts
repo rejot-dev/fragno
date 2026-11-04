@@ -56,10 +56,15 @@ type PiCodemodeProvider = {
    */
   getPrompt(input: PiGetPromptInput): Promise<PiGetPromptOutput>;
   /**
-   * Stop an agent: abort its running turn and background work, and pause its queue. Queued and new prompts wait until someone resumes the agent in Backoffice.
+   * Stop an agent: abort its running turn and background work, and pause its queue. Queued and new prompts wait until `pi.agent.resume`, or a prompt submitted with `whenPaused: "resume"`, resumes it.
    * Requires `pi.modify`.
    */
   stopAgent(input: PiStopAgentInput): Promise<PiStopAgentOutput>;
+  /**
+   * Resume an agent someone stopped: its paused queue starts again with its oldest prompt, and its waiting subagents start.
+   * Requires `pi.modify`.
+   */
+  resumeAgent(input: PiResumeAgentInput): Promise<PiResumeAgentOutput>;
   /**
    * Record the scope's defined agents as pi agent.* events, for agents defined before those events were recorded, so views and routes built on the events see every agent. For each agent the events record missing, deleted, or with a different definition, it records agent.created or agent.updated with the current definition, and for each agent they record that is no longer defined, agent.deleted. Routes on those events run for each new event. A rerun records nothing new. Built-in agents are left out: they are defined in every scope. Returns the events it recorded.
    * Requires `pi.manage`.
@@ -324,6 +329,8 @@ type PiSubmitPromptInput = {
   content: string;
   requestId?: string;
   whenBusy?: "followUp" | "steer" | "reject";
+  /** When someone stopped the agent: `wait` (the default) leaves the prompt in its paused queue, and `resume` resumes the queue, as a person writing to the agent does. */
+  whenPaused?: "wait" | "resume";
   /** Only from an agent's turn, prompting another agent or starting a subagent: notify you, the calling agent, with the event recording how the prompt ended. Works for agents in other scopes too. */
   notifyWhenDone?: boolean;
   /** Run the prompt in a subagent of the agent: a new conversation under the agent's definition that answers it alongside the agent's other work, a few at a time, and then ends. Use it for independent tasks, such as one per document; it cannot steer or be refused as busy. */
@@ -358,6 +365,12 @@ type PiStopAgentInput = {
 };
 type PiStopAgentOutput = {
   stopped: true;
+};
+type PiResumeAgentInput = {
+  agentName: string;
+};
+type PiResumeAgentOutput = {
+  resumed: true;
 };
 type PiBackfillAgentEventsInput = Record<string, unknown>;
 type PiBackfillAgentEventsOutput = {

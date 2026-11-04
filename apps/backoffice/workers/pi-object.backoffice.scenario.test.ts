@@ -71,6 +71,7 @@ import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog-extension";
+import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { BackofficePostHogContext, captureBackofficeServerException } from "@/posthog.server";
@@ -1825,6 +1826,80 @@ test("stopping an agent aborts its running subagents and its turn waiting for th
               reason: "aborted",
             });
           }
+        }),
+      ],
+    }),
+  );
+});
+
+test("a stopped agent's prompts wait until it is resumed, or a prompt resumes it", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "stop-and-resume" },
+  });
+  // The first turn runs until it is stopped; every other answers at once.
+  const respond: FauxResponseStep = async (context, options) => {
+    if (lastUserText(context) !== "Run until stopped.") {
+      return fauxAssistantMessage([fauxText("Done.")], { stopReason: "stop" });
+    }
+    await new Promise<void>((resolve) => {
+      options?.signal?.addEventListener("abort", () => resolve(), { once: true });
+    });
+    return fauxAssistantMessage([], { stopReason: "aborted" });
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi stop and resume",
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...scriptedAgents(Array.from({ length: 4 }, () => respond)) },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("pi.agent.resume and whenPaused resume the queue", async ({ runtime }) => {
+          const pi = createPiManagerRuntime({
+            runtime: runtime.services,
+            kernel: new BackofficeKernel(runtime.services),
+            execution,
+            caller: { kind: "none" },
+          });
+          await pi.submitPrompt({
+            agentName: "assistant",
+            requestId: "running",
+            content: "Run until stopped.",
+          });
+          const running = runtime.drainAlarms();
+          await vi.waitFor(
+            async () => {
+              expect(await submission(runtime, execution, "running")).toMatchObject({
+                status: "running",
+              });
+            },
+            { timeout: 5_000, interval: 20 },
+          );
+          await pi.stopAgent({ agentName: "assistant" });
+          await running;
+
+          await pi.submitPrompt({ agentName: "assistant", requestId: "waits", content: "Wait." });
+          await runtime.drain();
+          expect(await submission(runtime, execution, "waits")).toMatchObject({ status: "queued" });
+
+          await pi.resumeAgent({ agentName: "assistant" });
+          await runtime.drain();
+          expect(await submission(runtime, execution, "waits")).toMatchObject({
+            status: "completed",
+          });
+
+          await pi.stopAgent({ agentName: "assistant" });
+          await pi.submitPrompt({
+            agentName: "assistant",
+            requestId: "resumes",
+            content: "Resume.",
+            whenPaused: "resume",
+          });
+          await runtime.drain();
+          expect(await submission(runtime, execution, "resumes")).toMatchObject({
+            status: "completed",
+          });
         }),
       ],
     }),

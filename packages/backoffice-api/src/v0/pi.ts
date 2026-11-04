@@ -150,6 +150,12 @@ export type PiManagerAgentDirectory = z.infer<typeof piManagerAgentDirectorySche
  */
 export const piPromptWhenBusySchema = z.lazy(() => z.enum(["followUp", "steer", "reject"]));
 
+/**
+ * `wait` leaves a prompt for an agent someone stopped in its paused queue; `resume` resumes the
+ * queue, as a person writing to the agent does.
+ */
+export const piPromptWhenPausedSchema = z.lazy(() => z.enum(["wait", "resume"]));
+
 const piAgentDirectoryOutputSchema = z.lazy(() =>
   z.object({
     agents: z.array(piAgentDefinitionSchema),
@@ -214,6 +220,11 @@ const promptSubmitInputSchema = z.lazy(() =>
     content: z.string().trim().min(1),
     requestId: z.string().trim().min(1).optional(),
     whenBusy: piPromptWhenBusySchema.optional(),
+    whenPaused: piPromptWhenPausedSchema
+      .optional()
+      .describe(
+        "When someone stopped the agent: `wait` (the default) leaves the prompt in its paused queue, and `resume` resumes the queue, as a person writing to the agent does.",
+      ),
     notifyWhenDone: z
       .boolean()
       .optional()
@@ -513,10 +524,17 @@ export const piOperations = {
   },
   "pi.agent.stop": {
     description:
-      "Stop an agent: abort its running turn and background work, and pause its queue. Queued and new prompts wait until someone resumes the agent in Backoffice.",
+      'Stop an agent: abort its running turn and background work, and pause its queue. Queued and new prompts wait until `pi.agent.resume`, or a prompt submitted with `whenPaused: "resume"`, resumes it.',
     permissions: [BACKOFFICE_PERMISSION.pi.modify],
     input: agentInputSchema,
     output: z.lazy(() => z.object({ stopped: z.literal(true) })),
+  },
+  "pi.agent.resume": {
+    description:
+      "Resume an agent someone stopped: its paused queue starts again with its oldest prompt, and its waiting subagents start.",
+    permissions: [BACKOFFICE_PERMISSION.pi.modify],
+    input: agentInputSchema,
+    output: z.lazy(() => z.object({ resumed: z.literal(true) })),
   },
   "pi.agent.backfillEvents": {
     description:

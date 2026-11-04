@@ -52,6 +52,7 @@ const parsePromptSubmit = defineCliArgsParser<PiManagerSubmitPromptInput>("pi.pr
   content: { required: true },
   requestId: { option: "request-id" },
   whenBusy: { option: "when-busy" },
+  whenPaused: { option: "when-paused" },
   notifyWhenDone: { option: "notify-when-done", kind: "boolean" },
   subagent: { kind: "boolean" },
 });
@@ -60,6 +61,9 @@ const parsePromptGet = defineCliArgsParser<PiManagerPromptInput>("pi.prompt.get"
   requestId: { option: "request-id", required: true },
 });
 const parseAgentStop = defineCliArgsParser<PiManagerAgentInput>("pi.agent.stop", {
+  agentName: { option: "agent", required: true },
+});
+const parseAgentResume = defineCliArgsParser<PiManagerAgentInput>("pi.agent.resume", {
   agentName: { option: "agent", required: true },
 });
 function definitionArgsParser(command: string) {
@@ -271,6 +275,13 @@ const promptSubmitTool = defineBackofficeRuntimeTool({
               "followUp (default) waits for the current turn, steer joins it, reject refuses",
           },
           {
+            name: "when-paused",
+            valueRequired: true,
+            valueName: "mode",
+            description:
+              "wait (default) leaves the prompt in a stopped agent's paused queue, resume resumes it",
+          },
+          {
             name: "notify-when-done",
             description:
               "From an agent's turn: notify the calling agent with the event recording how the prompt ended",
@@ -357,6 +368,36 @@ const agentStopTool = defineBackofficeRuntimeTool({
         examples: ["pi.agent.stop --agent assistant"],
       },
       parse: parseAgentStop,
+      format: (data) => ({ data }),
+    },
+  },
+});
+
+const agentResumeTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.resume"),
+  namespace: "pi",
+  name: "resumeAgent",
+  execute: async (input, context: PiToolContext) => {
+    await requirePiManagerRuntime(context.runtimes.pi).resumeAgent(input);
+    return { resumed: true as const };
+  },
+  adapters: {
+    bash: {
+      command: "pi.agent.resume",
+      help: {
+        summary: "pi.agent.resume starts a stopped agent's paused queue again.",
+        options: [
+          {
+            name: "agent",
+            required: true,
+            valueRequired: true,
+            valueName: "agent-name",
+            description: "Agent name",
+          },
+        ],
+        examples: ["pi.agent.resume --agent assistant"],
+      },
+      parse: parseAgentResume,
       format: (data) => ({ data }),
     },
   },
@@ -647,6 +688,7 @@ export const piRuntimeTools = [
   promptSubmitTool,
   promptGetTool,
   agentStopTool,
+  agentResumeTool,
   agentBackfillEventsTool,
 ] as const;
 

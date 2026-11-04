@@ -4,6 +4,7 @@ import {
   piPromptReceiptOutputSchema,
   piPromptStatusSchema,
   piPromptWhenBusySchema,
+  piPromptWhenPausedSchema,
   type PiAgentDefinition,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -36,7 +37,6 @@ export const turnProvenanceSchema = piAgentTurnSchema.pick({
   scopeRestriction: true,
 });
 // A person's message resumes a stopped agent's queue; automations wait until someone does.
-const promptWhenPausedSchema = z.enum(["wait", "resume"]);
 export const promptRequestSchema = z.object({
   requestId: z
     .string()
@@ -49,7 +49,7 @@ export const promptRequestSchema = z.object({
     .optional(),
   content: piAgentPromptSchema.shape.content,
   whenBusy: piPromptWhenBusySchema.default("followUp"),
-  whenPaused: promptWhenPausedSchema.default("wait"),
+  whenPaused: piPromptWhenPausedSchema.default("wait"),
   // A built-in agent's model for this prompt's turn; null keeps the conversation's.
   model: piAgentModelChoiceSchema.nullable().default(null),
   // The agent, in any scope, whose turn sends the prompt and is notified of how it ends.
@@ -62,7 +62,7 @@ export const promptRequestSchema = z.object({
 const promptSchema = piAgentPromptSchema.extend({
   subagent: z.boolean(),
   whenBusy: piPromptWhenBusySchema,
-  whenPaused: promptWhenPausedSchema,
+  whenPaused: piPromptWhenPausedSchema,
   model: piAgentModelChoiceSchema.nullable(),
   replyTo: piAgentConfigSchema.nullable(),
   askingToolCall: z.string().min(1).nullable(),
