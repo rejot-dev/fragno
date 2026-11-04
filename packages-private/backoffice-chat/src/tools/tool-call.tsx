@@ -22,6 +22,7 @@ import type { IconName } from "@fragno-private/design-system/icon";
 import { LabeledSection } from "@fragno-private/design-system/layout/labeled-section";
 import { useState } from "react";
 
+import type { ChatToolCall } from "../extensions";
 import type { ToolCallPart } from "../messages/agent-turn";
 import {
   ToolWorkspaceSelector,
@@ -79,6 +80,19 @@ export function toolCallPresentation(part: ToolCallPart) {
     running,
     failed: !running && Boolean(completedToolResult?.isError),
     label: part.toolName,
+  };
+}
+
+/** The tool call as a host's own step reads it (see `ChatExtensions.toolCalls`). */
+export function chatToolCall(
+  part: ToolCallPart,
+  { running, failed, completedToolResult, calls }: ToolCallPresentation,
+): ChatToolCall {
+  return {
+    toolName: part.toolName,
+    state: running ? "running" : failed ? "failed" : "done",
+    durationMs: completedToolResult?.durationMs ?? null,
+    calls,
   };
 }
 

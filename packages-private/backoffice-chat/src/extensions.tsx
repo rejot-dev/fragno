@@ -1,6 +1,8 @@
 import type { CodemodeRun } from "@fragno-dev/backoffice-api/v0/pi-conversation/codemode-result";
 import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import type { PiAgentAttachment } from "@fragno-dev/backoffice-api/v0/pi-conversation/prompt-attachments";
+import type { StepState } from "@fragno-private/design-system/agents/chat-activity";
+import type { ChatCodemodeCalls } from "@fragno-private/design-system/agents/chat-codemode-step";
 import { ChatEventDisclosure } from "@fragno-private/design-system/agents/chat-divider";
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
 
@@ -12,6 +14,24 @@ export type ChatSubagentReport = {
   show: (() => void) | null;
 };
 
+/** One of the agent's tool calls, as a host showing them its own way reads it. */
+export type ChatToolCall = {
+  /** The tool, such as "codemode" or "bash". */
+  toolName: string;
+  state: StepState;
+  durationMs: number | null;
+  /** The calls a codemode run made so far; null for other tools, and until the run reports any. */
+  calls: ChatCodemodeCalls | null;
+};
+
+/** How a host shows the agent's tool calls to readers who need not see their code. */
+export type ChatToolCalls = {
+  /** One tool call on its turn's activity card. */
+  Step: ComponentType<{ call: ChatToolCall }>;
+  /** What a running tool call does, for its card's header. */
+  headline: (call: ChatToolCall) => string;
+};
+
 /**
  * What the chat shows of the host around the conversation: its files, workflows, and subagents.
  * Without one, the chat shows less of the conversation, never something else.
@@ -19,6 +39,8 @@ export type ChatSubagentReport = {
 export type ChatExtensions = {
   /** What the thread calls the agent, e.g. as its messages' author. */
   agentLabel: string;
+  /** How the thread shows tool calls; null shows each with its code, result, and calls. */
+  toolCalls: ChatToolCalls | null;
   /** The files a user's message carried; null shows none. */
   UserAttachments: ComponentType<{ attachments: readonly PiAgentAttachment[] }> | null;
   /** A run a codemode program started or showed, after the work that showed it last. */
@@ -42,6 +64,7 @@ const noSubagentReports: ChatExtensions["useSubagentReports"] = (notifications) 
 
 const ChatExtensionsContext = createContext<ChatExtensions>({
   agentLabel: "Pi",
+  toolCalls: null,
   UserAttachments: null,
   WorkflowRun: null,
   ToolCallFollowUps: null,
