@@ -87,8 +87,9 @@ The socket sends a `queue` frame, then a `view` frame with the whole conversatio
 `queue` frame whenever the queue changes (`PiAgentWatchFrame`). A request that cannot upgrade, such
 as one with an invalid credential, answers with an error like an operation's. A missing permission,
 an agent that has had no turns, and a name no agent has close the socket with
-`PI_AGENT_WATCH_REFUSED` and the reason. The credential is only checked on connecting, so an open
-socket outlives it.
+`PI_AGENT_WATCH_REFUSED` and the reason; `pi.agent.get` says whether an agent's first prompt
+provisioned its conversation yet (`provisioned`). The credential is only checked on connecting, so
+an open socket outlives it.
 
 Browsers cannot send a WebSocket's headers, so an app's server asks `pi.agent.watchTicket` for a
 ticket, and its page connects with `ticket=<ticket>` instead of the bearer token:

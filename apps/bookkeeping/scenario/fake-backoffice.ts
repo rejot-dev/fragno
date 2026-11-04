@@ -831,7 +831,12 @@ export class FakeBackoffice {
           if (!definition) {
             throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
           }
-          return { ...definition, steward: { kind: "members" as const } };
+          // Its first prompt provisions its conversation; subagents run in conversations of their own.
+          const provisioned = this.#prompts.some(
+            (prompt) =>
+              prompt.scope === key("") && prompt.agentName === agentName && !prompt.subagent,
+          );
+          return { ...definition, steward: { kind: "members" as const }, provisioned };
         });
       case "pi.agent.update":
         return respond("pi.agent.update", body, (definition) => {

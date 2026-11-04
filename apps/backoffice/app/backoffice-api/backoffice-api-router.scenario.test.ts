@@ -25,6 +25,7 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
   createBackofficeSystemExecution,
   type BackofficeExecutionContext,
@@ -66,6 +67,9 @@ const scenarioObjects = {
   FORMS: (input) => new FormsObject(input),
   MCP: (input) => new McpObject(input),
   OTP: (input) => new OtpObject(input),
+  // Answers `pi.*` operations; no scenario runs an agent's turn, which would need the agent object.
+  PI_MANAGER: allLocalObjects.PI_MANAGER,
+  TELEGRAM: null,
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
@@ -1029,6 +1033,18 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           ctx,
           await authorizeBookkeeping(ctx, ctx.vars.ownerCookie),
         );
+      }),
+      then("Bookkeeping reads whether the agent's conversation is provisioned yet", async (ctx) => {
+        // The socket opens only once it is, so the app starts the conversation first.
+        expect(
+          await expectOk(
+            await callApi(ctx, {
+              path: orgOperation(ctx.vars.orgId, "pi.agent.get"),
+              credential: ctx.vars.delegatedCredential,
+              body: { agentName: "assistant" },
+            }),
+          ),
+        ).toMatchObject({ agentName: "assistant", provisioned: false });
       }),
       then(
         "a ticket opens the agent's socket for the owner, through Bookkeeping, from Bookkeeping's pages or a server",
