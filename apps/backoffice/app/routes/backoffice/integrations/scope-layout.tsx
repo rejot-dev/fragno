@@ -1,4 +1,5 @@
 import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { ButtonLink } from "@fragno-private/design-system/controls/button";
 import { Checkbox } from "@fragno-private/design-system/controls/checkbox";
 import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
@@ -10,7 +11,7 @@ import {
 } from "@fragno-private/design-system/layout/surface-panel";
 import { BackofficeTabHeader } from "@fragno-private/design-system/navigation/tab-header";
 import { Suspense, use, useState, type ReactNode } from "react";
-import { Link, Outlet, useParams, useSearchParams } from "react-router";
+import { Link, Outlet, useNavigation, useParams, useSearchParams } from "react-router";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
@@ -25,7 +26,12 @@ import { formatTimestamp } from "../automations/formatting";
 import { shouldRevalidateWithinScope } from "../scope-revalidation";
 import type { Route } from "./+types/scope-layout";
 import { IntegrationConnectionStateLight, integrationAuthMethodLabels } from "./connection-display";
-import { integrationConnectionPath, integrationsScopeBasePath } from "./connection-paths";
+import {
+  integrationConnectionPath,
+  integrationsConnectPath,
+  integrationsScopeBasePath,
+} from "./connection-paths";
+import { ConnectorActionForm } from "./connector-action-form";
 import type { IntegrationsLayoutContext } from "./layout-context";
 import { NativeServices } from "./native-services";
 
@@ -174,17 +180,22 @@ function IntegrationsWorkspace({
           <SurfacePanel
             caption={`${total} ${total === 1 ? "connection" : "connections"}`}
             actions={
-              total > 0 ? (
-                <Checkbox
-                  density="compact"
-                  checked={showDisconnected}
-                  onCheckedChange={setShowDisconnected}
-                  className="text-[var(--bo-muted)]"
-                >
-                  Show disconnected
-                  {hiddenCount > 0 ? ` (${hiddenCount})` : null}
-                </Checkbox>
-              ) : null
+              <div className="flex items-center gap-3">
+                {total > 0 ? (
+                  <Checkbox
+                    density="compact"
+                    checked={showDisconnected}
+                    onCheckedChange={setShowDisconnected}
+                    className="text-[var(--bo-muted)]"
+                  >
+                    Show disconnected
+                    {hiddenCount > 0 ? ` (${hiddenCount})` : null}
+                  </Checkbox>
+                ) : null}
+                <ButtonLink to={integrationsConnectPath(selectedScope)} variant="accent">
+                  Connect a source
+                </ButtonLink>
+              </div>
             }
           >
             {list.status === "error" ? (
@@ -199,7 +210,7 @@ function IntegrationsWorkspace({
               <BackofficeSystemState
                 tone="empty"
                 title="No connections yet."
-                description="Ask your agent to add a connection."
+                description="Connect a source to get started."
                 flush
               />
             ) : visibleConnections.length === 0 ? (
@@ -259,6 +270,7 @@ const CONNECTION_COLUMNS: readonly SurfaceTableColumn[] = [
   { label: "Scope", align: "start" },
   { label: "State", align: "start" },
   { label: "Last change", align: "start" },
+  { label: "", align: "end" },
 ];
 
 function ConnectionsTable({
@@ -268,6 +280,7 @@ function ConnectionsTable({
   selectedScope: BackofficeScopeSelection;
   connections: IntegrationConnectionRecord[];
 }) {
+  const navigation = useNavigation();
   return (
     <SurfaceTable columns={CONNECTION_COLUMNS}>
       {connections.map((connection) => {
@@ -303,6 +316,20 @@ function ConnectionsTable({
               <span key="changed" className="text-xs whitespace-nowrap">
                 {formatTimestamp(connection.changedAt)}
               </span>,
+              // Connector accounts are what a workflow builds on, straight from their row.
+              connection.kind === "connector" && connection.state === "ready" ? (
+                <ConnectorActionForm
+                  key="workflow"
+                  intent="create-workflow"
+                  action={integrationsConnectPath(selectedScope)}
+                  connectionId={connection.connectionId}
+                  busy={navigation.state !== "idle"}
+                >
+                  Create workflow
+                </ConnectorActionForm>
+              ) : (
+                <span key="workflow" />
+              ),
             ]}
           />
         );
