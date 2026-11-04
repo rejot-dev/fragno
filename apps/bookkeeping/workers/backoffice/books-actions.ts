@@ -43,13 +43,20 @@ type Person = { name: string };
  * its firm's agent project, which reads a document's file where Bookkeeping shares it.
  */
 type Workplace = {
+  kind: "administration" | "firm-agent";
   documentBlob(document: { id: string; storageKey: string }): Promise<string>;
 };
 
-const ADMINISTRATION_PROJECT: Workplace = { documentBlob: async (document) => document.storageKey };
+const ADMINISTRATION_PROJECT: Workplace = {
+  kind: "administration",
+  documentBlob: async (document) => document.storageKey,
+};
 
 function firmAgentProject(administration: Administration): Workplace {
-  return { documentBlob: (document) => sharedDocumentKey(administration.id, document) };
+  return {
+    kind: "firm-agent",
+    documentBlob: (document) => sharedDocumentKey(administration.id, document),
+  };
 }
 
 /** Every action's input names the administration when the call runs in a firm's agent project. */
@@ -129,7 +136,7 @@ function settled<T>(outcome: Outcome<T>): T {
 
 /**
  * Who may run an action: `read` anyone Backoffice signs for; `review`, which answers a document's
- * review and posts nothing, people and Bookkeeping's installation; `keep` people; and `set-up`
+ * review and posts nothing, people and the firm's bookkeeping agent; `keep` people; and `set-up`
  * owners and admins.
  */
 type BooksAction = { declaration: AppAction } & (
@@ -1413,9 +1420,11 @@ async function answerThenRelease(
 
 /**
  * Runs a books action Backoffice signed, on the books of the administration `administrationOf`
- * finds. Reads are for anyone Backoffice signs for; answering a document's review also for
- * Bookkeeping's installation, which the bookkeeping agent calls as; changing the books is for
- * people whose membership Bookkeeping confirms, and setting them up for owners and admins.
+ * finds. Reads are for anyone Backoffice signs for; answering a document's review also for the
+ * firm's bookkeeping agent, which calls as Bookkeeping's installation in the firm's agent project;
+ * changing the books is for people whose membership Bookkeeping confirms, and setting them up for
+ * owners and admins. Bookkeeping prompts the client's own agent as its installation too, in the
+ * administration's project, where the installation reads.
  */
 export async function runBooksAction(
   env: CloudflareEnv,
@@ -1434,7 +1443,13 @@ export async function runBooksAction(
     if (action.access === "read") {
       return Response.json(await action.run(books, actionInput, workplace));
     }
-    if (action.access === "review" && claims.actor.kind === "installation") {
+    if (claims.actor.kind === "installation") {
+      if (action.access !== "review" || workplace.kind !== "firm-agent") {
+        throw new ActionFailure(
+          403,
+          "Automations without a person behind them read the books: people change them, and the firm's bookkeeping agent proposes documents' entries.",
+        );
+      }
       return Response.json(
         await answerThenRelease(env, administration, () =>
           action.run(books, actionInput, {
@@ -1442,12 +1457,6 @@ export async function runBooksAction(
             administrationId: administration.id,
           }),
         ),
-      );
-    }
-    if (claims.actor.kind !== "user") {
-      throw new ActionFailure(
-        403,
-        "Automations without a person behind them read the books and propose documents' entries; only people change the books.",
       );
     }
     const person = await confirmPerson(env, administration.clientId, claims.actor.userId);

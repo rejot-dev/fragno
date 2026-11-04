@@ -40,6 +40,9 @@ async function practiceWithBooks(scenario: BookkeepingScenario) {
   return { ada, clientPath, books };
 }
 
+const READS_ONLY =
+  "Automations without a person behind them read the books: people change them, and the firm's bookkeeping agent proposes documents' entries.";
+
 test("an entry's lines, as an agent reads them, post unchanged", async () => {
   await runBookkeepingScenario(async (scenario) => {
     await practiceWithBooks(scenario);
@@ -298,7 +301,8 @@ test("people's agents keep the books through Backoffice, within what the person 
       body: { journal: "BNK", number: 2 },
     });
 
-    // Automations without a person behind them read the books but do not change them.
+    // Automations without a person behind them, such as the client's agent Bookkeeping prompts,
+    // read the books but do not change them.
     const automation = scenario.agent("installation", project);
     expect(
       await automation.call("accounts.lines", { account: "4100", cursor: null }),
@@ -311,10 +315,17 @@ test("people's agents keep the books through Backoffice, within what the person 
     ).toEqual({
       status: 403,
       body: {
-        message:
-          "Automations without a person behind them read the books and propose documents' entries; only people change the books.",
+        message: READS_ONLY,
       },
     });
+    // Nor answer a document's review: that is the firm's bookkeeping agent's, in its own project.
+    expect(
+      await automation.call("documents.decline", {
+        document: "document-1",
+        request: null,
+        reason: "Not an invoice.",
+      }),
+    ).toEqual({ status: 403, body: { message: READS_ONLY } });
   });
 });
 

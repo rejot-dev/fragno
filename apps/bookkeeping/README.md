@@ -266,7 +266,7 @@ currency gives neither its currency nor a functional amount.
 | Access                       | Actions                                                                                                                                                          |
 | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Anyone Backoffice signs for  | `books.describe`, `entries.list`, `entries.get`, `accounts.lines`, `reports.trial-balance`, `parties.open-items`, `documents.get`                                |
-| Members and the installation | `documents.propose`, `documents.decline`                                                                                                                         |
+| Members and the firm's agent | `documents.propose`, `documents.decline`                                                                                                                         |
 | Members                      | `entries.post`, `entries.reverse`, `parties.create`, `settlements.create`, `settlements.reverse`                                                                 |
 | Owners and admins            | `accounts.create`, `accounts.update`, `journals.create`, `dimensions.create`, `dimension-values.create`, `currencies.add`, `fiscal-years.open`, `periods.reopen` |
 
