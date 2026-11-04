@@ -1,7 +1,7 @@
+import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { NotificationEventDetails } from "@fragno-private/backoffice-chat/extensions";
 import { ResultContent } from "@fragno-private/backoffice-chat/tools/result-content";
-import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import {
   ChatEventDisclosure,

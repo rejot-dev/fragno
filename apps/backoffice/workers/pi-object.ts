@@ -7,16 +7,16 @@ import {
   type PiAgentConfig,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import {
-  backofficeContextScopeSchema,
-  type BackofficeContextScope,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
-import {
   piAgentNotificationSchema,
   type PiAgentNotification,
   PI_NOTIFICATION_ENTRY_KIND,
   renderPiNotification,
   renderPiNotificationRequest,
-} from "@fragno-private/backoffice-conversation/format/notification-entry";
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
+import {
+  backofficeContextScopeSchema,
+  type BackofficeContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { RpcTarget } from "cloudflare:workers";
 import { z } from "zod";
 

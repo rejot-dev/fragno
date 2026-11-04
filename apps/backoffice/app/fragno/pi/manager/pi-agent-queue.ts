@@ -1,8 +1,8 @@
 import type { PiAgentConfig, PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 import type { PiAgentQueueEntry } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragnoId } from "@fragno-dev/db/schema";
-import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 
 import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-dev/db";
 

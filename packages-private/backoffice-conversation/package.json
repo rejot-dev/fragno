@@ -10,10 +10,6 @@
   },
   "type": "module",
   "exports": {
-    "./format/codemode-result": "./src/format/codemode-result.ts",
-    "./format/compaction-summary": "./src/format/compaction-summary.ts",
-    "./format/notification-entry": "./src/format/notification-entry.ts",
-    "./format/prompt-attachments": "./src/format/prompt-attachments.ts",
     "./live/view-socket": "./src/live/view-socket.ts",
     "./projection/assistant-runtime": "./src/projection/assistant-runtime.ts",
     "./projection/pending-messages": "./src/projection/pending-messages.ts"
@@ -32,8 +28,7 @@
     "@earendil-works/chord": "1.4.0",
     "@earendil-works/pi-ai": "1.4.0",
     "@earendil-works/pi-durable": "1.4.0",
-    "@fragno-dev/backoffice-api": "workspace:*",
-    "zod": "^4.5.4"
+    "@fragno-dev/backoffice-api": "workspace:*"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

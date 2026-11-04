@@ -1,4 +1,15 @@
 import type { PiAgentQueueEntry } from "@fragno-dev/backoffice-api/v0/pi";
+import { piCompactionSummary } from "@fragno-dev/backoffice-api/v0/pi-conversation/compaction-summary";
+import {
+  type PiAgentNotification,
+  parsePiNotificationRequest,
+  PI_NOTIFICATION_ENTRY_KIND,
+  type PiNotificationReference,
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
+import {
+  parsePiAgentPrompt,
+  type PiAgentAttachment,
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/prompt-attachments";
 
 import type { AppendMessage, QueueItemState, ThreadMessageLike } from "@assistant-ui/react";
 import type { Message as PiDurableMessage } from "@earendil-works/pi-ai";
@@ -9,15 +20,6 @@ import type {
   InboxState,
   LiveState,
 } from "@earendil-works/pi-durable";
-
-import { piCompactionSummary } from "../format/compaction-summary";
-import {
-  type PiAgentNotification,
-  parsePiNotificationRequest,
-  PI_NOTIFICATION_ENTRY_KIND,
-  type PiNotificationReference,
-} from "../format/notification-entry";
-import { parsePiAgentPrompt, type PiAgentAttachment } from "../format/prompt-attachments";
 
 /** A compaction summary, shown in the transcript where Pi compacted the context. */
 export type PiCompactionMessage = {

@@ -1,9 +1,9 @@
 import type { PiAgentQueueEntry } from "@fragno-dev/backoffice-api/v0/pi";
+import { parsePiAgentPrompt } from "@fragno-dev/backoffice-api/v0/pi-conversation/prompt-attachments";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ConversationView, InboxState } from "@earendil-works/pi-durable";
 
-import { parsePiAgentPrompt } from "../format/prompt-attachments";
 import { normalizePiContent } from "./assistant-runtime";
 
 /**

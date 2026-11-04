@@ -1,7 +1,7 @@
 import type { AutomationSteward } from "@fragno-dev/backoffice-api/v0/automation";
 import type { PiAgentConfig, PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
-import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 
 import type { PiAgentModelChoice, PiAgentTurn } from "@/fragno/pi/agent/pi-agent-contract";
 

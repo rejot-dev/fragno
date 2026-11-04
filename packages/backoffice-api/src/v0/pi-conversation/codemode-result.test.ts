@@ -3,6 +3,29 @@ import { describe, expect, test } from "vitest";
 import { getCodemodeResultDetails } from "./codemode-result";
 
 describe("getCodemodeResultDetails", () => {
+  test("reads the result, even an undefined one, and the logs' lines of text", () => {
+    expect(getCodemodeResultDetails({ result: undefined, logs: ["one", 2, "three"] })).toEqual({
+      hasResult: true,
+      logs: ["one", "three"],
+      result: undefined,
+      runs: [],
+      calls: null,
+    });
+  });
+
+  test.each([null, "details", ["result"]])(
+    "details that are not a record hold nothing: %j",
+    (details) => {
+      expect(getCodemodeResultDetails(details)).toEqual({
+        hasResult: false,
+        logs: [],
+        result: undefined,
+        runs: [],
+        calls: null,
+      });
+    },
+  );
+
   test.each([
     ["absent", { result: "done" }],
     ["null", { result: "done", run: null }],

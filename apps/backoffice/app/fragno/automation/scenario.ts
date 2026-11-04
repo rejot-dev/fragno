@@ -11,6 +11,7 @@ import {
   automationEventListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import { renderPiNotificationRequest } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
@@ -23,7 +24,6 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { WorkersAiBinding } from "@fragno-dev/cloudflare-fragment/workers-ai";
 import { sanitizeToolName } from "@fragno-dev/codemode/runtime-api";
-import { renderPiNotificationRequest } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";

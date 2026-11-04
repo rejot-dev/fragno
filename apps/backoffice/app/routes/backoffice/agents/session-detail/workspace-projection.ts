@@ -1,11 +1,11 @@
 import {
+  getCodemodeResultDetails,
+  isCodemodeTool,
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/codemode-result";
+import {
   generatedUiWorkspaceId,
   type SessionWorkspaceItem,
 } from "@fragno-private/backoffice-chat/workspace/workspace-model";
-import {
-  getCodemodeResultDetails,
-  isCodemodeTool,
-} from "@fragno-private/backoffice-conversation/format/codemode-result";
 import type {
   PiConversationMessage,
   PiDraftAgentMessage,

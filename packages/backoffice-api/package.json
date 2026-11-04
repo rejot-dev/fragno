@@ -38,6 +38,10 @@
     "./v0/shared/*": {
       "types": "./dist/v0/shared/*.d.ts",
       "default": "./dist/v0/shared/*.js"
+    },
+    "./v0/pi-conversation/*": {
+      "types": "./dist/v0/pi-conversation/*.d.ts",
+      "default": "./dist/v0/pi-conversation/*.js"
     }
   },
   "scripts": {

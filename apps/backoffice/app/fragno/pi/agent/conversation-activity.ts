@@ -1,5 +1,5 @@
 import type { PiAgentActivity } from "@fragno-dev/backoffice-api/v0/pi";
-import { getCodemodeCallsDetail } from "@fragno-private/backoffice-conversation/format/codemode-result";
+import { getCodemodeCallsDetail } from "@fragno-dev/backoffice-api/v0/pi-conversation/codemode-result";
 
 import type { ConversationView, LiveState } from "@earendil-works/pi-durable";
 

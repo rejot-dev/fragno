@@ -7,8 +7,8 @@ import {
   piPromptWhenPausedSchema,
   type PiAgentDefinition,
 } from "@fragno-dev/backoffice-api/v0/pi";
+import { piAgentNotificationSchema } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { piAgentNotificationSchema } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";

@@ -3,6 +3,7 @@ import {
   automationRouteActionAuthority,
   type AutomationRouteAction,
 } from "@fragno-dev/backoffice-api/v0/automation";
+import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
@@ -14,7 +15,6 @@ import {
 } from "@fragno-dev/db/dispatchers/cloudflare-do";
 import type { DurableHooksInstrumentation } from "@fragno-dev/db/hooks";
 import type { WorkflowTerminalHookPayload } from "@fragno-dev/workflows/workflow";
-import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 import { createWorkflowsFragment } from "@fragno-dev/workflows";

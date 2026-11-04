@@ -7,11 +7,11 @@ import path from "node:path";
 import type { AutomationRouteCreateInput } from "@fragno-dev/backoffice-api/v0/automation";
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiManagerAgent, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
-import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import {
   PI_NOTIFICATION_ENTRY_KIND,
   renderPiNotificationRequest,
-} from "@fragno-private/backoffice-conversation/format/notification-entry";
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
+import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},

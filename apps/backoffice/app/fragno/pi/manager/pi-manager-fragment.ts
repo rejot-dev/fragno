@@ -1,6 +1,6 @@
+import { piAgentNotificationSchema } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { piAgentNotificationSchema } from "@fragno-private/backoffice-conversation/format/notification-entry";
 
 import { instantiate } from "@fragno-dev/core";
 import type { FragnoPublicConfigWithDatabase } from "@fragno-dev/db";

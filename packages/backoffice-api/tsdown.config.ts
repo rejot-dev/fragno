@@ -8,6 +8,7 @@ export default defineConfig({
     "./src/openapi.ts",
     "./src/v0/*.ts",
     "./src/v0/shared/*.ts",
+    "./src/v0/pi-conversation/*.ts",
     "!./src/**/*.test.ts",
   ],
   dts: true,
