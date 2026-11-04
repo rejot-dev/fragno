@@ -29,6 +29,10 @@ import {
   type PiDraftAgentMessage,
   type PiUserMessageMetadata,
 } from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
+import {
+  usePiEarlierHistory,
+  type PiHistoryPageReader,
+} from "@fragno-private/backoffice-conversation/projection/earlier-history";
 import { usePiPendingMessages } from "@fragno-private/backoffice-conversation/projection/pending-messages";
 import { ChatComposerModel } from "@fragno-private/design-system/agents/chat-composer";
 import { ChatWorkspaceSplit } from "@fragno-private/design-system/agents/chat-workspace-split";
@@ -45,7 +49,7 @@ import {
   type ExternalThreadQueueAdapter,
   type ThreadMessageLike,
 } from "@assistant-ui/react";
-import type { ConversationView, EntryRecord } from "@earendil-works/pi-durable";
+import type { ConversationView } from "@earendil-works/pi-durable";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { FileScopeProvider } from "@/components/backoffice/file-scope";
@@ -126,52 +130,16 @@ function useSessionDisplayOptions() {
   return { displayOptions, updateDisplayOption };
 }
 
-/** Where the active context begins, when a compaction or reset cut it off from earlier history. */
-function piActiveContextStart(view: ConversationView): number | null {
-  // Pi's view leads with its newest head marker, and only head markers carry `head`.
-  return view.entries[0]?.head ?? null;
-}
-
-type PiEntryHistory = {
-  before: number;
-  /** Newest first. */
-  entries: EntryRecord[];
-  /** Null once the conversation's oldest entry arrived. */
-  nextPage: { cursor: string | null } | null;
-};
-
-// One shared empty history, so memos that depend on it hold while there is none.
-const NO_HISTORY_ENTRIES: readonly EntryRecord[] = [];
-
-/** Earlier history is fetched only on request, a page at a time. */
-function usePiEntryHistory({ before, pageUrl }: { before: number | null; pageUrl: string }) {
-  const [loaded, setLoaded] = useState<PiEntryHistory | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // A new compaction moves the active context; history loaded before it would leave a gap.
-  const history = useMemo<PiEntryHistory | null>(
-    () =>
-      before === null
-        ? null
-        : loaded?.before === before
-          ? loaded
-          : { before, entries: [], nextPage: { cursor: null } },
-    [before, loaded],
-  );
-
-  const loadMore = useCallback(async () => {
-    if (!history?.nextPage || loading) {
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
+/** Reads earlier history through the agent's entries route, which pages the manager's entries. */
+function useEntryPageReader(pageUrl: string): PiHistoryPageReader {
+  return useCallback(
+    async ({ before, cursor }) => {
       const query = new URLSearchParams({
-        before: String(history.before),
+        before: String(before),
         pageSize: String(PI_ENTRY_HISTORY_PAGE_SIZE),
       });
-      if (history.nextPage.cursor) {
-        query.set("cursor", history.nextPage.cursor);
+      if (cursor) {
+        query.set("cursor", cursor);
       }
       const response = await fetch(`${pageUrl}?${query}`, {
         headers: { accept: "application/json" },
@@ -180,34 +148,11 @@ function usePiEntryHistory({ before, pageUrl }: { before: number | null; pageUrl
         throw new Error(`Pi history request failed with status ${response.status}.`);
       }
       // This application-owned resource route returns the manager's typed entry page unchanged.
-      const page = (await response.json()) as PiManagerEntryPage;
-      setLoaded({
-        before: history.before,
-        entries: [...history.entries, ...page.entries],
-        nextPage: page.cursor === null ? null : { cursor: page.cursor },
-      });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setLoading(false);
-    }
-  }, [history, loading, pageUrl]);
-
-  return {
-    entries: history?.entries ?? NO_HISTORY_ENTRIES,
-    hasMore: history?.nextPage != null,
-    loading,
-    error,
-    loadMore,
-  };
-}
-
-function transcriptWithInactiveHistory(
-  entries: ConversationView["entries"],
-  newestFirstHistory: readonly EntryRecord[],
-) {
-  // The active view leads with its compaction marker; the transcript shows it where it happened.
-  return [...newestFirstHistory, ...entries].sort((a, b) => a.id - b.id);
+      const page: PiManagerEntryPage = await response.json();
+      return page;
+    },
+    [pageUrl],
+  );
 }
 
 async function waitForPiCompaction(url: string, signal: AbortSignal) {
@@ -443,17 +388,8 @@ function AgentConversationThread({
   const compaction = usePiCompaction(agentPath, clearCompactionInstructions);
   const requestingCompaction = compaction.request.status === "compacting";
   const { displayOptions, updateDisplayOption } = useSessionDisplayOptions();
-  const activeContextStart = piActiveContextStart(view);
-  const history = usePiEntryHistory({
-    before: activeContextStart,
-    pageUrl: `${agentPath}/entries`,
-  });
-  // Keyed on the entries, which a commit that changes only documents, such as each streamed
-  // partial, leaves as they were; rebuilding the transcript costs the whole conversation.
-  const transcript = useMemo(
-    () => transcriptWithInactiveHistory(view.entries, history.entries),
-    [history.entries, view.entries],
-  );
+  const history = usePiEarlierHistory(view, useEntryPageReader(`${agentPath}/entries`));
+  const { activeContextStart, transcript } = history;
   const running = isPiConversationRunning(view) || requestingCompaction;
   const compacting = isPiConversationCompacting(view) || requestingCompaction;
   const { messages, activeContextStartIndex } = useMemo(
