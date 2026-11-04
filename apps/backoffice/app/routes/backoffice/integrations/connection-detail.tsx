@@ -1,6 +1,6 @@
 import { integrationConnectionIdSchema } from "@fragno-dev/backoffice-api/v0/integrations";
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
-import { isRouteErrorResponse, useOutletContext } from "react-router";
+import { isRouteErrorResponse, useNavigation, useOutletContext } from "react-router";
 
 import {
   isBackofficeForbiddenError,
@@ -22,6 +22,8 @@ import {
   IntegrationConnectionStateLight,
   integrationAuthMethodLabels,
 } from "./connection-display";
+import { integrationsConnectPath } from "./connection-paths";
+import { ConnectorActionForm } from "./connector-action-form";
 import { ConnectorConnectionDetails } from "./connector-connection-details";
 import { EmailConnectionDetails } from "./email-connection-details";
 import type { IntegrationsLayoutContext } from "./layout-context";
@@ -84,6 +86,7 @@ export default function BackofficeIntegrationConnectionDetail({
     connectionsRead.status === "ready"
       ? connectionsRead.data.find((record) => record.connectionId === connection.connectionId)
       : undefined;
+  const navigation = useNavigation();
 
   return (
     <article className="flex min-w-0 flex-col gap-4">
@@ -97,7 +100,20 @@ export default function BackofficeIntegrationConnectionDetail({
             {connection.connectionId}
           </p>
         </div>
-        {current ? <IntegrationConnectionStateLight state={current.state} /> : null}
+        <div className="flex shrink-0 flex-col items-end gap-3">
+          {current ? <IntegrationConnectionStateLight state={current.state} /> : null}
+          {/* A Connector account signs in, or once it has, starts a workflow, without leaving it. */}
+          {details.kind === "connector" ? (
+            <ConnectorActionForm
+              intent={current?.state === "ready" ? "create-workflow" : "start"}
+              action={integrationsConnectPath(selectedScope)}
+              connectionId={connection.connectionId}
+              busy={navigation.state !== "idle"}
+            >
+              {current?.state === "ready" ? "Create workflow" : "Connect"}
+            </ConnectorActionForm>
+          ) : null}
+        </div>
       </header>
 
       {/* What the source reports gets the room; inspection and history are short lists beside it. */}
