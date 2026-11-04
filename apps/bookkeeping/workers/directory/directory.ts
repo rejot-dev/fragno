@@ -11,6 +11,7 @@ import unmanagedClientsMigration from "./migrations/0005-unmanaged-clients.sql?r
 import managerGenerationsMigration from "./migrations/0006-manager-generations.sql?raw";
 import firmAgentDefinitionsMigration from "./migrations/0007-firm-agent-definitions.sql?raw";
 import administrationAgentsMigration from "./migrations/0008-administration-agents.sql?raw";
+import firmQuestionsMigration from "./migrations/0009-firm-questions.sql?raw";
 
 /** How long a withdrawal that failed waits before it is tried again. */
 const WITHDRAWAL_RETRY_MS = 60_000;
@@ -81,6 +82,22 @@ export type Invitation = {
 
 /** The books of one business; `id` is its Backoffice project's, which names its books. */
 export type Administration = { id: string; clientId: string; slug: string; name: string };
+
+/** The firm's answer to a question, as it is delivered: the first answer, whoever retries. */
+export type FirmAnswer = { text: string; answeredBy: string };
+
+/**
+ * A question an administration's agent asks the firm, which waits until the firm's answer reached
+ * the conversation; `answer` is the answer kept while it has not.
+ */
+export type WaitingQuestion = {
+  id: string;
+  question: string;
+  askedAt: number;
+  client: { slug: string; name: string };
+  administration: { slug: string; name: string };
+  answer: FirmAnswer | null;
+};
 
 type OrganizationRow = {
   id: string;
@@ -160,6 +177,7 @@ export class Directory extends DurableObject<CloudflareEnv> {
         managerGenerationsMigration,
         firmAgentDefinitionsMigration,
         administrationAgentsMigration,
+        firmQuestionsMigration,
       ]);
     });
   }
@@ -630,6 +648,129 @@ export class Directory extends DurableObject<CloudflareEnv> {
       `UPDATE "administration" SET "agentDefinition" = ? WHERE "id" = ?`,
       input.definition,
       input.administrationId,
+    );
+  }
+
+  /** Records a question the administration's agent asks the firm keeping its books. */
+  askFirm(input: {
+    id: string;
+    administrationId: string;
+    question: string;
+    askedAt: number;
+  }): void {
+    this.ctx.storage.sql.exec(
+      `INSERT INTO "firm_question" ("id", "administrationId", "question", "askedAt")
+       VALUES (?, ?, ?, ?)`,
+      input.id,
+      input.administrationId,
+      input.question,
+      input.askedAt,
+    );
+  }
+
+  /**
+   * The questions the firm's clients' agents ask it, oldest first, until their answer reached the
+   * conversation.
+   */
+  listWaitingQuestions(firmId: string): WaitingQuestion[] {
+    return this.ctx.storage.sql
+      .exec<{
+        id: string;
+        question: string;
+        askedAt: number;
+        clientSlug: string;
+        clientName: string;
+        administrationSlug: string;
+        administrationName: string;
+        answer: string | null;
+        answeredBy: string | null;
+      }>(
+        `SELECT q."id", q."question", q."askedAt", o."slug" AS "clientSlug",
+                o."name" AS "clientName", a."slug" AS "administrationSlug",
+                a."name" AS "administrationName", q."answer", q."answeredBy"
+         FROM "firm_question" q
+         JOIN "administration" a ON a."id" = q."administrationId"
+         JOIN "organization" o ON o."id" = a."clientId"
+         WHERE o."firmId" = ? AND q."deliveredAt" IS NULL
+         ORDER BY q."askedAt", q."id"`,
+        firmId,
+      )
+      .toArray()
+      .map((row) => ({
+        id: row.id,
+        question: row.question,
+        askedAt: row.askedAt,
+        client: { slug: row.clientSlug, name: row.clientName },
+        administration: { slug: row.administrationSlug, name: row.administrationName },
+        answer:
+          row.answer === null || row.answeredBy === null
+            ? null
+            : { text: row.answer, answeredBy: row.answeredBy },
+      }));
+  }
+
+  /**
+   * Keeps `answer` as the firm's answer to a question its client's agent asked, unless one is kept
+   * already, and returns the answer kept, which is the one to deliver, with the question and its
+   * administration, and whether it is `answer`; with no `answer`, only returns the one kept. Null
+   * once the answer was delivered, for a question that has none to deliver, and for another firm's.
+   */
+  claimAnswer(input: {
+    firmId: string;
+    id: string;
+    answer: (FirmAnswer & { answeredAt: number }) | null;
+  }): {
+    question: string;
+    answer: FirmAnswer;
+    administration: Administration;
+    kept: boolean;
+  } | null {
+    const [row] = this.ctx.storage.sql
+      .exec<
+        Administration & { question: string; answer: string | null; answeredBy: string | null }
+      >(
+        `SELECT q."question", q."answer", q."answeredBy", a."id", a."clientId", a."slug", a."name"
+         FROM "firm_question" q
+         JOIN "administration" a ON a."id" = q."administrationId"
+         JOIN "organization" o ON o."id" = a."clientId"
+         WHERE q."id" = ? AND o."firmId" = ? AND q."deliveredAt" IS NULL`,
+        input.id,
+        input.firmId,
+      )
+      .toArray();
+    if (!row) {
+      return null;
+    }
+    const { question, answer: keptText, answeredBy: keptBy, ...administration } = row;
+    if (keptText !== null && keptBy !== null) {
+      return {
+        question,
+        answer: { text: keptText, answeredBy: keptBy },
+        administration,
+        kept: false,
+      };
+    }
+    if (input.answer === null) {
+      return null;
+    }
+    // The object reads and writes in one go, so no other answer comes between.
+    this.ctx.storage.sql.exec(
+      `UPDATE "firm_question" SET "answer" = ?, "answeredBy" = ?, "answeredAt" = ? WHERE "id" = ?`,
+      input.answer.text,
+      input.answer.answeredBy,
+      input.answer.answeredAt,
+      input.id,
+    );
+    const { text, answeredBy } = input.answer;
+    return { question, answer: { text, answeredBy }, administration, kept: true };
+  }
+
+  /** Records that the answer kept for a question reached the administration's conversation. */
+  markAnswerDelivered(input: { id: string; deliveredAt: number }): void {
+    this.ctx.storage.sql.exec(
+      `UPDATE "firm_question" SET "deliveredAt" = ? WHERE "id" = ? AND "deliveredAt" IS NULL`,
+      input.deliveredAt,
+      input.id,
     );
   }
 

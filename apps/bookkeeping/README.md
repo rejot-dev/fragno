@@ -266,25 +266,26 @@ totals: the profit and loss over a range of a fiscal year's periods, and the bal
 period's end, with every earlier fiscal year and their results in equity, since the books carry no
 closing entries.
 
-| Access                       | Actions                                                                                                                                                                                                                 |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Anyone Backoffice signs for  | `books.describe`, `entries.list`, `entries.get`, `accounts.lines`, `reports.trial-balance`, `reports.profit-and-loss`, `reports.balance-sheet`, `parties.list`, `parties.open-items`, `documents.list`, `documents.get` |
-| Members and the firm's agent | `documents.propose`, `documents.decline`                                                                                                                                                                                |
-| Members                      | `entries.post`, `entries.reverse`, `parties.create`, `settlements.create`, `settlements.reverse`                                                                                                                        |
-| Owners and admins            | `accounts.create`, `accounts.update`, `journals.create`, `dimensions.create`, `dimension-values.create`, `currencies.add`, `fiscal-years.open`, `periods.reopen`                                                        |
+| Access                       | Actions                                                                                                                                                                                                                                                              |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anyone Backoffice signs for  | `books.describe`, `entries.list`, `entries.get`, `accounts.lines`, `reports.trial-balance`, `reports.profit-and-loss`, `reports.balance-sheet`, `parties.list`, `parties.open-items`, `documents.list`, `documents.get`; in the administration's project, `firm.ask` |
+| Members and the firm's agent | `documents.propose`, `documents.decline`                                                                                                                                                                                                                             |
+| Members                      | `entries.post`, `entries.reverse`, `parties.create`, `settlements.create`, `settlements.reverse`                                                                                                                                                                     |
+| Owners and admins            | `accounts.create`, `accounts.update`, `journals.create`, `dimensions.create`, `dimension-values.create`, `currencies.add`, `fiscal-years.open`, `periods.reopen`                                                                                                     |
 
 Only people close and lock periods, on the settings page. Changing the books needs a person: calls
 Backoffice makes as the installation, for automations such as the agents Bookkeeping prompts, only
 read, and in a firm's agent project, where the [bookkeeping agent](#the-bookkeeping-agent) works,
 also answer documents' reviews, which posts nothing. The [books' assistant](#asking-about-the-books)
-in the administration's project only reads. In a firm's agent project only the installation's calls
-are taken: people keep their clients' books in the clients' projects. The person must have signed in
-to Bookkeeping, which names them on the entries and settlements their agent makes ("Ada Lovelace via
-Backoffice"). Their roles are confirmed as the pages confirm them: a membership Backoffice confirmed
-within the last minute is trusted, otherwise Bookkeeping asks Backoffice again with their stored
-authorization. An entry's reference, such as an invoice number, is unique in its journal, so an
-agent posting again after a lost answer cannot post twice. The ledger's refusals answer HTTP 422
-with its message, which Backoffice passes to the agent.
+in the administration's project only reads, and asks the firm (`firm.ask`), which changes nothing in
+the books. In a firm's agent project only the installation's calls are taken: people keep their
+clients' books in the clients' projects. The person must have signed in to Bookkeeping, which names
+them on the entries and settlements their agent makes ("Ada Lovelace via Backoffice"). Their roles
+are confirmed as the pages confirm them: a membership Backoffice confirmed within the last minute is
+trusted, otherwise Bookkeeping asks Backoffice again with their stored authorization. An entry's
+reference, such as an invoice number, is unique in its journal, so an agent posting again after a
+lost answer cannot post twice. The ledger's refusals answer HTTP 422 with its message, which
+Backoffice passes to the agent.
 
 After changing the actions, run `pnpm backoffice:connect` to register them.
 
@@ -458,6 +459,14 @@ Files attached to a message are uploaded through `ask/documents` as the books' d
 sent, and Bookkeeping asks the firm's bookkeeping agent about each, as for uploads on the documents
 page; the message names their blobs, as Backoffice's chat names a message's files, and shows them
 linking to their documents.
+
+When the books cannot answer, the agent asks the firm with `firm.ask`, which the Directory records.
+The firm's dashboard lists its clients' waiting questions, each linking to its conversation. The
+Directory keeps a question's first answer before Bookkeeping delivers it into the conversation, as
+its installation, under a request ID of the question, for the agent to pass on. Should delivering
+fail, the dashboard shows the kept answer with "Send again"; a later answer, from a page opened
+earlier, sends the kept one too, so the conversation and the Directory hold the same answer, and it
+arrives once.
 
 Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
 administration is created, and administrations from before a storage change do not open. Delete
