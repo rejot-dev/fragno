@@ -609,6 +609,12 @@ importers:
 
   apps/bookkeeping:
     dependencies:
+      '@assistant-ui/react':
+        specifier: ^0.15.1
+        version: 0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
+      '@earendil-works/pi-durable':
+        specifier: 1.4.0
+        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.4.1)(ws@8.21.3)(zod@4.6.7)
       '@fragno-dev/backoffice-api':
         specifier: workspace:*
         version: link:../../packages/backoffice-api
@@ -621,6 +627,15 @@ importers:
       '@fragno-dev/ledger':
         specifier: workspace:*
         version: link:../../packages/fragment-ledger
+      '@fragno-private/backoffice-chat':
+        specifier: workspace:*
+        version: link:../../packages-private/backoffice-chat
+      '@fragno-private/backoffice-conversation':
+        specifier: workspace:*
+        version: link:../../packages-private/backoffice-conversation
+      '@fragno-private/backoffice-ui':
+        specifier: workspace:*
+        version: link:../../packages-private/backoffice-ui
       '@fragno-private/design-system':
         specifier: workspace:*
         version: link:../../packages-private/design-system

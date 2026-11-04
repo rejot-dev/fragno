@@ -41,6 +41,9 @@ export default [
       route("parties", "books/parties.tsx"),
       route("parties/:partyAccountId", "books/party-account.tsx"),
       route("settings", "books/settings.tsx"),
+      // The agent everyone in the workspace asks about these books.
+      route("ask", "ask/ask.tsx"),
+      route("ask/agent", "ask/agent.ts"),
     ]),
     route("members", "clients/members.tsx"),
   ]),

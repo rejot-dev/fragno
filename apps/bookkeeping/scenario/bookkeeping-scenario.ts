@@ -182,9 +182,24 @@ export class ScenarioBrowser {
 
   /** What a resource route, such as a document's file, answers the browser. */
   async download(path: string): Promise<Response> {
-    const request = new Request(new URL(path, BOOKKEEPING_ORIGIN), {
-      headers: { cookie: this.cookie },
-    });
+    return await this.#resource(
+      new Request(new URL(path, BOOKKEEPING_ORIGIN), { headers: { cookie: this.cookie } }),
+    );
+  }
+
+  /** What a resource route answers a form the page posts to it with `fetch`. */
+  async fetchResource(path: string, form: Record<string, string>): Promise<Response> {
+    return await this.#resource(
+      new Request(new URL(path, BOOKKEEPING_ORIGIN), {
+        method: "POST",
+        headers: { cookie: this.cookie, origin: BOOKKEEPING_ORIGIN },
+        body: new URLSearchParams(form),
+      }),
+    );
+  }
+
+  async #resource(request: Request): Promise<Response> {
+    const path = new URL(request.url).pathname;
     try {
       const response: unknown = await routes.queryRoute(request, {
         requestContext: new RouterContextProvider(),
