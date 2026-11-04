@@ -58,6 +58,20 @@ export function isOutcomeUnknown(error: unknown): boolean {
   );
 }
 
+/**
+ * Why Backoffice did not do what was asked, for the person: unreachable, or its refusal, e.g. a
+ * permission Bookkeeping lacks. Rethrows anything else.
+ */
+export function backofficeProblem(error: unknown): string {
+  if (isOutcomeUnknown(error)) {
+    return "Backoffice could not be reached.";
+  }
+  if (error instanceof BackofficeApiRequestError && error.code !== null) {
+    return error.message;
+  }
+  throw error;
+}
+
 /** Runs Backoffice calls; an unknown outcome becomes a 503 page. */
 export async function callBackoffice<T>(call: () => Promise<T>): Promise<T> {
   try {

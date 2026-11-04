@@ -72,6 +72,9 @@ type Prompt = {
   content: string;
   /** Whether it runs in a subagent of the agent, beside its other work. */
   subagent: boolean;
+  /** What it does while the agent runs, or once someone stopped it, as asked; null when not asked. */
+  whenBusy: string | null;
+  whenPaused: string | null;
   prompter: Principal;
   status: PiPromptStatus;
   /** The tools the agent ran answering it, as `pi.agent.activity` reads a subagent's. */
@@ -167,6 +170,13 @@ export class FakeBackoffice {
   readonly #agents = new Map<string, PiAgentDefinitionCreate>();
   /** Prompts agents received, in the order they arrived. */
   readonly #prompts: Prompt[] = [];
+  /** Agents someone stopped and nobody resumed since, by scope and name. */
+  readonly #stoppedAgents = new Set<string>();
+  /** The tickets opening agents' sockets, and whose they are. */
+  readonly #watchTickets = new Map<
+    string,
+    { scope: string; agentName: string; prompter: Principal }
+  >();
   /**
    * Blobs one scope shares with another, by share ID; revoking the share deletes it. Bookkeeping
    * shares no folders, so neither does this fake.
@@ -320,6 +330,8 @@ export class FakeBackoffice {
     requestId: string;
     content: string;
     subagent: boolean;
+    whenBusy: string | null;
+    whenPaused: string | null;
     /** The email of the user who prompted, or `installation` for Bookkeeping itself. */
     prompter: string;
     status: string;
@@ -332,12 +344,35 @@ export class FakeBackoffice {
         requestId: prompt.requestId,
         content: prompt.content,
         subagent: prompt.subagent,
-        prompter:
-          prompt.prompter.kind === "user"
-            ? this.#users.get(prompt.prompter.userId)!.email
-            : "installation",
+        whenBusy: prompt.whenBusy,
+        whenPaused: prompt.whenPaused,
+        prompter: this.#who(prompt.prompter),
         status: prompt.status.status,
       }));
+  }
+
+  /** Whether someone stopped one of the agents of a project of the organization, and nobody resumed it. */
+  agentStopped(slug: string, project: string, agentName: string): boolean {
+    return this.#stoppedAgents.has(this.#projectFileKey(slug, project, agentName));
+  }
+
+  /**
+   * The agent a ticket opens the socket of in one of the organization's projects, and who asked for
+   * it, as `prompts` names them; null for no ticket Backoffice issued there.
+   */
+  watchTicket(
+    slug: string,
+    project: string,
+    ticket: string,
+  ): { agentName: string; watcher: string } | null {
+    const issued = this.#watchTickets.get(ticket);
+    return issued?.scope === this.#projectFileKey(slug, project, "")
+      ? { agentName: issued.agentName, watcher: this.#who(issued.prompter) }
+      : null;
+  }
+
+  #who(principal: Principal): string {
+    return principal.kind === "user" ? this.#users.get(principal.userId)!.email : "installation";
   }
 
   /** The agent gets as far as `status` with the prompt submitted as `requestId`. */
@@ -850,9 +885,13 @@ export class FakeBackoffice {
           return { ...definition, steward: { kind: "members" as const } };
         });
       case "pi.prompt.submit":
-        return respond("pi.prompt.submit", body, ({ agentName, requestId, content, subagent }) => {
+        return respond("pi.prompt.submit", body, (input) => {
+          const { agentName, requestId, content, subagent, whenBusy, whenPaused } = input;
           if (!this.#agents.has(key(agentName))) {
             throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
+          }
+          if (whenPaused === "resume") {
+            this.#stoppedAgents.delete(key(agentName));
           }
           const id = requestId ?? crypto.randomUUID();
           // A request ID is queued once.
@@ -863,12 +902,39 @@ export class FakeBackoffice {
               requestId: id,
               content,
               subagent: subagent ?? false,
+              whenBusy: whenBusy ?? null,
+              whenPaused: whenPaused ?? null,
               prompter: principal,
               status: { requestId: id, status: "queued" },
               activity: { tools: [], omitted: 0 },
             });
           }
           return { requestId: id, status: "queued" as const };
+        });
+      case "pi.agent.stop":
+        return respond("pi.agent.stop", body, ({ agentName }) => {
+          if (!this.#agents.has(key(agentName))) {
+            throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
+          }
+          this.#stoppedAgents.add(key(agentName));
+          return { stopped: true as const };
+        });
+      case "pi.agent.resume":
+        return respond("pi.agent.resume", body, ({ agentName }) => {
+          if (!this.#agents.has(key(agentName))) {
+            throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
+          }
+          this.#stoppedAgents.delete(key(agentName));
+          return { resumed: true as const };
+        });
+      case "pi.agent.watchTicket":
+        return respond("pi.agent.watchTicket", body, ({ agentName }) => {
+          if (!this.#agents.has(key(agentName))) {
+            throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
+          }
+          const ticket = randomToken();
+          this.#watchTickets.set(ticket, { scope: key(""), agentName, prompter: principal });
+          return { ticket, expiresAt: new Date(Date.now() + 60_000).toISOString() };
         });
       case "pi.prompt.get":
         return respond(

@@ -271,16 +271,17 @@ currency gives neither its currency nor a functional amount.
 | Owners and admins            | `accounts.create`, `accounts.update`, `journals.create`, `dimensions.create`, `dimension-values.create`, `currencies.add`, `fiscal-years.open`, `periods.reopen` |
 
 Only people close and lock periods, on the settings page. Changing the books needs a person: calls
-Backoffice makes as the installation, for automations such as the
-[bookkeeping agent](#the-bookkeeping-agent), only read and answer documents' reviews, which posts
-nothing. In a firm's agent project only the installation's calls are taken: people keep their
-clients' books in the clients' projects. The person must have signed in to Bookkeeping, which names
-them on the entries and settlements their agent makes ("Ada Lovelace via Backoffice"). Their roles
-are confirmed as the pages confirm them: a membership Backoffice confirmed within the last minute is
-trusted, otherwise Bookkeeping asks Backoffice again with their stored authorization. An entry's
-reference, such as an invoice number, is unique in its journal, so an agent posting again after a
-lost answer cannot post twice. The ledger's refusals answer HTTP 422 with its message, which
-Backoffice passes to the agent.
+Backoffice makes as the installation, for automations such as the agents Bookkeeping prompts, only
+read, and in a firm's agent project, where the [bookkeeping agent](#the-bookkeeping-agent) works,
+also answer documents' reviews, which posts nothing. The [books' assistant](#asking-about-the-books)
+in the administration's project only reads. In a firm's agent project only the installation's calls
+are taken: people keep their clients' books in the clients' projects. The person must have signed in
+to Bookkeeping, which names them on the entries and settlements their agent makes ("Ada Lovelace via
+Backoffice"). Their roles are confirmed as the pages confirm them: a membership Backoffice confirmed
+within the last minute is trusted, otherwise Bookkeeping asks Backoffice again with their stored
+authorization. An entry's reference, such as an invoice number, is unique in its journal, so an
+agent posting again after a lost answer cannot post twice. The ledger's refusals answer HTTP 422
+with its message, which Backoffice passes to the agent.
 
 After changing the actions, run `pnpm backoffice:connect` to register them.
 
@@ -321,6 +322,7 @@ refusals as form errors:
 | `/trial-balance`                       | Each account's totals for the fiscal year through a period; `?period=` picks it                   |
 | `/parties`, `/parties/:partyAccountId` | Customers and suppliers; one's open items, settling them against each other, and undoing that     |
 | `/settings`                            | Fiscal years, and closing, reopening, or locking their periods; journals, dimensions, currencies  |
+| `/ask`                                 | Asking the books' assistant about them                                                            |
 
 The client's sidebar lists these pages under the administration's name while its books are open.
 Everyone in the client's workspace keeps the books: posting and reversing entries, adding customers
@@ -385,12 +387,12 @@ arrive as the installation's: they read the books and answer reviews (`documents
 `documents.decline`), and every other change is refused, whatever a document tells the agent.
 Bookkeeping defines the agent when the firm's project has none, granting it `upload.read`,
 `models.extract`, `integrations.read` (to read the actions' input schemas), and
-`integrations.execute`; a definition the firm's members changed in Backoffice is left as it is. So
-is one Bookkeeping defined before its definition changed: members update or delete it to get the new
-one. It then submits the prompt, naming the administration and where the file is shared, with
-`pi.prompt.submit` as a `subagent`: each document runs in a new conversation of the agent, beside
-the others, so documents uploaded together are read side by side and no document sees another's
-text. Backoffice bills the turn to the firm.
+`integrations.execute`, and updates it to its own definition whenever that changes; a definition the
+firm's members changed in Backoffice is left as it is (`workers/backoffice/agents.ts`). It then
+submits the prompt, naming the administration and where the file is shared, with `pi.prompt.submit`
+as a `subagent`: each document runs in a new conversation of the agent, beside the others, so
+documents uploaded together are read side by side and no document sees another's text. Backoffice
+bills the turn to the firm.
 
 The agent reads the document with `documents.get` and `models.extract`, the books with
 `books.describe` and `entries.list`, and answers with `documents.propose`, an entry as
@@ -422,6 +424,26 @@ request ID, and only while the document has no review, so sending it again, even
 once and never undoes an answer. Booking or dismissing a document ends its review: the agent's
 actions refuse documents that are not to book.
 
+### Asking about the books
+
+**Ask** opens a chat with the `books` agent in the administration's own Backoffice project, which
+answers questions about its books: what was booked and why, balances, open items, and what the
+numbers mean. It shows the conversation as Backoffice's agent chat does, with the components of
+`@fragno-private/backoffice-chat`, and everyone in the client's workspace, the firm's members too,
+shares its one conversation. The agent lives with the client, so it reads only these books, the
+firm's skills never reach it, and Backoffice bills its turns to the client.
+
+Opening the page defines the agent as `defineAgent` keeps the firm's: granting it `upload.read`,
+`models.extract`, `integrations.read`, and `integrations.execute`, and leaving a definition the
+client's members changed in Backoffice as it is. Until the first question provisions the agent's
+conversation, as `pi.agent.get` says, the page shows a start panel. Bookkeeping asks, stops, and
+resumes the agent as its installation, through `ask/agent`: its calls to Bookkeeping then only read
+the books, whoever asks and whatever a document tells it. A question joins the running turn and
+resumes a stopped agent (`whenBusy: "steer"`, `whenPaused: "resume"`), as in Backoffice. The browser
+follows the conversation over the agent's `pi.agent.watch` socket, straight from Backoffice: for
+each connection, `ask/agent` asks `pi.agent.watchTicket` as the person, so Backoffice checks they
+may read the agent, and returns the socket's URL with the ticket.
+
 Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
 administration is created, and administrations from before a storage change do not open. Delete
 `.wrangler/state` to start over locally.
@@ -444,6 +466,7 @@ folder with its migrations.
 | `app/administrations` | creating an administration                                               |
 | `app/books`           | an administration's books: journal, accounts, reports, parties, setup    |
 | `app/documents`       | an administration's documents: uploading, booking, and their files       |
+| `app/ask`             | asking an administration's assistant about its books                     |
 | `app/members`         | a firm's or client's team: members, invitations, and inviting            |
 | `app/invitations`     | inviting someone, and accepting an invitation                            |
 | `workers/worker.ts`   | the Worker's `fetch` entry, which exports the Durable Objects            |

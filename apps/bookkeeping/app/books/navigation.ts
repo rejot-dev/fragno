@@ -26,6 +26,7 @@ export function booksNavigation(base: string, pathname: string): NavigationItem[
       icon: "user-check",
       active: at("/parties"),
     },
+    { label: "Ask", to: `${base}/ask`, icon: "message-circle", active: at("/ask") },
     { label: "Settings", to: `${base}/settings`, icon: "settings", active: at("/settings") },
   ];
 }

@@ -18,10 +18,15 @@
     "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.15.1",
+    "@earendil-works/pi-durable": "1.4.0",
     "@fragno-dev/backoffice-api": "workspace:*",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",
     "@fragno-dev/ledger": "workspace:*",
+    "@fragno-private/backoffice-chat": "workspace:*",
+    "@fragno-private/backoffice-conversation": "workspace:*",
+    "@fragno-private/backoffice-ui": "workspace:*",
     "@fragno-private/design-system": "workspace:*",
     "better-auth": "1.7.1",
     "isbot": "^5.1.32",

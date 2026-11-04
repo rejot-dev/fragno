@@ -1,12 +1,12 @@
 import { BackofficeApiRequestError } from "@fragno-dev/backoffice-api/v0/client";
 import type {
   PiAgentActivity,
-  PiAgentDefinition,
   PiAgentDefinitionCreate,
   PiPromptStatus,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { env } from "cloudflare:workers";
 
+import { BOOKKEEPING_CONNECTION_ID, defineAgent } from "../../workers/backoffice/agents";
 import { connectAsInstallation, createProvisioningClient } from "../../workers/backoffice/client";
 import {
   releaseDocument,
@@ -18,19 +18,20 @@ import { documentRequestPrefix } from "../../workers/backoffice/review-requests"
 import type { DocumentView } from "../../workers/books/documents/documents";
 import { canManage } from "../../workers/directory/membership";
 import type { requireBooks } from "../books/books.server";
-import { isOutcomeUnknown, type OrganizationContext } from "../organizations/access.server";
+import {
+  backofficeProblem,
+  isOutcomeUnknown,
+  type OrganizationContext,
+} from "../organizations/access.server";
 
 type BooksContext = Awaited<ReturnType<typeof requireBooks>>;
-
-/** How Backoffice's agents reach Bookkeeping's actions: the app's slug, as registered. */
-const BOOKKEEPING_CONNECTION_ID = "app#bookkeeping";
 
 /**
  * The Backoffice agent, in each firm's agent project, that reads its clients' documents and
  * proposes the entries booking them. It lives with the firm, so the skills the firm gives it never
  * reach a client's workspace; Bookkeeping shares each document's file with it while it is asked
- * about the document. Bookkeeping keeps it defined as this (see `defineBookkeeper`); a definition
- * the firm's members changed in Backoffice is theirs to keep.
+ * about the document. Bookkeeping keeps it defined as this (see `defineAgent`); a definition the
+ * firm's members changed in Backoffice is theirs to keep.
  */
 const BOOKKEEPER: PiAgentDefinitionCreate = {
   agentName: "bookkeeper",
@@ -55,58 +56,13 @@ If the file is no invoice or receipt, or you cannot read it, call \`documents.de
   model: null,
 };
 
-/** What Bookkeeping writes of a definition and compares, as one string. */
-function definitionFields({
-  description,
-  model,
-  permissions,
-  instructions,
-}: Pick<PiAgentDefinition, "description" | "model" | "permissions" | "instructions">): string {
-  return JSON.stringify({ description, model, permissions, instructions });
-}
-
-/**
- * Defines the firm's agent as `BOOKKEEPER`, so changes to how Bookkeeping asks reach agents set up
- * before them. An agent whose definition differs from the one Bookkeeping last wrote was changed by
- * the firm's members, and is theirs to keep.
- */
+/** Defines the firm's agent as `BOOKKEEPER`, unless the firm's members changed it. */
 async function defineBookkeeper(agent: InstalledProject, firmId: string): Promise<void> {
   const directory = env.DIRECTORY.getByName("directory");
-  let written: PiAgentDefinition;
-  try {
-    written = await agent.backoffice.call(agent.scope, "pi.agent.create", BOOKKEEPER);
-  } catch (error) {
-    if (!(error instanceof BackofficeApiRequestError && error.code === "conflict")) {
-      throw error;
-    }
-    const stored = await agent.backoffice.call(agent.scope, "pi.agent.get", {
-      agentName: BOOKKEEPER.agentName,
-    });
-    const recorded = await directory.findFirmAgentDefinition(firmId);
-    if (recorded !== null && recorded !== definitionFields(stored)) {
-      return;
-    }
-    written =
-      definitionFields(stored) === definitionFields(BOOKKEEPER)
-        ? stored
-        : await agent.backoffice.call(agent.scope, "pi.agent.update", BOOKKEEPER);
-  }
-  // As Backoffice stored it, which is what later reads compare.
-  await directory.recordFirmAgentDefinition({ firmId, definition: definitionFields(written) });
-}
-
-/**
- * Why Backoffice did not do what was asked, for the person: unreachable, or its refusal, e.g. a
- * permission Bookkeeping lacks. Rethrows anything else.
- */
-function backofficeProblem(error: unknown): string {
-  if (isOutcomeUnknown(error)) {
-    return "Backoffice could not be reached.";
-  }
-  if (error instanceof BackofficeApiRequestError && error.code !== null) {
-    return error.message;
-  }
-  throw error;
+  await defineAgent(agent, BOOKKEEPER, {
+    find: () => directory.findFirmAgentDefinition(firmId),
+    record: (definition) => directory.recordFirmAgentDefinition({ firmId, definition }),
+  });
 }
 
 const NOT_INSTALLED = "Bookkeeping is not installed for this administration's project.";
