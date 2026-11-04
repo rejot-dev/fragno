@@ -45,6 +45,7 @@ export default [
       route("ask", "ask/ask.tsx"),
       route("ask/agent", "ask/agent.ts"),
       route("ask/history", "ask/history.ts"),
+      route("ask/documents", "ask/documents.ts"),
     ]),
     route("members", "clients/members.tsx"),
   ]),

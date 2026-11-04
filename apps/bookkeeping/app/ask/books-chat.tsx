@@ -25,6 +25,7 @@ import {
 import { usePiPendingMessages } from "@fragno-private/backoffice-conversation/projection/pending-messages";
 import { MarkdownTextProvider } from "@fragno-private/backoffice-ui/markdown-text";
 import { ChatActivityStep } from "@fragno-private/design-system/agents/chat-activity";
+import { ChatMessageAttachments } from "@fragno-private/design-system/agents/chat-attachment";
 import {
   ChatPromptField,
   ChatStartFooter,
@@ -59,6 +60,7 @@ import { agentStepLine, agentSteps, type AgentStep } from "../books/agent-steps"
 import type { BooksOutletContext } from "../books/layout";
 import type { BooksAgentAnswer } from "./agent";
 import { booksRehypePlugins } from "./books-links";
+import { sentDocumentItems, useChatDocuments } from "./chat-documents";
 
 /** The steps of one of the agent's tool calls, as Bookkeeping names them. */
 function toolCallSteps(call: ChatToolCall): AgentStep[] {
@@ -91,18 +93,29 @@ function BooksToolCall({ call }: { call: ChatToolCall }) {
   ));
 }
 
-/** What the chat shows of Bookkeeping: what the agent is called, and its work as steps. */
-const BOOKS_CHAT_EXTENSIONS: Partial<ChatExtensions> = {
-  agentLabel: "Assistant",
-  toolCalls: {
-    Step: BooksToolCall,
-    headline: (call) =>
-      toolCallSteps(call)
-        .map(agentStepLine)
-        .filter((line) => line.state === "running")
-        .at(-1)?.label ?? "Working",
-  },
-};
+/**
+ * What the chat shows of Bookkeeping: what the agent is called, its work as steps, and the
+ * documents messages carried, each opening its page under `base`.
+ */
+function useBooksChatExtensions(base: string): Partial<ChatExtensions> {
+  return useMemo(
+    () => ({
+      agentLabel: "Assistant",
+      toolCalls: {
+        Step: BooksToolCall,
+        headline: (call) =>
+          toolCallSteps(call)
+            .map(agentStepLine)
+            .filter((line) => line.state === "running")
+            .at(-1)?.label ?? "Working",
+      },
+      UserAttachments: ({ attachments }) => (
+        <ChatMessageAttachments attachments={sentDocumentItems(attachments, base)} />
+      ),
+    }),
+    [base],
+  );
+}
 
 type Books = BooksOutletContext["books"];
 
@@ -252,8 +265,11 @@ export function BooksChatStart({
   );
 }
 
-/** Where the chat asks the agent and reads its earlier history; see `ask/agent` and `ask/history`. */
-type BooksChatPaths = { agentPath: string; historyPath: string };
+/**
+ * Where the chat asks the agent, reads its earlier history, and uploads the documents messages
+ * carry; see `ask/agent`, `ask/history`, and `ask/documents`.
+ */
+type BooksChatPaths = { agentPath: string; historyPath: string; documentsPath: string };
 
 /** The agent's conversation, live from its socket, with what came before its newest compaction. */
 export function BooksChat({
@@ -270,6 +286,7 @@ export function BooksChat({
     url: () => socketUrl(paths.agentPath),
   });
   const BooksMarkdownText = useBooksMarkdown(books, base);
+  const extensions = useBooksChatExtensions(base);
   if (stream.status === "connecting") {
     return <PaneSpinner label="Loading conversation" />;
   }
@@ -278,7 +295,7 @@ export function BooksChat({
   }
   return (
     <MarkdownTextProvider component={BooksMarkdownText}>
-      <ChatExtensionsProvider value={BOOKS_CHAT_EXTENSIONS}>
+      <ChatExtensionsProvider value={extensions}>
         <BooksChatThread paths={paths} view={stream.view} queue={stream.queue} />
       </ChatExtensionsProvider>
     </MarkdownTextProvider>
@@ -321,7 +338,7 @@ function isCompacting(view: ConversationView) {
  * models, dictation, and managing the agent's context, which the agent compacts itself.
  */
 function BooksChatThread({
-  paths: { agentPath, historyPath },
+  paths: { agentPath, historyPath, documentsPath },
   view,
   queue: agentQueue,
 }: {
@@ -330,6 +347,8 @@ function BooksChatThread({
   queue: PiAgentQueueState;
 }) {
   const runtimeRef = useRef<AssistantRuntime | null>(null);
+  const documents = useChatDocuments(documentsPath);
+  const takeDocuments = documents.take;
   const history = usePiEarlierHistory(view, useHistoryPageReader(historyPath));
   const { activeContextStart, transcript } = history;
   const running = isPiConversationRunning(view);
@@ -388,20 +407,32 @@ function BooksChatThread({
   const [controlling, setControlling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // A question shows at once and is withdrawn when Backoffice refuses it.
+  // A question shows at once, then waits for the documents it carries to upload, and goes with
+  // those that did; it is withdrawn when Backoffice refuses it.
   const send = useCallback(
-    async (message: AppendMessage) => {
-      const text = getAppendMessageText(message);
-      if (!text) {
-        return;
-      }
+    async (text: string) => {
       setError(null);
       const requestId = crypto.randomUUID();
-      addPendingMessage(requestId, text);
+      if (text) {
+        addPendingMessage(requestId, text);
+      }
       setSendingMessage(true);
-      const refusal = await postToAgent(agentPath, { intent: "ask", requestId, content: text });
+      const uploaded = await takeDocuments();
+      const notAttached =
+        uploaded.failed.length === 0 ? null : `Not attached: ${uploaded.failed.join("; ")}`;
+      if (!text && uploaded.documents.length === 0) {
+        setSendingMessage(false);
+        setError(notAttached);
+        return;
+      }
+      const refusal = await postToAgent(agentPath, {
+        intent: "ask",
+        requestId,
+        content: text,
+        documents: uploaded.documents.join(","),
+      });
       setSendingMessage(false);
-      setError(refusal);
+      setError(refusal ?? notAttached);
       if (refusal !== null) {
         withdrawPendingMessage(requestId);
         // The text returns to the composer unless the reader already started another question.
@@ -411,7 +442,13 @@ function BooksChatThread({
         }
       }
     },
-    [agentPath, addPendingMessage, withdrawPendingMessage],
+    [agentPath, addPendingMessage, withdrawPendingMessage, takeDocuments],
+  );
+  const sendMessage = useCallback(
+    async (message: AppendMessage) => {
+      await send(getAppendMessageText(message));
+    },
+    [send],
   );
 
   // The agent's queue owns what waits; this adapter keeps the composer usable during a run.
@@ -419,7 +456,7 @@ function BooksChatThread({
     () => ({
       items: conversationQueue.items,
       enqueue: (message) => {
-        void send(message);
+        void sendMessage(message);
       },
       // Bookkeeping asks every question to join the running turn.
       steer: () => undefined,
@@ -428,7 +465,7 @@ function BooksChatThread({
       // Stopping the agent withdraws queued input on the server.
       clear: () => undefined,
     }),
-    [send, conversationQueue.items],
+    [sendMessage, conversationQueue.items],
   );
   const runtime = useExternalStoreRuntime({
     messages: assistantMessages,
@@ -436,7 +473,7 @@ function BooksChatThread({
     isRunning: running,
     // A stop or resume in flight could overtake a question that reached the agent first.
     isSendDisabled: sendingMessage || controlling,
-    onNew: send,
+    onNew: sendMessage,
     queue,
   });
   useEffect(() => {
@@ -456,9 +493,14 @@ function BooksChatThread({
     <AssistantRuntimeProvider runtime={runtime}>
       <SessionThread
         dictation={false}
-        attachments={null}
+        attachments={{
+          items: documents.items,
+          add: documents.add,
+          sendFiles: () => void send(""),
+          sending: documents.sending,
+        }}
         disabledReason={null}
-        error={error}
+        error={documents.refusal ?? error}
         queueLabels={conversationQueue.labels}
         paused={agentQueue.paused && agentQueue.items.length > 0}
         onResume={control("resume")}

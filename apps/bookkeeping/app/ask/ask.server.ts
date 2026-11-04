@@ -1,4 +1,8 @@
 import type { PiAgentDefinitionCreate, PiAgentHistoryPage } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  renderPiAgentPrompt,
+  type PiAgentAttachment,
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/prompt-attachments";
 import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { env } from "cloudflare:workers";
 
@@ -29,6 +33,8 @@ const BOOKS_AGENT: PiAgentDefinitionCreate = {
 Read the books with Bookkeeping's actions: \`integrations.execute({ connectionId: "${BOOKKEEPING_CONNECTION_ID}", actionId, input })\`. List them, with their input schemas, with \`integrations.actions({ connectionId: "${BOOKKEEPING_CONNECTION_ID}" })\`, and read an action's input schema before you call it; never guess an input's fields. Leave out \`administration\`: actions in this project read its own books.
 
 \`books.describe\` lists the journals, accounts, customers and suppliers, currencies, and periods; start there. For how the business is doing, draw up \`reports.profit-and-loss\` over the periods asked about and \`reports.balance-sheet\` at a period's end, rather than adding up lines yourself. \`parties.list\` says what each customer owes and what is owed to each supplier, and how much of it is overdue; \`parties.open-items\` gives one's items. \`reports.trial-balance\` gives each account's totals, \`accounts.lines\` an account's lines, and \`entries.list\` and \`entries.get\` the entries. \`documents.list\` and \`documents.get\` give the uploaded documents and the \`blob\` key of each file, which you read with \`models.extract\`, naming it as \`{ blob: "<the key>" }\`, as \`/static/skills/extraction/SKILL.md\` describes.
+
+People attach invoices and receipts to their messages here. Bookkeeping uploads each as one of the books' documents, and asks the firm's bookkeeping agent to propose its entry, as uploads on the Documents page are; the message names each file's blob. Tell them so, and read a file when they ask about it.
 
 Answer in the language you are asked in. Give amounts with their currency, and name accounts by code and entries by journal and number, as Bookkeeping shows them. ${BOOKS_LINKS} When the books cannot tell, say so instead of guessing.
 
@@ -95,9 +101,35 @@ export async function setUpBooksAgent(
 
 /** What the person asks of the agent: a question, or to stop or resume it. */
 export type BooksAgentRequest =
-  | { intent: "ask"; requestId: string; content: string }
+  | { intent: "ask"; requestId: string; content: string; documents: string[] }
   | { intent: "stop" }
   | { intent: "resume" };
+
+/**
+ * What the agent reads for a message: its text, then the documents it carried by their files' blobs
+ * in the administration's project, which the agent reads, as Backoffice's chat writes attachments;
+ * null when one is not among the books' documents.
+ */
+async function withDocuments(
+  context: BooksContext,
+  text: string,
+  documentIds: readonly string[],
+): Promise<string | null> {
+  const documents = await Promise.all(documentIds.map((id) => context.books.getDocument(id)));
+  const attachments: PiAgentAttachment[] = [];
+  for (const document of documents) {
+    if (document === null) {
+      return null;
+    }
+    attachments.push({
+      kind: "blob",
+      key: document.storageKey,
+      contentType: document.mediaType,
+      sizeBytes: document.sizeBytes,
+    });
+  }
+  return renderPiAgentPrompt(text, attachments);
+}
 
 /**
  * Does what the person asked of the agent, as Bookkeeping's installation; returns why Backoffice
@@ -116,15 +148,20 @@ export async function runBooksAgentRequest(
     const { scope, backoffice } = connected.project;
     const { agentName } = BOOKS_AGENT;
     switch (request.intent) {
-      case "ask":
+      case "ask": {
+        const content = await withDocuments(context, request.content, request.documents);
+        if (content === null) {
+          return "A file of this message is not among the books' documents. Attach it again.";
+        }
         await backoffice.call(scope, "pi.prompt.submit", {
           agentName,
           requestId: request.requestId,
-          content: request.content,
+          content,
           whenBusy: "steer",
           whenPaused: "resume",
         });
         return null;
+      }
       case "stop":
         await backoffice.call(scope, "pi.agent.stop", { agentName });
         return null;

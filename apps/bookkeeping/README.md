@@ -454,6 +454,11 @@ its code: `app/books/agent-steps.ts` names them for the chat and for a document'
 agent links what it names with relative links by code, such as `accounts/1000` or `entries/SAL/3`,
 which `app/ask/books-links.ts` resolves to the pages before Streamdown's hardening would block them.
 
+Files attached to a message are uploaded through `ask/documents` as the books' documents when it is
+sent, and Bookkeeping asks the firm's bookkeeping agent about each, as for uploads on the documents
+page; the message names their blobs, as Backoffice's chat names a message's files, and shows them
+linking to their documents.
+
 Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
 administration is created, and administrations from before a storage change do not open. Delete
 `.wrangler/state` to start over locally.

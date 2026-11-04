@@ -1,3 +1,4 @@
+import { PI_AGENT_MAX_ATTACHMENTS } from "@fragno-dev/backoffice-api/v0/pi-conversation/prompt-attachments";
 import { z } from "zod";
 
 import { requireBooks, requireBooksSubmission } from "../books/books.server";
@@ -18,11 +19,21 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 }
 
 const agentRequestSchema: z.ZodType<BooksAgentRequest> = z.discriminatedUnion("intent", [
-  z.object({
-    intent: z.literal("ask"),
-    requestId: z.string().trim().min(1).max(128),
-    content: z.string().trim().min(1, "Write a question before sending."),
-  }),
+  z
+    .object({
+      intent: z.literal("ask"),
+      requestId: z.string().trim().min(1).max(128),
+      content: z.string().trim(),
+      // The IDs of the documents the message carries, uploaded through `ask/documents` first.
+      documents: z
+        .string()
+        .default("")
+        .transform((ids) => (ids === "" ? [] : ids.split(",")))
+        .pipe(z.array(z.uuid()).max(PI_AGENT_MAX_ATTACHMENTS)),
+    })
+    .refine((ask) => ask.content !== "" || ask.documents.length > 0, {
+      message: "Write a question before sending.",
+    }),
   z.object({ intent: z.literal("stop") }),
   z.object({ intent: z.literal("resume") }),
 ]);

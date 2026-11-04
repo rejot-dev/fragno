@@ -35,6 +35,7 @@ export default function AskPage({ loaderData }: Route.ComponentProps) {
     () => ({
       agentPath,
       historyPath: `${base}/ask/history`,
+      documentsPath: `${base}/ask/documents`,
     }),
     [agentPath, base],
   );
@@ -49,7 +50,12 @@ export default function AskPage({ loaderData }: Route.ComponentProps) {
           description={agent.error}
         />
       ) : (
-        <div className="flex h-[calc(100svh-14rem)] min-h-[28rem] flex-col overflow-hidden border border-[var(--bo-border)]">
+        // Another administration's books keep their own conversation: switching to them starts
+        // the chat afresh, with nothing of the last one's view, composer, or files.
+        <div
+          key={agentPath}
+          className="flex h-[calc(100svh-14rem)] min-h-[28rem] flex-col overflow-hidden border border-[var(--bo-border)]"
+        >
           {agent.provisioned ? (
             <BooksChat paths={paths} books={books} base={base} />
           ) : (
