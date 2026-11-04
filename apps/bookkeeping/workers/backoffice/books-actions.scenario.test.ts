@@ -8,6 +8,7 @@ import {
 
 const FIRM = "lovelace-co";
 const CLIENT = "analytical-engines";
+const BOOKS = "/w/analytical-engines/a/analytical-engines";
 
 type Books = BooksOutletContext["books"];
 
@@ -17,6 +18,7 @@ function line(
   side: "debit" | "credit",
   amount: string,
   party: string | null = null,
+  dueDate: string | null = null,
 ) {
   return {
     account,
@@ -26,7 +28,7 @@ function line(
     functionalAmount: null,
     description: "",
     party,
-    dueDate: null,
+    dueDate,
     dimensions: {},
   };
 }
@@ -326,6 +328,196 @@ test("people's agents keep the books through Backoffice, within what the person 
         reason: "Not an invoice.",
       }),
     ).toEqual({ status: 403, body: { message: READS_ONLY } });
+  });
+});
+
+test("an agent reads the profit and loss, the balance sheet, who owes what, and the documents", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await practiceWithBooks(scenario);
+    const project = { organization: CLIENT, project: "Analytical Engines" };
+    const adaAgent = scenario.agent({ email: "ada@example.test" }, project);
+    const year = new Date().getUTCFullYear();
+    const next = String(year + 1);
+    await adaAgent.call("fiscal-years.open", { name: next, periodLength: "month" });
+    for (const [role, code] of [
+      ["customer", "C001"],
+      ["supplier", "S001"],
+    ]) {
+      await adaAgent.call("parties.create", {
+        party: { name: code },
+        role,
+        code,
+        controlAccount: null,
+      });
+    }
+    const post = async (journal: string, postingDate: string, lines: ReturnType<typeof line>[]) => {
+      const posted = await adaAgent.call("entries.post", {
+        journal,
+        postingDate,
+        reference: null,
+        description: journal,
+        lines,
+      });
+      assert.equal(posted.status, 200, JSON.stringify(posted));
+    };
+    // This year: capital, and a sale on credit due at the end of January.
+    await post("GEN", `${year}-01-02`, [
+      line("1000", "debit", "500"),
+      line("0500", "credit", "500"),
+    ]);
+    await post("SAL", `${year}-01-10`, [
+      line("1300", "debit", "121", "C001", `${year}-01-31`),
+      line("8000", "credit", "100"),
+      line("1700", "credit", "21"),
+    ]);
+    // Next year: an expense paid in January, a purchase on credit in February, and a cash sale
+    // in March.
+    await post("BNK", `${next}-01-15`, [line("4000", "debit", "30"), line("1000", "credit", "30")]);
+    await post("PUR", `${next}-02-10`, [
+      line("4000", "debit", "50"),
+      line("1600", "credit", "50", "S001", `${year + 2}-01-01`),
+    ]);
+    await post("BNK", `${next}-03-10`, [
+      line("1000", "debit", "200"),
+      line("8000", "credit", "200"),
+    ]);
+
+    const profitAndLoss = async (fromPeriod: number, toPeriod: number) =>
+      await adaAgent.call("reports.profit-and-loss", { fiscalYear: next, fromPeriod, toPeriod });
+    expect(await profitAndLoss(1, 3)).toEqual({
+      status: 200,
+      body: {
+        currency: "EUR",
+        from: `${next}-01-01`,
+        to: `${next}-03-31`,
+        revenue: [{ code: "8000", name: "Revenue", amount: "200.00" }],
+        expenses: [{ code: "4000", name: "General expenses", amount: "80.00" }],
+        totals: { revenue: "200.00", expenses: "80.00", result: "120.00" },
+      },
+    });
+    // A range of periods counts only its own.
+    expect(await profitAndLoss(2, 2)).toMatchObject({
+      body: { revenue: [], totals: { revenue: "0.00", expenses: "50.00", result: "-50.00" } },
+    });
+    expect(await profitAndLoss(3, 2)).toEqual({
+      status: 422,
+      body: { message: "The first period comes after the last." },
+    });
+
+    // Earlier years count, with their result in equity: what the books own is what they owe.
+    expect(await adaAgent.call("reports.balance-sheet", { fiscalYear: next, period: 3 })).toEqual({
+      status: 200,
+      body: {
+        currency: "EUR",
+        at: `${next}-03-31`,
+        assets: [
+          { code: "1000", name: "Bank", amount: "670.00" },
+          { code: "1300", name: "Accounts receivable", amount: "121.00" },
+        ],
+        liabilities: [
+          { code: "1600", name: "Accounts payable", amount: "50.00" },
+          { code: "1700", name: "VAT payable", amount: "21.00" },
+        ],
+        equity: [{ code: "0500", name: "Equity", amount: "500.00" }],
+        resultOfEarlierYears: "100.00",
+        resultThisYear: "120.00",
+        totals: { assets: "791.00", liabilities: "71.00", equity: "720.00" },
+      },
+    });
+
+    const parties = await adaAgent.call("parties.list", {});
+    assert.equal(parties.status, 200, JSON.stringify(parties));
+    const { today } = parties.body as { today: string };
+    expect(parties.body).toEqual({
+      today,
+      parties: [
+        {
+          name: "C001",
+          role: "customer",
+          code: "C001",
+          outstanding: [
+            {
+              currency: "EUR",
+              amount: "121.00",
+              overdue: today > `${year}-01-31` ? "121.00" : "0.00",
+            },
+          ],
+        },
+        {
+          name: "S001",
+          role: "supplier",
+          code: "S001",
+          outstanding: [{ currency: "EUR", amount: "50.00", overdue: "0.00" }],
+        },
+      ],
+    });
+
+    const form = await ada.navigate(`${BOOKS}/documents`);
+    const documentId = (form.loaderData["documents/documents"] as { documentId: string })
+      .documentId;
+    await ada.upload(
+      `${BOOKS}/documents`,
+      { intent: "upload", documentId },
+      {
+        name: "receipt.pdf",
+        type: "application/pdf",
+        bytes: new TextEncoder().encode("%PDF-1.7\nreceipt\n%%EOF\n"),
+      },
+    );
+    expect(await adaAgent.call("documents.list", { cursor: null })).toMatchObject({
+      status: 200,
+      body: {
+        documents: [
+          {
+            id: documentId,
+            filename: "receipt.pdf",
+            status: "to-book",
+            uploadedBy: "Ada Lovelace",
+          },
+        ],
+        cursor: null,
+      },
+    });
+  });
+});
+
+test("a report reads the books at one moment, whatever is posted while it reads them", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    await practiceWithBooks(scenario);
+    const project = { organization: CLIENT, project: "Analytical Engines" };
+    const adaAgent = scenario.agent({ email: "ada@example.test" }, project);
+    const year = String(new Date().getUTCFullYear());
+    let sales = 0;
+    const postJanuarySale = async () => {
+      const posted = await adaAgent.call("entries.post", {
+        journal: "BNK",
+        postingDate: `${year}-01-10`,
+        reference: null,
+        description: "A sale posted late",
+        lines: [line("1000", "debit", "100"), line("8000", "credit", "100")],
+      });
+      assert.equal(posted.status, 200, JSON.stringify(posted));
+      sales += 1;
+    };
+
+    // February has no entries, so no January sale changes its result, between whichever two of
+    // the report's calls to the books it is posted.
+    for (const calls of [0, 1, 2, 3, 4]) {
+      const cancel = scenario.afterCalls("BOOKS", calls, postJanuarySale);
+      expect(
+        await adaAgent.call("reports.profit-and-loss", {
+          fiscalYear: year,
+          fromPeriod: 2,
+          toPeriod: 2,
+        }),
+      ).toMatchObject({
+        status: 200,
+        body: { totals: { revenue: "0.00", expenses: "0.00", result: "0.00" } },
+      });
+      cancel();
+    }
+    // Sales were posted during the reports, not only after them.
+    assert.isAtLeast(sales, 2);
   });
 });
 

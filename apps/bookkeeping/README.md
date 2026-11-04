@@ -261,14 +261,17 @@ the firm's clients'. Calls in any other scope are refused. Inputs name accounts,
 customers, suppliers, and dimensions by code and amounts as decimals; `books.describe` lists them.
 Entries read as they are written: a line `entries.list` or `entries.get` gives posts unchanged, so
 an agent books a document by copying the lines of a similar entry. A line in the books' functional
-currency gives neither its currency nor a functional amount.
+currency gives neither its currency nor a functional amount. The reports add up the trial balance's
+totals: the profit and loss over a range of a fiscal year's periods, and the balance sheet at a
+period's end, with every earlier fiscal year and their results in equity, since the books carry no
+closing entries.
 
-| Access                       | Actions                                                                                                                                                          |
-| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Anyone Backoffice signs for  | `books.describe`, `entries.list`, `entries.get`, `accounts.lines`, `reports.trial-balance`, `parties.open-items`, `documents.get`                                |
-| Members and the firm's agent | `documents.propose`, `documents.decline`                                                                                                                         |
-| Members                      | `entries.post`, `entries.reverse`, `parties.create`, `settlements.create`, `settlements.reverse`                                                                 |
-| Owners and admins            | `accounts.create`, `accounts.update`, `journals.create`, `dimensions.create`, `dimension-values.create`, `currencies.add`, `fiscal-years.open`, `periods.reopen` |
+| Access                       | Actions                                                                                                                                                                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anyone Backoffice signs for  | `books.describe`, `entries.list`, `entries.get`, `accounts.lines`, `reports.trial-balance`, `reports.profit-and-loss`, `reports.balance-sheet`, `parties.list`, `parties.open-items`, `documents.list`, `documents.get` |
+| Members and the firm's agent | `documents.propose`, `documents.decline`                                                                                                                                                                                |
+| Members                      | `entries.post`, `entries.reverse`, `parties.create`, `settlements.create`, `settlements.reverse`                                                                                                                        |
+| Owners and admins            | `accounts.create`, `accounts.update`, `journals.create`, `dimensions.create`, `dimension-values.create`, `currencies.add`, `fiscal-years.open`, `periods.reopen`                                                        |
 
 Only people close and lock periods, on the settings page. Changing the books needs a person: calls
 Backoffice makes as the installation, for automations such as the agents Bookkeeping prompts, only

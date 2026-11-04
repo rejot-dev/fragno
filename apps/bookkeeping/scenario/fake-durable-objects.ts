@@ -244,6 +244,8 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
   readonly #objects = new Map<string, { state: FakeDurableObjectState; object: TObject }>();
   readonly #failing = new Set<string>();
   readonly #beforeNextCall = new Map<string, () => Promise<void>>();
+  /** What happens once `remaining` more calls reached the binding's objects, before the next. */
+  #afterCalls: { remaining: number; happen: () => Promise<void> } | null = null;
 
   constructor(objectClass: DurableObjectClass<TObject, TEnv>, env: TEnv) {
     this.#objectClass = objectClass;
@@ -281,6 +283,34 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
     this.#beforeNextCall.set(method, happen);
   }
 
+  /**
+   * `happen` runs once `count` more calls, to any method of the binding's objects, reached them,
+   * before the next one does; its own calls do not count. Returns what cancels it.
+   */
+  afterCalls(count: number, happen: () => Promise<void>): () => void {
+    const pending = { remaining: count, happen };
+    this.#afterCalls = pending;
+    return () => {
+      if (this.#afterCalls === pending) {
+        this.#afterCalls = null;
+      }
+    };
+  }
+
+  /** The call `afterCalls` waits for to happen before, if this is it. */
+  #takeAfterCalls(): (() => Promise<void>) | null {
+    const pending = this.#afterCalls;
+    if (pending === null) {
+      return null;
+    }
+    if (pending.remaining > 0) {
+      pending.remaining -= 1;
+      return null;
+    }
+    this.#afterCalls = null;
+    return pending.happen;
+  }
+
   /** Fires the alarms due at `now`, each cleared first, as the runtime does. */
   async runDueAlarms(now: number): Promise<void> {
     for (const { state, object } of this.#objects.values()) {
@@ -304,6 +334,7 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
   #stub({ state, object }: { state: FakeDurableObjectState; object: TObject }): TObject {
     const failing = this.#failing;
     const beforeNextCall = this.#beforeNextCall;
+    const takeAfterCalls = () => this.#takeAfterCalls();
     return new Proxy(object, {
       get(target, property) {
         // RPC reaches an object's methods by name, whatever its class declares.
@@ -314,6 +345,10 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
         return async (...args: unknown[]) => {
           if (typeof property === "string" && failing.has(property)) {
             throw new Error("Network connection lost.");
+          }
+          const happened = takeAfterCalls();
+          if (happened) {
+            await happened();
           }
           const happen = typeof property === "string" ? beforeNextCall.get(property) : undefined;
           if (happen) {
