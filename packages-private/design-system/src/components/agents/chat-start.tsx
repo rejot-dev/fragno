@@ -76,3 +76,30 @@ export function ChatStartFooter({
     </>
   );
 }
+
+/** Questions a reader may start with; picking one writes it into the prompt, to send or change. */
+export function ChatStartSuggestions({
+  suggestions,
+  onPick,
+}: {
+  suggestions: readonly string[];
+  onPick: (suggestion: string) => void;
+}) {
+  return (
+    <ul className="mt-4 flex flex-wrap gap-2" aria-label="Suggestions">
+      {suggestions.map((suggestion) => (
+        <li key={suggestion}>
+          <button
+            type="button"
+            onClick={() => {
+              onPick(suggestion);
+            }}
+            className="border border-[color:var(--bo-border)] px-3 py-1.5 text-left text-xs text-[var(--bo-muted)] transition-colors duration-150 outline-none hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30"
+          >
+            {suggestion}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
