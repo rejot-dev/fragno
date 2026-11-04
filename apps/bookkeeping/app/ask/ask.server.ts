@@ -2,8 +2,9 @@ import type { PiAgentDefinitionCreate } from "@fragno-dev/backoffice-api/v0/pi";
 import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { env } from "cloudflare:workers";
 
-import { BOOKKEEPING_CONNECTION_ID, defineAgent } from "../../workers/backoffice/agents";
+import { defineAgent } from "../../workers/backoffice/agents";
 import { backofficeOrigin, connectAsInstallation } from "../../workers/backoffice/client";
+import { BOOKKEEPING_CONNECTION_ID } from "../../workers/backoffice/connection";
 import type { InstalledProject } from "../../workers/backoffice/document-shares";
 import type { requireBooks } from "../books/books.server";
 import { backofficeProblem, connectAsUser } from "../organizations/access.server";

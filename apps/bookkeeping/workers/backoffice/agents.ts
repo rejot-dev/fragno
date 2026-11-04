@@ -3,9 +3,6 @@ import type { PiAgentDefinition, PiAgentDefinitionCreate } from "@fragno-dev/bac
 
 import type { InstalledProject } from "./document-shares";
 
-/** How Backoffice's agents reach Bookkeeping's actions: the app's slug, as registered. */
-export const BOOKKEEPING_CONNECTION_ID = "app#bookkeeping";
-
 /** Where Bookkeeping keeps the definition it last wrote of one agent, as `definitionFields` gives it. */
 export type WrittenDefinition = {
   /** Null when Bookkeeping recorded none. */
