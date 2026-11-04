@@ -135,14 +135,19 @@ function settled<T>(outcome: Outcome<T>): T {
 }
 
 /**
- * Who may run an action: `read` anyone Backoffice signs for; `review`, which answers a document's
- * review and posts nothing, people and the firm's bookkeeping agent; `keep` people; and `set-up`
- * owners and admins.
+ * Who may run an action: `read` anyone Backoffice signs for; `consult`, which asks the firm keeping
+ * the books and changes nothing in them, anyone in the administration's own project; `review`,
+ * which answers a document's review and posts nothing, people and the firm's bookkeeping agent;
+ * `keep` people; and `set-up` owners and admins.
  */
 type BooksAction = { declaration: AppAction } & (
   | {
       access: "read";
       run(books: BooksStub, input: unknown, workplace: Workplace): Promise<unknown>;
+    }
+  | {
+      access: "consult";
+      run(env: CloudflareEnv, input: unknown, administration: Administration): Promise<unknown>;
     }
   | {
       access: "review";
@@ -193,6 +198,24 @@ function readAction<TInput extends z.ZodObject, TOutput extends z.ZodType>(
     access: "read",
     run: (books, input, workplace) =>
       definition.run(books, parse(definition.input, input), workplace),
+  };
+}
+
+/** An action asking the firm keeping the administration's books. */
+function consultAction<TInput extends z.ZodObject, TOutput extends z.ZodType>(
+  definition: ActionDefinition<TInput, TOutput> & {
+    run(
+      env: CloudflareEnv,
+      input: z.output<TInput>,
+      administration: Administration,
+    ): Promise<z.input<TOutput>>;
+  },
+): BooksAction {
+  return {
+    declaration: declare(definition),
+    access: "consult",
+    run: (env, input, administration) =>
+      definition.run(env, parse(definition.input, input), administration),
   };
 }
 
@@ -1124,6 +1147,30 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     },
   }),
 
+  consultAction({
+    id: "firm.ask",
+    label: "Ask the accountants",
+    description:
+      "Ask the accountants of the firm keeping these books a question the books cannot answer, such as why something was booked as it was, or what the business should do about it. Write the question to stand on its own: they read it on their dashboard, beside a link to this conversation, and their answer comes into this conversation as a message. Ask each question once.",
+    input: z.strictObject({ question: z.string().trim().min(1).max(2000) }),
+    output: z.object({ question: z.string().describe("The question's ID.") }),
+    async run(env, input, administration) {
+      const directory = env.DIRECTORY.getByName("directory");
+      const client = await directory.findClient(administration.clientId);
+      if (client?.firmId == null) {
+        refuse("No firm keeps these books, so there are no accountants to ask.");
+      }
+      const id = crypto.randomUUID();
+      await directory.askFirm({
+        id,
+        administrationId: administration.id,
+        question: input.question,
+        askedAt: Date.now(),
+      });
+      return { question: id };
+    },
+  }),
+
   readAction({
     id: "documents.get",
     label: "Describe a document",
@@ -1725,7 +1772,8 @@ async function answerThenRelease(
 
 /**
  * Runs a books action Backoffice signed, on the books of the administration `administrationOf`
- * finds. Reads are for anyone Backoffice signs for; answering a document's review also for the
+ * finds. Reads are for anyone Backoffice signs for, and so is asking the firm, from the
+ * administration's own project; answering a document's review also for the
  * firm's bookkeeping agent, which calls as Bookkeeping's installation in the firm's agent project;
  * changing the books is for people whose membership Bookkeeping confirms, and setting them up for
  * owners and admins. Bookkeeping prompts the client's own agent as its installation too, in the
@@ -1747,6 +1795,9 @@ export async function runBooksAction(
     const books = env.BOOKS.getByName(administration.id);
     if (action.access === "read") {
       return Response.json(await action.run(books, actionInput, workplace));
+    }
+    if (action.access === "consult") {
+      return Response.json(await action.run(env, actionInput, administration));
     }
     if (claims.actor.kind === "installation") {
       if (action.access !== "review" || workplace.kind !== "firm-agent") {

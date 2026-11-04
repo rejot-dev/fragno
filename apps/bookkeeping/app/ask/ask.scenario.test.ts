@@ -1,6 +1,10 @@
 import { assert, expect, test } from "vitest";
 
-import { runBookkeepingScenario, type ScenarioBrowser } from "../../scenario/bookkeeping-scenario";
+import {
+  runBookkeepingScenario,
+  type BookkeepingScenario,
+  type ScenarioBrowser,
+} from "../../scenario/bookkeeping-scenario";
 
 const CLIENT = "analytical-engines";
 const ADMINISTRATION = "Analytical Engines";
@@ -223,5 +227,160 @@ test("files a question carries become documents, which the agent reads and the f
       error: "A file of this message is not among the books' documents. Attach it again.",
     });
     expect(scenario.backoffice.prompts(CLIENT, ADMINISTRATION)).toHaveLength(2);
+  });
+});
+
+test("the assistant asks the firm what the books cannot answer, and the firm's answer comes into the conversation", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, firmPath, clientPath } = await scenario.practice();
+    await scenario.openAdministration(ada, clientPath, ADMINISTRATION);
+    await askPage(ada);
+
+    // The client's agent asks as Bookkeeping's installation, which only reads the books otherwise.
+    const assistant = scenario.agent("installation", {
+      organization: CLIENT,
+      project: ADMINISTRATION,
+    });
+    const asked = await assistant.call("firm.ask", {
+      question: "Why was the March rent booked twice?",
+    });
+    assert.equal(asked.status, 200, JSON.stringify(asked));
+    const { question: id } = asked.body as { question: string };
+
+    // Everyone in the firm reads it on its dashboard, with where it was asked.
+    const dashboard = async () =>
+      (
+        (await ada.navigate(firmPath)).loaderData["firms/dashboard"] as {
+          questions: unknown[];
+        }
+      ).questions;
+    expect(await dashboard()).toEqual([
+      {
+        id,
+        question: "Why was the March rent booked twice?",
+        askedAt: expect.any(Number),
+        client: { slug: CLIENT, name: ADMINISTRATION },
+        administration: { slug: "analytical-engines", name: ADMINISTRATION },
+        answer: null,
+      },
+    ]);
+
+    // The answer goes into the administration's conversation, for the agent to pass on, once.
+    const answer = async () =>
+      // The dashboard is the firm's index page, whose forms post to `?index`.
+      (
+        await ada.submit(`${firmPath}?index`, {
+          question: id,
+          answer: "The second is the deposit; it is booked to 1500 next month.",
+        })
+      ).actionData;
+    expect(await answer()).toEqual({ intent: `answer:${id}`, error: null });
+    expect(await answer()).toEqual({
+      intent: `answer:${id}`,
+      error: "This question was answered already.",
+    });
+    expect(scenario.backoffice.prompts(CLIENT, ADMINISTRATION)).toEqual([
+      {
+        agentName: "books",
+        requestId: `firm-answer:${id}`,
+        subagent: false,
+        prompter: "installation",
+        content:
+          'Ada Lovelace, of Lovelace & Co, answers the question you asked the accountants, "Why was the March rent booked twice?":\n\nThe second is the deposit; it is booked to 1500 next month.',
+        // After the turn under way, and not past a stop someone made.
+        whenBusy: "followUp",
+        whenPaused: null,
+        status: "queued",
+      },
+    ]);
+    expect(await dashboard()).toEqual([]);
+
+    // The firm's own agent is the firm's: it has no one to ask.
+    const firmAgent = scenario.agent("installation", {
+      organization: "lovelace-co",
+      project: "Bookkeeping agent",
+    });
+    const { administration } = (await ada.navigate(BOOKS)).loaderData["books/layout"] as {
+      administration: { id: string };
+    };
+    expect(
+      await firmAgent.call("firm.ask", { administration: administration.id, question: "Anyone?" }),
+    ).toMatchObject({ status: 403 });
+  });
+});
+
+/** The firm's answer to a question about the van, as the conversation reads it. */
+function vanAnswer(answer: string) {
+  return `Ada Lovelace, of Lovelace & Co, answers the question you asked the accountants, "Is the van a lease?":\n\n${answer}`;
+}
+
+/** The administration's assistant asks Ada's firm about the van; how she answers it on the dashboard. */
+async function vanQuestion(scenario: BookkeepingScenario) {
+  const { ada, firmPath, clientPath } = await scenario.practice();
+  await scenario.openAdministration(ada, clientPath, ADMINISTRATION);
+  await askPage(ada);
+  const assistant = scenario.agent("installation", {
+    organization: CLIENT,
+    project: ADMINISTRATION,
+  });
+  const asked = await assistant.call("firm.ask", { question: "Is the van a lease?" });
+  const { question: id } = asked.body as { question: string };
+  return {
+    id,
+    dashboard: async () =>
+      (
+        (await ada.navigate(firmPath)).loaderData["firms/dashboard"] as {
+          questions: { answer: unknown }[];
+        }
+      ).questions,
+    // The dashboard is the firm's index page, whose forms post to `?index`; "Send again" posts
+    // only the question.
+    answer: async (fields: { answer?: string }) =>
+      (await ada.submit(`${firmPath}?index`, { question: id, ...fields })).actionData,
+    prompts: () =>
+      scenario.backoffice.prompts(CLIENT, ADMINISTRATION).map(({ content }) => content),
+  };
+}
+
+const NOT_SENT = { error: expect.stringMatching(/^The answer was not sent: /u) };
+
+test("an answer whose delivery failed stays kept, and is sent again from the dashboard", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { id, dashboard, answer, prompts } = await vanQuestion(scenario);
+
+    // Backoffice takes the answer, but its reply is lost: the answer is kept, waiting to be sent.
+    scenario.backoffice.failNextResponse("pi.prompt.submit");
+    expect(await answer({ answer: "Yes, for four years." })).toMatchObject(NOT_SENT);
+    const kept = [{ answer: { text: "Yes, for four years.", answeredBy: "Ada Lovelace" } }];
+    expect(await dashboard()).toMatchObject(kept);
+    // Another answer, from a page opened earlier, does not replace it.
+    scenario.backoffice.failNextResponse("pi.prompt.submit");
+    expect(await answer({ answer: "No, it was bought." })).toMatchObject(NOT_SENT);
+    expect(await dashboard()).toMatchObject(kept);
+
+    expect(await answer({})).toEqual({ intent: `answer:${id}`, error: null });
+    expect(prompts()).toEqual([vanAnswer("Yes, for four years.")]);
+    expect(await dashboard()).toEqual([]);
+    expect(await answer({})).toEqual({
+      intent: `answer:${id}`,
+      error: "This question was answered already.",
+    });
+  });
+});
+
+test("the conversation gets the firm's first answer, even when another is sent first", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { id, answer, prompts } = await vanQuestion(scenario);
+
+    // The first answer never reaches Backoffice; a later one, from a page opened earlier, sends
+    // the first instead.
+    scenario.backoffice.failNextRequest("pi.prompt.submit");
+    expect(await answer({ answer: "Yes, for four years." })).toMatchObject(NOT_SENT);
+    expect(prompts()).toEqual([]);
+    expect(await answer({ answer: "No, it was bought." })).toEqual({
+      intent: `answer:${id}`,
+      error: "An earlier answer, by Ada Lovelace, was sent instead.",
+    });
+    expect(prompts()).toEqual([vanAnswer("Yes, for four years.")]);
   });
 });

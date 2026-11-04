@@ -651,6 +651,9 @@ export class FakeBackoffice {
         this.#beforeNextAnswer.delete(operation[2]);
         await happen?.();
         const response = await this.#operate(request, operation[1], operation[2]);
+        if (this.#failNextResponse.delete(operation[2])) {
+          throw new TypeError("fetch failed");
+        }
         const delivery = this.#beforeNextDelivery.get(operation[2]);
         this.#beforeNextDelivery.delete(operation[2]);
         await delivery?.();

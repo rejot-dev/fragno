@@ -120,6 +120,11 @@ const ACTION_LINES: Partial<Record<string, ActionLine>> = {
     done: "Declined the document",
     detail: none,
   },
+  "firm.ask": {
+    running: "Asking the accountant",
+    done: "Asked the accountant",
+    detail: none,
+  },
 };
 
 /** The steps of the agent's work so far, oldest first; consecutive other work is one step. */
