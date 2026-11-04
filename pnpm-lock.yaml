@@ -333,6 +333,12 @@ importers:
       '@fragno-dev/workflows':
         specifier: workspace:*
         version: link:../../packages/fragment-workflows
+      '@fragno-private/backoffice-chat':
+        specifier: workspace:*
+        version: link:../../packages-private/backoffice-chat
+      '@fragno-private/backoffice-conversation':
+        specifier: workspace:*
+        version: link:../../packages-private/backoffice-conversation
       '@fragno-private/backoffice-ui':
         specifier: workspace:*
         version: link:../../packages-private/backoffice-ui
@@ -1142,7 +1148,7 @@ importers:
         version: link:../../example-fragments/fragno-db-library
       '@prisma/client':
         specifier: ^6.16.1
-        version: 6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2)
+        version: 6.19.3(prisma@6.19.3(magicast@0.5.5)(typescript@7.0.2))(typescript@7.0.2)
       better-sqlite3:
         specifier: ^12.5.0
         version: 12.10.0
@@ -2038,6 +2044,110 @@ importers:
       tsx:
         specifier: ^4.21.0
         version: 4.22.4
+
+  packages-private/backoffice-chat:
+    dependencies:
+      '@assistant-ui/react':
+        specifier: ^0.15.1
+        version: 0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
+      '@earendil-works/pi-durable':
+        specifier: 1.4.0
+        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.4.1)(ws@8.21.3)(zod@4.6.7)
+      '@fragno-dev/backoffice-api':
+        specifier: workspace:*
+        version: link:../../packages/backoffice-api
+      '@fragno-private/backoffice-conversation':
+        specifier: workspace:*
+        version: link:../backoffice-conversation
+      '@fragno-private/backoffice-ui':
+        specifier: workspace:*
+        version: link:../backoffice-ui
+      '@fragno-private/design-system':
+        specifier: workspace:*
+        version: link:../design-system
+      streamdown:
+        specifier: ^2.5.0
+        version: 2.5.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+    devDependencies:
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../vitest-config
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.17)
+      happy-dom:
+        specifier: ^20.3.3
+        version: 20.10.2
+      react:
+        specifier: 'catalog:'
+        version: 19.2.7
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.7(react@19.2.7)
+      react-router:
+        specifier: ^8.2.0
+        version: 8.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      typescript:
+        specifier: 'catalog:'
+        version: '@typescript/typescript6@6.0.2'
+      vite:
+        specifier: 'catalog:'
+        version: 8.0.16(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-istanbul@5.0.5)(@vitest/ui@5.0.5)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.3.0))(vite@8.0.16(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
+
+  packages-private/backoffice-conversation:
+    dependencies:
+      '@assistant-ui/react':
+        specifier: ^0.15.1
+        version: 0.15.1(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(ioredis@5.11.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(use-sync-external-store@1.6.0(react@19.2.7))
+      '@earendil-works/chord':
+        specifier: 1.4.0
+        version: 1.4.0
+      '@earendil-works/pi-ai':
+        specifier: 1.4.0
+        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(ws@8.21.3)(zod@4.6.7)
+      '@earendil-works/pi-durable':
+        specifier: 1.4.0
+        version: 1.4.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(ws@8.21.3)(zod@4.6.7)
+      '@fragno-dev/backoffice-api':
+        specifier: workspace:*
+        version: link:../../packages/backoffice-api
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../vitest-config
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.17
+      react:
+        specifier: 'catalog:'
+        version: 19.2.7
+      typescript:
+        specifier: 'catalog:'
+        version: '@typescript/typescript6@6.0.2'
+      vite:
+        specifier: 'catalog:'
+        version: 8.0.16(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(@vitest/coverage-istanbul@5.0.5)(@vitest/ui@5.0.5)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.3.0))(vite@8.0.16(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
 
   packages-private/backoffice-node-runtime:
     dependencies:
@@ -5074,11 +5184,6 @@ packages:
     engines: {node: '>=22.19.0'}
     hasBin: true
 
-  '@earendil-works/pi-ai@1.3.0':
-    resolution: {integrity: sha512-KaBI8x7q7sPoFUXICNGD9efHzDG+oRNwVvkA9jdIsSQWH1RjFssOlEGsbLtewUPPgCrvmz0l2KTgSLXTyj3acw==}
-    engines: {node: '>=22.19.0'}
-    hasBin: true
-
   '@earendil-works/pi-ai@1.4.0':
     resolution: {integrity: sha512-hQM/C4+1w8rHYACzDDf+0vQMnEnpzIop1tptIERVgR3ZeT/hHSzBNG8PaWPgxWQjqSeKCyBZSyp8uTT6eKK1pQ==}
     engines: {node: '>=22.19.0'}
@@ -5107,10 +5212,6 @@ packages:
 
   '@earendil-works/pi-telemetry@1.0.1':
     resolution: {integrity: sha512-SuJ/4KyqZ6j6Whlau710DmusWDKMWCxKXpWqZclY/Cl3tGUuX8IFmbTbW2VRoVuoJpZYVMg6DJmt1mwHMUt9uw==}
-    engines: {node: '>=22.19.0'}
-
-  '@earendil-works/pi-telemetry@1.3.0':
-    resolution: {integrity: sha512-ERGZr+aXjNJzoUbB7ZzHVH3g5otzMHjHLs2Fyizm12By5X+gBEhod9cJXFOk13S7M8a29Am+Mq21zm73mRJFLg==}
     engines: {node: '>=22.19.0'}
 
   '@earendil-works/pi-telemetry@1.4.0':
@@ -21751,21 +21852,13 @@ snapshots:
       jose: 6.2.3
       zod: 4.6.7
 
-  '@better-auth/prisma-adapter@1.7.1(@better-auth/core@1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2))(@better-auth/utils@0.4.2)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5)))(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5))':
+  '@better-auth/prisma-adapter@1.7.1(@better-auth/core@1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2))(@better-auth/utils@0.4.2)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(prisma@6.19.3(@typescript/typescript6@6.0.2))':
     dependencies:
       '@better-auth/core': 1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2)
       '@better-auth/utils': 0.4.2
     optionalDependencies:
       '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5))
       prisma: 6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5)
-
-  '@better-auth/prisma-adapter@1.7.1(@better-auth/core@1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2))(@better-auth/utils@0.4.2)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(prisma@6.19.3(@typescript/typescript6@6.0.2))':
-    dependencies:
-      '@better-auth/core': 1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2)
-      '@better-auth/utils': 0.4.2
-    optionalDependencies:
-      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
-      prisma: 6.19.3(@typescript/typescript6@6.0.2)
 
   '@better-auth/telemetry@1.7.1(@better-auth/core@1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)':
     dependencies:
@@ -22275,7 +22368,7 @@ snapshots:
 
   '@earendil-works/pi-agent-core@1.0.2(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(ws@8.21.3)(zod@4.6.7)':
     dependencies:
-      '@earendil-works/pi-ai': 1.3.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(ws@8.21.3)(zod@4.6.7)
+      '@earendil-works/pi-ai': 1.4.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(ws@8.21.3)(zod@4.6.7)
       typebox: 1.3.27
     transitivePeerDependencies:
       - '@aws-sdk/credential-provider-node'
@@ -22336,11 +22429,11 @@ snapshots:
       - ws
       - zod
 
-  '@earendil-works/pi-ai@1.3.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(ws@8.21.3)(zod@4.6.7)':
+  '@earendil-works/pi-ai@1.4.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(ws@8.21.3)(zod@4.6.7)':
     dependencies:
       '@anthropic-ai/sdk': 0.129.0(zod@4.6.7)
       '@aws-sdk/client-bedrock-runtime': 3.1127.0
-      '@earendil-works/pi-telemetry': 1.3.0
+      '@earendil-works/pi-telemetry': 1.4.0
       '@google/genai': 2.21.0
       '@smithy/node-http-handler': 4.12.1
       http-proxy-agent: 9.1.0
@@ -22430,6 +22523,28 @@ snapshots:
       - ws
       - zod
 
+  '@earendil-works/pi-durable@1.4.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(ws@8.21.3)(zod@4.6.7)':
+    dependencies:
+      '@earendil-works/chord': 1.4.0
+      '@earendil-works/pi-ai': 1.4.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.10.2)(ws@8.21.3)(zod@4.6.7)
+      '@earendil-works/pi-codemode': 1.4.0
+      '@earendil-works/pi-telemetry': 1.4.0
+      '@silvia-odwyer/photon': 0.3.3
+      diff: 8.0.4
+      typebox: 1.3.27
+    transitivePeerDependencies:
+      - '@aws-sdk/credential-provider-node'
+      - '@modelcontextprotocol/sdk'
+      - '@smithy/hash-node'
+      - '@smithy/signature-v4'
+      - bufferutil
+      - kerberos
+      - supports-color
+      - undici
+      - utf-8-validate
+      - ws
+      - zod
+
   '@earendil-works/pi-durable@1.4.0(@aws-sdk/credential-provider-node@3.972.84)(@smithy/signature-v4@5.7.4)(undici@8.4.1)(ws@8.21.3)(zod@4.6.7)':
     dependencies:
       '@earendil-works/chord': 1.4.0
@@ -22457,8 +22572,6 @@ snapshots:
       cross-spawn: 7.0.6
 
   '@earendil-works/pi-telemetry@1.0.1': {}
-
-  '@earendil-works/pi-telemetry@1.3.0': {}
 
   '@earendil-works/pi-telemetry@1.4.0': {}
 
@@ -25396,12 +25509,6 @@ snapshots:
       typescript: '@typescript/typescript6@6.0.2'
     optional: true
 
-  '@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))':
-    optionalDependencies:
-      prisma: 6.19.3(@typescript/typescript6@6.0.2)
-      typescript: '@typescript/typescript6@6.0.2'
-    optional: true
-
   '@prisma/client@6.19.3(prisma@6.19.3(magicast@0.5.5)(typescript@6.0.3))(typescript@6.0.3)':
     optionalDependencies:
       prisma: 6.19.3(magicast@0.5.5)(typescript@6.0.3)
@@ -25411,12 +25518,6 @@ snapshots:
   '@prisma/client@6.19.3(prisma@6.19.3(magicast@0.5.5)(typescript@7.0.2))(typescript@7.0.2)':
     optionalDependencies:
       prisma: 6.19.3(magicast@0.5.5)(typescript@7.0.2)
-      typescript: 7.0.2
-    optional: true
-
-  '@prisma/client@6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2)':
-    optionalDependencies:
-      prisma: 6.19.3(typescript@7.0.2)
       typescript: 7.0.2
 
   '@prisma/config@6.19.3(magicast@0.5.5)':
@@ -30256,7 +30357,7 @@ snapshots:
       nanostores: 1.5.2
       zod: 4.6.7
     optionalDependencies:
-      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5))
       '@sveltejs/kit': 2.64.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.1.2(svelte@5.56.3)(vite@8.0.16(@types/node@22.19.20)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)))(@typescript/typescript6@6.0.2)(svelte@5.56.3)(vite@8.0.16(@types/node@22.19.20)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
       '@tanstack/react-start': 1.168.48(@farmfe/core@1.7.11(@types/node@22.19.20))(crossws@0.4.6(srvx@0.11.22))(esbuild@0.28.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rolldown@1.2.13)(rollup@4.61.1)(vite-plugin-solid@2.11.12(@testing-library/jest-dom@6.9.1)(solid-js@1.9.13)(vite@8.0.16(@types/node@22.19.20)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)))(vite@8.0.16(@types/node@22.19.20)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(webpack@5.107.2(esbuild@0.28.2))
       better-sqlite3: 12.11.1
@@ -30265,7 +30366,7 @@ snapshots:
       mysql2: 3.22.5(@types/node@22.19.20)
       next: 16.3.3(@opentelemetry/api@1.9.1)(@types/node@22.19.20)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       pg: 8.21.0
-      prisma: 6.19.3(@typescript/typescript6@6.0.2)
+      prisma: 6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5)
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
       solid-js: 1.9.13
@@ -30283,7 +30384,7 @@ snapshots:
       '@better-auth/kysely-adapter': 1.7.1(@better-auth/core@1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2))(@better-auth/utils@0.4.2)(kysely@0.28.17)
       '@better-auth/memory-adapter': 1.7.1(@better-auth/core@1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2))(@better-auth/utils@0.4.2)
       '@better-auth/mongo-adapter': 1.7.1(@better-auth/core@1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2))(@better-auth/utils@0.4.2)
-      '@better-auth/prisma-adapter': 1.7.1(@better-auth/core@1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2))(@better-auth/utils@0.4.2)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5)))(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5))
+      '@better-auth/prisma-adapter': 1.7.1(@better-auth/core@1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2))(@better-auth/utils@0.4.2)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(prisma@6.19.3(@typescript/typescript6@6.0.2))
       '@better-auth/telemetry': 1.7.1(@better-auth/core@1.7.1(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@cloudflare/workers-types@5.20261006.1)(@opentelemetry/api@1.9.1)(better-call@1.4.0(zod@4.6.7))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.5.2))(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)
       '@better-auth/utils': 0.4.2
       '@better-fetch/fetch': 1.3.1
@@ -30335,7 +30436,7 @@ snapshots:
       nanostores: 1.5.2
       zod: 4.6.7
     optionalDependencies:
-      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5))
       '@sveltejs/kit': 2.64.0(@opentelemetry/api@1.9.1)(@sveltejs/vite-plugin-svelte@7.1.2(svelte@5.56.3)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)))(@typescript/typescript6@6.0.2)(svelte@5.56.3)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
       '@tanstack/react-start': 1.168.48(@farmfe/core@1.7.11(@types/node@24.13.1))(crossws@0.4.6(srvx@0.11.22))(esbuild@0.28.2)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(rolldown@1.2.13)(rollup@4.61.1)(vite-plugin-solid@2.11.12(@testing-library/jest-dom@6.9.1)(solid-js@1.9.13)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0)))(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(webpack@5.107.2(esbuild@0.28.2))
       better-sqlite3: 12.11.1
@@ -30343,7 +30444,7 @@ snapshots:
       mysql2: 3.22.5(@types/node@24.13.1)
       next: 16.3.3(@babel/core@8.0.7)(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       pg: 8.21.0
-      prisma: 6.19.3(@typescript/typescript6@6.0.2)
+      prisma: 6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5)
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
       solid-js: 1.9.13
@@ -31498,14 +31599,14 @@ snapshots:
       '@electric-sql/pglite': 0.3.16
       '@libsql/client': 0.15.15
       '@opentelemetry/api': 1.9.1
-      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5))
       '@types/better-sqlite3': 7.6.13
       '@types/pg': 8.20.0
       better-sqlite3: 12.10.0
       kysely: 0.28.17
       mysql2: 3.22.5(@types/node@22.19.20)
       pg: 8.21.0
-      prisma: 6.19.3(@typescript/typescript6@6.0.2)
+      prisma: 6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5)
       sql.js: 1.14.1
 
   drizzle-orm@0.44.7(@cloudflare/workers-types@5.20261006.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.10.0)(kysely@0.28.17)(mysql2@3.22.5(@types/node@25.9.2))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))(sql.js@1.14.1):
@@ -31514,14 +31615,14 @@ snapshots:
       '@electric-sql/pglite': 0.3.16
       '@libsql/client': 0.15.15
       '@opentelemetry/api': 1.9.1
-      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5))
       '@types/better-sqlite3': 7.6.13
       '@types/pg': 8.20.0
       better-sqlite3: 12.10.0
       kysely: 0.28.17
       mysql2: 3.22.5(@types/node@25.9.2)
       pg: 8.21.0
-      prisma: 6.19.3(@typescript/typescript6@6.0.2)
+      prisma: 6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5)
       sql.js: 1.14.1
 
   drizzle-orm@0.44.7(@cloudflare/workers-types@5.20261006.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.11.1)(kysely@0.28.17)(mysql2@3.22.5(@types/node@22.19.20))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))(sql.js@1.14.1):
@@ -31530,14 +31631,14 @@ snapshots:
       '@electric-sql/pglite': 0.3.16
       '@libsql/client': 0.15.15
       '@opentelemetry/api': 1.9.1
-      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5))
       '@types/better-sqlite3': 7.6.13
       '@types/pg': 8.20.0
       better-sqlite3: 12.11.1
       kysely: 0.28.17
       mysql2: 3.22.5(@types/node@22.19.20)
       pg: 8.21.0
-      prisma: 6.19.3(@typescript/typescript6@6.0.2)
+      prisma: 6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5)
       sql.js: 1.14.1
 
   drizzle-orm@0.44.7(@cloudflare/workers-types@5.20261006.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.11.1)(kysely@0.28.17)(mysql2@3.22.5(@types/node@24.13.1))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))(sql.js@1.14.1):
@@ -31546,14 +31647,14 @@ snapshots:
       '@electric-sql/pglite': 0.3.16
       '@libsql/client': 0.15.15
       '@opentelemetry/api': 1.9.1
-      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5))
       '@types/better-sqlite3': 7.6.13
       '@types/pg': 8.20.0
       better-sqlite3: 12.11.1
       kysely: 0.28.17
       mysql2: 3.22.5(@types/node@24.13.1)
       pg: 8.21.0
-      prisma: 6.19.3(@typescript/typescript6@6.0.2)
+      prisma: 6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5)
       sql.js: 1.14.1
 
   drizzle-orm@0.44.7(@cloudflare/workers-types@5.20261006.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.11.1)(kysely@0.28.17)(mysql2@3.22.5(@types/node@25.9.3))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))(sql.js@1.14.1):
@@ -31562,14 +31663,14 @@ snapshots:
       '@electric-sql/pglite': 0.3.16
       '@libsql/client': 0.15.15
       '@opentelemetry/api': 1.9.1
-      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5))
       '@types/better-sqlite3': 7.6.13
       '@types/pg': 8.20.0
       better-sqlite3: 12.11.1
       kysely: 0.28.17
       mysql2: 3.22.5(@types/node@25.9.3)
       pg: 8.21.0
-      prisma: 6.19.3(@typescript/typescript6@6.0.2)
+      prisma: 6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5)
       sql.js: 1.14.1
 
   drizzle-orm@0.44.7(@cloudflare/workers-types@5.20261006.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.11.1)(kysely@0.28.17)(mysql2@3.22.5(@types/node@26.6.5))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2))(sql.js@1.14.1):
@@ -31578,14 +31679,14 @@ snapshots:
       '@electric-sql/pglite': 0.3.16
       '@libsql/client': 0.15.15
       '@opentelemetry/api': 1.9.1
-      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2))
+      '@prisma/client': 6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5))
       '@types/better-sqlite3': 7.6.13
       '@types/pg': 8.20.0
       better-sqlite3: 12.11.1
       kysely: 0.28.17
       mysql2: 3.22.5(@types/node@26.6.5)
       pg: 8.21.0
-      prisma: 6.19.3(@typescript/typescript6@6.0.2)
+      prisma: 6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5)
       sql.js: 1.14.1
     optional: true
 
@@ -31629,14 +31730,14 @@ snapshots:
       '@electric-sql/pglite': 0.3.16
       '@libsql/client': 0.15.15
       '@opentelemetry/api': 1.9.1
-      '@prisma/client': 6.19.3(prisma@6.19.3(typescript@7.0.2))(typescript@7.0.2)
+      '@prisma/client': 6.19.3(prisma@6.19.3(magicast@0.5.5)(typescript@7.0.2))(typescript@7.0.2)
       '@types/better-sqlite3': 7.6.13
       '@types/pg': 8.20.0
       better-sqlite3: 12.11.1
       kysely: 0.28.17
       mysql2: 3.22.5(@types/node@22.19.20)
       pg: 8.21.0
-      prisma: 6.19.3(typescript@7.0.2)
+      prisma: 6.19.3(magicast@0.5.5)(typescript@7.0.2)
       sql.js: 1.14.1
 
   dset@3.1.4: {}
@@ -36619,16 +36720,6 @@ snapshots:
       ansi-styles: 5.2.0
       react-is: 17.0.2
 
-  prisma@6.19.3(@typescript/typescript6@6.0.2):
-    dependencies:
-      '@prisma/config': 6.19.3(magicast@0.5.5)
-      '@prisma/engines': 6.19.3
-    optionalDependencies:
-      typescript: '@typescript/typescript6@6.0.2'
-    transitivePeerDependencies:
-      - magicast
-    optional: true
-
   prisma@6.19.3(@typescript/typescript6@6.0.2)(magicast@0.5.5):
     dependencies:
       '@prisma/config': 6.19.3(magicast@0.5.5)
@@ -36657,16 +36748,6 @@ snapshots:
       typescript: 7.0.2
     transitivePeerDependencies:
       - magicast
-
-  prisma@6.19.3(typescript@7.0.2):
-    dependencies:
-      '@prisma/config': 6.19.3(magicast@0.5.5)
-      '@prisma/engines': 6.19.3
-    optionalDependencies:
-      typescript: 7.0.2
-    transitivePeerDependencies:
-      - magicast
-    optional: true
 
   prismjs@1.30.0: {}
 

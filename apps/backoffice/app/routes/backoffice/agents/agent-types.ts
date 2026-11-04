@@ -1,11 +1,12 @@
+import type {
+  SessionWorkspaceStateBySession,
+  SessionWorkspaceStateUpdate,
+} from "@fragno-private/backoffice-chat/workspace/workspace-model";
+
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import type { PiAvailableModel } from "@/fragno/pi/agent/pi-agent-contract";
 
 import type { PiAgentListing } from "./agent-activity";
-import type {
-  SessionWorkspaceStateBySession,
-  SessionWorkspaceStateUpdate,
-} from "./session-detail/workspace-model";
 
 /** The scope's agents, read from its synchronized `pi` events once they are. */
 export type PiAgentDirectoryState =

@@ -1,0 +1,50 @@
+{
+  "name": "@fragno-private/backoffice-conversation",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A Backoffice agent's conversation without its components: the formats Backoffice writes into it, its projection into chat messages, and its live view from the agent's view socket.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rejot-dev/fragno.git",
+    "directory": "packages-private/backoffice-conversation"
+  },
+  "type": "module",
+  "exports": {
+    "./format/codemode-result": "./src/format/codemode-result.ts",
+    "./format/compaction-summary": "./src/format/compaction-summary.ts",
+    "./format/notification-entry": "./src/format/notification-entry.ts",
+    "./format/prompt-attachments": "./src/format/prompt-attachments.ts",
+    "./live/view-socket": "./src/live/view-socket.ts",
+    "./projection/assistant-runtime": "./src/projection/assistant-runtime.ts",
+    "./projection/pending-messages": "./src/projection/pending-messages.ts"
+  },
+  "scripts": {
+    "types:check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format:package": "node ../../scripts/run-package-quality.mjs format",
+    "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
+    "lint:package": "node ../../scripts/run-package-quality.mjs lint",
+    "lint:fix:package": "node ../../scripts/run-package-quality.mjs lint:fix"
+  },
+  "dependencies": {
+    "@assistant-ui/react": "^0.15.1",
+    "@earendil-works/chord": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-durable": "1.4.0",
+    "@fragno-dev/backoffice-api": "workspace:*",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@fragno-private/typescript-config": "workspace:*",
+    "@fragno-private/vitest-config": "workspace:*",
+    "@types/react": "catalog:",
+    "react": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  }
+}

@@ -13,6 +13,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import type { z } from "zod";
 
 import type { Context } from "@earendil-works/chord";
@@ -31,7 +32,7 @@ import {
   backofficeOperationErrorKindForStatus,
 } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import type { PiAgentAddress, PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { backfillPiAgentEvents, type PiAgentBackfilledEvent } from "./pi-agent-change-events";
 

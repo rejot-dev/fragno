@@ -7,6 +7,7 @@ import {
 import type { PiAgentConfig, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { PI_NOTIFICATION_ENTRY_KIND } from "@fragno-private/backoffice-conversation/format/notification-entry";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},
@@ -69,7 +70,6 @@ import {
 import { createRouteBackedAutomationWorkflowRuntime } from "@/fragno/automation/workflow-route-runtime";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import { piAgentObjectName } from "@/fragno/pi/agent/pi-agent-contract";
-import { PI_NOTIFICATION_ENTRY_KIND } from "@/fragno/pi/agent/pi-agent-notification-entry";
 import { createPiPostHogExtension } from "@/fragno/pi/extensions/posthog/posthog-extension";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";

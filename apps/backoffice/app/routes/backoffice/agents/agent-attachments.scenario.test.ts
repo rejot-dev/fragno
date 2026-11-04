@@ -1,5 +1,11 @@
 import { assert, expect, test, vi } from "vitest";
 
+import { piAgentAttachmentsKeyPrefix } from "@fragno-private/backoffice-conversation/format/prompt-attachments";
+import {
+  createAssistantUiMessages,
+  piConversationMessages,
+} from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
+
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
   RpcTarget: class {},
@@ -27,7 +33,6 @@ import {
 } from "@/fragno/automation/scenario";
 import { createFakeR2, requestFromOutside } from "@/fragno/blobs-r2.test-utils";
 import { blobsR2BucketsFromEnv } from "@/fragno/blobs-server";
-import { piAgentAttachmentsKeyPrefix } from "@/fragno/pi/agent/pi-agent-attachments";
 import { behindBackofficeLayout } from "@/layouts/backoffice-layout.test-support";
 import {
   action as largeFileUploadsAction,
@@ -44,10 +49,6 @@ import { createScriptedPiAgentDependencies } from "../../../../workers/pi-durabl
 import { PiObject } from "../../../../workers/pi-object";
 import type { PiAgentActionData } from "./agent-conversation";
 import { action as agentAction } from "./agent-detail";
-import {
-  createAssistantUiMessages,
-  piConversationMessages,
-} from "./session-detail/assistant-runtime";
 
 const ORG_ID = "org-books";
 const SCOPE: BackofficeContextScope = { kind: "org", orgId: ORG_ID, jurisdiction: null };

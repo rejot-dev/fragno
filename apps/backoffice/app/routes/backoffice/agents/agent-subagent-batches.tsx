@@ -3,6 +3,18 @@ import {
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  liveThoughtHeadline,
+  plainText,
+} from "@fragno-private/backoffice-chat/messages/agent-turn";
+import { AssistantMessage } from "@fragno-private/backoffice-chat/messages/messages";
+import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
+import {
+  createAssistantUiMessages,
+  isPiConversationRunning,
+  piConversationDraftAgentMessage,
+  piConversationMessages,
+} from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
 import { ChatEventDivider } from "@fragno-private/design-system/agents/chat-divider";
 import {
   ChatSubagentGroup,
@@ -34,18 +46,9 @@ import type { ConversationView } from "@earendil-works/pi-durable";
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { readPiAgentEvent } from "@/fragno/backoffice-capabilities/capabilities/pi";
-import type { PiAgentNotification } from "@/fragno/pi/agent/pi-agent-contract";
 
 import type { loader as subagentViewLoader } from "./agent-subagent-view";
 import type { AgentSubagent, loader as subagentsLoader } from "./agent-subagents";
-import { liveThoughtHeadline, plainText } from "./session-detail/agent-turn";
-import {
-  createAssistantUiMessages,
-  isPiConversationRunning,
-  piConversationDraftAgentMessage,
-  piConversationMessages,
-} from "./session-detail/assistant-runtime";
-import { AssistantMessage } from "./session-detail/messages";
 
 // Subagents show in the agent's thread. Those its own turn starts sit in that turn, under the tool
 // call that asked for them; those anyone else asks for sit where they were asked, between turns.

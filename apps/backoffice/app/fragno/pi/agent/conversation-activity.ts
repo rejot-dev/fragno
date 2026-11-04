@@ -1,8 +1,7 @@
 import type { PiAgentActivity } from "@fragno-dev/backoffice-api/v0/pi";
+import { getCodemodeCallsDetail } from "@fragno-private/backoffice-conversation/format/codemode-result";
 
 import type { ConversationView, LiveState } from "@earendil-works/pi-durable";
-
-import { getCodemodeCallsDetail } from "@/fragno/pi/extensions/backoffice/codemode-call-details";
 
 // A subagent runs a handful of tools; the bound keeps a long conversation's answer small.
 const MAX_TOOLS = 50;

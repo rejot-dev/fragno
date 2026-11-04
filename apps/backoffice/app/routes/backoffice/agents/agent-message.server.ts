@@ -1,8 +1,7 @@
 import type { PiPromptReceipt } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { renderPiAgentPrompt } from "@fragno-private/backoffice-conversation/format/prompt-attachments";
 import type { RouterContextProvider } from "react-router";
-
-import { renderPiAgentPrompt } from "@/fragno/pi/agent/pi-agent-attachments";
 
 import { readPiAgentAttachments } from "./agent-attachments.server";
 import { agentModelChoiceFromFormData } from "./agent-model-menu";

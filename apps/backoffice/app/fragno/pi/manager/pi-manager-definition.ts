@@ -1,4 +1,5 @@
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import { z } from "zod";
 
 import { defineFragment } from "@fragno-dev/core";
@@ -10,7 +11,6 @@ import {
   piAgentNotificationEvent,
   type PiAgent,
   type PiAgentAddress,
-  type PiAgentNotification,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 

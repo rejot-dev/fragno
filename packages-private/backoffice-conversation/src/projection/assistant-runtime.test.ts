@@ -7,7 +7,6 @@ import {
   piConversationDraftAgentMessage,
   piConversationMessages,
 } from "./assistant-runtime";
-import { formatToolArgumentsDisplayText } from "./tool-arguments";
 
 const usage = {
   input: 0,
@@ -17,18 +16,6 @@ const usage = {
   totalTokens: 0,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
-
-describe("formatToolArgumentsDisplayText", () => {
-  test("renders streaming codemode code input before the JSON argument is complete", () => {
-    expect(
-      formatToolArgumentsDisplayText({
-        rawText:
-          '{"code":"const path = \\"/tmp/example.txt\\";\\nawait state.writeFile(path, \\"hello',
-        value: { code: "" },
-      }),
-    ).toContain('await state.writeFile(path, "hello');
-  });
-});
 
 describe("piConversationMessages", () => {
   test("hides repeated aborted recovery copies of a completed assistant response", () => {

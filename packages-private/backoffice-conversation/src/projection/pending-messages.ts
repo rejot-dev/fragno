@@ -3,8 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { ConversationView, InboxState } from "@earendil-works/pi-durable";
 
-import { parsePiAgentPrompt } from "@/fragno/pi/agent/pi-agent-attachments";
-
+import { parsePiAgentPrompt } from "../format/prompt-attachments";
 import { normalizePiContent } from "./assistant-runtime";
 
 /**

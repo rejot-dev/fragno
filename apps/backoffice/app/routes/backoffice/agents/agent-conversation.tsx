@@ -1,4 +1,35 @@
 import type { PiManagerAgent, PiPromptReceipt } from "@fragno-dev/backoffice-api/v0/pi";
+import { ChatExtensionsProvider } from "@fragno-private/backoffice-chat/extensions";
+import { SessionDisplayOptions } from "@fragno-private/backoffice-chat/thread/display-options";
+import {
+  SessionThread,
+  type ComposerAction,
+} from "@fragno-private/backoffice-chat/thread/session-thread";
+import {
+  SessionWorkspaceNavigationProvider,
+  type SessionWorkspaceNavigation,
+} from "@fragno-private/backoffice-chat/workspace/workspace-context";
+import {
+  toggleSessionWorkspaceItem,
+  type SessionWorkspaceState,
+  type SessionWorkspaceStateUpdate,
+} from "@fragno-private/backoffice-chat/workspace/workspace-model";
+import {
+  usePiAgentViewSocket,
+  type PiAgentQueueState,
+} from "@fragno-private/backoffice-conversation/live/view-socket";
+import {
+  createAssistantUiMessages,
+  getAppendMessageText,
+  isPiConversationRunning,
+  piConversationDraftAgentMessage,
+  piConversationMessages,
+  piConversationQueue,
+  type PiConversationMessage,
+  type PiDraftAgentMessage,
+  type PiUserMessageMetadata,
+} from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
+import { usePiPendingMessages } from "@fragno-private/backoffice-conversation/projection/pending-messages";
 import { ChatComposerModel } from "@fragno-private/design-system/agents/chat-composer";
 import { ChatWorkspaceSplit } from "@fragno-private/design-system/agents/chat-workspace-split";
 import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
@@ -42,35 +73,9 @@ import {
   withSubagentBatches,
 } from "./agent-subagent-batches";
 import type { PiManagerEntryPage } from "./data";
-import {
-  createAssistantUiMessages,
-  getAppendMessageText,
-  isPiConversationRunning,
-  piConversationDraftAgentMessage,
-  piConversationMessages,
-  piConversationQueue,
-  type PiConversationMessage,
-  type PiDraftAgentMessage,
-  type PiUserMessageMetadata,
-} from "./session-detail/assistant-runtime";
-import { SessionDisplayOptions } from "./session-detail/display-options";
-import { usePiPendingMessages } from "./session-detail/pending-messages";
-import {
-  usePiSessionViewSocket,
-  type PiAgentQueueState,
-} from "./session-detail/pi-session-view-socket";
+import { backofficeChatExtensions } from "./session-detail/backoffice-chat-extensions";
 import { createReson8DictationAdapter } from "./session-detail/reson8-dictation";
-import { SessionThread, type ComposerAction } from "./session-detail/session-thread";
 import { SessionWorkflowsProvider } from "./session-detail/session-workflow";
-import {
-  SessionWorkspaceNavigationProvider,
-  type SessionWorkspaceNavigation,
-} from "./session-detail/workspace-context";
-import {
-  toggleSessionWorkspaceItem,
-  type SessionWorkspaceState,
-  type SessionWorkspaceStateUpdate,
-} from "./session-detail/workspace-model";
 import { SessionWorkspacePanel } from "./session-detail/workspace-panel";
 import { projectSessionWorkspaceItems } from "./session-detail/workspace-projection";
 
@@ -328,7 +333,10 @@ function usePiCompaction(agentPath: string, onCompleted: () => void) {
 
 /** The conversation renders from the view socket; its first view is the whole conversation. */
 export function AgentConversation(props: AgentConversationProps) {
-  const stream = usePiSessionViewSocket(`${props.agentPath}/view-socket`);
+  const stream = usePiAgentViewSocket({
+    key: props.agentPath,
+    url: () => `${props.agentPath}/view-socket`,
+  });
   if (stream.status === "connecting") {
     return (
       <AgentConversationStatus header={props.header}>
@@ -729,31 +737,33 @@ function AgentConversationThread({
     <AssistantRuntimeProvider runtime={runtime}>
       <FileScopeProvider scope={resolvedScope}>
         <SessionWorkflowsProvider>
-          <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-            <h2 className="sr-only">{formatPiAgentName(agent.agentName)}</h2>
-            {header(
-              <SessionDisplayOptions
-                exportHref={`${agentPath}.jsonl`}
-                exportFilename={`pi-agent-${agent.agentName}.jsonl`}
-                showToolCalls={displayOptions.showToolCalls}
-                showThinking={displayOptions.showThinking}
-                showUsage={displayOptions.showUsage}
-                onShowToolCallsChange={updateDisplayOption("showToolCalls")}
-                onShowThinkingChange={updateDisplayOption("showThinking")}
-                onShowUsageChange={updateDisplayOption("showUsage")}
-              />,
-            )}
-            {workspace ? (
-              <AgentConversationWithWorkspace
-                workspace={workspace}
-                messages={messages}
-                draftAgentMessage={draftAgentMessage}
-                conversation={conversation}
-              />
-            ) : (
-              conversation
-            )}
-          </div>
+          <ChatExtensionsProvider value={backofficeChatExtensions}>
+            <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+              <h2 className="sr-only">{formatPiAgentName(agent.agentName)}</h2>
+              {header(
+                <SessionDisplayOptions
+                  exportHref={`${agentPath}.jsonl`}
+                  exportFilename={`pi-agent-${agent.agentName}.jsonl`}
+                  showToolCalls={displayOptions.showToolCalls}
+                  showThinking={displayOptions.showThinking}
+                  showUsage={displayOptions.showUsage}
+                  onShowToolCallsChange={updateDisplayOption("showToolCalls")}
+                  onShowThinkingChange={updateDisplayOption("showThinking")}
+                  onShowUsageChange={updateDisplayOption("showUsage")}
+                />,
+              )}
+              {workspace ? (
+                <AgentConversationWithWorkspace
+                  workspace={workspace}
+                  messages={messages}
+                  draftAgentMessage={draftAgentMessage}
+                  conversation={conversation}
+                />
+              ) : (
+                conversation
+              )}
+            </div>
+          </ChatExtensionsProvider>
         </SessionWorkflowsProvider>
       </FileScopeProvider>
     </AssistantRuntimeProvider>

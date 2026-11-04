@@ -7,6 +7,7 @@ import {
   type PiAgentDefinition,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { piAgentNotificationSchema } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
@@ -20,7 +21,6 @@ import {
   PI_INTERNAL_REQUEST_ID_PREFIX,
   piAgentCompactionSchema,
   piAgentModelChoiceSchema,
-  piAgentNotificationSchema,
   piAgentPromptSchema,
   piAgentTurnSchema,
   piPromptStatusOf,
