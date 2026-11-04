@@ -50,13 +50,10 @@ export default function registerBackofficeDevServerExtension(pi: ExtensionAPI) {
     }
 
     event.systemPromptOptions.sections[BACKOFFICE_DEV_SERVER_SECTION] =
-      `In this worktree, Backoffice's \`pnpm dev\` and \`pnpm preview\` (apps/backoffice) listen on ` +
-      `http://127.0.0.1:${port}. The port is fixed: if it is taken, a Backoffice server from this ` +
-      `worktree is probably already running, so probe it instead of starting another one. ` +
-      `If you start the server yourself (including after killing one), stop it when you are done. ` +
-      `To sign in, use the dev account \`${process.env["USER"] ?? "$USER"}@rejot.dev\` with password ` +
-      `\`wachtwoord\`. If it does not exist yet, create it with ` +
-      `\`pnpm --filter @fragno-apps/backoffice-rr dev-account:create\` while the server runs.`;
+      `Backoffice's \`pnpm dev\` and \`pnpm preview\` serve http://127.0.0.1:${port} in this ` +
+      `worktree. If the port is taken, the server is likely already running; use it. Stop servers ` +
+      `you start. Sign in as \`${process.env["USER"] ?? "$USER"}@rejot.dev\` / \`wachtwoord\`, ` +
+      `created by \`pnpm --filter @fragno-apps/backoffice-rr dev-account:create\`.`;
 
     // Only the session naming goes into the prompt, not the live sessions or ports: those change
     // during a run, and every change to a section adds a prompt delta.
@@ -64,16 +61,10 @@ export default function registerBackofficeDevServerExtension(pi: ExtensionAPI) {
       return;
     }
     event.systemPromptOptions.sections[TMUX_SECTION] =
-      `The user works on this worktree in tmux sessions named \`${worktreeName}-<n>\`, and may run ` +
-      `servers such as Backoffice in them. \`scripts/tmux-ports.sh\` lists every tmux pane with ` +
-      `the ports it listens on; use it to find the pane that runs a server, then read that ` +
-      `server's output with \`tmux capture-pane -p -t <pane> -S -200\`. Never kill, restart, or ` +
-      `send keys to a pane you did not start. Start long-running processes (dev servers, ` +
-      `watchers) in a new detached session, so the user can attach to it: ` +
-      `\`tmux new-session -d -s ${worktreeName}-<n> -c <dir>\`, then ` +
-      `\`tmux send-keys -t ${worktreeName}-<n> '<command>' Enter\`, with \`<n>\` the lowest ` +
-      `number no session uses yet. Sending the command to the session's shell keeps its output ` +
-      `readable after it exits. Read its output the same way, and kill the session with ` +
-      `\`tmux kill-session -t ${worktreeName}-<n>\` when you are done.`;
+      `The user runs servers in tmux sessions named \`${worktreeName}-<n>\`; ` +
+      `\`scripts/tmux-ports.sh\` maps panes to ports. Stop, rebuild, and restart those servers in ` +
+      `their panes as needed. ` +
+      `Start new long-running processes in a detached \`${worktreeName}-<n>\` session, via ` +
+      `\`send-keys\` so output survives exit, and kill it when done.`;
   });
 }
