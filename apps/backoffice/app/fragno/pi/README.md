@@ -491,6 +491,9 @@ response that a newer one in its task repeats is a recovery partial and is skipp
 skips it, unless the two fall on different pages. `pi.agent.messages --agent assistant --last 1`
 prints only the latest message; `--format json` prints the page.
 
+`pi.listHistory` (`pi.agent.history`) returns the entries route's pages to apps whose chats show
+earlier history, as Backoffice's own chat loads it.
+
 `pi.exportConversation` (`pi.agent.export`) writes the export route's JSONL to a `.jsonl` file under
 `/workspace` and also needs `upload.modify`. It holds the whole export in memory to write it in one
 piece.

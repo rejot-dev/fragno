@@ -295,6 +295,16 @@ describe("runtime tool reference generation", () => {
           bashOptions: ["agent", "last", "before", "subagent"],
         },
         {
+          id: "pi.agent.history",
+          namespace: "pi",
+          codemodeProvider: "pi",
+          codemodeTool: "listHistory",
+          inputType: "PiListHistoryInput",
+          outputType: "PiListHistoryOutput",
+          bashCommand: "pi.agent.history",
+          bashOptions: ["agent", "before", "cursor", "page-size"],
+        },
+        {
           id: "pi.agent.activity",
           namespace: "pi",
           codemodeProvider: "pi",

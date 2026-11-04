@@ -643,6 +643,31 @@ test("messages and exports start at the newest compaction or clear, as the chat 
           expect(active.header).toMatchObject({ version: 3, history: false });
           expect(active.kinds.slice(0, 2)).toEqual(["pi.assistant", "pi.compaction"]);
           expect(active.text).not.toContain("First question?");
+
+          // What the chat's view leaves out, pi.agent.history pages through, newest first.
+          const viewed = await request(runtime, execution, "/agents/assistant/view", null);
+          const view = await viewed.json<{ entries: { head?: number }[] }>();
+          const before = view.entries[0]?.head;
+          assert(before !== undefined, "the compacted view leads with its head marker");
+          const bash = await bashIn(runtime);
+          const history: { id: number }[] = [];
+          let cursor: string | null = null;
+          do {
+            const printed = await bash.exec(
+              `pi.agent.history --agent assistant --before ${before} --page-size 2${cursor === null ? "" : ` --cursor '${cursor}'`}`,
+            );
+            assert.equal(printed.exitCode, 0, printed.stderr);
+            const page = JSON.parse(printed.stdout) as {
+              entries: { id: number }[];
+              cursor: string | null;
+            };
+            history.push(...page.entries);
+            cursor = page.cursor;
+          } while (cursor !== null);
+          const ids = history.map(({ id }) => id);
+          expect(ids).toEqual([...ids].sort((a, b) => b - a));
+          expect(ids.filter((id) => id >= before)).toEqual([]);
+          expect(JSON.stringify(history)).toContain("First question?");
         }),
         then.assert(
           "a clear hides what came before it, but not its answers",
