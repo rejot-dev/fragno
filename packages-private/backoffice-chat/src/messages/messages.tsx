@@ -106,7 +106,7 @@ export function AssistantMessage({
   const parts = useAuiState((state) => state.message.parts);
   const running = useAuiState((state) => state.message.status?.type === "running");
   const navigation = useSessionWorkspaceNavigation();
-  const { WorkflowRun, ToolCallFollowUps } = useChatExtensions();
+  const { agentLabel, WorkflowRun, ToolCallFollowUps } = useChatExtensions();
   const MarkdownText = useMarkdownText();
 
   const segments = agentTurn(parts, running);
@@ -258,7 +258,10 @@ export function AssistantMessage({
     <>
       {requestLine}
       <MessagePrimitive.Root asChild>
-        <ChatAssistantMessage author={{ name: "Pi", time: createdAt ?? null }} footer={footer}>
+        <ChatAssistantMessage
+          author={{ name: agentLabel, time: createdAt ?? null }}
+          footer={footer}
+        >
           {shownTurn.map((segment) => {
             if (segment.kind === "said") {
               return segment.parts.map((part) =>

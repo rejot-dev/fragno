@@ -14,8 +14,10 @@ on the presentational chat components of `@fragno-private/design-system/agents`.
 ## Extensions
 
 The conversation names things only the host can show: workspace files, workflow runs, subagents.
-`ChatExtensionsProvider` gives the chat the host's components for them (`extensions`); without one,
-the chat shows less, never something else. Backoffice provides all of them
+`ChatExtensionsProvider` gives the chat the host's components for them, and what it calls the agent
+(`extensions`); without one, the chat shows less, never something else. A host that leaves the
+agent's context to the agent passes `SessionThread` no `context`, which leaves out compacting and
+clearing it. Backoffice provides all of them
 (`apps/backoffice/app/routes/backoffice/agents/session-detail/backoffice-chat-extensions.tsx`).
 
 A host's stylesheet imports `@fragno-private/backoffice-chat/styles.css` after the design system's
