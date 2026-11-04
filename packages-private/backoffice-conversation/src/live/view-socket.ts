@@ -40,9 +40,20 @@ export type PiAgentViewSocketSource = {
  * page needs no server-loaded copy.
  */
 export function usePiAgentViewSocket(source: PiAgentViewSocketSource): PiAgentViewState {
-  const [state, setState] = useState<PiAgentViewState>({ status: "connecting" });
+  // The state is the socket's whose key it carries: another agent's view is never this one's.
+  const [keyed, setKeyed] = useState<{ key: string; state: PiAgentViewState }>({
+    key: source.key,
+    state: { status: "connecting" },
+  });
   const socketUrl = useEffectEvent(source.url);
   useEffect(() => {
+    const { key } = source;
+    function setState(update: (current: PiAgentViewState) => PiAgentViewState) {
+      setKeyed((current) => ({
+        key,
+        state: update(current.key === key ? current.state : { status: "connecting" }),
+      }));
+    }
     let socket: WebSocket | undefined;
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
@@ -89,7 +100,8 @@ export function usePiAgentViewSocket(source: PiAgentViewSocketSource): PiAgentVi
           // The rendered view is React state, which must not be mutated.
           view = applyImmutable<ConversationView>(view, frame.ops);
         }
-        setState({ status: "ready", view, queue });
+        const ready = { status: "ready" as const, view, queue };
+        setState(() => ready);
       });
       connection.addEventListener("close", (event) => {
         if (stopped) {
@@ -113,5 +125,5 @@ export function usePiAgentViewSocket(source: PiAgentViewSocketSource): PiAgentVi
       socket?.close();
     };
   }, [source.key]);
-  return state;
+  return keyed.key === source.key ? keyed.state : { status: "connecting" };
 }

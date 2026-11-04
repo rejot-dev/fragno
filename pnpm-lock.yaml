@@ -2157,12 +2157,21 @@ importers:
       '@fragno-private/vitest-config':
         specifier: workspace:*
         version: link:../vitest-config
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.17
+      happy-dom:
+        specifier: ^20.3.3
+        version: 20.10.2
       react:
         specifier: 'catalog:'
         version: 19.2.7
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.7(react@19.2.7)
       typescript:
         specifier: 'catalog:'
         version: '@typescript/typescript6@6.0.2'
