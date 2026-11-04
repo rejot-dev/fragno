@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { assert, expect, test } from "vitest";
 
 import { runBookkeepingScenario } from "../../scenario/bookkeeping-scenario";
 
@@ -74,5 +74,25 @@ test("signing in returns to the page that asked for it, and only to Bookkeeping'
         await scenario.browser().navigate(`/login?returnTo=${encodeURIComponent(elsewhere)}`),
       ).toMatchObject({ loaderData: { "public/login": { returnTo: "/start" } } });
     }
+  });
+});
+
+test("logging out ends the session, and signing in again asks who is signing in", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    scenario.backoffice.addUser({ email: "grace@example.test", name: "Grace Hopper" });
+    const grace = scenario.browser();
+    await grace.signIn("grace@example.test");
+    const signedOut = await grace.auth("/api/auth/sign-out", { method: "POST", body: {} });
+    assert.equal(signedOut.status, 200);
+    expect(await grace.navigate("/start")).toMatchObject({ path: "/login?returnTo=%2Fstart" });
+
+    // Backoffice's session outlasts Bookkeeping's, so signing in again asks Backoffice to ask who
+    // is signing in rather than take its session.
+    const started = await grace.auth("/api/auth/sign-in/social", {
+      method: "POST",
+      body: { provider: "backoffice", callbackURL: "/start", errorCallbackURL: "/login" },
+    });
+    const { url } = (await started.json()) as { url: string };
+    assert.equal(new URL(url).searchParams.get("prompt"), "login");
   });
 });
