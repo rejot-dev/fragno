@@ -1,5 +1,6 @@
 import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
 import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
+import { useMemo } from "react";
 import { useOutletContext, useRevalidator } from "react-router";
 
 import { requireBooks } from "../books/books.server";
@@ -30,6 +31,13 @@ export default function AskPage({ loaderData }: Route.ComponentProps) {
   const revalidator = useRevalidator();
   const { agent } = loaderData;
   const agentPath = `${base}/ask/agent`;
+  const paths = useMemo(
+    () => ({
+      agentPath,
+      historyPath: `${base}/ask/history`,
+    }),
+    [agentPath, base],
+  );
   return (
     <>
       <PageHeading eyebrow={books.name} title="Ask" meta={null} actions={null} />
@@ -43,7 +51,7 @@ export default function AskPage({ loaderData }: Route.ComponentProps) {
       ) : (
         <div className="flex h-[calc(100svh-14rem)] min-h-[28rem] flex-col overflow-hidden border border-[var(--bo-border)]">
           {agent.provisioned ? (
-            <BooksChat agentPath={agentPath} />
+            <BooksChat paths={paths} books={books} base={base} />
           ) : (
             // Starting the conversation provisions it; the page then shows it.
             <BooksChatStart agentPath={agentPath} onStarted={() => void revalidator.revalidate()} />

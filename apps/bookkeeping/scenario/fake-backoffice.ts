@@ -177,6 +177,10 @@ export class FakeBackoffice {
     string,
     { scope: string; agentName: string; prompter: Principal }
   >();
+  /** Agents' conversations before their active context, oldest first, by scope and name. */
+  readonly #histories = new Map<string, readonly { id: number }[]>();
+  /** Who read agents' earlier history, in the order they read it. */
+  readonly #historyReads: { scope: string; agentName: string; reader: Principal }[] = [];
   /**
    * Blobs one scope shares with another, by share ID; revoking the share deletes it. Bookkeeping
    * shares no folders, so neither does this fake.
@@ -369,6 +373,24 @@ export class FakeBackoffice {
     return issued?.scope === this.#projectFileKey(slug, project, "")
       ? { agentName: issued.agentName, watcher: this.#who(issued.prompter) }
       : null;
+  }
+
+  /** Gives an agent in one of the organization's projects history before its active context. */
+  setHistory(
+    slug: string,
+    project: string,
+    agentName: string,
+    entries: readonly { id: number }[],
+  ): void {
+    this.#histories.set(this.#projectFileKey(slug, project, agentName), entries);
+  }
+
+  /** Who read the earlier history of agents in one of the organization's projects, as `prompts` names them. */
+  historyReaders(slug: string, project: string): { agentName: string; reader: string }[] {
+    const scope = this.#projectFileKey(slug, project, "");
+    return this.#historyReads
+      .filter((read) => read.scope === scope)
+      .map((read) => ({ agentName: read.agentName, reader: this.#who(read.reader) }));
   }
 
   #who(principal: Principal): string {
@@ -935,6 +957,23 @@ export class FakeBackoffice {
           const ticket = randomToken();
           this.#watchTickets.set(ticket, { scope: key(""), agentName, prompter: principal });
           return { ticket, expiresAt: new Date(Date.now() + 60_000).toISOString() };
+        });
+      case "pi.agent.history":
+        return respond("pi.agent.history", body, ({ agentName, before, cursor, pageSize }) => {
+          if (!this.#agents.has(key(agentName))) {
+            throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
+          }
+          this.#historyReads.push({ scope: key(""), agentName, reader: principal });
+          // Newest first, as Backoffice pages it; the cursor is where the next page starts.
+          const earlier = (this.#histories.get(key(agentName)) ?? [])
+            .filter((entry) => entry.id < before)
+            .reverse();
+          const start = cursor === null ? 0 : Number(cursor);
+          const next = start + pageSize;
+          return {
+            entries: earlier.slice(start, next),
+            cursor: next < earlier.length ? String(next) : null,
+          };
         });
       case "pi.prompt.get":
         return respond(

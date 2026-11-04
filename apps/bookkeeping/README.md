@@ -445,7 +445,14 @@ the books, whoever asks and whatever a document tells it. A question joins the r
 resumes a stopped agent (`whenBusy: "steer"`, `whenPaused: "resume"`), as in Backoffice. The browser
 follows the conversation over the agent's `pi.agent.watch` socket, straight from Backoffice: for
 each connection, `ask/agent` asks `pi.agent.watchTicket` as the person, so Backoffice checks they
-may read the agent, and returns the socket's URL with the ticket.
+may read the agent, and returns the socket's URL with the ticket. Earlier messages, from before the
+agent's newest compaction, load a page at a time through `ask/history`, which reads
+`pi.agent.history` as the person too.
+
+The chat shows the agent's work as Bookkeeping's steps, such as "Read an account's lines 1000", not
+its code: `app/books/agent-steps.ts` names them for the chat and for a document's review alike. The
+agent links what it names with relative links by code, such as `accounts/1000` or `entries/SAL/3`,
+which `app/ask/books-links.ts` resolves to the pages before Streamdown's hardening would block them.
 
 Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
 administration is created, and administrations from before a storage change do not open. Delete
