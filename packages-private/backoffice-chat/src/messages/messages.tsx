@@ -1,8 +1,8 @@
-import type { CodemodeRun } from "@fragno-private/backoffice-conversation/format/codemode-result";
+import type { CodemodeRun } from "@fragno-dev/backoffice-api/v0/pi-conversation/codemode-result";
 import type {
   PiAgentNotification,
   PiNotificationReference,
-} from "@fragno-private/backoffice-conversation/format/notification-entry";
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import {
   notificationRequestLabel,
   type PiAssistantMessageMetadata,

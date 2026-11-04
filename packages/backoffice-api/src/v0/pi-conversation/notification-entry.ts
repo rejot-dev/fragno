@@ -1,6 +1,6 @@
-import { automationEventSchema } from "@fragno-dev/backoffice-api/v0/events";
 import { z } from "zod";
 
+import { automationEventSchema } from "../events";
 import { escapeAttribute, unescapeAttribute } from "./xml-attribute";
 
 /**

@@ -9,13 +9,13 @@ import type {
   PiAgentWatchFrame,
   PiPromptStatus,
 } from "@fragno-dev/backoffice-api/v0/pi";
-import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
-import { backofficePermissionRequirementSchema } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import {
   piAgentNotificationSchema,
   type PiAgentNotification,
-} from "@fragno-private/backoffice-conversation/format/notification-entry";
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
+import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
+import { backofficePermissionRequirementSchema } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";

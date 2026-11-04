@@ -1,4 +1,5 @@
 import type { PiPromptStatus } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import {
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
@@ -8,7 +9,6 @@ import {
   plainText,
 } from "@fragno-private/backoffice-chat/messages/agent-turn";
 import { AssistantMessage } from "@fragno-private/backoffice-chat/messages/messages";
-import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import {
   createAssistantUiMessages,
   isPiConversationRunning,

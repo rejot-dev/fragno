@@ -3,7 +3,7 @@ import {
   isCodemodeTool,
   type CodemodeResultDetails,
   getCodemodeCallsDetail,
-} from "@fragno-private/backoffice-conversation/format/codemode-result";
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/codemode-result";
 import type { PiToolCallArtifact } from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
 import {
   parseBackofficeUiResult,

@@ -1,6 +1,6 @@
-import type { CodemodeRun } from "@fragno-private/backoffice-conversation/format/codemode-result";
-import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
-import type { PiAgentAttachment } from "@fragno-private/backoffice-conversation/format/prompt-attachments";
+import type { CodemodeRun } from "@fragno-dev/backoffice-api/v0/pi-conversation/codemode-result";
+import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
+import type { PiAgentAttachment } from "@fragno-dev/backoffice-api/v0/pi-conversation/prompt-attachments";
 import { ChatEventDisclosure } from "@fragno-private/design-system/agents/chat-divider";
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
 

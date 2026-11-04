@@ -91,6 +91,20 @@ an agent that has had no turns, and a name no agent has close the socket with
 provisioned its conversation yet (`provisioned`). The credential is only checked on connecting, so
 an open socket outlives it.
 
+What Backoffice writes into a conversation, beside Pi Durable's own entries, reads with
+`@fragno-dev/backoffice-api/v0/pi-conversation/*`, the same modules Backoffice writes it with:
+
+- `prompt-attachments`: a prompt's files, as a `<backoffice-attachments>` block after its text.
+  `renderPiAgentPrompt` writes one for `pi.prompt.submit`, so the agent reads the files by workspace
+  path or blob key; `parsePiAgentPrompt` splits a user entry back into its text and files.
+- `notification-entry`: the `backoffice.notification` entries that deliver events to an agent, and
+  the request a turn handling them answers (`parsePiNotificationRequest`).
+- `codemode-result`: what a codemode tool result records beside its result: its logs, the workflow
+  runs it started or showed, and the calls it made (`getCodemodeResultDetails`).
+- `compaction-summary`: a compaction's summary without the framing Pi gives the model.
+
+A change to these formats is a change to the API, with its changeset.
+
 Browsers cannot send a WebSocket's headers, so an app's server asks `pi.agent.watchTicket` for a
 ticket, and its page connects with `ticket=<ticket>` instead of the bearer token:
 

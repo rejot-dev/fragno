@@ -2,7 +2,7 @@ import {
   PI_NOTIFICATION_ENTRY_KIND,
   renderPiNotification,
   type PiAgentNotification,
-} from "@fragno-private/backoffice-conversation/format/notification-entry";
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 
 import { PI_INTERNAL_REQUEST_ID_PREFIX } from "./pi-agent-contract";
 

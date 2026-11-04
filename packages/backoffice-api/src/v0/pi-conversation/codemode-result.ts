@@ -1,4 +1,6 @@
-import { codemodeCallsSchema, type CodemodeCalls } from "@fragno-dev/backoffice-api/v0/pi";
+import { z } from "zod";
+
+import { codemodeCallsSchema, type CodemodeCalls } from "../pi";
 
 /**
  * A workflow run a codemode program started or showed. Saved and inline workflows run on the same
@@ -21,21 +23,31 @@ export function isCodemodeTool(name: string) {
   return name === "codemode" || name === "execCodeMode";
 }
 
+/** What a codemode tool result records beside its result; anything else in it is left as it is. */
+const resultDetailsSchema = z.looseObject({
+  logs: z.unknown().optional(),
+  run: z.unknown().optional(),
+  shownRuns: z.unknown().optional(),
+});
+
+// Older records name the run's workflow too; the instance alone names the run.
+const workflowRunSchema = z.object({
+  instanceId: z.string().refine((instanceId) => instanceId.trim() !== ""),
+});
+
 export function getCodemodeResultDetails(details: unknown): CodemodeResultDetails {
-  if (!details || typeof details !== "object" || Array.isArray(details)) {
+  const parsed = resultDetailsSchema.safeParse(details);
+  if (!parsed.success) {
     return { hasResult: false, logs: [], result: undefined, runs: [], calls: null };
   }
-
-  const resultDetails = details as Record<string, unknown>;
+  const { logs, run, shownRuns } = parsed.data;
   return {
-    hasResult: "result" in resultDetails,
-    logs: Array.isArray(resultDetails.logs)
-      ? resultDetails.logs.filter((line): line is string => typeof line === "string")
-      : [],
-    result: resultDetails.result,
+    hasResult: "result" in parsed.data,
+    logs: Array.isArray(logs) ? logs.filter((line) => typeof line === "string") : [],
+    result: parsed.data["result"],
     runs: [
-      ...(resultDetails.run == null ? [] : [parseWorkflowRunReference(resultDetails.run, "run")]),
-      ...parseShownRuns(resultDetails.shownRuns),
+      ...(run == null ? [] : [parseWorkflowRunReference(run, "run")]),
+      ...parseShownRuns(shownRuns),
     ],
     calls: getCodemodeCallsDetail(details),
   };
@@ -51,17 +63,13 @@ function parseShownRuns(value: unknown): CodemodeRun[] {
   return value.map((run: unknown) => parseWorkflowRunReference(run, "shownRuns"));
 }
 
+/** Backoffice writes the references, so a malformed one is a bug to surface, not data to skip. */
 function parseWorkflowRunReference(value: unknown, field: string): CodemodeRun {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  const parsed = workflowRunSchema.safeParse(value);
+  if (!parsed.success) {
     throw invalidWorkflowRunReferenceError(field);
   }
-
-  const candidate = value as Record<string, unknown>;
-  if (typeof candidate.instanceId !== "string" || candidate.instanceId.trim().length === 0) {
-    throw invalidWorkflowRunReferenceError(field);
-  }
-
-  return { instanceId: candidate.instanceId };
+  return parsed.data;
 }
 
 function invalidWorkflowRunReferenceError(field: string) {

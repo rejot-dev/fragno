@@ -1,6 +1,6 @@
+import type { CodemodeRun } from "@fragno-dev/backoffice-api/v0/pi-conversation/codemode-result";
+import type { PiAgentAttachment } from "@fragno-dev/backoffice-api/v0/pi-conversation/prompt-attachments";
 import type { ChatExtensions } from "@fragno-private/backoffice-chat/extensions";
-import type { CodemodeRun } from "@fragno-private/backoffice-conversation/format/codemode-result";
-import type { PiAgentAttachment } from "@fragno-private/backoffice-conversation/format/prompt-attachments";
 import { ChatMessageAttachments } from "@fragno-private/design-system/agents/chat-attachment";
 
 import { useFileScope } from "@/components/backoffice/file-scope";

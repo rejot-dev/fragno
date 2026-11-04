@@ -1,10 +1,10 @@
+import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import {
   backofficeContextScopeSchema,
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { WorkflowTerminalHookPayload } from "@fragno-dev/workflows/workflow";
-import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import { z } from "zod";
 
 /**

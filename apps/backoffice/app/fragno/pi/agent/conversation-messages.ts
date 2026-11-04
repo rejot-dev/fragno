@@ -1,7 +1,7 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { PiAgentMessage, PiAgentMessagePage } from "@fragno-dev/backoffice-api/v0/pi";
-import { piCompactionSummary } from "@fragno-private/backoffice-conversation/format/compaction-summary";
-import { parsePiNotificationRequest } from "@fragno-private/backoffice-conversation/format/notification-entry";
+import { piCompactionSummary } from "@fragno-dev/backoffice-api/v0/pi-conversation/compaction-summary";
+import { parsePiNotificationRequest } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import type { z } from "zod";
 
 import {

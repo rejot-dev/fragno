@@ -1,6 +1,6 @@
 import { assert, expect, test, vi } from "vitest";
 
-import { piAgentAttachmentsKeyPrefix } from "@fragno-private/backoffice-conversation/format/prompt-attachments";
+import { piAgentAttachmentsKeyPrefix } from "@fragno-dev/backoffice-api/v0/pi-conversation/prompt-attachments";
 import {
   createAssistantUiMessages,
   piConversationMessages,

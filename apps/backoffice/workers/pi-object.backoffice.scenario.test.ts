@@ -5,9 +5,9 @@ import {
   type VerifiedAppActionRequest,
 } from "@fragno-dev/backoffice-api/v0/app-actions";
 import type { PiAgentConfig, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
+import { PI_NOTIFICATION_ENTRY_KIND } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { PI_NOTIFICATION_ENTRY_KIND } from "@fragno-private/backoffice-conversation/format/notification-entry";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class {},

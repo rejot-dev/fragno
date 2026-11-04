@@ -13,9 +13,9 @@ import {
   type piPromptWhenBusySchema,
   type piPromptWhenPausedSchema,
 } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { PiAgentNotification } from "@fragno-private/backoffice-conversation/format/notification-entry";
 import type { z } from "zod";
 
 import type { Context } from "@earendil-works/chord";

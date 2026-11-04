@@ -1,13 +1,13 @@
 import { BLOB_MAX_SIZE_BYTES } from "@fragno-dev/backoffice-api/v0/blobs";
 import { piAgentPermissionGrantRequirements } from "@fragno-dev/backoffice-api/v0/pi";
-import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { STATE_FILE_MAX_BYTES } from "@fragno-dev/backoffice-api/v0/state";
 import {
   PI_AGENT_MAX_ATTACHMENTS,
   piAgentAttachmentsKeyPrefix,
   type PiAgentAttachment,
   type PiAgentAttachmentLocation,
-} from "@fragno-private/backoffice-conversation/format/prompt-attachments";
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/prompt-attachments";
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { STATE_FILE_MAX_BYTES } from "@fragno-dev/backoffice-api/v0/state";
 import type {
   ChatComposerAttachmentItem,
   ChatMessageAttachmentItem,
