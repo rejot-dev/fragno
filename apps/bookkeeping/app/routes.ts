@@ -44,6 +44,7 @@ export default [
       // The agent everyone in the workspace asks about these books.
       route("ask", "ask/ask.tsx"),
       route("ask/agent", "ask/agent.ts"),
+      route("ask/history", "ask/history.ts"),
     ]),
     route("members", "clients/members.tsx"),
   ]),
