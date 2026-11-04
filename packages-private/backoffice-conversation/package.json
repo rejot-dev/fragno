@@ -12,6 +12,7 @@
   "exports": {
     "./live/view-socket": "./src/live/view-socket.ts",
     "./projection/assistant-runtime": "./src/projection/assistant-runtime.ts",
+    "./projection/earlier-history": "./src/projection/earlier-history.ts",
     "./projection/pending-messages": "./src/projection/pending-messages.ts"
   },
   "scripts": {
