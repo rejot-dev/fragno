@@ -4222,6 +4222,12 @@
         "description": "followUp (default) waits for the current turn, steer joins it, reject refuses"
       },
       {
+        "name": "when-paused",
+        "valueRequired": true,
+        "valueName": "mode",
+        "description": "wait (default) leaves the prompt in a stopped agent's paused queue, resume resumes it"
+      },
+      {
         "name": "notify-when-done",
         "description": "From an agent's turn: notify the calling agent with the event recording how the prompt ended"
       },
@@ -4298,6 +4304,38 @@
   {
     "command": "pi.agent.stop",
     "summary": "pi.agent.stop aborts an agent's work and pauses its queue.",
+    "options": [
+      {
+        "name": "agent",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "agent-name",
+        "description": "Agent name"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "pi.agent.resume",
+    "summary": "pi.agent.resume starts a stopped agent's paused queue again.",
     "options": [
       {
         "name": "agent",

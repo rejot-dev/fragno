@@ -170,10 +170,10 @@ oldest item it handles.
 - Stopping an agent (`pi.agent.stop`) pauses its queue and aborts what Pi holds; the stopped turn
   settles unanswered and nothing starts after it. A paused queue records new items but dispatches
   none, even for an idle agent, and a steer never joins the stopped turn.
-  `POST /agents/:agentName/resume`, or a prompt with `whenPaused: "resume"`, resumes it: the next
-  turn starts at once, or when the stopped turn settles, with the queue's oldest item. The
-  Backoffice UI sends `resume`; the default, `wait`, keeps automations and workflows from undoing a
-  stop, so a workflow waiting for a prompt's turn event keeps waiting.
+  `POST /agents/:agentName/resume` (`pi.agent.resume`), or a prompt with `whenPaused: "resume"`,
+  resumes it: the next turn starts at once, or when the stopped turn settles, with the queue's
+  oldest item. The Backoffice UI sends `resume`; the default, `wait`, keeps automations and
+  workflows from undoing a stop, so a workflow waiting for a prompt's turn event keeps waiting.
 - A stop also holds back work handed over before it but not yet started: a turn, steer, or subagent
   whose handover is still on its way or failed. Each handover carries the queue revision that issued
   it; the stop passes its own to the agent, which refuses earlier ones from then on, and the queue's

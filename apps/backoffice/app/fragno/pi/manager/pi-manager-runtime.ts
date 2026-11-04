@@ -11,6 +11,7 @@ import {
   type PiPromptReceipt,
   type PiPromptStatus,
   type piPromptWhenBusySchema,
+  type piPromptWhenPausedSchema,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -46,6 +47,7 @@ export type PiManagerSubmitPromptInput = {
   content: string;
   requestId?: string;
   whenBusy?: z.infer<typeof piPromptWhenBusySchema>;
+  whenPaused?: z.infer<typeof piPromptWhenPausedSchema>;
   /** Notifies the calling agent of how the prompt ends; see `caller`. */
   notifyWhenDone?: boolean;
   /** Runs the prompt in a new conversation of the agent; see `pi.prompt.submit`. */
@@ -124,6 +126,8 @@ export type PiManagerRuntime = {
   notifyAgent(input: PiManagerNotifyAgentInput): Promise<void>;
   /** Aborts the agent's work and pauses its queue until someone resumes it. */
   stopAgent(input: PiManagerAgentInput): Promise<void>;
+  /** Resumes the queue of an agent someone stopped. */
+  resumeAgent(input: PiManagerAgentInput): Promise<void>;
   /** Records the scope's defined agents as `agent.*` events where the events lack them. */
   backfillAgentEvents(): Promise<{ agents: PiAgentBackfilledEvent[] }>;
   /** What users and the agent said, oldest first; see `pi.agent.messages`. */
@@ -243,7 +247,15 @@ export function createPiManagerRuntime(input: {
     async deleteAgent({ agentName }) {
       await request(agentRoute(agentName), null, "DELETE");
     },
-    async submitPrompt({ agentName, content, requestId, whenBusy, notifyWhenDone, subagent }) {
+    async submitPrompt({
+      agentName,
+      content,
+      requestId,
+      whenBusy,
+      whenPaused,
+      notifyWhenDone,
+      subagent,
+    }) {
       const normalizedContent = content.trim();
       if (!normalizedContent) {
         throw new Error("PI_MANAGER_PROMPT_CONTENT_REQUIRED");
@@ -274,6 +286,7 @@ export function createPiManagerRuntime(input: {
         requestId: requestId?.trim() || createPromptRequestId(),
         content: normalizedContent,
         ...(whenBusy ? { whenBusy } : {}),
+        ...(whenPaused ? { whenPaused } : {}),
         subagent: subagent ?? false,
         replyTo: notifyWhenDone && caller.kind === "agent" ? caller.agent : null,
         askingToolCall: subagent && itself ? caller.toolCallId : null,
@@ -298,6 +311,9 @@ export function createPiManagerRuntime(input: {
     },
     async stopAgent({ agentName }) {
       await request(`${agentRoute(agentName)}/stop`, {});
+    },
+    async resumeAgent({ agentName }) {
+      await request(`${agentRoute(agentName)}/resume`, {});
     },
     async listMessages({ agentName, last, before, subagent }) {
       const query = new URLSearchParams({ last: String(last) });
