@@ -16,7 +16,9 @@ export default mergeConfig(
       },
     },
     test: {
-      include: ["app/**/*.test.ts", "workers/**/*.test.ts"],
+      include: ["app/**/*.test.ts", "app/**/*.test.tsx", "workers/**/*.test.ts"],
+      // Node 26's built-in web storage shadows happy-dom's isolated storage in client test files.
+      execArgv: ["--no-experimental-webstorage"],
       coverage: { enabled: false },
     },
   }),

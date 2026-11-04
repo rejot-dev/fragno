@@ -161,3 +161,67 @@ test("the chat loads what came before the newest compaction, a page at a time, a
     assert.equal(unnamed.status, 400);
   });
 });
+
+test("files a question carries become documents, which the agent reads and the firm's bookkeeper is asked about", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, clientPath } = await scenario.practice();
+    await scenario.openAdministration(ada, clientPath, ADMINISTRATION);
+    await askPage(ada);
+
+    // Sending uploads each file as a document under the ID the chat chose, so a retry records it
+    // once, and asks the firm's bookkeeper about it, as the documents page does.
+    const documentId = crypto.randomUUID();
+    const upload = async () => {
+      const form = new FormData();
+      form.set("documentId", documentId);
+      form.set(
+        "file",
+        new File([new TextEncoder().encode("%PDF-1.7\nreceipt\n%%EOF\n")], "Receipt March.pdf", {
+          type: "application/pdf",
+        }),
+      );
+      return await (await ada.fetchResource(`${BOOKS}/ask/documents`, form)).json();
+    };
+    expect(await upload()).toEqual({ error: null });
+    expect(await upload()).toEqual({ error: null });
+    expect(scenario.backoffice.prompts("lovelace-co", "Bookkeeping agent")).toMatchObject([
+      { agentName: "bookkeeper", requestId: expect.stringContaining(`:${documentId}:upload`) },
+    ]);
+
+    // The question names the documents' files by their blobs in the administration's project,
+    // where the agent reads them, as Backoffice's chat names a message's files.
+    const asked = await ada.fetchResource(AGENT, {
+      intent: "ask",
+      requestId: "receipt",
+      content: "Is this booked?",
+      documents: documentId,
+    });
+    expect(await asked.json()).toEqual({ error: null });
+    const [prompt] = scenario.backoffice.prompts(CLIENT, ADMINISTRATION);
+    expect(prompt.content).toMatch(
+      new RegExp(
+        `^Is this booked\\?\n\n<backoffice-attachments>\n<blob key="documents/${documentId}/[^/"]+/Receipt-March\\.pdf" type="application/pdf" size="23"/>\n</backoffice-attachments>$`,
+        "u",
+      ),
+    );
+
+    // A file alone asks too; a document the books do not have asks nothing.
+    const filesOnly = await ada.fetchResource(AGENT, {
+      intent: "ask",
+      requestId: "file",
+      content: "",
+      documents: documentId,
+    });
+    expect(await filesOnly.json()).toEqual({ error: null });
+    const unknown = await ada.fetchResource(AGENT, {
+      intent: "ask",
+      requestId: "unknown",
+      content: "And this?",
+      documents: crypto.randomUUID(),
+    });
+    expect(await unknown.json()).toEqual({
+      error: "A file of this message is not among the books' documents. Attach it again.",
+    });
+    expect(scenario.backoffice.prompts(CLIENT, ADMINISTRATION)).toHaveLength(2);
+  });
+});

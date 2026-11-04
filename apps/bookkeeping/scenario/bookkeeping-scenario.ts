@@ -25,7 +25,7 @@ type RouteModule = { loader?: RouteObject["loader"]; action?: RouteObject["actio
 
 // Resource routes, such as a document's file, are `.ts` modules.
 const routeModules = import.meta.glob<RouteModule>(
-  ["../app/**/*.{ts,tsx}", "!../app/**/*.test.ts"],
+  ["../app/**/*.{ts,tsx}", "!../app/**/*.test.{ts,tsx}"],
   {
     eager: true,
   },
@@ -187,13 +187,13 @@ export class ScenarioBrowser {
     );
   }
 
-  /** What a resource route answers a form the page posts to it with `fetch`. */
-  async fetchResource(path: string, form: Record<string, string>): Promise<Response> {
+  /** What a resource route answers a form the page posts to it with `fetch`, files included. */
+  async fetchResource(path: string, form: Record<string, string> | FormData): Promise<Response> {
     return await this.#resource(
       new Request(new URL(path, BOOKKEEPING_ORIGIN), {
         method: "POST",
         headers: { cookie: this.cookie, origin: BOOKKEEPING_ORIGIN },
-        body: new URLSearchParams(form),
+        body: form instanceof FormData ? form : new URLSearchParams(form),
       }),
     );
   }
