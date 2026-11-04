@@ -37,6 +37,7 @@ import { MessagePrimitive, useAuiState } from "@assistant-ui/react";
 
 import { useChatExtensions, type ChatSubagentReport } from "../extensions";
 import {
+  chatToolCall,
   ToolCallStep,
   toolCallPresentation,
   toolHeadline,
@@ -106,7 +107,7 @@ export function AssistantMessage({
   const parts = useAuiState((state) => state.message.parts);
   const running = useAuiState((state) => state.message.status?.type === "running");
   const navigation = useSessionWorkspaceNavigation();
-  const { agentLabel, WorkflowRun, ToolCallFollowUps } = useChatExtensions();
+  const { agentLabel, WorkflowRun, ToolCallFollowUps, toolCalls } = useChatExtensions();
   const MarkdownText = useMarkdownText();
 
   const segments = agentTurn(parts, running);
@@ -178,9 +179,12 @@ export function AssistantMessage({
       running && segment.key === lastSegment?.key
         ? {
             kind: "running",
-            headline: liveHeadline(segment.steps, (part) =>
-              toolHeadline(toolCallPresentation(part)),
-            ),
+            headline: liveHeadline(segment.steps, (part) => {
+              const presentation = toolCallPresentation(part);
+              return toolCalls === null
+                ? toolHeadline(presentation)
+                : toolCalls.headline(chatToolCall(part, presentation));
+            }),
             startedAt: createdAt ?? new Date(),
           }
         : {
@@ -369,6 +373,7 @@ type TurnTool = {
 
 function TurnStep({ step, tools }: { step: AgentTurnStep; tools: ReadonlyMap<string, TurnTool> }) {
   const MarkdownText = useMarkdownText();
+  const { toolCalls } = useChatExtensions();
   if (step.kind === "thought") {
     return (
       <ChatActivityStep
@@ -389,6 +394,9 @@ function TurnStep({ step, tools }: { step: AgentTurnStep; tools: ReadonlyMap<str
     );
   }
   const tool = tools.get(step.part.toolCallId);
+  if (tool && toolCalls !== null) {
+    return <toolCalls.Step call={chatToolCall(tool.part, tool.presentation)} />;
+  }
   return tool ? (
     <ToolCallStep
       part={tool.part}
