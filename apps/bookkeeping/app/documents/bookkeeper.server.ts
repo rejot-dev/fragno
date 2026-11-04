@@ -1,13 +1,10 @@
 import { BackofficeApiRequestError } from "@fragno-dev/backoffice-api/v0/client";
-import type {
-  PiAgentActivity,
-  PiAgentDefinitionCreate,
-  PiPromptStatus,
-} from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentDefinitionCreate, PiPromptStatus } from "@fragno-dev/backoffice-api/v0/pi";
 import { env } from "cloudflare:workers";
 
-import { BOOKKEEPING_CONNECTION_ID, defineAgent } from "../../workers/backoffice/agents";
+import { defineAgent } from "../../workers/backoffice/agents";
 import { connectAsInstallation, createProvisioningClient } from "../../workers/backoffice/client";
+import { BOOKKEEPING_CONNECTION_ID } from "../../workers/backoffice/connection";
 import {
   releaseDocument,
   shareForRequest,
@@ -17,6 +14,7 @@ import {
 import { documentRequestPrefix } from "../../workers/backoffice/review-requests";
 import type { DocumentView } from "../../workers/books/documents/documents";
 import { canManage } from "../../workers/directory/membership";
+import { agentSteps, type AgentStep } from "../books/agent-steps";
 import type { requireBooks } from "../books/books.server";
 import {
   backofficeProblem,
@@ -228,54 +226,12 @@ export async function askBookkeeper(
   return { ok: true };
 }
 
-type BookkeeperStepStatus = "running" | "succeeded" | "failed";
-
-/**
- * A step of the agent's work, as the people whose books it reads may see it: Bookkeeping's own
- * actions, which they know, its reads of the file, and its other work, without what it was. That
- * work follows the firm's skills and instructions, which stay the firm's.
- */
-export type BookkeeperStep =
-  | { kind: "action"; actionId: string; status: BookkeeperStepStatus }
-  | { kind: "read"; status: BookkeeperStepStatus }
-  | { kind: "work"; running: boolean };
-
-/** The steps of the agent's work so far, oldest first; consecutive other work is one step. */
-function bookkeeperSteps({ tools }: PiAgentActivity): BookkeeperStep[] {
-  const steps: BookkeeperStep[] = [];
-  const work = (running: boolean) => {
-    const last = steps.at(-1);
-    if (last?.kind === "work") {
-      last.running ||= running;
-    } else {
-      steps.push({ kind: "work", running });
-    }
-  };
-  for (const tool of tools) {
-    // Other tools, and a codemode run before its first call, are work too.
-    if (tool.calls === null || tool.calls.items.length === 0) {
-      work(tool.status === "running");
-      continue;
-    }
-    for (const { subject, status } of tool.calls.items) {
-      if (subject.kind === "action" && subject.connectionId === BOOKKEEPING_CONNECTION_ID) {
-        steps.push({ kind: "action", actionId: subject.actionId, status });
-      } else if (subject.kind === "call" && subject.name === "models.extract") {
-        steps.push({ kind: "read", status });
-      } else {
-        work(status === "running");
-      }
-    }
-  }
-  return steps;
-}
-
 /**
  * Where the agent stands with a request: Backoffice's answer with the steps of the agent's work,
  * `lost` when the agent never received it, or `unknown` with why Backoffice could not say.
  */
 export type BookkeeperProgress =
-  | (PiPromptStatus & { steps: BookkeeperStep[] })
+  | (PiPromptStatus & { steps: AgentStep[] })
   | { status: "lost" }
   | { status: "unknown"; message: string };
 
@@ -303,7 +259,13 @@ export async function readBookkeeperProgress(
       agentName: BOOKKEEPER.agentName,
       subagent: requestId,
     });
-    return { ...progress, steps: bookkeeperSteps(activity) };
+    const steps = agentSteps(
+      activity.tools.map((tool) => ({
+        running: tool.status === "running",
+        calls: tool.calls?.items ?? null,
+      })),
+    );
+    return { ...progress, steps };
   } catch (error) {
     return { status: "unknown", message: backofficeProblem(error) };
   }

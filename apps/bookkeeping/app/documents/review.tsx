@@ -13,11 +13,12 @@ import { Form, useNavigation, useRevalidator } from "react-router";
 
 import type { DocumentView } from "../../workers/books/documents/documents";
 import type { ProposedEntry } from "../../workers/books/documents/schema";
+import { agentStepLine, type AgentStep } from "../books/agent-steps";
 import { accountLabel, formatDate, indexBooks } from "../books/books";
 import type { FormResult } from "../books/books.server";
 import { FormError } from "../books/forms";
 import type { BooksOutletContext } from "../books/layout";
-import type { BookkeeperProgress, BookkeeperStep } from "./bookkeeper.server";
+import type { BookkeeperProgress } from "./bookkeeper.server";
 
 /** The intent of the form asking the bookkeeping agent about the document. */
 export const ASK = "ask";
@@ -95,43 +96,14 @@ function requestState(progress: BookkeeperProgress): {
   throw new Error("Unsupported bookkeeper progress.");
 }
 
-/** What the agent does running each of Bookkeeping's actions, while it runs and once it did. */
-const ACTION_LABELS: Record<string, { running: string; done: string }> = {
-  "documents.get": { running: "Looking up the document", done: "Looked up the document" },
-  "books.describe": { running: "Reading the books", done: "Read the books" },
-  "entries.list": { running: "Looking at earlier entries", done: "Looked at earlier entries" },
-  "documents.propose": { running: "Proposing the entry", done: "Proposed the entry" },
-  "documents.decline": { running: "Declining the document", done: "Declined the document" },
-};
-
-function stepLine(step: BookkeeperStep): { label: string; running: boolean; failed: boolean } {
-  switch (step.kind) {
-    case "action": {
-      const label = ACTION_LABELS[step.actionId] ?? { running: step.actionId, done: step.actionId };
-      return step.status === "running"
-        ? { label: label.running, running: true, failed: false }
-        : step.status === "failed"
-          ? { label: `${label.running} failed`, running: false, failed: true }
-          : { label: label.done, running: false, failed: false };
-    }
-    case "read":
-      return step.status === "running"
-        ? { label: "Reading the file", running: true, failed: false }
-        : step.status === "failed"
-          ? { label: "Reading the file failed", running: false, failed: true }
-          : { label: "Read the file", running: false, failed: false };
-    case "work":
-      return { label: step.running ? "Working" : "Worked", running: step.running, failed: false };
-  }
-  throw new Error("Unsupported bookkeeper step.", { cause: step satisfies never });
-}
-
 /** The agent's work so far, oldest first, one line per step. */
-function BookkeeperSteps({ steps }: { steps: BookkeeperStep[] }) {
+function BookkeeperSteps({ steps }: { steps: AgentStep[] }) {
   return (
     <ol className="space-y-1 text-sm">
       {steps.map((step, position) => {
-        const { label, running, failed } = stepLine(step);
+        const { label, detail, state } = agentStepLine(step);
+        const running = state === "running";
+        const failed = state === "failed";
         return (
           // Steps have no IDs, and a step keeps its place as the work goes on.
           <li key={position} className="flex items-center gap-2">
@@ -148,6 +120,9 @@ function BookkeeperSteps({ steps }: { steps: BookkeeperStep[] }) {
             <span className={running ? "text-[var(--bo-fg)]" : "text-[var(--bo-muted)]"}>
               {label}
             </span>
+            {detail === null ? null : (
+              <span className="font-mono text-xs text-[var(--bo-muted-2)]">{detail}</span>
+            )}
           </li>
         );
       })}

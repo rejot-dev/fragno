@@ -649,6 +649,16 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
               call(action("app#bookkeeping", "documents.get"), "succeeded"),
               call(action("app#bookkeeping", "books.describe"), "failed"),
               call(action("app#bookkeeping", "books.describe"), "succeeded"),
+              call(
+                {
+                  kind: "action",
+                  connectionId: "app#bookkeeping",
+                  actionId: "entries.list",
+                  scope: null,
+                  input: '{"journal":"PUR","cursor":null}',
+                },
+                "succeeded",
+              ),
             ],
             omitted: 0,
           },
@@ -679,9 +689,11 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       status: "running",
       steps: [
         { kind: "work", running: false },
-        { kind: "action", actionId: "documents.get", status: "succeeded" },
-        { kind: "action", actionId: "books.describe", status: "failed" },
-        { kind: "action", actionId: "books.describe", status: "succeeded" },
+        { kind: "action", actionId: "documents.get", detail: null, status: "succeeded" },
+        { kind: "action", actionId: "books.describe", detail: null, status: "failed" },
+        { kind: "action", actionId: "books.describe", detail: null, status: "succeeded" },
+        // What an action was about, its input names; the input itself stays the agent's.
+        { kind: "action", actionId: "entries.list", detail: "PUR", status: "succeeded" },
         { kind: "work", running: false },
         { kind: "read", status: "running" },
       ],
