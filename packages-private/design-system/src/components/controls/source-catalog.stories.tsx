@@ -1,3 +1,4 @@
+import { ActionItem } from "./action-item";
 import { SourceCatalog, type SourceCatalogItem } from "./source-catalog";
 
 export default { title: "Controls/Source catalog" };
@@ -90,7 +91,31 @@ const ITEMS: SourceCatalogItem[] = [
 export function Sources() {
   return (
     <div className="h-[560px] max-w-4xl overflow-y-auto">
-      <SourceCatalog label="Sources to connect" items={ITEMS} />
+      <SourceCatalog label="Sources to connect" items={ITEMS} expanded={null} />
+    </div>
+  );
+}
+
+export function ExpandedSource() {
+  return (
+    <div className="h-[560px] max-w-4xl overflow-y-auto">
+      <SourceCatalog
+        label="Sources to connect"
+        items={ITEMS}
+        expanded={{
+          id: "gmail",
+          content: (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs leading-5 text-pretty text-[var(--bo-muted)]">
+                Your agents can use Gmail now. Next, put it to work in a workflow.
+              </p>
+              <ActionItem icon="share-2" emphasis="primary">
+                Create a workflow
+              </ActionItem>
+            </div>
+          ),
+        }}
+      />
     </div>
   );
 }

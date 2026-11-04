@@ -30,6 +30,7 @@ import { createScriptedPiAgentDependencies } from "../../../../workers/pi-durabl
 import { PiObject } from "../../../../workers/pi-object";
 import { loader as publicConnectorLoader } from "../../api/project-connector";
 import { action as connectAction, loader as connectLoader } from "./connect";
+import { loader as sourceLoader } from "./connect-source";
 
 const ORIGIN = "https://backoffice.example";
 
@@ -51,13 +52,22 @@ const objects = {
   },
 } satisfies LocalBackofficeObjects;
 
-type Vars = { session: string; cookie: string; userId: string };
+type Vars = { session: string; cookie: string; userId: string; gmailLink: string };
 type Ctx = BackofficeScenarioContext<Vars>;
 
-/** The route arguments React Router passes for one request to the user's Connect page. */
-function connectRequest(ctx: Ctx, search: string, form?: Record<string, string>) {
+const connectPage = (ctx: Ctx) => `/backoffice/integrations/user/${ctx.vars.userId}/connect`;
+
+/**
+ * The route arguments React Router passes for one request to the user's Connect page, or with
+ * `source` to the source opened in it.
+ */
+function connectRequest(
+  ctx: Ctx,
+  { source, search }: { source: string | null; search: string },
+  form?: Record<string, string>,
+) {
   // Browsers submit forms to React Router's data endpoint, not the page itself.
-  const page = `/backoffice/integrations/user/${ctx.vars.userId}/connect${form ? ".data" : ""}`;
+  const page = `${connectPage(ctx)}${source === null ? "" : `/${source}`}${form ? ".data" : ""}`;
   const url = new URL(`${page}${search}`, ORIGIN);
   const request = new Request(url, {
     method: form ? "POST" : "GET",
@@ -79,11 +89,32 @@ function connectRequest(ctx: Ctx, search: string, form?: Record<string, string>)
 }
 
 const openConnect = (ctx: Ctx, search: string) =>
-  behindBackofficeLayout(connectLoader)(connectRequest(ctx, search));
+  behindBackofficeLayout(connectLoader)(connectRequest(ctx, { source: null, search }));
+
+/**
+ * Opens a source from a link into it, such as a catalog card's or a provider's return. The browser
+ * loads the Connect page and the open source together, so both loaders read the link.
+ */
+async function openSource(ctx: Ctx, link: string) {
+  const url = new URL(link, ORIGIN);
+  const source = url.pathname.slice(`${connectPage(ctx)}/`.length);
+  const request = connectRequest(ctx, { source, search: url.search });
+  const args = {
+    ...request,
+    pattern: `${request.pattern}/:source`,
+    params: { ...request.params, source },
+  };
+  await behindBackofficeLayout(connectLoader)(args);
+  return behindBackofficeLayout(sourceLoader)(args);
+}
 
 async function submitConnect(ctx: Ctx, form: Record<string, string>) {
   try {
-    return { returned: await behindBackofficeLayout(connectAction)(connectRequest(ctx, "", form)) };
+    return {
+      returned: await behindBackofficeLayout(connectAction)(
+        connectRequest(ctx, { source: null, search: "" }, form),
+      ),
+    };
   } catch (thrown) {
     assert(thrown instanceof Response, String(thrown));
     return { redirectsTo: thrown.headers.get("location") };
@@ -145,7 +176,7 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
     name: "Connect wizard",
     objects,
     env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
-    vars: () => ({ session: "", cookie: "", userId: "" }),
+    vars: () => ({ session: "", cookie: "", userId: "", gmailLink: "" }),
     steps: ({ when, then }) => [
       when.auth.signUp({ email: "ada@example.test", captureSessionCookieAs: "session" }),
       then.assert("Ada signs in to her own scope", async (ctx) => {
@@ -154,7 +185,6 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
       }),
       then.assert("the catalog presents Gmail as the Connector's catalog does", async (ctx) => {
         const page = await openConnect(ctx, "");
-        assert(page.step.kind === "choose");
         expect(page.services.find((service) => service.id === "gmail")).toMatchObject({
           label: "Gmail",
           // The catalog's description leads; agents read on for how to add accounts.
@@ -174,12 +204,20 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
       then.assert(
         "choosing Gmail offers to sign in, and connecting waits for consent",
         async (ctx) => {
-          const chosen = await openConnect(ctx, "?source=gmail");
-          assert(chosen.step.kind === "connect" && chosen.step.method.kind === "authorization");
-          assert(chosen.step.method.progress.status === "needs-input");
+          // Gmail's card links to it under the address it signs in at.
+          const catalog = await openConnect(ctx, "");
+          const [target] = catalog.services.find((service) => service.id === "gmail")!.setupTargets;
+          assert(target);
+          const search = new URLSearchParams({ target: target.connectionId });
+          const chosen = await openSource(ctx, `${connectPage(ctx)}/gmail?${search}`);
+          assert(chosen.method.kind === "authorization");
+          assert(chosen.method.progress.status === "needs-input");
 
           // Connecting goes straight to the provider's sign-in, in the same tab.
-          const started = await submitConnect(ctx, { intent: "start", source: "gmail" });
+          const started = await submitConnect(ctx, {
+            intent: "start",
+            connectionId: chosen.method.connectionId,
+          });
           const authorizationUrl = "redirectsTo" in started ? started.redirectsTo : null;
           assert(authorizationUrl);
           const requestId = new URL(authorizationUrl).pathname.split("/").at(-1);
@@ -187,41 +225,41 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
           gateway.authorize(requestId, "gmail-account");
         },
       ),
-      then.assert("the provider's return lands back on the wizard for Gmail", async (ctx) => {
+      then.assert("the provider's return opens Gmail again in the catalog", async (ctx) => {
         const returnUri = gateway.links.at(-1)?.returnUri;
         assert(returnUri);
         assert(/\/oauth\/callback\/connect\/n_[^/]+$/.test(new URL(returnUri).pathname));
         const landing = await followConnectorReturn(ctx, returnUri);
         assert(landing);
         const { pathname, search } = new URL(landing);
-        assert(pathname === `/backoffice/integrations/user/${ctx.vars.userId}/connect`);
-        // The return names the connection, and the wizard continues with its service.
+        assert(pathname === connectPage(ctx));
+        // The return names the connection, and Gmail opens again in the catalog.
         const resumed = await openConnect(ctx, search).then(
           () => null,
           (thrown: unknown) => (thrown instanceof Response ? thrown.headers.get("location") : null),
         );
-        assert(resumed === "?source=gmail");
+        assert(resumed);
+        assert(resumed.startsWith(`${connectPage(ctx)}/gmail?target=`));
+        ctx.vars.gmailLink = resumed;
       }),
       then.assert("the page notices consent and lists Gmail as connected", async (ctx) => {
-        const connected = await openConnect(ctx, "?source=gmail");
-        assert(connected.step.kind === "connect" && connected.step.method.kind === "authorization");
-        assert(connected.step.method.progress.status === "ready");
+        // Gmail now opens on its account, with nothing left to sign in to.
+        const connected = await openSource(ctx, ctx.vars.gmailLink);
+        assert(connected.method.kind === "connected");
         const catalog = await openConnect(ctx, "");
         assert(catalog.services.find((service) => service.id === "gmail")?.connected);
       }),
       then.assert(
         "creating a workflow asks the main agent to clarify it, on its own page",
         async (ctx) => {
-          const connected = await openConnect(ctx, "?source=gmail");
-          assert(
-            connected.step.kind === "connect" && connected.step.method.kind === "authorization",
-          );
-          const { connectionId } = connected.step.method;
+          const connected = await openSource(ctx, ctx.vars.gmailLink);
+          assert(connected.method.kind === "connected");
+          const { connectionId } = connected.method;
 
           expect(
             await submitConnect(ctx, {
               intent: "create-workflow",
-              source: "gmail",
+              connectionId,
               timeZone: "Europe/Amsterdam",
             }),
           ).toEqual({
