@@ -21,6 +21,11 @@ type PiCodemodeProvider = {
    */
   getActivity(input: PiGetActivityInput): Promise<PiGetActivityOutput>;
   /**
+   * A ticket that opens the `pi.agent.watch` WebSocket for one agent, with your permissions, as the `ticket` query parameter instead of a bearer credential: for an app's browser, which cannot send WebSocket headers. Connect within a minute; the socket stays open after the ticket expires, and reconnecting needs a new one. An app's ticket opens the socket only from its registered origins.
+   * Requires `pi.read`.
+   */
+  getWatchTicket(input: PiGetWatchTicketInput): Promise<PiGetWatchTicketOutput>;
+  /**
    * Write a started agent's conversation to a JSONL file, by the agent's name; call `pi.listAgents` to find the agent a request means rather than assuming it is you. The file holds a header line, then the durable entries oldest first, including thinking, tool calls, and tool results. Like the chat, it holds the entries from the agent's newest compaction or clear on, with that compaction or clear; pass `history` for every entry.
    * Requires `pi.read` and `upload.modify`.
    */
@@ -255,6 +260,14 @@ type PiGetActivityOutput = {
     } | null;
   }[];
   omitted: number;
+};
+type PiGetWatchTicketInput = {
+  agentName: string;
+};
+type PiGetWatchTicketOutput = {
+  ticket: string;
+  /** ISO 8601 datetime string. */
+  expiresAt: string;
 };
 type PiExportConversationInput = {
   /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */

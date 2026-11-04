@@ -305,6 +305,16 @@ describe("runtime tool reference generation", () => {
           bashOptions: ["agent", "subagent"],
         },
         {
+          id: "pi.agent.watchTicket",
+          namespace: "pi",
+          codemodeProvider: "pi",
+          codemodeTool: "getWatchTicket",
+          inputType: "PiGetWatchTicketInput",
+          outputType: "PiGetWatchTicketOutput",
+          bashCommand: "pi.agent.watchTicket",
+          bashOptions: ["agent"],
+        },
+        {
           id: "pi.agent.export",
           namespace: "pi",
           codemodeProvider: "pi",

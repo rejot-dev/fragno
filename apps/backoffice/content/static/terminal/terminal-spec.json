@@ -3959,6 +3959,38 @@
     ]
   },
   {
+    "command": "pi.agent.watchTicket",
+    "summary": "pi.agent.watchTicket prints a one-minute ticket that opens pi.agent.watch for an agent without a bearer credential.",
+    "options": [
+      {
+        "name": "agent",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "agent-name",
+        "description": "Agent name"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "pi.agent.export",
     "summary": "pi.agent.export writes an agent's conversation since its newest compaction or clear, tool calls included, to a JSONL file, oldest entry first.",
     "options": [

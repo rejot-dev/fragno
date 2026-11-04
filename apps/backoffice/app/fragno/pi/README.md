@@ -421,13 +421,16 @@ agents use Pi Durable's Node SQLite adapter: in-memory SQLite for transient scen
 
 Viewers watch an agent's conversation over a WebSocket that the agent object serves, with no manager
 in between: the browser through the agent page's `view-socket` route, and API callers through
-`pi.agent.watch` (see `@fragno-dev/backoffice-api`'s README). The worker signs the upgrade with the
-viewer's execution for the agent (`runtime.objects.piAgent(agent).fetchAuthorized`, with
-`piAgentViewSocketRequest`), and the request names the agent, so its object checks the signature,
-and that the name is its own, before reading anything. It then asks its manager over RPC whether the
-viewer may watch (`authorizeViewer`): the manager makes the checks of its routes' GETs, scope and
-`pi.read`, refuses an agent without turns or a name no agent has, and answers with what waits in the
-queue.
+`pi.agent.watch` (see `@fragno-dev/backoffice-api`'s README), with a bearer credential or, from an
+app's browser, a ticket from `pi.agent.watchTicket`. The ticket is a one-minute JWT with its own
+audience, signed by Auth, that carries the deferred execution that asked for it, the agent's name,
+and the origins of the app's OAuth redirect URIs; its route refuses another agent, scope, or origin.
+The worker signs the upgrade with the viewer's execution for the agent
+(`runtime.objects.piAgent(agent).fetchAuthorized`, with `piAgentViewSocketRequest`), and the request
+names the agent, so its object checks the signature, and that the name is its own, before reading
+anything. It then asks its manager over RPC whether the viewer may watch (`authorizeViewer`): the
+manager makes the checks of its routes' GETs, scope and `pi.read`, refuses an agent without turns or
+a name no agent has, and answers with what waits in the queue.
 
 The socket's JSON frames are `queue`, then `view` with the whole view, then `ops` with each commit's
 Chord ops, including partial answers while the agent generates, which the browser applies with

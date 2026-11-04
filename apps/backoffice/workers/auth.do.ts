@@ -3,6 +3,7 @@ import type {
   OrganizationInvitationRecord,
   OrganizationRole,
 } from "@fragno-dev/backoffice-api/v0/organization";
+import type { PiAgentWatchTicket } from "@fragno-dev/backoffice-api/v0/pi";
 import type {
   ProvisionOrganizationInput,
   ProvisionOrganizationResult,
@@ -47,7 +48,7 @@ import type {
   BackofficeOAuthClientUpdateInput,
   BackofficeOAuthClientRotateSecretInput,
 } from "@/fragno/auth/oauth-client";
-import type { AppActionTokenInput } from "@/fragno/auth/token-lifecycle";
+import type { AppActionTokenInput, PiAgentWatchTicketInput } from "@/fragno/auth/token-lifecycle";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 
 import type { AuthObject } from "./auth-object";
@@ -150,6 +151,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthCommands {
 
   async issueAppActionToken(input: AppActionTokenInput): Promise<{ token: string }> {
     return await this.#object.issueAppActionToken(input);
+  }
+
+  async issuePiAgentWatchTicket(input: PiAgentWatchTicketInput): Promise<PiAgentWatchTicket> {
+    return await this.#object.issuePiAgentWatchTicket(input);
   }
 
   async getBackofficeCliOAuthConfig(input: {

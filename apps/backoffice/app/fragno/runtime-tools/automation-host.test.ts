@@ -78,6 +78,7 @@ const createPiRuntime = (): PiManagerRuntime => {
     listMessages: async () => ({ messages: [], before: null }),
     getActivity: async () => ({ tools: [], omitted: 0 }),
     exportConversation: async () => "",
+    issueWatchTicket: async () => ({ ticket: "ticket", expiresAt: new Date(0).toISOString() }),
   };
 };
 

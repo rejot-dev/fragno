@@ -8,6 +8,7 @@ import {
   type OrganizationMembershipRecord,
   type OrganizationRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
+import type { PiAgentWatchTicket } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   acceptInvitationInputSchema,
   createInvitationInputSchema,
@@ -128,7 +129,9 @@ import {
 import {
   issueAppActionToken,
   issueAppInstallationCode,
+  issuePiAgentWatchTicket,
   type AppActionTokenInput,
+  type PiAgentWatchTicketInput,
 } from "@/fragno/auth/token-lifecycle";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import {
@@ -1618,6 +1621,16 @@ export class AuthObject implements AuthCommands {
       input,
     );
     return { token: issued.token };
+  }
+
+  /** Callers name the execution the ticket opens the socket with, already authorized to read. */
+  async issuePiAgentWatchTicket(input: PiAgentWatchTicketInput): Promise<PiAgentWatchTicket> {
+    const authContext = await this.#authContext();
+    const issued = await issuePiAgentWatchTicket(
+      { context: authContext } as Parameters<typeof issuePiAgentWatchTicket>[0],
+      input,
+    );
+    return { ticket: issued.token, expiresAt: issued.expiresAt.toISOString() };
   }
 
   async getBackofficeCliOAuthConfig(input: {

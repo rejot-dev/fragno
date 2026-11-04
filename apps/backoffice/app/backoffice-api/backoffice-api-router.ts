@@ -4,6 +4,7 @@ import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import {
   type BackofficeContextScope,
+  backofficeContextScopesEqual,
   backofficeScopeContains,
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -27,6 +28,7 @@ import {
 import {
   ACCESS_TOKEN_AUDIENCE,
   verifyBackofficeApiCredential,
+  verifyPiAgentWatchTicket,
 } from "@/fragno/auth/token-lifecycle";
 import { piAgentViewSocketRequest } from "@/fragno/pi/agent/pi-agent-contract";
 import { createRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
@@ -122,6 +124,55 @@ async function authorizeApiRequest(
   };
 }
 
+/**
+ * Turns a `pi.agent.watchTicket` ticket into the execution that asked for it, for the agent and
+ * scope it names, when its browser connects from an origin the ticket allows.
+ */
+async function authorizeWatchTicket(
+  request: Request,
+  ticket: string,
+  agent: { scope: BackofficeContextScope; agentName: string },
+  runtime: BackofficeRuntimeServices,
+): Promise<
+  { ok: true; execution: BackofficeExecutionContext } | { ok: false; response: Response }
+> {
+  const verification = await verifyPiAgentWatchTicket(
+    ticket,
+    request.url,
+    runtime.objects.auth.singleton().http,
+  );
+  if (!verification.ok) {
+    return {
+      ok: false,
+      response: apiError(
+        "authentication_failed",
+        verification.reason === "expired"
+          ? "The ticket has expired; ask pi.agent.watchTicket for a new one."
+          : "The ticket is invalid.",
+      ),
+    };
+  }
+  const { execution, agentName, origins } = verification.payload;
+  if (
+    !backofficeContextScopesEqual(execution.scope, agent.scope) ||
+    agentName !== agent.agentName
+  ) {
+    return {
+      ok: false,
+      response: apiError("forbidden", "The ticket opens another agent's socket."),
+    };
+  }
+  // Servers send no origin; a browser elsewhere than the app's own pages is refused.
+  const origin = request.headers.get("origin");
+  if (origin !== null && !origins.includes(origin)) {
+    return {
+      ok: false,
+      response: apiError("forbidden", `The ticket does not open the socket from ${origin}.`),
+    };
+  }
+  return { ok: true, execution };
+}
+
 /** The scope a `/scopes/<scope>/<name>` request names. */
 function requestScope(path: string): BackofficeContextScope | Response {
   try {
@@ -146,7 +197,8 @@ function createVersionRouter<TApi extends BackofficeApi>(
   );
 
   // A WebSocket rather than an operation, which neither operations nor OpenAPI describe. The agent
-  // serves it, after its manager checks `pi.read` for the credential's execution.
+  // serves it, after its manager checks `pi.read` for the execution of the credential, or of the
+  // ticket a browser, which cannot send the credential, opens it with.
   router.get("/scopes/:scope/pi.agent.watch", async (c) => {
     if (c.req.header("upgrade")?.toLowerCase() !== "websocket") {
       return apiError("invalid_request", "pi.agent.watch is a WebSocket; request an upgrade.");
@@ -160,11 +212,15 @@ function createVersionRouter<TApi extends BackofficeApi>(
       return apiError("invalid_request", z.prettifyError(agentName.error));
     }
     const { runtime } = c.env;
-    const authorization = await authorizeApiRequest(c.req.raw, scope, runtime);
+    const agent = { scope, agentName: agentName.data };
+    const ticket = c.req.query("ticket");
+    const authorization =
+      ticket === undefined
+        ? await authorizeApiRequest(c.req.raw, scope, runtime)
+        : await authorizeWatchTicket(c.req.raw, ticket, agent, runtime);
     if (!authorization.ok) {
       return authorization.response;
     }
-    const agent = { scope, agentName: agentName.data };
     return await runtime.objects.piAgent(agent).fetchAuthorized(piAgentViewSocketRequest(agent), {
       execution: authorization.execution,
       propagationContext: null,

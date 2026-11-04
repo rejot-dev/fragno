@@ -40,6 +40,7 @@ import type {
   OrganizationMembershipRecord,
   OrganizationRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
+import type { PiAgentWatchTicket } from "@fragno-dev/backoffice-api/v0/pi";
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import {
@@ -107,7 +108,7 @@ import type {
   BackofficeOAuthClientUpdateInput,
   BackofficeOAuthClientUpdateResult,
 } from "@/fragno/auth/oauth-client";
-import type { AppActionTokenInput } from "@/fragno/auth/token-lifecycle";
+import type { AppActionTokenInput, PiAgentWatchTicketInput } from "@/fragno/auth/token-lifecycle";
 import type {
   AutomationIngestResult,
   AutomationProjectExecutionTarget,
@@ -421,6 +422,8 @@ export type AuthCommands = DurableHookCommands &
     }): Promise<{ code: string }>;
     /** Signs one request to an app's action endpoint; the token is valid only for that body. */
     issueAppActionToken(input: AppActionTokenInput): Promise<{ token: string }>;
+    /** Signs a short-lived ticket that opens one agent's view socket with the execution named. */
+    issuePiAgentWatchTicket(input: PiAgentWatchTicketInput): Promise<PiAgentWatchTicket>;
     getBackofficeCliOAuthConfig(input: { requestUrl: string }): Promise<BackofficeCliOAuthConfig>;
     /** Verifies an installed app's client-credentials token and returns its registered app. */
     authenticateInstalledAppClient(input: {

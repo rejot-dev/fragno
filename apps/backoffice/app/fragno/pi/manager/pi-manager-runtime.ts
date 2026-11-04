@@ -1,6 +1,7 @@
 import { awaitWithContext } from "@earendil-works/chord/context";
 import {
   type PiAgentActivity,
+  type PiAgentWatchTicket,
   type PiAgentCreated,
   type PiAgentDefinition,
   type PiAgentDefinitionCreate,
@@ -20,6 +21,7 @@ import type { Context } from "@earendil-works/chord";
 
 import {
   backofficeExecutionScopeRestriction,
+  deferBackofficeExecution,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import {
@@ -32,6 +34,7 @@ import {
   backofficeOperationErrorKindForStatus,
 } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { installedAppIdOfActors } from "@/fragno/app-installations/authority";
 import type { PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
 
 import { backfillPiAgentEvents, type PiAgentBackfilledEvent } from "./pi-agent-change-events";
@@ -129,6 +132,8 @@ export type PiManagerRuntime = {
   getActivity(input: PiManagerActivityInput): Promise<PiAgentActivity>;
   /** The agent's conversation as JSONL, newest entry last; see `pi.agent.export`. */
   exportConversation(input: PiManagerExportInput): Promise<string>;
+  /** A ticket opening the agent's view socket as the caller; see `pi.agent.watchTicket`. */
+  issueWatchTicket(input: PiManagerAgentInput): Promise<PiAgentWatchTicket>;
 };
 
 /**
@@ -307,6 +312,23 @@ export function createPiManagerRuntime(input: {
     async getActivity({ agentName, subagent }) {
       const query = subagent === null ? "" : `?${new URLSearchParams({ subagent })}`;
       return await request<PiAgentActivity>(`${agentRoute(agentName)}/activity${query}`, null);
+    },
+    async issueWatchTicket({ agentName }) {
+      const { auth, apps } = input.runtime.objects;
+      // An app's browser connects from where it signs people in.
+      const appId = installedAppIdOfActors(input.execution.actors);
+      const app = appId === null ? null : await apps.singleton().commands.getApp({ appId });
+      const client = app
+        ? await auth.singleton().commands.getOAuthClientFacts({ clientId: app.oauthClientId })
+        : null;
+      const origins = [...new Set(client?.redirectUris.map((uri) => new URL(uri).origin))];
+      return await awaitRequest(
+        auth.singleton().commands.issuePiAgentWatchTicket({
+          agentName,
+          execution: deferBackofficeExecution(input.execution),
+          origins,
+        }),
+      );
     },
     async exportConversation({ agentName, history }) {
       const query = new URLSearchParams({ history: String(history) });

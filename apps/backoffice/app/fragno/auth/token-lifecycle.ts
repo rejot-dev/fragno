@@ -3,6 +3,7 @@ import {
   BACKOFFICE_TOKEN_ISSUER,
   type AppActionTokenClaims,
 } from "@fragno-dev/backoffice-api/v0/app-actions";
+import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
@@ -17,6 +18,11 @@ import {
 import { signJWT } from "better-auth/plugins/jwt";
 import { createLocalJWKSet, errors, jwtVerify, type JSONWebKeySet } from "jose";
 import { z } from "zod";
+
+import {
+  backofficeDeferredExecutionSchema,
+  type BackofficeDeferredExecution,
+} from "@/backoffice-runtime/context";
 
 import type { BackofficeTokenOrganization } from "./contracts";
 
@@ -101,6 +107,26 @@ const appInstallationCodePayloadSchema = z.object({
 });
 
 export type AppInstallationCodePayload = z.infer<typeof appInstallationCodePayloadSchema>;
+
+/**
+ * Opens one agent's view socket for a browser, which cannot send a bearer header, with the
+ * execution that asked for it, resolved live when it connects. Its own audience keeps every other
+ * verifier from accepting it, and its short life limits what a URL leaked to a log can open.
+ */
+const PI_AGENT_WATCH_TICKET_AUDIENCE = "fragno-backoffice-pi-agent-watch-ticket";
+const PI_AGENT_WATCH_TICKET_LIFETIME_SECONDS = 60;
+
+const piAgentWatchTicketPayloadSchema = z.object({
+  agentName: piAgentNameSchema,
+  execution: backofficeDeferredExecutionSchema,
+  /** The browser origins it opens the socket from; clients that send no origin are servers. */
+  origins: z.array(z.url()),
+  iss: z.literal(ACCESS_TOKEN_ISSUER),
+  aud: z.literal(PI_AGENT_WATCH_TICKET_AUDIENCE),
+  exp: z.number().int().positive(),
+});
+
+export type PiAgentWatchTicketPayload = z.infer<typeof piAgentWatchTicketPayloadSchema>;
 
 const betterAuthJwksSchema = z.object({
   keys: z.array(
@@ -260,6 +286,25 @@ export async function issueAppInstallationCode(
     APP_INSTALLATION_CODE_AUDIENCE,
     { ...installation },
     APP_INSTALLATION_CODE_LIFETIME_SECONDS,
+  );
+}
+
+/** Everything a watch ticket asserts except the timing fields signing adds. */
+export type PiAgentWatchTicketInput = {
+  agentName: string;
+  execution: BackofficeDeferredExecution;
+  origins: string[];
+};
+
+export async function issuePiAgentWatchTicket(
+  context: BackofficeJwtSigningContext,
+  ticket: PiAgentWatchTicketInput,
+): Promise<{ token: string; expiresAt: Date }> {
+  return await signBackofficeAccessToken(
+    context,
+    PI_AGENT_WATCH_TICKET_AUDIENCE,
+    { ...ticket },
+    PI_AGENT_WATCH_TICKET_LIFETIME_SECONDS,
   );
 }
 
@@ -458,6 +503,17 @@ const verifyAppInstallationCodeWithJwks: JwtPayloadVerifier<AppInstallationCodeP
   return appInstallationCodePayloadSchema.parse(verification.payload);
 };
 
+const verifyPiAgentWatchTicketWithJwks: JwtPayloadVerifier<PiAgentWatchTicketPayload> = async (
+  token,
+  resolver,
+) => {
+  const verification = await jwtVerify(token, resolver, {
+    issuer: ACCESS_TOKEN_ISSUER,
+    audience: PI_AGENT_WATCH_TICKET_AUDIENCE,
+  });
+  return piAgentWatchTicketPayloadSchema.parse(verification.payload);
+};
+
 export type JwtVerificationResult<TPayload> =
   | { ok: true; payload: TPayload }
   | { ok: false; reason: "missing" | "expired" | "invalid" };
@@ -548,6 +604,19 @@ export async function verifyAppInstallationCode(
     requestUrl,
     authObject,
     verifyAppInstallationCodeWithJwks,
+  );
+}
+
+export async function verifyPiAgentWatchTicket(
+  ticket: string,
+  requestUrl: string,
+  authObject: JwksFetchObject,
+): Promise<JwtVerificationResult<PiAgentWatchTicketPayload>> {
+  return await verifyWithBackofficeJwks(
+    ticket,
+    requestUrl,
+    authObject,
+    verifyPiAgentWatchTicketWithJwks,
   );
 }
 

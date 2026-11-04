@@ -6,7 +6,11 @@ import os from "node:os";
 import path from "node:path";
 
 import { createBackofficeApiClient } from "@fragno-dev/backoffice-api/v0/client";
-import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { piAgentWatchTicketSchema } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { McpTool } from "@fragno-dev/mcp-fragment/types";
 import * as ts from "typescript";
 import { z } from "zod";
@@ -21,9 +25,13 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
-import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import {
+  createBackofficeSystemExecution,
+  type BackofficeExecutionContext,
+} from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import type { BackofficeActionRpcContext } from "@/backoffice-runtime/object-registry";
 import { STATIC_CODEMODE_CONTENT } from "@/files/content/static-codemode";
 import { backofficeExecutionTokenResultSchema } from "@/fragno/auth/execution-token";
 import {
@@ -32,6 +40,7 @@ import {
   type BackofficeScenarioContext,
   type BackofficeScenarioStep,
 } from "@/fragno/automation/scenario";
+import type { PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
 import { action as exchangeAction } from "@/routes/api/backoffice-execution-token";
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
@@ -225,6 +234,76 @@ async function installedAppCredential(ctx: Ctx, oauthAccessToken: string): Promi
   });
   assert.equal(response.status, 200, await response.clone().text());
   return backofficeExecutionTokenResultSchema.parse(await response.json()).accessToken;
+}
+
+/** Registers Bookkeeping's OAuth client and app, and installs it in the owner's organization. */
+async function installBookkeeping(ctx: Ctx, permissions: BackofficePermissionRequirement[]) {
+  const client = await ctx.runtime.objects.auth.singleton().commands.createAdminOAuthClient({
+    administratorUserId: "platform-admin",
+    name: "Bookkeeping",
+    redirectUris: [redirectUri],
+    scopes: ["openid", "profile", "email", "offline_access", "backoffice"],
+    clientType: "confidential",
+    applicationType: "web",
+    clientCredentials: true,
+  });
+  assert(client.clientType === "confidential");
+  ctx.vars.clientId = client.clientId;
+  ctx.vars.clientSecret = client.clientSecret;
+  const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+    actions: { kind: "none" },
+    trust: { kind: "third-party" },
+    slug: "accounting",
+    oauthClientId: client.clientId,
+    requestedPermissions: permissions,
+  });
+  assert(registered.ok);
+  ctx.vars.appId = registered.value.appId;
+  const installed = await ctx.runtime.objects.appInstallations
+    .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
+    .commands.installApp({
+      actionsRevision: 1,
+      appId: ctx.vars.appId,
+      grantedPermissions: permissions,
+      installedByUserId: ctx.vars.ownerId,
+      resourceScope: { kind: "owner" },
+    });
+  assert(installed.ok);
+}
+
+/**
+ * Opens `pi.agent.watch` with a ticket, as a browser on `browserOrigin` would; null plays a
+ * server, which sends no origin. The agent's socket is Cloudflare's, so the agent object stands
+ * in, recording which agent was opened for which execution.
+ */
+async function watchWithTicket(
+  ctx: Ctx,
+  input: { orgId: string; agentName: string; ticket: string; browserOrigin: string | null },
+) {
+  const opened: { agent: PiAgentAddress; execution: BackofficeExecutionContext }[] = [];
+  const objects = {
+    ...ctx.runtime.services.objects,
+    piAgent: (agent: PiAgentAddress) => ({
+      fetchAuthorized: async (_request: Request, context: BackofficeActionRpcContext) => {
+        opened.push({ agent, execution: context.execution });
+        return new Response(null, { status: 204 });
+      },
+    }),
+  };
+  const query = new URLSearchParams({ agentName: input.agentName, ticket: input.ticket });
+  const response = await backofficeApiRouter.fetch(
+    new Request(`${origin}${orgOperation(input.orgId, "pi.agent.watch")}?${query}`, {
+      headers: {
+        upgrade: "websocket",
+        ...(input.browserOrigin === null ? {} : { origin: input.browserOrigin }),
+      },
+    }),
+    {
+      runtime: { ...ctx.runtime.services, objects },
+      kernel: new BackofficeKernel(ctx.runtime.services),
+    },
+  );
+  return { response, opened };
 }
 
 async function runApiScenario(
@@ -854,42 +933,7 @@ describe("Backoffice API v0 SQLite scenarios", () => {
     await runApiScenario("installed-app credentials on the v0 API", (then) => [
       then(
         "an administrator provisions Bookkeeping, and the owner grants it organization read",
-        async (ctx) => {
-          const client = await ctx.runtime.objects.auth
-            .singleton()
-            .commands.createAdminOAuthClient({
-              administratorUserId: "platform-admin",
-              name: "Bookkeeping",
-              redirectUris: [redirectUri],
-              scopes: ["openid", "profile", "email", "offline_access", "backoffice"],
-              clientType: "confidential",
-              applicationType: "web",
-              clientCredentials: true,
-            });
-          assert(client.clientType === "confidential");
-          ctx.vars.clientId = client.clientId;
-          ctx.vars.clientSecret = client.clientSecret;
-          const permissions = [BACKOFFICE_PERMISSION.org.read];
-          const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
-            actions: { kind: "none" },
-            trust: { kind: "third-party" },
-            slug: "accounting",
-            oauthClientId: client.clientId,
-            requestedPermissions: permissions,
-          });
-          assert(registered.ok);
-          ctx.vars.appId = registered.value.appId;
-          const installed = await ctx.runtime.objects.appInstallations
-            .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
-            .commands.installApp({
-              actionsRevision: 1,
-              appId: ctx.vars.appId,
-              grantedPermissions: permissions,
-              installedByUserId: ctx.vars.ownerId,
-              resourceScope: { kind: "owner" },
-            });
-          assert(installed.ok);
-        },
+        async (ctx) => await installBookkeeping(ctx, [BACKOFFICE_PERMISSION.org.read]),
       ),
       then("the owner's own credential cannot send events as Bookkeeping", async (ctx) => {
         const fire = {
@@ -974,6 +1018,77 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           "forbidden",
         );
       }),
+    ]);
+  });
+
+  test("an app's browser watches an agent with a ticket, from the app's origin only", async () => {
+    await runApiScenario("pi.agent.watch tickets", (then) => [
+      then("the owner lets Bookkeeping read the organization's agents", async (ctx) => {
+        await installBookkeeping(ctx, [BACKOFFICE_PERMISSION.pi.read]);
+        ctx.vars.delegatedCredential = await installedAppCredential(
+          ctx,
+          await authorizeBookkeeping(ctx, ctx.vars.ownerCookie),
+        );
+      }),
+      then(
+        "a ticket opens the agent's socket for the owner, through Bookkeeping, from Bookkeeping's pages or a server",
+        async (ctx) => {
+          const { ticket } = piAgentWatchTicketSchema.parse(
+            await expectOk(
+              await callApi(ctx, {
+                path: orgOperation(ctx.vars.orgId, "pi.agent.watchTicket"),
+                credential: ctx.vars.delegatedCredential,
+                body: { agentName: "assistant" },
+              }),
+            ),
+          );
+          const watch = { orgId: ctx.vars.orgId, agentName: "assistant", ticket };
+          for (const browserOrigin of [new URL(redirectUri).origin, null]) {
+            const { response, opened } = await watchWithTicket(ctx, { ...watch, browserOrigin });
+            assert.equal(response.status, 204, await response.clone().text());
+            expect(opened).toEqual([
+              {
+                agent: {
+                  scope: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null },
+                  agentName: "assistant",
+                },
+                execution: expect.objectContaining({
+                  kind: "deferred",
+                  actors: expect.objectContaining({
+                    principal: expect.objectContaining({ type: "user", id: ctx.vars.ownerId }),
+                    delegation: [expect.objectContaining({ type: "app-installation" })],
+                  }),
+                }),
+              },
+            ]);
+          }
+
+          const refusals = [
+            { ...watch, browserOrigin: "https://elsewhere.example", status: 403 },
+            { ...watch, agentName: "other", browserOrigin: null, status: 403 },
+            { ...watch, orgId: ctx.vars.memberOrgId, browserOrigin: null, status: 403 },
+            { ...watch, ticket: ctx.vars.delegatedCredential, browserOrigin: null, status: 401 },
+          ];
+          for (const { status, ...refused } of refusals) {
+            const { response, opened } = await watchWithTicket(ctx, refused);
+            await expectError(
+              response,
+              status,
+              status === 401 ? "authentication_failed" : "forbidden",
+            );
+            expect(opened).toEqual([]);
+          }
+
+          vi.useFakeTimers({ toFake: ["Date"] });
+          try {
+            vi.setSystemTime(Date.now() + 61_000);
+            const { response } = await watchWithTicket(ctx, { ...watch, browserOrigin: null });
+            await expectError(response, 401, "authentication_failed");
+          } finally {
+            vi.useRealTimers();
+          }
+        },
+      ),
     ]);
   });
 });

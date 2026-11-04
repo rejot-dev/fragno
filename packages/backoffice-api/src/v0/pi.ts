@@ -398,6 +398,19 @@ export const piAgentActivitySchema = z.lazy(() =>
 );
 export type PiAgentActivity = z.infer<typeof piAgentActivitySchema>;
 
+/**
+ * Opens `pi.agent.watch` for one agent without a bearer header, which a browser's WebSocket cannot
+ * send. A ticket opens it from the calling app's registered origins, and from clients that send no
+ * origin, such as servers.
+ */
+export const piAgentWatchTicketSchema = z.lazy(() =>
+  z.object({
+    ticket: z.string().min(1),
+    expiresAt: z.iso.datetime(),
+  }),
+);
+export type PiAgentWatchTicket = z.infer<typeof piAgentWatchTicketSchema>;
+
 const exportInputSchema = z.lazy(() =>
   readAgentInputSchema._zod.innerType.extend({
     out: z
@@ -465,6 +478,13 @@ export const piOperations = {
     permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: activityInputSchema,
     output: piAgentActivitySchema,
+  },
+  "pi.agent.watchTicket": {
+    description:
+      "A ticket that opens the `pi.agent.watch` WebSocket for one agent, with your permissions, as the `ticket` query parameter instead of a bearer credential: for an app's browser, which cannot send WebSocket headers. Connect within a minute; the socket stays open after the ticket expires, and reconnecting needs a new one. An app's ticket opens the socket only from its registered origins.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read],
+    input: agentInputSchema,
+    output: piAgentWatchTicketSchema,
   },
   "pi.agent.export": {
     description:
