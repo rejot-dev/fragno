@@ -72,10 +72,6 @@ OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 GEMINI_API_KEY=
 
-# Workers AI calls, and bills, the account Wrangler is logged in to, since it has no local
-# simulator. Uncomment to stop the dev server from calling it.
-# WORKERS_AI_REMOTE=false
-
 # Platform Reson8 key for speech-to-text: chat dictation and the reson8 runtime tools
 RESON8_API_KEY=
 
