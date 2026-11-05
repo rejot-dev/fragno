@@ -188,10 +188,24 @@ function previewServerUrlShortcutPlugin(): Plugin {
 
 export default defineConfig(({ command }) => {
   const isDevServer = command === "serve";
-  // The dev server never runs containers. Builds are deployed, so they keep the configured value.
-  const disableSandboxContainersOnDevServer = (workerConfig: { vars: Record<string, unknown> }) => {
-    if (isDevServer) {
-      workerConfig.vars.SANDBOX_CONTAINERS = "false";
+  // Workers AI has no local simulator, so wrangler.jsonc calls, and bills, the logged-in account.
+  // A machine without that account opts out in its .dev.vars, which Wrangler then drops as an
+  // undeclared key.
+  const workersAiRemote =
+    !existsSync(localDevVarsPath) ||
+    parseEnv(readFileSync(localDevVarsPath, "utf8")).WORKERS_AI_REMOTE !== "false";
+  // Builds are deployed, so they keep the configured values.
+  const configureDevServerWorker = (workerConfig: {
+    vars: Record<string, unknown>;
+    ai?: { remote?: boolean };
+  }) => {
+    if (!isDevServer) {
+      return;
+    }
+    // The dev server never runs containers.
+    workerConfig.vars.SANDBOX_CONTAINERS = "false";
+    if (workerConfig.ai && !workersAiRemote) {
+      workerConfig.ai.remote = false;
     }
   };
   // Only serving needs a port; builds must not depend on running inside a git checkout.
@@ -224,9 +238,9 @@ export default defineConfig(({ command }) => {
     plugins: [
       cloudflare({
         configPath: "./wrangler.web.jsonc",
-        config: disableSandboxContainersOnDevServer,
+        config: configureDevServerWorker,
         auxiliaryWorkers: [
-          { configPath: "./wrangler.jsonc", config: disableSandboxContainersOnDevServer },
+          { configPath: "./wrangler.jsonc", config: configureDevServerWorker },
           {
             configPath: "../cf-sandbox-bridge/wrangler.jsonc",
             // The bridge hosts Sandbox containers; `preview:containers` turns them on, and
