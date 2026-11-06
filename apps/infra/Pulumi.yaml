@@ -1,0 +1,12 @@
+name: leyway-infra
+description: Leyway's Cloudflare infrastructure
+runtime:
+  name: nodejs
+  options:
+    packagemanager: pnpm
+    # Node runs the TypeScript directly by stripping types, so Pulumi must not compile it.
+    typescript: false
+main: src/index.ts
+backend:
+  # Created by hand, since the stack's state cannot live in a bucket the stack itself manages.
+  url: s3://leyway-pulumi-state?endpoint=https://cda934461b3c3f24b4899fc8a100ffe6.r2.cloudflarestorage.com&region=auto&s3ForcePathStyle=true
