@@ -6,16 +6,21 @@ import {
 
 export type IntegrationConnectionKind = "api" | "webhook" | "mcp" | "connector" | "native";
 
-/** Each address namespace names the source that owns it; native services share one view. */
-const kindsByNamespace = new Map<string, IntegrationConnectionKind>([
-  ["api", "api"],
-  ["webhook", "webhook"],
-  ["mcp", "mcp"],
-  ["connector", "connector"],
-  ["backoffice", "native"],
-  ["github", "native"],
-  ["app", "native"],
-]);
+/**
+ * Each address namespace names the source that owns it; native services share one view. Sources may
+ * only claim addresses in these namespaces, so every source's connections reach the views.
+ */
+const kindsByNamespace = {
+  api: "api",
+  webhook: "webhook",
+  mcp: "mcp",
+  connector: "connector",
+  backoffice: "native",
+  github: "native",
+  app: "native",
+} as const satisfies Record<string, IntegrationConnectionKind>;
+
+export type IntegrationConnectionNamespace = keyof typeof kindsByNamespace;
 
 type StoredEvent = {
   id: string;
@@ -41,7 +46,12 @@ export function readIntegrationConnectionStateChange(
   event: StoredEvent,
 ): IntegrationConnectionStateChange | null {
   const change = readIntegrationConnectionEvent(event);
-  const kind = change && kindsByNamespace.get(change.connectionId.split("#", 1)[0]);
+  const namespace = change?.connectionId.split("#", 1)[0];
+  // Stored events are untrusted, so their namespace may be any string.
+  const kind =
+    namespace !== undefined && Object.hasOwn(kindsByNamespace, namespace)
+      ? kindsByNamespace[namespace as IntegrationConnectionNamespace]
+      : null;
   return change && kind
     ? { ...change, eventId: event.id, kind, occurredAt: event.occurredAt }
     : null;
