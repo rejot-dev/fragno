@@ -12,6 +12,7 @@ import {
   type TypedUnitOfWork,
 } from "@fragno-dev/db";
 
+import { readEmailAuthentication, type ResendEmailAuthentication } from "./email-authentication";
 import { normalizeMailboxAddress, parseMailboxAddress } from "./mailbox-address";
 import type { ResendSendEmailInput } from "./routes/emails";
 import { buildThreadMessage, resolveEmailPayload, toArray } from "./routes/shared";
@@ -92,6 +93,8 @@ export interface ResendEmailReceivedHookPayload {
    * reached, or once with null when it reached none.
    */
   recipientMailbox: ResendMailboxMatch | null;
+  /** Resend's SPF, DKIM and DMARC results; null when Resend reported none. */
+  authentication: ResendEmailAuthentication | null;
   receivedAt: string;
   webhookReceivedAt: string;
   threadId: string;
@@ -129,6 +132,8 @@ type DeliverEmailReceivedHookPayload = {
   threadId: string;
   threadResolvedVia: ResendEmailReceivedHookPayload["threadResolvedVia"];
   recipientMailbox: ResendMailboxMatch | null;
+  /** Absent from deliveries queued before the fragment stored it. */
+  authentication?: ResendEmailAuthentication | null;
 };
 type DeliverEmailStatusUpdatedHookPayload = {
   event: ResendEmailWebhookEvent;
@@ -860,6 +865,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
       threadId,
       threadResolvedVia,
       recipientMailbox,
+      authentication,
     }) {
       if (!config.onEmailReceived) {
         return;
@@ -876,6 +882,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
         messageId: event.data.message_id,
         attachments: buildReceivedEmailAttachments(event.data.attachments),
         recipientMailbox,
+        authentication: authentication ?? null,
         receivedAt: event.data.created_at,
         webhookReceivedAt: event.created_at,
         threadId,
@@ -919,6 +926,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
 
         const receivedDetail = receivedResponse.data as ReceivedEmailDetailLike;
         const inbound = buildInboundThreadEnvelope(receivedDetail);
+        const authentication = readEmailAuthentication(receivedDetail.authentication);
         // The event names the recipients Resend delivered it to; the message's own To header may
         // name others, such as the original recipient of a forwarded message.
         const recipients = [
@@ -1008,6 +1016,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
                     threadId,
                     threadResolvedVia,
                     recipientMailbox,
+                    authentication,
                   },
                   { id: buildReceivedEmailDeliveryHookId(emailMessageId, position) },
                 );
@@ -1075,6 +1084,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
               errorCode: null,
               errorMessage: null,
               recipientMailboxes,
+              authentication,
             });
 
             deliver(

@@ -73,6 +73,7 @@ describe("resend-fragment mailboxes", () => {
         text: "Total: 12 EUR",
         headers: { "x-forwarded-for": "me@mail.example" },
         attachments: [],
+        authentication: { spf: "fail", dkim: "pass", dmarc: "pass" },
       },
       error: null,
       headers: null,
@@ -217,6 +218,7 @@ describe("resend-fragment mailboxes", () => {
       to: ["me@mail.example"],
       text: "Total: 12 EUR",
       recipientMailbox: { address: "receipts@mail.example", owner: "user:alice" },
+      authentication: { spf: "fail", dkim: "pass", dmarc: "pass" },
     });
     expect(await read("user:bob")).toBeNull();
   });

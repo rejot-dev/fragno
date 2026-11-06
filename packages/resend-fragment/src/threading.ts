@@ -34,6 +34,8 @@ export interface ReceivedEmailDetailLike {
     content_disposition: string | null;
     content_id: string | null;
   }>;
+  /** Untyped by the Resend SDK; read it with readEmailAuthentication. */
+  authentication?: unknown;
 }
 
 const mailboxPattern = /<?([A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,})>?/i;
