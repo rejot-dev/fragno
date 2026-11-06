@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/blobs",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Fragno fragment for large files kept in S3-compatible object storage",
   "keywords": [
     "fragno",
