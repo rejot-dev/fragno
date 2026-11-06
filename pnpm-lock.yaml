@@ -1053,6 +1053,9 @@ importers:
       '@pulumi/pulumi':
         specifier: 3.273.0
         version: 3.273.0(@typescript/typescript6@6.0.2)
+      '@pulumi/random':
+        specifier: 4.21.6
+        version: 4.21.6(@typescript/typescript6@6.0.2)
     devDependencies:
       '@fragno-private/typescript-config':
         specifier: workspace:*
@@ -9077,6 +9080,9 @@ packages:
         optional: true
       typescript:
         optional: true
+
+  '@pulumi/random@4.21.6':
+    resolution: {integrity: sha512-HsWUATAcKxceBcvNzPIdkC7sXyWWiGZmd/y4eZKF5nSAwCgpOPReZ+LLFbkl2bvKGHc3nNX5vIM84YU2dpSD1Q==}
 
   '@quansync/fs@1.0.0':
     resolution: {integrity: sha512-4TJ3DFtlf1L5LDMaM6CanJ/0lckGNtJcMjQ1NAV6zDmA0tEHKZtxNKin8EgPaVX1YzljbxckyT2tJrpQKAtngQ==}
@@ -26355,6 +26361,14 @@ snapshots:
       typescript: '@typescript/typescript6@6.0.2'
     transitivePeerDependencies:
       - supports-color
+
+  '@pulumi/random@4.21.6(@typescript/typescript6@6.0.2)':
+    dependencies:
+      '@pulumi/pulumi': 3.273.0(@typescript/typescript6@6.0.2)
+    transitivePeerDependencies:
+      - supports-color
+      - ts-node
+      - typescript
 
   '@quansync/fs@1.0.0':
     dependencies:
