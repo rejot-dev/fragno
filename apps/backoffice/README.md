@@ -415,8 +415,20 @@ Bootstrap builds and **activates** the object and web Workers in dependency orde
 Worker can provision its classes before the web Worker binds to them. This is a live release, not an
 inactive upload.
 
-For releases without new Durable Object classes, upload an inactive version of all Workers with one
-shared tag:
+When a release deletes a Durable Object class (a `"state": "deleted"` entry in `wrangler.jsonc`
+`exports`), Cloudflare refuses the deletion while the web Worker still binds the class. Retire it
+instead:
+
+```bash
+pnpm --dir apps/backoffice run deploy:retire
+```
+
+Retirement builds and **activates** the web Worker first, without the binding, and then the object
+Worker, which deletes the namespace and all its data. Split a release that both adds and deletes
+classes into a bootstrap and a retirement, since the two need opposite orders.
+
+For releases without new or deleted Durable Object classes, upload an inactive version of all
+Workers with one shared tag:
 
 ```bash
 VERSION_TAG=release-$(date -u +%Y%m%d-%H%M%S)

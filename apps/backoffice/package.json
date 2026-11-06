@@ -26,6 +26,8 @@
     "static:fix": "tsx scripts/generate-static-content.ts --fix",
     "predeploy:bootstrap": "node scripts/clean-build-output.mjs && turbo run build --filter=@fragno-apps/backoffice-rr",
     "deploy:bootstrap": "node scripts/run-worker-release.mjs bootstrap",
+    "predeploy:retire": "node scripts/clean-build-output.mjs && turbo run build --filter=@fragno-apps/backoffice-rr",
+    "deploy:retire": "node scripts/run-worker-release.mjs retire",
     "predeploy:upload": "node scripts/clean-build-output.mjs && turbo run build --filter=@fragno-apps/backoffice-rr",
     "deploy:upload": "node scripts/run-worker-release.mjs upload",
     "deploy": "node scripts/run-worker-release.mjs deploy",
