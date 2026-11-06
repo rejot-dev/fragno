@@ -473,77 +473,88 @@
   animation: bo-shimmer 2.4s linear infinite;
 }
 
-/* Loopp wordmark (loopp-wordmark.tsx). */
+/* Landing film: the landing page's surfaces look shot on old film. Each fills its positioned
+   parent, behind the parent's content, and takes no clicks. */
 
-/* The second "o" opens into the loop: it starts as round as the first, then its straight sides grow
-   while the rest of the word slides out with its right half. Both move by the same easing, so the
-   loop stays closed throughout; the overshoot lets it stretch a touch past its length and settle. */
-.loopp-wordmark-animated .loopp-wordmark-sides {
-  transform-box: fill-box;
-  transform-origin: left;
-  animation: loopp-wordmark-sides 900ms cubic-bezier(0.34, 1.3, 0.64, 1) 300ms backwards;
-}
-
-.loopp-wordmark-animated .loopp-wordmark-tail {
-  animation: loopp-wordmark-tail 900ms cubic-bezier(0.34, 1.3, 0.64, 1) 300ms backwards;
-}
-
-@keyframes loopp-wordmark-sides {
-  from {
-    transform: scaleX(0);
-  }
-}
-
-/* The loop's length in the wordmark's units; transforms on SVG elements use user units. */
-@keyframes loopp-wordmark-tail {
-  from {
-    transform: translateX(-200px);
-  }
-}
-
-/* What follows the animated wordmark, such as its byline, fades in once the loop has opened. */
-.loopp-wordmark-after {
-  animation: loopp-wordmark-after 400ms ease-out 1100ms backwards;
-}
-
-@keyframes loopp-wordmark-after {
-  from {
-    opacity: 0;
-  }
-}
-
-/* A segment of a streak of light running round the loop, turned to face the way it travels and
-   trailing the streak's head by its lag. Each one sets its own size, speed, start and lag inline;
-   the page around the loop may set its color. */
-.loopp-loop-particle {
+.landing-film,
+.landing-film-dark {
   position: absolute;
-  top: 0;
-  left: 0;
-  border-radius: 9999px;
-  background: var(--loopp-loop-particle, #fff);
-  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--loopp-loop-particle, #fff) 25%, transparent);
-  offset-rotate: auto;
-  animation: loopp-loop-particle linear infinite;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* Fractal noise with its contrast stretched and a trace of color left in, like film grain. */
+  --landing-film-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0.3'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='2.4' intercept='-0.7'/%3E%3CfeFuncG type='linear' slope='2.4' intercept='-0.7'/%3E%3CfeFuncB type='linear' slope='2.4' intercept='-0.7'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* The path is closed, so a distance below zero wraps round to its end. */
-@keyframes loopp-loop-particle {
-  from {
-    offset-distance: calc(0% - var(--loopp-loop-lag, 0px));
-  }
-  to {
-    offset-distance: calc(100% - var(--loopp-loop-lag, 0px));
-  }
+.landing-film::before,
+.landing-film::after,
+.landing-film-dark::before,
+.landing-film-dark::after {
+  position: absolute;
+  content: "";
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .loopp-wordmark-animated .loopp-wordmark-sides,
-  .loopp-wordmark-animated .loopp-wordmark-tail,
-  .loopp-wordmark-after {
-    animation: none;
-  }
+/* On the brand red: soft streaks of lighter and darker red run across it, light leaks warm it to
+   orange in the top left and bottom right corners, it deepens to brown in the bottom left, its edges
+   fall off into a dark vignette, and a coarse grain lies over all of it. */
+.landing-film {
+  box-shadow: inset 0 0 14rem 2rem rgb(48 12 6 / 0.5);
+}
 
-  .loopp-loop-particle {
-    display: none;
-  }
+.landing-film::before {
+  /* Past the edges, so the blur does not fade them. */
+  inset: -10%;
+  background:
+    radial-gradient(ellipse 22% 38% at 8% 22%, rgb(240 140 60 / 0.85), transparent 70%),
+    radial-gradient(ellipse 26% 42% at 6% 92%, rgb(80 26 18 / 0.85), transparent 70%),
+    radial-gradient(ellipse 55% 16% at 32% 40%, rgb(240 112 84 / 0.6), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 55% 30%, rgb(170 50 36 / 0.55), transparent 70%),
+    radial-gradient(ellipse 48% 18% at 70% 62%, rgb(240 116 86 / 0.55), transparent 70%),
+    radial-gradient(ellipse 30% 40% at 96% 88%, rgb(245 140 55 / 0.9), transparent 70%),
+    radial-gradient(ellipse 60% 30% at 40% 75%, rgb(185 58 40 / 0.5), transparent 70%);
+  filter: blur(24px);
+}
+
+/* Laid over the reds so it lightens and darkens them alike. */
+.landing-film::after {
+  inset: 0;
+  background-image: var(--landing-film-grain);
+  background-size: 240px;
+  mix-blend-mode: overlay;
+  opacity: 0.6;
+}
+
+/* On black: one red light leak from the bottom right corner, and the same grain. Overlay cannot
+   lighten black, so the grain is screened on, faintly. */
+.landing-film-dark::before {
+  right: -10%;
+  bottom: -30%;
+  width: min(900px, 70vw);
+  aspect-ratio: 1;
+  background: radial-gradient(closest-side, rgb(210 74 51 / 0.32), transparent);
+  filter: blur(40px);
+}
+
+.landing-film-dark::after {
+  inset: 0;
+  background-image: var(--landing-film-grain);
+  background-size: 240px;
+  mix-blend-mode: screen;
+  opacity: 0.09;
+}
+
+/* A graph-paper grid behind a light landing section, in a faint tint of the page's ink: rows at a
+   steady rhythm here, and columns the section draws itself, on the landing header's column lines. It
+   fills its positioned parent and fades in from the top, so the section above flows into it. */
+.landing-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    0deg,
+    color-mix(in srgb, var(--bo-fg) 7%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 100% 56px;
+  mask-image: linear-gradient(transparent, #000 45%);
 }

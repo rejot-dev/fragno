@@ -1,4 +1,4 @@
-import { BackofficeFragmentMark } from "@fragno-private/design-system/brand/fragment-mark";
+import { LeywayWordmark } from "@fragno-private/design-system/brand/leyway-wordmark";
 import { useEffect, useRef, useState } from "react";
 
 import airtableUrl from "./connection-icons/airtable.svg?url";
@@ -184,10 +184,7 @@ export function LandingConnectionsCycle() {
           width: `calc(var(--landing-header-open-width, ${HUB_WIDTH}px) / var(--landing-cycle-scale, 1))`,
         }}
       >
-        <span className="flex items-center gap-2 text-sm font-extrabold">
-          <BackofficeFragmentMark size="md" />
-          Leyway
-        </span>
+        <LeywayWordmark className="h-6" />
       </span>
 
       {CONNECTIONS.map((connection, index) => {

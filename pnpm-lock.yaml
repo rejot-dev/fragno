@@ -1258,7 +1258,7 @@ importers:
         version: link:../../example-fragments/example-fragment
       nuxt:
         specifier: ^4.2.2
-        version: 4.4.8(0152bafdbcbb1f89073955fc0ce2a309)
+        version: 4.4.8(ddef4c17de8d30e72a732e3ec53c83f9)
       vue:
         specifier: ^3.5.27
         version: 3.5.35(typescript@6.0.3)
@@ -2273,6 +2273,9 @@ importers:
         specifier: ^1.2.0
         version: 1.5.0(@date-fns/tz@1.5.0)(@types/react@19.2.17)(date-fns@4.4.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@fontsource-variable/plus-jakarta-sans':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource-variable/space-grotesk':
         specifier: 5.3.0
         version: 5.3.0
       '@fragno-dev/workflow-visualizer-tokens':
@@ -6287,6 +6290,9 @@ packages:
 
   '@fontsource-variable/plus-jakarta-sans@5.3.0':
     resolution: {integrity: sha512-/l/4r0yyWK9JzAlmA0LiYgGgmJe/Gswt4jTJEzr5QhJfwMbvJZDmYWyW0M4X7yCK69BajMVlV/Lx8g7WDc1+sw==}
+
+  '@fontsource-variable/space-grotesk@5.3.0':
+    resolution: {integrity: sha512-2IxmvfB08i9vnGB3Ym/AXvhRE+8XOjWMXIyDum03c+tPwH0FUoMNQfGpU8NXPxjbws0Vvss3AH0Zqt4oJBBAdw==}
 
   '@formatjs/fast-memoize@3.1.6':
     resolution: {integrity: sha512-H5aexk1Le7T9TPmscacZ+1pR6CTa2n1wq+HDVGXhH8TzUlQQpeXzZs91dRtmFHrbeNbjPFPfQujUqm7MHgVoXQ==}
@@ -11096,6 +11102,7 @@ packages:
   '@smithy/core@3.35.1':
     resolution: {integrity: sha512-i4YPS4B6ts7bjn7UwLnGjiZdprOvHvgGobFZsYK3GIY3E5hIqtj0rReU69BcTpGp+fvtraSNXeG1l+jtJvF55w==}
     engines: {node: '>=18.0.0'}
+    deprecated: Deprecated due to a bug in custom logger data redaction. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.5.2':
     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}
@@ -21550,6 +21557,20 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@babel/helper-create-class-features-plugin@7.29.7(@babel/core@8.0.7)':
+    dependencies:
+      '@babel/core': 8.0.7
+      '@babel/helper-annotate-as-pure': 7.29.7
+      '@babel/helper-member-expression-to-functions': 7.29.7
+      '@babel/helper-optimise-call-expression': 7.29.7
+      '@babel/helper-replace-supers': 7.29.7(@babel/core@8.0.7)
+      '@babel/helper-skip-transparent-expression-wrappers': 7.29.7
+      '@babel/traverse': 7.29.7
+      semver: 6.3.1
+    transitivePeerDependencies:
+      - supports-color
+    optional: true
+
   '@babel/helper-globals@7.29.7': {}
 
   '@babel/helper-globals@8.0.6': {}
@@ -21595,6 +21616,16 @@ snapshots:
       '@babel/traverse': 7.29.7
     transitivePeerDependencies:
       - supports-color
+
+  '@babel/helper-replace-supers@7.29.7(@babel/core@8.0.7)':
+    dependencies:
+      '@babel/core': 8.0.7
+      '@babel/helper-member-expression-to-functions': 7.29.7
+      '@babel/helper-optimise-call-expression': 7.29.7
+      '@babel/traverse': 7.29.7
+    transitivePeerDependencies:
+      - supports-color
+    optional: true
 
   '@babel/helper-skip-transparent-expression-wrappers@7.29.7':
     dependencies:
@@ -21650,10 +21681,26 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@babel/plugin-proposal-decorators@7.29.7(@babel/core@8.0.7)':
+    dependencies:
+      '@babel/core': 8.0.7
+      '@babel/helper-create-class-features-plugin': 7.29.7(@babel/core@8.0.7)
+      '@babel/helper-plugin-utils': 7.29.7
+      '@babel/plugin-syntax-decorators': 7.29.7(@babel/core@8.0.7)
+    transitivePeerDependencies:
+      - supports-color
+    optional: true
+
   '@babel/plugin-syntax-decorators@7.29.7(@babel/core@7.29.7)':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/helper-plugin-utils': 7.29.7
+
+  '@babel/plugin-syntax-decorators@7.29.7(@babel/core@8.0.7)':
+    dependencies:
+      '@babel/core': 8.0.7
+      '@babel/helper-plugin-utils': 7.29.7
+    optional: true
 
   '@babel/plugin-syntax-import-attributes@7.29.7(@babel/core@7.29.7)':
     dependencies:
@@ -21670,10 +21717,22 @@ snapshots:
       '@babel/core': 7.29.7
       '@babel/helper-plugin-utils': 7.29.7
 
+  '@babel/plugin-syntax-jsx@7.29.7(@babel/core@8.0.7)':
+    dependencies:
+      '@babel/core': 8.0.7
+      '@babel/helper-plugin-utils': 7.29.7
+    optional: true
+
   '@babel/plugin-syntax-typescript@7.29.7(@babel/core@7.29.7)':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/helper-plugin-utils': 7.29.7
+
+  '@babel/plugin-syntax-typescript@7.29.7(@babel/core@8.0.7)':
+    dependencies:
+      '@babel/core': 8.0.7
+      '@babel/helper-plugin-utils': 7.29.7
+    optional: true
 
   '@babel/plugin-transform-modules-commonjs@7.29.7(@babel/core@7.29.7)':
     dependencies:
@@ -23345,6 +23404,8 @@ snapshots:
 
   '@fontsource-variable/plus-jakarta-sans@5.3.0': {}
 
+  '@fontsource-variable/space-grotesk@5.3.0': {}
+
   '@formatjs/fast-memoize@3.1.6': {}
 
   '@formatjs/intl-localematcher@0.8.10':
@@ -24309,7 +24370,7 @@ snapshots:
     transitivePeerDependencies:
       - magicast
 
-  '@nuxt/nitro-server@4.4.8(3d15e1c15f9be92bb2d963e294c689f0)':
+  '@nuxt/nitro-server@4.4.8(25cad211ca020491aebc10b9bde8adc2)':
     dependencies:
       '@nuxt/devalue': 2.0.2
       '@nuxt/kit': 4.4.8(magicast@0.5.5)
@@ -24326,8 +24387,8 @@ snapshots:
       impound: 1.1.5
       klona: 2.0.6
       mocked-exports: 0.1.1
-      nitropack: 2.13.4(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(aws4fetch@1.0.20)(better-sqlite3@12.11.1)(drizzle-orm@0.44.7(@cloudflare/workers-types@5.20261006.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(magicast@0.5.5)(typescript@6.0.3))(typescript@6.0.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.11.1)(kysely@0.28.17)(mysql2@3.22.5(@types/node@26.6.5))(pg@8.21.0)(prisma@6.19.3(magicast@0.5.5)(typescript@6.0.3))(sql.js@1.14.1))(mysql2@3.22.5(@types/node@26.6.5))(oxc-parser@0.133.0)(rolldown@1.2.13)(srvx@0.11.16)
-      nuxt: 4.4.8(0152bafdbcbb1f89073955fc0ce2a309)
+      nitropack: 2.13.4(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(aws4fetch@1.0.20)(better-sqlite3@12.11.1)(drizzle-orm@0.44.7(@cloudflare/workers-types@5.20261006.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(magicast@0.5.5)(typescript@6.0.3))(typescript@6.0.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.11.1)(kysely@0.28.17)(mysql2@3.22.5(@types/node@26.6.5))(pg@8.21.0)(prisma@6.19.3(magicast@0.5.5)(typescript@6.0.3))(sql.js@1.14.1))(mysql2@3.22.5(@types/node@26.6.5))(oxc-parser@0.133.0)(rolldown@1.2.13)(srvx@0.11.22)
+      nuxt: 4.4.8(ddef4c17de8d30e72a732e3ec53c83f9)
       nypm: 0.6.6
       ohash: 2.0.11
       pathe: 2.0.3
@@ -24340,8 +24401,8 @@ snapshots:
       vue-bundle-renderer: 2.2.0
       vue-devtools-stub: 0.1.0
     optionalDependencies:
-      '@babel/plugin-proposal-decorators': 7.29.7(@babel/core@7.29.7)
-      '@babel/plugin-syntax-typescript': 7.29.7(@babel/core@7.29.7)
+      '@babel/plugin-proposal-decorators': 7.29.7(@babel/core@8.0.7)
+      '@babel/plugin-syntax-typescript': 7.29.7(@babel/core@8.0.7)
     transitivePeerDependencies:
       - '@azure/app-configuration'
       - '@azure/cosmos'
@@ -24397,7 +24458,7 @@ snapshots:
       rc9: 3.0.1
       std-env: 4.3.0
 
-  '@nuxt/vite-builder@4.4.8(@babel/plugin-proposal-decorators@7.29.7(@babel/core@7.29.7))(@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7))(@types/node@26.6.5)(eslint@9.39.4(jiti@2.7.0))(lightningcss@1.33.0)(magicast@0.5.5)(nuxt@4.4.8(0152bafdbcbb1f89073955fc0ce2a309))(optionator@0.9.4)(oxlint@1.69.0(oxlint-tsgolint@0.23.0))(rolldown@1.2.13)(rollup-plugin-visualizer@7.0.1(rolldown@1.2.13)(rollup@4.61.1))(rollup@4.61.1)(terser@5.48.0)(tsx@4.22.4)(typescript@6.0.3)(vue-tsc@3.3.7(typescript@6.0.3))(vue@3.5.35(typescript@6.0.3))(yaml@2.9.0)':
+  '@nuxt/vite-builder@4.4.8(@babel/plugin-proposal-decorators@7.29.7(@babel/core@8.0.7))(@babel/plugin-syntax-jsx@7.29.7(@babel/core@8.0.7))(@types/node@26.6.5)(eslint@9.39.4(jiti@2.7.0))(lightningcss@1.33.0)(magicast@0.5.5)(nuxt@4.4.8(ddef4c17de8d30e72a732e3ec53c83f9))(optionator@0.9.4)(oxlint@1.69.0(oxlint-tsgolint@0.23.0))(rolldown@1.2.13)(rollup-plugin-visualizer@7.0.1(rolldown@1.2.13)(rollup@4.61.1))(rollup@4.61.1)(terser@5.48.0)(tsx@4.22.4)(typescript@6.0.3)(vue-tsc@3.3.7(typescript@6.0.3))(vue@3.5.35(typescript@6.0.3))(yaml@2.9.0)':
     dependencies:
       '@nuxt/kit': 4.4.8(magicast@0.5.5)
       '@rollup/plugin-replace': 6.0.3(rollup@4.61.1)
@@ -24415,7 +24476,7 @@ snapshots:
       magic-string: 0.30.21
       mlly: 1.8.2
       mocked-exports: 0.1.1
-      nuxt: 4.4.8(0152bafdbcbb1f89073955fc0ce2a309)
+      nuxt: 4.4.8(ddef4c17de8d30e72a732e3ec53c83f9)
       nypm: 0.6.6
       pathe: 2.0.3
       pkg-types: 2.3.1
@@ -24430,8 +24491,8 @@ snapshots:
       vue: 3.5.35(typescript@6.0.3)
       vue-bundle-renderer: 2.2.0
     optionalDependencies:
-      '@babel/plugin-proposal-decorators': 7.29.7(@babel/core@7.29.7)
-      '@babel/plugin-syntax-jsx': 7.29.7(@babel/core@7.29.7)
+      '@babel/plugin-proposal-decorators': 7.29.7(@babel/core@8.0.7)
+      '@babel/plugin-syntax-jsx': 7.29.7(@babel/core@8.0.7)
       rolldown: 1.2.13
       rollup-plugin-visualizer: 7.0.1(rolldown@1.2.13)(rollup@4.61.1)
     transitivePeerDependencies:
@@ -35366,7 +35427,7 @@ snapshots:
       - babel-plugin-macros
     optional: true
 
-  nitropack@2.13.4(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(aws4fetch@1.0.20)(better-sqlite3@12.11.1)(drizzle-orm@0.44.7(@cloudflare/workers-types@5.20261006.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(magicast@0.5.5)(typescript@6.0.3))(typescript@6.0.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.11.1)(kysely@0.28.17)(mysql2@3.22.5(@types/node@26.6.5))(pg@8.21.0)(prisma@6.19.3(magicast@0.5.5)(typescript@6.0.3))(sql.js@1.14.1))(mysql2@3.22.5(@types/node@26.6.5))(oxc-parser@0.133.0)(rolldown@1.2.13)(srvx@0.11.16):
+  nitropack@2.13.4(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(aws4fetch@1.0.20)(better-sqlite3@12.11.1)(drizzle-orm@0.44.7(@cloudflare/workers-types@5.20261006.1)(@electric-sql/pglite@0.3.16)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(prisma@6.19.3(magicast@0.5.5)(typescript@6.0.3))(typescript@6.0.3))(@types/better-sqlite3@7.6.13)(@types/pg@8.20.0)(better-sqlite3@12.11.1)(kysely@0.28.17)(mysql2@3.22.5(@types/node@26.6.5))(pg@8.21.0)(prisma@6.19.3(magicast@0.5.5)(typescript@6.0.3))(sql.js@1.14.1))(mysql2@3.22.5(@types/node@26.6.5))(oxc-parser@0.133.0)(rolldown@1.2.13)(srvx@0.11.22):
     dependencies:
       '@cloudflare/kv-asset-handler': 0.4.2
       '@rollup/plugin-alias': 6.0.0(rollup@4.61.1)
@@ -35404,7 +35465,7 @@ snapshots:
       jiti: 2.7.0
       klona: 2.0.6
       knitwork: 1.3.0
-      listhen: 1.10.0(srvx@0.11.16)
+      listhen: 1.10.0(srvx@0.11.22)
       magic-string: 0.30.21
       magicast: 0.5.5
       mime: 4.1.0
@@ -35681,16 +35742,16 @@ snapshots:
     dependencies:
       boolbase: 1.0.0
 
-  nuxt@4.4.8(0152bafdbcbb1f89073955fc0ce2a309):
+  nuxt@4.4.8(ddef4c17de8d30e72a732e3ec53c83f9):
     dependencies:
       '@dxup/nuxt': 0.4.1(magicast@0.5.5)(typescript@6.0.3)
       '@nuxt/cli': 3.35.2(@nuxt/schema@4.4.8)(cac@6.7.14)(commander@13.1.0)(magicast@0.5.5)
       '@nuxt/devtools': 3.2.4(vite@8.0.16(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))(vue@3.5.35(typescript@6.0.3))
       '@nuxt/kit': 4.4.8(magicast@0.5.5)
-      '@nuxt/nitro-server': 4.4.8(3d15e1c15f9be92bb2d963e294c689f0)
+      '@nuxt/nitro-server': 4.4.8(25cad211ca020491aebc10b9bde8adc2)
       '@nuxt/schema': 4.4.8
       '@nuxt/telemetry': 2.8.0(@nuxt/kit@4.4.8(magicast@0.5.5))
-      '@nuxt/vite-builder': 4.4.8(@babel/plugin-proposal-decorators@7.29.7(@babel/core@7.29.7))(@babel/plugin-syntax-jsx@7.29.7(@babel/core@7.29.7))(@types/node@26.6.5)(eslint@9.39.4(jiti@2.7.0))(lightningcss@1.33.0)(magicast@0.5.5)(nuxt@4.4.8(0152bafdbcbb1f89073955fc0ce2a309))(optionator@0.9.4)(oxlint@1.69.0(oxlint-tsgolint@0.23.0))(rolldown@1.2.13)(rollup-plugin-visualizer@7.0.1(rolldown@1.2.13)(rollup@4.61.1))(rollup@4.61.1)(terser@5.48.0)(tsx@4.22.4)(typescript@6.0.3)(vue-tsc@3.3.7(typescript@6.0.3))(vue@3.5.35(typescript@6.0.3))(yaml@2.9.0)
+      '@nuxt/vite-builder': 4.4.8(@babel/plugin-proposal-decorators@7.29.7(@babel/core@8.0.7))(@babel/plugin-syntax-jsx@7.29.7(@babel/core@8.0.7))(@types/node@26.6.5)(eslint@9.39.4(jiti@2.7.0))(lightningcss@1.33.0)(magicast@0.5.5)(nuxt@4.4.8(ddef4c17de8d30e72a732e3ec53c83f9))(optionator@0.9.4)(oxlint@1.69.0(oxlint-tsgolint@0.23.0))(rolldown@1.2.13)(rollup-plugin-visualizer@7.0.1(rolldown@1.2.13)(rollup@4.61.1))(rollup@4.61.1)(terser@5.48.0)(tsx@4.22.4)(typescript@6.0.3)(vue-tsc@3.3.7(typescript@6.0.3))(vue@3.5.35(typescript@6.0.3))(yaml@2.9.0)
       '@unhead/vue': 2.1.15(vue@3.5.35(typescript@6.0.3))
       '@vue/shared': 3.5.35
       chokidar: 5.0.0

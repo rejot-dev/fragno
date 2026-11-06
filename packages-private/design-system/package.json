@@ -41,6 +41,7 @@
   "dependencies": {
     "@base-ui/react": "^1.2.0",
     "@fontsource-variable/plus-jakarta-sans": "5.3.0",
+    "@fontsource-variable/space-grotesk": "5.3.0",
     "@fragno-dev/workflow-visualizer-tokens": "workspace:*",
     "@jsonforms/core": "^3.7.0",
     "@jsonforms/react": "^3.7.0",

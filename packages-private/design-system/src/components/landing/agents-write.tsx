@@ -5,7 +5,7 @@ import { cn } from "../../cn";
 import { ChatAssistantMessage, ChatUserMessage } from "../agents/chat-message";
 import { Button } from "../controls/button";
 import { Icon, type IconName } from "../icon";
-import { LandingSection } from "./landing-section";
+import { LANDING_FRAME_CLASS_NAME, LandingSection } from "./landing-section";
 
 /**
  * What a step costs the reader's trust: plain code, a question for a model, or a stop for a
@@ -166,7 +166,7 @@ export function LandingAgentsWrite() {
           onValueChange={(value: string) => {
             setProcessId(value);
           }}
-          className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] shadow-[var(--bo-panel-shadow)]"
+          className={`overflow-hidden ${LANDING_FRAME_CLASS_NAME} bg-[var(--bo-panel)]`}
         >
           <Tabs.List
             aria-label="Teams"
@@ -248,7 +248,7 @@ function ProcessPanel({ process }: { process: Process }) {
             <span className="text-xs text-[var(--bo-muted-2)]">Later:</span>
             <Button
               variant="secondary"
-              className="h-auto min-h-9 text-left font-normal"
+              className="h-auto min-h-9 rounded-full border border-[color-mix(in_srgb,var(--bo-fg)_14%,transparent)] bg-[var(--bo-panel)] px-4 text-left font-normal shadow-none"
               onClick={() => {
                 setChanged(true);
               }}
@@ -267,7 +267,7 @@ function ProcessPanel({ process }: { process: Process }) {
           </span>
         </div>
 
-        <div className="mt-5 flex items-center gap-2.5 border border-[color:var(--bo-border)] px-4 py-3 text-sm">
+        <div className="mt-5 flex items-center gap-2.5 rounded-t-[10px] border border-[color:var(--bo-border)] px-4 py-3 text-sm">
           <Icon
             name={process.trigger.icon}
             className="size-4 shrink-0 text-[var(--bo-accent-strong)]"
@@ -275,7 +275,7 @@ function ProcessPanel({ process }: { process: Process }) {
           {process.trigger.text}
         </div>
 
-        <ol className="border-x border-b border-[color:var(--bo-border)]">
+        <ol className="overflow-hidden rounded-b-[10px] border-x border-b border-[color:var(--bo-border)]">
           {steps.map((step, index) => (
             <StepRow
               key={step.text}
@@ -323,7 +323,7 @@ function StepTag({ className, children }: { className: string; children: string 
   return (
     <span
       className={cn(
-        "shrink-0 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.08em] uppercase",
+        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-[0.08em] uppercase",
         className,
       )}
     >

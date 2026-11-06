@@ -5,7 +5,7 @@ import { Button } from "../controls/button";
 import { BackofficeStatusLight } from "../feedback/status-light";
 import type { BackofficeStatusTone } from "../feedback/status-tone";
 import { Icon, type IconName } from "../icon";
-import { LandingSection } from "./landing-section";
+import { LANDING_FRAME_CLASS_NAME, LandingSection } from "./landing-section";
 
 type Connection = {
   name: string;
@@ -111,13 +111,15 @@ export function LandingTools() {
       id="landing-tools"
       title="Use what you have, or start from a package."
       visual={
-        <div className="grid gap-px border border-[color:var(--bo-border)] bg-[var(--bo-border)] lg:grid-cols-2">
+        <div
+          className={`grid gap-px overflow-hidden ${LANDING_FRAME_CLASS_NAME} bg-[var(--bo-border)] lg:grid-cols-2`}
+        >
           <div className="bg-[var(--bo-panel)]">
             <p className={columnLabelClassName}>Connected</p>
             <ul className="divide-y divide-[color:var(--bo-border)] border-t border-[color:var(--bo-border)]">
               {CONNECTIONS.map((connection) => (
                 <li key={connection.name} className="flex min-w-0 items-center gap-3 px-5 py-3.5">
-                  <span className="grid size-8 shrink-0 place-items-center bg-[var(--bo-panel-2)] text-[var(--bo-muted)]">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-[var(--bo-panel-2)] text-[var(--bo-muted)]">
                     <Icon name={connection.icon} className="size-4" strokeWidth={1.8} />
                   </span>
                   <span className="min-w-0 flex-1">
@@ -145,7 +147,7 @@ export function LandingTools() {
               {PACKAGES.map((pkg) => (
                 <li
                   key={pkg.slug}
-                  className="border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4"
+                  className="rounded-[10px] border border-[color:var(--bo-border)] bg-[var(--bo-panel)] p-4"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
@@ -168,7 +170,7 @@ export function LandingTools() {
                       ) : (
                         <Button
                           variant="secondary"
-                          className="min-h-9 px-3 text-xs"
+                          className="min-h-9 rounded-[6px] border border-[color-mix(in_srgb,var(--bo-fg)_18%,transparent)] bg-transparent px-3 text-xs shadow-none hover:bg-[color-mix(in_srgb,var(--bo-fg)_6%,transparent)]"
                           onClick={() => {
                             setInstalled((current) => new Set(current).add(pkg.slug));
                           }}

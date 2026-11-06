@@ -1,4 +1,4 @@
-import { BackofficeFragmentMark } from "@fragno-private/design-system/brand/fragment-mark";
+import { LeywayWordmark } from "@fragno-private/design-system/brand/leyway-wordmark";
 import { Link } from "react-router";
 
 const footerLinkClassName =
@@ -7,22 +7,21 @@ const footerLinkClassName =
 /** Provides the Leyway product, community, and Fragno reference links. */
 export function LandingFooter() {
   return (
-    // A cool midnight closes the warm page. It stays fixed in both themes, so the footer redefines
+    // Black closes the warm page. It stays fixed in both themes, so the footer redefines
     // the theme colors its content reads instead of each element naming its own.
-    <footer className="mt-4 bg-[#111827] [--bo-accent:#f58a1f] [--bo-border:#273145] [--bo-fg:#f1f4f9] [--bo-muted-2:#7d899c] [--bo-muted:#a8b3c5]">
-      <div className="mx-auto max-w-[1180px] px-5 py-16 sm:px-8 lg:px-12">
+    <footer
+      data-landing-dark
+      className="bg-black [--bo-accent:#f58a1f] [--bo-border:#262626] [--bo-fg:#f1f4f9] [--bo-muted-2:#7d899c] [--bo-muted:#a8b3c5]"
+    >
+      <div className="mx-auto max-w-[1180px] px-7 py-16 sm:px-8 lg:px-12">
         <div className="grid gap-10 md:grid-cols-[1.3fr_0.7fr]">
           <div className="space-y-6">
             <Link
               to="/"
-              className="inline-flex min-h-11 items-center gap-2.5 text-sm font-extrabold text-[var(--bo-fg)] no-underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
+              className="inline-flex min-h-11 items-center text-[var(--bo-fg)] no-underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
               aria-label="Leyway home"
             >
-              <BackofficeFragmentMark size="md" />
-              Leyway
-              <span className="mt-1 text-[10px] font-semibold text-[var(--bo-muted-2)]">
-                by ReJot
-              </span>
+              <LeywayWordmark className="h-9" />
             </Link>
             <p className="max-w-xs text-sm leading-6 text-pretty text-[var(--bo-muted)]">
               AI that shows its work.
@@ -73,12 +72,6 @@ export function LandingFooter() {
 
         <div className="mt-14 flex flex-col gap-4 border-t border-[color:var(--bo-border)] pt-8 text-xs text-[var(--bo-muted-2)] md:flex-row md:items-center md:justify-between">
           <p>© 2026 ReJot</p>
-          <div className="flex gap-1.5" aria-hidden="true">
-            <span className="size-1.5 bg-[var(--bo-accent)]" />
-            <span className="size-1.5 bg-[var(--bo-live)]" />
-            <span className="size-1.5 bg-[var(--bo-accent)] opacity-45" />
-            <span className="size-1.5 bg-[var(--bo-waiting)]" />
-          </div>
         </div>
       </div>
     </footer>
