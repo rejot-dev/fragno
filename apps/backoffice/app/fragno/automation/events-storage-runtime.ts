@@ -2,9 +2,8 @@ import { automationEventListInputSchema } from "@fragno-dev/backoffice-api/v0/ev
 
 import { decodeCursor, type Cursor, type DatabaseServiceContext } from "@fragno-dev/db";
 
-import { PI_AUTOMATION_SOURCE } from "@/fragno/backoffice-capabilities/capabilities/pi";
-import { INTEGRATIONS_EVENT_SOURCE } from "@/fragno/runtime-tools/families/integrations/integration-events";
-
+import { EVENT_FOLD_REPLAY_ID } from "./event-fold-replay";
+import { FOLDED_EVENT_TYPES } from "./event-projections";
 import { automationFragmentSchema } from "./schema";
 
 type AutomationEventServiceContext = DatabaseServiceContext<Record<string, never>>;
@@ -16,13 +15,11 @@ export const EVENTS_BY_TIME_INDEX = "idx_automation_event_occurredAt_id";
 
 /**
  * Sources whose events `event-projections` folds into current agents and connections. Events stored
- * before it did were never folded, so their history is still the only record of what they did
- * until it is folded too.
+ * before it did are the only record of what they did until `event-fold-replay` folds them too.
  */
-const FOLDED_EVENT_SOURCES: ReadonlySet<string> = new Set([
-  PI_AUTOMATION_SOURCE,
-  INTEGRATIONS_EVENT_SOURCE,
-]);
+const FOLDED_EVENT_SOURCES: ReadonlySet<string> = new Set(
+  FOLDED_EVENT_TYPES.map(({ source }) => source),
+);
 
 /** More than a page of arrivals, and few enough rows to stay below Durable Object SQLite's limits. */
 const EVENTS_DELETED_PER_PASS = 50;
@@ -122,33 +119,37 @@ export const createAutomationEventServices = (
      * the event from its hook and settles through its dispatch record.
      */
     deleteEventsOfType(input: EventDeletionPass) {
-      if (FOLDED_EVENT_SOURCES.has(input.source)) {
-        throw new Error(
-          `Events from ${input.source} hold current agent or connection state and cannot be deleted.`,
-        );
-      }
       const cursor =
         input.cursor === null
           ? null
           : decodeEventsOfTypeCursor({ ...input, cursor: input.cursor, orderDirection: "asc" });
       return this.serviceTx(automationFragmentSchema)
         .retrieve((uow) =>
-          uow.findWithCursor("automation_event", (b) => {
-            const query = b
-              .whereIndex(EVENTS_OF_TYPE_INDEX, (eb) =>
-                eb.and(
-                  eb("source", "=", input.source),
-                  eb("eventType", "=", input.eventType),
-                  eb("occurredAt", "<", input.occurredBefore),
-                ),
-              )
-              .orderByIndex(EVENTS_OF_TYPE_INDEX, "asc")
-              .pageSize(EVENTS_DELETED_PER_PASS)
-              .withOutboxMutations();
-            return cursor ? query.after(cursor) : query;
-          }),
+          uow
+            .findWithCursor("automation_event", (b) => {
+              const query = b
+                .whereIndex(EVENTS_OF_TYPE_INDEX, (eb) =>
+                  eb.and(
+                    eb("source", "=", input.source),
+                    eb("eventType", "=", input.eventType),
+                    eb("occurredAt", "<", input.occurredBefore),
+                  ),
+                )
+                .orderByIndex(EVENTS_OF_TYPE_INDEX, "asc")
+                .pageSize(EVENTS_DELETED_PER_PASS)
+                .withOutboxMutations();
+              return cursor ? query.after(cursor) : query;
+            })
+            .findFirst("event_fold_replay", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", EVENT_FOLD_REPLAY_ID)),
+            ),
         )
-        .mutate(({ uow, retrieveResult: [page] }) => {
+        .mutate(({ uow, retrieveResult: [page, replay] }) => {
+          if (FOLDED_EVENT_SOURCES.has(input.source) && !(replay?.next === null)) {
+            throw new Error(
+              `Events from ${input.source} are not yet folded into agents and connections and cannot be deleted.`,
+            );
+          }
           const deletable = page.items.filter((event) => isDeletableEvent(event, input));
           if (!input.dryRun && deletable.length > 0) {
             uow.deleteMany(

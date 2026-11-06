@@ -131,6 +131,13 @@ still reads every agent and connection, and the replica keeps no local projectio
 are not stored: they follow from runs and steps, which change, so the overview derives them from the
 waiting runs it reads anyway, and pages read them through a SQL view (see Pages).
 
+Events stored before the backend folded them are folded by a replay
+(`../automation/event-fold-replay.ts`), which each Automations object starts the first time it
+starts with it: a chain of hooks folds every stored event of the types the fold reads, a page at a
+time. Folding an event again changes nothing but ties, so the replay also folds the events ingestion
+folded, with no cutover. `deleteEventsOfType` refuses `pi` and `integrations` events until it
+finishes.
+
 ## Pages
 
 A user page (`/workspace/**/<name>.page.js`, built by `../../artifacts/pages/build.server.ts`) holds
@@ -263,10 +270,12 @@ download the outbox again.
   scope's outbox. In the production fixture of Oct 23 that is 16,104 entries and 316 MB, 91% of it
   the bodies of GitHub `webhook.received` events stored before Backoffice stopped storing them.
   Stripping those from the outbox is planned separately.
-- **Events stored before the tables existed are not in them.** The backend folds events as it stores
-  them, so a scope's earlier `pi` and `integrations` events are missing from its agents and
-  connections until something folds them. `deleteEventsOfType` keeps refusing those sources until
-  then.
+- **The replay can settle ties unlike ingestion.** It folds a type's events at a time, in the order
+  an agent's lifecycle runs, and folds again the events ingestion folded. Of an agent's two changes
+  in the same millisecond, ingestion keeps the later stored and the replay the later step, so an
+  agent deleted and recreated in one millisecond reads as deleted after the replay; of a
+  connection's, ingestion keeps the first stored and the replay the first by type. The replay runs
+  once per scope, and saving the agent again, or `pi.agent.backfillEvents`, restores it.
 - **Ties break by storage order.** Of two changes to a connection in the same millisecond, the
   backend keeps the first it stores; of two changes to an agent, the last. Origins that occurred in
   the same millisecond list newest ID first. A run's steps, events, and emissions with the same

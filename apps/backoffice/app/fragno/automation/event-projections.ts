@@ -1,10 +1,13 @@
-import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 import type { FragnoId } from "@fragno-dev/db/schema";
 
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import {
+  PI_AGENT_AUTOMATION_EVENTS,
+  PI_AUTOMATION_SOURCE,
+  PI_QUEUE_AUTOMATION_EVENTS,
+  PI_TURN_AUTOMATION_EVENTS,
   readPiAgentEvent,
   type PiAgentActivityKind,
   type PiAgentEvent,
@@ -17,6 +20,7 @@ import {
   piAgentTurnEndedBy,
   type PiAgentRequestState,
   type PiAgentState,
+  type PiAgentTurnRecord,
 } from "@/fragno/pi/agent/pi-agent-records";
 import {
   applyIntegrationConnectionChange,
@@ -27,47 +31,112 @@ import {
   type IntegrationConnectionRecord,
   type IntegrationConnectionStateChange,
 } from "@/fragno/runtime-tools/families/integrations/integration-connections";
-import type { IntegrationConnectionLabel } from "@/fragno/runtime-tools/families/integrations/integration-events";
+import {
+  INTEGRATIONS_EVENT_SOURCE,
+  integrationConnectionEvents,
+  type IntegrationConnectionLabel,
+} from "@/fragno/runtime-tools/families/integrations/integration-events";
 
 import type { AutomationHookUnitOfWork } from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
 
 type EventProjectionServiceContext = DatabaseServiceContext<Record<string, never>>;
 
+/** An event as it is stored, which is all the fold reads of it. */
+type StoredEvent = {
+  id: string;
+  source: string;
+  eventType: string;
+  payload: unknown;
+  subject: unknown;
+  occurredAt: Date;
+};
+
+/**
+ * Every event type the fold reads, in the order a replay folds them: an agent's events as its
+ * lifecycle runs, so of events in the same instant the later step wins, which is usually the one
+ * stored later.
+ */
+export const FOLDED_EVENT_TYPES: readonly { source: string; eventType: string }[] = [
+  ...[
+    PI_AGENT_AUTOMATION_EVENTS.created,
+    PI_AGENT_AUTOMATION_EVENTS.updated,
+    PI_AGENT_AUTOMATION_EVENTS.deleted,
+    PI_AGENT_AUTOMATION_EVENTS.stopped,
+    PI_AGENT_AUTOMATION_EVENTS.resumed,
+    PI_QUEUE_AUTOMATION_EVENTS.added,
+    PI_QUEUE_AUTOMATION_EVENTS.dispatched,
+    PI_QUEUE_AUTOMATION_EVENTS.dropped,
+    PI_TURN_AUTOMATION_EVENTS.started,
+    PI_TURN_AUTOMATION_EVENTS.completed,
+    PI_TURN_AUTOMATION_EVENTS.aborted,
+    PI_TURN_AUTOMATION_EVENTS.failed,
+  ].map(({ eventType }) => ({ source: PI_AUTOMATION_SOURCE, eventType })),
+  ...integrationConnectionEvents.map(({ eventType }) => ({
+    source: INTEGRATIONS_EVENT_SOURCE,
+    eventType,
+  })),
+];
+
 /** What a stored event records of an agent or a connection, read before its rows are. */
-export type EventProjection =
-  | { kind: "pi"; read: PiAgentEvent; requestKey: string | null }
+type ProjectedEvent =
+  | {
+      kind: "pi";
+      id: string;
+      occurredAt: Date;
+      read: PiAgentEvent;
+      requestKey: string | null;
+      turn: PiAgentTurnRecord | null;
+    }
   | { kind: "connection"; change: IntegrationConnectionStateChange }
   | { kind: "none" };
 
-export function eventProjectionOf(event: AutomationEvent): EventProjection {
-  const stored = {
-    id: event.id,
-    source: event.source,
-    eventType: event.eventType,
-    payload: event.payload,
-    subject: event.subject ?? null,
-    occurredAt: new Date(event.occurredAt),
-  };
-  const read = readPiAgentEvent(stored);
+export function projectedEventOf(event: StoredEvent): ProjectedEvent {
+  const read = readPiAgentEvent(event);
   if (read) {
     const requestId = piAgentEventRequestId(read);
     return {
       kind: "pi",
+      id: event.id,
+      occurredAt: event.occurredAt,
       read,
       requestKey: requestId === null ? null : piAgentRequestKey(read.agentName, requestId),
+      turn: piAgentTurnEndedBy(event, read),
     };
   }
-  const change = readIntegrationConnectionStateChange(stored);
+  const change = readIntegrationConnectionStateChange(event);
   return change ? { kind: "connection", change } : { kind: "none" };
 }
 
-/** The IDs of the rows the event changes, by table; empty for the tables it leaves alone. */
-export function eventProjectionKeys(projection: EventProjection) {
+/** The IDs of the rows the events change, by table; empty for the tables they leave alone. */
+export function projectedEventKeys(events: readonly ProjectedEvent[]) {
+  const keys = {
+    agents: new Set<string>(),
+    requests: new Set<string>(),
+    turns: new Set<string>(),
+    connections: new Set<string>(),
+    changes: new Set<string>(),
+  };
+  for (const event of events) {
+    if (event.kind === "pi") {
+      keys.agents.add(event.read.agentName);
+      if (event.requestKey !== null) {
+        keys.requests.add(event.requestKey);
+      }
+      if (event.turn) {
+        keys.turns.add(event.turn.id);
+      }
+    } else if (event.kind === "connection") {
+      keys.connections.add(event.change.connectionId);
+      keys.changes.add(event.change.eventId);
+    }
+  }
   return {
-    agents: projection.kind === "pi" ? [projection.read.agentName] : [],
-    requests: projection.kind === "pi" && projection.requestKey ? [projection.requestKey] : [],
-    connections: projection.kind === "connection" ? [projection.change.connectionId] : [],
+    agents: [...keys.agents],
+    requests: [...keys.requests],
+    turns: [...keys.turns],
+    connections: [...keys.connections],
+    changes: [...keys.changes],
   };
 }
 
@@ -99,114 +168,122 @@ type IntegrationConnectionRow = {
   labelAt: Date | null;
 };
 
+/** The rows `projectedEventKeys` names, as the transaction that folds the events read them. */
+type ProjectedRows = {
+  agentRows: readonly PiAgentRow[];
+  requestRows: readonly PiAgentRequestRow[];
+  turnRows: readonly { id: FragnoId }[];
+  connectionRows: readonly IntegrationConnectionRow[];
+  changeRows: readonly { id: FragnoId }[];
+};
+
 /**
- * Folds a newly stored event into the rows it changes, which the caller retrieved by
- * `eventProjectionKeys` in the transaction that stores the event. Each event is stored once, so it
- * is folded once. Events about one agent or connection can be stored concurrently: updates check
- * the row's version, and creating a row another event created meanwhile retries, so the loser folds
- * into the winner's row.
+ * Folds stored events, in order, into the rows they change, and writes each row once. Ingestion
+ * folds each event as it stores it; the replay folds events stored before ingestion did, and those
+ * stored since, again. Folding an event again changes nothing but ties: requests record what
+ * happened to them, not how often, turns and changes are keyed by their event, and agents and
+ * connections keep their latest changes by when they happened. Of an agent's changes in the same
+ * instant the one folded last wins, and of a connection's the first, so the replay, which folds by
+ * type, can settle such a tie unlike ingestion did. Events about one agent or connection can be
+ * folded concurrently: updates check the row's version, and creating a row another transaction
+ * created meanwhile retries, so the loser folds into the winner's row.
  */
-export function projectStoredEvent(
+export function foldProjectedEvents(
   uow: AutomationHookUnitOfWork,
-  {
-    event,
-    projection,
-    agentRows,
-    requestRows,
-    connectionRows,
-  }: {
-    event: AutomationEvent;
-    projection: EventProjection;
-    agentRows: readonly PiAgentRow[];
-    requestRows: readonly PiAgentRequestRow[];
-    connectionRows: readonly IntegrationConnectionRow[];
-  },
+  events: readonly ProjectedEvent[],
+  rows: ProjectedRows,
 ) {
-  const occurredAt = new Date(event.occurredAt);
-  switch (projection.kind) {
-    case "pi": {
-      const [agentRow] = agentRows;
-      const [requestRow] = requestRows;
-      const applied = applyPiAgentEvent(
-        agentRow ? piAgentState(agentRow) : null,
-        requestRow ?? null,
-        projection.read,
-        { id: event.id, occurredAt },
-      );
-      const agent = piAgentColumns(applied.agent);
-      if (agentRow) {
-        updateChangedColumns(uow, "pi_agent", agentRow, agent);
-      } else {
-        uow.create(
-          "pi_agent",
-          {
-            id: projection.read.agentName,
-            displayName: formatPiAgentName(projection.read.agentName),
-            ...agent,
-          },
-          { retryOnUniqueConflict: () => true },
+  const agents = new Map(rows.agentRows.map((row) => [row.id.externalId, piAgentState(row)]));
+  const requests = new Map<string, PiAgentRequestState>(
+    rows.requestRows.map(({ id, ...request }) => [id.externalId, request]),
+  );
+  const connections = new Map(
+    rows.connectionRows.map((row) => [row.id.externalId, integrationConnectionFold(row)]),
+  );
+  const recorded = new Set([...rows.turnRows, ...rows.changeRows].map((row) => row.id.externalId));
+  for (const event of events) {
+    switch (event.kind) {
+      case "pi": {
+        const applied = applyPiAgentEvent(
+          agents.get(event.read.agentName) ?? null,
+          event.requestKey === null ? null : (requests.get(event.requestKey) ?? null),
+          event.read,
+          event,
         );
-      }
-      if (projection.requestKey !== null && applied.request) {
-        const request = applied.request;
-        if (requestRow) {
-          updateChangedColumns(uow, "pi_agent_request", requestRow, request);
-        } else {
-          uow.create(
-            "pi_agent_request",
-            { id: projection.requestKey, ...request },
-            { retryOnUniqueConflict: () => true },
-          );
+        agents.set(event.read.agentName, applied.agent);
+        if (event.requestKey !== null && applied.request) {
+          requests.set(event.requestKey, applied.request);
         }
+        if (event.turn && !recorded.has(event.turn.id)) {
+          recorded.add(event.turn.id);
+          uow.create("pi_agent_turn", event.turn);
+        }
+        break;
       }
-      const turn = piAgentTurnEndedBy({ id: event.id, occurredAt }, projection.read);
-      if (turn) {
-        uow.create("pi_agent_turn", turn);
-      }
-      return;
-    }
-    case "connection": {
-      const { change } = projection;
-      const [connectionRow] = connectionRows;
-      const fold = applyIntegrationConnectionChange(
-        connectionRow ? integrationConnectionFold(connectionRow) : null,
-        change,
-      );
-      const record = integrationConnectionRecord(fold);
-      const connection = {
-        service: record.service,
-        kind: record.kind,
-        state: record.state,
-        eventId: record.eventId,
-        changedAt: record.changedAt,
-        name: record.name,
-        authMethod: record.authMethod,
-        labelAt: fold.labelAt,
-        displayName: record.displayName,
-        kindLabel: record.kindLabel,
-      };
-      if (connectionRow) {
-        updateChangedColumns(uow, "integration_connection", connectionRow, connection);
-      } else {
-        uow.create(
-          "integration_connection",
-          { id: change.connectionId, ...connection },
-          { retryOnUniqueConflict: () => true },
+      case "connection": {
+        const { change } = event;
+        connections.set(
+          change.connectionId,
+          applyIntegrationConnectionChange(connections.get(change.connectionId) ?? null, change),
         );
+        if (!recorded.has(change.eventId)) {
+          recorded.add(change.eventId);
+          uow.create("integration_connection_change", {
+            id: change.eventId,
+            connectionId: change.connectionId,
+            service: change.service,
+            kind: change.kind,
+            state: change.state,
+            label: change.label,
+            occurredAt: change.occurredAt,
+          });
+        }
+        break;
       }
-      uow.create("integration_connection_change", {
-        id: change.eventId,
-        connectionId: change.connectionId,
-        service: change.service,
-        kind: change.kind,
-        state: change.state,
-        label: change.label,
-        occurredAt: change.occurredAt,
-      });
-      return;
+      case "none":
+        break;
     }
-    case "none":
-      return;
+  }
+
+  const agentRows = new Map(rows.agentRows.map((row) => [row.id.externalId, row]));
+  for (const [agentName, agent] of agents) {
+    const row = agentRows.get(agentName);
+    if (row) {
+      updateChangedColumns(uow, "pi_agent", row, piAgentColumns(agent));
+    } else {
+      uow.create(
+        "pi_agent",
+        { id: agentName, displayName: formatPiAgentName(agentName), ...piAgentColumns(agent) },
+        { retryOnUniqueConflict: () => true },
+      );
+    }
+  }
+  const requestRows = new Map(rows.requestRows.map((row) => [row.id.externalId, row]));
+  for (const [requestKey, request] of requests) {
+    const row = requestRows.get(requestKey);
+    if (row) {
+      updateChangedColumns(uow, "pi_agent_request", row, request);
+    } else {
+      uow.create(
+        "pi_agent_request",
+        { id: requestKey, ...request },
+        { retryOnUniqueConflict: () => true },
+      );
+    }
+  }
+  const connectionRows = new Map(rows.connectionRows.map((row) => [row.id.externalId, row]));
+  for (const [connectionId, fold] of connections) {
+    const row = connectionRows.get(connectionId);
+    const connection = integrationConnectionColumns(fold);
+    if (row) {
+      updateChangedColumns(uow, "integration_connection", row, connection);
+    } else {
+      uow.create(
+        "integration_connection",
+        { id: connectionId, ...connection },
+        { retryOnUniqueConflict: () => true },
+      );
+    }
   }
 }
 
@@ -281,6 +358,22 @@ function piAgentColumns(agent: PiAgentState) {
     running: agent.running,
     queued: agent.queued,
     steering: agent.steering,
+  };
+}
+
+function integrationConnectionColumns(fold: IntegrationConnectionFold) {
+  const record = integrationConnectionRecord(fold);
+  return {
+    service: record.service,
+    kind: record.kind,
+    state: record.state,
+    eventId: record.eventId,
+    changedAt: record.changedAt,
+    name: record.name,
+    authMethod: record.authMethod,
+    labelAt: fold.labelAt,
+    displayName: record.displayName,
+    kindLabel: record.kindLabel,
   };
 }
 

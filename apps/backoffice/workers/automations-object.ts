@@ -419,6 +419,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       await this.#host.initializeFromStored(stored);
       if (stored) {
         await this.#dispatchInitialized(stored.scope);
+        await this.#startEventFoldReplay();
       }
     });
   }
@@ -439,6 +440,14 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       type: "automations.initialized",
       createdAt: new Date().toISOString(),
     });
+  }
+
+  /** Folds events stored before ingestion folded them; see `event-fold-replay`. */
+  async #startEventFoldReplay() {
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.startEventFoldReplay(),
+    );
   }
 
   async #ensureConfigured(config: AutomationDurableObjectConfig | null): Promise<void> {
@@ -464,6 +473,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       }
       await this.#host.storeAndInitialize(config);
       await this.#dispatchInitialized(config.scope);
+      await this.#startEventFoldReplay();
     });
   }
 
