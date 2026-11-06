@@ -47,7 +47,13 @@ export type {
   ResendEmailReceivedHookPayload,
   ResendEmailStatusUpdatedHookPayload,
   ResendFragmentConfig,
+  ResendMailboxMatch,
+  ResendMailboxEmail,
   ResendReceivedEmailAttachment,
+  ResendMailbox,
+  ResendOpenMailboxResult,
+  ResendPauseMailboxResult,
+  ResendReplaceMailboxAddressResult,
 } from "./definition";
 export type {
   ResendDomain,

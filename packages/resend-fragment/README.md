@@ -49,6 +49,7 @@ Example prompt: **"Integrate the Resend fragment into my application"**
   delivery.
 - **Webhooks** — verified inbound events, retries, and status sync packaged in the fragment.
 - **Inbound email** — body and metadata persisted locally when mail is received.
+- **Mailboxes** — one receiving address per owner you name, so received mail says whose it is.
 - **Threading** — replies grouped into timelines using reply tokens, headers, and subject
   heuristics.
 - **Frontend hooks** — typed hooks for domains, emails, threads, messages, and replies.
@@ -150,6 +151,42 @@ https://your-app.com/api/resend/webhook
 ```
 
 The fragment listens for `email.*` events.
+
+## Mailboxes
+
+Give each of your users one receiving address on a domain whose MX records point at Resend. A
+mailbox maps one address to an `owner` string the fragment stores but never interprets, such as your
+user ID, and each owner has at most one. `onEmailReceived` runs with
+`recipientMailbox: { address, owner }` once for each owner whose current, unpaused address Resend
+delivered the mail to, or once with `null` when it reached none; the fragment stores the mail once
+either way. Resend may report an email again, such as once per recipient: each report reaches only
+owners not yet reached. `getMailboxEmail({ emailMessageId, owner })` reads a stored message, with
+its bodies and headers, only for an owner of an address it was delivered to.
+
+```ts
+const result = await resendFragment.callServices(() =>
+  resendFragment.services.openMailbox({
+    owner: user.id,
+    address: "quiet-amber-falcon@inbound.example.com",
+  }),
+);
+// { status: "opened", mailbox } | { status: "taken" } | { status: "invalid", message }
+```
+
+- `openMailbox` gives an owner without a mailbox one at `address`. An owner with one gets it back,
+  resumed if paused, and `address` is ignored, so an owner keeps one address.
+- `pauseMailbox(owner)` stops delivery; the mailbox keeps its address.
+- `replaceMailboxAddress({ owner, address })` moves a mailbox to a new address.
+- `getMailbox(owner)` and `findMailbox(address)` read mailboxes.
+- `onMailboxChanged(mailbox, context)` receives each change, as `{ owner, address, paused }`: a
+  mailbox opened, resumed, paused, or moved. A durable hook, triggered in the transaction that makes
+  the change, delivers it and retries until it succeeds.
+- Concurrent calls settle as if made one after another: two opens for one owner return the same
+  mailbox, and of two owners claiming one address, one gets `taken`.
+- An address is issued once: after it is replaced, no owner can get it again, so mail people still
+  send there reaches no one new.
+- Addresses are lowercased. Local parts may not contain `+`, which marks thread reply addresses, or
+  be a role that can act for the domain, such as `postmaster` or `admin`.
 
 ## Development
 

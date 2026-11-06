@@ -7,17 +7,21 @@ import {
   serviceCalls,
   withDatabase,
   type DatabaseServiceContext,
+  type HookContext,
   type HookFn,
   type TypedUnitOfWork,
 } from "@fragno-dev/db";
 
+import { normalizeMailboxAddress, parseMailboxAddress } from "./mailbox-address";
 import type { ResendSendEmailInput } from "./routes/emails";
-import { resolveEmailPayload, toArray } from "./routes/shared";
+import { buildThreadMessage, resolveEmailPayload, toArray } from "./routes/shared";
+import type { ResendThreadMessage } from "./routes/threads";
 import { resendSchema } from "./schema";
 import {
   buildHeuristicKey,
   buildInboundThreadEnvelope,
   buildParticipantKey,
+  extractMailbox,
   generateOpaqueToken,
   mergeParticipants,
   withinRecencyWindow,
@@ -41,6 +45,38 @@ export interface ResendEmailStatusUpdatedHookPayload {
   idempotencyKey: string;
 }
 
+/** A registered address and the owner it delivers to, which the fragment never interprets. */
+export interface ResendMailboxMatch {
+  address: string;
+  owner: string;
+}
+
+/** An owner's one address. A paused mailbox keeps its address but is not in use. */
+export type ResendMailbox = {
+  owner: string;
+  address: string;
+  paused: boolean;
+};
+
+export type ResendOpenMailboxResult =
+  | { status: "opened"; mailbox: ResendMailbox }
+  /** Issued before, to this owner or another; an address is never issued twice. */
+  | { status: "taken" }
+  | { status: "invalid"; message: string };
+
+export type ResendReplaceMailboxAddressResult =
+  | { status: "replaced"; mailbox: ResendMailbox }
+  | { status: "taken" }
+  | { status: "invalid"; message: string }
+  | { status: "not-found" };
+
+export type ResendPauseMailboxResult = { status: "paused" } | { status: "not-found" };
+
+/** A received message with the recipient mailbox that makes its owner its reader. */
+export type ResendMailboxEmail = ResendThreadMessage & {
+  recipientMailbox: ResendMailboxMatch;
+};
+
 export interface ResendEmailReceivedHookPayload {
   emailMessageId: string;
   providerEmailId: string;
@@ -51,17 +87,25 @@ export interface ResendEmailReceivedHookPayload {
   subject: string;
   messageId: string;
   attachments: ResendReceivedEmailAttachment[];
+  /**
+   * The registered address the email was delivered to: the callback runs once for each owner it
+   * reached, or once with null when it reached none.
+   */
+  recipientMailbox: ResendMailboxMatch | null;
   receivedAt: string;
   webhookReceivedAt: string;
   threadId: string;
   threadResolvedVia: "reply-token" | "in-reply-to" | "references" | "heuristic" | "new-thread";
   eventType: "email.received";
   event: WebhookEventPayload;
+  /** One per delivery: it differs between the owners an email reached, and stays across retries. */
   idempotencyKey: string;
 }
 
 export interface ResendFragmentConfig {
   apiKey: string;
+  /** The Resend client the fragment calls, such as a fake in tests; built from apiKey if omitted. */
+  client?: Resend;
   webhookSecret: string;
   defaultFrom?: string;
   defaultReplyTo?: string | string[];
@@ -70,6 +114,11 @@ export interface ResendFragmentConfig {
   defaultHeaders?: Record<string, string>;
   onEmailStatusUpdated?: (payload: ResendEmailStatusUpdatedHookPayload) => Promise<void> | void;
   onEmailReceived?: (payload: ResendEmailReceivedHookPayload) => Promise<void> | void;
+  /**
+   * A mailbox opened, resumed, paused, or moved to a new address. It is delivered durably after the
+   * change commits, and retried until it succeeds.
+   */
+  onMailboxChanged?: (mailbox: ResendMailbox, context: HookContext) => Promise<void> | void;
 }
 
 type ResendEmailWebhookEvent = Extract<WebhookEventPayload, { type: `email.${string}` }>;
@@ -79,6 +128,7 @@ type DeliverEmailReceivedHookPayload = {
   emailMessageId: string;
   threadId: string;
   threadResolvedVia: ResendEmailReceivedHookPayload["threadResolvedVia"];
+  recipientMailbox: ResendMailboxMatch | null;
 };
 type DeliverEmailStatusUpdatedHookPayload = {
   event: ResendEmailWebhookEvent;
@@ -90,6 +140,7 @@ export type ResendHooksMap = {
   onResendWebhook: HookFn<{ event: WebhookEventPayload }>;
   deliverEmailReceived: HookFn<DeliverEmailReceivedHookPayload>;
   deliverEmailStatusUpdated: HookFn<DeliverEmailStatusUpdatedHookPayload>;
+  deliverMailboxChanged: HookFn<ResendMailbox>;
 };
 
 type ResendUow = TypedUnitOfWork<typeof resendSchema>;
@@ -99,6 +150,7 @@ type ResendEmailMessageRow = SelectResult<
   true
 >;
 type ResendThreadRow = SelectResult<(typeof resendSchema)["tables"]["emailThread"], {}, true>;
+type ResendMailboxRow = SelectResult<(typeof resendSchema)["tables"]["mailbox"], {}, true>;
 type ResendServiceContext = DatabaseServiceContext<ResendHooksMap>;
 
 const SEND_EMAIL_HOOK_ID_PREFIX = "resend:send-email:";
@@ -117,9 +169,16 @@ const statusFromWebhookEvent = (event: ResendEmailWebhookEvent) => {
   return event.type.replace("email.", "");
 };
 
-const buildReceivedEmailDeliveryHookId = (emailMessageId: string) => {
-  return `deliver-email-received:${emailMessageId}`;
+/** `position` is the reached mailbox's position in the message's recipient mailboxes, if any. */
+const buildReceivedEmailDeliveryHookId = (emailMessageId: string, position: number | null) => {
+  return position === null
+    ? `deliver-email-received:${emailMessageId}`
+    : `deliver-email-received:${emailMessageId}:${position}`;
 };
+
+/** The mailboxes a received message reached; none for sent messages. */
+const readRecipientMailboxes = (stored: unknown): ResendMailboxMatch[] =>
+  (stored as ResendMailboxMatch[] | null | undefined) ?? [];
 
 const buildStatusUpdatedDeliveryHookId = (
   emailMessageId: string,
@@ -189,6 +248,14 @@ const buildResendPayload = (email: ResendEmailMessageRow): CreateEmailOptions =>
     headers: (email.headers as CreateEmailOptions["headers"]) ?? undefined,
   };
 };
+
+function toMailbox(row: ResendMailboxRow): ResendMailbox {
+  return {
+    owner: row.owner,
+    address: row.address,
+    paused: row.pausedAt !== null,
+  };
+}
 
 const sortThreadsByRecent = (threads: ResendThreadRow[]) => {
   return threads.toSorted((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
@@ -300,6 +367,16 @@ const resolveInboundThread = ({
 const defineResendServiceMethods = <T>(methods: T & ThisType<ResendServiceContext>) => methods;
 
 const createResendServiceMethods = (config: ResendFragmentConfig) => {
+  /** Delivers a mailbox change in the transaction that makes it, so it is never lost. */
+  const announceMailboxChange = (
+    uow: Pick<TypedUnitOfWork<typeof resendSchema, [], unknown, ResendHooksMap>, "triggerHook">,
+    mailbox: ResendMailbox,
+  ) => {
+    if (config.onMailboxChanged) {
+      uow.triggerHook("deliverMailboxChanged", mailbox);
+    }
+  };
+
   const services = defineResendServiceMethods({
     queueEmail: function (input: ResendSendEmailInput, options: { idempotencyKey?: string } = {}) {
       const payload = resolveEmailPayload(input, config);
@@ -435,6 +512,182 @@ const createResendServiceMethods = (config: ResendFragmentConfig) => {
         })
         .build();
     },
+
+    /** The owner's mailbox, paused or not; null when it has none. */
+    getMailbox: function (owner: string) {
+      return this.serviceTx(resendSchema)
+        .retrieve((uow) =>
+          uow.findFirst("mailbox", (b) =>
+            b.whereIndex("idx_mailbox_owner", (eb) => eb("owner", "=", owner)),
+          ),
+        )
+        .transformRetrieve(([row]) => (row ? toMailbox(row) : null))
+        .build();
+    },
+
+    /**
+     * Gives the owner its mailbox, resumed if paused. Only an owner without one gets `address`, so
+     * an owner keeps one address however often it opens its mailbox.
+     */
+    openMailbox: function ({ owner, address }: { owner: string; address: string }) {
+      const parsed = parseMailboxAddress(address);
+      if (!parsed.ok) {
+        return this.serviceTx(resendSchema)
+          .mutate((): ResendOpenMailboxResult => ({ status: "invalid", message: parsed.message }))
+          .build();
+      }
+
+      return this.serviceTx(resendSchema)
+        .retrieve((uow) =>
+          uow
+            .findFirst("mailbox", (b) =>
+              b.whereIndex("idx_mailbox_owner", (eb) => eb("owner", "=", owner)),
+            )
+            .findFirst("mailboxAddress", (b) =>
+              b.whereIndex("idx_mailboxAddress_address", (eb) =>
+                eb("address", "=", parsed.address),
+              ),
+            ),
+        )
+        .mutate(({ uow, retrieveResult: [mailbox, issued] }): ResendOpenMailboxResult => {
+          if (mailbox) {
+            const opened = { ...toMailbox(mailbox), paused: false };
+            if (mailbox.pausedAt) {
+              uow.update("mailbox", mailbox.id, (b) => b.set({ pausedAt: null }).check());
+              announceMailboxChange(uow, opened);
+            }
+            return { status: "opened", mailbox: opened };
+          }
+          if (issued) {
+            return { status: "taken" };
+          }
+          // A concurrent open for this owner or address that commits first fails these checks, so
+          // the retry reads its mailbox or issued address instead of breaking a unique index.
+          uow.checkAbsent("mailbox", "idx_mailbox_owner", { owner });
+          uow.checkAbsent("mailboxAddress", "idx_mailboxAddress_address", {
+            address: parsed.address,
+          });
+          uow.create("mailboxAddress", { address: parsed.address, owner });
+          uow.create("mailbox", { owner, address: parsed.address, pausedAt: null });
+          const opened = { owner, address: parsed.address, paused: false };
+          announceMailboxChange(uow, opened);
+          return { status: "opened", mailbox: opened };
+        })
+        .build();
+    },
+
+    /** Stops delivery; the mailbox keeps its address, so opening it again resumes it. */
+    pauseMailbox: function (owner: string) {
+      return this.serviceTx(resendSchema)
+        .retrieve((uow) =>
+          uow.findFirst("mailbox", (b) =>
+            b.whereIndex("idx_mailbox_owner", (eb) => eb("owner", "=", owner)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [mailbox] }): ResendPauseMailboxResult => {
+          if (!mailbox) {
+            return { status: "not-found" };
+          }
+          if (!mailbox.pausedAt) {
+            uow.update("mailbox", mailbox.id, (b) => b.set({ pausedAt: uow.now() }).check());
+            announceMailboxChange(uow, { ...toMailbox(mailbox), paused: true });
+          }
+          return { status: "paused" };
+        })
+        .build();
+    },
+
+    /** Moves the owner's mailbox to a new address; the old one is never issued again. */
+    replaceMailboxAddress: function ({ owner, address }: { owner: string; address: string }) {
+      const parsed = parseMailboxAddress(address);
+      if (!parsed.ok) {
+        return this.serviceTx(resendSchema)
+          .mutate(
+            (): ResendReplaceMailboxAddressResult => ({
+              status: "invalid",
+              message: parsed.message,
+            }),
+          )
+          .build();
+      }
+
+      return this.serviceTx(resendSchema)
+        .retrieve((uow) =>
+          uow
+            .findFirst("mailbox", (b) =>
+              b.whereIndex("idx_mailbox_owner", (eb) => eb("owner", "=", owner)),
+            )
+            .findFirst("mailboxAddress", (b) =>
+              b.whereIndex("idx_mailboxAddress_address", (eb) =>
+                eb("address", "=", parsed.address),
+              ),
+            ),
+        )
+        .mutate(({ uow, retrieveResult: [mailbox, issued] }): ResendReplaceMailboxAddressResult => {
+          if (!mailbox) {
+            return { status: "not-found" };
+          }
+          if (issued) {
+            return { status: "taken" };
+          }
+          uow.checkAbsent("mailboxAddress", "idx_mailboxAddress_address", {
+            address: parsed.address,
+          });
+          uow.create("mailboxAddress", { address: parsed.address, owner });
+          uow.update("mailbox", mailbox.id, (b) => b.set({ address: parsed.address }).check());
+          const replaced = { ...toMailbox(mailbox), address: parsed.address };
+          announceMailboxChange(uow, replaced);
+          return { status: "replaced", mailbox: replaced };
+        })
+        .build();
+    },
+
+    /** A received message, only for an owner of a mailbox it was delivered to. */
+    getMailboxEmail: function ({
+      emailMessageId,
+      owner,
+    }: {
+      emailMessageId: string;
+      owner: string;
+    }) {
+      return this.serviceTx(resendSchema)
+        .retrieve((uow) =>
+          uow.findFirst("emailMessage", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", emailMessageId)),
+          ),
+        )
+        .transformRetrieve(([email]): ResendMailboxEmail | null => {
+          const recipientMailbox = readRecipientMailboxes(email?.recipientMailboxes).find(
+            (match) => match.owner === owner,
+          );
+          if (!email || !recipientMailbox) {
+            return null;
+          }
+          const { threadId } = email;
+          // Every received message is threaded on receipt.
+          if (threadId === null) {
+            throw new Error(`Received email ${emailMessageId} has no thread.`);
+          }
+          return { ...buildThreadMessage({ ...email, threadId }), recipientMailbox };
+        })
+        .build();
+    },
+
+    /** The owner an address delivers to; null unless it is a mailbox's current, unpaused address. */
+    findMailbox: function (address: string) {
+      return this.serviceTx(resendSchema)
+        .retrieve((uow) =>
+          uow.findFirst("mailbox", (b) =>
+            b.whereIndex("idx_mailbox_address", (eb) =>
+              eb("address", "=", normalizeMailboxAddress(address)),
+            ),
+          ),
+        )
+        .transformRetrieve(([row]): ResendMailboxMatch | null =>
+          row && !row.pausedAt ? { address: row.address, owner: row.owner } : null,
+        )
+        .build();
+    },
   });
 
   return services;
@@ -450,7 +703,7 @@ const createResendServices = (
 export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("resend")
   .extend(withDatabase(resendSchema))
   .withDependencies(({ config }) => ({
-    resend: new Resend(config.apiKey),
+    resend: config.client ?? new Resend(config.apiKey),
   }))
   .providesBaseService(({ defineService, config }) => createResendServices(defineService, config))
   .provideHooks<ResendHooksMap>(({ defineHook, deps, config, services }) => ({
@@ -606,6 +859,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
       emailMessageId,
       threadId,
       threadResolvedVia,
+      recipientMailbox,
     }) {
       if (!config.onEmailReceived) {
         return;
@@ -621,14 +875,20 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
         subject: event.data.subject,
         messageId: event.data.message_id,
         attachments: buildReceivedEmailAttachments(event.data.attachments),
+        recipientMailbox,
         receivedAt: event.data.created_at,
         webhookReceivedAt: event.created_at,
         threadId,
         threadResolvedVia,
         eventType: event.type,
         event,
-        idempotencyKey: this.idempotencyKey,
+        // One transaction delivers to every owner an email reached, so its key would repeat;
+        // each delivery's hook ID is its own.
+        idempotencyKey: this.hookId.externalId,
       });
+    }),
+    deliverMailboxChanged: defineHook(async function (mailbox) {
+      await config.onMailboxChanged?.(mailbox, this);
     }),
     deliverEmailStatusUpdated: defineHook(async function ({ event, emailMessageId }) {
       if (!config.onEmailStatusUpdated) {
@@ -659,6 +919,11 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
 
         const receivedDetail = receivedResponse.data as ReceivedEmailDetailLike;
         const inbound = buildInboundThreadEnvelope(receivedDetail);
+        // The event names the recipients Resend delivered it to; the message's own To header may
+        // name others, such as the original recipient of a forwarded message.
+        const recipients = [
+          ...new Set(event.data.to.flatMap((recipient) => extractMailbox(recipient) ?? [])),
+        ];
 
         await this.handlerTx()
           .withServiceCalls(() =>
@@ -671,6 +936,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
               inbound.heuristicKey
                 ? services.findRecentHeuristicThread(inbound.heuristicKey, receivedAt)
                 : undefined,
+              ...recipients.map((recipient) => services.findMailbox(recipient)),
             ),
           )
           .retrieve(({ forSchema }) =>
@@ -683,13 +949,19 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
           .transformRetrieve(
             (
               [existingMessage],
-              [replyTokenThread, inReplyToThread, referencesThread, heuristicThread],
+              [replyTokenThread, inReplyToThread, referencesThread, heuristicThread, ...matches],
             ) => ({
               existingMessage,
               replyTokenThread: replyTokenThread ?? null,
               inReplyToThread: inReplyToThread ?? null,
               referencesThread: referencesThread ?? null,
               heuristicThread: heuristicThread ?? null,
+              // One per owner: an owner's single mailbox has one current address.
+              recipientMailboxes: matches.filter(
+                (match, index): match is ResendMailboxMatch =>
+                  match !== null &&
+                  matches.findIndex((other) => other?.owner === match.owner) === index,
+              ),
             }),
           )
           .mutate(({ forSchema, retrieveResult }) => {
@@ -699,11 +971,8 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
               inReplyToThread,
               referencesThread,
               heuristicThread,
+              recipientMailboxes,
             } = retrieveResult;
-
-            if (existingMessage) {
-              return;
-            }
 
             const { thread: resolvedThread, threadResolvedVia } = resolveInboundThread({
               replyTokenThread,
@@ -713,6 +982,60 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
             });
 
             const uow = forSchema(resendSchema);
+            /** One delivery per owner reached, numbered from `first` in the message's list. */
+            const deliver = (
+              emailMessageId: string,
+              threadId: string,
+              matches: ResendMailboxMatch[],
+              first: number,
+            ) => {
+              if (!config.onEmailReceived) {
+                return;
+              }
+              const deliveries =
+                matches.length === 0
+                  ? [{ recipientMailbox: null, position: null }]
+                  : matches.map((match, index) => ({
+                      recipientMailbox: match,
+                      position: first + index,
+                    }));
+              for (const { recipientMailbox, position } of deliveries) {
+                uow.triggerHook(
+                  "deliverEmailReceived",
+                  {
+                    event,
+                    emailMessageId,
+                    threadId,
+                    threadResolvedVia,
+                    recipientMailbox,
+                  },
+                  { id: buildReceivedEmailDeliveryHookId(emailMessageId, position) },
+                );
+              }
+            };
+
+            if (existingMessage) {
+              // Resend may report one message again, such as once per recipient: deliver it only
+              // to owners it has not reached. Their delivery reports how the thread resolves now.
+              const reached = readRecipientMailboxes(existingMessage.recipientMailboxes);
+              const added = recipientMailboxes.filter(
+                (match) => !reached.some(({ owner }) => owner === match.owner),
+              );
+              if (added.length === 0 || existingMessage.threadId === null) {
+                return;
+              }
+              uow.update("emailMessage", existingMessage.id, (b) =>
+                b.set({ recipientMailboxes: [...reached, ...added], updatedAt: uow.now() }).check(),
+              );
+              deliver(
+                existingMessage.id.valueOf(),
+                String(existingMessage.threadId.valueOf()),
+                added,
+                reached.length,
+              );
+              return;
+            }
+
             const threadSummary = appendToThreadSummary(uow, resolvedThread, {
               subject: receivedDetail.subject,
               normalizedSubject: inbound.normalizedSubject,
@@ -722,7 +1045,12 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
               preview: inbound.preview,
             });
 
+            // A received message takes Resend's email ID, so a concurrent report of the same email
+            // that commits first fails this check, and the retry reads its message instead of
+            // storing another.
+            uow.checkAbsent("emailMessage", "primary", { id: receivedDetail.id });
             const emailMessageId = uow.create("emailMessage", {
+              id: receivedDetail.id,
               threadId: threadSummary.threadId,
               direction: "inbound",
               status: "received",
@@ -746,22 +1074,14 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
               lastEventAt: webhookReceivedAt,
               errorCode: null,
               errorMessage: null,
+              recipientMailboxes,
             });
 
-            if (!config.onEmailReceived) {
-              return;
-            }
-
-            const emailMessageIdValue = emailMessageId.valueOf();
-            uow.triggerHook(
-              "deliverEmailReceived",
-              {
-                event,
-                emailMessageId: emailMessageIdValue,
-                threadId: String(threadSummary.threadId),
-                threadResolvedVia,
-              },
-              { id: buildReceivedEmailDeliveryHookId(emailMessageIdValue) },
+            deliver(
+              emailMessageId.valueOf(),
+              String(threadSummary.threadId),
+              recipientMailboxes,
+              0,
             );
           })
           .execute();

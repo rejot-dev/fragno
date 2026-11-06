@@ -18,6 +18,8 @@ The fragment config covers Resend credentials, defaults, and webhook callbacks.
 What you provide:
 
 - `apiKey`: Resend API key.
+- `client` (optional): the Resend client to call, such as a fake in tests; built from `apiKey` when
+  omitted.
 - `webhookSecret`: secret for verifying webhook requests.
 - `defaultFrom` (optional): default sender.
 - `defaultReplyTo` (optional): default reply-to header(s).
@@ -37,6 +39,12 @@ What the fragment needs via options:
 - Inbound webhook processing.
 - Canonical local message/thread history.
 - Typed hooks for domains, emails, received emails, threads, and replies.
+- Mailboxes: `openMailbox`, `pauseMailbox`, `replaceMailboxAddress`, `getMailbox`, and `findMailbox`
+  give each opaque owner one receiving address; `onEmailReceived` runs once per matched owner with
+  its `recipientMailbox`, and `getMailboxEmail` reads a message only for an owner it reached. An
+  address is issued once, so a replaced one never reaches another owner.
+  `onMailboxChanged(mailbox, context)` receives each opened, resumed, paused, or moved mailbox
+  through a durable hook triggered in the transaction that changes it.
 
 ## Docs
 
