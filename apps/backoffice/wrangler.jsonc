@@ -109,6 +109,7 @@
   ],
   // Runs Workers AI models, such as Clairic, for the `backoffice#workers-ai` integration. Workers AI
   // has no local simulator, so local dev calls, and bills, the account Wrangler is logged in to.
+  // `remote: false` is an error for it; CLOUDFLARE_VITE_FORCE_LOCAL=true in .env keeps dev local.
   "ai": { "binding": "AI", "remote": true },
   // Tags telemetry with the deployed version, so errors and metrics can be compared per release.
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
