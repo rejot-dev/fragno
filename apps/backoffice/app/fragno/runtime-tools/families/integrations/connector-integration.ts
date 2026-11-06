@@ -208,6 +208,15 @@ function createConnectorAccess(runtime: ConnectorRuntime, context: IntegrationCo
     }
     return fail(response);
   }
+  async function catalog() {
+    const response = await invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
+      callRoute("GET", "/providers"),
+    );
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return response.data.providers;
+    }
+    return fail(response);
+  }
   function namedAccount(selector: z.output<typeof projectConnectorNamedConnectionSchema>) {
     return invoke(BACKOFFICE_PERMISSION.connections.read, selector, () =>
       callRoute("GET", "/accounts/by-name", { query: selector }),
@@ -257,6 +266,7 @@ function createConnectorAccess(runtime: ConnectorRuntime, context: IntegrationCo
     isNotConfigured,
     isAmbiguous,
     providers,
+    catalog,
     namedAccount,
     namedRequest,
     currentRequests,
@@ -299,6 +309,31 @@ export async function confirmConnectorConsent({
     return access.fail(refreshed);
   }
   return refreshed.data.state;
+}
+
+/**
+ * Every provider the Connector's catalog lists, configured for this project or not; empty when the
+ * Connector is unavailable. Discovery offers only the configured ones, so agents never read the
+ * whole catalog.
+ */
+export async function listConnectorCatalog({
+  runtime,
+  context,
+}: {
+  runtime: ConnectorRuntime;
+  context: IntegrationContext;
+}) {
+  if (context.execution.scope.kind !== "user" || !runtime.config.bindings.projectConnector) {
+    return [];
+  }
+  try {
+    return await createConnectorAccess(runtime, context).catalog();
+  } catch (cause) {
+    if (cause instanceof NotConfiguredError) {
+      return [];
+    }
+    throw cause;
+  }
 }
 
 /** Projects user-owned OAuth requests and accounts without owning credentials or current-selection state. */

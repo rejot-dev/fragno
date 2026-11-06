@@ -8,6 +8,7 @@ const developerTools = { id: "developer_tools", label: "Developer Tools" };
 const productivity = { id: "productivity", label: "Productivity" };
 const storage = { id: "storage", label: "Storage" };
 const documents = { id: "documents", label: "Documents & Content" };
+const popular = { id: "popular", label: "Popular" };
 
 function oomolLogo(name: string) {
   return { kind: "image" as const, url: `https://static.oomol.com/logo/third-party/${name}.svg` };
@@ -19,7 +20,7 @@ const ITEMS: SourceCatalogItem[] = [
     label: "Gmail",
     description: "Email conversations, labels, drafts, and mailbox management",
     icon: oomolLogo("Gmail"),
-    categories: [communication, productivity],
+    categories: [popular, communication, productivity],
     badge: "Connected",
     to: "#gmail",
   },
@@ -37,7 +38,7 @@ const ITEMS: SourceCatalogItem[] = [
     label: "Linear",
     description: "Product and engineering issue, project, and cycle management",
     icon: oomolLogo("Linear"),
-    categories: [productivity, developerTools],
+    categories: [popular, productivity, developerTools],
     badge: null,
     to: "#linear",
   },
@@ -91,7 +92,12 @@ const ITEMS: SourceCatalogItem[] = [
 export function Sources() {
   return (
     <div className="h-[560px] max-w-4xl overflow-y-auto">
-      <SourceCatalog label="Sources to connect" items={ITEMS} expanded={null} />
+      <SourceCatalog
+        label="Sources to connect"
+        items={ITEMS}
+        leadingCategoryId="popular"
+        expanded={null}
+      />
     </div>
   );
 }
@@ -102,6 +108,7 @@ export function ExpandedSource() {
       <SourceCatalog
         label="Sources to connect"
         items={ITEMS}
+        leadingCategoryId="popular"
         expanded={{
           id: "gmail",
           content: (

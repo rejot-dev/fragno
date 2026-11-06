@@ -51,8 +51,14 @@ function matchesQuery(item: SourceCatalogItem, query: string): boolean {
   );
 }
 
-/** Groups items by their primary category, alphabetically, with uncategorized items last. */
-function groupByPrimaryCategory(items: readonly SourceCatalogItem[]): SourceCatalogGroup[] {
+/**
+ * Groups items by their primary category, alphabetically, with the leading category first and
+ * uncategorized items last.
+ */
+function groupByPrimaryCategory(
+  items: readonly SourceCatalogItem[],
+  leadingCategoryId: string | null,
+): SourceCatalogGroup[] {
   const groups = new Map<string, SourceCatalogGroup>();
   for (const item of items) {
     const category = item.categories[0] ?? OTHER_GROUP;
@@ -66,7 +72,15 @@ function groupByPrimaryCategory(items: readonly SourceCatalogItem[]): SourceCata
       items: [...group.items].sort((a, b) => a.label.localeCompare(b.label)),
     }))
     .sort((a, b) =>
-      a.id === OTHER_GROUP.id ? 1 : b.id === OTHER_GROUP.id ? -1 : a.label.localeCompare(b.label),
+      a.id === leadingCategoryId
+        ? -1
+        : b.id === leadingCategoryId
+          ? 1
+          : a.id === OTHER_GROUP.id
+            ? 1
+            : b.id === OTHER_GROUP.id
+              ? -1
+              : a.label.localeCompare(b.label),
     );
 }
 
@@ -166,11 +180,14 @@ function ExpandedSourceCard({
 export function SourceCatalog({
   label,
   items,
+  leadingCategoryId,
   expanded,
 }: {
   /** Names the catalog for screen readers, e.g. "Sources to connect". */
   label: string;
   items: readonly SourceCatalogItem[];
+  /** The category listed before all others, such as Popular, or null to keep them alphabetical. */
+  leadingCategoryId: string | null;
   expanded: SourceCatalogExpansion | null;
 }) {
   const [query, setQuery] = useState("");
@@ -183,8 +200,12 @@ export function SourceCatalog({
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const groups = useMemo(
-    () => groupByPrimaryCategory(items.filter((item) => matchesQuery(item, normalizedQuery))),
-    [items, normalizedQuery],
+    () =>
+      groupByPrimaryCategory(
+        items.filter((item) => matchesQuery(item, normalizedQuery)),
+        leadingCategoryId,
+      ),
+    [items, normalizedQuery, leadingCategoryId],
   );
   // A search that leaves the chosen category empty hides its chip, so the filter lapses with it.
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;
@@ -273,7 +294,7 @@ export function SourceCatalog({
           }}
           className="w-full"
         />
-        <nav aria-label="Categories" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+        <nav aria-label="Categories" className="flex flex-wrap gap-1.5">
           {groups.map((group) => (
             <button
               key={group.id}

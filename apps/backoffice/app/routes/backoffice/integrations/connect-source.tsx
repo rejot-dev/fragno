@@ -4,7 +4,7 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/integrations";
 import { ActionItem, ActionItemLink } from "@fragno-private/design-system/controls/action-item";
 import { InlineAlert } from "@fragno-private/design-system/feedback/inline-alert";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import {
   Form,
   useNavigation,
@@ -26,11 +26,14 @@ import { ConnectorActionForm } from "./connector-action-form";
 
 /** What the Connect page hands the source it opened. */
 export type ConnectSourceContext = {
-  service: IntegrationOverview;
+  /** A discovered service, or a catalog provider the agent sets up because Connector cannot yet. */
+  service: ConnectSource;
   connectPath: string;
   /** What the Connect page's last action reported, shown in the open source. */
   actionError: string | null;
 };
+
+type ConnectSource = Pick<IntegrationOverview, "id" | "label">;
 
 /**
  * How a chosen service connects. A Connector service with an account already connected goes
@@ -72,7 +75,6 @@ export default function BackofficeIntegrationsConnectSource({ loaderData }: Rout
   const { service, connectPath, actionError } = useOutletContext<ConnectSourceContext>();
   const openAgentDrawer = useOpenAgentDrawer();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [agentOpened, setAgentOpened] = useState(false);
 
   // An action that handed the conversation to the agent lands here; open it beside the page.
   useEffect(() => {
@@ -80,7 +82,6 @@ export default function BackofficeIntegrationsConnectSource({ loaderData }: Rout
       return;
     }
     openAgentDrawer();
-    setAgentOpened(true);
     const next = new URLSearchParams(searchParams);
     next.delete("agent");
     setSearchParams(next, { replace: true, preventScrollReset: true });
@@ -89,9 +90,6 @@ export default function BackofficeIntegrationsConnectSource({ loaderData }: Rout
   return (
     <div className="flex flex-col gap-3">
       {actionError ? <InlineAlert>{actionError}</InlineAlert> : null}
-      {agentOpened ? (
-        <InlineAlert>Your agent is on it, in the conversation beside the page.</InlineAlert>
-      ) : null}
       <ConnectStep service={service} method={loaderData.method} connectPath={connectPath} />
     </div>
   );
@@ -104,7 +102,7 @@ function ConnectStep({
   method,
   connectPath,
 }: {
-  service: IntegrationOverview;
+  service: ConnectSource;
   method: ConnectMethod;
   connectPath: string;
 }) {
@@ -146,7 +144,7 @@ function ConnectStep({
             emphasis="primary"
             disabled={busy}
           >
-            Set up with your agent
+            Connect
           </ActionItem>
         </Form>
       ) : method.kind === "connected" ? (
@@ -176,7 +174,7 @@ function AuthorizationState({
   busy,
   connectPath,
 }: {
-  service: IntegrationOverview;
+  service: ConnectSource;
   connectionId: string;
   progress: IntegrationSetupProgress;
   busy: boolean;
@@ -242,7 +240,7 @@ function ConnectedActions({
   busy,
   connectPath,
 }: {
-  service: IntegrationOverview;
+  service: ConnectSource;
   connectionId: string;
   busy: boolean;
   connectPath: string;

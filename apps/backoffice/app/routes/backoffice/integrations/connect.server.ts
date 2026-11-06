@@ -1,6 +1,7 @@
 import type { IntegrationConnection } from "@fragno-dev/backoffice-api/v0/integrations";
 import type { RouterContextProvider } from "react-router";
 
+import { listConnectorCatalog } from "@/fragno/runtime-tools/families/integrations/connector-integration";
 import { integrationConnectionKind } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
@@ -13,6 +14,13 @@ export function connectIntegrations(context: Readonly<RouterContextProvider>): C
   const { execution } = requireRouteScope(context);
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   return createIntegrationsRuntime({ runtime, kernel, execution, nowEpochMs: Date.now });
+}
+
+/** Every provider the Connector's catalog lists, including those this project cannot connect yet. */
+export function listConnectorProviders(context: Readonly<RouterContextProvider>) {
+  const { execution } = requireRouteScope(context);
+  const { runtime, kernel } = context.get(BackofficeWorkerContext);
+  return listConnectorCatalog({ runtime, context: { kernel, execution } });
 }
 
 export async function listConnections(
