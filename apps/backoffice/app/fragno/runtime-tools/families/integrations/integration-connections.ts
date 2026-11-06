@@ -22,6 +22,13 @@ const kindsByNamespace = {
 
 export type IntegrationConnectionNamespace = keyof typeof kindsByNamespace;
 
+/**
+ * Browsers keep the connections they read from events and rebuild them only when this changes, so
+ * bump it whenever reading or folding changes, such as a namespace leaving the table above;
+ * otherwise their views keep connections no source owns.
+ */
+export const INTEGRATION_CONNECTIONS_PROJECTION_VERSION = 2;
+
 type StoredEvent = {
   id: string;
   source: string;

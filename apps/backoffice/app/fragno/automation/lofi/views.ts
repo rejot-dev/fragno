@@ -28,6 +28,7 @@ import {
 } from "@/fragno/pi/agent/pi-agent-records";
 import {
   applyIntegrationConnectionChange,
+  INTEGRATION_CONNECTIONS_PROJECTION_VERSION,
   integrationConnectionRecord,
   readIntegrationConnectionStateChange,
   type IntegrationConnectionFold,
@@ -328,7 +329,7 @@ const piAgents = defineLocalProjection({
 const integrationConnections = defineLocalProjection({
   name: "integration-connections",
   rebuild: {
-    version: 1,
+    version: INTEGRATION_CONNECTIONS_PROJECTION_VERSION,
     from: fromEvents,
     writes: (["integration_connection", "integration_connection_change"] as const).map((table) => ({
       schema: automationViewsSchema,
