@@ -10,6 +10,9 @@ export default defineProject({
     globals: true,
     // Node 26's built-in web storage shadows happy-dom's isolated storage in client test files.
     execArgv: ["--no-experimental-webstorage"],
+    // The heaviest scenarios take about 2s locally but several times that on CI runners shared with
+    // other packages' suites, where Vitest's 5s default fails a different one each run.
+    testTimeout: 15_000,
     include: [
       "*.test.ts",
       "app/**/*.test.ts",
