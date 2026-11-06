@@ -3,6 +3,7 @@ import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-
 import type {
   BackofficeRootOwner,
   BackofficeScopeIdNames,
+  BackofficeUserContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type {
@@ -83,6 +84,10 @@ type AdminRuntimeDependencies = {
         owner: BackofficeRootOwner<BackofficeScopeIdNames>,
       ) => Pick<BillingCommands, "setUsageLimit">)
     | null;
+  /** Gives a person a new inbound address; null without the inbound email domain. */
+  replaceInboundEmailAddress:
+    | ((owner: BackofficeUserContextScope) => Promise<{ address: string }>)
+    | null;
   publicBaseUrl: string | null;
 };
 
@@ -119,6 +124,7 @@ export function createAdminRuntime({
   otp,
   automationsFor,
   billingFor,
+  replaceInboundEmailAddress,
   publicBaseUrl,
 }: AdminRuntimeDependencies): AdminRuntime {
   /** Access codes are shared as sign-up links, which need the public origin. */
@@ -293,6 +299,18 @@ export function createAdminRuntime({
             )
           : await requireAdminUserScope(auth, owner.userId);
       return await billingFor(ownerScope).setUsageLimit(limit);
+    },
+    replaceInboundEmailAddress: async ({ userId }) => {
+      if (!replaceInboundEmailAddress) {
+        throw new Error(
+          "Admin inbound email replacement requires INBOUND_EMAIL_DOMAIN and the RESEND binding.",
+        );
+      }
+      const owner = await requireAdminUserScope(auth, userId);
+      if (owner.kind !== "user") {
+        throw new Error(`Admin user command resolved user '${userId}' to an organization.`);
+      }
+      return { userId, ...(await replaceInboundEmailAddress(owner)) };
     },
     setOrganizationManager: async ({ organizationSlug, managingOrganizationSlug }) =>
       await auth.setOrganizationManager({

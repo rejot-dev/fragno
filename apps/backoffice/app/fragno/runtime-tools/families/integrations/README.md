@@ -4,12 +4,12 @@ The registered `integrations` tools provide scope-bound discovery, setup, and ex
 existing service-owned configuration. They do not own credentials, binding records, or setup-attempt
 history.
 
-API, inbound webhooks, MCP, GitHub, Telegram, Resend, Workers AI, and Connector are implemented
-sources. Codemode and terminal commands use the same contracts, runtime, and permissions. Every
-source's connections are exposed only through `integrations.*`; the former standalone tool families
-and the generated `mcp_<server>` codemode providers have been removed. Typed access is a generated
-client module instead (see below). All sources retain their underlying Fragments, Durable Objects,
-ownership, and configuration controls.
+API, inbound webhooks, MCP, GitHub, Telegram, Resend, email addresses, Workers AI, and Connector are
+implemented sources. Codemode and terminal commands use the same contracts, runtime, and
+permissions. Every source's connections are exposed only through `integrations.*`; the former
+standalone tool families and the generated `mcp_<server>` codemode providers have been removed.
+Typed access is a generated client module instead (see below). All sources retain their underlying
+Fragments, Durable Objects, ownership, and configuration controls.
 
 ## Public surface
 
@@ -132,6 +132,36 @@ such as email verification. Each keeps its native configuration page.
 Telegram and Resend have no permissions of their own. Their object routes, which serve both the
 integration actions and the native pages, require `integrations.execute`; configuration reads and
 the read-only live checks require `connections.read`.
+
+### Email addresses
+
+`backoffice#email` is a person's one address at `INBOUND_EMAIL_DOMAIN`, in user scopes only: three
+random words, such as quiet-amber-falcon@ley.run. Backoffice draws the words
+(`app/fragno/inbound-email-address.ts`), so nobody can claim a name like `support` or guess an
+address to spam. The platform Resend account, in System's Resend object, receives mail for the whole
+domain, and its Resend Fragment keeps a mailbox per owner: the user scope's current address, unique
+per owner, and every address ever issued, so none is issued twice. Discovery reports the service
+unavailable outside a user scope or without the domain setting.
+
+A person keeps one address for good, so nobody can gather addresses. Setup with `{}` draws an
+address the first time, drawing again when one was issued before, and afterwards resumes the same
+one. Disconnect pauses delivery. Reconfigure is unsupported: support replaces an address with
+`admin.inbound-email.replace --user <id>`, which issues a new one and leaves the old one receiving
+nothing. The Resend Fragment announces each mailbox change through a durable hook, triggered in the
+transaction that makes the change, and System's Resend object records it as the connection's state
+event, so a failed recording retries instead of leaving the Integrations views behind. The
+connection's actions read the mailbox first, so they need `connections.read` besides
+`integrations.execute`.
+
+Email that Resend delivered to a mailbox's current, unpaused address becomes an `email`
+`message.received` event in its owner's scope, on `backoffice#email`, with the address it arrived
+at; an email to several people's addresses becomes one event for each of them. Routing reads the
+address Resend delivered to, not the To header, so a forwarded email reaches the address it was
+forwarded to. Mail at any other address records nothing. The event carries metadata and up to 16,000
+characters of the plain-text body; the connection's `message.get` reads the whole message and
+`attachment.get` returns a short-lived Resend download URL, both for any email that arrived at one
+of the person's addresses, including replaced ones. The sender is an external `sender` identity that
+never links to a user, because anyone can write any From address.
 
 ### Workers AI address
 

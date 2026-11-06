@@ -32,7 +32,9 @@ These are all the native Backoffice integrations:
 Receiving a provider's webhooks is not a rung but its own source: `webhook#<endpointId>`, owned by
 an organization, user, or project. It needs no outbound connection; when a provider is used in both
 directions, such as Slack, it has an `api#` and a `webhook#` connection. Follow
-`/static/skills/api-webhooks/SKILL.md` for its contract, events, and routes.
+`/static/skills/api-webhooks/SKILL.md` for its contract, events, and routes. Receiving email is
+another: `backoffice#email`, a person's one random address. Follow
+`/static/skills/receiving-email/SKILL.md` to set it up, hand it over, and route its email.
 
 ## 1. Discover
 

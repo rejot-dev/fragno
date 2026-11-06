@@ -122,6 +122,13 @@ type AdminCodemodeProvider = {
    */
   usageLimitsSet(input: AdminUsageLimitsSetInput): Promise<AdminUsageLimitsSetOutput>;
   /**
+   * Give a person a new inbound email address, three random words, such as after their address gets spam. People keep one address for good and cannot replace it themselves. The old address stops receiving at once and is never issued again.
+   * Requires `admin.users.manage`.
+   */
+  inboundEmailReplace(
+    input: AdminInboundEmailReplaceInput,
+  ): Promise<AdminInboundEmailReplaceOutput>;
+  /**
    * Feature a published Marketplace listing, optionally scheduled with startsAt and ending at until, ordered by priority (higher first) with an optional curator note. Featuring an already featured listing replaces its settings. Expired and unpublished entries are removed to make room. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins).
    * Requires `marketplace.read`.
    */
@@ -628,6 +635,13 @@ type AdminUsageLimitsSetOutput = {
         };
     used: string;
   }[];
+};
+type AdminInboundEmailReplaceInput = {
+  userId: string;
+};
+type AdminInboundEmailReplaceOutput = {
+  userId: string;
+  address: string;
 };
 type AdminMarketplaceFeatureInput = {
   listingId: string;

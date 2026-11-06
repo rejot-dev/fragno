@@ -62,6 +62,7 @@ import {
 } from "../runtime-tools";
 import { adminAccessCodesRuntimeTools } from "./admin-access-codes";
 import { adminAppsRuntimeTools } from "./admin-apps";
+import { adminInboundEmailRuntimeTools } from "./admin-inbound-email";
 import { adminOAuthClientsRuntimeTools } from "./admin-oauth-clients";
 import { adminUsageLimitsRuntimeTools, type AdminUsageLimitOwner } from "./admin-usage-limits";
 import {
@@ -149,6 +150,10 @@ export type AdminRuntime = {
     meter: UsageLimitedMeter;
     setting: UsageLimitSetting;
   }): Promise<UsageLimits>;
+  replaceInboundEmailAddress(input: { userId: string }): Promise<{
+    userId: string;
+    address: string;
+  }>;
 };
 
 type AdminToolContext = BackofficeToolContext<{ admin?: AdminRuntime }>;
@@ -612,6 +617,7 @@ export const adminRuntimeTools = [
   ...adminAppsRuntimeTools,
   ...adminOAuthClientsRuntimeTools,
   ...adminUsageLimitsRuntimeTools,
+  ...adminInboundEmailRuntimeTools,
 ] as const;
 
 export const adminToolFamily = defineBackofficeRuntimeToolFamily({

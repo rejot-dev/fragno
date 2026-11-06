@@ -2,17 +2,31 @@ import {
   backofficeJurisdictionSchema,
   backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type {
+  BackofficeContextScope,
+  BackofficeUserContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Resend as ResendClient } from "resend";
 import { z } from "zod";
 
 import { isUniqueConstraintError } from "@fragno-dev/db";
-import type { ResendFragmentConfig, ResendSendEmailInput } from "@fragno-dev/resend-fragment";
+import type {
+  ResendEmailReceivedHookPayload,
+  ResendFragmentConfig,
+  ResendMailboxEmail,
+  ResendMailbox,
+  ResendOpenMailboxResult,
+  ResendPauseMailboxResult,
+  ResendReplaceMailboxAddressResult,
+  ResendSendEmailInput,
+} from "@fragno-dev/resend-fragment";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import { createBackofficeFragmentHttpTransport } from "@/backoffice-runtime/fragment-http-transport";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
+  type InboundEmailAttachment,
+  type InboundEmailCommands,
   type ResendCommands,
   type WebhookRegistrationCheck,
   requireBackofficeContextScopeFromDurableObjectId,
@@ -21,7 +35,13 @@ import {
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { resendConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/resend";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
+import {
+  buildInboundEmailAutomationEvent,
+  inboundEmailOwner,
+  inboundEmailOwnerScope,
+} from "@/fragno/inbound-email";
 import { createResendServer, type ResendConfig, type ResendFragment } from "@/fragno/resend";
+import { recordMailboxChange } from "@/fragno/runtime-tools/families/integrations/email-integration";
 import {
   recordIntegrationSlotChange,
   type IntegrationSlotOutboxItem,
@@ -321,7 +341,7 @@ const updateWebhook = async (
   }
 };
 
-export class ResendObject implements ResendCommands {
+export class ResendObject implements ResendCommands, InboundEmailCommands {
   readonly #httpTransport: ReturnType<typeof createBackofficeFragmentHttpTransport>;
   readonly #state: BackofficeObjectState;
   readonly #runtimeServices: BackofficeRuntimeServices;
@@ -333,6 +353,7 @@ export class ResendObject implements ResendCommands {
   >;
   readonly #createClient: (apiKey: string) => ResendClient;
   readonly #runtimeMode: string;
+  readonly #scope: BackofficeContextScope;
 
   constructor({
     state,
@@ -351,12 +372,11 @@ export class ResendObject implements ResendCommands {
     createClient?: (apiKey: string) => ResendClient;
     runtimeMode?: string;
   }) {
+    this.#scope = requireBackofficeContextScopeFromDurableObjectId(state.id, "RESEND");
     this.#httpTransport = createBackofficeFragmentHttpTransport({
       address: {
         binding: "RESEND",
-        scope: backofficeObjectScopeFromContextScope(
-          requireBackofficeContextScopeFromDurableObjectId(state.id, "RESEND"),
-        ),
+        scope: backofficeObjectScopeFromContextScope(this.#scope),
       },
       env,
       nowEpochMs,
@@ -381,7 +401,24 @@ export class ResendObject implements ResendCommands {
       }),
       fingerprint: (config) => JSON.stringify(config),
       createRuntime: (config) =>
-        createResendServer(config, implementation.fragmentDatabase, new BackofficeKernel(runtime)),
+        createResendServer(
+          config,
+          {
+            client: this.#createClient(config.apiKey),
+            // Only the platform account receives mail at people's inbound addresses.
+            onEmailReceived:
+              this.#scope.kind === "system"
+                ? (payload) => this.#deliverInboundEmail(payload)
+                : null,
+            onMailboxChanged:
+              this.#scope.kind === "system"
+                ? (mailbox, context) =>
+                    recordMailboxChange(this.#runtimeServices.objects, mailbox, context)
+                : null,
+          },
+          implementation.fragmentDatabase,
+          new BackofficeKernel(runtime),
+        ),
       outbox: {
         dispatch: (item: IntegrationSlotOutboxItem) =>
           recordIntegrationSlotChange(
@@ -575,6 +612,107 @@ export class ResendObject implements ResendCommands {
         message: error instanceof Error ? error.message : "Resend webhook request failed.",
       };
     }
+  }
+
+  async #deliverInboundEmail({ emailMessageId, recipientMailbox }: ResendEmailReceivedHookPayload) {
+    // Replies to the platform's own email, for example, reach no inbound address.
+    if (recipientMailbox === null) {
+      console.info("Received email reached no inbound address", { emailMessageId });
+      return;
+    }
+    const email = await this.#inboundEmail(recipientMailbox.owner, emailMessageId);
+    if (email === null) {
+      throw new Error(`Received email ${emailMessageId} is not stored for its inbound address.`);
+    }
+    const scope = inboundEmailOwnerScope(recipientMailbox.owner);
+    await this.#runtimeServices.objects.automations
+      .for(scope)
+      .commands.triggerIngestEvent(buildInboundEmailAutomationEvent(scope, email));
+  }
+
+  #mailboxes() {
+    if (this.#scope.kind !== "system") {
+      throw new Error("Only the platform Resend account has inbound addresses.");
+    }
+    return this.#host.requireConfigured(
+      "Inbound email needs the platform Resend account configured.",
+    );
+  }
+
+  async #inboundEmail(owner: string, emailMessageId: string) {
+    const { runtime: fragment } = this.#mailboxes();
+    return await fragment.callServices(() =>
+      fragment.services.getMailboxEmail({ emailMessageId, owner }),
+    );
+  }
+
+  async getMailbox(owner: BackofficeUserContextScope): Promise<ResendMailbox | null> {
+    const { runtime: fragment } = this.#mailboxes();
+    return await fragment.callServices(() =>
+      fragment.services.getMailbox(inboundEmailOwner(owner)),
+    );
+  }
+
+  async openMailbox(
+    owner: BackofficeUserContextScope,
+    address: string,
+  ): Promise<ResendOpenMailboxResult> {
+    const { runtime: fragment } = this.#mailboxes();
+    return await fragment.callServices(() =>
+      fragment.services.openMailbox({ owner: inboundEmailOwner(owner), address }),
+    );
+  }
+
+  async pauseMailbox(owner: BackofficeUserContextScope): Promise<ResendPauseMailboxResult> {
+    const { runtime: fragment } = this.#mailboxes();
+    return await fragment.callServices(() =>
+      fragment.services.pauseMailbox(inboundEmailOwner(owner)),
+    );
+  }
+
+  async replaceMailboxAddress(
+    owner: BackofficeUserContextScope,
+    address: string,
+  ): Promise<ResendReplaceMailboxAddressResult> {
+    const { runtime: fragment } = this.#mailboxes();
+    return await fragment.callServices(() =>
+      fragment.services.replaceMailboxAddress({ owner: inboundEmailOwner(owner), address }),
+    );
+  }
+
+  async getMailboxEmail(
+    owner: BackofficeUserContextScope,
+    emailMessageId: string,
+  ): Promise<ResendMailboxEmail | null> {
+    return await this.#inboundEmail(inboundEmailOwner(owner), emailMessageId);
+  }
+
+  /** Resend's signed URLs expire, so callers download the attachment soon after asking. */
+  async getMailboxEmailAttachment(
+    owner: BackofficeUserContextScope,
+    emailMessageId: string,
+    attachmentId: string,
+  ): Promise<InboundEmailAttachment | null> {
+    const email = await this.#inboundEmail(inboundEmailOwner(owner), emailMessageId);
+    const attachment = email?.attachments.find(({ id }) => id === attachmentId);
+    if (!email?.providerEmailId || !attachment) {
+      return null;
+    }
+    const { stored } = this.#mailboxes();
+    const { data, error } = await this.#createClient(
+      stored.apiKey,
+    ).emails.receiving.attachments.get({ emailId: email.providerEmailId, id: attachmentId });
+    if (error) {
+      throw new Error(`Resend refused the attachment: ${error.message}`);
+    }
+    return {
+      id: attachment.id,
+      filename: attachment.filename,
+      contentType: attachment.contentType,
+      size: attachment.size,
+      downloadUrl: data.download_url,
+      expiresAt: data.expires_at,
+    };
   }
 
   async getDurableHookQueue(options?: DurableHookQueueOptions) {

@@ -49,6 +49,8 @@ export type BackofficeRuntimeConfig = {
   localEmailLog: boolean;
   /** Whether PiManager runs Workers AI models, through the `AI` binding. */
   workersAi: boolean;
+  /** The domain people's inbound addresses are on, such as ley.run; null when they have none. */
+  inboundEmailDomain: string | null;
   bindings: {
     api: boolean;
     auth: boolean;
@@ -126,6 +128,10 @@ const parsePublicHttpUrl = (name: string, value: string | undefined): string => 
   return url.toString();
 };
 
+/** Empty means the deployment gives no one inbound addresses. */
+export const parseInboundEmailDomain = (value: string | undefined): string | null =>
+  value?.trim().toLowerCase() || null;
+
 /** Deployments admit new accounts only with an access code unless they opt out. */
 export const parseSignUpAccessCodesRequired = (value: string | undefined): boolean =>
   value === undefined ? true : parseBooleanEnv("SIGN_UP_ACCESS_CODES_REQUIRED", value);
@@ -158,6 +164,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
   signUpAccessCodesRequired: parseSignUpAccessCodesRequired(env.SIGN_UP_ACCESS_CODES_REQUIRED),
   localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", env.LOCAL_EMAIL_LOG),
   workersAi: Boolean(env.AI),
+  inboundEmailDomain: parseInboundEmailDomain(env.INBOUND_EMAIL_DOMAIN),
   bindings: {
     api: Boolean(env.API),
     auth: Boolean(env.AUTH),

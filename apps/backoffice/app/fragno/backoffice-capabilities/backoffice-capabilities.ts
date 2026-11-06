@@ -28,7 +28,11 @@ import { mcpCapability } from "./capabilities/mcp";
 import { otpCapability } from "./capabilities/otp";
 import { piCapability } from "./capabilities/pi";
 import { connectorCapability } from "./capabilities/project-connector";
-import { resendCapability } from "./capabilities/resend";
+import {
+  INBOUND_EMAIL_AUTOMATION_EVENT_MESSAGE_RECEIVED,
+  INBOUND_EMAIL_AUTOMATION_SOURCE,
+  resendCapability,
+} from "./capabilities/resend";
 import { sandboxCapability } from "./capabilities/sandbox";
 import { telegramCapability } from "./capabilities/telegram";
 import { uploadCapability } from "./capabilities/upload";
@@ -248,6 +252,7 @@ export function getHookScope(id: string) {
 export const AUTOMATION_SOURCES = {
   auth: AUTH_AUTOMATION_SOURCE,
   telegram: "telegram",
+  email: INBOUND_EMAIL_AUTOMATION_SOURCE,
   otp: "otp",
   pi: "pi",
 } as const;
@@ -259,6 +264,9 @@ export const AUTOMATION_SOURCE_EVENT_TYPES = {
   },
   [AUTOMATION_SOURCES.telegram]: {
     messageReceived: "message.received",
+  },
+  [AUTOMATION_SOURCES.email]: {
+    messageReceived: INBOUND_EMAIL_AUTOMATION_EVENT_MESSAGE_RECEIVED,
   },
   [AUTOMATION_SOURCES.otp]: {
     identityClaimCompleted: "identity.claim.completed",

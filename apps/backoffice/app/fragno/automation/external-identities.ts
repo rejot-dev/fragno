@@ -3,8 +3,14 @@ import { z } from "zod";
 
 export type ExternalIdentity = AutomationExternalEntityRef;
 
-/** Only a Telegram user is one person; a chat can speak for several, or for none. */
+/**
+ * Only a Telegram user is one person; a chat can speak for several, or for none. An email sender is
+ * only what its From header claims, which anyone can write.
+ */
 export function canLinkExternalIdentity(identity: ExternalIdentity): boolean {
+  if (identity.source === "email") {
+    return false;
+  }
   return identity.source !== "telegram" || identity.type === "user";
 }
 

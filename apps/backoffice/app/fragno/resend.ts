@@ -14,17 +14,38 @@ export type ResendConfig = Pick<
   "apiKey" | "webhookSecret" | "defaultFrom" | "defaultReplyTo" | "defaultTags" | "defaultHeaders"
 >;
 
+/**
+ * `onEmailReceived` and `onMailboxChanged` are null for accounts without people's inbound
+ * addresses, whose received mail reaches no one but their threads.
+ */
 export function createResendServer(
   config: ResendConfig,
+  {
+    client,
+    onEmailReceived,
+    onMailboxChanged,
+  }: {
+    client: ResendFragmentConfig["client"];
+    onEmailReceived: ResendFragmentConfig["onEmailReceived"] | null;
+    onMailboxChanged: ResendFragmentConfig["onMailboxChanged"] | null;
+  },
   runtime: BackofficeFragmentRuntimeOptions,
   kernel: BackofficeKernel,
 ): ReturnType<typeof createResendFragment> {
-  return createResendFragment(config, {
-    databaseAdapter: runtime.adapters.createAdapter({
-      kind: "resend",
-    }),
-    mountRoute: "/api/resend",
-  }).withMiddleware(async function authorizeResendRoutes({ ifMatchesRoute, requestContext }) {
+  return createResendFragment(
+    {
+      ...config,
+      client,
+      onEmailReceived: onEmailReceived ?? undefined,
+      onMailboxChanged: onMailboxChanged ?? undefined,
+    },
+    {
+      databaseAdapter: runtime.adapters.createAdapter({
+        kind: "resend",
+      }),
+      mountRoute: "/api/resend",
+    },
+  ).withMiddleware(async function authorizeResendRoutes({ ifMatchesRoute, requestContext }) {
     let access: BackofficeFragmentHttpAccess = null;
     await ifMatchesRoute("POST", "/webhook", () => {
       access = "public-ingress";

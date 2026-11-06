@@ -92,6 +92,8 @@ export type IntegrationConnectionDetails =
       connectionName: string;
       accountId: string | null;
     }
+  // A person's inbound address; a paused one stays theirs and receives nothing.
+  | { kind: "email"; mailbox: { address: string; paused: boolean } | null }
   // Native services without a page of their own say in a sentence how they work and change.
   | { kind: "summary"; summary: string }
   // Native services are managed on their own Backoffice pages.
