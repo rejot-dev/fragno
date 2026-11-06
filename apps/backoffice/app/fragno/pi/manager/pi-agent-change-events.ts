@@ -13,7 +13,6 @@ import {
   PI_AUTOMATION_SOURCE,
   PI_QUEUE_AUTOMATION_EVENTS,
   piAgentEventSubject,
-  readPiAgentEvent,
 } from "@/fragno/backoffice-capabilities/capabilities/pi";
 
 import type { PiAgentChange, PiAgentQueueChange } from "./pi-agent-queue";
@@ -88,53 +87,6 @@ export function piAgentQueueEvent({
   };
 }
 
-type RecordedDefinition = {
-  kind: DefinitionChangeKind;
-  definition: PiAgentDefinition;
-  /** The event that recorded this definition change. */
-  eventId: string;
-};
-
-/** Each agent's latest recorded definition change, by agent name. */
-async function readRecordedDefinitions(
-  automations: Pick<AutomationsCommands, "listEventsOfType">,
-): Promise<Map<string, RecordedDefinition>> {
-  const latest = new Map<string, RecordedDefinition & { at: [number, number] }>();
-  for (const kind of ["created", "updated", "deleted"] as const) {
-    let cursor: string | null = null;
-    do {
-      const page = await automations.listEventsOfType({
-        source: PI_AUTOMATION_SOURCE,
-        eventType: PI_AGENT_AUTOMATION_EVENTS[kind].eventType,
-        cursor,
-      });
-      for (const event of page.events) {
-        const read = readPiAgentEvent(event);
-        if (read?.kind !== kind) {
-          continue;
-        }
-        // Changes made in the same instant are ordered by when they were stored.
-        const at: [number, number] = [Date.parse(event.occurredAt), Date.parse(event.createdAt)];
-        const current = latest.get(read.agentName);
-        if (
-          !current ||
-          at[0] > current.at[0] ||
-          (at[0] === current.at[0] && at[1] > current.at[1])
-        ) {
-          latest.set(read.agentName, {
-            kind,
-            definition: read.definition,
-            eventId: event.id,
-            at,
-          });
-        }
-      }
-      cursor = page.cursor;
-    } while (cursor !== null);
-  }
-  return latest;
-}
-
 /**
  * Records, as the caller, what the scope's agent events must add for its defined agents to read as
  * they are: `agent.created` for an agent they lack or record deleted, `agent.updated` for a
@@ -149,7 +101,7 @@ export async function backfillPiAgentEvents({
   provenance,
   context,
 }: {
-  automations: Pick<AutomationsCommands, "ingestEvent" | "listEventsOfType">;
+  automations: Pick<AutomationsCommands, "ingestEvent" | "listRecordedPiAgentDefinitions">;
   scope: BackofficeContextScope;
   /** The scope's own definitions; built-in agents are Backoffice's, not the scope's. */
   definitions: readonly PiAgentDefinition[];
@@ -161,12 +113,17 @@ export async function backfillPiAgentEvents({
   provenance: PiAgentTurnProvenance;
   context: BackofficeRpcContext;
 }): Promise<PiAgentBackfilledEvent[]> {
-  const recorded = await readRecordedDefinitions(automations);
+  const recorded = new Map(
+    (await automations.listRecordedPiAgentDefinitions()).map((recorded) => [
+      recorded.agentName,
+      recorded,
+    ]),
+  );
   const changes: { kind: DefinitionChangeKind; definition: PiAgentDefinition; after: string }[] =
     [];
   for (const definition of definitions) {
     const latest = recorded.get(definition.agentName);
-    if (!latest || latest.kind === "deleted") {
+    if (!latest || latest.definition === null) {
       changes.push({ kind: "created", definition, after: latest?.eventId ?? "none" });
     } else if (!isDeepStrictEqual(latest.definition, definition)) {
       changes.push({ kind: "updated", definition, after: latest.eventId });
@@ -174,7 +131,7 @@ export async function backfillPiAgentEvents({
   }
   const defined = new Set(definitions.map((definition) => definition.agentName));
   for (const [agentName, latest] of recorded) {
-    if (latest.kind !== "deleted" && !defined.has(agentName)) {
+    if (latest.definition !== null && !defined.has(agentName)) {
       changes.push({ kind: "deleted", definition: latest.definition, after: latest.eventId });
     }
   }

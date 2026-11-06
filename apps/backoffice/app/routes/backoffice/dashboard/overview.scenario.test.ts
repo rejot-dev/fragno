@@ -29,7 +29,6 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import {
-  assertAutomationProjectionsRebuild,
   queryAutomationReplica,
   readAutomationPageQuery,
   readAutomationReplica,
@@ -1528,16 +1527,6 @@ describe("dashboard", () => {
               "reviewer: Definition updated, 0 queued; turns none",
             ]);
           }),
-          then.assert(
-            "rebuilding the agent projections from the stored events gives the same rows",
-            async (ctx) => {
-              await assertAutomationProjectionsRebuild(ctx.lofi.automations.forOrg(orgId), [
-                "pi_agent",
-                "pi_agent_request",
-                "pi_agent_turn",
-              ]);
-            },
-          ),
         ],
       }),
     );

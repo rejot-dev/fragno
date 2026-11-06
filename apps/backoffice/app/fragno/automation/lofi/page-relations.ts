@@ -10,9 +10,8 @@ import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
 import { automationFragmentSchema } from "../schema";
 import { currentWorkflowWaits } from "../workflow-waits";
-import { readWorkflowRuns } from "./reads";
+import { readPiAgents, readWorkflowRuns } from "./reads";
 import { AUTOMATION_REPLICA_SCHEMAS } from "./replica-schemas";
-import { automationViews, automationViewsSchema, readPiAgents } from "./views";
 
 /** How a relation's column reads in SQL. */
 export type PageRelationColumnType =
@@ -209,16 +208,16 @@ function tableView(relation: TableRelation): { sql: string; columns: PageRelatio
   };
 }
 
-const viewTable = (name: keyof typeof automationViewsSchema.tables) =>
-  quoteSqliteIdentifier(lofiSqliteTableName({ schema: automationViewsSchema }, name));
+const automationTable = (name: keyof typeof automationFragmentSchema.tables) =>
+  quoteSqliteIdentifier(lofiSqliteTableName({ schema: automationFragmentSchema }, name));
 
-/** What the scope's projections keep, as views. */
+/** What the scope's events record of connections and agents, as the backend keeps it. */
 const PROJECTION_RELATIONS: (PageRelation & { sql: string })[] = [
   {
     name: "connections",
     description:
       "Integration connections as their latest state change reports them, disconnected ones included; name and authMethod are null until a change carries a label. displayName is what people call the connection and kindLabel its kind, such as MCP.",
-    sql: `SELECT "id" AS "connectionId", "service", "kind", "state", "name", "authMethod", "eventId", "changedAt", "displayName", "kindLabel" FROM ${viewTable("integration_connection")}`,
+    sql: `SELECT "id" AS "connectionId", "service", "kind", "state", "name", "authMethod", "eventId", "changedAt", "displayName", "kindLabel" FROM ${automationTable("integration_connection")}`,
     columns: [
       { name: "connectionId", type: "text", nullable: false },
       { name: "service", type: "text", nullable: false },
@@ -240,7 +239,7 @@ const PROJECTION_RELATIONS: (PageRelation & { sql: string })[] = [
   {
     name: "agent_turns",
     description: "Turns agents ended, one row each.",
-    sql: `SELECT "id", "agentName", "outcome", "endedAt" FROM ${viewTable("pi_agent_turn")}`,
+    sql: `SELECT "id", "agentName", "outcome", "endedAt" FROM ${automationTable("pi_agent_turn")}`,
     columns: [
       { name: "id", type: "text", nullable: false },
       { name: "agentName", type: "text", nullable: false },
@@ -358,10 +357,7 @@ export const AUTOMATION_PAGE_DERIVED_RELATIONS: Readonly<
  * tables, the relations computed from them as views, and the derived relations as tables.
  */
 export const AUTOMATION_PAGE_DATABASE_SCHEMA: readonly string[] = [
-  ...createLofiSqliteTableStatements([
-    ...AUTOMATION_REPLICA_SCHEMAS,
-    ...automationViews.localSchemas,
-  ]),
+  ...createLofiSqliteTableStatements(AUTOMATION_REPLICA_SCHEMAS),
   ...Object.entries(AUTOMATION_PAGE_VIEWS_SQL).map(
     ([name, sql]) => `CREATE VIEW ${quoteSqliteIdentifier(name)} AS ${sql}`,
   ),

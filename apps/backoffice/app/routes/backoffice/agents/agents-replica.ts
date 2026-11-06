@@ -1,6 +1,6 @@
 import type { LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 
-import { readPiAgents, readPiAgentTurns } from "@/fragno/automation/lofi/views";
+import { readPiAgents, readPiAgentTurns } from "@/fragno/automation/lofi/reads";
 
 import { piAgentListings, type PiAgentListing } from "./agent-activity";
 

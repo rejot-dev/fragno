@@ -93,53 +93,6 @@ export function readIntegrationConnectionEvent(event: {
   };
 }
 
-type RecordedConnectionState = {
-  state: IntegrationConnectionState | "disconnected";
-  service: string;
-  /** The event that recorded this state. */
-  eventId: string;
-};
-
-/** Each connection's latest state in one scope's recorded connection events. */
-export async function readRecordedConnectionStates(
-  automations: Pick<AutomationsCommands, "listEventsOfType">,
-): Promise<Map<string, RecordedConnectionState>> {
-  const latest = new Map<string, RecordedConnectionState & { at: [number, number] }>();
-  for (const eventType of Object.keys(connectionEventStates)) {
-    let cursor: string | null = null;
-    do {
-      const page = await automations.listEventsOfType({
-        source: INTEGRATIONS_EVENT_SOURCE,
-        eventType,
-        cursor,
-      });
-      for (const event of page.events) {
-        const change = readIntegrationConnectionEvent(event);
-        if (!change) {
-          continue;
-        }
-        // Changes made in the same instant are ordered by when they were stored.
-        const at: [number, number] = [Date.parse(event.occurredAt), Date.parse(event.createdAt)];
-        const current = latest.get(change.connectionId);
-        if (
-          !current ||
-          at[0] > current.at[0] ||
-          (at[0] === current.at[0] && at[1] > current.at[1])
-        ) {
-          latest.set(change.connectionId, {
-            state: change.state,
-            service: change.service,
-            eventId: event.id,
-            at,
-          });
-        }
-      }
-      cursor = page.cursor;
-    } while (cursor !== null);
-  }
-  return latest;
-}
-
 // Every change that leaves the state fires, so consumers must tolerate repeats.
 const repeatNote =
   "Fires for changes made through integrations.*, native pages, OAuth callbacks, and provider webhooks, each time a change leaves the connection in this state.";

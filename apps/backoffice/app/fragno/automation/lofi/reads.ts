@@ -12,6 +12,16 @@ import type { AnyTable } from "@fragno-dev/db/schema";
 import { lofiSqliteTableName, type LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
+import { BUILT_IN_PI_AGENT_DEFINITIONS } from "@/fragno/pi/agent/agent-definitions";
+import {
+  piAgentRecord,
+  type PiAgentRecord,
+  type PiAgentTurnRecord,
+} from "@/fragno/pi/agent/pi-agent-records";
+import type {
+  IntegrationConnectionRecord,
+  IntegrationConnectionStateChange,
+} from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import type { AutomationWorkflowRun } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 import {
   automationWorkflowRunsFromRecords,
@@ -21,6 +31,7 @@ import {
 import type { OrchestrationForward } from "@/routes/backoffice/dashboard/orchestration-graph";
 
 import { CODEMODE_WORKFLOW } from "../engine/codemode-invocation";
+import { piAgentState } from "../event-projections";
 import { forwardAcceptLetsIn, forwardNeedsAccept } from "../forward-accepts";
 import { automationRouteSteward, type StoredAutomationRouteMetadata } from "../route-records";
 import { automationFragmentSchema } from "../schema";
@@ -511,4 +522,122 @@ export function readLatestEventsOfType(
       payload: event.payload,
     },
   });
+}
+
+/**
+ * The scope's agents: built-in agents, and those their events define. The most recently active
+ * come first; agents without activity keep built-in agents first, then go by name.
+ */
+export function readPiAgents(reader: LofiSqliteReader): PiAgentRecord[] {
+  const agent = automationFragmentSchema.tables.pi_agent.columns;
+  const rows = reader.query({
+    sql: `SELECT "id" AS "agentName", "latestKind", "latestAt", "definition", "definitionAt",
+            "definitionEventId", "paused", "pauseAt", "running", "queued", "steering"
+          FROM ${automationTable("pi_agent")}`,
+    params: [],
+    columns: {
+      agentName: "text",
+      latestKind: agent.latestKind,
+      latestAt: agent.latestAt,
+      definition: agent.definition,
+      definitionAt: agent.definitionAt,
+      definitionEventId: agent.definitionEventId,
+      paused: agent.paused,
+      pauseAt: agent.pauseAt,
+      running: agent.running,
+      queued: agent.queued,
+      steering: agent.steering,
+    },
+  });
+  const states = new Map(rows.map(({ agentName, ...row }) => [agentName, piAgentState(row)]));
+  const names = new Set([
+    ...BUILT_IN_PI_AGENT_DEFINITIONS.map(({ agentName }) => agentName),
+    ...states.keys(),
+  ]);
+  return [...names]
+    .flatMap((agentName) => piAgentRecord(agentName, states.get(agentName) ?? null) ?? [])
+    .sort(
+      (left, right) =>
+        (right.latestAt?.getTime() ?? -Infinity) - (left.latestAt?.getTime() ?? -Infinity) ||
+        Number(right.builtIn) - Number(left.builtIn) ||
+        (left.agentName < right.agentName ? -1 : left.agentName > right.agentName ? 1 : 0),
+    );
+}
+
+/** The turns agents ended since `since`. */
+export function readPiAgentTurns(
+  reader: LofiSqliteReader,
+  since: Date,
+): Pick<PiAgentTurnRecord, "agentName" | "endedAt">[] {
+  const turn = automationFragmentSchema.tables.pi_agent_turn.columns;
+  return reader.query({
+    sql: `SELECT "agentName", "endedAt" FROM ${automationTable("pi_agent_turn")} WHERE "endedAt" >= ?`,
+    params: [since.getTime()],
+    columns: { agentName: turn.agentName, endedAt: turn.endedAt },
+  });
+}
+
+/** Every connection, disconnected ones too, by service and then connection ID. */
+export function readIntegrationConnections(
+  reader: LofiSqliteReader,
+): IntegrationConnectionRecord[] {
+  const connection = automationFragmentSchema.tables.integration_connection.columns;
+  const rows = reader.query({
+    sql: `SELECT "id" AS "connectionId", "service", "kind", "state", "name", "authMethod",
+            "eventId", "changedAt", "displayName", "kindLabel"
+          FROM ${automationTable("integration_connection")}
+          ORDER BY "service", "id"`,
+    params: [],
+    columns: {
+      connectionId: "text",
+      service: connection.service,
+      kind: connection.kind,
+      state: connection.state,
+      name: connection.name,
+      authMethod: connection.authMethod,
+      eventId: connection.eventId,
+      changedAt: connection.changedAt,
+      displayName: connection.displayName,
+      kindLabel: connection.kindLabel,
+    },
+  });
+  // Only `projectStoredEvent` writes these rows, from `IntegrationConnectionRecord`.
+  return rows as IntegrationConnectionRecord[];
+}
+
+/**
+ * The state changes a connection's events reported, newest first. Of changes made in the same
+ * instant, the first applied comes first, as it is the one `applyIntegrationConnectionChange` keeps.
+ */
+export function readIntegrationConnectionHistory(
+  reader: LofiSqliteReader,
+  { connectionId }: { connectionId: string },
+): IntegrationConnectionStateChange[] {
+  const change = automationFragmentSchema.tables.integration_connection_change;
+  const rows = reader.query({
+    sql: `SELECT "id" AS "eventId", "connectionId", "service", "kind", "state", "label",
+            "occurredAt"
+          FROM ${automationTable("integration_connection_change")}
+          WHERE "connectionId" = ?
+          ORDER BY "occurredAt" DESC, "${change.getInternalIdColumn().name}"`,
+    params: [connectionId],
+    columns: {
+      eventId: "text",
+      connectionId: change.columns.connectionId,
+      service: change.columns.service,
+      kind: change.columns.kind,
+      state: change.columns.state,
+      label: change.columns.label,
+      occurredAt: change.columns.occurredAt,
+    },
+  });
+  // Only `projectStoredEvent` writes these rows, from `IntegrationConnectionStateChange`.
+  return rows as IntegrationConnectionStateChange[];
+}
+
+/** The connections that are not disconnected, by service and then connection ID. */
+export function readCurrentIntegrationConnections(
+  reader: LofiSqliteReader,
+): IntegrationConnectionRecord[] {
+  return readIntegrationConnections(reader).filter(({ state }) => state !== "disconnected");
 }

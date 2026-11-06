@@ -11,7 +11,6 @@ import { createConnectorIntegration } from "./connector-integration";
 import { createEmailIntegration } from "./email-integration";
 import { createGitHubIntegration } from "./github-integration";
 import {
-  readRecordedConnectionStates,
   recordIntegrationConnectionState,
   type IntegrationConnectionState,
 } from "./integration-events";
@@ -99,7 +98,8 @@ export function createIntegrationsRuntime({
       } while (cursor !== null);
       // A removed source records nothing when it goes, so its connections would stay ready or
       // unavailable in views and to routes indefinitely.
-      for (const [connectionId, recorded] of await readRecordedConnectionStates(automations)) {
+      for (const recorded of await automations.listIntegrationConnections()) {
+        const { connectionId } = recorded;
         if (recorded.state === "disconnected" || registry.claims(connectionId)) {
           continue;
         }

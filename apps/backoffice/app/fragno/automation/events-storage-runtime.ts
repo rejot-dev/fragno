@@ -15,9 +15,9 @@ const EVENTS_OF_TYPE_PAGE_SIZE = 100;
 export const EVENTS_BY_TIME_INDEX = "idx_automation_event_occurredAt_id";
 
 /**
- * Sources whose whole history the dashboard folds into current agents and connections. The
- * Automations replica's projections (`lofi/views.ts`) fold each event as it arrives, and rebuild by
- * folding the stored ones again, so browsers agree only while these events are never deleted.
+ * Sources whose events `event-projections` folds into current agents and connections. Events stored
+ * before it did were never folded, so their history is still the only record of what they did
+ * until it is folded too.
  */
 const FOLDED_EVENT_SOURCES: ReadonlySet<string> = new Set([
   PI_AUTOMATION_SOURCE,
