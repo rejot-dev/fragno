@@ -26,3 +26,12 @@ export function NativeConnectionDetails({
     </DetailSection>
   );
 }
+
+/** Native services without a page of their own say how they work instead. */
+export function NativeSummaryDetails({ summary }: { summary: string }) {
+  return (
+    <DetailSection title="Native service">
+      <p className="px-3 py-2.5 text-xs text-[var(--bo-muted)]">{summary}</p>
+    </DetailSection>
+  );
+}

@@ -25,7 +25,7 @@ import {
 import { ConnectorConnectionDetails } from "./connector-connection-details";
 import type { IntegrationsLayoutContext } from "./layout-context";
 import { McpConnectionDetails } from "./mcp-connection-details";
-import { NativeConnectionDetails } from "./native-connection-details";
+import { NativeConnectionDetails, NativeSummaryDetails } from "./native-connection-details";
 import { WebhookConnectionDetails } from "./webhook-connection-details";
 
 export async function loader({ context, params }: Route.LoaderArgs) {
@@ -188,6 +188,8 @@ function ConnectionSourceDetails({
       return <McpConnectionDetails details={details} />;
     case "connector":
       return <ConnectorConnectionDetails details={details} />;
+    case "summary":
+      return <NativeSummaryDetails summary={details.summary} />;
     case "native":
       return <NativeConnectionDetails selectedScope={selectedScope} service={service} />;
   }

@@ -169,7 +169,11 @@ export function createWorkersAiIntegration({
           return connectionStateOfInspection(inspectWorkersAi(unavailableReason(context)));
         },
         async details() {
-          return { kind: "native" };
+          return {
+            kind: "summary",
+            summary:
+              "Provided with every scope: each model run is billed to this scope's owner, and there is nothing to configure.",
+          };
         },
         async settings() {
           return null;
