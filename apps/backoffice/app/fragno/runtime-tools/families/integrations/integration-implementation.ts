@@ -17,6 +17,7 @@ import { z } from "zod";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 
+import type { IntegrationConnectionNamespace } from "./integration-connections";
 import type { IntegrationSetupOperation } from "./integration-contracts";
 import type { IntegrationConnectionState } from "./integration-events";
 
@@ -26,10 +27,13 @@ export type IntegrationContext = {
   kernel: BackofficeKernel;
 };
 
-/** Exact names can share a namespace; a namespace claim owns all of its source-local addresses. */
+/**
+ * Exact names can share a namespace; a namespace claim owns all of its source-local addresses. A
+ * new namespace must first be given a kind, so the Integrations views show its connections.
+ */
 export type IntegrationConnectionIdClaim =
-  | { kind: "exact"; connectionId: string }
-  | { kind: "namespace"; namespace: string };
+  | { kind: "exact"; connectionId: `${IntegrationConnectionNamespace}#${string}` }
+  | { kind: "namespace"; namespace: IntegrationConnectionNamespace };
 
 /** Action handlers capture the resolved connection and authority for this request, not a retained handle. */
 export interface IntegrationActionImplementation {
