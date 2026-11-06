@@ -212,8 +212,9 @@ export function projectStoredEvent(
 
 /**
  * Updates the row's columns whose value the event changed, and no others: the outbox replicates
- * every column an update sets, and most agent events change a count, not the definition. Checks
- * the row's version even when nothing changed, so a concurrent change still retries the event.
+ * every column an update sets, and most agent events change a count, not the definition. When
+ * nothing changed, only checks the row's version: a concurrent change still retries the event, and
+ * the outbox gets no entry.
  */
 function updateChangedColumns(
   uow: AutomationHookUnitOfWork,
@@ -224,10 +225,18 @@ function updateChangedColumns(
   const changed = Object.fromEntries(
     Object.entries(columns).filter(([name, value]) => !sameColumnValue(row[name], value)),
   );
+  if (Object.keys(changed).length === 0) {
+    uow.check(table, row.id);
+    return;
+  }
   uow.update(table, row.id, (b) => b.set(changed as never).check());
 }
 
 function sameColumnValue(stored: unknown, value: unknown) {
+  // Most events leave the definition as they read it, so its JSON need not be compared.
+  if (stored === value) {
+    return true;
+  }
   if (stored instanceof Date && value instanceof Date) {
     return stored.getTime() === value.getTime();
   }
