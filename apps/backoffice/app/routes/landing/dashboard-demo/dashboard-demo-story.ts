@@ -111,11 +111,6 @@ export function sceneAt(index: number, played: number): DashboardDemoScene {
   };
 }
 
-/** Where story `index` ends up, for viewers who prefer no motion. */
-export function finalSceneOf(index: number): DashboardDemoScene {
-  return sceneAt(index, durationOf(index) - 1);
-}
-
 /** How long part `index` plays before the next takes over. */
 export function durationOf(index: number): number {
   return (DASHBOARD_DEMOS[index] ?? DASHBOARD_DEMOS[0]).durationMs;

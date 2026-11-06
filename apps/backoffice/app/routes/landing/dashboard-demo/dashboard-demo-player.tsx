@@ -6,7 +6,6 @@ import {
   DASHBOARD_DEMOS,
   durationOf,
   type DashboardDemoScene,
-  finalSceneOf,
   sceneAt,
 } from "./dashboard-demo-story";
 import { LaptopFrame } from "./laptop-frame";
@@ -20,23 +19,20 @@ const MAX_FRAME_GAP_MS = 100;
 /**
  * The dashboard demo on its laptop, playing its story's parts one after another on a loop while it
  * is on screen, and pausing where it is when it scrolls away. Below it, the story's timeline, a
- * segment per part; choosing one plays that part from its start. Viewers who prefer no motion see
- * where each part ends.
+ * segment per part; choosing one plays that part from its start. It plays for viewers who prefer
+ * reduced motion too: still, it would not show how Leyway works.
  */
 export function DashboardDemoPlayer({ state }: { state: DashboardDemoState }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef({ index: 0, elapsed: 0 });
-  const reducedMotionRef = useRef(false);
   const [scene, setScene] = useState(() => sceneAt(0, 0));
   const [timeline, setTimeline] = useState({ index: 0, progress: 0 });
 
   const show = (index: number, elapsed: number) => {
-    const next = reducedMotionRef.current ? finalSceneOf(index) : sceneAt(index, elapsed);
+    const next = sceneAt(index, elapsed);
     setScene((current) => (sameScene(current, next) ? current : next));
     // Coarse steps are smooth enough for a thin bar, and spare most frames a render.
-    const progress = reducedMotionRef.current
-      ? 1
-      : Math.floor((elapsed / durationOf(index)) * 200) / 200;
+    const progress = Math.floor((elapsed / durationOf(index)) * 200) / 200;
     setTimeline((current) =>
       current.index === index && current.progress === progress ? current : { index, progress },
     );
@@ -45,11 +41,6 @@ export function DashboardDemoPlayer({ state }: { state: DashboardDemoState }) {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
-      return undefined;
-    }
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      reducedMotionRef.current = true;
-      show(0, 0);
       return undefined;
     }
     let lastFrameAt: number | null = null;
@@ -92,7 +83,7 @@ export function DashboardDemoPlayer({ state }: { state: DashboardDemoState }) {
   }, []);
 
   return (
-    <div ref={containerRef}>
+    <div ref={containerRef} data-ignores-reduced-motion>
       <LaptopFrame label="The Leyway dashboard, in one story: someone asks the agent to connect Google Drive and Slack, then for a page of this week's signups, then to tell #sales on Slack about every Business signup.">
         <StillDashboardDemo state={state} scene={scene} />
       </LaptopFrame>
