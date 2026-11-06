@@ -307,7 +307,11 @@ export function createAppIntegration({
         identity,
         inspect,
         state: async () => connectionStateOfInspection(await inspect()),
-        details: async () => ({ kind: "native" }),
+        details: async () => ({
+          kind: "summary",
+          summary:
+            "The app serves these actions from its own servers. Ask your agent to change the app's access or uninstall it.",
+        }),
         // The installation, not a stored configuration, is what changes this connection.
         settings: async () => null,
         async actions() {

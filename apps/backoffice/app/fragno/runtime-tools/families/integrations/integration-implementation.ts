@@ -92,6 +92,8 @@ export type IntegrationConnectionDetails =
       connectionName: string;
       accountId: string | null;
     }
+  // Native services without a page of their own say in a sentence how they work and change.
+  | { kind: "summary"; summary: string }
   // Native services are managed on their own Backoffice pages.
   | { kind: "native" };
 
