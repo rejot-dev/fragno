@@ -29,6 +29,8 @@
     // Local servers started without the bridge's containers say "false", so sandbox starts fail at once.
     "SANDBOX_CONTAINERS": "true",
     "DOCS_PUBLIC_BASE_URL": "https://leyway.com/",
+    // People's inbound addresses; its MX records point at the platform Resend account.
+    "INBOUND_EMAIL_DOMAIN": "ley.run",
     "POSTHOG_HOST": "https://eu.i.posthog.com",
   },
   "secrets": {

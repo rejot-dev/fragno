@@ -55,6 +55,7 @@ import { encodeBackofficeObjectAddress } from "./object-registry";
 import {
   parseAuthEmailVerificationRuntimeConfig,
   parseBooleanEnv,
+  parseInboundEmailDomain,
   parseSignUpAccessCodesRequired,
   type BackofficeRuntimeConfig,
   type BackofficeRuntimeServices,
@@ -418,6 +419,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
       ),
       localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", this.env.LOCAL_EMAIL_LOG),
       workersAi: this.#workersAi,
+      inboundEmailDomain: parseInboundEmailDomain(this.env.INBOUND_EMAIL_DOMAIN),
       bindings: {
         api: this.#isConfigured("API"),
         auth: this.#isConfigured("AUTH"),

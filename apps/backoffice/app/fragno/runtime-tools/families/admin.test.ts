@@ -111,6 +111,9 @@ describe("admin runtime tools", () => {
       listOrganizationMembers: async () => {
         throw new Error("Member listing is not configured in this fixture.");
       },
+      replaceInboundEmailAddress: async () => {
+        throw new Error("Inbound email is not configured in this fixture.");
+      },
     };
     const context = createTrustedSystemBackofficeToolContext({ runtimes: { admin: runtime } });
 

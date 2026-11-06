@@ -64,6 +64,7 @@ import {
   createEventRuntime,
   type EventEmitter,
 } from "@/fragno/runtime-tools/families/event-runtime";
+import { replaceInboundEmailAddress } from "@/fragno/runtime-tools/families/integrations/email-integration";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import {
@@ -364,6 +365,10 @@ const createRuntimeContext = ({
               billingFor: runtime.config.bindings.billing
                 ? (owner) => runtime.objects.billing.for(owner).commands
                 : null,
+              replaceInboundEmailAddress:
+                runtime.config.inboundEmailDomain !== null && runtime.config.bindings.resend
+                  ? (owner) => replaceInboundEmailAddress({ runtime, owner })
+                  : null,
               publicBaseUrl: runtime.config.docsPublicBaseUrl ?? null,
             }),
           }

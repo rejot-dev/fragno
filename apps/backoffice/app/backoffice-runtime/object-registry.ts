@@ -49,6 +49,7 @@ import {
   type BackofficeRootOwner,
   type BackofficeRoutableScope,
   type BackofficeScopeIdNames,
+  type BackofficeUserContextScope,
   backofficeScopePathSegment,
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -63,7 +64,14 @@ import type { Resend } from "workers/resend.do";
 import type { TelegramAdminConfigResponse } from "workers/telegram-object";
 
 import type { FragnoExecutionContext } from "@fragno-dev/core";
-import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
+import type {
+  ResendMailboxEmail,
+  ResendMailbox,
+  ResendOpenMailboxResult,
+  ResendPauseMailboxResult,
+  ResendReplaceMailboxAddressResult,
+  ResendSendEmailInput,
+} from "@fragno-dev/resend-fragment";
 
 import type { ClassifierResult } from "@earendil-works/pi-ai";
 
@@ -917,6 +925,41 @@ export type ResendCommands = DurableHookCommands &
     /** Throws when Resend is not configured. */
     checkWebhook(): Promise<WebhookRegistrationCheck>;
   };
+/** An attachment of a received email, with a Resend download URL that expires at expiresAt. */
+export type InboundEmailAttachment = {
+  id: string;
+  filename: string | null;
+  contentType: string;
+  size: number;
+  downloadUrl: string;
+  expiresAt: string;
+};
+
+/**
+ * People's inbound addresses, which only the platform Resend account, in System's Resend object,
+ * has. Each operation acts for the owner it names, so callers pass an authorized user scope.
+ */
+export type InboundEmailCommands = {
+  getMailbox(owner: BackofficeUserContextScope): Promise<ResendMailbox | null>;
+  /** Resumes the owner's mailbox; only an owner without one gets `address`. */
+  openMailbox(owner: BackofficeUserContextScope, address: string): Promise<ResendOpenMailboxResult>;
+  pauseMailbox(owner: BackofficeUserContextScope): Promise<ResendPauseMailboxResult>;
+  replaceMailboxAddress(
+    owner: BackofficeUserContextScope,
+    address: string,
+  ): Promise<ResendReplaceMailboxAddressResult>;
+  /** Null unless the email arrived at one of the owner's addresses. */
+  getMailboxEmail(
+    owner: BackofficeUserContextScope,
+    emailMessageId: string,
+  ): Promise<ResendMailboxEmail | null>;
+  /** Null unless the email arrived at one of the owner's addresses and has the attachment. */
+  getMailboxEmailAttachment(
+    owner: BackofficeUserContextScope,
+    emailMessageId: string,
+    attachmentId: string,
+  ): Promise<InboundEmailAttachment | null>;
+};
 export type McpCommands = DurableHookCommands;
 /** Connector has HTTP operations only; provider tokens stay upstream. */
 export type ProjectConnectorCommands = Record<never, never>;
@@ -1281,6 +1324,9 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   telegram: scoped(factory, binding<TelegramCommands>("TELEGRAM")),
   otp: scoped(factory, binding<OtpCommands>("OTP")),
   resend: scoped(factory, binding<ResendCommands>("RESEND")),
+  inboundEmail: {
+    system: () => scoped(factory, binding<InboundEmailCommands>("RESEND")).singleton(),
+  },
   mcp: scoped(factory, binding<McpCommands>("MCP")),
   projectConnector: scoped(factory, binding<ProjectConnectorCommands>("PROJECT_CONNECTOR")),
   upload: scoped(factory, binding<UploadCommands>("UPLOAD")),

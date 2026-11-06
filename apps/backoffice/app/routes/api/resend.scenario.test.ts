@@ -4,6 +4,7 @@ import { createHmac } from "node:crypto";
 
 import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { Resend } from "resend";
 
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
@@ -102,7 +103,7 @@ test.each(webhookCases)(
               runtime,
               implementation,
               nowEpochMs,
-              createClient: () =>
+              createClient: (apiKey) =>
                 ({
                   webhooks: {
                     async create() {
@@ -111,6 +112,9 @@ test.each(webhookCases)(
                         error: null,
                       };
                     },
+                    // The real client checks signatures, so the boundary sees Resend's own check.
+                    verify: (input: Parameters<Resend["webhooks"]["verify"]>[0]) =>
+                      new Resend(apiKey).webhooks.verify(input),
                   },
                 }) as never,
             }),

@@ -86,6 +86,7 @@ const config: BackofficeRuntimeConfig = {
   signUpAccessCodesRequired: true,
   localEmailLog: false,
   workersAi: false,
+  inboundEmailDomain: null,
   bindings: {
     api: false,
     auth: false,

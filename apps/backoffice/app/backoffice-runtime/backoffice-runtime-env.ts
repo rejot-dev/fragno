@@ -14,6 +14,7 @@ export type BackofficeRuntimeEnv = {
   AUTH_EMAIL_VERIFICATION_ENABLED?: string;
   SIGN_UP_ACCESS_CODES_REQUIRED?: string;
   LOCAL_EMAIL_LOG?: string;
+  INBOUND_EMAIL_DOMAIN?: string;
   GITHUB_APP_ID?: string;
   GITHUB_APP_SLUG?: string;
   GITHUB_APP_CLIENT_ID?: string;

@@ -23,6 +23,7 @@ import {
   integrationAuthMethodLabels,
 } from "./connection-display";
 import { ConnectorConnectionDetails } from "./connector-connection-details";
+import { EmailConnectionDetails } from "./email-connection-details";
 import type { IntegrationsLayoutContext } from "./layout-context";
 import { McpConnectionDetails } from "./mcp-connection-details";
 import { NativeConnectionDetails, NativeSummaryDetails } from "./native-connection-details";
@@ -188,6 +189,8 @@ function ConnectionSourceDetails({
       return <McpConnectionDetails details={details} />;
     case "connector":
       return <ConnectorConnectionDetails details={details} />;
+    case "email":
+      return <EmailConnectionDetails details={details} />;
     case "summary":
       return <NativeSummaryDetails summary={details.summary} />;
     case "native":

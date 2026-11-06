@@ -8,6 +8,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import { createApiIntegration } from "./api-integration";
 import { createAppIntegration } from "./app-integration";
 import { createConnectorIntegration } from "./connector-integration";
+import { createEmailIntegration } from "./email-integration";
 import { createGitHubIntegration } from "./github-integration";
 import {
   readRecordedConnectionStates,
@@ -41,6 +42,7 @@ export function createIntegrationsRuntime({
     createGitHubIntegration({ runtime, nowEpochMs }),
     createTelegramIntegration({ runtime, nowEpochMs }),
     createResendIntegration({ runtime, nowEpochMs }),
+    createEmailIntegration({ runtime }),
     createWorkersAiIntegration({ runtime, nowEpochMs }),
     createAppIntegration({ runtime, nowEpochMs }),
     ...(execution.scope.kind === "user"

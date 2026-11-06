@@ -17,6 +17,7 @@ describe("Capability contributions", () => {
       "auth",
       "automations",
       "codemode",
+      "email",
       "github",
       "integrations",
       "otp",
