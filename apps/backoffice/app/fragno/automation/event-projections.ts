@@ -9,6 +9,7 @@ import {
   type PiAgentActivityKind,
   type PiAgentEvent,
 } from "@/fragno/backoffice-capabilities/capabilities/pi";
+import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import {
   applyPiAgentEvent,
   piAgentEventRequestId,
@@ -138,7 +139,11 @@ export function projectStoredEvent(
       } else {
         uow.create(
           "pi_agent",
-          { id: projection.read.agentName, ...agent },
+          {
+            id: projection.read.agentName,
+            displayName: formatPiAgentName(projection.read.agentName),
+            ...agent,
+          },
           { retryOnUniqueConflict: () => true },
         );
       }

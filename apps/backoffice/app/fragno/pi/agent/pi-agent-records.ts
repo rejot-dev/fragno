@@ -189,6 +189,30 @@ export function applyPiAgentEvent(
 }
 
 /**
+ * What an agent's `activity` reads: what it is doing, or else what it did last. The `agents` page
+ * relation reads the same labels.
+ */
+export const PI_AGENT_ACTIVITY = {
+  none: "No recorded activity",
+  answering: "Answering",
+  stopped: "Stopped",
+  latest: {
+    started: "Started a turn",
+    answered: "Answered",
+    "cut-off": "Turn cut off",
+    failed: "Turn failed",
+    queued: "Work queued",
+    dispatched: "Took queued work",
+    dropped: "Dropped queued work",
+    created: "Defined",
+    updated: "Definition updated",
+    deleted: "Deleted",
+    stopped: "Stopped",
+    resumed: "Resumed",
+  } satisfies Record<PiAgentActivityKind, string>,
+};
+
+/**
  * The agent people see: a built-in agent, or one whose latest definition event defines it, which
  * takes the place of a built-in agent of the same name; null for any other agent.
  */
@@ -217,12 +241,12 @@ export function piAgentRecord(agentName: string, agent: PiAgentState | null): Pi
     displayName: formatPiAgentName(agentName),
     activity:
       latestKind === null
-        ? "No recorded activity"
+        ? PI_AGENT_ACTIVITY.none
         : answering
-          ? "Answering"
+          ? PI_AGENT_ACTIVITY.answering
           : paused
-            ? "Stopped"
-            : activityLabels[latestKind],
+            ? PI_AGENT_ACTIVITY.stopped
+            : PI_AGENT_ACTIVITY.latest[latestKind],
   };
 }
 
@@ -230,21 +254,6 @@ export function piAgentRecord(agentName: string, agent: PiAgentState | null): Pi
 export function piAgentRequestKey(agentName: string, requestId: string): string {
   return JSON.stringify([agentName, requestId]);
 }
-
-const activityLabels: Record<PiAgentActivityKind, string> = {
-  started: "Started a turn",
-  answered: "Answered",
-  "cut-off": "Turn cut off",
-  failed: "Turn failed",
-  queued: "Work queued",
-  dispatched: "Took queued work",
-  dropped: "Dropped queued work",
-  created: "Defined",
-  updated: "Definition updated",
-  deleted: "Deleted",
-  stopped: "Stopped",
-  resumed: "Resumed",
-};
 
 /** The turn an event ended, or null for any other event. */
 export function piAgentTurnEndedBy(

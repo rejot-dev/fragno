@@ -8,7 +8,7 @@ import {
 import { readDashboardOverview } from "@/routes/backoffice/dashboard/overview-replica";
 import { readWebhookDeliveries } from "@/routes/backoffice/integrations/integrations-replica";
 
-import { AUTOMATION_PAGE_DERIVED_RELATIONS, AUTOMATION_PAGE_VIEWS_SQL } from "./page-relations";
+import { AUTOMATION_PAGE_VIEWS_SQL } from "./page-relations";
 import {
   readAutomationRoutes,
   readIntegrationConnectionHistory,
@@ -57,7 +57,7 @@ export const automationReads = {
 const automationPageViewEngine = guardedSqlViewEngine({
   kind: AUTOMATION_PAGE_VIEWS,
   views: AUTOMATION_PAGE_VIEWS_SQL,
-  derived: AUTOMATION_PAGE_DERIVED_RELATIONS,
+  derived: {},
   // About a second, as the build's check allows each query: 25 million operations take about
   // 200 ms. The home page's eleven queries take under one million together over a scope with
   // 12,000 events.
