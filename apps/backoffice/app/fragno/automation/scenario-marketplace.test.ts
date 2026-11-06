@@ -368,7 +368,9 @@ const writeUploadFile = async (input: {
   assert(response.ok);
 };
 
-describe("marketplace scenarios", { concurrent: false }, () => {
+// Most scenarios publish every bundled package, which outlasts the default timeout when the whole
+// Backoffice suite runs at once.
+describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => {
   test("normal seeding skips published bundled bytes before capture and does not enqueue more workflows", async () => {
     const files = BASE_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
     const original = files[MARKETPLACE_PACKAGE_FILE_KEY];
