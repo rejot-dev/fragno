@@ -15,8 +15,16 @@ import type { ResendMailbox } from "@fragno-dev/resend-fragment";
 
 import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
-import { INBOUND_EMAIL_AUTOMATION_SOURCE } from "@/fragno/backoffice-capabilities/capabilities/resend";
-import { INBOUND_EMAIL_CONNECTION_ID, inboundEmailOwnerScope } from "@/fragno/inbound-email";
+import {
+  INBOUND_EMAIL_AUTOMATION_SOURCE,
+  inboundEmailReceivedPayloadSchema,
+} from "@/fragno/backoffice-capabilities/capabilities/resend";
+import {
+  INBOUND_EMAIL_CONNECTION_ID,
+  inboundEmailOwnerScope,
+  inboundEmailSenderDomain,
+  inboundEmailSenderVerified,
+} from "@/fragno/inbound-email";
 import { claimRandomInboundAddress } from "@/fragno/inbound-email-address";
 
 import type { IntegrationSetupOperation } from "./integration-contracts";
@@ -37,6 +45,9 @@ const messageGetOutputSchema = z.strictObject({
   emailId: z.string(),
   address: z.string().describe("The address it arrived at, which may since have been replaced."),
   from: z.string().nullable(),
+  senderDomain: inboundEmailReceivedPayloadSchema.shape.senderDomain,
+  senderVerified: inboundEmailReceivedPayloadSchema.shape.senderVerified,
+  authentication: inboundEmailReceivedPayloadSchema.shape.authentication,
   to: z.array(z.string()),
   cc: z.array(z.string()),
   replyTo: z.array(z.string()),
@@ -399,6 +410,9 @@ export function createEmailIntegration({
                   emailId: email.id,
                   address: email.recipientMailbox.address,
                   from: email.from,
+                  senderDomain: email.from === null ? null : inboundEmailSenderDomain(email.from),
+                  senderVerified: inboundEmailSenderVerified(email.authentication),
+                  authentication: email.authentication,
                   to: email.to,
                   cc: email.cc,
                   replyTo: email.replyTo,

@@ -5,7 +5,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { z } from "zod";
 
-import type { ResendMailboxEmail } from "@fragno-dev/resend-fragment";
+import type { ResendEmailAuthentication, ResendMailboxEmail } from "@fragno-dev/resend-fragment";
 
 import type { AutomationKnownEvent } from "./automation/contracts";
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/contracts";
@@ -37,6 +37,22 @@ function senderMailbox(from: string): string {
   return (/<([^<>]+)>\s*$/u.exec(from)?.[1] ?? from).trim().toLowerCase();
 }
 
+/** The domain of a From header's mailbox, lowercased; null when it names no address. */
+export function inboundEmailSenderDomain(from: string): string | null {
+  const mailbox = senderMailbox(from);
+  const at = mailbox.lastIndexOf("@");
+  return at > 0 && at < mailbox.length - 1 ? mailbox.slice(at + 1) : null;
+}
+
+/**
+ * Whether the From domain sent the email. Resend's DKIM passes only for a signature by the From
+ * domain, and DMARC only for an aligned pass under an enforcing policy; SPF alone checks the
+ * envelope sender, which forwarding replaces.
+ */
+export function inboundEmailSenderVerified(authentication: ResendEmailAuthentication | null) {
+  return authentication?.dkim === "pass" || authentication?.dmarc === "pass";
+}
+
 /** One event per received message, in the scope of the user whose address it arrived at. */
 export function buildInboundEmailAutomationEvent(
   scope: BackofficeUserContextScope,
@@ -52,6 +68,9 @@ export function buildInboundEmailAutomationEvent(
     connectionId: INBOUND_EMAIL_CONNECTION_ID,
     address: email.recipientMailbox.address,
     from,
+    senderDomain: inboundEmailSenderDomain(from),
+    senderVerified: inboundEmailSenderVerified(email.authentication),
+    authentication: email.authentication,
     to: email.to,
     cc: email.cc,
     replyTo: email.replyTo,

@@ -72,6 +72,8 @@ type ReceivedEmail = {
   subject: string;
   text: string;
   html: string;
+  /** Resend's SPF, DKIM and DMARC results, which its SDK does not type. */
+  authentication: { spf: string; dkim: string; dmarc: string };
 };
 
 /** The platform Resend account: its webhook, received emails, and attachment downloads. */
@@ -114,6 +116,7 @@ function createResendProvider() {
                 text: email.text,
                 headers: {},
                 attachments: [attachment],
+                authentication: email.authentication,
               },
               error: null,
             };
@@ -202,6 +205,8 @@ const receipt = {
   subject: "Fwd: Your receipt",
   text: "Total: 12.00 EUR",
   html: "<p>Total: 12.00 EUR</p>",
+  // Forwarded mail fails SPF but keeps the shop's DKIM signature.
+  authentication: { spf: "fail", dkim: "pass", dmarc: "pass" },
 };
 
 /** Three words from the address list, at the inbound domain. */
@@ -385,6 +390,9 @@ test("each person keeps one random inbound address that only support replaces", 
               connectionId: "backoffice#email",
               address: addresses.alice,
               from: "Shop <Orders@Shop.example>",
+              senderDomain: "shop.example",
+              senderVerified: true,
+              authentication: { spf: "fail", dkim: "pass", dmarc: "pass" },
               to: ["me@mail.example"],
               subject: "Fwd: Your receipt",
               text: "Total: 12.00 EUR",
@@ -428,6 +436,9 @@ test("each person keeps one random inbound address that only support replaces", 
               emailId,
               html: "<p>Total: 12.00 EUR</p>",
               to: ["me@mail.example"],
+              senderDomain: "shop.example",
+              senderVerified: true,
+              authentication: { spf: "fail", dkim: "pass", dmarc: "pass" },
             },
             attachment: {
               id: "att_1",
@@ -581,7 +592,12 @@ test("a route set up as the receiving-email skill describes reads the email", as
                   kind: "event",
                   source: "email",
                   eventType: "message.received",
-                  matcher: { path: "$.payload.from", op: "includes", value: "@Shop.example" },
+                  matcher: {
+                    all: [
+                      { path: "$.payload.senderDomain", op: "eq", value: "shop.example" },
+                      { path: "$.payload.senderVerified", op: "eq", value: true },
+                    ],
+                  },
                 },
                 action: {
                   kind: "start_workflow",

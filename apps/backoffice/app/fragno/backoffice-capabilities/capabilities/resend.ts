@@ -24,6 +24,14 @@ export const inboundEmailSenderEntity = {
     "The address in a received email's From header. Anyone can write any From address, so a sender never links to a Backoffice user.",
 } as const satisfies AutomationExternalEntityDefinition<typeof INBOUND_EMAIL_AUTOMATION_SOURCE>;
 
+const inboundEmailAuthenticationResultSchema = z.enum([
+  "pass",
+  "fail",
+  "gray",
+  "processing_failed",
+  "unknown",
+]);
+
 export const inboundEmailReceivedPayloadSchema = z.object({
   emailId: z
     .string()
@@ -38,6 +46,27 @@ export const inboundEmailReceivedPayloadSchema = z.object({
     .min(1)
     .describe("The address it arrived at, which may since have been replaced."),
   from: z.string().describe("The From header, e.g. Shop <orders@shop.example>."),
+  senderDomain: z
+    .string()
+    .nullable()
+    .describe(
+      "The From address's domain, lowercased, such as shop.example; null when From names no address. Match it with eq: includes also matches shop.example.attacker.test.",
+    ),
+  senderVerified: z
+    .boolean()
+    .describe(
+      "Whether senderDomain sent this email: Resend's DKIM or DMARC check passed. It proves the domain, not the person, and says nothing about the content.",
+    ),
+  authentication: z
+    .object({
+      spf: inboundEmailAuthenticationResultSchema,
+      dkim: inboundEmailAuthenticationResultSchema,
+      dmarc: inboundEmailAuthenticationResultSchema,
+    })
+    .nullable()
+    .describe(
+      "Resend's SPF, DKIM and DMARC results, computed on receipt, so a sender cannot forge them. gray is neither pass nor fail, such as a domain without an enforcing DMARC policy. Null when Resend reported none.",
+    ),
   to: z
     .array(z.string())
     .describe(
@@ -176,6 +205,9 @@ export const resendCapability: BackofficeCapability = {
           connectionId: "backoffice#email",
           address: "quiet-amber-falcon@ley.run",
           from: "Shop <orders@shop.example>",
+          senderDomain: "shop.example",
+          senderVerified: true,
+          authentication: { spf: "fail", dkim: "pass", dmarc: "pass" },
           to: ["me@mail.example"],
           cc: [],
           replyTo: [],
