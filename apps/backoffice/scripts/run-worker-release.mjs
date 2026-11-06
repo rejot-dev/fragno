@@ -13,6 +13,12 @@ const workerCommands = {
     ["deploy", "--config", "dist/rejot_backoffice/wrangler.json"],
     ["deploy", "--config", "build/server/wrangler.json"],
   ],
+  // Cloudflare deletes a Durable Object namespace only once no Worker binds it, so the web Worker
+  // drops its bindings before the object Worker deploys the deletion tombstones.
+  retire: [
+    ["deploy", "--config", "build/server/wrangler.json"],
+    ["deploy", "--config", "dist/rejot_backoffice/wrangler.json"],
+  ],
   upload: [
     ["versions", "upload", "--config", "dist/rejot_backoffice/wrangler.json"],
     ["versions", "upload", "--config", "build/server/wrangler.json"],
@@ -24,7 +30,9 @@ const workerCommands = {
 };
 
 if (!Object.hasOwn(workerCommands, releaseOperation)) {
-  throw new Error("Usage: node scripts/run-worker-release.mjs <bootstrap|upload|deploy> [args...]");
+  throw new Error(
+    "Usage: node scripts/run-worker-release.mjs <bootstrap|retire|upload|deploy> [args...]",
+  );
 }
 
 if (releaseOperation === "deploy") {

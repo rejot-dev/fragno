@@ -68,6 +68,15 @@ describe("Backoffice Worker release orchestration", () => {
     ]);
   });
 
+  test("retires Durable Object classes after the web Worker drops their bindings", async () => {
+    const commands = await recordWorkerReleaseCommands("retire", ["--", "--dry-run"]);
+
+    assert.deepEqual(commands, [
+      ["deploy", "--config", "build/server/wrangler.json", "--dry-run"],
+      ["deploy", "--config", "dist/rejot_backoffice/wrangler.json", "--dry-run"],
+    ]);
+  });
+
   test("forwards upload tags to all Worker uploads", async () => {
     const commands = await recordWorkerReleaseCommands("upload", ["--", "--tag", "release-test"]);
 
