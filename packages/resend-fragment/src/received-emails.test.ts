@@ -105,6 +105,7 @@ describe("resend-fragment received emails", async () => {
           download_url: "https://example.com/raw.eml",
           expires_at: "2026-03-18T12:00:00.000Z",
         },
+        authentication: { spf: "pass", dkim: "pass", dmarc: "gray" },
         attachments: [
           {
             id: "att_detail",
@@ -160,6 +161,7 @@ describe("resend-fragment received emails", async () => {
         downloadUrl: "https://example.com/raw.eml",
         expiresAt: "2026-03-18T12:00:00.000Z",
       },
+      authentication: { spf: "pass", dkim: "pass", dmarc: "gray" },
     });
   });
 });

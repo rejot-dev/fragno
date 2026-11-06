@@ -48,7 +48,8 @@ Example prompt: **"Integrate the Resend fragment into my application"**
 - **Send email** — transactional sends via Resend without blocking your request flow on downstream
   delivery.
 - **Webhooks** — verified inbound events, retries, and status sync packaged in the fragment.
-- **Inbound email** — body and metadata persisted locally when mail is received.
+- **Inbound email** — body and metadata persisted locally when mail is received, with Resend's SPF,
+  DKIM, and DMARC results as `authentication`.
 - **Mailboxes** — one receiving address per owner you name, so received mail says whose it is.
 - **Threading** — replies grouped into timelines using reply tokens, headers, and subject
   heuristics.

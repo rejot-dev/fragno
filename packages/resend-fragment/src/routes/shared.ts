@@ -3,6 +3,7 @@ import type { CreateEmailOptions, Domain, DomainRecords } from "resend";
 import { z } from "zod";
 
 import type { ResendFragmentConfig } from "../definition";
+import { readEmailAuthentication } from "../email-authentication";
 import {
   asStringArray,
   getHeader,
@@ -345,6 +346,8 @@ export const buildReceivedEmailDetail = (email: {
     download_url: string;
     expires_at: string;
   } | null;
+  /** Untyped by the Resend SDK. */
+  authentication?: unknown;
 }) => {
   const attachments = email.attachments.map((attachment) =>
     buildReceivedEmailAttachment(attachment),
@@ -370,6 +373,7 @@ export const buildReceivedEmailDetail = (email: {
           expiresAt: email.raw.expires_at,
         }
       : null,
+    authentication: readEmailAuthentication(email.authentication),
   };
 };
 
@@ -453,6 +457,7 @@ export const buildThreadMessage = (message: {
   lastEventAt: Date | null;
   errorCode: string | null;
   errorMessage: string | null;
+  authentication: unknown;
   createdAt: Date;
   updatedAt: Date;
 }) => {
@@ -509,6 +514,7 @@ export const buildThreadMessage = (message: {
     lastEventAt: message.lastEventAt ?? null,
     errorCode: message.errorCode ?? null,
     errorMessage: message.errorMessage ?? null,
+    authentication: readEmailAuthentication(message.authentication),
     createdAt: message.createdAt,
     updatedAt: message.updatedAt,
   };

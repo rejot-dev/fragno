@@ -26,7 +26,10 @@ What you provide:
 - `threadReplyBaseAddress` (optional): base reply address for thread routing.
 - `defaultTags` and `defaultHeaders` (optional): default metadata on outgoing mail.
 - `onEmailStatusUpdated` (optional): callback for provider status changes.
-- `onEmailReceived` (optional): callback for inbound messages.
+- `onEmailReceived` (optional): callback for inbound messages. Its `authentication` holds the SPF,
+  DKIM, and DMARC results Resend's receiving server computed (`pass`, `fail`, `gray`,
+  `processing_failed`, or `unknown` each), or `null` when Resend reported none; thread messages and
+  received-email details carry the same field.
 
 What the fragment needs via options:
 

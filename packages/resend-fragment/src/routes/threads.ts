@@ -3,6 +3,7 @@ import { z } from "zod";
 import { type TypedUnitOfWork } from "@fragno-dev/db";
 
 import type { ResendFragmentConfig } from "../definition";
+import { resendEmailAuthenticationSchema } from "../email-authentication";
 import { resendSchema } from "../schema";
 import {
   buildHeuristicKey,
@@ -69,6 +70,8 @@ export const resendThreadMessageSchema = z.object({
   lastEventAt: z.date().nullable(),
   errorCode: z.string().nullable(),
   errorMessage: z.string().nullable(),
+  /** Resend's SPF, DKIM and DMARC results for a received message; null for sent ones. */
+  authentication: resendEmailAuthenticationSchema.nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
 });
@@ -435,6 +438,7 @@ const queueThreadMessage = async function (
         lastEventAt: null,
         errorCode: null,
         errorMessage: null,
+        authentication: null,
         createdAt: occurredAt,
         updatedAt: occurredAt,
       });

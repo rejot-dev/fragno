@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { resendEmailAuthenticationSchema } from "../email-authentication";
 import type { ResendRouteFactoryContext } from "./context";
 import { formatErrorMessage } from "./shared";
 import { buildReceivedEmailDetail, buildReceivedEmailSummary } from "./shared";
@@ -37,6 +38,7 @@ export const resendReceivedEmailDetailSchema = resendReceivedEmailSummarySchema.
       expiresAt: z.string(),
     })
     .nullable(),
+  authentication: resendEmailAuthenticationSchema.nullable(),
 });
 
 export const resendListReceivedEmailsOutputSchema = z.object({

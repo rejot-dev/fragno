@@ -44,6 +44,10 @@ export { resendFragmentDefinition } from "./definition";
 export { resendRoutesFactory } from "./routes";
 export { resendSchema } from "./schema";
 export type {
+  ResendEmailAuthentication,
+  ResendEmailAuthenticationResult,
+} from "./email-authentication";
+export type {
   ResendEmailReceivedHookPayload,
   ResendEmailStatusUpdatedHookPayload,
   ResendFragmentConfig,

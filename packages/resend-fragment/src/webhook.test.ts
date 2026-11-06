@@ -100,6 +100,7 @@ describe("resend-fragment webhook", () => {
         text: "Hello",
         headers: {},
         attachments: [],
+        authentication: { spf: "fail", dkim: "pass", dmarc: "pass" },
       },
       error: null,
       headers: null,
@@ -147,7 +148,9 @@ describe("resend-fragment webhook", () => {
       emailMessageId: received.id.valueOf(),
       threadResolvedVia: "new-thread",
       eventType: "email.received",
+      authentication: { spf: "fail", dkim: "pass", dmarc: "pass" },
     });
+    expect(received.authentication).toEqual({ spf: "fail", dkim: "pass", dmarc: "pass" });
     expect(callbackPayload?.threadId).toEqual(expect.any(String));
     const resolvedThread = await ctx.getThread(callbackPayload.threadId);
     expect(resolvedThread).toBeTruthy();
@@ -240,6 +243,7 @@ describe("resend-fragment webhook", () => {
         emailMessageId: received.id.valueOf(),
         providerEmailId: "re_received_retry",
         eventType: "email.received",
+        authentication: null,
       }),
     );
   });

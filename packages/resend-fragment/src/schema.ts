@@ -102,6 +102,10 @@ export const resendSchema = schema("resend", (s) => {
       t
         // The mailboxes a received message was delivered to, as { address, owner }, one
         // per owner, each of whom may read it. An address never changes owner.
-        .addColumn("recipientMailboxes", column("json").nullable()),
+        .addColumn("recipientMailboxes", column("json").nullable())
+        // A received message's SPF, DKIM and DMARC results, as Resend's receiving server
+        // computed them; null for sent messages and for email received before Resend reported
+        // them.
+        .addColumn("authentication", column("json").nullable()),
     );
 });
