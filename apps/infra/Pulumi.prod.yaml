@@ -1,0 +1,5 @@
+config:
+  leyway-infra:accountId: cda934461b3c3f24b4899fc8a100ffe6
+  leyway-infra:alertEmails:
+    - niklas@rejot.dev
+encryptionsalt: v1:KChKBNg8pRM=:v1:v8F1394NwjScNcJB:2HoKd6B5JVeDWyAz/oURJi1ZAW2TUw==

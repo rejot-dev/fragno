@@ -1,0 +1,7 @@
+{
+  "extends": "@fragno-private/typescript-config/tsconfig.node.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src", "scripts"]
+}

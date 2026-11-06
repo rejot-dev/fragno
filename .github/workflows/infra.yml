@@ -1,0 +1,43 @@
+name: Infra
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/infra/**"
+      - ".github/workflows/infra.yml"
+  workflow_dispatch:
+
+# Two updates of the same stack would fight over its state.
+concurrency:
+  group: infra-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy infra
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".node-version"
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter @fragno-apps/infra
+
+      # Only installs the CLI: `apply` runs it, with the state bucket's keys derived from the token.
+      - name: Setup Pulumi
+        uses: pulumi/actions@v7
+        with:
+          pulumi-version: 3.274.1
+
+      - name: Pulumi up
+        run: pnpm --filter @fragno-apps/infra run apply --yes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.INFRA_CLOUDFLARE_API_TOKEN }}
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.INFRA_PULUMI_CONFIG_PASSPHRASE }}

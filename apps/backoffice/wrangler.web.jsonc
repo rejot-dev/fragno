@@ -17,6 +17,10 @@
       "enabled": true,
       "head_sampling_rate": 1,
     },
+    // Feeds the "new Worker issue" alert in apps/infra.
+    "issues": {
+      "enabled": true,
+    },
   },
   "preview_urls": true,
   "vars": {

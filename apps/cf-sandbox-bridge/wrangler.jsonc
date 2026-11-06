@@ -21,6 +21,10 @@
       // it to reduce overhead and cost under high traffic.
       "head_sampling_rate": 1,
     },
+    // Feeds the "new Worker issue" alert in apps/infra.
+    "issues": {
+      "enabled": true,
+    },
   },
   // Each Sandbox Durable Object starts its own container and chooses the image and instance type
   // at start time. The durable_object scheduling policy is immutable and cannot be rolled back to
