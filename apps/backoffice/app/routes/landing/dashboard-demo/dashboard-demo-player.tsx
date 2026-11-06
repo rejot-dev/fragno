@@ -14,6 +14,9 @@ import { LaptopFrame } from "./laptop-frame";
 // The timeline below redraws as a story plays; the dashboard redraws only when its scene changes.
 const StillDashboardDemo = memo(DashboardDemo);
 
+// Longer than any frame of a playing page, shorter than any part.
+const MAX_FRAME_GAP_MS = 100;
+
 /**
  * The dashboard demo on its laptop, playing its story's parts one after another on a loop while it
  * is on screen, and pausing where it is when it scrolls away. Below it, the story's timeline, a
@@ -54,7 +57,10 @@ export function DashboardDemoPlayer({ state }: { state: DashboardDemoState }) {
     const tick = (time: number) => {
       const playhead = playheadRef.current;
       if (lastFrameAt !== null) {
-        playhead.elapsed += time - lastFrameAt;
+        // Browsers stop drawing frames in background tabs, so the first frame back can come
+        // minutes later. Playing all that time at once would flick through a part per frame;
+        // a gap that long is a pause, as when the dashboard scrolls away.
+        playhead.elapsed += Math.min(time - lastFrameAt, MAX_FRAME_GAP_MS);
         if (playhead.elapsed >= durationOf(playhead.index)) {
           playhead.elapsed -= durationOf(playhead.index);
           playhead.index = (playhead.index + 1) % DASHBOARD_DEMOS.length;
