@@ -75,10 +75,15 @@ import {
 } from "./event-definitions";
 import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
 import {
+  createEventFoldReplayServices,
+  replayEventFold,
+  type EventFoldReplayPass,
+} from "./event-fold-replay";
+import {
   createEventProjectionServices,
-  eventProjectionKeys,
-  eventProjectionOf,
-  projectStoredEvent,
+  foldProjectedEvents,
+  projectedEventKeys,
+  projectedEventOf,
 } from "./event-projections";
 import { createAutomationEventSourceServices } from "./event-sources-storage-runtime";
 import { createAutomationEventServices } from "./events-storage-runtime";
@@ -769,6 +774,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     });
     const eventServices = createAutomationEventServices(defineService);
     const eventProjectionServices = createEventProjectionServices(defineService);
+    const eventFoldReplayServices = createEventFoldReplayServices(defineService);
     const eventSourceServices = createAutomationEventSourceServices(defineService);
     const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);
     const externalIdentityBindingServices = createExternalIdentityBindingServices(defineService);
@@ -785,6 +791,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...routeServices,
       ...eventServices,
       ...eventProjectionServices,
+      ...eventFoldReplayServices,
       ...eventSourceServices,
       ...eventDefinitionServices,
       ...externalIdentityBindingServices,
@@ -875,8 +882,14 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           getAutomationEventIdentity(event),
         ],
       ) {
-        const projection = eventProjectionOf(event);
-        const projected = eventProjectionKeys(projection);
+        const projected = [
+          projectedEventOf({
+            ...event,
+            subject: event.subject ?? null,
+            occurredAt: new Date(event.occurredAt),
+          }),
+        ];
+        const keys = projectedEventKeys(projected);
         return this.serviceTx(automationFragmentSchema, { name: "automations.ingestEvent" })
           .retrieve((uow) =>
             uow
@@ -890,15 +903,19 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               )
               // Only forwards need them, but a scope keeps few, and the read shares this round trip.
               .find("automation_forward_accept", (b) => b.whereIndex("primary"))
-              // The rows the event's projection changes, if any; an empty list reads nothing.
-              .find("pi_agent", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "in", projected.agents)),
-              )
+              // The rows the event's fold changes, if any; an empty list reads nothing.
+              .find("pi_agent", (b) => b.whereIndex("primary", (eb) => eb("id", "in", keys.agents)))
               .find("pi_agent_request", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "in", projected.requests)),
+                b.whereIndex("primary", (eb) => eb("id", "in", keys.requests)),
+              )
+              .find("pi_agent_turn", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "in", keys.turns)),
               )
               .find("integration_connection", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "in", projected.connections)),
+                b.whereIndex("primary", (eb) => eb("id", "in", keys.connections)),
+              )
+              .find("integration_connection_change", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "in", keys.changes)),
               ),
           )
           .mutate(
@@ -910,7 +927,9 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 acceptRows,
                 agentRows,
                 requestRows,
+                turnRows,
                 connectionRows,
+                changeRows,
               ],
             }) => {
               if (existingEvent) {
@@ -933,12 +952,12 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 reclassificationChain,
                 storedPayload: builtInDefinition?.storedPayload ?? null,
               });
-              projectStoredEvent(uow as AutomationHookUnitOfWork, {
-                event,
-                projection,
+              foldProjectedEvents(uow as AutomationHookUnitOfWork, projected, {
                 agentRows,
                 requestRows,
+                turnRows,
                 connectionRows,
+                changeRows,
               });
               return true;
             },
@@ -950,6 +969,9 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
   })
   .provideHooks(({ defineHook, services, serviceDeps, config }) => {
     return {
+      internalReplayEventFold: defineHook(async function (pass: EventFoldReplayPass) {
+        await replayEventFold(pass, this.handlerTx.bind(this));
+      }),
       internalDispatchRouteSchedule: defineHook(async function (payload) {
         await dispatchAutomationRouteSchedule({
           payload,

@@ -4,6 +4,7 @@ import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { HookFn, TypedUnitOfWork } from "@fragno-dev/db";
 
 import type { AutomationEventIdentity } from "./contracts";
+import type { EventFoldReplayPass } from "./event-fold-replay";
 import { automationFragmentSchema } from "./schema";
 
 export type AutomationEventIngestionPayload = {
@@ -46,6 +47,7 @@ export type AutomationInternalHooks = {
   internalIngestEvent: HookFn<AutomationEventIngestionPayload>;
   internalDispatchRoute: HookFn<AutomationRouteDispatchPayload>;
   internalDispatchRouteSchedule: HookFn<AutomationRouteScheduleDispatchPayload>;
+  internalReplayEventFold: HookFn<EventFoldReplayPass>;
 };
 
 export type AutomationHookUnitOfWork = TypedUnitOfWork<

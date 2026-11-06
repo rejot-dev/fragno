@@ -17,6 +17,7 @@ import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
+import type { EventFoldReplayPass } from "./event-fold-replay";
 import type { AutomationEventSource } from "./event-sources";
 import type { StoredAutomationRouteMetadata } from "./route-records";
 
@@ -442,6 +443,12 @@ export const automationFragmentSchema = schema("automations", (s) => {
             "connectionId",
             "occurredAt",
           ]),
+      )
+      // One row, which `event-fold-replay` keeps: the pass its replay of stored events takes next.
+      .addTable("event_fold_replay", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("next", jsonColumn<EventFoldReplayPass>().nullable()),
       )
   );
 });

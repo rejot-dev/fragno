@@ -191,12 +191,6 @@ test("an administrator deletes old events of one type from storage and sync hist
           assert.notEqual(unconfirmed.exitCode, 0);
           expect(unconfirmed.stderr).toContain("--danger");
 
-          const folded = await recentTerminal.exec(
-            "admin.events.delete --org ada-labs --source pi --event-type turn.completed --before 2026-02-01 --danger",
-          );
-          assert.notEqual(folded.exitCode, 0);
-          expect(folded.stderr).toContain("cannot be deleted");
-
           // Long ago by occurredAt, but just stored, so their ingestion hooks are still kept.
           const recentlyStored = await recentTerminal.exec(
             `${deleteOldGitHubWebhooks} --danger --dry-run`,

@@ -94,7 +94,7 @@ const deleteEventsTool = defineBackofficeRuntimeTool({
       command: "admin.events.delete",
       help: {
         summary:
-          "admin.events.delete permanently deletes up to 50 of an organization's oldest stored events of one type, and their sync history, so browsers stop downloading them. Events stored in the last 8 days or whose routes are still being matched are kept, as are route dispatch records; traces rooted at a deleted event lose their root. pi and integrations events cannot be deleted.",
+          "admin.events.delete permanently deletes up to 50 of an organization's oldest stored events of one type, and their sync history, so browsers stop downloading them. Events stored in the last 8 days or whose routes are still being matched are kept, as are route dispatch records; traces rooted at a deleted event lose their root. pi and integrations events cannot be deleted until the organization finished folding its earlier ones into its agents and connections.",
         options: [
           {
             name: "org",
