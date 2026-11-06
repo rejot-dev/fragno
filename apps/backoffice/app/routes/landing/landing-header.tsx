@@ -114,27 +114,29 @@ export function LandingHeader() {
           <Link
             to="/"
             data-header-cell
-            className={`flex min-w-0 items-center border-r pr-4 no-underline outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset md:border-l md:pl-4 ${cellSeparatorClassName}`}
+            className={`flex min-w-0 items-center border-r pr-4 no-underline outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset max-[379px]:pr-2.5 md:border-l md:pl-4 ${cellSeparatorClassName}`}
             aria-label="Leyway home"
           >
-            <LeywayWordmark className="h-9 text-[var(--landing-header-ink)] transition-[color] duration-400 ease-out" />
+            <LeywayWordmark className="h-9 text-[var(--landing-header-ink)] transition-[color] duration-400 ease-out max-[379px]:h-7" />
           </Link>
+          {/* The narrowest phones fit the wordmark and both links only with tighter cells, a smaller
+              wordmark, and no arrow. */}
           <nav aria-label="Product" className="col-span-2 col-start-3 grid grid-cols-subgrid">
             <Link
               to="/marketplace"
               data-header-cell
-              className={`${navCellClassName} border-l px-4`}
+              className={`${navCellClassName} border-l px-4 max-[379px]:px-2.5`}
             >
               Marketplace
             </Link>
             <Link
               to="/backoffice"
               data-header-cell
-              className={`${navCellClassName} border-l pl-4 md:border-r md:pr-4`}
+              className={`${navCellClassName} border-l pl-4 max-[379px]:pl-2.5 md:border-r md:pr-4`}
             >
               <span className="flex items-center gap-2">
                 Open app
-                <Icon name="arrow-right" className="size-3.5" />
+                <Icon name="arrow-right" className="size-3.5 max-[379px]:hidden" />
               </span>
             </Link>
           </nav>

@@ -115,7 +115,7 @@ export function LargeFilesView({
             {firstPageTo ? (
               <Link
                 to={firstPageTo}
-                className="text-xs font-semibold text-[var(--bo-accent)] hover:underline"
+                className="text-xs font-semibold text-[var(--bo-accent-text)] hover:underline"
               >
                 First page
               </Link>
@@ -125,7 +125,7 @@ export function LargeFilesView({
             {nextPageTo ? (
               <Link
                 to={nextPageTo}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--bo-accent)] hover:underline"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--bo-accent-text)] hover:underline"
               >
                 Next page
                 <Icon name="arrow-right" className="size-3.5" />

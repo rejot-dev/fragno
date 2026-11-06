@@ -275,10 +275,13 @@
   --bo-accent-strong: #8a3a05;
   --bo-accent-bg: #fff0e0;
   --bo-accent-fg: #8a3a05;
+  /* The bright primary reads at only 2.3:1 on the light surfaces, so accent text and icons use this
+     deeper orange (5.3:1 or more) and the primary stays for fills. */
+  --bo-accent-text: #a84a08;
   /* rgba() needs channels, so this mirrors --primary and must change with it. */
   --bo-accent-rgb: 245, 138, 31;
   /* Buttons are the brighter orange from the landing hero, with navy labels for contrast; the deeper
-     primary stays for text and links. Hover deepens the orange. */
+     --bo-accent-text stays for text and links. Hover deepens the orange. */
   --bo-btn-bg: #e8730f;
   --bo-btn-bg-hover: #d4650c;
   --bo-btn-fg: #111827;
@@ -322,6 +325,7 @@
   --bo-accent-strong: #ffc58f;
   --bo-accent-bg: #3a1f0a;
   --bo-accent-fg: #ffe0c2;
+  --bo-accent-text: var(--primary);
   --bo-accent-rgb: 245, 138, 31;
   --bo-btn-bg: #f58a1f;
   --bo-btn-bg-hover: #ffa040;

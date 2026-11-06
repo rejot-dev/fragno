@@ -69,7 +69,7 @@ export function WizardStepper({
               >
                 <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--bo-muted-2)]">
                   {isComplete ? (
-                    <Icon name="check" className="size-3.5 text-[var(--bo-accent)]" />
+                    <Icon name="check" className="size-3.5 text-[var(--bo-accent-text)]" />
                   ) : null}
                   Step {index + 1}
                 </span>

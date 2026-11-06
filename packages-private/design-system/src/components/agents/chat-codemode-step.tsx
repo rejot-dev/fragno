@@ -196,7 +196,7 @@ function CallRow({ call, spanMs }: { call: ChatCodemodeCall; spanMs: number }) {
           className={cn(
             "size-3 flex-none",
             running
-              ? "animate-pulse text-[var(--bo-accent)]"
+              ? "animate-pulse text-[var(--bo-accent-text)]"
               : failed
                 ? "text-[var(--bo-failed)]"
                 : skill

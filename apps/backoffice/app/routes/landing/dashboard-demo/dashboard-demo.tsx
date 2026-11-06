@@ -629,6 +629,8 @@ function ActivityOutcome({ outcome }: { outcome: DashboardDemoActivity["outcome"
       );
     case "quiet":
       return null;
+    default:
+      throw new Error("Unsupported activity outcome.", { cause: outcome satisfies never });
   }
 }
 

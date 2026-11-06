@@ -249,7 +249,7 @@ function StepMarker({ icon, state }: { icon: IconName | null; state: StepState }
       className={cn(
         "relative z-10 mt-2 flex size-5 items-center justify-center self-start bg-[var(--bo-panel)]",
         state === "running"
-          ? "text-[var(--bo-accent)]"
+          ? "text-[var(--bo-accent-text)]"
           : state === "failed"
             ? "text-[var(--bo-failed)]"
             : "text-[var(--bo-muted-2)]",

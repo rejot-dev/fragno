@@ -122,7 +122,7 @@ function TabPinMenuList({
               name={icon}
               className={cn(
                 "size-4 shrink-0",
-                active ? "text-[var(--bo-accent)]" : "text-[var(--bo-muted-2)]",
+                active ? "text-[var(--bo-accent-text)]" : "text-[var(--bo-muted-2)]",
               )}
             />
             <span className="min-w-0 truncate">
@@ -167,7 +167,7 @@ function TabPinMenuList({
               className={cn(
                 "flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-[4px] outline-none transition-[background-color,color,scale] duration-150 ease-out hover:bg-[var(--bo-panel)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.9]",
                 pinned
-                  ? "text-[var(--bo-accent)]"
+                  ? "text-[var(--bo-accent-text)]"
                   : "text-[var(--bo-muted-2)] hover:text-[var(--bo-fg)]",
               )}
             >

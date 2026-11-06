@@ -307,7 +307,7 @@ function SelectorMenuRow({
       )}
       {/* Reserved on every option so labels line up whether or not the check is shown. */}
       <span className="flex size-4 shrink-0 items-center justify-center">
-        {current ? <Icon name="check" className="size-4 text-[var(--bo-accent)]" /> : null}
+        {current ? <Icon name="check" className="size-4 text-[var(--bo-accent-text)]" /> : null}
       </span>
     </>
   );

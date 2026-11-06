@@ -689,7 +689,7 @@ function ExcerptToggle({
         <button
           type="button"
           onClick={onToggle}
-          className="shrink-0 rounded-[3px] text-[var(--bo-accent)] hover:underline focus-visible:underline focus-visible:outline-none"
+          className="shrink-0 rounded-[3px] text-[var(--bo-accent-text)] hover:underline focus-visible:underline focus-visible:outline-none"
         >
           {action}
         </button>

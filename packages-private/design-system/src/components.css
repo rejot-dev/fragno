@@ -200,7 +200,7 @@
 /* Resolves a BackofficeStatusTone in [data-tone] to a color, background, and border, so every
    toned component reads from one palette. */
 .bo-status-tone {
-  --bo-status-color: var(--bo-accent);
+  --bo-status-color: var(--bo-accent-text);
   --bo-status-bg: var(--bo-accent-bg);
   --bo-status-border: color-mix(in srgb, var(--bo-status-color) 42%, transparent);
 }

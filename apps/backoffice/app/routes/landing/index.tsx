@@ -94,7 +94,9 @@ export default function LandingPage() {
                 <br />
                 <span className="text-white/80">business with AI</span>
               </h1>
-              <p className="mx-auto mt-8 max-w-2xl text-lg leading-8 text-pretty text-white/95 lg:mx-0">
+              {/* From lg up the connections' cards start about 27rem from the viewport's right edge,
+                  so on narrower laptops the copy stops short of them instead of running under. */}
+              <p className="mx-auto mt-8 max-w-2xl text-lg leading-8 text-pretty text-white/95 lg:mx-0 lg:max-w-[min(42rem,calc(100vw-32rem))]">
                 Turn business processes into workflows. Connect your tools and apps to Leyway and
                 let AI build automations. Deterministic and auditable.
               </p>

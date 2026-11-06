@@ -2,7 +2,7 @@ import { LeywayWordmark } from "@fragno-private/design-system/brand/leyway-wordm
 import { Link } from "react-router";
 
 const footerLinkClassName =
-  "inline-flex min-h-9 items-center text-sm font-semibold text-[var(--bo-fg)] no-underline transition-colors duration-150 hover:text-[var(--bo-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--bo-accent)]";
+  "inline-flex min-h-9 items-center text-sm font-semibold text-[var(--bo-fg)] no-underline transition-colors duration-150 hover:text-[var(--bo-accent-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--bo-accent)]";
 
 /** Provides the Leyway product, community, and Fragno reference links. */
 export function LandingFooter() {
