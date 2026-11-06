@@ -6,7 +6,6 @@ import {
 import type { IconName } from "@fragno-private/design-system/icon";
 import { data, Outlet, redirect, useParams } from "react-router";
 
-import { backofficeRouteScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { MAIN_PI_AGENT_NAME } from "@/fragno/pi/agent/pi-agent-name";
 import { integrationConnectionKind } from "@/fragno/runtime-tools/families/integrations/integration-connections";
@@ -16,7 +15,6 @@ import {
 } from "@/layouts/backoffice-shell-request.server";
 
 import { submitPiManagerPrompt } from "../agents/data";
-import { piAgentsPath } from "../agents/path";
 import { shouldRevalidateWithinScope } from "../scope-revalidation";
 import type { Route } from "./+types/connect";
 import type { ConnectSourceContext } from "./connect-source";
@@ -24,6 +22,7 @@ import {
   connectIntegrations,
   isConnectedConnectorAccount,
   listConnections,
+  listConnectorProviders,
 } from "./connect.server";
 import { integrationsConnectPath } from "./connection-paths";
 
@@ -37,6 +36,12 @@ const BUILT_IN_SYMBOLS: Record<string, IconName> = {
   telegram: "send",
   webhook: "zap",
 };
+
+/**
+ * Leads the catalog with every service Leyway connects natively, built in or configured in the
+ * Connector, ahead of the catalog's providers it cannot connect yet.
+ */
+const POPULAR = { id: "popular", label: "Popular" };
 
 /** The address a Connector service signs in under, or null for a service the agent sets up. */
 function connectorSetupTarget(service: IntegrationOverview): string | null {
@@ -60,9 +65,10 @@ function connectSourcePath(connectPath: string, service: IntegrationOverview): s
 export async function loader({ request, context }: Route.LoaderArgs) {
   const selectedScope = requireScopeSelection(context);
   const integrations = connectIntegrations(context);
-  const [services, connections] = await Promise.all([
+  const [services, connections, providers] = await Promise.all([
     integrations.discover(),
     listConnections(integrations),
+    listConnectorProviders(context),
   ]);
 
   // A provider's return names the connection it confirmed; its service opens again.
@@ -76,14 +82,48 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   }
 
   const connected = new Set(connections.map((connection) => connection.integrationId));
+  const discovered = new Set(services.map((service) => service.id));
   return {
     selectedScope,
     services: services.map((service) => ({ ...service, connected: connected.has(service.id) })),
+    // Catalog providers the project has no OAuth configuration for, which cannot be connected yet.
+    // Discovery already lists the configured ones, and built-in services such as GitHub win.
+    unavailable: providers
+      .filter((provider) => !discovered.has(provider.service))
+      .map((provider) => ({
+        id: provider.service,
+        label: provider.displayName,
+        // Catalog descriptions are phrases without a closing period.
+        description: provider.description ? provider.description.replace(/\.?$/, ".") : "",
+        iconUrl: provider.iconUrl,
+        categories: provider.categories.map(({ id, displayName }) => ({ id, label: displayName })),
+      })),
   };
 }
 
 /** Opening a source keeps the catalog; submitting a form reads it again, for its badges. */
 export const shouldRevalidate = shouldRevalidateWithinScope;
+
+/**
+ * Asks the agent to connect a catalog provider the project has not set up. Oomol signs in to a
+ * provider with OAuth once the project configures it; any other provider skips Oomol, because
+ * Leyway's own API integration holds its key or credentials.
+ */
+function unconfiguredProviderPrompt(provider: {
+  displayName: string;
+  authTypes: readonly string[];
+}): string {
+  const request = `Help me connect ${provider.displayName} in this scope.`;
+  if (provider.authTypes.includes("oauth2")) {
+    return `${request} It signs in with OAuth, so set it up through Oomol (the Connector), which has no OAuth configuration for it in this project yet.`;
+  }
+  if (
+    provider.authTypes.some((type) => ["api_key", "custom_credential", "no_auth"].includes(type))
+  ) {
+    return `${request} Set it up as an API integration (integration api). Search ${provider.displayName}'s API documentation for how to authenticate and which base URL to use.`;
+  }
+  return `${request} Connector lists it, but this project cannot sign in to it yet, so it needs another way to connect.`;
+}
 
 // The agent asks what the workflow should do before building it, so the page only says which
 // connection it starts from. Connector apps cannot push events, so it runs on a schedule.
@@ -113,8 +153,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   const selectedScope = requireScopeSelection(context);
 
   // Paths are built from the scope rather than the request, whose URL is React Router's data
-  // endpoint. Building a workflow is a longer conversation, so it continues on the agent's own page;
-  // setting up a source continues in the drawer beside the page, which opens on that redirect.
+  // endpoint. The conversation continues in the agent drawer beside the source, which opens on that
+  // redirect; the page never leaves for the agent's own page.
   let content: string;
   let continueAt: string;
   // Both are named by their connection, so a connection's own page acts on it without choosing its
@@ -158,19 +198,35 @@ export async function action({ request, context }: Route.ActionArgs) {
       connectionId: account.connectionId,
       timeZone: typeof timeZone === "string" && timeZone !== "" ? timeZone : "UTC",
     });
-    const agentsPath = piAgentsPath(backofficeRouteScopeFromResolvedScope(selectedScope));
-    continueAt = `${agentsPath}/${encodeURIComponent(MAIN_PI_AGENT_NAME)}`;
-  } else {
-    const service = services.find((candidate) => candidate.id === form.get("source"));
-    if (!service) {
-      return data({ error: "Choose a source to connect." }, { status: 400 });
+    // The source opens again on its connected account, which `target` names.
+    const search = new URLSearchParams({ agent: "opened" });
+    const target = connectorSetupTarget(service);
+    if (target !== null) {
+      search.set("target", target);
     }
+    continueAt = `${integrationsConnectPath(selectedScope)}/${encodeURIComponent(service.id)}?${search}`;
+  } else {
     if (intent !== "ask-agent") {
       return data({ error: "Unsupported action." }, { status: 400 });
     }
-    content = `Help me connect ${service.label} (integration ${service.id}) in this scope.`;
+    const source = form.get("source");
+    const service = services.find((candidate) => candidate.id === source);
+    // A catalog provider the project has not set up has no integration, so the agent finds a way in.
+    const provider = service
+      ? null
+      : (await listConnectorProviders(context)).find((candidate) => candidate.service === source);
+    let sourceId: string;
+    if (service) {
+      sourceId = service.id;
+      content = `Help me connect ${service.label} (integration ${service.id}) in this scope.`;
+    } else if (provider) {
+      sourceId = provider.service;
+      content = unconfiguredProviderPrompt(provider);
+    } else {
+      return data({ error: "Choose a source to connect." }, { status: 400 });
+    }
     const search = new URLSearchParams({ agent: "opened" });
-    continueAt = `${integrationsConnectPath(selectedScope)}/${encodeURIComponent(service.id)}?${search}`;
+    continueAt = `${integrationsConnectPath(selectedScope)}/${encodeURIComponent(sourceId)}?${search}`;
   }
 
   const { scope } = requireRouteScope(context).execution;
@@ -199,23 +255,43 @@ export default function BackofficeIntegrationsConnect({
   loaderData,
   actionData,
 }: Route.ComponentProps) {
-  const { selectedScope, services } = loaderData;
+  const { selectedScope, services, unavailable } = loaderData;
   const { source } = useParams();
   const connectPath = integrationsConnectPath(selectedScope);
-  const open = services.find((service) => service.id === source) ?? null;
+  const open =
+    services.find((service) => service.id === source) ??
+    unavailable.find((provider) => provider.id === source) ??
+    null;
 
-  const items: SourceCatalogItem[] = services.map((service) => ({
-    id: service.id,
-    label: service.label,
-    description: service.description,
-    icon: service.iconUrl
-      ? { kind: "image", url: service.iconUrl }
-      : { kind: "symbol", name: BUILT_IN_SYMBOLS[service.id] ?? "box" },
-    categories: service.categories,
-    badge: service.connected ? "Connected" : null,
-    // Choosing the open source again closes it.
-    to: service.id === open?.id ? connectPath : connectSourcePath(connectPath, service),
-  }));
+  const items: SourceCatalogItem[] = [
+    ...services.map((service) => ({
+      id: service.id,
+      label: service.label,
+      description: service.description,
+      icon: service.iconUrl
+        ? { kind: "image" as const, url: service.iconUrl }
+        : { kind: "symbol" as const, name: BUILT_IN_SYMBOLS[service.id] ?? "box" },
+      categories: [POPULAR, ...service.categories],
+      badge: service.connected ? "Connected" : null,
+      // Choosing the open source again closes it.
+      to: service.id === open?.id ? connectPath : connectSourcePath(connectPath, service),
+    })),
+    ...unavailable.map((provider) => ({
+      id: provider.id,
+      label: provider.label,
+      description: provider.description,
+      icon: provider.iconUrl
+        ? { kind: "image" as const, url: provider.iconUrl }
+        : { kind: "symbol" as const, name: "box" as const },
+      categories: provider.categories,
+      badge: null,
+      // With no sign-in to name, the source opens on its offer to set it up with the agent.
+      to:
+        provider.id === open?.id
+          ? connectPath
+          : `${connectPath}/${encodeURIComponent(provider.id)}`,
+    })),
+  ];
 
   return (
     <div className={`${backofficePageBodyClassName} flex flex-col gap-6`}>
@@ -228,6 +304,7 @@ export default function BackofficeIntegrationsConnect({
       <SourceCatalog
         label="Sources to connect"
         items={items}
+        leadingCategoryId={POPULAR.id}
         expanded={
           open === null
             ? null
