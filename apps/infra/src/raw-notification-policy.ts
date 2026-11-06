@@ -9,6 +9,7 @@ interface RawNotificationPolicyInputs {
   description: string;
   alertType: string;
   emails: string[];
+  webhookIds: string[];
 }
 
 type RawNotificationPolicyArgs = {
@@ -37,7 +38,10 @@ async function requestPolicies(
           alert_type: inputs.alertType,
           enabled: true,
           filters: {},
-          mechanisms: { email: inputs.emails.map((id) => ({ id })) },
+          mechanisms: {
+            email: inputs.emails.map((id) => ({ id })),
+            webhooks: inputs.webhookIds.map((id) => ({ id })),
+          },
         }),
     },
   );

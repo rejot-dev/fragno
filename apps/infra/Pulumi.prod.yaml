@@ -2,4 +2,6 @@ config:
   leyway-infra:accountId: cda934461b3c3f24b4899fc8a100ffe6
   leyway-infra:alertEmails:
     - niklas@rejot.dev
+  leyway-infra:pagerdutyRoutingKey:
+    secure: v1:m2lnsT6az5D4htPH:3U/z/mSGT/udy+8D1zfzi/uFKh2ml+YNQY9CIunN/wxvVlwWw3MW0yQOhZke8/BO
 encryptionsalt: v1:KChKBNg8pRM=:v1:v8F1394NwjScNcJB:2HoKd6B5JVeDWyAz/oURJi1ZAW2TUw==

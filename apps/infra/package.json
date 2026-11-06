@@ -21,7 +21,8 @@
   },
   "dependencies": {
     "@pulumi/cloudflare": "6.23.3",
-    "@pulumi/pulumi": "3.273.0"
+    "@pulumi/pulumi": "3.273.0",
+    "@pulumi/random": "4.21.6"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",

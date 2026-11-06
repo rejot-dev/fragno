@@ -1,12 +1,65 @@
+import { readFileSync } from "node:fs";
+import { stripTypeScriptTypes } from "node:module";
+
 import * as cloudflare from "@pulumi/cloudflare";
 import * as pulumi from "@pulumi/pulumi";
+import * as random from "@pulumi/random";
 
 import { RawNotificationPolicy } from "./raw-notification-policy.ts";
 
 const config = new pulumi.Config();
 const accountId = config.require("accountId");
 const alertEmails = config.requireObject<string[]>("alertEmails");
-const mechanisms = { emails: alertEmails.map((id) => ({ id })) };
+const pagerdutyRoutingKey = config.requireSecret("pagerdutyRoutingKey");
+
+// The ReJot account's workers.dev subdomain, set under Workers & Pages.
+const WORKERS_DEV_SUBDOMAIN = "rejot.workers.dev";
+
+const relayWebhookSecret = new random.RandomPassword("pagerduty-relay-webhook-secret", {
+  length: 32,
+  special: false,
+});
+
+const pagerdutyRelay = new cloudflare.WorkersScript("pagerduty-relay", {
+  accountId,
+  scriptName: "leyway-pagerduty-relay",
+  mainModule: "worker.js",
+  content: stripTypeScriptTypes(
+    readFileSync(new URL("pagerduty-relay-worker.ts", import.meta.url), "utf8"),
+  ),
+  compatibilityDate: "2026-11-01",
+  bindings: [
+    { name: "PAGERDUTY_ROUTING_KEY", type: "secret_text", text: pagerdutyRoutingKey },
+    { name: "WEBHOOK_SECRET", type: "secret_text", text: relayWebhookSecret.result },
+  ],
+  observability: { enabled: true },
+});
+
+const pagerdutyRelayRoute = new cloudflare.WorkersScriptSubdomain("pagerduty-relay", {
+  accountId,
+  scriptName: pagerdutyRelay.scriptName,
+  enabled: true,
+  previewsEnabled: false,
+});
+
+// Cloudflare sends a test message when it saves the destination, so the Worker must be reachable
+// first.
+const pagerdutyWebhook = new cloudflare.NotificationPolicyWebhooks(
+  "pagerduty-relay",
+  {
+    accountId,
+    name: "Leyway PagerDuty relay",
+    url: pulumi.interpolate`https://${pagerdutyRelay.scriptName}.${WORKERS_DEV_SUBDOMAIN}`,
+    secret: relayWebhookSecret.result,
+  },
+  { dependsOn: [pagerdutyRelayRoute] },
+);
+
+// Email stays alongside PagerDuty, so alerts still reach us when the relay is broken.
+const mechanisms = {
+  emails: alertEmails.map((id) => ({ id })),
+  webhooks: [{ id: pagerdutyWebhook.id }],
+};
 
 // Cloudflare status components Leyway runs on, from
 // https://www.cloudflarestatus.com/api/v2/components.json.
@@ -26,6 +79,7 @@ new RawNotificationPolicy("worker-issue", {
     "A Leyway Worker or Durable Object fails in a way Workers Issues has not seen before.",
   alertType: "workers_observability_real_time_issue",
   emails: alertEmails,
+  webhookIds: pulumi.all([pagerdutyWebhook.id]),
 });
 
 new cloudflare.NotificationPolicy("cloudflare-incident", {
