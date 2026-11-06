@@ -67,5 +67,41 @@ export const resendSchema = schema("resend", (s) => {
           ])
       );
     })
-    .noOp("removed obsolete emailMessageThread addReference history");
+    .noOp("removed obsolete emailMessageThread addReference history")
+    .addTable("mailboxAddress", (t) => {
+      return (
+        t
+          .addColumn("id", idColumn())
+          .addColumn("address", column("string"))
+          // An address keeps its row once replaced, so it is never issued to another owner.
+          .addColumn("owner", column("string"))
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_mailboxAddress_address", ["address"], { unique: true })
+      );
+    })
+    .addTable("mailbox", (t) => {
+      return (
+        t
+          .addColumn("id", idColumn())
+          .addColumn("owner", column("string"))
+          .addColumn("address", column("string"))
+          // A paused mailbox keeps its address but is not in use: it receives nothing.
+          .addColumn("pausedAt", column("timestamp").nullable())
+          .addColumn(
+            "createdAt",
+            column("timestamp").defaultTo((b) => b.now()),
+          )
+          .createIndex("idx_mailbox_owner", ["owner"], { unique: true })
+          .createIndex("idx_mailbox_address", ["address"], { unique: true })
+      );
+    })
+    .alterTable("emailMessage", (t) =>
+      t
+        // The mailboxes a received message was delivered to, as { address, owner }, one
+        // per owner, each of whom may read it. An address never changes owner.
+        .addColumn("recipientMailboxes", column("json").nullable()),
+    );
 });
