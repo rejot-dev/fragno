@@ -92,8 +92,6 @@ function durableHookObjectCommands({
       return objects.api.for(runtimeScope).commands;
     case "auth":
       return objects.auth.for(runtimeScope).commands;
-    case "forms":
-      return objects.forms.singleton().commands;
     case "telegram":
       return objects.telegram.for(runtimeScope).commands;
     case "otp":

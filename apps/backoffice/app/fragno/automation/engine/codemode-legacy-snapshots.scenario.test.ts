@@ -9,7 +9,6 @@ import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
 import { BillingObject } from "../../../../workers/billing-object";
 import { CodemodeObject } from "../../../../workers/codemode-object";
-import { FormsObject } from "../../../../workers/forms-object";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
   DurableObject: class MockDurableObject {
@@ -27,7 +26,6 @@ const scenarioObjects = {
   AUTOMATIONS: (input) => new AutomationsObject(input),
   BILLING: (input) => new BillingObject(input),
   CODEMODE: (input) => new CodemodeObject(input),
-  FORMS: (input) => new FormsObject(input),
   MCP: null,
   TELEGRAM: null,
   UPLOAD: null,

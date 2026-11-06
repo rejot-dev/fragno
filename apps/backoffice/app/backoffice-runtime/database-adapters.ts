@@ -16,7 +16,6 @@ export type BackofficeDatabaseAdapterKind =
   | "blobs"
   | "cloudflare"
   | "codemode"
-  | "forms"
   | "marketplace"
   | "github"
   | "mcp"

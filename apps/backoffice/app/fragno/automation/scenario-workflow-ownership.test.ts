@@ -24,7 +24,6 @@ import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-f
 import { ApiObject } from "../../../workers/api-object";
 import { AuthObject } from "../../../workers/auth-object";
 import { AutomationsObject } from "../../../workers/automations-object";
-import { FormsObject } from "../../../workers/forms-object";
 import { UploadObject } from "../../../workers/upload-object";
 import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 
@@ -32,7 +31,6 @@ const scenarioObjects = {
   API: (input) => new ApiObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
-  FORMS: (input) => new FormsObject(input),
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 

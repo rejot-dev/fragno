@@ -297,9 +297,6 @@ importers:
       '@fragno-dev/db':
         specifier: workspace:*
         version: link:../../packages/fragno-db
-      '@fragno-dev/forms':
-        specifier: workspace:*
-        version: link:../../packages/forms
       '@fragno-dev/github-app-fragment':
         specifier: workspace:*
         version: link:../../packages/github-app-fragment
@@ -357,9 +354,6 @@ importers:
       '@json-render/react':
         specifier: 0.20.0
         version: 0.20.0(react@19.2.7)(zod@4.6.7)
-      '@jsonforms/core':
-        specifier: ^3.7.0
-        version: 3.7.0
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1

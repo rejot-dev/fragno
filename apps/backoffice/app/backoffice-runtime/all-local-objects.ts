@@ -17,7 +17,6 @@ import { BillingObject } from "../../workers/billing-object";
 import { BlobsObject } from "../../workers/blobs-object";
 import { CloudflareObject } from "../../workers/cloudflare-object";
 import { CodemodeObject } from "../../workers/codemode-object";
-import { FormsObject } from "../../workers/forms-object";
 import { GitHubObject } from "../../workers/github-object";
 import { GitHubWebhookRouterObject } from "../../workers/github-webhook-router-object";
 import { MarketplaceObject } from "../../workers/marketplace-object";
@@ -192,7 +191,6 @@ export const allLocalObjects = {
   GITHUB: (input) => new GitHubObject(input),
   GITHUB_WEBHOOK_ROUTER: (input) => new GitHubWebhookRouterObject(input),
   CLOUDFLARE: (input) => new CloudflareObject(input),
-  FORMS: (input) => new FormsObject(input),
   PRESENCE: (input) => new PresenceObject(input),
   AUTOMATIONS: (input) => new AutomationsObject(input),
   PI: (input) =>

@@ -62,7 +62,6 @@ const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
     "Workflow instances: start saved workflows, check status and history, show a run to the user, send events, retry steps, terminate runs. Read to run or follow a workflow.",
   events:
     "Automation events: catalog, stored events and the routes they matched, firing, retries. Read to see what can trigger automations or why one did not act.",
-  forms: "Schema-backed forms and their submissions. Read to create a form or read responses.",
   cloudflare:
     "Cloudflare Browser Run: screenshots, PDFs, crawls. Read to capture or crawl a page in a real browser.",
   web: "Web pages as content or Markdown, and files downloaded from URLs into the workspace. Read to fetch a web page or download a file.",

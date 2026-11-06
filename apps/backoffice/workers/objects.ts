@@ -9,7 +9,6 @@ import { Billing } from "./billing.do";
 import { Blobs } from "./blobs.do";
 import { Cloudflare } from "./cloudflare.do";
 import { Codemode } from "./codemode.do";
-import { Forms } from "./forms.do";
 import { GitHubWebhookRouter } from "./github-webhook-router.do";
 import { GitHub } from "./github.do";
 import { Marketplace } from "./marketplace.do";
@@ -47,7 +46,6 @@ export {
   Blobs,
   Cloudflare,
   Codemode,
-  Forms,
   GitHub,
   GitHubWebhookRouter,
   Marketplace,

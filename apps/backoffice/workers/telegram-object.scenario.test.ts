@@ -33,7 +33,6 @@ import { createTelegramRuntime } from "@/fragno/runtime-tools/families/telegram-
 import { ApiObject } from "./api-object";
 import { AuthObject } from "./auth-object";
 import { AutomationsObject } from "./automations-object";
-import { FormsObject } from "./forms-object";
 import { TelegramObject } from "./telegram-object";
 import { UploadObject } from "./upload-object";
 
@@ -41,7 +40,6 @@ const scenarioObjects = {
   API: (input) => new ApiObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
-  FORMS: (input) => new FormsObject(input),
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 

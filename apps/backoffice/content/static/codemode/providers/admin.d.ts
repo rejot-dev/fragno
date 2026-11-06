@@ -206,10 +206,6 @@ type BackofficePermissionRequirement =
       permission: "emit" | "manage" | "read" | "route";
     }
   | {
-      namespace: "forms";
-      permission: "create" | "read" | "update";
-    }
-  | {
       namespace: "hooks";
       permission: "read";
     }

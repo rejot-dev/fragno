@@ -1,4 +1,4 @@
-import { assert, expect, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -11,17 +11,16 @@ const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
-import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import {
   createInMemoryBackofficeRuntime,
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
 import { AuthObject } from "../../../workers/auth-object";
 import { AutomationsObject } from "../../../workers/automations-object";
-import { FormsObject } from "../../../workers/forms-object";
 import { UploadObject } from "../../../workers/upload-object";
 import {
   createExternallyProcessedNodeBackofficeDurableHooks,
@@ -31,25 +30,27 @@ import {
 const scenarioObjects = {
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
-  FORMS: (input) => new FormsObject(input),
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
 const localObjects = {
   AUTOMATIONS: (input) => new AutomationsObject(input),
-  FORMS: (input) => new FormsObject(input),
 } satisfies LocalBackofficeObjects;
 
-async function getFormsHookQueue(runtime: InMemoryBackofficeRuntime) {
-  return await runtime.objects.forms.singleton().commands.getDurableHookQueue({ pageSize: 100 });
+async function getAutomationsHookQueue(runtime: InMemoryBackofficeRuntime) {
+  return await runtime.objects.automations
+    .singleton()
+    .commands.getDurableHookQueue("automation", { pageSize: 100 });
 }
 
-async function waitForCompletedFormsHooks(runtime: InMemoryBackofficeRuntime) {
+async function waitForCompletedIngestHook(runtime: InMemoryBackofficeRuntime) {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
-    const queue = await getFormsHookQueue(runtime);
+    const queue = await getAutomationsHookQueue(runtime);
     if (
-      queue.items.some((hook) => hook.hookName === "onFormCreated" && hook.status === "completed")
+      queue.items.some(
+        (hook) => hook.hookName === "internalIngestEvent" && hook.status === "completed",
+      )
     ) {
       return queue;
     }
@@ -83,36 +84,33 @@ test("a separate Node processor completes hooks recorded by the server runtime",
         durableHooks: createExternallyProcessedNodeBackofficeDurableHooks(),
         options: { drain: false, sqliteDataDirectory: directory },
         steps: ({ then }) => [
-          then.assert("the server commits a form hook for external processing", async (ctx) => {
-            const response = await ctx.runtime.objects.forms.singleton().http.fetchAuthorized(
-              new Request("https://forms.test/api/forms/admin/forms", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({
-                  title: "Externally processed form",
-                  slug: "externally-processed-form",
-                  description: null,
-                  status: "draft",
-                  dataSchema: { type: "object" },
-                }),
-              }),
-              { execution: createBackofficeSystemExecution({ kind: "system" }) },
-            );
-            assert(response.ok);
+          then.assert("the server commits an event hook for external processing", async (ctx) => {
+            await ctx.runtime.objects.automations.singleton().commands.ingestEvent({
+              id: "externally-processed-event",
+              scopeRestriction: null,
+              scope: { kind: "system" },
+              source: "custom",
+              eventType: "thing.created",
+              occurredAt: "2026-01-01T00:00:00.000Z",
+              payload: {},
+              actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
+              subject: null,
+              causation: { kind: "origin" },
+            });
 
-            const queue = await getFormsHookQueue(ctx.runtime);
+            const queue = await getAutomationsHookQueue(ctx.runtime);
             expect(queue.items).toEqual(
               expect.arrayContaining([
-                expect.objectContaining({ hookName: "onFormCreated", status: "pending" }),
+                expect.objectContaining({ hookName: "internalIngestEvent", status: "pending" }),
               ]),
             );
           }),
           then.assert("the processor discovers the object and completes its hook", async (ctx) => {
             await processorRuntime.discoverPersistedObjects();
-            const queue = await waitForCompletedFormsHooks(ctx.runtime);
+            const queue = await waitForCompletedIngestHook(ctx.runtime);
             expect(queue.items).toEqual(
               expect.arrayContaining([
-                expect.objectContaining({ hookName: "onFormCreated", status: "completed" }),
+                expect.objectContaining({ hookName: "internalIngestEvent", status: "completed" }),
               ]),
             );
             expect(processorErrors).toEqual([]);

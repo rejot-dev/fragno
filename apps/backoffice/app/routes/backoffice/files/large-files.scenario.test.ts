@@ -31,7 +31,6 @@ import { ApiObject } from "../../../../workers/api-object";
 import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
 import { BlobsObject } from "../../../../workers/blobs-object";
-import { FormsObject } from "../../../../workers/forms-object";
 import { OtpObject } from "../../../../workers/otp-object";
 import { UploadObject } from "../../../../workers/upload-object";
 import { action as deleteAction, loader as largeFilesLoader } from "./large-files";
@@ -60,7 +59,6 @@ const scenarioObjects = {
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
   BLOBS: (input) => new BlobsObject({ ...input, storage: { buckets, fetch: r2.fetch } }),
-  FORMS: (input) => new FormsObject(input),
   OTP: (input) => new OtpObject(input),
   TELEGRAM: null,
   UPLOAD: (input) => new UploadObject(input),

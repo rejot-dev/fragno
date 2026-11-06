@@ -24,7 +24,6 @@ import { ApiObject } from "../../../../workers/api-object";
 import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
 import { BillingObject } from "../../../../workers/billing-object";
-import { FormsObject } from "../../../../workers/forms-object";
 import { OtpObject } from "../../../../workers/otp-object";
 import { SandboxManagerObject } from "../../../../workers/sandbox-manager-object";
 import { TelegramObject } from "../../../../workers/telegram-object";
@@ -69,7 +68,6 @@ const scenarioObjects = {
   AUTOMATIONS: (input) => new AutomationsObject(input),
   BILLING: (input) => new BillingObject(input),
   UPLOAD: (input) => new UploadObject(input),
-  FORMS: (input) => new FormsObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   SANDBOX_MANAGER: (input) =>
     new SandboxManagerObject({

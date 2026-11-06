@@ -27,14 +27,12 @@ import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/
 
 import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
-import { FormsObject } from "../../../../workers/forms-object";
 import { UploadObject } from "../../../../workers/upload-object";
 
 const scenarioObjects = {
   API: null,
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
-  FORMS: (input) => new FormsObject(input),
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 

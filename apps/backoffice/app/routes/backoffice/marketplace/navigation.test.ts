@@ -17,7 +17,6 @@ import routes from "@/routes";
 import { ApiObject } from "../../../../workers/api-object";
 import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
-import { FormsObject } from "../../../../workers/forms-object";
 import { MarketplaceObject } from "../../../../workers/marketplace-object";
 import { OtpObject } from "../../../../workers/otp-object";
 import { TelegramObject } from "../../../../workers/telegram-object";
@@ -31,7 +30,6 @@ const objects = {
   UPLOAD: (input) => new UploadObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   MARKETPLACE: (input) => new MarketplaceObject(input),
-  FORMS: (input) => new FormsObject(input),
   TELEGRAM: (input) => new TelegramObject(input),
   OTP: (input) => new OtpObject(input),
 } satisfies LocalBackofficeObjects;

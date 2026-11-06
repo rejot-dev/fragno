@@ -33,8 +33,6 @@
 /// <reference path="/static/codemode/providers/workflow.d.ts" />
 // Automation events: catalog, stored events and the routes they matched, firing, retries. Read to see what can trigger automations or why one did not act.
 /// <reference path="/static/codemode/providers/events.d.ts" />
-// Schema-backed forms and their submissions. Read to create a form or read responses.
-/// <reference path="/static/codemode/providers/forms.d.ts" />
 // Cloudflare Browser Run: screenshots, PDFs, crawls. Read to capture or crawl a page in a real browser.
 /// <reference path="/static/codemode/providers/cloudflare.d.ts" />
 // Web pages as content or Markdown, and files downloaded from URLs into the workspace. Read to fetch a web page or download a file.
@@ -93,7 +91,6 @@ interface BackofficeCodemodeScopedProviders {
   router: RouterCodemodeProvider;
   workflow: WorkflowCodemodeProvider;
   events: EventsCodemodeProvider;
-  forms: FormsCodemodeProvider;
   cloudflare: CloudflareCodemodeProvider;
   web: WebCodemodeProvider;
   models: ModelsCodemodeProvider;

@@ -33,7 +33,6 @@ import {
   type BackofficeScenarioContext,
 } from "@/fragno/automation/scenario";
 import { forwardPublicFragmentRequest } from "@/fragno/public-fragment-route.server";
-import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
 import { apiPublicRoute } from "@/routes/api/api-route.server";
 import { mcpPublicRoute } from "@/routes/api/mcp-route.server";
 import { loader as loadInvitationPreview } from "@/routes/backoffice/invitation-accept";
@@ -42,7 +41,6 @@ import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-c
 import { ApiObject } from "../../workers/api-object";
 import { AuthObject } from "../../workers/auth-object";
 import { AutomationsObject } from "../../workers/automations-object";
-import { FormsObject } from "../../workers/forms-object";
 import { McpObject } from "../../workers/mcp-object";
 import { OtpObject } from "../../workers/otp-object";
 import { UploadObject } from "../../workers/upload-object";
@@ -56,7 +54,6 @@ const scenarioObjects = {
   API: (input) => new ApiObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
-  FORMS: (input) => new FormsObject(input),
   MCP: (input) => new McpObject(input),
   OTP: (input) => new OtpObject(input),
   UPLOAD: (input) => new UploadObject(input),
@@ -138,67 +135,6 @@ async function runHttpAuthorityScenario(check: (ctx: BackofficeScenarioContext) 
 }
 
 describe("fragment HTTP authority scenarios", () => {
-  test("Forms separates public submissions from management and denies unlisted routes", async () => {
-    await runHttpAuthorityScenario(async (ctx) => {
-      const { accessCookie, me } = await exchangeBrowserSession(ctx);
-      const scope = {
-        kind: "org" as const,
-        orgId: me.organizations[0].organization.id,
-        jurisdiction: null,
-      };
-      const request = new Request(origin, { headers: { cookie: accessCookie } });
-      const execution = await requireBackofficeContext(request, routerContext(ctx, request), scope);
-      const forms = ctx.runtime.objects.forms.singleton();
-      const adminUrl = `${origin}/api/forms/admin/forms`;
-      const anonymous = await forms.http.fetch(new Request(adminUrl));
-      assert(anonymous.status === 401);
-      const denied = await forms.http.fetchAuthorized(new Request(adminUrl), {
-        execution: { ...execution, scope: { kind: "system" } },
-      });
-      assert(denied.status === 403);
-      const runtime = createFormsRuntime(
-        authorizedBackofficeObjectHttp(
-          forms.http,
-          createBackofficeSystemExecution({ kind: "system" }),
-        ),
-      );
-      const { id } = await runtime.createForm({
-        title: "Public intake",
-        description: null,
-        slug: "public-intake",
-        status: "open",
-        dataSchema: {
-          type: "object",
-          properties: { message: { type: "string" } },
-          required: ["message"],
-        },
-      });
-      const published = await forms.http.fetch(new Request(`${origin}/api/forms/public-intake`));
-      assert(published.ok, await published.clone().text());
-      const submitted = await forms.http.fetch(
-        new Request(`${origin}/api/forms/public-intake/submit`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ data: { message: "hello" } }),
-        }),
-      );
-      assert(submitted.ok, await submitted.clone().text());
-      const submissions = await runtime.listSubmissions({
-        formId: id,
-        sortOrder: "asc",
-        pageSize: 10,
-        cursor: null,
-      });
-      expect(submissions).toMatchObject({ submissions: [{ data: { message: "hello" } }] });
-      const hidden = await forms.http.fetch(new Request(`${origin}/api/forms/_internal`));
-      // /:slug is public; a missing public form is a fragment-owned 404, not management access.
-      assert(hidden.status === 404);
-      const internal = await forms.http.fetch(new Request(`${origin}/api/forms/_internal/schema`));
-      assert(internal.status === 404);
-      expect(await internal.json()).toMatchObject({ code: "ROUTE_NOT_FOUND" });
-    });
-  });
-
   test("auth directory loaders use real sessions and keep invitation preview read-only", async () => {
     await runHttpAuthorityScenario(async (ctx) => {
       const { accessCookie, me } = await exchangeBrowserSession(ctx);

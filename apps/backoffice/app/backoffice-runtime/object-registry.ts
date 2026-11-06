@@ -923,7 +923,6 @@ export type ProjectConnectorCommands = Record<never, never>;
 export type UploadCommands = WarmableCommands & DurableHookCommands;
 export type BlobsCommands = WarmableCommands & DurableHookCommands;
 export type CloudflareCommands = Record<never, never>;
-export type FormsCommands = DurableHookCommands;
 export type GitHubCommands = DurableHookCommands & {
   ensureAdminConfig(): Promise<AwaitedMethodReturn<GitHub, "ensureAdminConfig">>;
   redeliverFailedInstallationWebhooks(installationId: string): Promise<void>;
@@ -1046,7 +1045,6 @@ export type BackofficeObjectBindingName =
   | "GITHUB"
   | "GITHUB_WEBHOOK_ROUTER"
   | "CLOUDFLARE"
-  | "FORMS"
   | "SANDBOX"
   | "SANDBOX_MANAGER";
 
@@ -1091,7 +1089,6 @@ export const backofficeObjectScopePolicy = {
 
   GITHUB_WEBHOOK_ROUTER: ["singleton"],
   CLOUDFLARE: ["singleton"],
-  FORMS: ["singleton"],
   PRESENCE: ["org", "user"],
 
   SANDBOX: ["named"],
@@ -1295,7 +1292,6 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
     binding<GitHubWebhookRouterCommands>("GITHUB_WEBHOOK_ROUTER"),
   ),
   cloudflare: scoped(factory, binding<CloudflareCommands>("CLOUDFLARE")),
-  forms: scoped(factory, binding<FormsCommands>("FORMS")),
   presence: scoped(factory, binding<PresenceCommands>("PRESENCE")),
 
   sandbox: scoped(factory, binding<SandboxCommands>("SANDBOX")),

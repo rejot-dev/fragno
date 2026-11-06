@@ -173,11 +173,6 @@
         "script_name": "rejot-backoffice",
       },
       {
-        "name": "FORMS",
-        "class_name": "Forms",
-        "script_name": "rejot-backoffice",
-      },
-      {
         "name": "PRESENCE",
         "class_name": "Presence",
         "script_name": "rejot-backoffice",

@@ -45,7 +45,6 @@ import {
   type EventRuntime,
 } from "./families/event";
 import { eventCatalogToolFamily, type EventCatalogRuntime } from "./families/event-catalog";
-import { formsToolFamily, type FormsRuntime } from "./families/forms";
 import { imageViewerToolFamily, type ImageViewer } from "./families/image-viewer";
 import {
   integrationsToolFamily,
@@ -99,7 +98,6 @@ export type CoreBackofficeRuntimeMap = {
   durableHooks?: DurableHooksRuntime;
   event?: EventRuntime;
   eventCatalog?: EventCatalogRuntime;
-  forms?: FormsRuntime;
   cloudflare?: CloudflareRuntime;
   internal?: InternalRuntime;
   marketplace: MarketplaceRuntime | undefined;
@@ -139,7 +137,6 @@ export const runtimeToolFamilies = [
   eventReadToolFamily,
   eventRetryToolFamily,
   eventCatalogToolFamily,
-  formsToolFamily,
   cloudflareToolFamily,
   webToolFamily,
   modelsToolFamily,

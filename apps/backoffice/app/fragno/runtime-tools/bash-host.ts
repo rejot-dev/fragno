@@ -29,7 +29,6 @@ import type { BlobsRuntime } from "./families/blobs-runtime";
 import type { CloudflareRuntime } from "./families/cloudflare-runtime";
 import type { EventRuntime } from "./families/event";
 import type { EventCatalogRuntime } from "./families/event-catalog";
-import type { FormsRuntime } from "./families/forms-runtime";
 import type { IntegrationsRuntime } from "./families/integrations/integration-tools";
 import type { InternalRuntime } from "./families/internal";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
@@ -75,7 +74,6 @@ export type BashHostContext = {
   cloudflare?: { runtime: CloudflareRuntime } | null;
   event?: { runtime: EventRuntime } | null;
   eventCatalog?: { runtime: EventCatalogRuntime } | null;
-  forms?: { runtime: FormsRuntime } | null;
   automations: RegisteredAutomationsBashCommandContext | null;
   identity?: { runtime: AutomationIdentityRuntime } | null;
   workflow?: { runtime: AutomationWorkflowRuntime } | null;
@@ -99,7 +97,6 @@ export type InteractiveRuntimeToolContext = Omit<BashHostContext, "automation"> 
   automations: NonNullable<BashHostContext["automations"]>;
   workflow?: BashHostContext["workflow"];
   durableHooks?: BashHostContext["durableHooks"];
-  forms?: BashHostContext["forms"];
   otp: NonNullable<BashHostContext["otp"]>;
   pi: NonNullable<BashHostContext["pi"]>;
   sandbox?: BashHostContext["sandbox"];

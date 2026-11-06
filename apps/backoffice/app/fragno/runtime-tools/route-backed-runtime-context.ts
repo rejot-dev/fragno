@@ -10,7 +10,6 @@ import {
   type BackofficeRoutableScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
 import {
   backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
@@ -65,7 +64,6 @@ import {
   createEventRuntime,
   type EventEmitter,
 } from "@/fragno/runtime-tools/families/event-runtime";
-import { createFormsRuntime } from "@/fragno/runtime-tools/families/forms-runtime";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import {
@@ -285,7 +283,6 @@ const createRuntimeContext = ({
     kernel.scoped("CODEMODE", execution.scope, runtime.objects.codemode).commands;
   const codemodeRunner = () => codemodeRunnerFor(codemodeObject(), execution);
 
-  const formsObjects = runtime.objects.forms;
   const uploadObject = () => kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload);
   const automationsOf = (scope: BackofficeRoutableScope) =>
     kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations).commands;
@@ -573,19 +570,6 @@ const createRuntimeContext = ({
           }),
         }
       : null,
-    forms:
-      execution.scope.kind === "system" && formsObjects
-        ? (() => {
-            const object = unavailableObject(() => formsObjects.singleton());
-            return object
-              ? {
-                  runtime: createFormsRuntime(
-                    authorizedBackofficeObjectHttp(object.http, execution),
-                  ),
-                }
-              : null;
-          })()
-        : null,
     internal: org
       ? {
           runtime: createInternalRuntime({
