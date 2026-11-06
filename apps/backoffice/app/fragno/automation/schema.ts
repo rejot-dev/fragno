@@ -373,11 +373,13 @@ export const automationFragmentSchema = schema("automations", (s) => {
       // What the scope's `pi` and `integrations` events record, folded as each event is stored, so
       // agents and connections outlive the events that recorded them. Written only through
       // `event-projections`.
-      // Keyed by agent name: every agent with events, as `PiAgentState` records it. `definition` is
-      // null after a deletion; the definition columns are all null without a definition event.
+      // Keyed by agent name: every agent with events, as `PiAgentState` records it, and the name
+      // people read. `definition` is null after a deletion; the definition columns are all null
+      // without a definition event.
       .addTable("pi_agent", (t) =>
         t
           .addColumn("id", idColumn())
+          .addColumn("displayName", column("string"))
           .addColumn("latestKind", column("string"))
           .addColumn("latestAt", column("timestamp"))
           .addColumn("definition", jsonColumn<PiAgentDefinition>().nullable())

@@ -129,7 +129,7 @@ the transaction reads them in the same round trip as its other reads.
 Because the rows outlive the events, a browser that downloads the outbox after events were deleted
 still reads every agent and connection, and the replica keeps no local projections. Workflow waits
 are not stored: they follow from runs and steps, which change, so the overview derives them from the
-waiting runs it reads anyway, and pages from a derived relation (see Pages).
+waiting runs it reads anyway, and pages read them through a SQL view (see Pages).
 
 ## Pages
 
@@ -146,9 +146,11 @@ page's interface.
   referenced row's id (`steps.runId`), and `position` the replica's internal id, which orders rows
   as the backend created them; its other bookkeeping columns are left out. A run's steps from one
   tick share their `createdAt` and order by `position`. `connections` and `agent_turns` are views of
-  the tables the backend folds events into. `agents` and `workflow_waits` are derived in the worker
-  with `readPiAgents` and `currentWorkflowWaits`, the functions the dashboard uses, so a page
-  repeats none of their logic; they are computed again only after a batch wrote what they read.
+  the tables the backend folds events into. `agents` and `workflow_waits` are SQL views too, which
+  state again in SQL what `piAgentRecord` and `currentWorkflowWaits`, which the dashboard uses,
+  compute: `agents` writes the built-in agents and activity labels into its SQL from the code that
+  defines them, and `workflow_waits` states the workflows package's `pendingWaitEventTypes` as SQL.
+  Every relation is plain SQL, so anything holding the replica's tables reads them alike.
   `page-schema.d.ts`, which agents read, is generated from the same list.
 - **Guard.** A page's query only reads: it cannot write, begin or end transactions, attach
   databases, or set a pragma, and stops at 125 million operations, about a second, as the build's
@@ -288,10 +290,10 @@ download the outbox again.
   when the minute moves, every query is prepared and run again, also those that do not read `now`.
   The home page's eleven take about 12 ms on the production fixture. Keying each view on its own
   query would reopen only those whose times moved.
-- **Derived relations run for pages that do not read them.** While any page is open, `agents` is
-  computed again after every batch that writes agent events, and `workflow_waits`, which reads every
-  waiting run with all its steps, after every batch that writes runs or steps, whether or not the
-  page reads either. See lofi's README.
+- **Agents and waits are stated twice.** The dashboard computes them in JavaScript and pages in SQL.
+  `overview.scenario.test.ts` checks that the example home page shows what the dashboard does; rules
+  only the workflows package tests, such as parallel and abandoned waits, are checked in JavaScript
+  only.
 - **Pages and the dashboard compute alike things twice.** The home page and the Overview tab read
   much the same, through separate views, and two tabs on one page get two of each.
 - **The build and the browser disagree on a few queries.** The build rolls back what a query writes,

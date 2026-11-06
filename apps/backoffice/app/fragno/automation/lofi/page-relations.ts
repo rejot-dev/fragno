@@ -3,14 +3,14 @@ import {
   createLofiSqliteTableStatements,
   lofiSqliteTableName,
   quoteSqliteIdentifier,
-  type SqliteValue,
 } from "@fragno-dev/lofi/sqlite";
-import type { LofiSqliteDerivedRelation } from "@fragno-dev/lofi/sqlite/worker";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
+import { BUILT_IN_PI_AGENT_DEFINITIONS } from "@/fragno/pi/agent/agent-definitions";
+import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
+import { PI_AGENT_ACTIVITY } from "@/fragno/pi/agent/pi-agent-records";
+
 import { automationFragmentSchema } from "../schema";
-import { currentWorkflowWaits } from "../workflow-waits";
-import { readPiAgents, readWorkflowRuns } from "./reads";
 import { AUTOMATION_REPLICA_SCHEMAS } from "./replica-schemas";
 
 /** How a relation's column reads in SQL. */
@@ -210,9 +210,125 @@ function tableView(relation: TableRelation): { sql: string; columns: PageRelatio
 
 const automationTable = (name: keyof typeof automationFragmentSchema.tables) =>
   quoteSqliteIdentifier(lofiSqliteTableName({ schema: automationFragmentSchema }, name));
+const workflowTable = (name: keyof typeof workflowsSchema.tables) =>
+  quoteSqliteIdentifier(lofiSqliteTableName({ schema: workflowsSchema }, name));
 
-/** What the scope's events record of connections and agents, as the backend keeps it. */
-const PROJECTION_RELATIONS: (PageRelation & { sql: string })[] = [
+function sqlString(value: string) {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+/**
+ * Agents as `piAgentRecord` reads them: each built-in agent, and each agent with events, whose
+ * latest definition takes the place of a built-in agent's. Built-in agents and activity labels
+ * come from code, so they are written into the SQL, which changes with it.
+ */
+function agentsSql() {
+  const builtIns = BUILT_IN_PI_AGENT_DEFINITIONS.map(
+    (definition) =>
+      `(${sqlString(definition.agentName)}, ${sqlString(JSON.stringify(definition))}, ${sqlString(formatPiAgentName(definition.agentName))})`,
+  ).join(", ");
+  const latestActivity = Object.entries(PI_AGENT_ACTIVITY.latest)
+    .map(([kind, label]) => `WHEN ${sqlString(kind)} THEN ${sqlString(label)}`)
+    .join(" ");
+  return `WITH "builtIn"("agentName", "definition", "displayName") AS (VALUES ${builtIns})
+    SELECT "names"."agentName",
+      coalesce("agent"."definition", "builtIn"."definition") AS "definition",
+      "agent"."definition" IS NULL AS "builtIn",
+      "agent"."latestKind", "agent"."latestAt",
+      coalesce("agent"."running", 0) > 0 AS "answering",
+      coalesce("agent"."queued", 0) AS "queued",
+      coalesce("agent"."steering", 0) AS "steering",
+      coalesce("agent"."paused", 0) AS "paused",
+      coalesce("agent"."displayName", "builtIn"."displayName") AS "displayName",
+      CASE
+        WHEN "agent"."latestKind" IS NULL THEN ${sqlString(PI_AGENT_ACTIVITY.none)}
+        WHEN "agent"."running" > 0 THEN ${sqlString(PI_AGENT_ACTIVITY.answering)}
+        WHEN "agent"."paused" THEN ${sqlString(PI_AGENT_ACTIVITY.stopped)}
+        ELSE CASE "agent"."latestKind" ${latestActivity} END
+      END AS "activity"
+    FROM (SELECT "id" AS "agentName" FROM ${automationTable("pi_agent")}
+      UNION SELECT "agentName" FROM "builtIn") AS "names"
+    LEFT JOIN ${automationTable("pi_agent")} AS "agent" ON "agent"."id" = "names"."agentName"
+    LEFT JOIN "builtIn" ON "builtIn"."agentName" = "names"."agentName"
+    WHERE coalesce("agent"."definition", "builtIn"."definition") IS NOT NULL`;
+}
+
+/**
+ * `pendingWaitEventTypes` from `@fragno-dev/workflows/pending-waits` as SQL: a row of `instanceRef`
+ * and `eventType` for each run and type it still needs sent. Waiting steps outnumbering the queued
+ * events of their type is what leaves one without an event. Keep the two alike.
+ *
+ * A step's ancestors are read from the replica's steps, which hold every step;
+ * `isAbandonedWorkflowStep` also reads a missing ancestor's key off its child's.
+ */
+function pendingWaitsSql() {
+  const steps = workflowTable("workflow_step");
+  const waitingStep = `"status" = 'waiting' AND "type" = 'waitForEvent'
+      AND "waitEventType" IS NOT NULL`;
+  // UNION drops repeated rows, so a cycle of parent keys ends. 'system' is the workflows
+  // package's system actor, whose events no wait takes.
+  return `WITH RECURSIVE "ancestry"("instanceRef", "stepKey", "ancestorKey") AS (
+    SELECT "instanceRef", "stepKey", "parentStepKey" FROM ${steps}
+    WHERE ${waitingStep} AND "parentStepKey" IS NOT NULL
+    UNION
+    SELECT "ancestry"."instanceRef", "ancestry"."stepKey", "parent"."parentStepKey"
+    FROM "ancestry" JOIN ${steps} AS "parent"
+      ON "parent"."instanceRef" = "ancestry"."instanceRef"
+      AND "parent"."stepKey" = "ancestry"."ancestorKey"
+    WHERE "parent"."parentStepKey" IS NOT NULL
+  ),
+  "waiting" AS (
+    SELECT "step"."instanceRef", "step"."waitEventType" AS "eventType", count(*) AS "count"
+    FROM ${steps} AS "step"
+    WHERE ${waitingStep}
+      AND NOT EXISTS (
+        SELECT 1 FROM "ancestry" JOIN ${steps} AS "ancestor"
+          ON "ancestor"."instanceRef" = "ancestry"."instanceRef"
+          AND "ancestor"."stepKey" = "ancestry"."ancestorKey"
+        WHERE "ancestry"."instanceRef" = "step"."instanceRef"
+          AND "ancestry"."stepKey" = "step"."stepKey"
+          AND "ancestor"."status" IN ('completed', 'errored')
+      )
+    GROUP BY 1, 2
+  ),
+  "queued" AS (
+    SELECT "instanceRef", "type" AS "eventType", count(*) AS "count"
+    FROM ${workflowTable("workflow_event")}
+    WHERE "consumedByStepKey" IS NULL AND "actor" <> 'system'
+    GROUP BY 1, 2
+  )
+  SELECT "waiting"."instanceRef", "waiting"."eventType"
+  FROM "waiting" LEFT JOIN "queued"
+    ON "queued"."instanceRef" = "waiting"."instanceRef"
+    AND "queued"."eventType" = "waiting"."eventType"
+  WHERE "waiting"."count" > coalesce("queued"."count", 0)`;
+}
+
+/**
+ * What waiting runs wait for, by `pendingWaitsSql`. A run whose output holds no interface asks a
+ * person to answer through its latest completed step's interface, as `latestWorkflowRunGeneratedUi`
+ * finds it: a value with a `$ui` key is an interface, whether or not it is a valid one.
+ */
+function workflowWaitsSql() {
+  const internalId = (table: keyof typeof workflowsSchema.tables) =>
+    quoteSqliteIdentifier(workflowsSchema.tables[table].getInternalIdColumn().name);
+  return `SELECT "run"."id" || ':' || "wait"."eventType" AS "id", "run"."id" AS "runId",
+      "wait"."eventType",
+      CASE WHEN json_type("run"."output", '$."$ui"') IS NULL THEN (
+        SELECT "step"."stepKey" FROM ${workflowTable("workflow_step")} AS "step"
+        WHERE "step"."instanceRef" = "run".${internalId("workflow_instance")}
+          AND "step"."status" = 'completed' AND json_type("step"."result", '$."$ui"') IS NOT NULL
+        ORDER BY "step"."createdAt" DESC, "step".${internalId("workflow_step")} DESC
+        LIMIT 1
+      ) END AS "interfaceStepKey"
+    FROM (${pendingWaitsSql()}) AS "wait"
+    JOIN ${workflowTable("workflow_instance")} AS "run"
+      ON "run".${internalId("workflow_instance")} = "wait"."instanceRef"
+    WHERE "run"."status" = 'waiting'`;
+}
+
+/** Relations SQL computes from the replica's tables, beyond the tables themselves. */
+const QUERY_RELATIONS: (PageRelation & { sql: string })[] = [
   {
     name: "connections",
     description:
@@ -252,36 +368,11 @@ const PROJECTION_RELATIONS: (PageRelation & { sql: string })[] = [
       { name: "endedAt", type: "time", nullable: false },
     ],
   },
-];
-
-/** Encodes a value as the replica stores it: times as milliseconds, booleans as 0 or 1, JSON as text. */
-function storedValue(value: unknown): SqliteValue {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (value instanceof Date) {
-    return value.getTime();
-  }
-  if (typeof value === "boolean") {
-    return value ? 1 : 0;
-  }
-  if (typeof value === "string" || typeof value === "number") {
-    return value;
-  }
-  return JSON.stringify(value);
-}
-
-type DerivedRelation = PageRelation & {
-  /** The columns' values of each record. */
-  rows: (reader: Parameters<LofiSqliteDerivedRelation["compute"]>[0]) => Record<string, unknown>[];
-};
-
-/** What Backoffice derives in JavaScript, with the functions its other views use. */
-const DERIVED_RELATIONS: DerivedRelation[] = [
   {
     name: "agents",
     description:
       "Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and steward.",
+    sql: agentsSql(),
     columns: [
       { name: "agentName", type: "text", nullable: false },
       { name: "definition", type: "json", nullable: false },
@@ -295,27 +386,18 @@ const DERIVED_RELATIONS: DerivedRelation[] = [
       { name: "displayName", type: "text", nullable: false },
       { name: "activity", type: "text", nullable: false },
     ],
-    rows: (reader) => readPiAgents(reader),
   },
   {
     name: "workflow_waits",
     description:
       "Event types waiting runs wait for, one row each; runId is the run's id. interfaceStepKey names the completed step whose interface asks a person to answer, or is null.",
+    sql: workflowWaitsSql(),
     columns: [
       { name: "id", type: "text", nullable: false },
       { name: "runId", type: "text", nullable: false },
       { name: "eventType", type: "text", nullable: false },
       { name: "interfaceStepKey", type: "text", nullable: true },
     ],
-    rows: (reader) =>
-      currentWorkflowWaits(
-        readWorkflowRuns(reader, { type: "waiting" }).map((run) => ({
-          id: run.id,
-          output: run.output,
-          steps: run.workflowSteps,
-          events: run.workflowEvents,
-        })),
-      ),
   },
 ];
 
@@ -328,41 +410,22 @@ export const AUTOMATION_PAGE_RELATIONS: PageRelation[] = [
     description: relation.description,
     columns,
   })),
-  ...PROJECTION_RELATIONS.map(({ name, description, columns }) => ({ name, description, columns })),
-  ...DERIVED_RELATIONS.map(({ name, description, columns }) => ({ name, description, columns })),
+  ...QUERY_RELATIONS.map(({ name, description, columns }) => ({ name, description, columns })),
 ];
 
-/** Each relation computed from tables, as the SELECT that reads it from the replica's tables. */
+/** Each relation, as the SELECT that reads it from the replica's tables. */
 export const AUTOMATION_PAGE_VIEWS_SQL: Readonly<Record<string, string>> = Object.fromEntries([
   ...tableViews.map(({ relation, sql }) => [relation.name, sql]),
-  ...PROJECTION_RELATIONS.map(({ name, sql }) => [name, sql]),
+  ...QUERY_RELATIONS.map(({ name, sql }) => [name, sql]),
 ]);
-
-/** The relations Backoffice derives in JavaScript, as the replica worker computes them. */
-export const AUTOMATION_PAGE_DERIVED_RELATIONS: Readonly<
-  Record<string, LofiSqliteDerivedRelation>
-> = Object.fromEntries(
-  DERIVED_RELATIONS.map(({ name, columns, rows }): [string, LofiSqliteDerivedRelation] => [
-    name,
-    {
-      columns: columns.map((column) => column.name),
-      compute: (reader) =>
-        rows(reader).map((row) => columns.map((column) => storedValue(row[column.name]))),
-    },
-  ]),
-);
 
 /**
  * Creates an empty database that page queries read as they read the replica: the replica's
- * tables, the relations computed from them as views, and the derived relations as tables.
+ * tables, and the relations computed from them as views.
  */
 export const AUTOMATION_PAGE_DATABASE_SCHEMA: readonly string[] = [
   ...createLofiSqliteTableStatements(AUTOMATION_REPLICA_SCHEMAS),
   ...Object.entries(AUTOMATION_PAGE_VIEWS_SQL).map(
     ([name, sql]) => `CREATE VIEW ${quoteSqliteIdentifier(name)} AS ${sql}`,
-  ),
-  ...DERIVED_RELATIONS.map(
-    ({ name, columns }) =>
-      `CREATE TABLE ${quoteSqliteIdentifier(name)} (${columns.map((column) => quoteSqliteIdentifier(column.name)).join(", ")})`,
   ),
 ];
