@@ -260,7 +260,7 @@ export function ChatSubagentGroup({
           name="git-branch"
           className={cn(
             "size-3.5 flex-none",
-            active ? "text-[var(--bo-accent)]" : "text-[var(--bo-muted-2)]",
+            active ? "text-[var(--bo-accent-text)]" : "text-[var(--bo-muted-2)]",
           )}
         />
         <p className="flex min-w-0 flex-1 items-baseline gap-2 text-xs">
@@ -315,7 +315,7 @@ export function ChatSubagentsRunning({
   }
   return (
     <div className="bo-chat-enter mb-2 flex min-h-11 min-w-0 items-center gap-3 rounded-[4px] border border-[color:var(--bo-border-strong)] bg-[var(--bo-panel)] py-1.5 pr-1.5 pl-3 text-xs shadow-[var(--bo-popover-shadow)]">
-      <Icon name="git-branch" className="size-3.5 flex-none text-[var(--bo-accent)]" />
+      <Icon name="git-branch" className="size-3.5 flex-none text-[var(--bo-accent-text)]" />
       <p className="min-w-0 flex-1 truncate">
         <span className="font-medium text-[var(--bo-fg)]">
           {atWork === 1 ? "1 subagent at work" : `${atWork} subagents at work`}

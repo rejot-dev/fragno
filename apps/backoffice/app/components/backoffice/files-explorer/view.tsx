@@ -346,7 +346,7 @@ function FilesSearchResults({
                           key={`${path}:${match.line}:${match.column}`}
                           className="block min-w-0 truncate font-mono text-[11px] leading-5 text-[var(--bo-muted)]"
                         >
-                          <span className="text-[var(--bo-accent)] tabular-nums">
+                          <span className="text-[var(--bo-accent-text)] tabular-nums">
                             {match.line}:{match.column}
                           </span>{" "}
                           · {searchMatchPreview(match)}
@@ -536,7 +536,7 @@ function RootSelectionState({
   return (
     <section className="flex min-h-full items-center justify-center p-6">
       <div className="max-w-sm text-center">
-        <div className="bo-control-surface mx-auto flex size-12 items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-accent)]">
+        <div className="bo-control-surface mx-auto flex size-12 items-center justify-center bg-[var(--bo-panel-2)] text-[var(--bo-accent-text)]">
           <Icon name={icon} className="size-5" />
         </div>
         <p className="mt-4 text-[9px] tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">

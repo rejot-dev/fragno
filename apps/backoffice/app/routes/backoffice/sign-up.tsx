@@ -231,7 +231,7 @@ export default function BackofficeSignUp() {
         <section>
           {invited ? (
             <>
-              <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent)] uppercase">
+              <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-text)] uppercase">
                 Invitation
               </p>
               <h1 className="mt-3 max-w-2xl text-[clamp(2.25rem,6vw,6rem)] leading-[0.92] font-[560] tracking-[-0.065em] text-balance">
@@ -282,7 +282,7 @@ export default function BackofficeSignUp() {
                   the email provider is temporarily unavailable.
                 </p>
                 {verificationRequired.resend === "accepted" ? (
-                  <p className="text-xs text-[var(--bo-accent)]">
+                  <p className="text-xs text-[var(--bo-accent-text)]">
                     If this unverified account exists, a new email will be sent.
                   </p>
                 ) : null}
@@ -422,7 +422,7 @@ export default function BackofficeSignUp() {
                     Already registered?{" "}
                     <Link
                       to={buildBackofficeLoginPath(returnTo)}
-                      className="font-semibold tracking-[0.22em] text-[var(--bo-accent)] uppercase transition-colors hover:text-[var(--bo-accent-strong)]"
+                      className="font-semibold tracking-[0.22em] text-[var(--bo-accent-text)] uppercase transition-colors hover:text-[var(--bo-accent-strong)]"
                     >
                       Sign in
                     </Link>

@@ -39,7 +39,7 @@ export function LandingClosing() {
     <section aria-labelledby="landing-closing">
       <h2
         id="landing-closing"
-        className="max-w-4xl text-[clamp(3rem,7vw,7rem)] leading-[0.9] font-[560] tracking-[-0.07em] text-balance"
+        className="font-heading max-w-4xl text-[clamp(3rem,7vw,7rem)] leading-[0.92] font-light tracking-[-0.06em] text-balance"
       >
         AI is a tool,
         <br />
@@ -47,9 +47,12 @@ export function LandingClosing() {
       </h2>
       <ul className="mt-14 grid gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
         {PROMISES.map((promise) => (
-          <li key={promise.title} className="border-t border-[color:var(--bo-fg)] pt-4">
-            <p className="text-base font-semibold">{promise.title}</p>
-            <p className="mt-1 text-sm leading-6 text-[var(--bo-muted)]">{promise.text}</p>
+          <li
+            key={promise.title}
+            className="border-t border-[color-mix(in_srgb,var(--bo-fg)_35%,transparent)] pt-4"
+          >
+            <p className="font-heading text-2xl font-normal tracking-[-0.04em]">{promise.title}</p>
+            <p className="mt-2 text-sm leading-6 text-[var(--bo-muted)]">{promise.text}</p>
           </li>
         ))}
       </ul>
@@ -58,13 +61,13 @@ export function LandingClosing() {
   );
 }
 
-// Larger and plainer than the app's buttons: one strong way in, and a quiet second one.
+// The hero's buttons: one solid way in, in the page's ink on its background, and an outlined second.
 function LandingCallsToAction({ className }: { className: string }) {
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-8 gap-y-4", className)}>
+    <div className={cn("flex flex-wrap items-center gap-3", className)}>
       <Link
         to="/backoffice/sign-up"
-        className="group inline-flex min-h-14 items-center gap-3 bg-[var(--bo-fg)] px-7 text-base font-medium text-[var(--bo-bg)] no-underline transition-[background-color,scale] duration-150 ease-out hover:bg-[color-mix(in_srgb,var(--bo-fg)_86%,var(--bo-bg))] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/40 focus-visible:outline-none active:scale-[0.98]"
+        className="group inline-flex min-h-12 items-center gap-2 rounded-[6px] bg-[var(--bo-fg)] px-6 text-sm font-semibold text-[var(--bo-bg)] no-underline transition-[opacity,scale] duration-150 ease-out hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--bo-fg)] active:scale-[0.98]"
       >
         Get started
         <Icon
@@ -74,7 +77,7 @@ function LandingCallsToAction({ className }: { className: string }) {
       </Link>
       <Link
         to="/marketplace"
-        className="text-base font-medium text-[var(--bo-fg)] underline decoration-[var(--bo-border-strong)] underline-offset-[6px] transition-[text-decoration-color] duration-150 hover:decoration-[var(--bo-fg)]"
+        className="inline-flex min-h-12 items-center rounded-[6px] border border-[color-mix(in_srgb,var(--bo-fg)_30%,transparent)] px-6 text-sm font-semibold text-[var(--bo-fg)] no-underline transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--bo-fg)_10%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--bo-fg)]"
       >
         Browse the marketplace
       </Link>

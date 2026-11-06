@@ -380,7 +380,7 @@ function BackofficeLogin({
           >
             <div className="space-y-3">
               {searchParams.get("passwordReset") === "success" ? (
-                <p role="status" className="text-sm leading-6 text-[var(--bo-accent)]">
+                <p role="status" className="text-sm leading-6 text-[var(--bo-accent-text)]">
                   Your password has been reset. Sign in with your new password.
                 </p>
               ) : null}
@@ -437,7 +437,7 @@ function BackofficeLogin({
                 </Field>
                 <Link
                   to="/backoffice/forgot-password"
-                  className="inline-flex min-h-10 items-center text-xs font-semibold text-[var(--bo-accent)] hover:underline"
+                  className="inline-flex min-h-10 items-center text-xs font-semibold text-[var(--bo-accent-text)] hover:underline"
                 >
                   Forgot password?
                 </Link>
@@ -445,7 +445,7 @@ function BackofficeLogin({
                   <p
                     className={
                       verificationRequired
-                        ? "text-xs text-[var(--bo-accent)]"
+                        ? "text-xs text-[var(--bo-accent-text)]"
                         : "text-xs text-red-400"
                     }
                   >
@@ -479,7 +479,7 @@ function BackofficeLogin({
                 Need an account?{" "}
                 <Link
                   to={buildBackofficeSignUpPath(returnTo)}
-                  className="font-semibold tracking-[0.22em] text-[var(--bo-accent)] uppercase transition-colors hover:text-[var(--bo-accent-strong)]"
+                  className="font-semibold tracking-[0.22em] text-[var(--bo-accent-text)] uppercase transition-colors hover:text-[var(--bo-accent-strong)]"
                 >
                   Create one
                 </Link>

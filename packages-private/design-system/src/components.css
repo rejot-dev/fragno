@@ -200,7 +200,7 @@
 /* Resolves a BackofficeStatusTone in [data-tone] to a color, background, and border, so every
    toned component reads from one palette. */
 .bo-status-tone {
-  --bo-status-color: var(--bo-accent);
+  --bo-status-color: var(--bo-accent-text);
   --bo-status-bg: var(--bo-accent-bg);
   --bo-status-border: color-mix(in srgb, var(--bo-status-color) 42%, transparent);
 }
@@ -471,4 +471,90 @@
   background-clip: text;
   color: transparent;
   animation: bo-shimmer 2.4s linear infinite;
+}
+
+/* Landing film: the landing page's surfaces look shot on old film. Each fills its positioned
+   parent, behind the parent's content, and takes no clicks. */
+
+.landing-film,
+.landing-film-dark {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* Fractal noise with its contrast stretched and a trace of color left in, like film grain. */
+  --landing-film-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0.3'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='2.4' intercept='-0.7'/%3E%3CfeFuncG type='linear' slope='2.4' intercept='-0.7'/%3E%3CfeFuncB type='linear' slope='2.4' intercept='-0.7'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.landing-film::before,
+.landing-film::after,
+.landing-film-dark::before,
+.landing-film-dark::after {
+  position: absolute;
+  content: "";
+}
+
+/* On the brand red: soft streaks of lighter and darker red run across it, light leaks warm it to
+   orange in the top left and bottom right corners, it deepens to brown in the bottom left, its edges
+   fall off into a dark vignette, and a coarse grain lies over all of it. */
+.landing-film {
+  box-shadow: inset 0 0 14rem 2rem rgb(48 12 6 / 0.5);
+}
+
+.landing-film::before {
+  /* Past the edges, so the blur does not fade them. */
+  inset: -10%;
+  background:
+    radial-gradient(ellipse 22% 38% at 8% 22%, rgb(240 140 60 / 0.85), transparent 70%),
+    radial-gradient(ellipse 26% 42% at 6% 92%, rgb(80 26 18 / 0.85), transparent 70%),
+    radial-gradient(ellipse 55% 16% at 32% 40%, rgb(240 112 84 / 0.6), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 55% 30%, rgb(170 50 36 / 0.55), transparent 70%),
+    radial-gradient(ellipse 48% 18% at 70% 62%, rgb(240 116 86 / 0.55), transparent 70%),
+    radial-gradient(ellipse 30% 40% at 96% 88%, rgb(245 140 55 / 0.9), transparent 70%),
+    radial-gradient(ellipse 60% 30% at 40% 75%, rgb(185 58 40 / 0.5), transparent 70%);
+  filter: blur(24px);
+}
+
+/* Laid over the reds so it lightens and darkens them alike. */
+.landing-film::after {
+  inset: 0;
+  background-image: var(--landing-film-grain);
+  background-size: 240px;
+  mix-blend-mode: overlay;
+  opacity: 0.6;
+}
+
+/* On black: one red light leak from the bottom right corner, and the same grain. Overlay cannot
+   lighten black, so the grain is screened on, faintly. */
+.landing-film-dark::before {
+  right: -10%;
+  bottom: -30%;
+  width: min(900px, 70vw);
+  aspect-ratio: 1;
+  background: radial-gradient(closest-side, rgb(210 74 51 / 0.32), transparent);
+  filter: blur(40px);
+}
+
+.landing-film-dark::after {
+  inset: 0;
+  background-image: var(--landing-film-grain);
+  background-size: 240px;
+  mix-blend-mode: screen;
+  opacity: 0.09;
+}
+
+/* A graph-paper grid behind a light landing section, in a faint tint of the page's ink: rows at a
+   steady rhythm here, and columns the section draws itself, on the landing header's column lines. It
+   fills its positioned parent and fades in from the top, so the section above flows into it. */
+.landing-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    0deg,
+    color-mix(in srgb, var(--bo-fg) 7%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 100% 56px;
+  mask-image: linear-gradient(transparent, #000 45%);
 }

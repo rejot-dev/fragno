@@ -148,7 +148,7 @@ export default function BackofficeDeviceAuthorization() {
           </p>
           <Link
             to="/backoffice"
-            className="inline-flex min-h-10 items-center text-sm text-[var(--bo-fg)] underline underline-offset-4 hover:text-[var(--bo-accent)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
+            className="inline-flex min-h-10 items-center text-sm text-[var(--bo-fg)] underline underline-offset-4 hover:text-[var(--bo-accent-text)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
           >
             Go to dashboard
           </Link>

@@ -153,7 +153,7 @@ export function AppSignIn({
             {/* Loading the page again starts over with the request the app sent. */}
             <Link
               to={{ search: location.search }}
-              className="text-[var(--bo-accent)] underline-offset-4 hover:underline"
+              className="text-[var(--bo-accent-text)] underline-offset-4 hover:underline"
             >
               Use a different email
             </Link>
@@ -174,7 +174,7 @@ export function AppSignIn({
             {/* Loading the page again starts over with the request the app sent. */}
             <Link
               to={{ search: location.search }}
-              className="text-[var(--bo-accent)] underline-offset-4 hover:underline"
+              className="text-[var(--bo-accent-text)] underline-offset-4 hover:underline"
             >
               Use a different email
             </Link>

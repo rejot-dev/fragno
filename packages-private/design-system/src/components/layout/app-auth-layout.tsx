@@ -54,7 +54,7 @@ export function AppAuthLayout({
       <footer className="mt-6 flex w-full max-w-sm flex-wrap items-center justify-between gap-2 text-xs text-[var(--bo-muted)]">
         <a
           href={brand.supportUrl}
-          className="text-[var(--bo-accent)] underline-offset-4 hover:underline"
+          className="text-[var(--bo-accent-text)] underline-offset-4 hover:underline"
         >
           Need help?
         </a>

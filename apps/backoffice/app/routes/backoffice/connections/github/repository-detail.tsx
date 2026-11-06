@@ -194,7 +194,7 @@ export default function BackofficeOrganizationGitHubRepositoryDetail() {
                         href={url}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex text-[var(--bo-accent)] hover:text-[var(--bo-accent-strong)]"
+                        className="inline-flex text-[var(--bo-accent-text)] hover:text-[var(--bo-accent-strong)]"
                       >
                         Open on GitHub
                       </a>

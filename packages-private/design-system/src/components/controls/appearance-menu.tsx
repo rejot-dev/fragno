@@ -45,7 +45,7 @@ export function AppearanceOptions({ preferences }: { preferences: AppearancePref
           >
             <Icon name={icon} className={ITEM_ICON_CLASS_NAME} strokeWidth={1.75} />
             <span className="flex-1">{label}</span>
-            <Menu.RadioItemIndicator className="text-[var(--bo-accent)]">
+            <Menu.RadioItemIndicator className="text-[var(--bo-accent-text)]">
               <Icon name="check" className="size-4" />
             </Menu.RadioItemIndicator>
           </Menu.RadioItem>

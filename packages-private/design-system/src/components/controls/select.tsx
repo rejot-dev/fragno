@@ -88,7 +88,7 @@ export function Select<TValue>({
               >
                 <BaseSelect.ItemText>{option.label}</BaseSelect.ItemText>
                 <BaseSelect.ItemIndicator>
-                  <Icon name="check" className="size-4 text-[var(--bo-accent)]" />
+                  <Icon name="check" className="size-4 text-[var(--bo-accent-text)]" />
                 </BaseSelect.ItemIndicator>
               </BaseSelect.Item>
             ))}

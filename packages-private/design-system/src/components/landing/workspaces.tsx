@@ -142,7 +142,7 @@ export function LandingWorkspaces() {
                   <span className="block text-[11px] text-[var(--bo-muted-2)]">{scope.kind}</span>
                 </span>
                 {scope.id === selected.id ? (
-                  <Icon name="check" className="size-3.5 text-[var(--bo-accent)]" />
+                  <Icon name="check" className="size-3.5 text-[var(--bo-accent-text)]" />
                 ) : null}
               </button>
             ))}

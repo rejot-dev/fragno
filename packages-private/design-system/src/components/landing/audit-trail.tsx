@@ -6,7 +6,7 @@ import type {
   CausalFlameStatus,
   CausalFlameTiming,
 } from "../workflow-runs/causal-flame-graph-model";
-import { LandingSection } from "./landing-section";
+import { LANDING_FRAME_CLASS_NAME, LandingSection } from "./landing-section";
 
 const T0 = Date.UTC(2026, 9, 28, 9, 12, 0);
 const s = (seconds: number) => T0 + seconds * 1000;
@@ -107,7 +107,9 @@ export function LandingAuditTrail() {
       visual={
         // The trace is a time axis that needs width, so phones scroll it rather than squeeze it. It is
         // relative so the graph's visually hidden labels stay inside it instead of widening the page.
-        <div className="backoffice-scroll relative overflow-x-auto border border-[color:var(--bo-border)] bg-[var(--bo-panel)] shadow-[var(--bo-panel-shadow)]">
+        <div
+          className={`backoffice-scroll relative overflow-x-auto ${LANDING_FRAME_CLASS_NAME} bg-[var(--bo-panel)]`}
+        >
           <div className="min-w-[760px] p-4 sm:p-6">
             <CausalFlameGraph
               title="Contact form answered"

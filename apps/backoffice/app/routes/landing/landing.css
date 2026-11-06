@@ -1,0 +1,63 @@
+/* Scrolling hands the hero over to the product: its content, the copy and the connections
+   carousel, folds back on its bottom edge until it lies nearly flat, faster and faster, and fades,
+   while its background stays. The dashboard rises over it, faster than the page scrolls, and grows a
+   little as it comes up.
+   All of it follows the scroll position; without scroll-driven animations, everything stays put. */
+@supports (animation-timeline: scroll()) {
+  .landing-hero-fold {
+    transform-origin: 50% 100%;
+    /* Starts gently and accelerates, like something tipping over. */
+    animation: landing-hero-fold cubic-bezier(0.6, 0, 1, 0.5) both;
+    animation-timeline: scroll(root);
+    animation-range: 0 60vh;
+  }
+
+  /* Fades with the fold, so the copy stays readable while it tips back. */
+  .landing-hero-copy {
+    animation: landing-hero-copy-fade cubic-bezier(0.6, 0, 1, 0.5) both;
+    animation-timeline: scroll(root);
+    animation-range: 0 60vh;
+  }
+
+  .landing-hero-device {
+    transform-origin: top center;
+    animation: landing-hero-device-rise linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 60vh;
+  }
+}
+
+/* The perspective is part of the transform, so the content folds in its own 3D space. */
+@keyframes landing-hero-fold {
+  from {
+    transform: perspective(1200px) rotateX(0deg);
+  }
+  to {
+    transform: perspective(1200px) rotateX(85deg);
+  }
+}
+
+@keyframes landing-hero-copy-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+/* The page below rises with the dashboard rather than leaving the space it rose from: its bottom
+   margin takes back the rise, less what scaling adds to its height (8% of a laptop about two thirds
+   as tall as the content column is wide, at most 1084px). */
+@keyframes landing-hero-device-rise {
+  to {
+    translate: 0 -14vh;
+    scale: 1.08;
+    margin-bottom: calc(-14vh + min(57px, 5.3vw));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-fold,
+  .landing-hero-copy,
+  .landing-hero-device {
+    animation: none;
+  }
+}
