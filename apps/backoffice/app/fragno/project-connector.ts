@@ -24,6 +24,9 @@ export function createProjectConnectorServer(
     await ifMatchesRoute("GET", "/provider-configs", () => {
       access = BACKOFFICE_PERMISSION.connections.read;
     });
+    await ifMatchesRoute("GET", "/providers", () => {
+      access = BACKOFFICE_PERMISSION.connections.read;
+    });
     await ifMatchesRoute("GET", "/provider-configs/:providerConfigId/actions", () => {
       access = BACKOFFICE_PERMISSION.connections.read;
     });

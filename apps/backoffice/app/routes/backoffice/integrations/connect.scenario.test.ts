@@ -202,6 +202,57 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
         });
       }),
       then.assert(
+        "the catalog also lists providers the project has not set up, which cannot be connected",
+        async (ctx) => {
+          gateway.catalogProviders.set("jira", {
+            service: "jira",
+            displayName: "Jira",
+            description: "Project issue tracking and team work coordination",
+            searchAliases: [],
+            iconUrl: "https://static.example/logo/Jira.svg",
+            homepageUrl: "https://www.atlassian.com/software/jira",
+            categories: [{ id: "productivity", displayName: "Productivity" }],
+            authTypes: ["oauth2"],
+          });
+          const page = await openConnect(ctx, "");
+          // Gmail is configured, so it stays a source to connect rather than an unavailable one.
+          expect(page.unavailable).toEqual([
+            {
+              id: "jira",
+              label: "Jira",
+              description: "Project issue tracking and team work coordination.",
+              iconUrl: "https://static.example/logo/Jira.svg",
+              categories: [{ id: "productivity", label: "Productivity" }],
+            },
+          ]);
+          expect(page.services.map((service) => service.id)).not.toContain("jira");
+
+          // Jira opens on the offer to set it up with the agent, which takes the question.
+          const opened = await openSource(ctx, `${connectPage(ctx)}/jira`);
+          expect(opened.method).toEqual({ kind: "agent" });
+          expect(await submitConnect(ctx, { intent: "ask-agent", source: "jira" })).toEqual({
+            redirectsTo: `${connectPage(ctx)}/jira?agent=opened`,
+          });
+          // Jira signs in with OAuth, so the agent sets it up through Oomol; Airtable takes an API
+          // key, so the agent sets it up as Leyway's own API integration.
+          gateway.catalogProviders.set("airtable", {
+            service: "airtable",
+            displayName: "Airtable",
+            description: "Spreadsheet databases",
+            searchAliases: [],
+            iconUrl: "https://static.example/logo/Airtable.svg",
+            homepageUrl: "https://airtable.com",
+            categories: [{ id: "productivity", displayName: "Productivity" }],
+            authTypes: ["api_key"],
+          });
+          await submitConnect(ctx, { intent: "ask-agent", source: "airtable" });
+          expect(await userMessages(ctx)).toEqual([
+            "Help me connect Jira in this scope. It signs in with OAuth, so set it up through Oomol (the Connector), which has no OAuth configuration for it in this project yet.",
+            "Help me connect Airtable in this scope. Set it up as an API integration (integration api). Search Airtable's API documentation for how to authenticate and which base URL to use.",
+          ]);
+        },
+      ),
+      then.assert(
         "choosing Gmail offers to sign in, and connecting waits for consent",
         async (ctx) => {
           // Gmail's card links to it under the address it signs in at.
@@ -250,22 +301,28 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
         assert(catalog.services.find((service) => service.id === "gmail")?.connected);
       }),
       then.assert(
-        "creating a workflow asks the main agent to clarify it, on its own page",
+        "creating a workflow asks the main agent to clarify it, beside Gmail on the page",
         async (ctx) => {
           const connected = await openSource(ctx, ctx.vars.gmailLink);
           assert(connected.method.kind === "connected");
           const { connectionId } = connected.method;
 
-          expect(
-            await submitConnect(ctx, {
-              intent: "create-workflow",
-              connectionId,
-              timeZone: "Europe/Amsterdam",
-            }),
-          ).toEqual({
-            redirectsTo: `/backoffice/agents/user/${ctx.vars.userId}/agents/assistant`,
+          const submitted = await submitConnect(ctx, {
+            intent: "create-workflow",
+            connectionId,
+            timeZone: "Europe/Amsterdam",
           });
-          const [prompt] = await userMessages(ctx);
+          // The page stays on Gmail's account and opens the agent beside it.
+          const landing = "redirectsTo" in submitted ? submitted.redirectsTo : null;
+          assert(landing);
+          const { pathname, searchParams } = new URL(landing, ORIGIN);
+          expect(pathname).toBe(`${connectPage(ctx)}/gmail`);
+          assert(searchParams.get("agent") === "opened");
+          expect((await openSource(ctx, landing)).method).toEqual({
+            kind: "connected",
+            connectionId,
+          });
+          const prompt = (await userMessages(ctx)).at(-1);
           assert(prompt);
           expect(prompt).toContain(
             `I just connected Gmail (connection ${connectionId}) and want to build a workflow with it.`,

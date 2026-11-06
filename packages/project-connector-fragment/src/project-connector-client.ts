@@ -61,6 +61,13 @@ const projectConnectorCatalogProviderSchema = projectConnectorProviderCatalogSch
     .transform((description) => description || null),
 });
 
+const projectConnectorProvidersEnvelopeSchema = z.object({
+  success: z.literal(true),
+  data: z.array(
+    projectConnectorCatalogProviderSchema.extend({ authTypes: z.array(z.string().min(1)) }),
+  ),
+});
+
 type ProjectConnectorSdk = Pick<
   ProjectApi,
   "getConnectionRequest" | "getUserProfile" | "executeRaw"
@@ -173,22 +180,21 @@ async function fetchProjectConnectorWithoutRedirects(
 }
 
 /** Calls a SaaS route the SDK does not wrap; redirects must not forward the project key elsewhere. */
-async function fetchProjectConnectorSaas<T>(
+async function sendProjectConnectorSaas(
   config: Pick<ProjectConnectorClientConfig, "baseUrl" | "apiKey">,
-  request: { method: "GET" | "DELETE"; path: string },
-  envelopeSchema: z.ZodType<T>,
-): Promise<T> {
+  request: { method: "GET" | "DELETE"; path: string; headers: Record<string, string> },
+) {
   const signal = AbortSignal.timeout(30_000);
-  let response: Response;
   try {
-    response = await fetchProjectConnectorWithoutRedirects(
+    const response = await fetchProjectConnectorWithoutRedirects(
       `${config.baseUrl}/saas${request.path}`,
       {
         method: request.method,
-        headers: { authorization: `Bearer ${config.apiKey}` },
+        headers: { ...request.headers, authorization: `Bearer ${config.apiKey}` },
         signal,
       },
     );
+    return { response, signal };
   } catch (cause) {
     if (signal.aborted) {
       throw new ProjectConnectorClientError("client_timeout", 0);
@@ -198,6 +204,22 @@ async function fetchProjectConnectorSaas<T>(
     }
     throw cause;
   }
+}
+
+async function fetchProjectConnectorSaas<T>(
+  config: Pick<ProjectConnectorClientConfig, "baseUrl" | "apiKey">,
+  request: { method: "GET" | "DELETE"; path: string },
+  envelopeSchema: z.ZodType<T>,
+): Promise<T> {
+  const { response, signal } = await sendProjectConnectorSaas(config, { ...request, headers: {} });
+  return readProjectConnectorSaas(response, signal, envelopeSchema);
+}
+
+async function readProjectConnectorSaas<T>(
+  response: Response,
+  signal: AbortSignal,
+  envelopeSchema: z.ZodType<T>,
+): Promise<T> {
   let payload: unknown;
   try {
     payload = await response.json();
@@ -257,8 +279,38 @@ export function createProjectConnectorClient(
           maxRetries: 0,
           fetch: fetchProjectConnectorWithoutRedirects,
         }).catalog;
+  // The gateway serves its whole catalog unpaginated, well over a thousand providers, so the last
+  // copy is kept and only revalidated by its ETag.
+  let providerCatalog: {
+    etag: string;
+    providers: z.output<typeof projectConnectorProvidersEnvelopeSchema>["data"];
+  } | null = null;
 
   return {
+    /** Every provider in the gateway's catalog, read with the project key. */
+    async listProviders() {
+      const cached = providerCatalog;
+      const { response, signal } = await sendProjectConnectorSaas(
+        { apiKey, baseUrl },
+        {
+          method: "GET",
+          path: "/providers",
+          headers: cached ? { "if-none-match": cached.etag } : {},
+        },
+      );
+      if (cached && response.status === 304) {
+        await response.body?.cancel();
+        return { providers: cached.providers };
+      }
+      const envelope = await readProjectConnectorSaas(
+        response,
+        signal,
+        projectConnectorProvidersEnvelopeSchema,
+      );
+      const etag = response.headers.get("etag");
+      providerCatalog = etag === null ? null : { etag, providers: envelope.data };
+      return { providers: envelope.data };
+    },
     async listProviderConfigs() {
       const discovery = await fetchProjectConnectorProviderConfigs({ apiKey, baseUrl });
       const services = [...new Set(discovery.providerConfigs.map((config) => config.service))];

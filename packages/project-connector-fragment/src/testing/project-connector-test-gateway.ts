@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -158,6 +159,8 @@ export async function startProjectConnectorTestGateway() {
     discoveryReads: number;
     catalogReads: string[];
     providerCatalogReads: string[][];
+    /** How each read of the project's whole catalog was answered. */
+    providerListReads: ("full" | "not-modified")[];
     catalogFailure: "wrong-service" | "redirect" | null;
     redirectReads: number;
   } = {
@@ -170,6 +173,7 @@ export async function startProjectConnectorTestGateway() {
     discoveryReads: 0,
     catalogReads: [],
     providerCatalogReads: [],
+    providerListReads: [],
     catalogFailure: null,
     redirectReads: 0,
   };
@@ -245,6 +249,19 @@ export async function startProjectConnectorTestGateway() {
         chunks.push(chunk as string);
       }
       payload = JSON.parse(chunks.join(""));
+    }
+    if (req.method === "GET" && url.pathname === "/v1/saas/providers") {
+      const body = JSON.stringify({ success: true, data: [...catalogProviders.values()] });
+      // Like the gateway, the whole catalog is one response, revalidated by its ETag.
+      const etag = `W/"${createHash("sha1").update(body).digest("hex")}"`;
+      if (req.headers["if-none-match"] === etag) {
+        control.providerListReads.push("not-modified");
+        res.writeHead(304, { etag }).end();
+        return;
+      }
+      control.providerListReads.push("full");
+      res.writeHead(200, { "content-type": "application/json", etag }).end(body);
+      return;
     }
     if (req.method === "GET" && url.pathname === "/v1/saas/oauth/provider-configs") {
       control.discoveryReads += 1;
