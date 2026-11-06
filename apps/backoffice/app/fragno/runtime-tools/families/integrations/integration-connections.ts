@@ -17,6 +17,11 @@ const kindsByNamespace = new Map<string, IntegrationConnectionKind>([
   ["app", "native"],
 ]);
 
+/** The source that owns a connection address, or null for a namespace no source owns. */
+export function integrationConnectionKind(connectionId: string): IntegrationConnectionKind | null {
+  return kindsByNamespace.get(connectionId.split("#", 1)[0]) ?? null;
+}
+
 type StoredEvent = {
   id: string;
   source: string;
@@ -41,7 +46,7 @@ export function readIntegrationConnectionStateChange(
   event: StoredEvent,
 ): IntegrationConnectionStateChange | null {
   const change = readIntegrationConnectionEvent(event);
-  const kind = change && kindsByNamespace.get(change.connectionId.split("#", 1)[0]);
+  const kind = change && integrationConnectionKind(change.connectionId);
   return change && kind
     ? { ...change, eventId: event.id, kind, occurredAt: event.occurredAt }
     : null;

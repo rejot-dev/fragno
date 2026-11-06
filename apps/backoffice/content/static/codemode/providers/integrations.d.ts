@@ -62,6 +62,13 @@ type IntegrationOverview = {
   id: IntegrationId;
   label: string;
   description: string;
+  /** The service's logo; null when it has none and clients draw a generic mark. */
+  iconUrl: string | null;
+  /** Broad application categories shared across services, most specific first. Clients group a service under its first category. */
+  categories: {
+    id: string;
+    label: string;
+  }[];
   /** Singleton means one scoped configuration; multiple means separately selectable connections. Credentials remain in their existing service-owned stores. */
   connectionCardinality: "singleton" | "multiple";
   availability: IntegrationAvailability;

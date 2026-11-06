@@ -3,18 +3,21 @@ import { readFile, writeFile } from "node:fs/promises";
 
 const enableContainersFlag = "--containers";
 const enableSourceMapsFlag = "--sourcemap";
+const enableWorkersAiFlag = "--ai";
 const enableContainers = process.argv.includes(enableContainersFlag);
 const enableSourceMaps = process.argv.includes(enableSourceMapsFlag);
-const previewArgs = process.argv
-  .slice(2)
-  .filter((argument) => argument !== enableContainersFlag && argument !== enableSourceMapsFlag);
+const enableWorkersAi = process.argv.includes(enableWorkersAiFlag);
+const wrapperFlags = [enableContainersFlag, enableSourceMapsFlag, enableWorkersAiFlag];
+const previewArgs = process.argv.slice(2).filter((argument) => !wrapperFlags.includes(argument));
 const previewCommand = ["vite", "preview", ...previewArgs];
 // The bridge Worker hosts the Sandbox containers that the object Worker binds to.
 const containerWorkerConfigUrl = new URL(
   "../dist/cf_sandbox_bridge/wrangler.json",
   import.meta.url,
 );
-// Backoffice fails sandbox starts at once when told the bridge has no containers.
+// Backoffice fails sandbox starts at once when told the bridge has no containers. Workers AI always
+// runs on Cloudflare, which needs wrangler signed in to an account with a workers.dev subdomain, so
+// its binding stays out unless `--ai` asks for it; Backoffice then reports Workers AI unavailable.
 const backofficeWorkerConfigUrls = [
   new URL("../build/server/wrangler.json", import.meta.url),
   new URL("../dist/rejot_backoffice/wrangler.json", import.meta.url),
@@ -77,6 +80,7 @@ const configPatches = [
     patch: (config) => ({
       ...config,
       vars: { ...config.vars, SANDBOX_CONTAINERS: String(enableContainers) },
+      ai: enableWorkersAi ? config.ai : undefined,
     }),
   })),
 ];

@@ -326,6 +326,8 @@ test("Codemode creates a custom API through setup and keeps one address across r
                 id: "api",
                 label: "Custom HTTP API",
                 description: expect.stringContaining("api#<slug>"),
+                iconUrl: null,
+                categories: [{ id: "developer_tools", label: "Developer Tools" }],
                 connectionCardinality: "multiple",
                 availability: { status: "available" },
                 setupTargets: [],

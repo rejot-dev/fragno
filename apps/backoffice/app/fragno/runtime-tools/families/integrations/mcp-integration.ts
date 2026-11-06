@@ -41,6 +41,7 @@ import {
   compileIntegrationActionSchema,
   describeSchemaViolations,
 } from "./integration-action-json-schema";
+import { INTEGRATION_CATEGORY } from "./integration-categories";
 import { connectionStateOfInspection } from "./integration-events";
 import {
   authMethodOfFragmentAuthMode,
@@ -692,6 +693,8 @@ export function createMcpIntegration({
           label: "MCP server",
           description:
             "Remote Model Context Protocol servers over streamable HTTP; each server tool is an action. Choose an address mcp#<slug>; the slug becomes the server's identity.",
+          iconUrl: null,
+          categories: [INTEGRATION_CATEGORY.ai, INTEGRATION_CATEGORY.developerTools],
           connectionCardinality: "multiple",
           availability: !runtime.config.bindings.mcp
             ? { status: "unavailable", reason: "The MCP object binding is unavailable." }

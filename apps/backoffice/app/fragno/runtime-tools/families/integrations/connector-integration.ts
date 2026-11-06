@@ -24,7 +24,10 @@ import {
 import { backofficePublicScopePathSegment } from "@/backoffice-runtime/route-scope";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { ProjectConnectorFragment } from "@/fragno/project-connector";
-import { projectConnectorPublicAddress } from "@/fragno/scoped-public-fragment-routes";
+import {
+  projectConnectorPublicAddress,
+  projectConnectorReturnUri,
+} from "@/fragno/scoped-public-fragment-routes";
 
 import {
   isSuccessStatus,
@@ -55,6 +58,12 @@ const connectorSetupInputSchema = z.strictObject({
     .optional()
     .describe(
       "Start under this name instead, such as for another account of the same service; the progress names that connection.",
+    ),
+  returnTo: z
+    .enum(["integrations", "connect"])
+    .default("integrations")
+    .describe(
+      "Where the browser lands after consent: the Integrations page, or the Connect wizard that started it.",
     ),
 });
 const connectorProfileCheck = { id: "account.profile", label: "Read provider profile" };
@@ -199,6 +208,15 @@ function createConnectorAccess(runtime: ConnectorRuntime, context: IntegrationCo
     }
     return fail(response);
   }
+  async function catalog() {
+    const response = await invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
+      callRoute("GET", "/providers"),
+    );
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return response.data.providers;
+    }
+    return fail(response);
+  }
   function namedAccount(selector: z.output<typeof projectConnectorNamedConnectionSchema>) {
     return invoke(BACKOFFICE_PERMISSION.connections.read, selector, () =>
       callRoute("GET", "/accounts/by-name", { query: selector }),
@@ -248,6 +266,7 @@ function createConnectorAccess(runtime: ConnectorRuntime, context: IntegrationCo
     isNotConfigured,
     isAmbiguous,
     providers,
+    catalog,
     namedAccount,
     namedRequest,
     currentRequests,
@@ -292,6 +311,31 @@ export async function confirmConnectorConsent({
   return refreshed.data.state;
 }
 
+/**
+ * Every provider the Connector's catalog lists, configured for this project or not; empty when the
+ * Connector is unavailable. Discovery offers only the configured ones, so agents never read the
+ * whole catalog.
+ */
+export async function listConnectorCatalog({
+  runtime,
+  context,
+}: {
+  runtime: ConnectorRuntime;
+  context: IntegrationContext;
+}) {
+  if (context.execution.scope.kind !== "user" || !runtime.config.bindings.projectConnector) {
+    return [];
+  }
+  try {
+    return await createConnectorAccess(runtime, context).catalog();
+  } catch (cause) {
+    if (cause instanceof NotConfiguredError) {
+      return [];
+    }
+    throw cause;
+  }
+}
+
 /** Projects user-owned OAuth requests and accounts without owning credentials or current-selection state. */
 export function createConnectorIntegration({
   runtime,
@@ -333,7 +377,7 @@ export function createConnectorIntegration({
       return await runNamedSetup(
         context,
         ["named", projectId, providerConfigId, input.connectionName],
-        { kind: "input", input: { start: true } },
+        { kind: "input", input: { start: true, returnTo: input.returnTo } },
         mode,
       );
     }
@@ -425,12 +469,14 @@ export function createConnectorIntegration({
       };
     }
     // The return names this connection, so it confirms this attempt alone.
-    const returnUri = `${
-      projectConnectorPublicAddress(
+    const returnUri = projectConnectorReturnUri({
+      oauthRedirectUri: projectConnectorPublicAddress(
         runtime.config.docsPublicBaseUrl,
         backofficePublicScopePathSegment(context.execution.scope),
-      ).oauthRedirectUri
-    }/${connectorOAuthReturnSegment(address)}`;
+      ).oauthRedirectUri,
+      returnSegment: connectorOAuthReturnSegment(address),
+      returnTo: input.returnTo,
+    });
     const started = await access.invoke(BACKOFFICE_PERMISSION.connections.manage, selector, () =>
       access.callRoute("POST", "/connection-requests", {
         body: {
@@ -521,38 +567,51 @@ export function createConnectorIntegration({
           throw cause;
         }
       }
-      const services = [...new Set(discovery.providerConfigs.map((provider) => provider.service))];
-      return services.map((service) => ({
-        id: service,
-        label: service,
-        description: `OAuth connections for ${service} using this user's configured project providers. Targets name the default connection and every name already started; to connect another account, submit { start: true, connectionName } to a target's setup.`,
-        connectionCardinality: "multiple",
-        availability: { status: "available" },
-        // This preassigned source name makes a concrete setup target available before OAuth assigns an account ID.
-        setupTargets: discovery.providerConfigs
-          .filter((provider) => provider.service === service)
-          .flatMap((provider) => {
-            const names = new Set([service]);
-            for (const request of started) {
-              if (
-                request.projectId === discovery.projectId &&
-                request.providerConfigId === provider.id
-              ) {
-                names.add(request.connectionName);
+      // Every configuration of a service carries the same catalog entry.
+      const catalogByService = new Map(
+        discovery.providerConfigs.map((provider) => [provider.service, provider.catalog]),
+      );
+      return [...catalogByService].map(([service, catalog]) => {
+        // The catalog's own description leads, so short previews show what the service is. Its
+        // descriptions are phrases without a closing period.
+        const summary = catalog?.description
+          ? catalog.description.replace(/\.?$/, ".")
+          : `OAuth connections for ${service} using this user's configured project providers.`;
+        return {
+          id: service,
+          label: catalog?.displayName ?? service,
+          description: `${summary} Targets name the default connection and every name already started; to connect another account, submit { start: true, connectionName } to a target's setup.`,
+          iconUrl: catalog?.iconUrl ?? null,
+          categories:
+            catalog?.categories.map(({ id, displayName }) => ({ id, label: displayName })) ?? [],
+          connectionCardinality: "multiple",
+          availability: { status: "available" },
+          // This preassigned source name makes a concrete setup target available before OAuth assigns an account ID.
+          setupTargets: discovery.providerConfigs
+            .filter((provider) => provider.service === service)
+            .flatMap((provider) => {
+              const names = new Set([service]);
+              for (const request of started) {
+                if (
+                  request.projectId === discovery.projectId &&
+                  request.providerConfigId === provider.id
+                ) {
+                  names.add(request.connectionName);
+                }
               }
-            }
-            return [...names].map((name) => ({
-              kind: "connection" as const,
-              connectionId: encodeConnectorConnectionId([
-                "named",
-                discovery.projectId,
-                provider.id,
-                name,
-              ]),
-            }));
-          }),
-        automationEvents: [],
-      }));
+              return [...names].map((name) => ({
+                kind: "connection" as const,
+                connectionId: encodeConnectorConnectionId([
+                  "named",
+                  discovery.projectId,
+                  provider.id,
+                  name,
+                ]),
+              }));
+            }),
+          automationEvents: [],
+        };
+      });
     },
     async list(context, cursor) {
       if (context.execution.scope.kind !== "user" || !runtime.config.bindings.projectConnector) {

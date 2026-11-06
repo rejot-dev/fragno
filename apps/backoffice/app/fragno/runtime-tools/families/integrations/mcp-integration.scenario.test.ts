@@ -346,6 +346,11 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
                 id: "mcp",
                 label: "MCP server",
                 description: expect.stringContaining("mcp#<slug>"),
+                iconUrl: null,
+                categories: [
+                  { id: "ai", label: "AI" },
+                  { id: "developer_tools", label: "Developer Tools" },
+                ],
                 connectionCardinality: "multiple",
                 availability: { status: "available" },
                 setupTargets: [],
