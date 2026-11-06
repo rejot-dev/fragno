@@ -121,6 +121,20 @@ export const projectConnectorProviderCatalogSchema = z.object({
   categories: z.array(z.object({ id: z.string().min(1), displayName: z.string() })),
 });
 
+/**
+ * Every provider the gateway's catalog lists, whether or not this project configured it. Only a
+ * configured provider can be connected; see `/provider-configs`.
+ */
+export const projectConnectorProvidersSchema = z.object({
+  providers: z.array(
+    projectConnectorProviderCatalogSchema.extend({
+      service: z.string().min(1),
+      /** How the provider authenticates, e.g. oauth2, api_key, or custom_credential. */
+      authTypes: z.array(z.string().min(1)),
+    }),
+  ),
+});
+
 /** One project OAuth configuration as the gateway describes it, without its action IDs. */
 const projectConnectorProviderConfigSchema = z.object({
   id: z.string().min(1),

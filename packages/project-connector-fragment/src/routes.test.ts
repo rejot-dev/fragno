@@ -233,6 +233,62 @@ describe("Project Connector connection scenarios", () => {
     }
   });
 
+  test("the provider catalog lists unconfigured providers and is downloaded again only when it changes", async () => {
+    const scenario = await connectorScenario(null);
+    expect(await scenario.call(null, "GET", "/providers")).toMatchObject({
+      status: 401,
+      data: { code: "UNAUTHENTICATED" },
+    });
+    scenario.gateway.catalogProviders.set("jira", {
+      service: "jira",
+      displayName: "Jira",
+      description: "Project issue tracking and team work coordination",
+      searchAliases: [],
+      iconUrl: "https://static.example/logo/Jira.svg",
+      homepageUrl: "https://www.atlassian.com/software/jira",
+      categories: [{ id: "productivity", displayName: "Productivity" }],
+      authTypes: ["oauth2", "custom_credential"],
+    });
+
+    // The project key reads the catalog; no catalog credential is needed. Jira is listed although
+    // the project configured only Gmail.
+    const listed = await scenario.call("alice", "GET", "/providers");
+    expect(listed).toEqual({
+      status: 200,
+      data: {
+        providers: [
+          {
+            service: "gmail",
+            displayName: "Gmail",
+            description: "Email conversations, labels, drafts, and mailbox management",
+            iconUrl: "https://static.example/logo/Gmail.svg",
+            categories: [
+              { id: "communication", displayName: "Communication" },
+              { id: "productivity", displayName: "Productivity" },
+            ],
+            authTypes: ["oauth2"],
+          },
+          {
+            service: "jira",
+            displayName: "Jira",
+            description: "Project issue tracking and team work coordination",
+            iconUrl: "https://static.example/logo/Jira.svg",
+            categories: [{ id: "productivity", displayName: "Productivity" }],
+            authTypes: ["oauth2", "custom_credential"],
+          },
+        ],
+      },
+    });
+    expect(await scenario.call("bob", "GET", "/providers")).toEqual(listed);
+
+    scenario.gateway.catalogProviders.delete("jira");
+    expect(await scenario.call("alice", "GET", "/providers")).toMatchObject({
+      status: 200,
+      data: { providers: [{ service: "gmail" }] },
+    });
+    expect(scenario.gateway.control.providerListReads).toEqual(["full", "not-modified", "full"]);
+  });
+
   test("action discovery selects one configuration, updates its client store, and distinguishes empty from missing", async () => {
     const scenario = await connectorScenario();
     expect(
