@@ -11,11 +11,7 @@ vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoin
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
-import {
-  assertAutomationProjectionsRebuild,
-  queryAutomationReplica,
-  readAutomationReplica,
-} from "@/fragno/automation/lofi/testing";
+import { queryAutomationReplica, readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -194,15 +190,6 @@ describe("integrations replica", () => {
           then.assert("the replica reads what the stored events say", async (ctx) => {
             await assertIntegrationReads(ctx);
           }),
-          then.assert(
-            "rebuilding the connections from the stored events gives the same rows",
-            async (ctx) => {
-              await assertAutomationProjectionsRebuild(ctx.lofi.automations.forOrg(orgId), [
-                "integration_connection",
-                "integration_connection_change",
-              ]);
-            },
-          ),
         ],
       }),
     );

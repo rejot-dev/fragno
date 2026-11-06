@@ -155,6 +155,14 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
     return await this.#object.listEventsOfType(input);
   }
 
+  async listRecordedPiAgentDefinitions() {
+    return await this.#object.listRecordedPiAgentDefinitions();
+  }
+
+  async listIntegrationConnections() {
+    return await this.#object.listIntegrationConnections();
+  }
+
   async deleteEventsOfType(input: EventDeletionPass) {
     return await this.#object.deleteEventsOfType(input);
   }

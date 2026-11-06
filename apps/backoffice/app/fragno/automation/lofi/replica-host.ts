@@ -11,6 +11,8 @@ import { readWebhookDeliveries } from "@/routes/backoffice/integrations/integrat
 import { AUTOMATION_PAGE_DERIVED_RELATIONS, AUTOMATION_PAGE_VIEWS_SQL } from "./page-relations";
 import {
   readAutomationRoutes,
+  readIntegrationConnectionHistory,
+  readIntegrationConnections,
   readLatestEventsOfType,
   readOrchestrationGraphInputs,
   readOrchestrationRecords,
@@ -24,11 +26,6 @@ import {
   AUTOMATION_READ_VIEWS,
   AUTOMATION_REPLICA_SCHEMAS,
 } from "./replica-schemas";
-import {
-  automationViews,
-  readIntegrationConnectionHistory,
-  readIntegrationConnections,
-} from "./views";
 
 /**
  * The reads pages ask the replica worker for by name, with `automationReadView`. The worker runs
@@ -68,13 +65,13 @@ const automationPageViewEngine = guardedSqlViewEngine({
 });
 
 /**
- * What an Automations replica worker serves, in a browser tab and in scenario tests: the replica
- * with the views its projections keep, the reads, and the pages' SQL views.
+ * What an Automations replica worker serves, in a browser tab and in scenario tests: the replica,
+ * the reads, and the pages' SQL views.
  */
 export const automationReplicaHost = {
   schemas: AUTOMATION_REPLICA_SCHEMAS,
-  localSchemas: automationViews.localSchemas,
-  projections: automationViews.projections,
+  localSchemas: [],
+  projections: [],
   ephemeralTables: [],
   engines: [
     readViewEngine({ kind: AUTOMATION_READ_VIEWS, reads: automationReads }),

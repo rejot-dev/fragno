@@ -124,6 +124,7 @@ import type {
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import type { AutomationRouteAuthorityLookup } from "@/fragno/automation/authority";
+import type { RecordedPiAgentDefinition } from "@/fragno/automation/event-projections";
 import type {
   AutomationEventSource,
   AutomationEventSourceInput,
@@ -229,6 +230,7 @@ import type {
   PiImageGenerationRequest,
 } from "@/fragno/pi/agent/pi-models";
 import type { PackageAgentsInput } from "@/fragno/pi/manager/package-agents";
+import type { IntegrationConnectionRecord } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import type {
   SandboxInstanceRecord,
   SandboxInstanceRequestInput,
@@ -804,6 +806,10 @@ export type AutomationsCommands = {
     eventType: string;
     cursor: string | null;
   }): Promise<{ events: (AutomationEventRecord & { createdAt: string })[]; cursor: string | null }>;
+  /** Each agent's latest definition change in this scope's `pi` events. */
+  listRecordedPiAgentDefinitions(): Promise<RecordedPiAgentDefinition[]>;
+  /** Every connection as this scope's `integrations` events leave it, disconnected ones too. */
+  listIntegrationConnections(): Promise<IntegrationConnectionRecord[]>;
   /** One pass of a destructive cleanup; repeat with the returned cursor until it is null. */
   deleteEventsOfType(
     input: EventDeletionPass,

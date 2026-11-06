@@ -13,21 +13,20 @@ import { useLofiView } from "@/fragno/lofi/use-lofi-view";
 import type { automationReads } from "./replica-host";
 import { AUTOMATION_READ_VIEWS, AUTOMATION_REPLICA_SCHEMAS } from "./replica-schemas";
 import { describeAutomationReplicaSource, type AutomationReplicaSource } from "./replica-source";
-import { automationViews } from "./views";
 
 function automationWorkerReplica(source: AutomationReplicaSource) {
   const description = describeAutomationReplicaSource(source);
   return {
     target: { baseUrl: description.baseUrl, adapterIdentity: source.adapterIdentity },
-    schemas: [...AUTOMATION_REPLICA_SCHEMAS, ...automationViews.localSchemas],
+    schemas: AUTOMATION_REPLICA_SCHEMAS,
     startWorker: (name: string) =>
       new Worker(new URL("./replica.worker.ts", import.meta.url), { type: "module", name }),
   };
 }
 
 /**
- * The scope's Automations replica in this tab, served by its replica worker, with the views its
- * projections keep, open for the life of the tab. Tabs of one scope share the worker that leads.
+ * The scope's Automations replica in this tab, served by its replica worker, open for the life of
+ * the tab. Tabs of one scope share the worker that leads.
  */
 export function getAutomationReplica(source: AutomationReplicaSource): Promise<LofiSqliteClient> {
   return getWorkerReplica(automationWorkerReplica(source));

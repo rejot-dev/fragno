@@ -24,8 +24,8 @@ again since its server looked. Pages connect with `@fragno-dev/lofi/sqlite` and 
 - Backoffice's own views are read views: named functions in `../upload/lofi/replica-host.ts` and
   `../automation/lofi/replica-host.ts` that the leader runs again after a batch that wrote a table
   their last run read, with the database locked, so all of a read's queries see one state. It sends
-  a view's result only when it changed. What reads derive from events, projections keep, so reads
-  mostly look rows up.
+  a view's result only when it changed. What the backend derives from events, its own tables keep,
+  so reads mostly look rows up.
 - User pages' are guarded SQL views (`../automation/lofi/page-relations.ts`); see Pages below.
 
 Shared pieces in this directory:
@@ -91,20 +91,20 @@ Codemode installer run it starts with `readWorkflowRuns`, one run by workflow an
 
 Agents (`routes/backoffice/agents/`) and the agent drawer read the scope's agents, with the turns
 each ended per hour of the last day, through `readPiAgentDirectory` (`agents-replica.ts`), over the
-`pi_agent` and `pi_agent_turn` projections. An agent's conversation stays on the pi-manager stream;
-it reads from the replica only which of the Codemode runs it started have recorded a step
+`pi_agent` and `pi_agent_turn` tables. An agent's conversation stays on the pi-manager stream; it
+reads from the replica only which of the Codemode runs it started have recorded a step
 (`readStartedCodemodeRuns`), to open them in its workspace, and the opened run (`readWorkflowRuns`).
 These render before the replica opens, so they take it from `useCurrentAutomationReplica` instead of
 suspending, and show the directory as loading until the replica first catches up.
 
 Integrations (`routes/backoffice/integrations/`) lists every connection, disconnected ones too, from
-the `integration_connection` projection, and filters them on the page, so showing disconnected
+the `integration_connection` table, and filters them on the page, so showing disconnected
 connections opens no new read. A connection's state history reads the
-`integration_connection_change` projection by connection ID. A webhook endpoint's recent deliveries
-are its latest `api/webhook.received` events and those routes reclassified under the endpoint ID
+`integration_connection_change` table by connection ID. A webhook endpoint's recent deliveries are
+its latest `api/webhook.received` events and those routes reclassified under the endpoint ID
 (`integrations-replica.ts`), narrowed by the subject's endpoint with `json_extract`. They stay a
-read of events, not a projection: `webhook.received` events can be deleted, and a deletion reaches
-the replica as a truncate notification, which projections do not see.
+read of events: `webhook.received` events can be deleted, and a deletion reaches the replica as a
+truncate notification.
 
 The project menu in the top bar reads no synchronized data: the layout's loader lists the owner's
 projects through the Automations object's `GET /projects` (`../automation/project-list.server.ts`)
@@ -113,10 +113,10 @@ and streams them to the menu, so no page opens a database for it.
 Views shared between routes take the `LofiSqliteClient` of the replica their route opened, so no
 route opens a second copy of the scope's history.
 
-What Backoffice derives from events, rather than reads off a table, is kept by local projections
-(`../automation/lofi/views.ts`) in the local schema `automation_views`. They run in the leading
-tab's worker, in the same transaction as each outbox entry, and fold each new event with
-Backoffice's own functions:
+What Backoffice derives from events, the backend keeps in tables of the Automations schema, which
+the replica mirrors like any other (`../automation/event-projections.ts`). Storing an event folds it
+into the rows it changes, in the transaction that stores it: the rows' IDs come from the event, so
+the transaction reads them in the same round trip as its other reads.
 
 - `pi_agent`, `pi_agent_request`, and `pi_agent_turn`, by `applyPiAgentEvent` and
   `piAgentTurnEndedBy` (`../pi/agent/pi-agent-records.ts`). An agent's counts of running, queued,
@@ -126,21 +126,10 @@ Backoffice's own functions:
   (`../runtime-tools/families/integrations/integration-connections.ts`), and
   `integration_connection_change`, every change that led there.
 
-Both readers (`readPiAgentEvent`, `readIntegrationConnectionStateChange`) validate each event once,
-when it arrives. Folding events as they arrive relies on nothing deleting them: `deleteEventsOfType`
-(`../automation/events-storage-runtime.ts`), which `admin.events.delete` calls, refuses `pi` and
-`integrations` events, so the projections never see one go.
-
-Both projections are rebuildable: they list the tables they write and replay the stored
-`automation_event` rows, so `automation_views` does not name the replica's database. Changing one of
-their tables, or bumping a projection's `rebuild.version` when it folds the same events differently,
-rebuilds the projection from the events the browser already holds, in the order the outbox delivered
-them, instead of downloading the history again. On the production fixture of Oct 23 (11,970 events),
-rebuilding both took 1.6 s in Node and gave exactly the rows the stream built. The agents and
-Integrations scenario tests check the same with `assertAutomationProjectionsRebuild`, which rebuilds
-the scope's replica on a second connection and compares. Workflow waits are not projected: they
-follow from runs and steps, which change, so the overview derives them from the waiting runs it
-reads anyway, and pages from a derived relation (see Pages).
+Because the rows outlive the events, a browser that downloads the outbox after events were deleted
+still reads every agent and connection, and the replica keeps no local projections. Workflow waits
+are not stored: they follow from runs and steps, which change, so the overview derives them from the
+waiting runs it reads anyway, and pages from a derived relation (see Pages).
 
 ## Pages
 
@@ -157,10 +146,10 @@ page's interface.
   referenced row's id (`steps.runId`), and `position` the replica's internal id, which orders rows
   as the backend created them; its other bookkeeping columns are left out. A run's steps from one
   tick share their `createdAt` and order by `position`. `connections` and `agent_turns` are views of
-  the projections. `agents` and `workflow_waits` are derived in the worker with `readPiAgents` and
-  `currentWorkflowWaits`, the functions the dashboard uses, so a page repeats none of their logic;
-  they are computed again only after a batch wrote what they read. `page-schema.d.ts`, which agents
-  read, is generated from the same list.
+  the tables the backend folds events into. `agents` and `workflow_waits` are derived in the worker
+  with `readPiAgents` and `currentWorkflowWaits`, the functions the dashboard uses, so a page
+  repeats none of their logic; they are computed again only after a batch wrote what they read.
+  `page-schema.d.ts`, which agents read, is generated from the same list.
 - **Guard.** A page's query only reads: it cannot write, begin or end transactions, attach
   databases, or set a pragma, and stops at 125 million operations, about a second, as the build's
   check does. A failed or interrupted write could end the leader's read transaction, which lofi's
@@ -272,22 +261,14 @@ download the outbox again.
   scope's outbox. In the production fixture of Oct 23 that is 16,104 entries and 316 MB, 91% of it
   the bodies of GitHub `webhook.received` events stored before Backoffice stopped storing them.
   Stripping those from the outbox is planned separately.
-- **A changed projection needs its version bumped.** A changed table rebuilds on its own, but a
-  projection that folds the same events into different values, with the same tables, rebuilds only
-  when its `rebuild.version` changes. Forgetting the bump keeps the old rows until it happens.
-- **Rebuilding blocks the leader.** The rebuild runs in the leader's worker, in one transaction,
-  when the replica opens; views wait meanwhile. It decodes every stored event, not just `pi` and
-  `integrations` ones, once per stale projection: 1.6 s in Node for both on the production fixture,
-  likely more in a browser. A filter on the replayed rows, such as by `source`, would skip the rest,
-  but would state again which events each projection folds.
-- **The projections assume folded events are never deleted.** If `deleteEventsOfType` ever allows
-  `pi` or `integrations` events, a replica would keep what deleted events did, and one that
-  downloads the outbox afterwards would not, since their history goes too. A rebuild would then drop
-  what the deleted events did, so the same browser could show different agents before and after one.
-- **Ties break by outbox order.** Of two changes to a connection in the same millisecond, the
-  projection keeps the first it applies. Origins that occurred in the same millisecond list newest
-  ID first. A run's steps, events, and emissions with the same `createdAt` order by the replica's
-  internal id, which follows the order the backend wrote them in.
+- **Events stored before the tables existed are not in them.** The backend folds events as it stores
+  them, so a scope's earlier `pi` and `integrations` events are missing from its agents and
+  connections until something folds them. `deleteEventsOfType` keeps refusing those sources until
+  then.
+- **Ties break by storage order.** Of two changes to a connection in the same millisecond, the
+  backend keeps the first it stores; of two changes to an agent, the last. Origins that occurred in
+  the same millisecond list newest ID first. A run's steps, events, and emissions with the same
+  `createdAt` order by the replica's internal id, which follows the order the backend wrote them in.
 - **Busy tables rerun most views.** A batch reruns, in the leader and for every tab, each open view
   that reads a table it wrote. Most batches write `automation_event` or the workflow tables, which
   the overview's ten queries, the graph's three, an opened run's four, the Events list's four and

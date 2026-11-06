@@ -41,15 +41,12 @@ export type PiAgentTurnRecord = {
   endedAt: Date;
 };
 
-/** When an event happened; changes made in the same instant are ordered by when they were stored. */
-export type PiAgentEventOrder = { occurredAt: Date; createdAt: Date };
-
-function isLater(event: PiAgentEventOrder, than: PiAgentEventOrder | null) {
-  return (
-    than === null ||
-    event.occurredAt > than.occurredAt ||
-    (event.occurredAt.getTime() === than.occurredAt.getTime() && event.createdAt > than.createdAt)
-  );
+/**
+ * Events are applied in the order they were stored, so of changes made in the same instant, the one
+ * stored later wins.
+ */
+function isLater(event: { occurredAt: Date }, than: { occurredAt: Date } | null) {
+  return than === null || event.occurredAt >= than.occurredAt;
 }
 
 /**
@@ -71,9 +68,10 @@ export type PiAgentRequestState = {
  * how many of its requests are running, queued, and steering.
  */
 export type PiAgentState = {
-  latest: PiAgentEventOrder & { kind: PiAgentActivityKind };
-  definition: (PiAgentEventOrder & { definition: PiAgentDefinition | null }) | null;
-  pause: (PiAgentEventOrder & { paused: boolean }) | null;
+  latest: { kind: PiAgentActivityKind; occurredAt: Date };
+  /** `definition` is null after a deletion. */
+  definition: { definition: PiAgentDefinition | null; occurredAt: Date; eventId: string } | null;
+  pause: { paused: boolean; occurredAt: Date } | null;
   running: number;
   queued: number;
   steering: number;
@@ -134,28 +132,33 @@ export function applyPiAgentEvent(
   agent: PiAgentState | null,
   request: PiAgentRequestState | null,
   read: PiAgentEvent,
-  order: PiAgentEventOrder,
+  event: { id: string; occurredAt: Date },
 ): { agent: PiAgentState; request: PiAgentRequestState | null } {
-  const latest = { ...order, kind: read.kind };
+  const { occurredAt } = event;
+  const latest = { kind: read.kind, occurredAt };
   let next: PiAgentState = agent
-    ? { ...agent, latest: isLater(order, agent.latest) ? latest : agent.latest }
+    ? { ...agent, latest: isLater(event, agent.latest) ? latest : agent.latest }
     : { latest, definition: null, pause: null, running: 0, queued: 0, steering: 0 };
 
   switch (read.kind) {
     case "created":
     case "updated":
     case "deleted":
-      if (isLater(order, next.definition)) {
+      if (isLater(event, next.definition)) {
         next = {
           ...next,
-          definition: { ...order, definition: read.kind === "deleted" ? null : read.definition },
+          definition: {
+            definition: read.kind === "deleted" ? null : read.definition,
+            occurredAt,
+            eventId: event.id,
+          },
         };
       }
       break;
     case "stopped":
     case "resumed":
-      if (isLater(order, next.pause)) {
-        next = { ...next, pause: { ...order, paused: read.kind === "stopped" } };
+      if (isLater(event, next.pause)) {
+        next = { ...next, pause: { paused: read.kind === "stopped", occurredAt } };
       }
       break;
     case "started":

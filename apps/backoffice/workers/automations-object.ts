@@ -1311,6 +1311,22 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     return { events: page.events.map(automationEventRecord), cursor: page.cursor };
   }
 
+  async listRecordedPiAgentDefinitions() {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.listRecordedPiAgentDefinitions(),
+    );
+  }
+
+  async listIntegrationConnections() {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.listIntegrationConnections(),
+    );
+  }
+
   async deleteEventsOfType(input: EventDeletionPass) {
     await this.#ensureConfigured({ scope: this.#requireScope() });
     const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");

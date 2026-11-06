@@ -2,14 +2,12 @@ import type { LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 
 import {
   readAutomationRoutes,
-  readWorkflowRuns,
-  readWorkflowRunSummaries,
-} from "@/fragno/automation/lofi/reads";
-import {
   readCurrentIntegrationConnections,
   readPiAgents,
   readPiAgentTurns,
-} from "@/fragno/automation/lofi/views";
+  readWorkflowRuns,
+  readWorkflowRunSummaries,
+} from "@/fragno/automation/lofi/reads";
 import { currentWorkflowWaits } from "@/fragno/automation/workflow-waits";
 
 /**
