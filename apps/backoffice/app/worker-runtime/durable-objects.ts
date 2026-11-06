@@ -8,7 +8,6 @@ import type {
   AuthCommands,
   AutomationsCommands,
   BackofficeObjectHandle,
-  FormsCommands,
   GitHubCommands,
   GitHubWebhookRouterCommands,
   MarketplaceCommands,
@@ -52,10 +51,6 @@ export const getScopedAutomationsDurableObject = (
   scope: BackofficeContextScope,
 ): BackofficeObjectHandle<AutomationsCommands> =>
   getBackofficeObjects(context).automations.for(scope);
-
-export const getFormsDurableObject = (
-  context: Readonly<RouterContextProvider>,
-): BackofficeObjectHandle<FormsCommands> => getBackofficeObjects(context).forms.singleton();
 
 export const getGitHubDurableObject = (
   context: Readonly<RouterContextProvider>,

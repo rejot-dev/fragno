@@ -5,7 +5,6 @@ import { artifactsOperations } from "./artifacts";
 import { automationRouterOperations } from "./automation";
 import { blobsOperations } from "./blobs";
 import { eventsOperations } from "./events";
-import { formsOperations } from "./forms";
 import { hooksOperations } from "./hooks";
 import { identityOperations } from "./identity";
 import { integrationsOperations } from "./integrations";
@@ -35,7 +34,6 @@ export const backofficeApiV0 = {
     ...automationRouterOperations,
     ...blobsOperations,
     ...eventsOperations,
-    ...formsOperations,
     ...hooksOperations,
     ...identityOperations,
     ...integrationsOperations,

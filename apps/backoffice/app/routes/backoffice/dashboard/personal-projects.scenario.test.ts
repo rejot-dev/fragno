@@ -27,7 +27,6 @@ import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-c
 import { ApiObject } from "../../../../workers/api-object";
 import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
-import { FormsObject } from "../../../../workers/forms-object";
 import { OtpObject } from "../../../../workers/otp-object";
 import { TelegramObject } from "../../../../workers/telegram-object";
 import { UploadObject } from "../../../../workers/upload-object";
@@ -44,7 +43,6 @@ const scenarioObjects = {
   API: (input) => new ApiObject(input),
   AUTOMATIONS: (input) => new AutomationsObject(input),
   UPLOAD: (input) => new UploadObject(input),
-  FORMS: (input) => new FormsObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
 } satisfies LocalBackofficeObjects;
 

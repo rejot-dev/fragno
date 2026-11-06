@@ -52,7 +52,6 @@ import { AuthObject } from "./auth-object";
 import { AutomationsObject } from "./automations-object";
 import { BillingObject } from "./billing-object";
 import { CodemodeObject } from "./codemode-object";
-import { FormsObject } from "./forms-object";
 import { McpObject } from "./mcp-object";
 import { OtpObject } from "./otp-object";
 import { ResendObject } from "./resend-object";
@@ -65,7 +64,6 @@ const scenarioObjects = {
   AUTOMATIONS: (input) => new AutomationsObject(input),
   BILLING: (input) => new BillingObject(input),
   CODEMODE: (input) => new CodemodeObject(input),
-  FORMS: (input) => new FormsObject(input),
   OTP: (input) => new OtpObject(input),
   MCP: (input) => new McpObject(input),
   RESEND: (input) => new ResendObject(input),

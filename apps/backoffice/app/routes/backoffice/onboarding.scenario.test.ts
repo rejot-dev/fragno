@@ -27,7 +27,6 @@ import { AppInstallationsObject } from "../../../workers/app-installations-objec
 import { AppsObject } from "../../../workers/apps-object";
 import { AuthObject } from "../../../workers/auth-object";
 import { AutomationsObject } from "../../../workers/automations-object";
-import { FormsObject } from "../../../workers/forms-object";
 import { OtpObject } from "../../../workers/otp-object";
 import { UploadObject } from "../../../workers/upload-object";
 import { loader as installLoader } from "./app-install";
@@ -41,7 +40,6 @@ const ONBOARDING = "/backoffice/onboarding";
 const scenarioObjects = {
   // Creating an organization starts its workspace, which these serve.
   API: (input) => new ApiObject(input),
-  FORMS: (input) => new FormsObject(input),
   APPS: (input) => new AppsObject(input),
   APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),

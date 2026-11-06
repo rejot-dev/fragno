@@ -234,10 +234,6 @@
         "class_name": "Cloudflare",
       },
       {
-        "name": "FORMS",
-        "class_name": "Forms",
-      },
-      {
         "name": "PRESENCE",
         "class_name": "Presence",
       },
@@ -273,7 +269,9 @@
     "Codemode": { "type": "durable-object", "storage": "sqlite" },
     "Marketplace": { "type": "durable-object", "storage": "sqlite" },
     "Cloudflare": { "type": "durable-object", "storage": "sqlite" },
-    "Forms": { "type": "durable-object", "storage": "sqlite" },
+    // Forms left Backoffice, and its forms and submissions with it. Release with `deploy:retire`:
+    // the web Worker's FORMS binding blocks the deletion.
+    "Forms": { "type": "durable-object", "state": "deleted" },
     "Presence": { "type": "durable-object", "storage": "sqlite" },
   },
 }

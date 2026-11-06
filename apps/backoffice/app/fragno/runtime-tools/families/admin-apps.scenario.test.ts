@@ -43,7 +43,6 @@ import { AppsObject } from "../../../../workers/apps-object";
 import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
 import { CodemodeObject } from "../../../../workers/codemode-object";
-import { FormsObject } from "../../../../workers/forms-object";
 import { McpObject } from "../../../../workers/mcp-object";
 import { TelegramObject } from "../../../../workers/telegram-object";
 import { UploadObject } from "../../../../workers/upload-object";
@@ -56,7 +55,6 @@ const scenarioObjects = {
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
   CODEMODE: (input) => new CodemodeObject(input),
-  FORMS: (input) => new FormsObject(input),
   MCP: (input) => new McpObject(input),
   TELEGRAM: (input) => new TelegramObject(input),
   UPLOAD: (input) => new UploadObject(input),

@@ -22,7 +22,6 @@ import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-c
 import { ApiObject } from "../../../../../workers/api-object";
 import { AuthObject } from "../../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../../workers/automations-object";
-import { FormsObject } from "../../../../../workers/forms-object";
 import { GitHubWebhookRouterObject } from "../../../../../workers/github-webhook-router-object";
 import { OtpObject } from "../../../../../workers/otp-object";
 import { TelegramObject } from "../../../../../workers/telegram-object";
@@ -35,7 +34,6 @@ const scenarioObjects = {
   API: (input) => new ApiObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
-  FORMS: (input) => new FormsObject(input),
   GITHUB_WEBHOOK_ROUTER: (input) => new GitHubWebhookRouterObject(input),
   OTP: (input) => new OtpObject(input),
   TELEGRAM: (input) => new TelegramObject(input),

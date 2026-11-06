@@ -38,11 +38,6 @@ export const BACKOFFICE_PERMISSION = {
     read: { namespace: "events", permission: "read" },
     route: { namespace: "events", permission: "route" },
   },
-  forms: {
-    create: { namespace: "forms", permission: "create" },
-    read: { namespace: "forms", permission: "read" },
-    update: { namespace: "forms", permission: "update" },
-  },
   hooks: {
     read: { namespace: "hooks", permission: "read" },
   },

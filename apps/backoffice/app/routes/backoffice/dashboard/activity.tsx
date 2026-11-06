@@ -210,7 +210,7 @@ function ActivityWorkspace({
       <BackofficeSystemState
         tone="empty"
         title="Nothing has happened yet"
-        description="What schedules, events from integrations and forms, and agents set in motion appears here."
+        description="What schedules, events from integrations, and agents set in motion appears here."
       />
     );
   }

@@ -22,7 +22,6 @@ import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
 import { BillingObject } from "../../../../workers/billing-object";
 import { CodemodeObject } from "../../../../workers/codemode-object";
-import { FormsObject } from "../../../../workers/forms-object";
 import { UploadObject } from "../../../../workers/upload-object";
 import { createReson8Runtime } from "./reson8-runtime";
 
@@ -33,7 +32,6 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
   CODEMODE: (input) => new CodemodeObject(input),
   API: (input) => new ApiObject(input),
-  FORMS: (input) => new FormsObject(input),
 } satisfies LocalBackofficeObjects;
 
 const orgId = "org-1";

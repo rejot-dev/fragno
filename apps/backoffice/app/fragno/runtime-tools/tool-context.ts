@@ -22,7 +22,6 @@ export const createBackofficeToolContext = (
     durableHooks: context.durableHooks?.runtime,
     event: context.automation?.runtime ?? context.event?.runtime,
     eventCatalog: context.eventCatalog?.runtime,
-    forms: context.forms?.runtime,
     integrations: context.integrations?.runtime,
     internal: context.internal?.runtime,
     marketplace: context.marketplace?.runtime,

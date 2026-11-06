@@ -56,7 +56,6 @@ import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
 import { BillingObject } from "../../../../workers/billing-object";
 import { CodemodeObject } from "../../../../workers/codemode-object";
-import { FormsObject } from "../../../../workers/forms-object";
 import { MarketplaceObject } from "../../../../workers/marketplace-object";
 import { McpObject } from "../../../../workers/mcp-object";
 import { TelegramObject } from "../../../../workers/telegram-object";
@@ -71,7 +70,6 @@ const scenarioObjects = {
   AUTOMATIONS: (input) => new AutomationsObject(input),
   BILLING: (input) => new BillingObject(input),
   CODEMODE: (input) => new CodemodeObject(input),
-  FORMS: (input) => new FormsObject(input),
   MARKETPLACE: (input) => new MarketplaceObject(input),
   MCP: (input) => new McpObject(input),
   // Installing syncs each package's agents.

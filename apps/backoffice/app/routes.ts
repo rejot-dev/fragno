@@ -4,7 +4,6 @@ import { BACKOFFICE_LAYOUT_ROUTE_ID } from "./routes/backoffice/route-ids";
 
 export default [
   index("routes/landing/index.tsx"),
-  route("forms/:scopeKind/:scopeId/:slug", "routes/forms/form.tsx"),
   route("marketplace", "routes/marketplace/index.tsx"),
   route("marketplace/:publisher/:packageSlug", "routes/marketplace/listing.tsx"),
 
@@ -253,17 +252,6 @@ export default [
           ),
         ],
       ),
-      route(
-        "integrations/:scopeKind/:scopeId/forms",
-        "routes/backoffice/connections/forms/index.tsx",
-        {
-          id: "scoped-integrations/forms",
-        },
-      ),
-      route(
-        "integrations/:scopeKind/:scopeId/forms/:formId",
-        "routes/backoffice/connections/forms/detail.tsx",
-      ),
       route("integrations/:scopeKind/:scopeId", "routes/backoffice/integrations/scope-layout.tsx", [
         route(":connectionId", "routes/backoffice/integrations/connection-detail.tsx"),
       ]),
@@ -322,7 +310,6 @@ export default [
     route("backoffice/me", "routes/api/backoffice-me.ts"),
     route("backoffice/app-installations/claim", "routes/api/backoffice-app-installation-claim.ts"),
     route("cloudflare/*", "routes/api/cloudflare.ts"),
-    route("forms/*", "routes/api/forms.ts"),
     route("resend/:scopeSegment/*", "routes/api/resend.ts"),
     route("reson8/:scopeSegment/auth/token", "routes/api/reson8-token.ts"),
     route("mcp/:scopeSegment/servers/:serverSlug/auth/start", "routes/api/mcp-oauth-start.ts"),

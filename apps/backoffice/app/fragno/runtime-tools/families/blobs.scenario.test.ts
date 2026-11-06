@@ -30,7 +30,6 @@ import { AutomationsObject } from "../../../../workers/automations-object";
 import { BillingObject } from "../../../../workers/billing-object";
 import { BlobsObject } from "../../../../workers/blobs-object";
 import { CodemodeObject } from "../../../../workers/codemode-object";
-import { FormsObject } from "../../../../workers/forms-object";
 import { UploadObject } from "../../../../workers/upload-object";
 
 const credentials = {
@@ -69,7 +68,6 @@ function scenarioObjects(r2: FakeR2, buckets: BlobsR2Buckets) {
     UPLOAD: (input) => new UploadObject(input),
     BLOBS: (input) => new BlobsObject({ ...input, storage: { buckets, fetch: r2.fetch } }),
     TELEGRAM: null,
-    FORMS: (input) => new FormsObject(input),
   } satisfies LocalBackofficeObjects;
 }
 

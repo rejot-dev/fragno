@@ -24,7 +24,6 @@ import { AppsObject } from "../../../../workers/apps-object";
 import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
 import { CodemodeObject } from "../../../../workers/codemode-object";
-import { FormsObject } from "../../../../workers/forms-object";
 import { MarketplaceObject } from "../../../../workers/marketplace-object";
 import { McpObject } from "../../../../workers/mcp-object";
 import { ResendObject } from "../../../../workers/resend-object";
@@ -38,7 +37,6 @@ const scenarioObjects = {
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
   CODEMODE: (input) => new CodemodeObject(input),
-  FORMS: (input) => new FormsObject(input),
   MARKETPLACE: (input) => new MarketplaceObject(input),
   MCP: (input) => new McpObject(input),
   RESEND: (input) => new ResendObject(input),
