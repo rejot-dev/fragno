@@ -21,13 +21,14 @@ import { z } from "zod";
 import { decodeCursor, type HookContext } from "@fragno-dev/db";
 
 import type { SiteBuildOutcome } from "@/artifacts/sites/build.server";
+import type { SiteBuilderAuthority } from "@/artifacts/sites/site-builder-authority.server";
 import { reportFinishedCodemodeRuns } from "@/backoffice-runtime/backoffice-telemetry";
 import {
   backofficeExecutionContextSchema,
   backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import { BackofficeForbiddenError, BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
   requireBackofficeContextScopeFromDurableObjectId,
   type BackofficeActionRpcContext,
@@ -406,6 +407,7 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
     sitePath: string,
     context: BackofficeActionRpcContext,
     parentRun: string | null,
+    authority: SiteBuilderAuthority,
   ): Promise<SiteBuildOutcome> {
     const execution = backofficeExecutionContextSchema.parse(context.execution);
     if (!backofficeContextScopesEqual(execution.scope, this.#scope)) {
@@ -420,7 +422,7 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
       .then(async () => {
         const release = await this.#siteBuildSlots.acquire();
         try {
-          return await this.#buildSite(sitePath, execution, parentRun);
+          return await this.#buildSite(sitePath, execution, parentRun, authority);
         } finally {
           release();
         }
@@ -439,6 +441,7 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
     sitePath: string,
     execution: BackofficeExecutionContext,
     parentRun: string | null,
+    authority: SiteBuilderAuthority,
   ): Promise<SiteBuildOutcome> {
     const runtime = this.#runtime;
     // Imported on first use, so an object that builds no site does not load the builder.
@@ -446,10 +449,11 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
       import("@/artifacts/sites/build.server"),
       import("@/fragno/runtime-tools/route-backed-runtime-context"),
     ]);
+    const kernel = new BackofficeKernel(runtime);
     const { stateBackend } = createCodemodeRouteBackedRuntimeContext({
       emitter: { kind: "caller" },
       runtime,
-      kernel: new BackofficeKernel(runtime),
+      kernel,
       execution,
     });
     if (!stateBackend) {
@@ -470,14 +474,31 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
           redactedResults,
         ),
     };
-    return await buildSite({
+    const built = await buildSite({
       state: stateBackend,
       codemode,
       workerLoader: runtime.workerLoader,
       siteStorage: runtime.siteStorage,
       scope: execution.scope,
       sitePath,
+      authorizeWorker: async () => {
+        if (authority.dataDenial) {
+          const { message, reason } = authority.dataDenial;
+          throw new BackofficeForbiddenError(message, reason);
+        }
+      },
     });
+    // Copying the scope's data starts now, so the site's first visitor need not find it copying.
+    if (built.kind === "built" && built.worker) {
+      const { scope } = execution;
+      await runtime.objects.siteReplica
+        .for(scope)
+        .commands.warm(scope)
+        .catch((error: unknown) => {
+          console.error("Could not start copying the scope's data for its sites.", error);
+        });
+    }
+    return built;
   }
 
   async warm(): Promise<void> {}

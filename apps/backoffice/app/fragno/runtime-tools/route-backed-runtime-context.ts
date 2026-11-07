@@ -494,12 +494,25 @@ const createRuntimeContext = ({
               const { loadPage } = await import("@/artifacts/pages/build.server");
               return (await loadPage({ runtime, kernel, execution, sourcePath })).page;
             },
-            buildSite: async (sitePath) =>
-              await codemodeObject().buildSite(
+            buildSite: async (sitePath) => {
+              const { siteBuilderAuthority } =
+                await import("@/artifacts/sites/site-builder-authority.server");
+              return await codemodeObject().buildSite(
                 sitePath,
                 { execution, propagationContext: null },
                 runningCodemodeRunKey(),
-              ),
+                await siteBuilderAuthority({ kernel, execution, sitePath }),
+              );
+            },
+            siteDataStatus: async () => {
+              if (!runtime.config.sites) {
+                throw new Error("This deployment does not serve sites.");
+              }
+              const { scope } = execution;
+              return await kernel
+                .scoped("SITE_REPLICA", scope, runtime.objects.siteReplica)
+                .commands.status(scope);
+            },
           },
         }
       : null,

@@ -4,7 +4,7 @@ description:
   "Sites: web apps written as /workspace/**/<name>.site directories of HTML, CSS, and browser
   JavaScript, with an optional worker.js handling requests. Use when the user asks for a website,
   web app, or interactive tool made of their own HTML, to change one, or for a link to one. A view
-  of automation data is a page instead."
+  of automation data inside Backoffice is a page instead."
 ---
 
 # Building sites
@@ -25,9 +25,10 @@ reach it. A site cannot be inside another site.
 ## Steps
 
 1. **Plan.** Split the site into files the browser loads as they are, which go under `public/`, and
-   requests that need code on the server, which `worker.js` answers. A site of HTML, CSS, and
-   browser JavaScript alone needs no `worker.js`. Complete when every URL the site requests is
-   either a file under `public/` or a route `worker.js` answers itself.
+   requests that need code on the server, such as reads of automation data, which `worker.js`
+   answers. A site of HTML, CSS, and browser JavaScript alone needs no `worker.js`. Complete when
+   every URL the site requests is either a file under `public/` or a route `worker.js` answers
+   itself.
 2. **Write.** Save each file with `state.writeFile`, following Serving below. Complete when every
    link between its files is relative, as Links defines.
 3. **Build.** Run `artifacts.buildSite({ path })` with the site's directory, such as
@@ -71,11 +72,45 @@ reach it. A site cannot be inside another site.
   };
   ```
 
+- **Data:** `env.DATA.sql` reads the scope's automation data with the SQL pages read it with: one
+  SELECT, which may start with `WITH`, over the relations `PageRelations` declares in
+  `/static/codemode/page-schema.d.ts`, such as `runs`, `events`, `kv_store`, and `agents`. It is a
+  tagged template: each `${value}` binds as a parameter, a list reads as `IN (${list})`, a `Date` as
+  milliseconds since the epoch, and another `sql` query nests as its SQL. Awaiting a query returns
+  its rows as objects by column, with values as SQL holds them: times as milliseconds since the
+  epoch, booleans as 0 or 1, and JSON as text, read with `->>`. Reads follow changes within moments.
+  The data is copied for sites from the site's first build; until that copy is done, a request that
+  reads it gets 503, "unavailable while its data is copied", whatever the Worker does with the
+  error. When a site answers 503 or shows old data, `artifacts.siteDataStatus({})` tells whether the
+  copy is still running, how far it got, and its last error. A query that writes, holds two
+  statements, names an unknown relation, or returns more than 10000 rows or 4 MB throws, with a
+  message naming what to fix. Everyone who opens the site sees what the Worker returns, so it
+  returns only what the site is for.
+
+  ```js
+  export default {
+    async fetch(request, env) {
+      const { sql } = env.DATA;
+      const url = new URL(request.url);
+      if (url.pathname === "/api/runs") {
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const statuses = url.searchParams.getAll("status");
+        return Response.json(
+          await sql`SELECT workflowName, status, createdAt FROM runs
+            WHERE createdAt >= ${since} AND status IN (${statuses})
+            ORDER BY createdAt DESC LIMIT 50`,
+        );
+      }
+      return env.ASSETS.fetch(request);
+    },
+  };
+  ```
+
 - **Imports:** `worker.js` imports saved `.js` modules by relative path, at most 1 MB of source in
   all; a package import fails the build.
-- **Isolation:** the Worker has no network, so `fetch` throws, and no bindings besides `ASSETS`. It
-  never sees the viewer's cookies or `Authorization` header, and a `Set-Cookie` it returns is
-  dropped.
+- **Isolation:** the Worker has no network, so `fetch` throws, and no bindings besides `ASSETS` and
+  `DATA`. It never sees the viewer's cookies or `Authorization` header, and a `Set-Cookie` it
+  returns is dropped.
 - **Memory:** module-level variables last while the Worker stays loaded, and every build starts them
   empty. Treat them as a cache.
 - **Browser:** scripts in `public/` run in the viewer's browser, so they may import ES modules from

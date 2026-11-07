@@ -1,9 +1,16 @@
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
+import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 
-import type { SiteAssetsBinding, SiteAssetsProps } from "./assets.server";
+import {
+  serveSiteAssets,
+  siteStoreForServing,
+  type SiteAssetsBinding,
+  type SiteAssetsProps,
+} from "./assets.server";
 import { readSiteWorker } from "./site-build.server";
+import type { SiteDataQuery } from "./site-data";
 import type { SitePointerRead, SiteStore } from "./site-store.server";
 import { siteWorkerCode } from "./site-worker.server";
 
@@ -44,17 +51,66 @@ export function createSitePointerCache(now: () => number): SitePointerCache {
   };
 }
 
+/** The bindings the host gives a site's Worker, each bound to the props the host sets. */
+export type SiteWorkerBindings = {
+  workerLoader: WorkerLoader | null;
+  siteAssets: (props: SiteAssetsProps) => SiteAssetsBinding;
+  /** The site Worker's `env.DATA`, which reads the scope's automation data. */
+  siteData: (scope: BackofficeContextScope) => unknown;
+};
+
+/** The Worker entrypoints that bind a site's Worker, which a Worker exports to bind it. */
+type SiteWorkerExports = {
+  SiteAssets(options: { props: SiteAssetsProps }): Fetcher;
+  SiteData(options: { props: { scope: BackofficeContextScope } }): Fetcher;
+};
+
+/** A site's bindings, from the `ctx.exports` of a Worker that exports their entrypoints. */
+export function exportedSiteWorkerBindings(
+  workerLoader: WorkerLoader | null,
+  exports: unknown,
+): SiteWorkerBindings {
+  // Generated types describe the objects Worker's exports; this Worker's entry exports these.
+  const site = exports as SiteWorkerExports;
+  return {
+    workerLoader,
+    siteAssets: (props) => site.SiteAssets({ props }),
+    siteData: (scope) => site.SiteData({ props: { scope } }),
+  };
+}
+
+/** A site's bindings served in this process, for runtimes whose objects run in it too. */
+export function inProcessSiteWorkerBindings(
+  runtime: BackofficeRuntimeServices,
+): SiteWorkerBindings {
+  return {
+    workerLoader: runtime.workerLoader,
+    siteAssets: (props) => ({
+      fetch: async (request) =>
+        await serveSiteAssets({
+          request,
+          store: siteStoreForServing({ ...props, runtime, cache: null }),
+          props,
+        }),
+    }),
+    siteData: (scope) => ({
+      query: async (query: SiteDataQuery) =>
+        await runtime.objects.siteReplica.for(scope).commands.query(scope, query),
+    }),
+  };
+}
+
 /**
  * Answers a request to a site with its Worker, from the build its pointer names; the Worker reads
- * its files through `env.ASSETS`, which `siteAssets` binds to the build. `pathname` is the
- * site-relative path as the request spelled it, such as `/` or `/api/orders`.
+ * its files through `env.ASSETS`, which `siteAssets` binds to the build, and the scope's data
+ * through `env.DATA`. `pathname` is the site-relative path as the request spelled it, such as `/`
+ * or `/api/orders`.
  */
 export async function serveSite({
   request,
   store,
   pointers,
-  workerLoader,
-  siteAssets,
+  bindings: { workerLoader, siteAssets, siteData },
   scope,
   sitePath,
   pathname,
@@ -62,8 +118,7 @@ export async function serveSite({
   request: Request;
   store: SiteStore;
   pointers: SitePointerCache;
-  workerLoader: WorkerLoader | null;
-  siteAssets: (props: SiteAssetsProps) => SiteAssetsBinding;
+  bindings: SiteWorkerBindings;
   scope: BackofficeContextScope;
   sitePath: string;
   pathname: string;
@@ -89,7 +144,7 @@ export async function serveSite({
     if (!built) {
       throw new Error(`The build of ${sitePath} is incomplete; build it again.`);
     }
-    return siteWorkerCode(built.bundle, { ASSETS: siteAssets(props) });
+    return siteWorkerCode(built.bundle, { ASSETS: siteAssets(props), DATA: siteData(scope) });
   });
   return withoutSetCookie(await worker.getEntrypoint().fetch(siteWorkerRequest(request, pathname)));
 }

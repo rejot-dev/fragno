@@ -3,6 +3,7 @@ import type {
   AccountProfile,
   OAuthConsentPage,
 } from "@fragno-dev/backoffice-api/v0/account";
+import type { ArtifactSiteDataStatus } from "@fragno-dev/backoffice-api/v0/artifacts";
 import type {
   AutomationActors,
   AutomationForwardAccept,
@@ -81,6 +82,8 @@ import type {
 import type { ClassifierResult } from "@earendil-works/pi-ai";
 
 import type { SiteBuildOutcome } from "@/artifacts/sites/build.server";
+import type { SiteBuilderAuthority } from "@/artifacts/sites/site-builder-authority.server";
+import type { SiteDataQuery, SiteDataResult } from "@/artifacts/sites/site-data";
 import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { TelegramAutomationFileMetadata } from "@/backoffice-runtime/telegram-file-response";
 import type { AccessCodeCommands } from "@/fragno/access-codes/contracts";
@@ -683,12 +686,14 @@ export type CodemodeCommands = WarmableCommands &
     listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage>;
     /**
      * Builds the site at `sitePath` as `context.execution`, one build of a site at a time. Its
-     * compile shares the slot of `parentRun`, the run whose tool call asked, if any.
+     * compile shares the slot of `parentRun`, the run whose tool call asked, if any. `authority`
+     * is what the caller, which holds the builder's grants, found they may let its Worker do.
      */
     buildSite(
       sitePath: string,
       context: BackofficeActionRpcContext,
       parentRun: string | null,
+      authority: SiteBuilderAuthority,
     ): Promise<SiteBuildOutcome>;
   };
 
@@ -1043,6 +1048,18 @@ export type PresenceCommands = {
   listActiveMembers(): Promise<PresenceMember[]>;
 };
 
+export type SiteReplicaCommands = {
+  /**
+   * Runs one read over the scope's page relations, as a page's query reads them, from the copy as
+   * it stands, and follows the scope's Automations outbox for a minute after.
+   */
+  query(scope: BackofficeContextScope, query: SiteDataQuery): Promise<SiteDataResult>;
+  /** Starts the copy's first catch-up, unless it caught up before, without waiting for it. */
+  warm(scope: BackofficeContextScope): Promise<void>;
+  /** Reports the copy without opening it. */
+  status(scope: BackofficeContextScope): Promise<ArtifactSiteDataStatus>;
+};
+
 type SandboxCommands = {
   getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }>;
 };
@@ -1117,6 +1134,7 @@ export type GitHubWebhookRouterCommands = {
 
 export type BackofficeObjectBindingName =
   | "PRESENCE"
+  | "SITE_REPLICA"
   | "APPS"
   | "APP_INSTALLATIONS"
   | "API"
@@ -1182,6 +1200,8 @@ export const backofficeObjectScopePolicy = {
   GITHUB_WEBHOOK_ROUTER: ["singleton"],
   CLOUDFLARE: ["singleton"],
   PRESENCE: ["org", "user"],
+  // Sites are built in the scopes whose Codemode builds them.
+  SITE_REPLICA: ["org", "user", "app", "project"],
 
   SANDBOX: ["named"],
   SANDBOX_MANAGER: ["singleton", "org", "user", "project"],
@@ -1388,6 +1408,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   ),
   cloudflare: scoped(factory, binding<CloudflareCommands>("CLOUDFLARE")),
   presence: scoped(factory, binding<PresenceCommands>("PRESENCE")),
+  siteReplica: scoped(factory, binding<SiteReplicaCommands>("SITE_REPLICA")),
 
   sandbox: scoped(factory, binding<SandboxCommands>("SANDBOX")),
   sandboxManager: scoped(factory, binding<SandboxManagerCommands>("SANDBOX_MANAGER")),

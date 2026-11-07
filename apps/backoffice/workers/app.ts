@@ -11,8 +11,9 @@ import { createCloudflarePostHog, shutdownCloudflarePostHog } from "./lib/cloudf
 
 System.Settings.Set({ useAcceleration: false });
 
-// Site Workers reach it through `ctx.exports`, as `env.ASSETS`.
+// Site Workers reach them through `ctx.exports`, as `env.ASSETS` and `env.DATA`.
 export { SiteAssets } from "./site-assets";
+export { SiteData } from "./site-data";
 
 const requestHandler = createLazyRequestHandler(serverBuild, import.meta.env.MODE);
 // Imported on the first API request, so a cold Worker serving pages does not compile the API.

@@ -196,6 +196,11 @@
         "class_name": "Presence",
         "script_name": "rejot-backoffice",
       },
+      {
+        "name": "SITE_REPLICA",
+        "class_name": "SiteReplica",
+        "script_name": "rejot-backoffice",
+      },
     ],
   },
 }

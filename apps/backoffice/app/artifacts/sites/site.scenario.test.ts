@@ -7,6 +7,7 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
+import type { ArtifactSiteDataStatus } from "@fragno-dev/backoffice-api/v0/artifacts";
 import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
@@ -16,6 +17,7 @@ import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjectFactory } from "@/backoffice-runtime/local-object-factory";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -31,8 +33,16 @@ import {
 import { executeBackofficeRuntimeTool } from "@/fragno/runtime-tools/runtime-tools";
 import { createBackofficeToolContext } from "@/fragno/runtime-tools/tool-context";
 
+import { SiteReplicaObject } from "../../../workers/site-replica-object";
+import { sqliteSiteReplicaStorage } from "../../backoffice-runtime/node/sqlite-site-replica-storage";
 import { serveSiteAssets, siteStoreForServing } from "./assets.server";
-import { createSitePointerCache, serveSite, type SitePointerCache } from "./serve.server";
+import { buildSite as buildSiteDirectly } from "./build.server";
+import {
+  createSitePointerCache,
+  inProcessSiteWorkerBindings,
+  serveSite,
+  type SitePointerCache,
+} from "./serve.server";
 import { siteBuildDirectory } from "./site-path";
 
 afterEach(() => {
@@ -141,16 +151,18 @@ async function request(
     }),
     store: siteStoreForServing({ runtime, scope, sitePath, cache: null }),
     pointers: init.pointers ?? createSitePointerCache(() => 0),
-    workerLoader: runtime.workerLoader,
-    siteAssets: (props) => ({
-      async fetch(assetRequest) {
-        const interleaved = beforeNextAssetRead;
-        beforeNextAssetRead = null;
-        await interleaved?.();
-        const store = siteStoreForServing({ runtime, scope, sitePath, cache: null });
-        return await serveSiteAssets({ request: assetRequest, store, props });
-      },
-    }),
+    bindings: {
+      ...inProcessSiteWorkerBindings(runtime),
+      siteAssets: (props) => ({
+        async fetch(assetRequest) {
+          const interleaved = beforeNextAssetRead;
+          beforeNextAssetRead = null;
+          await interleaved?.();
+          const store = siteStoreForServing({ runtime, scope, sitePath, cache: null });
+          return await serveSiteAssets({ request: assetRequest, store, props });
+        },
+      }),
+    },
     scope,
     sitePath,
     pathname: new URL(path, url).pathname,
@@ -491,6 +503,370 @@ const racedR2Fetch: typeof fetch = async (input, init) => {
   return await fetch(request);
 };
 
+const DATA_SITE_PATH = "/workspace/data.site";
+
+/**
+ * Reads the scope's automation data with `env.DATA.sql` at each path, and answers a read that
+ * fails with its message.
+ */
+const DATA_WORKER = `export default {
+  async fetch(request, env) {
+    const { sql } = env.DATA;
+    const url = new URL(request.url);
+    const answer = async (read) => {
+      try {
+        return Response.json(await read());
+      } catch (error) {
+        return Response.json({ error: error.name + ": " + error.message });
+      }
+    };
+    switch (url.pathname) {
+      case "/wide":
+        // Fewer than 4 MB of characters, but more than 4 MB of UTF-8.
+        return answer(() => sql\`WITH t(x) AS (SELECT \${"€".repeat(500000)}) SELECT x FROM t, (SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3)\`);
+      case "/keys":
+        // Catches its read's error, as a Worker may.
+        return answer(() => sql\`SELECT key FROM kv_store ORDER BY key\`);
+      case "/store": {
+        const keys = url.searchParams.getAll("key");
+        const since = new Date(Number(url.searchParams.get("since")));
+        const stored = sql\`SELECT key, value, updatedAt FROM kv_store WHERE updatedAt >= \${since}\`;
+        return answer(() => sql\`SELECT key, value FROM (\${stored}) WHERE key IN (\${keys}) ORDER BY key\`);
+      }
+      case "/agents":
+        return answer(() => sql\`SELECT count(*) AS agents, sum(builtIn) AS builtIn FROM agents\`);
+      case "/write":
+        return answer(() => sql\`DELETE FROM kv_store_automations\`);
+      case "/with-write":
+        return answer(() => sql\`WITH gone AS (SELECT 1) DELETE FROM kv_store_automations\`);
+      case "/two":
+        return answer(() => sql\`SELECT 1; DELETE FROM kv_store_automations\`);
+      case "/missing":
+        return answer(() => sql\`SELECT * FROM orders\`);
+      case "/undefined":
+        return answer(() => sql\`SELECT * FROM kv_store WHERE key = \${undefined}\`);
+      case "/too-many":
+        return answer(() => sql\`SELECT value FROM json_each(\${JSON.stringify(Array.from({ length: 10001 }, (_, index) => index))})\`);
+      default:
+        return env.ASSETS.fetch(request);
+    }
+  },
+};
+`;
+
+async function setStored(ctx: BackofficeScenarioContext, key: string, value: string) {
+  await ctx.runCodemode({
+    scope,
+    code: `async () => await store.set({ key: ${JSON.stringify(key)}, value: ${JSON.stringify(value)} })`,
+  });
+}
+
+async function siteDataStatus(ctx: BackofficeScenarioContext): Promise<ArtifactSiteDataStatus> {
+  const run = await ctx.runCodemode({
+    scope,
+    code: "async () => await artifacts.siteDataStatus({})",
+    assertToolCalls: ["artifacts.siteDataStatus"],
+  });
+  return run.result as ArtifactSiteDataStatus;
+}
+
+/** The site's answer at `path`, or its status when the site is unavailable. */
+async function readData(ctx: BackofficeScenarioContext, path: string): Promise<unknown> {
+  const response = await request(ctx, DATA_SITE_PATH, path);
+  return response.status === 200 ? await response.json() : response.status;
+}
+
+test("a site's Worker reads the scope's automation data with sql, as pages read it", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: allLocalObjects,
+      env: { SITES_ENABLED: "true" },
+      name: "a site reads automation data",
+      setup: ({ given }) => [
+        given.organization.exists({ id: orgId }),
+        given.codemode.writeFile({
+          orgId,
+          path: `${DATA_SITE_PATH}/worker.js`,
+          content: DATA_WORKER,
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert("building the site starts copying the scope's data", async (ctx) => {
+          assert.equal((await siteDataStatus(ctx)).status, "not-started");
+          assert.deepEqual(await buildSite(ctx, DATA_SITE_PATH), {
+            status: "built",
+            path: DATA_SITE_PATH,
+          });
+          const status = await siteDataStatus(ctx);
+          assert.equal(status.status, "catching-up");
+          assert.equal(status.available, false);
+          assert.notEqual(status.retryAt, null);
+        }),
+        then.assert(
+          "until the scope's data is first copied, a request that reads it finds the site unavailable",
+          async (ctx) => {
+            await setStored(ctx, "plan", "pro");
+            const response = await request(ctx, DATA_SITE_PATH, "/keys");
+            assert.equal(response.status, 503);
+            assert.equal(response.headers.get("retry-after"), "5");
+            assert.equal(
+              await response.text(),
+              "This site is unavailable while its data is copied. Try again in a moment.",
+            );
+          },
+        ),
+        then.assert("the copy catches up in the background, and the site answers", async (ctx) => {
+          await expect.poll(() => readData(ctx, "/keys")).toEqual([{ key: "plan" }]);
+          const status = await siteDataStatus(ctx);
+          assert.deepInclude(status, {
+            status: "caught-up",
+            available: true,
+            following: true,
+            progress: null,
+            lastError: null,
+          });
+          assert.notEqual(status.lastAppliedAt, null);
+          assert.isAbove(status.sizeBytes, 0);
+        }),
+        then.assert(
+          "values are parameters: a list reads with IN, a Date as milliseconds, and queries nest",
+          async (ctx) => {
+            await setStored(ctx, "seats", "12");
+            await setStored(ctx, "unread", "x");
+            await expect
+              .poll(() => readData(ctx, "/store?key=plan&key=seats&key=missing&since=0"))
+              .toEqual([
+                { key: "plan", value: "pro" },
+                { key: "seats", value: "12" },
+              ]);
+            assert.deepEqual(
+              await readData(ctx, `/store?key=plan&since=${Date.now() + 60_000}`),
+              [],
+            );
+          },
+        ),
+        then.assert("what is stored later reaches the copy while sites read it", async (ctx) => {
+          await setStored(ctx, "plan", "enterprise");
+          await expect
+            .poll(() => readData(ctx, "/store?key=plan&since=0"))
+            .toEqual([{ key: "plan", value: "enterprise" }]);
+        }),
+        then.assert("agents read as pages read them, built-in ones included", async (ctx) => {
+          const [agents] = (await readData(ctx, "/agents")) as {
+            agents: number;
+            builtIn: number;
+          }[];
+          assert(agents.builtIn > 0, "built-in agents are listed without any events");
+          assert.equal(agents.agents, agents.builtIn);
+        }),
+        then.assert("queries only read, one statement at a time", async (ctx) => {
+          assert.deepEqual(await readData(ctx, "/write"), {
+            error: "Error: Queries only read: they cannot write.",
+          });
+          assert.deepEqual(await readData(ctx, "/two"), {
+            error: "Error: A query is one statement; remove what follows its semicolon.",
+          });
+          assert.deepEqual(await readData(ctx, "/with-write"), {
+            error: "Error: Queries only read: they cannot write.",
+          });
+          assert.deepEqual(await readData(ctx, "/store?key=plan&key=seats&since=0"), [
+            { key: "plan", value: "enterprise" },
+            { key: "seats", value: "12" },
+          ]);
+        }),
+        then.assert("mistakes are named as a page's are", async (ctx) => {
+          const missing = (await readData(ctx, "/missing")) as { error: string };
+          expect(missing.error).toMatch(
+            /^Error: no such table: orders\. Read one of: runs, steps, .*kv_store.*agents, workflow_waits\.$/u,
+          );
+          assert.deepEqual(await readData(ctx, "/undefined"), {
+            error:
+              "TypeError: sql`...` value 0 expects a string, number, boolean, null, Date, a list of them, or sql`...`; received undefined.",
+          });
+          assert.deepEqual(await readData(ctx, "/too-many"), {
+            error: "Error: The query returns more than 10000 rows; add a LIMIT.",
+          });
+          assert.deepEqual(await readData(ctx, "/wide"), {
+            error: "Error: The query returns more than 4 MB; select fewer columns or rows.",
+          });
+        }),
+      ],
+    }),
+  );
+});
+
+/** What fails in a site replica, as a test turns it on. */
+type ReplicaFaults = {
+  /** Automations' description, which opening the copy reads first, answers 500. */
+  describeDown?: boolean;
+  /** Automations' outbox stream answers 500. */
+  streamDown: boolean;
+  /** Setting the alarm for later than now fails. */
+  laterAlarmFails: boolean;
+  /** Reading the replica's meta table fails. */
+  metaReadFails: boolean;
+};
+
+function faultyReplica(faults: ReplicaFaults): LocalBackofficeObjectFactory<SiteReplicaObject> {
+  return ({ runtime, state, nowEpochMs }) => {
+    const storage = sqliteSiteReplicaStorage();
+    return new SiteReplicaObject({
+      storage: {
+        ...storage,
+        exec: (sql, params) => {
+          if (faults.metaReadFails && sql.includes("FROM site_replica_meta")) {
+            throw new Error("disk I/O error");
+          }
+          return storage.exec(sql, params);
+        },
+      },
+      alarm: {
+        get: () => state.storage.getAlarm(),
+        set: async (scheduledTime) => {
+          if (faults.laterAlarmFails && scheduledTime > nowEpochMs()) {
+            throw new Error("The alarm could not be set.");
+          }
+          await state.storage.setAlarm(scheduledTime);
+        },
+      },
+      now: nowEpochMs,
+      fetchAutomations: (target) => {
+        const automations = runtime.objects.automations.for(target);
+        return async (input, init) => {
+          const request = new Request(input, init);
+          const { pathname } = new URL(request.url);
+          if (
+            (faults.streamDown && pathname.endsWith("/outbox/stream")) ||
+            (faults.describeDown && pathname.endsWith("/_internal"))
+          ) {
+            return new Response("Unavailable", {
+              status: 500,
+              statusText: "Internal Server Error",
+            });
+          }
+          return await automations.http.fetch(request);
+        };
+      },
+    });
+  };
+}
+
+test("a copy that cannot follow Automations reports why, and tries again on its own", async () => {
+  const faults = { streamDown: true, laterAlarmFails: false, metaReadFails: false };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: { ...allLocalObjects, SITE_REPLICA: faultyReplica(faults) },
+      env: { SITES_ENABLED: "true" },
+      name: "a site's data copy recovers on its own",
+      setup: ({ given }) => [
+        given.organization.exists({ id: orgId }),
+        given.codemode.writeFile({
+          orgId,
+          path: `${DATA_SITE_PATH}/worker.js`,
+          content: DATA_WORKER,
+        }),
+      ],
+      steps: ({ when, then }) => [
+        then.assert("a build's copy that fails says why, and when it tries again", async (ctx) => {
+          await setStored(ctx, "plan", "pro");
+          await buildSite(ctx, DATA_SITE_PATH);
+          // Runs the alarm the build set.
+          await ctx.drain();
+          const status = await siteDataStatus(ctx);
+          assert.deepInclude(status, { status: "failing", available: false });
+          assert.equal(
+            status.lastError?.message,
+            "Outbox stream request failed: 500 Internal Server Error",
+          );
+          const retryIn = Date.parse(status.retryAt ?? "") - Date.parse(status.lastError?.at ?? "");
+          assert.approximately(retryIn, 5_000, 1_000);
+        }),
+        then.assert("Automations answers again", () => {
+          faults.streamDown = false;
+        }),
+        when.time.advance("5 seconds"),
+        then.assert(
+          "the retry catches up without a read, so the first read answers",
+          async (ctx) => {
+            const status = await siteDataStatus(ctx);
+            assert.deepInclude(status, { status: "caught-up", available: true, retryAt: null });
+            assert.equal(
+              status.lastError?.message,
+              "Outbox stream request failed: 500 Internal Server Error",
+            );
+            assert.deepEqual(await readData(ctx, "/keys"), [{ key: "plan" }]);
+          },
+        ),
+      ],
+    }),
+  );
+});
+
+test("a copy that cannot set its next attempt, or read its own state, fails rather than stalling or starting over", async () => {
+  const faults = {
+    describeDown: true,
+    streamDown: true,
+    laterAlarmFails: true,
+    metaReadFails: false,
+  };
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: { ...allLocalObjects, SITE_REPLICA: faultyReplica(faults) },
+      env: { SITES_ENABLED: "true" },
+      name: "a site's data copy fails loudly",
+      setup: ({ given }) => [
+        given.organization.exists({ id: orgId }),
+        given.codemode.writeFile({
+          orgId,
+          path: `${DATA_SITE_PATH}/worker.js`,
+          content: DATA_WORKER,
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert(
+          "an alarm that cannot set the next attempt fails, so it runs again",
+          async (ctx) => {
+            await buildSite(ctx, DATA_SITE_PATH);
+            // The copy cannot open, nor set the next attempt.
+            await expect(ctx.drain()).rejects.toThrow("alarms failed");
+            // It cannot open, and sets the next attempt, which is all an alarm owes.
+            faults.laterAlarmFails = false;
+            await ctx.drain();
+            const status = await siteDataStatus(ctx);
+            assert.deepInclude(status, { status: "failing", available: false });
+            assert.notEqual(status.retryAt, null);
+
+            // The copy opens, and its stream stops without the next attempt being set.
+            faults.describeDown = false;
+            faults.laterAlarmFails = true;
+            ctx.runtime.advanceTime(Date.parse(status.retryAt ?? "") - ctx.runtime.now());
+            await expect(ctx.drain()).rejects.toThrow("alarms failed");
+            faults.laterAlarmFails = false;
+            await ctx.drain();
+            assert.notEqual((await siteDataStatus(ctx)).retryAt, null);
+          },
+        ),
+        then.assert("a copy whose state cannot be read says so", async (ctx) => {
+          faults.metaReadFails = true;
+          const run = await ctx.runCodemode({
+            scope,
+            code: `async () => {
+              try {
+                return await artifacts.siteDataStatus({});
+              } catch (error) {
+                return { error: error.message };
+              }
+            }`,
+            assertToolCalls: ["artifacts.siteDataStatus"],
+          });
+          assert.match((run.result as { error?: string }).error ?? "", /disk I\/O error/u);
+          faults.metaReadFails = false;
+        }),
+      ],
+    }),
+  );
+});
+
 /** Calls an `artifacts` tool as an agent granted only `grants`, which may hold more. */
 async function callAsAgent(
   ctx: BackofficeScenarioContext,
@@ -529,7 +905,7 @@ async function callAsAgent(
 
 const PROBE_SITE_PATH = "/workspace/probe.site";
 
-test("an agent builds a site only when it may read the site's sources", async () => {
+test("an agent builds a site only when it may read its sources and the data its worker.js reads", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario({
       objects: allLocalObjects,
@@ -549,6 +925,11 @@ test("an agent builds a site only when it may read the site's sources", async ()
 throw new Error(secret);
 export default { fetch() { return new Response(); } };`,
         }),
+        given.codemode.writeFile({
+          orgId,
+          path: `${STATIC_SITE_PATH}/public/index.html`,
+          content: "<!doctype html><title>Docs</title>",
+        }),
       ],
       steps: ({ then }) => [
         then.assert(
@@ -563,6 +944,51 @@ export default { fetch() { return new Response(); } };`,
             assert.instanceOf(denied, Error);
             assert.match(denied.message, /not granted upload\.read/u);
             assert.notInclude(denied.message, "hunter2");
+          },
+        ),
+        then.assert(
+          "an agent with only workspace grants cannot build a site whose worker.js reads data",
+          async (ctx) => {
+            // The agent's grants narrow only where the tool runs, not in the object that builds.
+            const workspaceOnly = [
+              BACKOFFICE_PERMISSION.upload.read,
+              BACKOFFICE_PERMISSION.upload.modify,
+            ];
+            await expect(
+              callAsAgent(ctx, workspaceOnly, "buildSite", { path: PROBE_SITE_PATH }),
+            ).rejects.toThrow(/not granted workflow\.read/u);
+          },
+        ),
+        then.assert(
+          "a site with a worker.js is built only for whoever may read the data it reads",
+          async (ctx) => {
+            const refuse = vi.fn(async () => {
+              throw new Error("Not granted store.read.");
+            });
+            const build = (sitePath: string) =>
+              buildSiteDirectly({
+                state: workspace(ctx),
+                codemode: { run: async () => await Promise.reject(new Error("Not compiled.")) },
+                workerLoader: ctx.runtime.services.workerLoader,
+                siteStorage: ctx.runtime.services.siteStorage,
+                scope,
+                sitePath,
+                authorizeWorker: refuse,
+              });
+            await expect(build(PROBE_SITE_PATH)).rejects.toThrow("Not granted store.read.");
+            const store = siteStoreForServing({
+              runtime: ctx.runtime.services,
+              scope,
+              sitePath: PROBE_SITE_PATH,
+              cache: null,
+            });
+            assert.deepEqual(await store.readPointer(), { status: "none" });
+
+            // A site of files reads no data; built before, it is not built again.
+            assert.equal((await buildSite(ctx, STATIC_SITE_PATH)).status, "built");
+            refuse.mockClear();
+            assert.deepEqual(await build(STATIC_SITE_PATH), { kind: "built", worker: false });
+            expect(refuse).not.toHaveBeenCalled();
           },
         ),
       ],
