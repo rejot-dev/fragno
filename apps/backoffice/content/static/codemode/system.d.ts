@@ -51,7 +51,7 @@
 /// <reference path="/static/codemode/providers/sandbox.d.ts" />
 // Saved JavaScript: check, run, build modules, and inspect codemode runs. Read to save, run, or debug a script file.
 /// <reference path="/static/codemode/providers/js.d.ts" />
-// Page builds and their errors. Read to verify a page after writing it.
+// Page and site builds and their errors. Read to verify a page after writing it, or to build a site.
 /// <reference path="/static/codemode/providers/artifacts.d.ts" />
 // Marketplace packages: search, inspect, publish, feature. Read to find or publish a package.
 /// <reference path="/static/codemode/providers/marketplace.d.ts" />

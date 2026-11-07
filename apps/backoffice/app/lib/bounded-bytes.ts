@@ -7,7 +7,7 @@ export async function readBoundedBytes(
   body: ReadableStream<Uint8Array>,
   declaredBytes: number | null,
   maxBytes: number,
-): Promise<Uint8Array | null> {
+): Promise<Uint8Array<ArrayBuffer> | null> {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
     throw new Error("A byte limit must be a nonnegative safe integer.");
   }

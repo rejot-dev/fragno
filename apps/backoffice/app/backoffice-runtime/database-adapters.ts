@@ -12,6 +12,7 @@ export type BackofficeDatabaseAdapterKind =
   | "auth"
   | "automations"
   | "sandbox-manager"
+  | "site-requests"
   | "billing"
   | "blobs"
   | "cloudflare"

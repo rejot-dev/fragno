@@ -813,6 +813,9 @@ const createScopedMcpRuntimeServices = (
     kernelObserver: noopBackofficeKernelObserver,
     codemodeExecutor: null,
     workerTypeChecker: null,
+    workerLoader: null,
+    siteStorage: null,
+    siteFilesCache: null,
     reson8: null,
     webFetch: fetch,
     config: {
@@ -821,6 +824,7 @@ const createScopedMcpRuntimeServices = (
       sandboxContainers: true,
       signUpAccessCodesRequired: true,
       localEmailLog: false,
+      sites: false,
       workersAi: false,
       inboundEmailDomain: null,
       bindings: {

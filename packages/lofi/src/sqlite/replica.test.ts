@@ -19,6 +19,7 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import { migrate, withDatabase, type TypedUnitOfWork } from "@fragno-dev/db";
 
 import { defineLocalProjection } from "../local/projection";
+import { sqlStatementTransaction } from "./adapter";
 import {
   LOFI_SQLITE_ENDPOINT_NAME,
   openLofiSqliteReplicaOn,
@@ -521,13 +522,11 @@ async function runReplicaScenario(scenario: {
   };
   const openDatabase: typeof files.open = async (options) => {
     const database = await files.open(options);
-    return {
-      ...database,
-      execute: (sql, params) => {
-        ctx.databaseCalls.push(sql);
-        return database.execute(sql, params);
-      },
+    const execute: typeof database.execute = (sql, params) => {
+      ctx.databaseCalls.push(sql);
+      return database.execute(sql, params);
     };
+    return { ...database, execute, transaction: sqlStatementTransaction(execute) };
   };
   cleanups.push(async () => {
     for (const tab of ctx.tabs.values()) {

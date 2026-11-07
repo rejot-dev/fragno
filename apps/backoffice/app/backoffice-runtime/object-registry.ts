@@ -4,6 +4,12 @@ import type {
   OAuthConsentPage,
 } from "@fragno-dev/backoffice-api/v0/account";
 import type {
+  ArtifactSiteDataStatus,
+  ArtifactSiteLogEntry,
+  ArtifactSiteRequestInput,
+  ArtifactSiteResponse,
+} from "@fragno-dev/backoffice-api/v0/artifacts";
+import type {
   AutomationActors,
   AutomationForwardAccept,
   AutomationForwardAcceptCreateInput,
@@ -75,6 +81,9 @@ import type {
 
 import type { ClassifierResult } from "@earendil-works/pi-ai";
 
+import type { SiteBuildOutcome } from "@/artifacts/sites/build.server";
+import type { SiteDataQuery, SiteDataResult } from "@/artifacts/sites/site-data";
+import type { SiteProbeReport } from "@/artifacts/sites/site-logs";
 import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { TelegramAutomationFileMetadata } from "@/backoffice-runtime/telegram-file-response";
 import type { AccessCodeCommands } from "@/fragno/access-codes/contracts";
@@ -675,6 +684,15 @@ export type CodemodeCommands = WarmableCommands &
     ): Promise<CodemodeExecution<TActivation>>;
     getRun(runId: string): Promise<CodemodeRunDetail | null>;
     listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage>;
+    /**
+     * Builds the site at `sitePath` as `context.execution`, one build of a site at a time. Its
+     * compile shares the slot of `parentRun`, the run whose tool call asked, if any.
+     */
+    buildSite(
+      sitePath: string,
+      context: BackofficeActionRpcContext,
+      parentRun: string | null,
+    ): Promise<SiteBuildOutcome>;
   };
 
 export type MarketplaceCommands = {
@@ -1001,6 +1019,46 @@ export type PresenceCommands = {
   listActiveMembers(): Promise<PresenceMember[]>;
 };
 
+export type SiteReplicaCommands = {
+  /**
+   * Runs one read over the scope's page relations, as a page's query reads them, from the copy as
+   * it stands, and follows the scope's Automations outbox for a minute after.
+   */
+  query(scope: BackofficeContextScope, query: SiteDataQuery): Promise<SiteDataResult>;
+  /** Starts the copy's first catch-up, unless it caught up before, without waiting for it. */
+  warm(scope: BackofficeContextScope): Promise<void>;
+  /** Reports the copy without opening it. */
+  status(scope: BackofficeContextScope): Promise<ArtifactSiteDataStatus>;
+};
+
+/** Which of a site's logged requests to read: the latest `limit`, from `since` on. */
+export type SiteRequestsQuery = {
+  sitePath: string;
+  since: number | null;
+  errorsOnly: boolean;
+  limit: number;
+};
+
+export type SiteRequestsCommands = {
+  /**
+   * Keeps requests a site's tail reported, and drops what is older than the logs keep; a `probe`
+   * is the record of a request an agent sent, which reaches the agent whether or not it is kept.
+   */
+  append(
+    scope: BackofficeContextScope,
+    sitePath: string,
+    entries: ArtifactSiteLogEntry[],
+    probe: SiteProbeReport | null,
+  ): Promise<void>;
+  /** Sends a request to a site's latest build, and answers with what its Worker logged. */
+  request(
+    scope: BackofficeContextScope,
+    input: ArtifactSiteRequestInput,
+  ): Promise<ArtifactSiteResponse>;
+  /** The latest requests a site logged, oldest first. */
+  read(scope: BackofficeContextScope, query: SiteRequestsQuery): Promise<ArtifactSiteLogEntry[]>;
+};
+
 type SandboxCommands = {
   getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }>;
 };
@@ -1075,6 +1133,8 @@ export type GitHubWebhookRouterCommands = {
 
 export type BackofficeObjectBindingName =
   | "PRESENCE"
+  | "SITE_REPLICA"
+  | "SITE_REQUESTS"
   | "APPS"
   | "APP_INSTALLATIONS"
   | "API"
@@ -1139,6 +1199,9 @@ export const backofficeObjectScopePolicy = {
   GITHUB_WEBHOOK_ROUTER: ["singleton"],
   CLOUDFLARE: ["singleton"],
   PRESENCE: ["org", "user"],
+  // Sites are built in the scopes whose Codemode builds them.
+  SITE_REPLICA: ["org", "user", "app", "project"],
+  SITE_REQUESTS: ["org", "user", "app", "project"],
 
   SANDBOX: ["named"],
   SANDBOX_MANAGER: ["singleton", "org", "user", "project"],
@@ -1345,6 +1408,8 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   ),
   cloudflare: scoped(factory, binding<CloudflareCommands>("CLOUDFLARE")),
   presence: scoped(factory, binding<PresenceCommands>("PRESENCE")),
+  siteReplica: scoped(factory, binding<SiteReplicaCommands>("SITE_REPLICA")),
+  siteRequests: scoped(factory, binding<SiteRequestsCommands>("SITE_REQUESTS")),
 
   sandbox: scoped(factory, binding<SandboxCommands>("SANDBOX")),
   sandboxManager: scoped(factory, binding<SandboxManagerCommands>("SANDBOX_MANAGER")),

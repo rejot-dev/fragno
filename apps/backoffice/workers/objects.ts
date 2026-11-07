@@ -20,6 +20,11 @@ import { Presence } from "./presence.do";
 import { ProjectConnectorDurableObject } from "./project-connector.do";
 import { Resend } from "./resend.do";
 import { SandboxManager } from "./sandbox-manager.do";
+import { SiteAssets } from "./site-assets";
+import { SiteData } from "./site-data";
+import { SiteReplica } from "./site-replica.do";
+import { SiteRequests } from "./site-requests.do";
+import { SiteTail } from "./site-tail";
 import { Telegram } from "./telegram.do";
 import { Upload } from "./upload.do";
 
@@ -55,6 +60,12 @@ export {
   Pi,
   PiManager,
   Presence,
+  SiteRequests,
+  SiteReplica,
+  // Site Workers that SiteRequests loads reach them through `ctx.exports`.
+  SiteAssets,
+  SiteData,
+  SiteTail,
   Resend,
   SandboxManager,
   Telegram,

@@ -1,7 +1,11 @@
 import type { CodemodeHost } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { DurableObject } from "cloudflare:workers";
 
-import type { CodemodeCommands } from "@/backoffice-runtime/object-registry";
+import type { SiteBuildOutcome } from "@/artifacts/sites/build.server";
+import type {
+  BackofficeActionRpcContext,
+  CodemodeCommands,
+} from "@/backoffice-runtime/object-registry";
 import type {
   CodemodeRunActivation,
   CodemodeRunContext,
@@ -45,6 +49,14 @@ export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeCo
 
   listRuns(input: CodemodeRunPageInput): Promise<CodemodeRunPage> {
     return this.#object.listRuns(input);
+  }
+
+  buildSite(
+    sitePath: string,
+    context: BackofficeActionRpcContext,
+    parentRun: string | null,
+  ): Promise<SiteBuildOutcome> {
+    return this.#object.buildSite(sitePath, context, parentRun);
   }
 
   async warm(): Promise<void> {

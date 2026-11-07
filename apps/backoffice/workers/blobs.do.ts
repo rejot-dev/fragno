@@ -13,7 +13,7 @@ export class Blobs extends DurableObject<CloudflareEnv> implements BlobsCommands
     // Imported on first use so that a cold isolate only evaluates the objects it wakes.
     void state.blockConcurrencyWhile(async () => {
       const { BlobsObject } = await import("./blobs-object");
-      const { blobsR2BucketsFromEnv } = await import("@/fragno/blobs-server");
+      const { blobsR2BucketsFromEnv } = await import("@/fragno/blobs-r2-buckets");
       const { createCloudflareBackofficeObjectContext } =
         await import("./lib/cloudflare-backoffice-object-implementation");
       const buckets = blobsR2BucketsFromEnv(

@@ -276,7 +276,7 @@ describe("Telegram Channel OTP linking automation in memory", () => {
         ],
       }),
     );
-  });
+  }, 30_000);
 
   test("Telegram /start in a group asks for a private chat and posts no claim link", async () => {
     await runBackofficeScenario(

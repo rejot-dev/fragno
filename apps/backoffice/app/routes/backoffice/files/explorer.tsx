@@ -28,6 +28,7 @@ import {
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 
 import { pageName, pagePath } from "../pages/path";
+import { siteHref } from "../sites/path";
 import type { Route } from "./+types/explorer";
 import { loadFilesExplorerData, type FilesExplorerSourceSnapshot } from "./data";
 import type { FilesLayoutContext } from "./layout-context";
@@ -210,6 +211,7 @@ function FilesExplorerRouteView({
   selectedScope,
   workflowRouting,
 }: FilesExplorerRouteViewProps) {
+  const { sites } = useOutletContext<FilesLayoutContext>();
   return (
     <FilesExplorerView
       sources={sources}
@@ -222,6 +224,7 @@ function FilesExplorerRouteView({
       buildFileHref={(path, disposition) => filesDownloadPath(selectedScope, path, disposition)}
       workflowRouting={workflowRouting}
       pageHref={(sourcePath) => pagePath(selectedScope, pageName(sourcePath))}
+      siteHref={sites ? (sitePath) => siteHref(selectedScope, sitePath) : null}
     />
   );
 }

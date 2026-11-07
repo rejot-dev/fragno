@@ -60,6 +60,7 @@ const testRuntimeConfig: BackofficeRuntimeConfig = {
   sandboxContainers: true,
   signUpAccessCodesRequired: true,
   localEmailLog: false,
+  sites: false,
   workersAi: false,
   inboundEmailDomain: null,
   bindings: {

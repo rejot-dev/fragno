@@ -116,13 +116,20 @@ async function openViewSocket(
   return { socket, frames, closes };
 }
 
-/** A turn settles before its alarm clears the wake heartbeat, so the clear is observed eventually. */
+/**
+ * A turn settles before its alarm clears the wake heartbeat, so the clear is observed eventually.
+ * The alarm first records the turn's events in Automations, which takes seconds when that object's
+ * module loads cold.
+ */
 async function expectAlarmCleared(agent: DurableObjectStub<Pi>) {
-  await vi.waitFor(async () => {
-    await runInDurableObject(agent, async (_instance, state) => {
-      expect(await state.storage.getAlarm()).toBeNull();
-    });
-  });
+  await vi.waitFor(
+    async () => {
+      await runInDurableObject(agent, async (_instance, state) => {
+        expect(await state.storage.getAlarm()).toBeNull();
+      });
+    },
+    { timeout: 10_000 },
+  );
 }
 
 function orgAgent(organizationId: string): PiAgentConfig {
