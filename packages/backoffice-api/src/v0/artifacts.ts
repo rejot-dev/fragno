@@ -20,12 +20,24 @@ const artifactPageBuildOutputSchema = z.lazy(() =>
   ]),
 );
 
+const siteDirectorySchema = () =>
+  z
+    .string()
+    .trim()
+    .regex(/^\/workspace\/.+\.site$/u, "Expected a /workspace/**/<name>.site directory.")
+    // A site's path names where its builds are kept, so `..` would name another scope's.
+    .refine(
+      (path) =>
+        path
+          .slice("/workspace/".length)
+          .split("/")
+          .every((segment) => segment !== "" && segment !== "." && segment !== ".."),
+      "Expected a normalized path, without empty, . or .. segments.",
+    );
+
 export const artifactSiteBuildInputSchema = z.lazy(() =>
   z.strictObject({
-    path: z
-      .string()
-      .trim()
-      .regex(/^\/workspace\/.+\.site$/u, "Expected a /workspace/**/<name>.site directory."),
+    path: siteDirectorySchema(),
   }),
 );
 
@@ -83,6 +95,129 @@ const artifactSiteDataStatusOutputSchema = z.lazy(() =>
 /** The state of the copy of a scope's automation data that its sites read. */
 export type ArtifactSiteDataStatus = z.output<typeof artifactSiteDataStatusOutputSchema>;
 
+export const artifactSiteLogsInputSchema = z.lazy(() =>
+  z.strictObject({
+    path: siteDirectorySchema(),
+    since: z.iso
+      .datetime({ offset: true })
+      .optional()
+      .describe("Only requests from this time on, such as when the site was last built."),
+    errorsOnly: z
+      .boolean()
+      .optional()
+      .describe("Only requests that threw, exceeded a limit, answered 5xx, or logged an error."),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(200)
+      .optional()
+      .describe("How many of the latest requests to return, 50 unless given."),
+  }),
+);
+
+const artifactSiteLogEntrySchema = z.lazy(() =>
+  z.strictObject({
+    at: z.string().describe("When the request started."),
+    method: z.string().nullable(),
+    path: z.string().nullable().describe("The path within the site, with its query."),
+    status: z
+      .number()
+      .nullable()
+      .describe("The response's status, or null when the Worker answered none."),
+    outcome: z
+      .string()
+      .describe(
+        "ok, exception when the Worker threw, or the limit it exceeded, such as exceededCpu.",
+      ),
+    cpuMs: z.number().nullable(),
+    wallMs: z.number().nullable(),
+    logs: z.array(z.strictObject({ level: z.string(), message: z.string() })),
+    exceptions: z.array(
+      z.strictObject({ name: z.string(), message: z.string(), stack: z.string().nullable() }),
+    ),
+  }),
+);
+
+/** One request a site's Worker handled that logged, threw, exceeded a limit, or answered 5xx. */
+export type ArtifactSiteLogEntry = z.output<typeof artifactSiteLogEntrySchema>;
+
+/** The largest request body `artifacts.sites.request` sends. */
+export const ARTIFACT_SITE_REQUEST_MAX_BODY_CHARS = 1_000_000;
+
+export const artifactSiteRequestInputSchema = z.lazy(() =>
+  z
+    .strictObject({
+      path: siteDirectorySchema(),
+      url: z
+        .string()
+        .regex(/^\/(?!\/)/u, "Expected a path within the site, such as / or /api/books?page=2.")
+        .optional()
+        .describe("The path within the site, with its query; / unless given."),
+      method: z
+        .enum(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+        .optional()
+        .describe("GET unless given."),
+      headers: z.record(z.string(), z.string()).optional(),
+      body: z.string().max(ARTIFACT_SITE_REQUEST_MAX_BODY_CHARS).optional(),
+    })
+    .refine(
+      ({ method, body }) =>
+        body === undefined || (method !== undefined && method !== "GET" && method !== "HEAD"),
+      { message: "GET and HEAD requests have no body.", path: ["body"] },
+    ),
+);
+
+export type ArtifactSiteRequestInput = z.output<typeof artifactSiteRequestInputSchema>;
+
+/** How much of a body `artifacts.sites.request` reads, and returns of a text body. */
+export const ARTIFACT_SITE_RESPONSE_MAX_TEXT_BYTES = 64 * 1024;
+
+/** How long `artifacts.sites.request` waits for a site's answer and its body. */
+export const ARTIFACT_SITE_REQUEST_TIMEOUT_MS = 15_000;
+
+const artifactSiteResponseSchema = z.lazy(() =>
+  z.strictObject({
+    status: z
+      .number()
+      .describe(
+        "The status a viewer gets: 500 when the Worker threw, and 503 while the scope's data is being copied.",
+      ),
+    headers: z.record(z.string(), z.string()),
+    body: z
+      .union([
+        z.strictObject({ text: z.string(), truncated: z.boolean() }),
+        z.strictObject({
+          omitted: z.strictObject({
+            type: z.string().nullable(),
+            bytes: z
+              .number()
+              .nullable()
+              .describe("Null when the body is over 64 KB and its content-length is not given."),
+          }),
+        }),
+      ])
+      .nullable()
+      .describe(
+        "The body as text, its first 64 KB, when it is text, JSON, HTML, CSS, JavaScript, or SVG; otherwise its type and size. A body is read for at most 15 seconds, so a stream that stays open is cut there, with truncated true. Null when the Worker threw.",
+      ),
+    bodyError: z
+      .string()
+      .nullable()
+      .describe(
+        "Why the body broke off after the status and headers were sent, as a viewer gets it: body holds what arrived before, with truncated true. Null when the body ended, or was cut at its limit.",
+      ),
+    log: artifactSiteLogEntrySchema
+      .nullable()
+      .describe(
+        "What the Worker logged and threw while answering, with its outcome; null when the runtime had not reported the request within 5 seconds.",
+      ),
+  }),
+);
+
+/** A site's answer to `artifacts.sites.request`, with what its Worker logged and threw. */
+export type ArtifactSiteResponse = z.output<typeof artifactSiteResponseSchema>;
+
 export const artifactsOperations = {
   "artifacts.pages.build": {
     description:
@@ -104,5 +239,19 @@ export const artifactsOperations = {
     permissions: [BACKOFFICE_PERMISSION.upload.read],
     input: z.lazy(() => z.strictObject({})),
     output: artifactSiteDataStatusOutputSchema,
+  },
+  "artifacts.sites.logs": {
+    description:
+      "Read what a site's Worker logged and threw, oldest first, for the latest requests that logged, threw, exceeded a limit, or answered 5xx. Read them after building a site and requesting it, and when a site fails or answers wrongly. Requests are kept for a day, the latest 200 per site.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read, ...ARTIFACT_SITE_DATA_PERMISSIONS],
+    input: artifactSiteLogsInputSchema,
+    output: z.lazy(() => z.strictObject({ entries: z.array(artifactSiteLogEntrySchema) })),
+  },
+  "artifacts.sites.request": {
+    description:
+      "Request a built site as a viewer would, without their session, and return its answer with what its Worker logged and threw while answering. A site that does not answer within 15 seconds fails the request. Request the routes a site's pages call and its / after building it, before handing it to the user. The request reaches the site's latest build, reads the scope's data as the site does, and appears in the site's logs like any other.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read, ...ARTIFACT_SITE_DATA_PERMISSIONS],
+    input: artifactSiteRequestInputSchema,
+    output: artifactSiteResponseSchema,
   },
 } satisfies Record<string, BackofficeApiOperation>;

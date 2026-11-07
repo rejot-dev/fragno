@@ -29,8 +29,10 @@ import { ProjectConnectorObject } from "../../workers/project-connector-object";
 import { ResendObject } from "../../workers/resend-object";
 import { SandboxManagerObject } from "../../workers/sandbox-manager-object";
 import { SiteReplicaObject } from "../../workers/site-replica-object";
+import { SiteRequestsObject } from "../../workers/site-requests-object";
 import { TelegramObject } from "../../workers/telegram-object";
 import { UploadObject } from "../../workers/upload-object";
+import { inProcessSiteWorkerBindings } from "../artifacts/sites/serve.server";
 import type { LocalBackofficeObjectFactory, LocalObjectBindingName } from "./local-object-factory";
 import { sqliteSiteReplicaStorage } from "./node/sqlite-site-replica-storage";
 
@@ -207,6 +209,12 @@ export const allLocalObjects = {
         const automations = runtime.objects.automations.for(scope);
         return (input, init) => automations.http.fetch(new Request(input, init));
       },
+    }),
+  // The site Workers it loads are bound in-process.
+  SITE_REQUESTS: (input) =>
+    new SiteRequestsObject({
+      ...input,
+      siteWorkerBindings: inProcessSiteWorkerBindings(input.runtime),
     }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
   PI: (input) =>

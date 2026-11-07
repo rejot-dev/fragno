@@ -201,6 +201,11 @@
         "class_name": "SiteReplica",
         "script_name": "rejot-backoffice",
       },
+      {
+        "name": "SITE_REQUESTS",
+        "class_name": "SiteRequests",
+        "script_name": "rejot-backoffice",
+      },
     ],
   },
 }
