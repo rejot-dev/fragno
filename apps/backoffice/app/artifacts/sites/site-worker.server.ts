@@ -60,10 +60,14 @@ export default class Site extends WorkerEntrypoint {
   };
 }
 
-/** How every site Worker is loaded: without network, and with the bindings it is given. */
+/**
+ * How every site Worker is loaded: without network, with the bindings it is given, and with the
+ * tails that receive what each of its requests logged and threw.
+ */
 export function siteWorkerCode(
   bundle: WorkerBundle,
   env: Record<string, unknown>,
+  tails: Fetcher[] = [],
 ): WorkerLoaderWorkerCode {
   return {
     compatibilityDate: bundle.runtime.compatibilityDate,
@@ -73,6 +77,7 @@ export function siteWorkerCode(
     env,
     // Sites reach no network until an egress policy says what they may call.
     globalOutbound: null,
+    tails,
   };
 }
 

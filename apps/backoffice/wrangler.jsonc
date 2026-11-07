@@ -250,6 +250,10 @@
         "name": "SITE_REPLICA",
         "class_name": "SiteReplica",
       },
+      {
+        "name": "SITE_REQUESTS",
+        "class_name": "SiteRequests",
+      },
     ],
   },
   /**
@@ -287,5 +291,6 @@
     "Forms": { "type": "durable-object", "state": "deleted" },
     "Presence": { "type": "durable-object", "storage": "sqlite" },
     "SiteReplica": { "type": "durable-object", "storage": "sqlite" },
+    "SiteRequests": { "type": "durable-object", "storage": "sqlite" },
   },
 }

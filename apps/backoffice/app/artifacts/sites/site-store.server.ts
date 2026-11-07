@@ -9,7 +9,7 @@ import { z } from "zod";
 import type { BlobsR2Access } from "@/fragno/blobs-r2-buckets";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 
-import { siteBuildDirectory } from "./site-path";
+import { siteBuildDirectory, sitePathProblem } from "./site-path";
 
 /**
  * The build a site serves, with the fingerprint of the sources it was built from, and the builds
@@ -77,6 +77,11 @@ export function siteStore({
   scope: BackofficeContextScope;
   sitePath: string;
 }): SiteStore {
+  // The path names where builds are kept, in a bucket every scope shares: `..` would leave its own.
+  const problem = sitePathProblem(sitePath);
+  if (problem !== null) {
+    throw new Error(problem);
+  }
   return siteStorage
     ? r2SiteStore(siteStorage, scope, sitePath)
     : workspaceSiteStore(state, sitePath);
