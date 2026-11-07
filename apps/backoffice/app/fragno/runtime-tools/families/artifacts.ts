@@ -1,7 +1,11 @@
 import type {
   ArtifactSiteDataStatus,
+  ArtifactSiteLogEntry,
+  ArtifactSiteResponse,
   artifactPageBuildInputSchema,
   artifactSiteBuildInputSchema,
+  artifactSiteLogsInputSchema,
+  artifactSiteRequestInputSchema,
 } from "@fragno-dev/backoffice-api/v0/artifacts";
 import type { PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
 import type { z } from "zod";
@@ -21,6 +25,10 @@ export type ArtifactsRuntime = {
   buildSite(sitePath: string): Promise<SiteBuildOutcome>;
   /** Reports the copy of the scope's automation data its sites read. */
   siteDataStatus(): Promise<ArtifactSiteDataStatus>;
+  siteLogs(input: z.output<typeof artifactSiteLogsInputSchema>): Promise<ArtifactSiteLogEntry[]>;
+  requestSite(
+    input: z.output<typeof artifactSiteRequestInputSchema>,
+  ): Promise<ArtifactSiteResponse>;
 };
 
 type ArtifactsToolContext = BackofficeToolContext<{ artifacts?: ArtifactsRuntime }>;
@@ -79,9 +87,29 @@ const siteDataStatusTool = defineBackofficeRuntimeTool({
     await requireArtifactsRuntime(context).siteDataStatus(),
 });
 
+const siteLogsTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("artifacts.sites.logs"),
+  namespace: "artifacts",
+  name: "siteLogs",
+  getResource: ({ path }: z.output<typeof artifactSiteLogsInputSchema>) => ({ path }),
+  execute: async (input, context: ArtifactsToolContext) => {
+    const entries = await requireArtifactsRuntime(context).siteLogs(input);
+    return { entries };
+  },
+});
+
+const requestSiteTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("artifacts.sites.request"),
+  namespace: "artifacts",
+  name: "requestSite",
+  getResource: ({ path }: z.output<typeof artifactSiteRequestInputSchema>) => ({ path }),
+  execute: async (input, context: ArtifactsToolContext) =>
+    await requireArtifactsRuntime(context).requestSite(input),
+});
+
 /** Runtime tool family for building the artifacts Backoffice opens. */
 export const artifactsToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "artifacts",
-  tools: [buildPageTool, buildSiteTool, siteDataStatusTool],
+  tools: [buildPageTool, buildSiteTool, siteDataStatusTool, siteLogsTool, requestSiteTool],
   isAvailable: (context: ArtifactsToolContext) => Boolean(context.runtimes.artifacts),
 });

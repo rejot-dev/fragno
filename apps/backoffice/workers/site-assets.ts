@@ -1,7 +1,6 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import type { SiteAssetsProps } from "../app/artifacts/sites/assets.server";
-import { createCloudflareBackofficeRuntimeServices } from "../app/backoffice-runtime/runtime-services";
 
 /**
  * A site Worker's `env.ASSETS`: serves the files of the build its props name, set by the host that
@@ -10,8 +9,13 @@ import { createCloudflareBackofficeRuntimeServices } from "../app/backoffice-run
 export class SiteAssets extends WorkerEntrypoint<CloudflareEnv, SiteAssetsProps> {
   async fetch(request: Request): Promise<Response> {
     // Imported on first use, so a Worker serving no site does not compile it.
-    const { serveSiteAssets, siteFilesCacheFor, siteStoreForServing } =
-      await import("../app/artifacts/sites/assets.server");
+    const [
+      { serveSiteAssets, siteFilesCacheFor, siteStoreForServing },
+      { createCloudflareBackofficeRuntimeServices },
+    ] = await Promise.all([
+      import("../app/artifacts/sites/assets.server"),
+      import("../app/backoffice-runtime/runtime-services"),
+    ]);
     const runtime = createCloudflareBackofficeRuntimeServices(this.env);
     const props = this.ctx.props;
     const store = siteStoreForServing({

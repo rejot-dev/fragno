@@ -3,7 +3,12 @@ import type {
   AccountProfile,
   OAuthConsentPage,
 } from "@fragno-dev/backoffice-api/v0/account";
-import type { ArtifactSiteDataStatus } from "@fragno-dev/backoffice-api/v0/artifacts";
+import type {
+  ArtifactSiteDataStatus,
+  ArtifactSiteLogEntry,
+  ArtifactSiteRequestInput,
+  ArtifactSiteResponse,
+} from "@fragno-dev/backoffice-api/v0/artifacts";
 import type {
   AutomationActors,
   AutomationForwardAccept,
@@ -78,6 +83,7 @@ import type { ClassifierResult } from "@earendil-works/pi-ai";
 
 import type { SiteBuildOutcome } from "@/artifacts/sites/build.server";
 import type { SiteDataQuery, SiteDataResult } from "@/artifacts/sites/site-data";
+import type { SiteProbeReport } from "@/artifacts/sites/site-logs";
 import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { TelegramAutomationFileMetadata } from "@/backoffice-runtime/telegram-file-response";
 import type { AccessCodeCommands } from "@/fragno/access-codes/contracts";
@@ -1025,6 +1031,34 @@ export type SiteReplicaCommands = {
   status(scope: BackofficeContextScope): Promise<ArtifactSiteDataStatus>;
 };
 
+/** Which of a site's logged requests to read: the latest `limit`, from `since` on. */
+export type SiteRequestsQuery = {
+  sitePath: string;
+  since: number | null;
+  errorsOnly: boolean;
+  limit: number;
+};
+
+export type SiteRequestsCommands = {
+  /**
+   * Keeps requests a site's tail reported, and drops what is older than the logs keep; a `probe`
+   * is the record of a request an agent sent, which reaches the agent whether or not it is kept.
+   */
+  append(
+    scope: BackofficeContextScope,
+    sitePath: string,
+    entries: ArtifactSiteLogEntry[],
+    probe: SiteProbeReport | null,
+  ): Promise<void>;
+  /** Sends a request to a site's latest build, and answers with what its Worker logged. */
+  request(
+    scope: BackofficeContextScope,
+    input: ArtifactSiteRequestInput,
+  ): Promise<ArtifactSiteResponse>;
+  /** The latest requests a site logged, oldest first. */
+  read(scope: BackofficeContextScope, query: SiteRequestsQuery): Promise<ArtifactSiteLogEntry[]>;
+};
+
 type SandboxCommands = {
   getRuntimeStatus(): Promise<{ status: SandboxInstanceStatus }>;
 };
@@ -1100,6 +1134,7 @@ export type GitHubWebhookRouterCommands = {
 export type BackofficeObjectBindingName =
   | "PRESENCE"
   | "SITE_REPLICA"
+  | "SITE_REQUESTS"
   | "APPS"
   | "APP_INSTALLATIONS"
   | "API"
@@ -1166,6 +1201,7 @@ export const backofficeObjectScopePolicy = {
   PRESENCE: ["org", "user"],
   // Sites are built in the scopes whose Codemode builds them.
   SITE_REPLICA: ["org", "user", "app", "project"],
+  SITE_REQUESTS: ["org", "user", "app", "project"],
 
   SANDBOX: ["named"],
   SANDBOX_MANAGER: ["singleton", "org", "user", "project"],
@@ -1373,6 +1409,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
   cloudflare: scoped(factory, binding<CloudflareCommands>("CLOUDFLARE")),
   presence: scoped(factory, binding<PresenceCommands>("PRESENCE")),
   siteReplica: scoped(factory, binding<SiteReplicaCommands>("SITE_REPLICA")),
+  siteRequests: scoped(factory, binding<SiteRequestsCommands>("SITE_REQUESTS")),
 
   sandbox: scoped(factory, binding<SandboxCommands>("SANDBOX")),
   sandboxManager: scoped(factory, binding<SandboxManagerCommands>("SANDBOX_MANAGER")),

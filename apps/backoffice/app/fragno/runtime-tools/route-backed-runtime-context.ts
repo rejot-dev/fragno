@@ -502,6 +502,29 @@ const createRuntimeContext = ({
                 .scoped("SITE_REPLICA", scope, runtime.objects.siteReplica)
                 .commands.status(scope);
             },
+            siteLogs: async ({ path, since, errorsOnly, limit }) => {
+              if (!runtime.config.sites) {
+                throw new Error("This deployment does not serve sites.");
+              }
+              const { scope } = execution;
+              return await kernel
+                .scoped("SITE_REQUESTS", scope, runtime.objects.siteRequests)
+                .commands.read(scope, {
+                  sitePath: path,
+                  since: since === undefined ? null : Date.parse(since),
+                  errorsOnly: errorsOnly ?? false,
+                  limit: limit ?? 50,
+                });
+            },
+            requestSite: async (input) => {
+              if (!runtime.config.sites) {
+                throw new Error("This deployment does not serve sites.");
+              }
+              const { scope } = execution;
+              return await kernel
+                .scoped("SITE_REQUESTS", scope, runtime.objects.siteRequests)
+                .commands.request(scope, input);
+            },
           },
         }
       : null,

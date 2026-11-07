@@ -15,6 +15,16 @@ type ArtifactsCodemodeProvider = {
    * Requires `upload.read`.
    */
   siteDataStatus(input: ArtifactsSiteDataStatusInput): Promise<ArtifactsSiteDataStatusOutput>;
+  /**
+   * Read what a site's Worker logged and threw, oldest first, for the latest requests that logged, threw, exceeded a limit, or answered 5xx. Read them after building a site and requesting it, and when a site fails or answers wrongly. Requests are kept for a day, the latest 200 per site.
+   * Requires `upload.read`.
+   */
+  siteLogs(input: ArtifactsSiteLogsInput): Promise<ArtifactsSiteLogsOutput>;
+  /**
+   * Request a built site as a viewer would, without their session, and return its answer with what its Worker logged and threw while answering. A site that does not answer within 15 seconds fails the request. Request the routes a site's pages call and its / after building it, before handing it to the user. The request reaches the site's latest build, reads the scope's data as the site does, and appears in the site's logs like any other.
+   * Requires `upload.read`.
+   */
+  requestSite(input: ArtifactsRequestSiteInput): Promise<ArtifactsRequestSiteOutput>;
 };
 declare const artifacts: ArtifactsCodemodeProvider;
 
@@ -65,4 +75,94 @@ type ArtifactsSiteDataStatusOutput = {
   retryAt: string | null;
   /** The size of the copy. */
   sizeBytes: number;
+};
+type ArtifactsSiteLogsInput = {
+  path: string;
+  /** Only requests from this time on, such as when the site was last built. */
+  since?: string;
+  /** Only requests that threw, exceeded a limit, answered 5xx, or logged an error. */
+  errorsOnly?: boolean;
+  /** How many of the latest requests to return, 50 unless given. */
+  limit?: number;
+};
+type ArtifactsSiteLogsOutput = {
+  entries: {
+    /** When the request started. */
+    at: string;
+    method: string | null;
+    /** The path within the site, with its query. */
+    path: string | null;
+    /** The response's status, or null when the Worker answered none. */
+    status: number | null;
+    /** ok, exception when the Worker threw, or the limit it exceeded, such as exceededCpu. */
+    outcome: string;
+    cpuMs: number | null;
+    wallMs: number | null;
+    logs: {
+      level: string;
+      message: string;
+    }[];
+    exceptions: {
+      name: string;
+      message: string;
+      stack: string | null;
+    }[];
+  }[];
+};
+type ArtifactsRequestSiteInput = {
+  path: string;
+  /** The path within the site, with its query; / unless given. */
+  url?: string;
+  /** GET unless given. */
+  method?: "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
+  headers?: {
+    [key: string]: string;
+  };
+  body?: string;
+};
+type ArtifactsRequestSiteOutput = {
+  /** The status a viewer gets: 500 when the Worker threw, and 503 while the scope's data is being copied. */
+  status: number;
+  headers: {
+    [key: string]: string;
+  };
+  /** The body as text, its first 64 KB, when it is text, JSON, HTML, CSS, JavaScript, or SVG; otherwise its type and size. A body is read for at most 15 seconds, so a stream that stays open is cut there, with truncated true. Null when the Worker threw. */
+  body:
+    | {
+        text: string;
+        truncated: boolean;
+      }
+    | {
+        omitted: {
+          type: string | null;
+          /** Null when the body is over 64 KB and its content-length is not given. */
+          bytes: number | null;
+        };
+      }
+    | null;
+  /** Why the body broke off after the status and headers were sent, as a viewer gets it: body holds what arrived before, with truncated true. Null when the body ended, or was cut at its limit. */
+  bodyError: string | null;
+  /** What the Worker logged and threw while answering, with its outcome; null when the runtime had not reported the request within 5 seconds. */
+  log: {
+    /** When the request started. */
+    at: string;
+    method: string | null;
+    /** The path within the site, with its query. */
+    path: string | null;
+    /** The response's status, or null when the Worker answered none. */
+    status: number | null;
+    /** ok, exception when the Worker threw, or the limit it exceeded, such as exceededCpu. */
+    outcome: string;
+    cpuMs: number | null;
+    wallMs: number | null;
+    logs: {
+      level: string;
+      message: string;
+    }[];
+    exceptions: {
+      name: string;
+      message: string;
+      stack: string | null;
+    }[];
+  } | null;
 };

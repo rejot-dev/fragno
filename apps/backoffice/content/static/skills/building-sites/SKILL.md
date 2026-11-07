@@ -34,7 +34,14 @@ reach it. A site cannot be inside another site.
 3. **Build.** Run `artifacts.buildSite({ path })` with the site's directory, such as
    `/workspace/tools/todo.site`. Complete when it returns `{ status: "built" }`; a `failed` result's
    `message` names what to fix, such as an import of a package.
-4. **Hand off.** Give the user the site's URL: `/backoffice/sites/<scope>/<path>/` on the Backoffice
+4. **Check.** Request the site's `/` and every route its pages call with
+   `artifacts.requestSite({ path, url })`, such as `url: "/api/todos?page=2"`, with `method`,
+   `headers`, and a text `body` for a route that takes a form or JSON. Each answer has the status
+   and body a viewer would get, and `log`: what the Worker printed and threw while answering. A
+   request reaches the latest build and reads the scope's data as viewers do, without their session.
+   Fix what a 4xx or 5xx status, a wrong body, or an exception in `log` names, then build and check
+   again. Complete when every route answers as the pages expect and no `log` has an exception.
+5. **Hand off.** Give the user the site's URL: `/backoffice/sites/<scope>/<path>/` on the Backoffice
    they use, where `<scope>` is the two segments after `/files/` in their Files URL, such as
    `org/acme`, and the URL ends in `/`. Selecting the directory in Files also shows an "Open site"
    link. Complete when the user has the URL.
@@ -47,6 +54,16 @@ reach it. A site cannot be inside another site.
   to it.
 - When the build fails with "This deployment does not serve sites", tell the user this Backoffice
   does not serve sites; a page may serve the need instead.
+- When a site fails or answers wrongly for the user, read what its Worker logged and threw with
+  `artifacts.siteLogs({ path, errorsOnly: true })` before changing its code; pass
+  `since: <ISO time of the last build>` to leave out requests the previous build handled. Each entry
+  is one request: its path, status, outcome (`exception` when it threw, or a limit such as
+  `exceededCpu`), console lines, and exceptions with their stacks. Fix what the entries name, build
+  again, and request the failing route with `artifacts.requestSite` before asking the user to
+  reload.
+- When `artifacts.requestSite` answers 503, the scope's data is still being copied; check
+  `artifacts.siteDataStatus({})`, and request again once it is `caught-up`. When `log` is null, the
+  request was answered before the Worker ran, such as a 404 for a site without a build.
 
 ## Serving
 
@@ -111,6 +128,9 @@ reach it. A site cannot be inside another site.
 - **Isolation:** the Worker has no network, so `fetch` throws, and no bindings besides `ASSETS` and
   `DATA`. It never sees the viewer's cookies or `Authorization` header, and a `Set-Cookie` it
   returns is dropped.
+- **Logs:** what the Worker prints with `console` and every exception it lets escape is kept with
+  the request, for a day and the latest 200 requests; requests that print nothing and answer below
+  500 are not. Log what helps find a mistake, such as a query's parameters, and never secrets.
 - **Memory:** module-level variables last while the Worker stays loaded, and every build starts them
   empty. Treat them as a cache.
 - **Browser:** scripts in `public/` run in the viewer's browser, so they may import ES modules from

@@ -7,7 +7,11 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
-import type { ArtifactSiteDataStatus } from "@fragno-dev/backoffice-api/v0/artifacts";
+import type {
+  ArtifactSiteDataStatus,
+  ArtifactSiteLogEntry,
+  ArtifactSiteResponse,
+} from "@fragno-dev/backoffice-api/v0/artifacts";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
@@ -509,9 +513,54 @@ const DATA_WORKER = `export default {
       }
     };
     switch (url.pathname) {
+      case "/log":
+        console.log("listing", { keys: 2 });
+        console.warn("slow store");
+        return Response.json(await sql\`SELECT key FROM kv_store ORDER BY key\`);
+      case "/crash":
+        return Response.json(await sql\`SELECT * FROM orders\`);
+      case "/echo":
+        return Response.json({
+          method: request.method,
+          body: await request.text(),
+          cookie: request.headers.get("cookie"),
+          header: request.headers.get("x-shelf"),
+          query: url.search,
+        }, { headers: { "set-cookie": "session=site" } });
+      case "/bytes":
+        return new Response(new Uint8Array([0, 1, 2, 255]), {
+          headers: { "content-type": "application/octet-stream" },
+        });
+      case "/broken": {
+        let sent = false;
+        return new Response(
+          new ReadableStream({
+            pull(controller) {
+              if (sent) {
+                controller.error(new Error("The stream broke."));
+              } else {
+                sent = true;
+                controller.enqueue(new TextEncoder().encode("partial"));
+              }
+            },
+          }),
+          { headers: { "content-type": "text/plain" } },
+        );
+      }
+      case "/endless":
+        return new Response(
+          new ReadableStream({
+            pull(controller) {
+              controller.enqueue(new TextEncoder().encode("data: tick\\n\\n"));
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        );
       case "/wide":
         // Fewer than 4 MB of characters, but more than 4 MB of UTF-8.
         return answer(() => sql\`WITH t(x) AS (SELECT \${"€".repeat(500000)}) SELECT x FROM t, (SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3)\`);
+      case "/long":
+        return new Response("é".repeat(40000), { headers: { "content-type": "text/plain; charset=utf-8" } });
       case "/keys":
         // Catches its read's error, as a Worker may.
         return answer(() => sql\`SELECT key FROM kv_store ORDER BY key\`);
@@ -556,6 +605,37 @@ async function siteDataStatus(ctx: BackofficeScenarioContext): Promise<ArtifactS
     assertToolCalls: ["artifacts.siteDataStatus"],
   });
   return run.result as ArtifactSiteDataStatus;
+}
+
+async function siteLogs(
+  ctx: BackofficeScenarioContext,
+  input: { since?: string; errorsOnly?: boolean },
+): Promise<ArtifactSiteLogEntry[]> {
+  const run = await ctx.runCodemode({
+    scope,
+    code: `async () => await artifacts.siteLogs(${JSON.stringify({ path: DATA_SITE_PATH, ...input })})`,
+    assertToolCalls: ["artifacts.siteLogs"],
+  });
+  return (run.result as { entries: ArtifactSiteLogEntry[] }).entries;
+}
+
+/** Requests a site as an agent does; a request the tool refuses answers with its error. */
+async function requestSite(
+  ctx: BackofficeScenarioContext,
+  input: Record<string, unknown>,
+): Promise<ArtifactSiteResponse | { error: string }> {
+  const run = await ctx.runCodemode({
+    scope,
+    code: `async () => {
+      try {
+        return await artifacts.requestSite(${JSON.stringify({ path: DATA_SITE_PATH, ...input })});
+      } catch (error) {
+        return { error: error.message };
+      }
+    }`,
+    assertToolCalls: ["artifacts.requestSite"],
+  });
+  return run.result as ArtifactSiteResponse | { error: string };
 }
 
 /** The site's answer at `path`, or its status when the site is unavailable. */
@@ -662,6 +742,135 @@ test("a site's Worker reads the scope's automation data with sql, as pages read 
             { key: "seats", value: "12" },
           ]);
         }),
+        then.assert(
+          "what a request logs or throws is kept for the agent, and quiet requests are not",
+          async (ctx) => {
+            const since = new Date().toISOString();
+            assert.deepEqual(await readData(ctx, "/keys"), [
+              { key: "plan" },
+              { key: "seats" },
+              { key: "unread" },
+            ]);
+            assert.isArray(await readData(ctx, "/log"));
+            const crashed = await request(ctx, DATA_SITE_PATH, "/crash").catch(
+              (error: unknown) => error,
+            );
+            assert.instanceOf(crashed, Error);
+            const [logged, thrown, ...rest] = await siteLogs(ctx, { since });
+            assert.deepEqual(rest, []);
+            assert.deepInclude(logged, {
+              method: "GET",
+              path: "/log",
+              status: 200,
+              outcome: "ok",
+              exceptions: [],
+              logs: [
+                { level: "log", message: 'listing {"keys":2}' },
+                { level: "warn", message: "slow store" },
+              ],
+            });
+            assert.deepInclude(thrown, { path: "/crash", status: null, outcome: "exception" });
+            assert.match(thrown.exceptions[0]?.message ?? "", /orders.*Read one of/su);
+            assert.deepEqual(
+              (await siteLogs(ctx, { since, errorsOnly: true })).map(({ path }) => path),
+              ["/crash"],
+            );
+          },
+        ),
+        then.assert(
+          "an agent requests the site as a viewer would, and sees what the request logged",
+          async (ctx) => {
+            const since = new Date().toISOString();
+            const logged = await requestSite(ctx, { url: "/log" });
+            assert.deepInclude(logged, {
+              status: 200,
+              body: { text: '[{"key":"plan"},{"key":"seats"},{"key":"unread"}]', truncated: false },
+            });
+            assert.deepInclude((logged as ArtifactSiteResponse).log, {
+              method: "GET",
+              path: "/log",
+              status: 200,
+              outcome: "ok",
+              logs: [
+                { level: "log", message: 'listing {"keys":2}' },
+                { level: "warn", message: "slow store" },
+              ],
+            });
+
+            // A quiet request's record reaches the agent, though the logs do not keep it.
+            const quiet = (await requestSite(ctx, { url: "/keys" })) as ArtifactSiteResponse;
+            assert.deepInclude(quiet.log, { path: "/keys", outcome: "ok", logs: [] });
+
+            const crashed = (await requestSite(ctx, { url: "/crash" })) as ArtifactSiteResponse;
+            assert.deepInclude(crashed, { status: 500, headers: {}, body: null });
+            assert.equal(crashed.log?.outcome, "exception");
+            assert.match(crashed.log?.exceptions[0]?.message ?? "", /orders.*Read one of/su);
+
+            // Without the viewer's session, and without setting Backoffice's cookies.
+            const echoed = (await requestSite(ctx, {
+              url: "/echo?page=2",
+              method: "POST",
+              headers: { cookie: "better-auth.session_token=agent", "x-shelf": "books" },
+              body: "title=Dune",
+            })) as ArtifactSiteResponse;
+            assert.deepEqual(echoed.body, {
+              text: JSON.stringify({
+                method: "POST",
+                body: "title=Dune",
+                cookie: null,
+                header: "books",
+                query: "?page=2",
+              }),
+              truncated: false,
+            });
+            assert.notProperty(echoed.headers, "set-cookie");
+
+            assert.deepEqual(
+              ((await requestSite(ctx, { url: "/bytes" })) as ArtifactSiteResponse).body,
+              {
+                omitted: { type: "application/octet-stream", bytes: 4 },
+              },
+            );
+            const long = (await requestSite(ctx, { url: "/long" })) as ArtifactSiteResponse;
+            assert.deepEqual(long.body, { text: "é".repeat(32 * 1024), truncated: true });
+            // A stream that stays open is read only as far as what is kept.
+            const endless = (await requestSite(ctx, { url: "/endless" })) as ArtifactSiteResponse;
+            assert.deepInclude(endless, { status: 200 });
+            assert.deepInclude(endless.body, { truncated: true });
+            // A body that breaks off keeps the answer a viewer got, and says why.
+            const broken = (await requestSite(ctx, { url: "/broken" })) as ArtifactSiteResponse;
+            assert.deepInclude(broken, { status: 200, bodyError: "The stream broke." });
+            assert.deepEqual(broken.body, { text: "partial", truncated: true });
+
+            assert.deepEqual(
+              (await siteLogs(ctx, { since })).map(({ path }) => path),
+              ["/log", "/crash"],
+            );
+          },
+        ),
+        then.assert("a request to a site without a build answers that it has none", async (ctx) => {
+          assert.deepEqual(await requestSite(ctx, { path: "/workspace/none.site" }), {
+            status: 404,
+            headers: { "content-type": "text/plain;charset=UTF-8" },
+            body: { text: "/workspace/none.site has not been built.", truncated: false },
+            bodyError: null,
+            log: null,
+          });
+        }),
+        then.assert(
+          "requests stay within the site, and only methods with bodies send one",
+          async (ctx) => {
+            assert.match(
+              ((await requestSite(ctx, { url: "//elsewhere.example/" })) as { error: string })
+                .error,
+              /Expected a path within the site/u,
+            );
+            assert.match(
+              ((await requestSite(ctx, { url: "/echo", body: "x" })) as { error: string }).error,
+              /GET and HEAD requests have no body/u,
+            );
+          },
+        ),
         then.assert("mistakes are named as a page's are", async (ctx) => {
           const missing = (await readData(ctx, "/missing")) as { error: string };
           expect(missing.error).toMatch(
