@@ -1,5 +1,6 @@
 export {
   SqliteLofiAdapter,
+  sqlStatementTransaction,
   type LofiSqliteDatabase,
   type SqliteLofiAdapterOptions,
 } from "./sqlite/adapter";

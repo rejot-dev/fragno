@@ -47,7 +47,33 @@ export type LofiSqliteDatabase = {
     sql: string,
     params?: ReadonlyArray<unknown>,
   ): Promise<ReadonlyArray<Record<string, unknown>>>;
+  /**
+   * Runs `operation`, whose statements `execute` runs, in one transaction: it commits once
+   * `operation` resolves and rolls back when it rejects. A `"write"` transaction takes the write
+   * lock before its first statement. The database runs it rather than the adapter because some,
+   * like Durable Objects', refuse `BEGIN`; `sqlStatementTransaction` runs it with statements.
+   */
+  transaction<T>(mode: "read" | "write", operation: () => Promise<T>): Promise<T>;
 };
+
+/** `LofiSqliteDatabase.transaction` for a database that takes `BEGIN` and `COMMIT` statements. */
+export function sqlStatementTransaction(
+  execute: LofiSqliteDatabase["execute"],
+): LofiSqliteDatabase["transaction"] {
+  return async (mode, operation) => {
+    await execute(mode === "write" ? "BEGIN IMMEDIATE" : "BEGIN");
+    try {
+      const result = await operation();
+      await execute("COMMIT");
+      return result;
+    } catch (error) {
+      // A failed ROLLBACK means SQLite already ended the transaction, or never began it; the cause
+      // is more useful.
+      await execute("ROLLBACK").catch(() => {});
+      throw error;
+    }
+  };
+}
 
 export type SqliteLofiAdapterOptions = {
   database: LofiSqliteDatabase;
@@ -128,6 +154,20 @@ export class SqliteLofiAdapter implements LofiAdapter {
         this.#lastCall = call.catch(() => {});
         return call;
       },
+      // The transaction's own statements go through `execute` above, so it starts only after the
+      // previous call, and does not chain on itself. It ends only once the statements its operation
+      // queued have run, such as the rest of a `Promise.all` that one statement failed, so none
+      // runs alongside the COMMIT or ROLLBACK, or after it, outside the transaction.
+      transaction: async (mode, operation) => {
+        await this.#lastCall;
+        return await options.database.transaction(mode, async () => {
+          try {
+            return await operation();
+          } finally {
+            await this.#settled();
+          }
+        });
+      },
     };
     this.#layouts = new Map(
       [...options.schemas, ...options.localSchemas].map((registration) => [
@@ -192,17 +232,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
    * holds its lock until `read` settles, so no connection writes meanwhile.
    */
   read<T>(read: (database: LofiSqliteDatabase) => Promise<T>): Promise<T> {
-    return this.#serialize(async () => {
-      await this.#database.execute("BEGIN");
-      try {
-        const result = await read(this.#database);
-        await this.#database.execute("COMMIT");
-        return result;
-      } catch (error) {
-        await this.#database.execute("ROLLBACK").catch(() => {});
-        throw error;
-      }
-    });
+    return this.#serialize(() => this.#database.transaction("read", () => read(this.#database)));
   }
 
   applyOutboxEntry(options: OutboxEntryOptions): Promise<{ applied: boolean }> {
@@ -503,6 +533,15 @@ export class SqliteLofiAdapter implements LofiAdapter {
     }
   }
 
+  /** Waits until no statement is queued or running, including those queued meanwhile. */
+  async #settled() {
+    let last;
+    do {
+      last = this.#lastCall;
+      await last;
+    } while (last !== this.#lastCall);
+  }
+
   #serialize<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.#tail.then(operation, operation);
     this.#tail = result.catch(() => {});
@@ -510,19 +549,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
   }
 
   #transaction<T>(operation: () => Promise<T>): Promise<T> {
-    return this.#serialize(async () => {
-      await this.#database.execute("BEGIN IMMEDIATE");
-      try {
-        const result = await operation();
-        await this.#database.execute("COMMIT");
-        return result;
-      } catch (error) {
-        // A failed ROLLBACK means SQLite already ended the transaction, or never began it; the cause
-        // is more useful.
-        await this.#database.execute("ROLLBACK").catch(() => {});
-        throw error;
-      }
-    });
+    return this.#serialize(() => this.#database.transaction("write", operation));
   }
 }
 
