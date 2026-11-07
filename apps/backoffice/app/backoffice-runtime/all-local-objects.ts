@@ -28,9 +28,11 @@ import { PresenceObject } from "../../workers/presence-object";
 import { ProjectConnectorObject } from "../../workers/project-connector-object";
 import { ResendObject } from "../../workers/resend-object";
 import { SandboxManagerObject } from "../../workers/sandbox-manager-object";
+import { SiteReplicaObject } from "../../workers/site-replica-object";
 import { TelegramObject } from "../../workers/telegram-object";
 import { UploadObject } from "../../workers/upload-object";
 import type { LocalBackofficeObjectFactory, LocalObjectBindingName } from "./local-object-factory";
+import { sqliteSiteReplicaStorage } from "./node/sqlite-site-replica-storage";
 
 class UnavailableLocalDurableObject {
   async fetch() {
@@ -192,6 +194,20 @@ export const allLocalObjects = {
   GITHUB_WEBHOOK_ROUTER: (input) => new GitHubWebhookRouterObject(input),
   CLOUDFLARE: (input) => new CloudflareObject(input),
   PRESENCE: (input) => new PresenceObject(input),
+  // In memory, reading Automations in-process.
+  SITE_REPLICA: ({ runtime, state, nowEpochMs }) =>
+    new SiteReplicaObject({
+      storage: sqliteSiteReplicaStorage(),
+      alarm: {
+        get: () => state.storage.getAlarm(),
+        set: (scheduledTime) => state.storage.setAlarm(scheduledTime),
+      },
+      now: nowEpochMs,
+      fetchAutomations: (scope) => {
+        const automations = runtime.objects.automations.for(scope);
+        return (input, init) => automations.http.fetch(new Request(input, init));
+      },
+    }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
   PI: (input) =>
     new PiObject({

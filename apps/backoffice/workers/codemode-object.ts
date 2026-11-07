@@ -470,7 +470,7 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
           redactedResults,
         ),
     };
-    return await buildSite({
+    const built = await buildSite({
       state: stateBackend,
       codemode,
       workerLoader: runtime.workerLoader,
@@ -478,6 +478,17 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
       scope: execution.scope,
       sitePath,
     });
+    // Copying the scope's data starts now, so the site's first visitor need not find it copying.
+    if (built.kind === "built" && built.worker) {
+      const { scope } = execution;
+      await runtime.objects.siteReplica
+        .for(scope)
+        .commands.warm(scope)
+        .catch((error: unknown) => {
+          console.error("Could not start copying the scope's data for its sites.", error);
+        });
+    }
+    return built;
   }
 
   async warm(): Promise<void> {}

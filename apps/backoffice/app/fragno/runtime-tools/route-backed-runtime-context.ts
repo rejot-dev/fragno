@@ -493,6 +493,15 @@ const createRuntimeContext = ({
                 { execution, propagationContext: null },
                 runningCodemodeRunKey(),
               ),
+            siteDataStatus: async () => {
+              if (!runtime.config.sites) {
+                throw new Error("This deployment does not serve sites.");
+              }
+              const { scope } = execution;
+              return await kernel
+                .scoped("SITE_REPLICA", scope, runtime.objects.siteReplica)
+                .commands.status(scope);
+            },
           },
         }
       : null,

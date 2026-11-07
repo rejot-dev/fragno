@@ -1,13 +1,15 @@
 import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 
+import { siteDataClientSource } from "./site-data-client";
 import { siteBuildDirectory } from "./site-path";
 
 /**
  * The module a site's Worker is built from. It wraps the site's `worker.js`, or, for a site
  * without one, a Worker that serves its files, in an entrypoint whose `check` the build calls
  * before publishing: a `worker.js` that throws while loading, or exports no `fetch`, fails its
- * build instead of replacing a working one. It lives under `.build`, where no saved module can
- * take its path.
+ * build instead of replacing a working one. The site gets `env.DATA` as `sql`, which reads through
+ * the binding the host gave it; a request that reads while the scope's data is still being copied
+ * is answered 503. It lives under `.build`, where no saved module can take its path.
  */
 export function siteWorkerEntry(
   sitePath: string,
@@ -22,9 +24,30 @@ export function siteWorkerEntry(
     source: `import { WorkerEntrypoint } from "cloudflare:workers";
 ${site}
 
+const siteData = ${siteDataClientSource};
+
+const UNAVAILABLE = "This site is unavailable while its data is copied. Try again in a moment.";
+
 export default class Site extends WorkerEntrypoint {
-  fetch(request) {
-    return site.fetch(request, this.env, this.ctx);
+  async fetch(request) {
+    const data = this.env.DATA ? siteData(this.env.DATA) : null;
+    const env = data ? { ...this.env, DATA: data.data } : this.env;
+    let response;
+    try {
+      response = await site.fetch(request, env, this.ctx);
+    } catch (error) {
+      if (!data?.catchingUp()) {
+        throw error;
+      }
+    }
+    // A Worker may catch the read's error and answer on; the site is unavailable all the same.
+    if (data?.catchingUp()) {
+      return new Response(UNAVAILABLE, {
+        status: 503,
+        headers: { "content-type": "text/plain; charset=utf-8", "retry-after": "5" },
+      });
+    }
+    return response;
   }
 
   check() {

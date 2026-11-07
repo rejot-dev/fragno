@@ -246,6 +246,10 @@
         "name": "PRESENCE",
         "class_name": "Presence",
       },
+      {
+        "name": "SITE_REPLICA",
+        "class_name": "SiteReplica",
+      },
     ],
   },
   /**
@@ -282,5 +286,6 @@
     // the web Worker's FORMS binding blocks the deletion.
     "Forms": { "type": "durable-object", "state": "deleted" },
     "Presence": { "type": "durable-object", "storage": "sqlite" },
+    "SiteReplica": { "type": "durable-object", "storage": "sqlite" },
   },
 }
