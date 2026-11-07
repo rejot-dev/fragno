@@ -1,6 +1,6 @@
 import * as SQLite from "@journeyapps/wa-sqlite";
 
-import type { LofiSqliteDatabase } from "./adapter";
+import { sqlStatementTransaction, type LofiSqliteDatabase } from "./adapter";
 import type { SqliteValue } from "./values";
 
 /**
@@ -109,29 +109,31 @@ export function wrapWaSqliteDatabase(options: {
 }): LofiSqliteSyncDatabase {
   const { sqlite3, db } = options;
   const statements = createStatements(options.module as WaSqliteModule, sqlite3, db);
-  return {
-    async execute(sql, params = []) {
-      const rows: Record<string, unknown>[] = [];
-      for await (const statement of sqlite3.statements(db, sql)) {
-        if (params.length > 0) {
-          sqlite3.bind_collection(statement, params as SQLiteCompatibleType[]);
-        }
-        const columns = sqlite3.column_names(statement);
-        while ((await sqlite3.step(statement)) === SQLite.SQLITE_ROW) {
-          const values = sqlite3.row(statement);
-          rows.push(
-            Object.fromEntries(
-              // Blob values view wasm memory, which the next statement overwrites.
-              columns.map((name, index) => {
-                const value = values[index];
-                return [name, value instanceof Uint8Array ? value.slice() : value];
-              }),
-            ),
-          );
-        }
+  const execute: LofiSqliteDatabase["execute"] = async (sql, params = []) => {
+    const rows: Record<string, unknown>[] = [];
+    for await (const statement of sqlite3.statements(db, sql)) {
+      if (params.length > 0) {
+        sqlite3.bind_collection(statement, params as SQLiteCompatibleType[]);
       }
-      return rows;
-    },
+      const columns = sqlite3.column_names(statement);
+      while ((await sqlite3.step(statement)) === SQLite.SQLITE_ROW) {
+        const values = sqlite3.row(statement);
+        rows.push(
+          Object.fromEntries(
+            // Blob values view wasm memory, which the next statement overwrites.
+            columns.map((name, index) => {
+              const value = values[index];
+              return [name, value instanceof Uint8Array ? value.slice() : value];
+            }),
+          ),
+        );
+      }
+    }
+    return rows;
+  };
+  return {
+    execute,
+    transaction: sqlStatementTransaction(execute),
     connection: statements.connection,
     async close() {
       // sqlite3_close refuses a connection with statements left.
