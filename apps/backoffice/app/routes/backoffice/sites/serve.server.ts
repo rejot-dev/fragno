@@ -1,19 +1,17 @@
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { redirect, type RouterContextProvider } from "react-router";
 
+import { siteFilesCacheFor, siteStoreForServing } from "@/artifacts/sites/assets.server";
 import {
-  siteFilesCacheFor,
-  siteStoreForServing,
-  type SiteAssetsProps,
-} from "@/artifacts/sites/assets.server";
-import { createSitePointerCache, serveSite } from "@/artifacts/sites/serve.server";
+  createSitePointerCache,
+  exportedSiteWorkerBindings,
+  serveSite,
+} from "@/artifacts/sites/serve.server";
 import { isSitePath } from "@/artifacts/sites/site-path";
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
-
-type SiteAssetsExports = { SiteAssets(options: { props: SiteAssetsProps }): Fetcher };
 
 // Each isolate shares its recent reads of site pointers across requests.
 const pointers = createSitePointerCache(() => Date.now());
@@ -65,9 +63,7 @@ export async function serveSiteRoute({
       }),
     }),
     pointers,
-    workerLoader: runtime.workerLoader,
-    // Generated types describe the objects Worker's exports; this Worker's entry exports SiteAssets.
-    siteAssets: (props) => (ctx.exports as unknown as SiteAssetsExports).SiteAssets({ props }),
+    bindings: exportedSiteWorkerBindings(runtime.workerLoader, ctx.exports),
     scope,
     sitePath: target.sitePath,
     pathname: target.pathname,

@@ -20,6 +20,7 @@ import { Presence } from "./presence.do";
 import { ProjectConnectorDurableObject } from "./project-connector.do";
 import { Resend } from "./resend.do";
 import { SandboxManager } from "./sandbox-manager.do";
+import { SiteReplica } from "./site-replica.do";
 import { Telegram } from "./telegram.do";
 import { Upload } from "./upload.do";
 
@@ -55,6 +56,7 @@ export {
   Pi,
   PiManager,
   Presence,
+  SiteReplica,
   Resend,
   SandboxManager,
   Telegram,

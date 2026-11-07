@@ -33,7 +33,8 @@ import { checkSiteWorker, siteWorkerEntry } from "./site-worker.server";
 /** A rejected build names no site to build; a failed one leaves the site serving its last build. */
 export type SiteBuildOutcome =
   | { kind: "rejected"; message: string }
-  | { kind: "built" }
+  /** `worker` says whether the site has a worker.js, which may read the scope's data. */
+  | { kind: "built"; worker: boolean }
   | { kind: "failed"; message: string };
 
 /** A file under the site's `public/`, as listed; its bytes are read only to copy it. */
@@ -67,7 +68,8 @@ const RETIRED_BUILD_KEPT_MS = 15 * 60 * 1000;
  * Builds a site's `worker.js` and `public/` files into a build, kept with the site's pointer in
  * R2 where the deployment has buckets and in the workspace's `.build` otherwise, then serves it.
  * A failed build leaves the previous one serving, and sources that did not change since the
- * served build are not built again.
+ * served build are not built again. `authorizeWorker` throws unless whoever builds may read what
+ * a `worker.js` reads.
  */
 export async function buildSite({
   state,
@@ -76,6 +78,7 @@ export async function buildSite({
   siteStorage,
   scope,
   sitePath,
+  authorizeWorker,
 }: {
   state: BackofficeStateBackend;
   codemode: CodemodeRunner;
@@ -83,6 +86,7 @@ export async function buildSite({
   siteStorage: BlobsR2Access | null;
   scope: BackofficeContextScope;
   sitePath: string;
+  authorizeWorker: () => Promise<void>;
 }): Promise<SiteBuildOutcome> {
   const problem = sitePathProblem(sitePath);
   if (problem !== null) {
@@ -94,6 +98,10 @@ export async function buildSite({
   const worker = await readSiteWorkerSource(state, sitePath);
   if (worker.kind === "failed") {
     return worker;
+  }
+  // A worker.js reads the scope's automation data, and serves what it reads to the site's viewers.
+  if (worker.kind === "worker.js") {
+    await authorizeWorker();
   }
   const listed = await listSiteFiles(state, sitePath);
   if (listed.kind === "failed") {
@@ -110,7 +118,7 @@ export async function buildSite({
   const store = siteStore({ siteStorage, state, scope, sitePath });
   const current = await store.readPointer();
   if (current.status === "built" && current.pointer.served.sources === sources) {
-    return { kind: "built" };
+    return { kind: "built", worker: worker.kind === "worker.js" };
   }
   if (!workerLoader) {
     return { kind: "failed", message: "This Backoffice runtime cannot run site Workers." };
@@ -150,7 +158,10 @@ export async function buildSite({
   }
   // Written after the files it lists, so a build with an index is complete.
   await store.writeFile(build, SITE_INDEX_FILE, encodeSiteIndex(index), "application/json");
-  return await publishSiteBuild(store, sitePath, { build, sources });
+  const published = await publishSiteBuild(store, sitePath, { build, sources });
+  return published.kind === "built"
+    ? { kind: "built", worker: worker.kind === "worker.js" }
+    : published;
 }
 
 /**
@@ -165,7 +176,7 @@ async function publishSiteBuild(
   store: SiteStore,
   sitePath: string,
   served: SitePointer["served"],
-): Promise<SiteBuildOutcome> {
+): Promise<{ kind: "built" } | { kind: "failed"; message: string }> {
   for (let attempt = 0; attempt < PUBLISH_ATTEMPTS; attempt += 1) {
     const current = await store.readPointer();
     const now = Date.now();

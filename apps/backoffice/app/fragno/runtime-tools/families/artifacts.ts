@@ -1,4 +1,5 @@
 import type {
+  ArtifactSiteDataStatus,
   artifactPageBuildInputSchema,
   artifactSiteBuildInputSchema,
 } from "@fragno-dev/backoffice-api/v0/artifacts";
@@ -18,6 +19,8 @@ export type ArtifactsRuntime = {
   /** Builds a page as its route does, with the same cache, so the caller sees what viewers see. */
   loadPage(sourcePath: string): Promise<PageLoad>;
   buildSite(sitePath: string): Promise<SiteBuildOutcome>;
+  /** Reports the copy of the scope's automation data its sites read. */
+  siteDataStatus(): Promise<ArtifactSiteDataStatus>;
 };
 
 type ArtifactsToolContext = BackofficeToolContext<{ artifacts?: ArtifactsRuntime }>;
@@ -67,9 +70,18 @@ const buildSiteTool = defineBackofficeRuntimeTool({
   },
 });
 
+const siteDataStatusTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("artifacts.sites.dataStatus"),
+  namespace: "artifacts",
+  name: "siteDataStatus",
+  getResource: () => ({}),
+  execute: async (_input, context: ArtifactsToolContext) =>
+    await requireArtifactsRuntime(context).siteDataStatus(),
+});
+
 /** Runtime tool family for building the artifacts Backoffice opens. */
 export const artifactsToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "artifacts",
-  tools: [buildPageTool, buildSiteTool],
+  tools: [buildPageTool, buildSiteTool, siteDataStatusTool],
   isAvailable: (context: ArtifactsToolContext) => Boolean(context.runtimes.artifacts),
 });
