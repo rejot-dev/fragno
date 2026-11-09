@@ -1,5 +1,9 @@
 import type { AutomationSteward } from "@fragno-dev/backoffice-api/v0/automation";
-import type { PiAgentConfig, PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
+import type {
+  PiAgentConfig,
+  PiAgentDefinition,
+  PiThinkingLevel,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
@@ -115,6 +119,10 @@ export const piAgentDirectorySchema = schema("pi_manager", (s) =>
       t
         .addColumn("subagent", column("bool").defaultTo(false))
         .createIndex(AGENT_QUEUE_SUBAGENT_INDEX, ["agentName", "subagent", "position"]),
+    )
+    // Definitions written before they chose an effort ran at low.
+    .alterTable("agent_definition", (t) =>
+      t.addColumn("thinkingLevel", column("string").defaultTo("low")),
     ),
 );
 
@@ -122,6 +130,7 @@ export type AgentDefinitionRow = {
   id: { valueOf(): string };
   description: string;
   model: string | null;
+  thinkingLevel: string;
   permissions: string[];
   instructions: string;
   managedBy: LegacyMarketplaceManagedBy | null;
@@ -133,6 +142,8 @@ export function definitionFromRow(row: AgentDefinitionRow): PiAgentDefinition {
     agentName: row.id.valueOf(),
     description: row.description,
     model: row.model,
+    // Written only from validated definitions.
+    thinkingLevel: row.thinkingLevel as PiThinkingLevel,
     permissions: row.permissions,
     instructions: row.instructions,
     steward: row.steward ?? { kind: "members" },

@@ -96,6 +96,7 @@ type PiListAgentsOutput = {
   agents: {
     description: string;
     model: string | null;
+    thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
     permissions: string[];
     instructions: string;
     agentName: string;
@@ -108,6 +109,7 @@ type PiGetAgentInput = {
 type PiGetAgentOutput = {
   description: string;
   model: string | null;
+  thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   permissions: string[];
   instructions: string;
   agentName: string;
@@ -311,6 +313,7 @@ type PiExportConversationOutput = {
 type PiCreateAgentInput = {
   description: string;
   model: string | null;
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   permissions: string[];
   instructions: string;
   agentName: string;
@@ -318,6 +321,7 @@ type PiCreateAgentInput = {
 type PiCreateAgentOutput = {
   description: string;
   model: string | null;
+  thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   permissions: string[];
   instructions: string;
   agentName: string;
@@ -328,6 +332,7 @@ type PiCreateAgentOutput = {
 type PiUpdateAgentInput = {
   description: string;
   model: string | null;
+  thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   permissions: string[];
   instructions: string;
   agentName: string;
@@ -335,6 +340,7 @@ type PiUpdateAgentInput = {
 type PiUpdateAgentOutput = {
   description: string;
   model: string | null;
+  thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   permissions: string[];
   instructions: string;
   agentName: string;

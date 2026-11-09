@@ -523,6 +523,7 @@ test("waiting prompts run under the definition as it is when their turn starts, 
   const clerk = {
     description: "Answers in turn.",
     model: null,
+    thinkingLevel: "low" as const,
     permissions: ["*"],
   };
   const created = await queue.fragment.callRoute("POST", "/agents", {
@@ -574,6 +575,7 @@ test("an agent of another scope hears how the prompts it asked about end, settle
       agentName: "clerk",
       description: "Answers in turn.",
       model: null,
+      thinkingLevel: "low",
       permissions: ["*"],
       instructions: "Answer.",
       provenance: queue.provenance("ada"),
@@ -696,7 +698,12 @@ test("subagents run beside the agent's own turns, a few at a time, and wait whil
 
 test("an agent knows of each subagent from when it is queued until it starts or is dropped", async () => {
   const queue = await piManagerQueue();
-  const clerk = { description: "Checks documents.", model: null, permissions: ["*"] };
+  const clerk = {
+    description: "Checks documents.",
+    model: null,
+    thinkingLevel: "low" as const,
+    permissions: ["*"],
+  };
   const created = await queue.fragment.callRoute("POST", "/agents", {
     body: {
       agentName: "clerk",

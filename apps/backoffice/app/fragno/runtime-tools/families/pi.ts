@@ -74,6 +74,7 @@ function definitionArgsParser(command: string) {
     // Turns already run with the prompter's permissions, so the default narrows nothing.
     permissions: { option: "permission", kind: "stringArray", defaultValue: ["*"] },
     model: { defaultValue: null },
+    thinkingLevel: { option: "thinking-level", defaultValue: "low" },
   });
 }
 const parseAgentDelete = defineCliArgsParser<PiManagerAgentInput>("pi.agent.delete", {
@@ -150,6 +151,13 @@ const definitionOptions = [
     valueRequired: true,
     valueName: "provider/model-id",
     description: "Model to use; omitted selects the preferred available model",
+  },
+  {
+    name: "thinking-level",
+    valueRequired: true,
+    valueName: "off|minimal|low|medium|high|xhigh|max",
+    description:
+      "How hard the agent reasons; a model without it runs the nearest effort below; omitted is low",
   },
   {
     name: "managed-by",

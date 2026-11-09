@@ -17,6 +17,13 @@ export const piAgentModelSchema = z.lazy(() =>
   }),
 );
 
+/** Pi's reasoning efforts, from none to the most a model offers. */
+export const piThinkingLevelSchema = z.lazy(() =>
+  z.enum(["off", "minimal", "low", "medium", "high", "xhigh", "max"]),
+);
+
+export type PiThinkingLevel = z.infer<typeof piThinkingLevelSchema>;
+
 /** One agent object's immutable address; usage belongs to its scope's root owner. */
 export const piAgentConfigSchema = z.lazy(() =>
   z.object({
@@ -63,6 +70,11 @@ const piAgentDefinitionFieldsSchema = z.lazy(() =>
       .string()
       .regex(/^[^/\s]+\/\S+$/, "Expected a model as provider/modelId.")
       .nullable(),
+    /**
+     * How hard the agent reasons. A model that does not offer it runs at the nearest effort below,
+     * or else its lowest.
+     */
+    thinkingLevel: piThinkingLevelSchema,
     /** Narrow every turn: an agent can never do more than the person prompting it. */
     permissions: z.array(piAgentPermissionGrantSchema),
     /** Markdown guidance added to the agent's system prompt; empty adds none. */
@@ -95,6 +107,7 @@ export type PiAgentDefinition = z.infer<typeof piAgentDefinitionSchema>;
  */
 export const piAgentDefinitionUpdateSchema = z.lazy(() =>
   piAgentDefinitionFieldsSchema._zod.innerType.extend({
+    thinkingLevel: piThinkingLevelSchema.default("low"),
     permissions: piAgentDefinitionFieldsSchema._zod.innerType.shape.permissions.min(
       1,
       'Grant at least one permission; use ["*"] to let the agent do whatever its prompter may.',

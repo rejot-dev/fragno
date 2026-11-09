@@ -9,6 +9,7 @@ import type {
   PiAgentWatchFrame,
   PiPromptStatus,
 } from "@fragno-dev/backoffice-api/v0/pi";
+import { piThinkingLevelSchema } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   piAgentNotificationSchema,
   type PiAgentNotification,
@@ -18,7 +19,6 @@ import { backofficePermissionRequirementSchema } from "@fragno-dev/backoffice-ap
 import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
-import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import type {
   ConversationView,
   Cursor,
@@ -27,18 +27,6 @@ import type {
 } from "@earendil-works/pi-durable";
 
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
-
-/** Pi's reasoning efforts, from none to the most a model offers. */
-export const piThinkingLevelSchema = z.enum([
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-] as const satisfies readonly ModelThinkingLevel[]);
-export type PiThinkingLevel = z.infer<typeof piThinkingLevelSchema>;
 
 /** A model, by provider and model ID, and how hard it reasons. */
 export const piAgentModelChoiceSchema = z.object({

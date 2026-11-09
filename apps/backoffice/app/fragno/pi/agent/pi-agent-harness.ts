@@ -31,7 +31,6 @@ import {
   type PiBilling,
 } from "@/fragno/pi/extensions/billing/billing-extension";
 
-import { PI_DEFINED_AGENT_THINKING_LEVEL } from "./agent-definitions";
 import { createAuthorizedPiModels } from "./authorized-models";
 import {
   createBackofficeAgentContext,
@@ -283,9 +282,8 @@ export async function openPiAgentHarness(input: {
     report,
   });
   try {
-    await harness.root(BACKGROUND_CONTEXT, {
-      agent: { thinkingLevel: PI_DEFINED_AGENT_THINKING_LEVEL },
-    });
+    // A turn sets the effort it runs at before Pi starts it, so this only seeds the conversation.
+    await harness.root(BACKGROUND_CONTEXT, { agent: { thinkingLevel: "low" } });
   } catch (cause) {
     await harness.close(BACKGROUND_CONTEXT);
     throw cause;

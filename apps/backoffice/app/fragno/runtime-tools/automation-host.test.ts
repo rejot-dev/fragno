@@ -58,6 +58,7 @@ const createPiRuntime = (): PiManagerRuntime => {
       agentName,
       description: "General-purpose assistant.",
       model: null,
+      thinkingLevel: "low",
       permissions: ["*"],
       instructions: "",
       steward: { kind: "backoffice" },

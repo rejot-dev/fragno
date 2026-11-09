@@ -32,25 +32,28 @@ organized around Pi Durable:
 A scope's agents are rows in the manager's `agent_definition` table, keyed by agent name, plus the
 built-in `assistant` defined in `agent/agent-definitions.ts`, whose name a scope cannot take. A
 definition holds a `description`, a `provider/modelId` `model` or null for the first available
-model, at least one permission grant (`*`, which narrows nothing, `namespace.*`, or catalog
-entries), Markdown `instructions`, and its `steward`: members, or the Marketplace package that
-declares it, which installing and uninstalling keep in sync, as they do routes. Installing takes
-over a members' agent of the same name only when it is identical to the declared one, as one an app
-defined before it shipped the agent as a package; otherwise the install is refused. Built-in agents
-are Backoffice's. `pi.agent.create`, `pi.agent.update`, and `pi.agent.delete` change members'
-definitions and require `pi.manage`, so only they and package installations can change what an agent
-is told; input is validated on write, so the directory holds no unusable definitions. Deleting a
-definition keeps the `agent` provisioning row and its conversation.
+model, a reasoning effort `thinkingLevel` (`low` unless given), at least one permission grant (`*`,
+which narrows nothing, `namespace.*`, or catalog entries), Markdown `instructions`, and its
+`steward`: members, or the Marketplace package that declares it, which installing and uninstalling
+keep in sync, as they do routes. Installing takes over a members' agent of the same name only when
+it is identical to the declared one, as one an app defined before it shipped the agent as a package;
+otherwise the install is refused. Built-in agents are Backoffice's. `pi.agent.create`,
+`pi.agent.update`, and `pi.agent.delete` change members' definitions and require `pi.manage`, so
+only they and package installations can change what an agent is told; input is validated on write,
+so the directory holds no unusable definitions. Deleting a definition keeps the `agent` provisioning
+row and its conversation.
 
 A turn names the model it runs with and its reasoning effort, or none, which keeps the
 conversation's; the agent object configures a named one on the conversation when it admits the turn,
 so Pi's `pi.agent` document is where a conversation's model lives. Defined agents name their
-definition's model at `low` on every turn. The built-in `assistant` has no definition to update, so
-its prompts choose instead: a prompt's `model` is checked against the available models and the
-efforts each supports, kept on its queue item, and named by its turn. A prompt that chooses none
-keeps the conversation's model, and the first one starts the conversation on GPT-6.1 Sol at
-`medium`, or on the first available model where Sol is unavailable, as in scenarios without an
-OpenAI key. Notifications and compactions keep the conversation's model.
+definition's model and effort on every turn; a model that lacks the effort runs the nearest one it
+supports below it, or else its lowest, since a null `model` and the available models resolve only
+then. The built-in `assistant` has no definition to update, so its prompts choose instead: a
+prompt's `model` is checked against the available models and the efforts each supports, kept on its
+queue item, and named by its turn. A prompt that chooses none keeps the conversation's model, and
+the first one starts the conversation on GPT-6.1 Sol at `medium`, or on the first available model
+where Sol is unavailable, as in scenarios without an OpenAI key. Notifications and compactions keep
+the conversation's model.
 
 Each admission reads the definition and renders its instructions as the `agent` prompt section after
 Backoffice guidance and a one-line `identity` section naming the agent, so changes apply from the

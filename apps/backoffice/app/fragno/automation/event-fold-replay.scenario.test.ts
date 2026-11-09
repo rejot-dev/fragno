@@ -67,6 +67,7 @@ function agentEvent(
     agentName,
     description: `${id}.`,
     model: null,
+    thinkingLevel: "low",
     permissions: [],
     instructions: "Review carefully.",
   };

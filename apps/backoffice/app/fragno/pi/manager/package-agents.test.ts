@@ -31,6 +31,7 @@ const telegram: PiAgentDefinitionCreate = {
   agentName: "telegram",
   description: "Answers messages from Telegram chats.",
   model: null,
+  thinkingLevel: "low",
   permissions: ["*"],
   instructions: "Keep answers short.",
 };
