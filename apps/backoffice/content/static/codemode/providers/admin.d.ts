@@ -117,7 +117,7 @@ type AdminCodemodeProvider = {
     input: AdminOauthClientsRotateSecretInput,
   ): Promise<AdminOauthClientsRotateSecretOutput>;
   /**
-   * Set an organization's or a user's monthly limit on a metered resource: ai.cost.total, the cost of models and Workers AI in USD. Once the owner's usage this UTC month reaches it, new agent prompts and model calls are refused; work already running finishes. `default` restores the deployment's limit.
+   * Set an organization's or a user's monthly limit on a metered resource: ai.cost.total, the cost of models and Workers AI in USD, or email.sent, the emails a person sends from their own address. Once the owner's usage this UTC month reaches it, new agent prompts and model calls, or new emails, are refused; work already running finishes. `default` restores the deployment's limit.
    * Requires `admin.organizations.manage` and `admin.users.manage`.
    */
   usageLimitsSet(input: AdminUsageLimitsSetInput): Promise<AdminUsageLimitsSetOutput>;
@@ -627,13 +627,13 @@ type AdminOauthClientsRotateSecretOutput = BackofficeOAuthClientRotateSecretResu
 type AdminUsageLimitsSetInput = {
   organizationSlug?: string;
   userId?: string;
-  meter: "ai.cost.total";
+  meter: "ai.cost.total" | "email.sent";
   limit: string;
 };
 type AdminUsageLimitsSetOutput = {
   period: string;
   limits: {
-    meter: "ai.cost.total";
+    meter: "ai.cost.total" | "email.sent";
     unit: string;
     setting: "default" | "custom";
     limit:

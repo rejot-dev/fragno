@@ -1179,7 +1179,7 @@
   },
   {
     "command": "admin.usage-limits.set",
-    "summary": "admin.usage-limits.set sets an organization's or a user's monthly limit on ai.cost.total (USD).",
+    "summary": "admin.usage-limits.set sets an organization's or a user's monthly limit on ai.cost.total (USD) or email.sent (emails).",
     "options": [
       {
         "name": "org",
@@ -1198,14 +1198,14 @@
         "required": true,
         "valueRequired": true,
         "valueName": "meter",
-        "description": "ai.cost.total"
+        "description": "ai.cost.total or email.sent"
       },
       {
         "name": "limit",
         "required": true,
         "valueRequired": true,
         "valueName": "amount",
-        "description": "An amount in USD, unlimited, or default"
+        "description": "An amount in the meter's unit (USD or emails), unlimited, or default"
       },
       {
         "name": "help",

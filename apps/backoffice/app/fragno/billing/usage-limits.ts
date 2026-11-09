@@ -16,9 +16,22 @@ const USAGE_LIMITED_METERS = {
     // $10.
     defaultQuantity: 10_000_000_000n,
   },
+  // Email people send from their own address. It is free, but each one spends the shared domain's
+  // reputation.
+  "email.sent": {
+    unit: "email",
+    displayUnit: "emails",
+    perDisplayUnit: 1n,
+    format: (quantity: string) =>
+      `${BigInt(quantity)} ${BigInt(quantity) === 1n ? "email" : "emails"}`,
+    defaultQuantity: 100n,
+  },
 } as const;
 
 export type UsageLimitedMeter = keyof typeof USAGE_LIMITED_METERS;
+
+/** Counts each email people send from their own address, in the `email` unit. */
+export const MAILBOX_EMAIL_SENT_METER = "email.sent" satisfies UsageLimitedMeter;
 
 const USAGE_LIMITED_METER_NAMES = Object.keys(USAGE_LIMITED_METERS) as [
   UsageLimitedMeter,
@@ -125,10 +138,13 @@ export function parseUsageLimitSetting(meter: UsageLimitedMeter, text: string): 
   }
   const { displayUnit, perDisplayUnit } = USAGE_LIMITED_METERS[meter];
   const fractionDigits = perDisplayUnit.toString().length - 1;
-  const amount = new RegExp(`^(\\d+)(?:\\.(\\d{1,${fractionDigits}}))?$`, "u").exec(value);
+  const fractionPattern = fractionDigits > 0 ? `(?:\\.(\\d{1,${fractionDigits}}))?` : "";
+  const amount = new RegExp(`^(\\d+)${fractionPattern}$`, "u").exec(value);
   if (!amount) {
     throw new Error(
-      `The ${meter} limit must be default, unlimited, or an amount of ${displayUnit} with at most ${fractionDigits} decimals, such as 25.`,
+      fractionDigits > 0
+        ? `The ${meter} limit must be default, unlimited, or an amount of ${displayUnit} with at most ${fractionDigits} decimals, such as 25.`
+        : `The ${meter} limit must be default, unlimited, or a whole number of ${displayUnit}, such as 25.`,
     );
   }
   const [, whole, fraction = ""] = amount;

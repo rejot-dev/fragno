@@ -79,7 +79,7 @@ const setUsageLimitTool = defineBackofficeRuntimeTool({
   namespace: "admin",
   name: "usageLimitsSet",
   description:
-    "Set an organization's or a user's monthly limit on a metered resource: ai.cost.total, the cost of models and Workers AI in USD. Once the owner's usage this UTC month reaches it, new agent prompts and model calls are refused; work already running finishes. `default` restores the deployment's limit.",
+    "Set an organization's or a user's monthly limit on a metered resource: ai.cost.total, the cost of models and Workers AI in USD, or email.sent, the emails a person sends from their own address. Once the owner's usage this UTC month reaches it, new agent prompts and model calls, or new emails, are refused; work already running finishes. `default` restores the deployment's limit.",
   requiredPermissions: [
     BACKOFFICE_PERMISSION.admin.organizationsManage,
     BACKOFFICE_PERMISSION.admin.usersManage,
@@ -98,7 +98,7 @@ const setUsageLimitTool = defineBackofficeRuntimeTool({
       command: "admin.usage-limits.set",
       help: {
         summary:
-          "admin.usage-limits.set sets an organization's or a user's monthly limit on ai.cost.total (USD).",
+          "admin.usage-limits.set sets an organization's or a user's monthly limit on ai.cost.total (USD) or email.sent (emails).",
         options: [
           {
             name: "org",
@@ -117,19 +117,20 @@ const setUsageLimitTool = defineBackofficeRuntimeTool({
             required: true,
             valueRequired: true,
             valueName: "meter",
-            description: "ai.cost.total",
+            description: "ai.cost.total or email.sent",
           },
           {
             name: "limit",
             required: true,
             valueRequired: true,
             valueName: "amount",
-            description: "An amount in USD, unlimited, or default",
+            description: "An amount in the meter's unit (USD or emails), unlimited, or default",
           },
         ],
         examples: [
           "admin.usage-limits.set --org acme --meter ai.cost.total --limit 50",
           "admin.usage-limits.set --user user_123 --meter ai.cost.total --limit unlimited",
+          "admin.usage-limits.set --user user_123 --meter email.sent --limit 500",
           "admin.usage-limits.set --org acme --meter ai.cost.total --limit default --format json",
         ],
       },

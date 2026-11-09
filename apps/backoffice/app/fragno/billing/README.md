@@ -35,12 +35,14 @@ exceptions allowing customer usage with a missing billing dependency.
 
 ## Usage limits
 
-Each root owner, an organization or a user's personal account, has a limit on its `ai.cost.total`
-per UTC month. `usage-limits.ts` holds the deployment default, $10. Workers AI counts toward it by
-its neurons, so they have no limit of their own. The owner's Billing object keeps limits an
-administrator set in `billing_limit`; a meter without a row has the default.
+Each root owner, an organization or a user's personal account, has limits per UTC month on its
+`ai.cost.total` and on `email.sent`, the emails a person sends from their inbound address.
+`usage-limits.ts` holds the deployment defaults: $10, and 100 emails, which are free but spend the
+shared domain's reputation. Workers AI counts toward the cost by its neurons, so they have no limit
+of their own. The owner's Billing object keeps limits an administrator set in `billing_limit`; a
+meter without a row has the default.
 `admin.usage-limits.set --org <slug> | --user <id> --meter <meter> --limit <amount | unlimited | default>`
-sets them, in USD.
+sets them, in USD or whole emails.
 
 Work that records usage on a limited meter checks the owner's limits before it starts, through
 `checkUsageLimits`: Pi prompts, manual compactions, `models.classify`, `models.generateImage`,
