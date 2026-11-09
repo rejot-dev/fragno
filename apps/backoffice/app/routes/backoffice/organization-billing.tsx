@@ -245,9 +245,13 @@ function BillingUsage({ period, trackers, limits, ownerName }: Route.ComponentPr
   );
 }
 
-const USAGE_LIMIT_LABELS = {
-  "ai.cost.total": "Model cost",
-} as const satisfies Record<UsageLimitStatus["meter"], string>;
+const USAGE_LIMITS = {
+  "ai.cost.total": {
+    label: "Model cost",
+    refused: "New agent prompts and model calls are refused",
+  },
+  "email.sent": { label: "Emails sent", refused: "New emails are refused" },
+} as const satisfies Record<UsageLimitStatus["meter"], { label: string; refused: string }>;
 
 function UsageLimitsPanel({ limits }: { limits: UsageLimits }) {
   const resetsOn = formatTimestamp(usageLimitResetAt(limits.period).toISOString());
@@ -259,7 +263,7 @@ function UsageLimitsPanel({ limits }: { limits: UsageLimits }) {
           return (
             <ProgressMeter
               key={status.meter}
-              label={USAGE_LIMIT_LABELS[status.meter]}
+              label={USAGE_LIMITS[status.meter].label}
               percent={percent}
               tone={
                 status.limit.kind === "unlimited"
@@ -271,7 +275,7 @@ function UsageLimitsPanel({ limits }: { limits: UsageLimits }) {
                       : "info"
               }
               detail={`${formatUsageQuantity(status.meter, status.used)} of ${formatUsageLimit(status.meter, status.limit)}${
-                percent >= 100 ? " · New agent prompts and model calls are refused" : ""
+                percent >= 100 ? ` · ${USAGE_LIMITS[status.meter].refused}` : ""
               } · Resets ${resetsOn}`}
             />
           );

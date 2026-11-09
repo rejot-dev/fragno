@@ -114,6 +114,13 @@ test("personal usage survives organization changes and statements stay private",
                       limit: { kind: "limited", quantity: "10000000000" },
                       used: "0",
                     },
+                    {
+                      meter: "email.sent",
+                      unit: "email",
+                      setting: "default",
+                      limit: { kind: "limited", quantity: "100" },
+                      used: "0",
+                    },
                   ],
                 },
               });
