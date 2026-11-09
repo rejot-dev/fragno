@@ -111,7 +111,12 @@ export class FakeDurableObjectState {
     },
     getAlarm: async (): Promise<number | null> => this.#alarm,
     setAlarm: async (scheduledTime: number | Date): Promise<void> => {
-      this.#alarm = typeof scheduledTime === "number" ? scheduledTime : scheduledTime.getTime();
+      const time = typeof scheduledTime === "number" ? scheduledTime : scheduledTime.getTime();
+      // As Cloudflare refuses it.
+      if (time <= 0) {
+        throw new TypeError("setAlarm() cannot be called with an alarm time <= 0");
+      }
+      this.#alarm = time;
     },
     deleteAlarm: async (): Promise<void> => {
       this.#alarm = null;
@@ -260,6 +265,16 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
       this.#objects.set(name, entry);
     }
     return this.#stub(entry);
+  }
+
+  /**
+   * Starts every object again on its storage, as a deploy does: what it kept in memory is gone, and
+   * its constructor runs again.
+   */
+  restart(): void {
+    for (const entry of this.#objects.values()) {
+      entry.object = new this.#objectClass(entry.state as never, this.#env);
+    }
   }
 
   /** Every object created so far, for the runtime to fire alarms and await background work. */

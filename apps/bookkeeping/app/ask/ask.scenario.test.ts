@@ -34,13 +34,15 @@ test("everyone in the workspace asks the administration's agent, which reads the
       { path: invitation },
     );
 
-    // Opening the page defines the agent in the administration's own project, so it reads only
-    // these books, and asks nothing yet, so its conversation has not started.
+    // Opening the administration installed its agent's package in the administration's own
+    // project, so the agent reads only these books. Opening the page asks nothing yet, so its
+    // conversation has not started.
     expect(await askPage(charles)).toEqual({ agent: { ok: true, provisioned: false } });
     expect(scenario.backoffice.agents(CLIENT, ADMINISTRATION)).toMatchObject([
       {
         agentName: "books",
         permissions: ["upload.read", "models.extract", "integrations.read", "integrations.execute"],
+        steward: { kind: "package", listingId: "app:bookkeeping#books-agent" },
       },
     ]);
 
@@ -86,6 +88,33 @@ test("everyone in the workspace asks the administration's agent, which reads the
   });
 });
 
+test("the agent's package is Bookkeeping's while it is installed, and opening the chat installs it again once gone", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada, clientPath } = await scenario.practice();
+    await scenario.openAdministration(ada, clientPath, ADMINISTRATION);
+    expect(scenario.backoffice.installedPackages(CLIENT, ADMINISTRATION)).toEqual([
+      { listingId: "app:bookkeeping#books-agent", version: "1.0.0" },
+    ]);
+
+    // Members cannot uninstall the package while Bookkeeping is installed. Once its owners
+    // uninstall Bookkeeping they may, and the package's agent goes with it.
+    const listingId = "app:bookkeeping#books-agent";
+    expect(() =>
+      scenario.backoffice.admin.uninstallPackage(CLIENT, ADMINISTRATION, listingId),
+    ).toThrow("Uninstall the app to remove it.");
+    scenario.backoffice.admin.uninstall(CLIENT);
+    scenario.backoffice.admin.uninstallPackage(CLIENT, ADMINISTRATION, listingId);
+    expect(scenario.backoffice.agents(CLIENT, ADMINISTRATION)).toEqual([]);
+    scenario.backoffice.admin.reinstall(CLIENT);
+
+    expect(await askPage(ada)).toEqual({ agent: { ok: true, provisioned: false } });
+    expect(scenario.backoffice.installedPackages(CLIENT, ADMINISTRATION)).toEqual([
+      { listingId: "app:bookkeeping#books-agent", version: "1.0.0" },
+    ]);
+    expect(await ask(ada, "rent", "What did we spend on rent?")).toEqual({ error: null });
+  });
+});
+
 test("the chat follows the conversation over the agent's socket with a ticket asked for as the person", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { ada, clientPath } = await scenario.practice();
@@ -112,20 +141,6 @@ test("the chat follows the conversation over the agent's socket with a ticket as
     }
     // Each connection gets a ticket of its own.
     assert.notEqual(urls[0].searchParams.get("ticket"), urls[1].searchParams.get("ticket"));
-  });
-});
-
-test("a definition the client's members changed in Backoffice is theirs to keep", async () => {
-  await runBookkeepingScenario(async (scenario) => {
-    const { ada, clientPath } = await scenario.practice();
-    await scenario.openAdministration(ada, clientPath, ADMINISTRATION);
-    await askPage(ada);
-    const [defined] = scenario.backoffice.agents(CLIENT, ADMINISTRATION);
-    const changed = { ...defined, instructions: `${defined.instructions}\n\nAnswer in Dutch.` };
-    scenario.backoffice.admin.defineAgent(CLIENT, ADMINISTRATION, changed);
-
-    await askPage(ada);
-    expect(scenario.backoffice.agents(CLIENT, ADMINISTRATION)).toEqual([changed]);
   });
 });
 

@@ -37,6 +37,12 @@ export default {
         rules: ["react-doctor/async-await-in-loop"],
       },
       {
+        // Bookkeeping installs its agents' packages one project at a time, so a sweep after a
+        // deploy does not burst Backoffice.
+        files: ["workers/backoffice/agent-packages.ts"],
+        rules: ["react-doctor/async-await-in-loop"],
+      },
+      {
         // Authorization gates intentionally short-circuit in declaration order.
         files: ["app/backoffice-runtime/kernel.ts", "app/fragno/runtime-tools/runtime-tools.ts"],
         rules: ["react-doctor/async-await-in-loop"],

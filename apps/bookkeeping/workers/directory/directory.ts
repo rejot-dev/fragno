@@ -1,6 +1,12 @@
 import type { OrganizationRole } from "@fragno-dev/backoffice-api/v0/organization";
 import { DurableObject } from "cloudflare:workers";
 
+import {
+  advanceAgentPackages,
+  type AgentPackagePlacement,
+  type AgentPackageStep,
+} from "../backoffice/agent-packages";
+import { AGENT_PACKAGES } from "../backoffice/agents";
 import { withdrawFormerRequests } from "../backoffice/management";
 import { applyMigrations } from "../migrations";
 import directoryMigration from "./migrations/0001-directory.sql?raw";
@@ -12,9 +18,60 @@ import managerGenerationsMigration from "./migrations/0006-manager-generations.s
 import firmAgentDefinitionsMigration from "./migrations/0007-firm-agent-definitions.sql?raw";
 import administrationAgentsMigration from "./migrations/0008-administration-agents.sql?raw";
 import firmQuestionsMigration from "./migrations/0009-firm-questions.sql?raw";
+import agentPackagesMigration from "./migrations/0010-agent-packages.sql?raw";
 
 /** How long a withdrawal that failed waits before it is tried again. */
 const WITHDRAWAL_RETRY_MS = 60_000;
+
+/** How soon Bookkeeping asks again how an agent package's install it started stands. */
+const AGENT_PACKAGE_POLL_MS = 5_000;
+/**
+ * How long an agent package's step waits after Backoffice refused or failed it; each failure in a
+ * row doubles the wait, up to an hour, as for a project whose members defined an agent of the
+ * package's name, or uninstalled Bookkeeping.
+ */
+const AGENT_PACKAGE_RETRY_MS = 10_000;
+const AGENT_PACKAGE_RETRY_MAX_MS = 3_600_000;
+/** How many projects one alarm steps, so the sweep after a deploy runs as many short alarms. */
+const AGENT_PACKAGE_BATCH = 20;
+
+/**
+ * The agent projects whose package is not the version Bookkeeping ships, or whose install it has not
+ * seen finish, as `AgentPackagePlacement` columns: the firm's agent project holds the bookkeeping
+ * agent, and each administration's project its books agent. An install still running counts even
+ * when the version installed before is the shipped one, as after a rollback: it may still replace
+ * it. Binds the shipped versions of both, then what the caller's conditions bind.
+ */
+const LAGGING_AGENT_PACKAGES = `
+  WITH "shipped" ("package", "version") AS (VALUES ('bookkeeper', ?), ('books', ?)),
+  "placement" AS (
+    SELECT 'bookkeeper' AS "package", "projectId", "firmId" AS "orgId" FROM "firm_agent"
+    UNION ALL
+    SELECT 'books', "id", "clientId" FROM "administration"
+  )
+  SELECT p."package", p."projectId", p."orgId", v."version" AS "shippedVersion",
+    s."installingVersion", s."workflowInstanceId",
+    COALESCE(s."failures", 0) AS "failures", COALESCE(s."nextStepAt", 0) AS "nextStepAt"
+  FROM "placement" p
+  JOIN "shipped" v ON v."package" = p."package"
+  LEFT JOIN "agent_package" s ON s."projectId" = p."projectId"
+  WHERE (s."installedVersion" IS NOT v."version" OR s."installingVersion" IS NOT NULL)`;
+
+/** How long a step waits after `failures` refused or failed ones in a row. */
+function agentPackageRetryDelay(failures: number): number {
+  return Math.min(AGENT_PACKAGE_RETRY_MS * 2 ** failures, AGENT_PACKAGE_RETRY_MAX_MS);
+}
+
+type LaggingAgentPackageRow = {
+  package: AgentPackagePlacement["package"];
+  projectId: string;
+  orgId: string;
+  shippedVersion: string;
+  installingVersion: string | null;
+  workflowInstanceId: string | null;
+  failures: number;
+  nextStepAt: number;
+};
 
 /**
  * Operators run Bookkeeping; a firm keeps the books of its clients; a client is one business whose
@@ -178,7 +235,10 @@ export class Directory extends DurableObject<CloudflareEnv> {
         firmAgentDefinitionsMigration,
         administrationAgentsMigration,
         firmQuestionsMigration,
+        agentPackagesMigration,
       ]);
+      // After a deploy, the projects whose package another version replaced.
+      await this.#wakeForAgentPackages();
     });
   }
 
@@ -407,8 +467,152 @@ export class Directory extends DurableObject<CloudflareEnv> {
     );
   }
 
-  /** Withdraws what is still to withdraw, and tries again later while any of it fails. */
+  /**
+   * Installs the project's agent package again, as when its agent is missing because the project's
+   * owners uninstalled Bookkeeping, removed the package, and installed Bookkeeping again. The
+   * shipped version's install recorded for it is forgotten too: Backoffice may say it completed,
+   * though what it installed is gone, and installing that version again while it runs starts no
+   * other. Another version's is followed first, as it may still replace what the next one installs.
+   */
+  async reinstallAgentPackage(projectId: string): Promise<void> {
+    this.ctx.storage.sql.exec(
+      `INSERT INTO "agent_package" ("projectId") VALUES (?)
+       ON CONFLICT ("projectId") DO UPDATE SET "installedVersion" = NULL, "failures" = 0,
+         "nextStepAt" = 0`,
+      projectId,
+    );
+    this.ctx.storage.sql.exec(
+      `UPDATE "agent_package" SET "installingVersion" = NULL, "workflowInstanceId" = NULL
+       WHERE "projectId" IN (
+         SELECT "projectId" FROM (${LAGGING_AGENT_PACKAGES} AND p."projectId" = ?)
+         WHERE "installingVersion" = "shippedVersion"
+       )`,
+      AGENT_PACKAGES.bookkeeper.version,
+      AGENT_PACKAGES.books.version,
+      projectId,
+    );
+    await this.#stepAgentPackages(`AND p."projectId" = ?`, projectId);
+  }
+
+  /**
+   * Withdraws and steps agent packages side by side. A step that throws, such as on a misconfigured
+   * OAuth client, fails the alarm, so Cloudflare retries it, once the withdrawals are done.
+   */
   async alarm(): Promise<void> {
+    const results = await Promise.allSettled([
+      this.#withdrawPending(),
+      this.#stepAgentPackages(
+        `AND COALESCE(s."nextStepAt", 0) <= ? ORDER BY "nextStepAt" LIMIT ?`,
+        Date.now(),
+        AGENT_PACKAGE_BATCH,
+      ),
+    ]);
+    for (const result of results) {
+      if (result.status === "rejected") {
+        throw result.reason;
+      }
+    }
+  }
+
+  /**
+   * Takes a step toward the shipped version in each lagging agent project the conditions select,
+   * then wakes for the next step due. A step Backoffice refused or failed is tried again later.
+   */
+  async #stepAgentPackages(conditions: string, ...bindings: unknown[]): Promise<void> {
+    const rows = this.ctx.storage.sql
+      .exec<LaggingAgentPackageRow>(
+        `${LAGGING_AGENT_PACKAGES} ${conditions}`,
+        AGENT_PACKAGES.bookkeeper.version,
+        AGENT_PACKAGES.books.version,
+        ...bindings,
+      )
+      .toArray();
+    // A step that throws leaves waking to Cloudflare's retries of the alarm, so a misconfiguration
+    // does not wake it at once again.
+    await advanceAgentPackages(
+      this.env,
+      rows.map((row) => ({
+        package: row.package,
+        orgId: row.orgId,
+        projectId: row.projectId,
+        installing:
+          row.installingVersion === null
+            ? null
+            : { version: row.installingVersion, workflowInstanceId: row.workflowInstanceId },
+      })),
+      (index, step) => {
+        this.#recordAgentPackageStep(rows[index], step, Date.now());
+      },
+    );
+    await this.#wakeForAgentPackages();
+  }
+
+  #recordAgentPackageStep(row: LaggingAgentPackageRow, step: AgentPackageStep, now: number): void {
+    switch (step.kind) {
+      case "installed":
+        this.ctx.storage.sql.exec(
+          `INSERT INTO "agent_package" ("projectId", "installedVersion") VALUES (?, ?)
+           ON CONFLICT ("projectId") DO UPDATE SET "installedVersion" = excluded."installedVersion",
+             "installingVersion" = NULL, "workflowInstanceId" = NULL, "failures" = 0,
+             "nextStepAt" = 0`,
+          row.projectId,
+          step.version,
+        );
+        return;
+      // Failures count until an install finishes, so one that keeps failing waits longer each time.
+      case "installing":
+        this.ctx.storage.sql.exec(
+          `INSERT INTO "agent_package" ("projectId", "installingVersion", "workflowInstanceId",
+             "nextStepAt") VALUES (?, ?, ?, ?)
+           ON CONFLICT ("projectId") DO UPDATE SET
+             "installingVersion" = excluded."installingVersion",
+             "workflowInstanceId" = excluded."workflowInstanceId",
+             "nextStepAt" = excluded."nextStepAt"`,
+          row.projectId,
+          step.install.version,
+          step.install.workflowInstanceId,
+          now + AGENT_PACKAGE_POLL_MS,
+        );
+        return;
+      case "install-failed":
+        this.ctx.storage.sql.exec(
+          `UPDATE "agent_package" SET "installingVersion" = NULL, "workflowInstanceId" = NULL,
+             "failures" = ?, "nextStepAt" = ?
+           WHERE "projectId" = ?`,
+          row.failures + 1,
+          now + agentPackageRetryDelay(row.failures),
+          row.projectId,
+        );
+        return;
+      case "failed":
+        this.ctx.storage.sql.exec(
+          `INSERT INTO "agent_package" ("projectId", "failures", "nextStepAt") VALUES (?, ?, ?)
+           ON CONFLICT ("projectId") DO UPDATE SET "failures" = excluded."failures",
+             "nextStepAt" = excluded."nextStepAt"`,
+          row.projectId,
+          row.failures + 1,
+          now + agentPackageRetryDelay(row.failures),
+        );
+        return;
+    }
+  }
+
+  /** Wakes when the next lagging agent project's step is due, if any is. */
+  async #wakeForAgentPackages(): Promise<void> {
+    const [next] = this.ctx.storage.sql
+      .exec<{ nextStepAt: number }>(
+        `SELECT "nextStepAt" FROM (${LAGGING_AGENT_PACKAGES}) ORDER BY "nextStepAt" LIMIT 1`,
+        AGENT_PACKAGES.bookkeeper.version,
+        AGENT_PACKAGES.books.version,
+      )
+      .toArray();
+    if (next) {
+      await this.#wakeAt(next.nextStepAt);
+    }
+  }
+
+  /** Withdraws what is still to withdraw, and tries again later while any of it fails. */
+  async #withdrawPending(): Promise<void> {
     const pending = () =>
       this.ctx.storage.sql
         .exec<{ clientId: string; generation: number }>(
@@ -429,7 +633,15 @@ export class Directory extends DurableObject<CloudflareEnv> {
   }
 
   async #retryWithdrawalsLater(): Promise<void> {
-    const at = Date.now() + WITHDRAWAL_RETRY_MS;
+    await this.#wakeAt(Date.now() + WITHDRAWAL_RETRY_MS);
+  }
+
+  /**
+   * The alarm runs whatever is due, so it wakes for the earliest. Work due in the past, such as a
+   * project with no step yet, is due now: Cloudflare refuses alarm times of 0.
+   */
+  async #wakeAt(due: number): Promise<void> {
+    const at = Math.max(due, Date.now());
     const scheduled = await this.ctx.storage.getAlarm();
     if (scheduled === null || scheduled > at) {
       await this.ctx.storage.setAlarm(at);
@@ -525,8 +737,11 @@ export class Directory extends DurableObject<CloudflareEnv> {
     this.ctx.storage.sql.exec(`DELETE FROM "invitation" WHERE "id" = ?`, id);
   }
 
-  /** Records an administration once its books are open; recording it again changes nothing. */
-  recordAdministration(administration: Administration): void {
+  /**
+   * Records an administration once its books are open, and starts installing its agent's package
+   * in its project; recording it again changes nothing.
+   */
+  async recordAdministration(administration: Administration): Promise<void> {
     this.ctx.storage.sql.exec(
       `INSERT INTO "administration" ("id", "clientId", "slug", "name") VALUES (?, ?, ?, ?)
        ON CONFLICT ("id") DO NOTHING`,
@@ -535,6 +750,7 @@ export class Directory extends DurableObject<CloudflareEnv> {
       administration.slug,
       administration.name,
     );
+    await this.#stepAgentPackages(`AND p."projectId" = ?`, administration.id);
   }
 
   /** The client's administrations, by name. */
@@ -581,14 +797,18 @@ export class Directory extends DurableObject<CloudflareEnv> {
     return row ?? null;
   }
 
-  /** Records the project holding the firm's bookkeeping agent; recording it again changes nothing. */
-  recordFirmAgent(input: { firmId: string; projectId: string }): void {
+  /**
+   * Records the project holding the firm's bookkeeping agent, and starts installing the agent's
+   * package there; recording it again changes nothing.
+   */
+  async recordFirmAgent(input: { firmId: string; projectId: string }): Promise<void> {
     this.ctx.storage.sql.exec(
       `INSERT INTO "firm_agent" ("firmId", "projectId") VALUES (?, ?)
        ON CONFLICT ("firmId") DO NOTHING`,
       input.firmId,
       input.projectId,
     );
+    await this.#stepAgentPackages(`AND p."projectId" = ?`, input.projectId);
   }
 
   /** The ID of the project holding the firm's bookkeeping agent, once an owner or admin set it up. */
@@ -600,55 +820,6 @@ export class Directory extends DurableObject<CloudflareEnv> {
       )
       .toArray();
     return row?.projectId ?? null;
-  }
-
-  /**
-   * The firm's agent's definition as Bookkeeping last wrote it; null when Bookkeeping recorded none,
-   * or the firm has no agent project.
-   */
-  findFirmAgentDefinition(firmId: string): string | null {
-    const [row] = this.ctx.storage.sql
-      .exec<{ definition: string | null }>(
-        `SELECT "definition" FROM "firm_agent" WHERE "firmId" = ?`,
-        firmId,
-      )
-      .toArray();
-    return row?.definition ?? null;
-  }
-
-  /** Records the firm's agent's definition as Bookkeeping wrote it. */
-  recordFirmAgentDefinition(input: { firmId: string; definition: string }): void {
-    this.ctx.storage.sql.exec(
-      `UPDATE "firm_agent" SET "definition" = ? WHERE "firmId" = ?`,
-      input.definition,
-      input.firmId,
-    );
-  }
-
-  /**
-   * The definition of the administration's agent as Bookkeeping last wrote it; null when Bookkeeping
-   * recorded none.
-   */
-  findAdministrationAgentDefinition(administrationId: string): string | null {
-    const [row] = this.ctx.storage.sql
-      .exec<{ agentDefinition: string | null }>(
-        `SELECT "agentDefinition" FROM "administration" WHERE "id" = ?`,
-        administrationId,
-      )
-      .toArray();
-    return row?.agentDefinition ?? null;
-  }
-
-  /** Records the administration's agent's definition as Bookkeeping wrote it. */
-  recordAdministrationAgentDefinition(input: {
-    administrationId: string;
-    definition: string;
-  }): void {
-    this.ctx.storage.sql.exec(
-      `UPDATE "administration" SET "agentDefinition" = ? WHERE "id" = ?`,
-      input.definition,
-      input.administrationId,
-    );
   }
 
   /** Records a question the administration's agent asks the firm keeping its books. */

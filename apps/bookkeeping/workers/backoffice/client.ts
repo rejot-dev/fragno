@@ -37,7 +37,8 @@ async function post(url: string, init: RequestInit): Promise<Response> {
   } catch (error) {
     throw new BackofficeUnavailableError(error);
   }
-  if (response.status >= 500) {
+  // Backoffice rate-limits issuing credentials; one refused for that is issued again later.
+  if (response.status >= 500 || response.status === 429) {
     throw new BackofficeUnavailableError(`HTTP ${response.status}`);
   }
   return response;
@@ -120,10 +121,19 @@ export async function connectAsInstallation(
   env: BackofficeEnv,
   scope: BackofficeContextScope,
 ): Promise<BackofficeApiClient | null> {
-  const credential = await exchangeForScope(env, {
-    oauthAccessToken: await requestAppToken(env),
-    scope,
-  });
+  return await connectWithAppToken(env, await requestAppToken(env), scope);
+}
+
+/**
+ * `connectAsInstallation` with an app token Bookkeeping already holds, for work across many scopes:
+ * Backoffice rate-limits issuing tokens.
+ */
+export async function connectWithAppToken(
+  env: BackofficeEnv,
+  appToken: string,
+  scope: BackofficeContextScope,
+): Promise<BackofficeApiClient | null> {
+  const credential = await exchangeForScope(env, { oauthAccessToken: appToken, scope });
   if (credential.status === "unauthorized") {
     throw new Error("Backoffice refused Bookkeeping's own token. Check its OAuth client.");
   }

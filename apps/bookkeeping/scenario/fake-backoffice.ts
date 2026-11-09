@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   BACKOFFICE_API_ERROR_STATUS,
@@ -11,18 +12,21 @@ import {
   BACKOFFICE_TOKEN_ISSUER,
   type AppActionTokenClaims,
 } from "@fragno-dev/backoffice-api/v0/app-actions";
+import { marketplacePackageDeclarationSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
   OrganizationAccessRecord,
   OrganizationMembershipRecord,
 } from "@fragno-dev/backoffice-api/v0/organization";
 import type {
   PiAgentActivity,
+  PiAgentDefinition,
   PiAgentDefinitionCreate,
   PiPromptStatus,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { backofficeProvisioningOperations } from "@fragno-dev/backoffice-api/v0/provisioning";
 import {
   backofficeContextScopeSchema,
+  backofficeScopeRootOwner,
   backofficeScopePathSegment,
   isBackofficeRoutableScope,
   parseBackofficeScopePathSegment,
@@ -99,6 +103,13 @@ type AcceptedShare = {
   acceptedAt: string;
 };
 type StoredBlob = { bytes: Uint8Array<ArrayBuffer>; contentType: string; etag: string };
+/** A package install run: its workspace, listing, version, and how it ended, or null while it runs. */
+type InstallRun = {
+  scope: string;
+  listingId: string;
+  version: string;
+  outcome: { error: string | null } | null;
+};
 /** Who a credential acts as: a user who authorized Bookkeeping, or Bookkeeping itself. */
 type Principal = { kind: "user"; userId: string } | { kind: "app" };
 
@@ -166,8 +177,20 @@ export class FakeBackoffice {
   >();
   /** What each download URL reads, by its token: whatever the blob holds when it is read. */
   readonly #downloads = new Map<string, string>();
+  /** The agents each release in Bookkeeping's Marketplace defines, by listing ID and version. */
+  readonly #appPackages = new Map<string, readonly PiAgentDefinitionCreate[]>();
+  /**
+   * The packages installed in each workspace, by scope and listing ID, with the run that installed
+   * them, which completes at once unless installs are held.
+   */
+  readonly #installations = new Map<string, { version: string; workflowInstanceId: string }>();
+  /** Install runs, by workflow instance ID. */
+  readonly #installRuns = new Map<string, InstallRun>();
+  /** Whether install runs wait for `finishInstalls`, and the runs waiting, in the order started. */
+  #installsHeld = false;
+  readonly #heldInstalls: (() => void)[] = [];
   /** Agents defined in each workspace, by scope and name. */
-  readonly #agents = new Map<string, PiAgentDefinitionCreate>();
+  readonly #agents = new Map<string, PiAgentDefinition>();
   /** Prompts agents received, in the order they arrived. */
   readonly #prompts: Prompt[] = [];
   /** Agents someone stopped and nobody resumed since, by scope and name. */
@@ -288,6 +311,19 @@ export class FakeBackoffice {
     this.#reachable = reachable;
   }
 
+  /** Install runs started from now on run until `finishInstalls`, as a busy Backoffice's do. */
+  holdInstalls(): void {
+    this.#installsHeld = true;
+  }
+
+  /** The held install runs finish, in the order they started, and later ones complete at once. */
+  finishInstalls(): void {
+    this.#installsHeld = false;
+    for (const finish of this.#heldInstalls.splice(0)) {
+      finish();
+    }
+  }
+
   /** Backoffice does the next `operationId` it is asked to, but Bookkeeping never hears the answer. */
   failNextResponse(operationId: string): void {
     this.#failNextResponse.add(operationId);
@@ -319,8 +355,23 @@ export class FakeBackoffice {
     this.#beforeNextDelivery.set(operationId, happen);
   }
 
+  /** Whether an agent's conversation started: its first prompt starts it, but not a subagent's. */
+  #provisioned(scope: string, agentName: string): boolean {
+    return this.#prompts.some(
+      (prompt) => prompt.scope === scope && prompt.agentName === agentName && !prompt.subagent,
+    );
+  }
+
+  /** The packages installed in the workspace of one of the organization's projects. */
+  installedPackages(slug: string, project: string): { listingId: string; version: string }[] {
+    const prefix = this.#projectFileKey(slug, project, "");
+    return [...this.#installations].flatMap(([key, { version }]) =>
+      key.startsWith(prefix) ? [{ listingId: key.slice(prefix.length), version }] : [],
+    );
+  }
+
   /** The agents defined in the workspace of one of the organization's projects. */
-  agents(slug: string, project: string): PiAgentDefinitionCreate[] {
+  agents(slug: string, project: string): PiAgentDefinition[] {
     const prefix = this.#projectFileKey(slug, project, "");
     return [...this.#agents].flatMap(([key, agent]) => (key.startsWith(prefix) ? [agent] : []));
   }
@@ -471,9 +522,58 @@ export class FakeBackoffice {
 
   /** An owner changes things in Backoffice's own UI. */
   readonly admin = {
-    /** A member defines one of a project's agents, or changes its definition. */
+    /** The administrator rotates Bookkeeping's OAuth client secret, leaving Bookkeeping the old one. */
+    rotateClientSecret: () => {
+      this.client.secret = randomToken();
+    },
+    /** A member defines one of a project's agents. */
     defineAgent: (slug: string, project: string, definition: PiAgentDefinitionCreate) => {
-      this.#agents.set(this.#projectFileKey(slug, project, definition.agentName), definition);
+      this.#agents.set(this.#projectFileKey(slug, project, definition.agentName), {
+        ...definition,
+        steward: { kind: "members" },
+      });
+    },
+    /** A member deletes one of a project's agents. */
+    deleteAgent: (slug: string, project: string, agentName: string) => {
+      this.#agents.delete(this.#projectFileKey(slug, project, agentName));
+    },
+    /**
+     * Backoffice's administrator publishes a release in Bookkeeping's Marketplace, as
+     * `backoffice:connect` does. Published releases never change.
+     */
+    publishAppPackage: (input: {
+      listingId: string;
+      version: string;
+      files: Record<string, string>;
+    }) => {
+      const release = `${input.listingId}@${input.version}`;
+      const declaration = marketplacePackageDeclarationSchema.parse(
+        JSON.parse(input.files[".marketplace/installation.json"] ?? "{}"),
+      );
+      const published = this.#appPackages.get(release);
+      if (published && JSON.stringify(published) !== JSON.stringify(declaration.agents)) {
+        throw new Error(`${release} is published with other files.`);
+      }
+      this.#appPackages.set(release, declaration.agents);
+    },
+    /**
+     * A member uninstalls a package from a project, which deletes the agents it defines. As in
+     * Backoffice, Bookkeeping's packages are its own while it is installed: members uninstall it.
+     */
+    uninstallPackage: (slug: string, project: string, listingId: string) => {
+      if (this.#organizationBySlug(slug).installation === "active") {
+        throw new Error(`${listingId} belongs to Bookkeeping. Uninstall the app to remove it.`);
+      }
+      this.#installations.delete(this.#projectFileKey(slug, project, listingId));
+      for (const [key, agent] of this.#agents) {
+        if (
+          key.startsWith(this.#projectFileKey(slug, project, "")) &&
+          agent.steward.kind === "package" &&
+          agent.steward.listingId === listingId
+        ) {
+          this.#agents.delete(key);
+        }
+      }
     },
     /** Someone replaces one of a project's blobs, or deletes it with null. */
     replaceBlob: (slug: string, project: string, key: string, bytes: Uint8Array | null) => {
@@ -539,6 +639,10 @@ export class FakeBackoffice {
     },
     uninstall: (slug: string) => {
       this.#organizationBySlug(slug).installation = "uninstalled";
+    },
+    /** An owner installs Bookkeeping again, after uninstalling it. */
+    reinstall: (slug: string) => {
+      this.#organizationBySlug(slug).installation = "active";
     },
     /** A project made in Backoffice itself, which Bookkeeping did not provision. */
     createProject: (slug: string, name: string) => {
@@ -873,41 +977,119 @@ export class FakeBackoffice {
   ): Response {
     const key = (path: string) => `${backofficeScopePathSegment(scope)} ${path}`;
     switch (operationId) {
-      case "pi.agent.create":
-        return respond("pi.agent.create", body, (definition) => {
-          if (this.#agents.has(key(definition.agentName))) {
-            throw new ApiError("conflict", `Pi agent '${definition.agentName}' already exists.`);
-          }
-          this.#agents.set(key(definition.agentName), definition);
-          return {
-            ...definition,
-            steward: { kind: "members" },
-            resolvedModel: "openai/gpt-6-luna",
-          };
-        });
       case "pi.agent.get":
         return respond("pi.agent.get", body, ({ agentName }) => {
           const definition = this.#agents.get(key(agentName));
           if (!definition) {
             throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
           }
-          // Its first prompt provisions its conversation; subagents run in conversations of their own.
-          const provisioned = this.#prompts.some(
-            (prompt) =>
-              prompt.scope === key("") && prompt.agentName === agentName && !prompt.subagent,
-          );
-          return { ...definition, steward: { kind: "members" as const }, provisioned };
+          return { ...definition, provisioned: this.#provisioned(key(""), agentName) };
         });
-      case "pi.agent.update":
-        return respond("pi.agent.update", body, (definition) => {
-          if (!this.#agents.has(key(definition.agentName))) {
-            throw new ApiError(
-              "not_found",
-              `No agent in this scope is named '${definition.agentName}'.`,
-            );
+      case "packages.install":
+        return respond("packages.install", body, (input) => {
+          if (input.visibility !== "app" || principal.kind !== "app") {
+            throw new ApiError("forbidden", "Only Bookkeeping installs from its Marketplace.");
           }
-          this.#agents.set(key(definition.agentName), definition);
-          return { ...definition, steward: { kind: "members" as const } };
+          // Bookkeeping names the version it ships; Backoffice would install the latest otherwise.
+          const version = input.version;
+          if (version === undefined) {
+            throw new ApiError("invalid_request", "The fake installs only a named version.");
+          }
+          const agents = this.#appPackages.get(`${input.listingId}@${version}`);
+          if (!agents) {
+            throw new ApiError("operation_failed", "Marketplace listing is not published.");
+          }
+          const owner = backofficeScopeRootOwner(scope);
+          if (owner?.kind !== "org") {
+            throw new ApiError("forbidden", "Packages install through an organization.");
+          }
+          // As in Backoffice, the run fails, defining nothing, when the package would take over an
+          // agent it does not manage, unless the members' agent is identical to the package's.
+          const workflowInstanceId = `install:${key(input.listingId)}@${version}`;
+          // As in Backoffice, asking again for an install still running answers with its run.
+          const running = this.#installRuns.get(workflowInstanceId);
+          if (running?.outcome === null) {
+            return {
+              listingId: input.listingId,
+              version,
+              workflowInstanceId,
+              action: "unchanged" as const,
+              workflowStatus: "active" as const,
+              installationRoot: input.installationRoot,
+              workflowScope: owner,
+            };
+          }
+          const run: InstallRun = {
+            scope: key(""),
+            listingId: input.listingId,
+            version,
+            outcome: null,
+          };
+          this.#installRuns.set(workflowInstanceId, run);
+          const finish = () => {
+            const steward = { kind: "package" as const, listingId: input.listingId };
+            const taken = agents.find((agent) => {
+              const existing = this.#agents.get(key(agent.agentName));
+              if (!existing || existing.steward.kind === "package") {
+                return false;
+              }
+              const { steward: _steward, ...definition } = existing;
+              return existing.steward.kind !== "members" || !isDeepStrictEqual(definition, agent);
+            });
+            if (taken) {
+              run.outcome = {
+                error: `Pi agent '${taken.agentName}' already exists and is not managed by package '${input.listingId}'.`,
+              };
+              return;
+            }
+            for (const agent of agents) {
+              this.#agents.set(key(agent.agentName), { ...agent, steward });
+            }
+            this.#installations.set(key(input.listingId), { version, workflowInstanceId });
+            run.outcome = { error: null };
+          };
+          if (this.#installsHeld) {
+            this.#heldInstalls.push(finish);
+          } else {
+            finish();
+          }
+          return {
+            listingId: input.listingId,
+            version,
+            workflowInstanceId,
+            action: running ? ("restarted" as const) : ("created" as const),
+            workflowStatus:
+              run.outcome === null
+                ? ("active" as const)
+                : run.outcome.error === null
+                  ? ("complete" as const)
+                  : ("errored" as const),
+            installationRoot: input.installationRoot,
+            workflowScope: owner,
+          };
+        });
+      case "packages.status":
+        return respond("packages.status", body, ({ workflowInstanceId }) => {
+          const run = this.#installRuns.get(workflowInstanceId);
+          if (!run || run.scope !== key("")) {
+            return null;
+          }
+          const identity = {
+            listingId: run.listingId,
+            version: run.version,
+            installationRoot: "/workspace/bookkeeping",
+            installer: null,
+          };
+          if (run.outcome === null) {
+            return { ...identity, status: "active" as const };
+          }
+          return run.outcome.error === null
+            ? { ...identity, status: "complete" as const }
+            : {
+                ...identity,
+                status: "errored" as const,
+                error: { name: "NonRetryableError", message: run.outcome.error },
+              };
         });
       case "pi.prompt.submit":
         return respond("pi.prompt.submit", body, (input) => {
