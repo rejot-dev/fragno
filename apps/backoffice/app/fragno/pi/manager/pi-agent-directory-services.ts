@@ -51,8 +51,10 @@ function assertNotBuiltIn(agentName: string) {
 
 /**
  * The agent's steward once the writer replaces its definition with the next one: a package claims
- * what it writes, and members keep their own. Throws `AutomationStewardError` when the writer may
- * not make the change.
+ * what it writes, and members keep their own. A package takes over a members' agent identical to
+ * the one it declares, as one an app defined before it shipped the agent as a package; any
+ * difference may be the members', so it refuses. Throws `AutomationStewardError` when the writer
+ * may not make the change.
  */
 function stewardAfterWrite(
   existing: AgentDefinitionRow,
@@ -69,7 +71,7 @@ function stewardAfterWrite(
     writer,
     definitionChanged: !isDeepStrictEqual(current, fields),
     toggleable: false,
-    adoptsIdentical: false,
+    adoptsIdentical: true,
   });
   return writer.kind === "package" ? writer : steward;
 }

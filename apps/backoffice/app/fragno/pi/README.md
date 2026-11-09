@@ -34,8 +34,10 @@ built-in `assistant` defined in `agent/agent-definitions.ts`, whose name a scope
 definition holds a `description`, a `provider/modelId` `model` or null for the first available
 model, at least one permission grant (`*`, which narrows nothing, `namespace.*`, or catalog
 entries), Markdown `instructions`, and its `steward`: members, or the Marketplace package that
-declares it, which installing and uninstalling keep in sync, as they do routes. Built-in agents are
-Backoffice's. `pi.agent.create`, `pi.agent.update`, and `pi.agent.delete` change members'
+declares it, which installing and uninstalling keep in sync, as they do routes. Installing takes
+over a members' agent of the same name only when it is identical to the declared one, as one an app
+defined before it shipped the agent as a package; otherwise the install is refused. Built-in agents
+are Backoffice's. `pi.agent.create`, `pi.agent.update`, and `pi.agent.delete` change members'
 definitions and require `pi.manage`, so only they and package installations can change what an agent
 is told; input is validated on write, so the directory holds no unusable definitions. Deleting a
 definition keeps the `agent` provisioning row and its conversation.

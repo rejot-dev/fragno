@@ -168,7 +168,7 @@ describe("package agents", () => {
     });
   });
 
-  test("a package refuses agents it doesn't steward, even identical ones", async () => {
+  test("a package takes over a members' agent identical to its own, and refuses any other", async () => {
     const labelled = await piManager();
     await seedLegacyLabelledAgent(labelled, OTHER_LISTING_ID);
     await expect(apply(labelled, [telegram])).resolves.toEqual({
@@ -176,11 +176,26 @@ describe("package agents", () => {
       message: `Pi agent 'telegram' already exists and is not managed by package '${LISTING_ID}'.`,
     });
 
-    const fragment = await piManager();
-    const created = await fragment.callRoute("POST", "/agents", {
+    // An identical members' agent, as an app defined before it shipped the agent as a package.
+    const identical = await piManager();
+    const created = await identical.callRoute("POST", "/agents", {
       body: { ...telegram, provenance },
     });
     expect(created).toMatchObject({ status: 201 });
+    await expect(
+      checkPackageAgents(identical, { listingId: LISTING_ID, agents: [telegram] }),
+    ).resolves.toEqual({ ok: true });
+    await expect(apply(identical, [telegram])).resolves.toEqual({ ok: true });
+    expect((await readAgents(identical)).at(-1)?.steward).toEqual({
+      kind: "package",
+      listingId: LISTING_ID,
+    });
+
+    // One the members changed stays theirs.
+    const fragment = await piManager();
+    await fragment.callRoute("POST", "/agents", {
+      body: { ...telegram, instructions: "Answer in Dutch.", provenance },
+    });
     const notManaged = {
       ok: false,
       message: `Pi agent 'telegram' already exists and is not managed by package '${LISTING_ID}'.`,
@@ -189,7 +204,10 @@ describe("package agents", () => {
       checkPackageAgents(fragment, { listingId: LISTING_ID, agents: [telegram] }),
     ).resolves.toEqual(notManaged);
     await expect(apply(fragment, [telegram])).resolves.toEqual(notManaged);
-    expect((await readAgents(fragment)).at(-1)?.steward).toEqual({ kind: "members" });
+    expect((await readAgents(fragment)).at(-1)).toMatchObject({
+      instructions: "Answer in Dutch.",
+      steward: { kind: "members" },
+    });
 
     // Nor does a package take over another package's agent.
     const owned = await piManager();
