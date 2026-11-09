@@ -223,7 +223,7 @@ function BackofficeShellFrame({
       data-backoffice-root
       data-backoffice-shell
       data-sidebar-restoring={sidebarRestoring || undefined}
-      className="relative isolate flex min-h-screen bg-[var(--bo-bg)] text-[var(--bo-fg)]"
+      className="relative isolate flex min-h-dvh bg-[var(--bo-bg)] text-[var(--bo-fg)]"
     >
       <BackofficeClsDebugger />
       <div className="relative flex min-w-0 flex-1 flex-col pb-[var(--bo-shell-bottom)]">
