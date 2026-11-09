@@ -12,6 +12,26 @@ import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-c
 /** Mail users receive at their inbound addresses, through the platform Resend account. */
 export const INBOUND_EMAIL_AUTOMATION_SOURCE = "email" as const;
 export const INBOUND_EMAIL_AUTOMATION_EVENT_MESSAGE_RECEIVED = "message.received" as const;
+/** What became of email a person sent from their address, by the receiving server's account. */
+export const MAILBOX_EMAIL_STATUS_AUTOMATION_EVENTS = {
+  delivered: {
+    eventType: "message.delivered",
+    label: "Email delivered",
+    description: "The receiving server accepted an email the person sent from their address.",
+  },
+  bounced: {
+    eventType: "message.bounced",
+    label: "Email bounced",
+    description:
+      "The receiving server refused an email the person sent from their address; reason says why.",
+  },
+  complained: {
+    eventType: "message.complained",
+    label: "Email marked as spam",
+    description:
+      "The recipient marked an email the person sent as spam. Sending from the address stops until support resumes it.",
+  },
+} as const;
 // Events keep a bounded body; message.get reads the whole message.
 export const INBOUND_EMAIL_MAX_EVENT_TEXT_LENGTH = 16_000;
 
@@ -46,6 +66,12 @@ export const inboundEmailReceivedPayloadSchema = z.object({
     .min(1)
     .describe("The address it arrived at, which may since have been replaced."),
   from: z.string().describe("The From header, e.g. Shop <orders@shop.example>."),
+  senderAddress: z
+    .string()
+    .nullable()
+    .describe(
+      "The From address alone, lowercased, such as orders@shop.example; null when From names no address. Every Leyway address sends as ley.run, so match a Leyway sender here, never by senderDomain.",
+    ),
   senderDomain: z
     .string()
     .nullable()
@@ -94,6 +120,22 @@ export const inboundEmailReceivedPayloadSchema = z.object({
     )
     .describe("Attachments as metadata; attachment.get returns a download URL for each id."),
   receivedAt: z.iso.datetime(),
+});
+
+export const mailboxEmailStatusPayloadSchema = z.object({
+  emailId: z
+    .string()
+    .min(1)
+    .describe("The sent email, as message.reply or message.sendToSelf returned it."),
+  connectionId: z.string().min(1).describe("backoffice#email, the person's address."),
+  address: z.string().min(1).describe("The address it was sent from."),
+  to: z.array(z.string()),
+  subject: z.string().nullable(),
+  reason: z
+    .string()
+    .nullable()
+    .describe("Why the receiving server refused a bounced email; null for other events."),
+  occurredAt: z.iso.datetime(),
 });
 
 export const inboundEmailReceivedActorSchema = z.object({
@@ -177,7 +219,8 @@ export const resendCapability: BackofficeCapability = {
       {
         source: INBOUND_EMAIL_AUTOMATION_SOURCE,
         label: "Email",
-        description: "Email received at a person's inbound address, such as forwarded receipts.",
+        description:
+          "Email received at a person's inbound address, such as forwarded receipts, and what became of email they sent from it.",
       },
     ],
     actionProviders: ["integrations"],
@@ -189,7 +232,7 @@ export const resendCapability: BackofficeCapability = {
           createDurableHookRepositoryFromCommands(getResendDo(objects, organization).commands),
       },
     ],
-    skillPaths: ["skills/receiving-email/SKILL.md"],
+    skillPaths: ["skills/receiving-email/SKILL.md", "skills/sending-email/SKILL.md"],
     externalEntities: [inboundEmailSenderEntity],
     automationEvents: [
       {
@@ -205,6 +248,7 @@ export const resendCapability: BackofficeCapability = {
           connectionId: "backoffice#email",
           address: "quiet-amber-falcon@ley.run",
           from: "Shop <orders@shop.example>",
+          senderAddress: "orders@shop.example",
           senderDomain: "shop.example",
           senderVerified: true,
           authentication: { spf: "fail", dkim: "pass", dmarc: "pass" },
@@ -221,6 +265,24 @@ export const resendCapability: BackofficeCapability = {
           receivedAt: "2026-11-04T09:00:00.000Z",
         },
       },
+      ...Object.values(MAILBOX_EMAIL_STATUS_AUTOMATION_EVENTS).map(
+        ({ eventType, label, description }) => ({
+          source: INBOUND_EMAIL_AUTOMATION_SOURCE,
+          eventType,
+          label,
+          description,
+          payloadSchema: mailboxEmailStatusPayloadSchema,
+          example: {
+            emailId: "0198f6e2-7c41-7000-8000-000000000002",
+            connectionId: "backoffice#email",
+            address: "quiet-amber-falcon@ley.run",
+            to: ["orders@shop.example"],
+            subject: "Re: Your order",
+            reason: eventType === "message.bounced" ? "Mailbox does not exist" : null,
+            occurredAt: "2026-11-04T09:05:00.000Z",
+          },
+        }),
+      ),
     ],
   },
 };

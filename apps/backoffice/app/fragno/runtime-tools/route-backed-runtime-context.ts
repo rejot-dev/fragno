@@ -64,7 +64,10 @@ import {
   createEventRuntime,
   type EventEmitter,
 } from "@/fragno/runtime-tools/families/event-runtime";
-import { replaceInboundEmailAddress } from "@/fragno/runtime-tools/families/integrations/email-integration";
+import {
+  replaceInboundEmailAddress,
+  setInboundEmailSending,
+} from "@/fragno/runtime-tools/families/integrations/email-integration";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
 import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import {
@@ -368,6 +371,10 @@ const createRuntimeContext = ({
               replaceInboundEmailAddress:
                 runtime.config.inboundEmailDomain !== null && runtime.config.bindings.resend
                   ? (owner) => replaceInboundEmailAddress({ runtime, owner })
+                  : null,
+              setInboundEmailSending:
+                runtime.config.inboundEmailDomain !== null && runtime.config.bindings.resend
+                  ? (owner, suspended) => setInboundEmailSending({ runtime, owner, suspended })
                   : null,
               publicBaseUrl: runtime.config.docsPublicBaseUrl ?? null,
             }),

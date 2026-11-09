@@ -11,21 +11,33 @@ import type { BackofficeUserContextScope } from "@fragno-dev/backoffice-api/v0/s
 import { z } from "zod";
 
 import type { HookContext } from "@fragno-dev/db";
-import type { ResendMailbox } from "@fragno-dev/resend-fragment";
+import {
+  MAX_MAILBOX_ATTACHMENT_BYTES,
+  type ResendMailbox,
+  type ResendMailboxAttachmentInput,
+  type ResendReplyFromMailboxResult,
+} from "@fragno-dev/resend-fragment";
 
-import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
+import { BackofficeForbiddenError, BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
+import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import {
   INBOUND_EMAIL_AUTOMATION_SOURCE,
   inboundEmailReceivedPayloadSchema,
 } from "@/fragno/backoffice-capabilities/capabilities/resend";
+import { checkUsageLimits, usageBillingForScope } from "@/fragno/billing/usage-billing";
+import { MAILBOX_EMAIL_SENT_METER } from "@/fragno/billing/usage-limits";
+import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
+import { StateFileReadLimitError } from "@/fragno/codemode/state-backend";
 import {
   INBOUND_EMAIL_CONNECTION_ID,
   inboundEmailOwnerScope,
+  inboundEmailSenderAddress,
   inboundEmailSenderDomain,
   inboundEmailSenderVerified,
 } from "@/fragno/inbound-email";
 import { claimRandomInboundAddress } from "@/fragno/inbound-email-address";
+import { bytesToBase64 } from "@/lib/base64";
 
 import type { IntegrationSetupOperation } from "./integration-contracts";
 import type { IntegrationConnectionState } from "./integration-events";
@@ -45,6 +57,7 @@ const messageGetOutputSchema = z.strictObject({
   emailId: z.string(),
   address: z.string().describe("The address it arrived at, which may since have been replaced."),
   from: z.string().nullable(),
+  senderAddress: inboundEmailReceivedPayloadSchema.shape.senderAddress,
   senderDomain: inboundEmailReceivedPayloadSchema.shape.senderDomain,
   senderVerified: inboundEmailReceivedPayloadSchema.shape.senderVerified,
   authentication: inboundEmailReceivedPayloadSchema.shape.authentication,
@@ -97,6 +110,88 @@ const attachmentGetActionDefinition = checkedIntegrationActionDefinition({
   output: attachmentGetOutputSchema,
 });
 
+// The platform account keeps a message's text and attachments until Resend accepts it.
+const MAILBOX_EMAIL_MAX_TEXT_LENGTH = 50_000;
+const MAILBOX_EMAIL_MAX_ATTACHMENTS = 10;
+const mailboxEmailTextSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAILBOX_EMAIL_MAX_TEXT_LENGTH)
+  .describe("Plain text. A line saying Leyway sent it follows.");
+const sentEmailOutputSchema = z.strictObject({
+  emailId: z
+    .string()
+    .describe(
+      "The sent email; its message.delivered, message.bounced, and message.complained events name it.",
+    ),
+  from: z.string(),
+  to: z.array(z.string()),
+  subject: z.string(),
+});
+const messageSendToSelfInputSchema = z.strictObject({
+  subject: z.string().trim().min(1).max(200),
+  text: mailboxEmailTextSchema,
+  attachments: z
+    .array(
+      z.strictObject({
+        path: z
+          .string()
+          .trim()
+          .min(1)
+          .describe("A workspace file, such as /workspace/reports/receipts.csv."),
+        filename: z
+          .string()
+          .trim()
+          .min(1)
+          .max(200)
+          .optional()
+          .describe("The name the recipient sees; the path's file name when omitted."),
+      }),
+    )
+    .max(MAILBOX_EMAIL_MAX_ATTACHMENTS)
+    .optional()
+    .describe(`Workspace files to attach, at most ${MAX_MAILBOX_ATTACHMENT_BYTES} bytes together.`),
+});
+const messageSendToSelfActionDefinition = checkedIntegrationActionDefinition({
+  id: "message.sendToSelf",
+  label: "Email yourself",
+  description:
+    "Send a plain-text email from this person's address to their own verified account email, such as a summary or a workspace file. It counts toward their monthly email.sent limit.",
+  input: messageSendToSelfInputSchema,
+  output: sentEmailOutputSchema,
+});
+const messageReplyInputSchema = z.strictObject({
+  emailId: z
+    .string()
+    .trim()
+    .min(1)
+    .describe("The emailId of an email.message.received event whose senderVerified is true."),
+  text: mailboxEmailTextSchema,
+  subject: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .nullable()
+    .optional()
+    .describe("Omitted or null replies under Re: and the received email's subject."),
+});
+const messageReplyActionDefinition = checkedIntegrationActionDefinition({
+  id: "message.reply",
+  label: "Reply to email",
+  description:
+    "Reply in plain text from this person's address to an email it received, at the sender's address. Only verified senders (senderVerified) get replies. It needs the email.send permission and counts toward the monthly email.sent limit. Show the person the reply and get their confirmation first, unless they built this automation to reply.",
+  input: messageReplyInputSchema,
+  output: sentEmailOutputSchema,
+});
+
+/** People see who wrote an email, and that Leyway sent it for them. */
+function senderName(name: string): string {
+  const trimmed = name.trim();
+  return trimmed ? `${trimmed} via Leyway` : "Leyway";
+}
+
 function inspectMailbox(mailbox: ResendMailbox | null): IntegrationInspection {
   return mailbox !== null && !mailbox.paused
     ? {
@@ -145,6 +240,41 @@ export async function recordMailboxChange(
   );
 }
 
+/** A queued email as actions return it, or why the mailbox did not send it. */
+function sentEmail(result: ResendReplyFromMailboxResult, repliedTo?: string) {
+  switch (result.status) {
+    case "queued":
+      return sentEmailOutputSchema.parse({
+        emailId: result.email.emailMessageId,
+        from: result.email.from,
+        to: result.email.to,
+        subject: result.email.subject,
+      });
+    case "not-found":
+    case "paused":
+      throw new BackofficeUnavailableError(
+        "Run setup for this person's address before sending from it.",
+      );
+    case "sending-suspended":
+      throw new BackofficeOperationError(
+        "forbidden",
+        "Sending from this address is suspended, such as after a recipient marked its email as spam. It still receives; the person can ask support to resume sending.",
+      );
+    case "email-not-found":
+      throw new BackofficeOperationError(
+        "not_found",
+        `Email ${repliedTo} did not arrive at this person's address.`,
+      );
+    case "sender-unverified":
+      throw new BackofficeOperationError(
+        "forbidden",
+        `Email ${repliedTo}'s sender is not verified (senderVerified is false), so anyone may have written its From address. Replies go only to verified senders.`,
+      );
+    default:
+      throw new Error("Mailbox send result is unsupported.", { cause: result satisfies never });
+  }
+}
+
 /**
  * Support's way to give a person a new address, such as after spam; people cannot replace their
  * own, so nobody gathers addresses. The old address is never issued again.
@@ -176,6 +306,28 @@ export async function replaceInboundEmailAddress({
       throw new Error("Inbound address replacement result is unsupported.", {
         cause: result satisfies never,
       });
+  }
+}
+
+/**
+ * Support stops a person's sending, such as after spam complaints, or resumes it. Their address
+ * still receives either way.
+ */
+export async function setInboundEmailSending({
+  runtime,
+  owner,
+  suspended,
+}: {
+  runtime: InboundEmailRuntime;
+  owner: BackofficeUserContextScope;
+  suspended: boolean;
+}): Promise<void> {
+  const inbound = runtime.objects.inboundEmail.system().commands;
+  const result = suspended
+    ? await inbound.suspendMailboxSending(owner)
+    : await inbound.resumeMailboxSending(owner);
+  if (result.status === "not-found") {
+    throw new Error("This person has no inbound address.");
   }
 }
 
@@ -220,9 +372,138 @@ export function createEmailIntegration({
         execute,
       });
     }
+    /** Refused once the person sent this month's emails. */
+    async function admitSend() {
+      const allowance = await checkUsageLimits(usageBillingForScope(runtime, owner), [
+        MAILBOX_EMAIL_SENT_METER,
+      ]);
+      if (allowance.kind === "exhausted") {
+        throw new BackofficeOperationError(
+          "forbidden",
+          `USAGE_LIMIT_EXCEEDED: ${allowance.message}`,
+        );
+      }
+    }
+    /** Read on each send, so a renamed person or a changed account email applies at once. */
+    const profile = () =>
+      runtime.objects.auth.singleton().commands.getAccountProfile({ userId: owner.userId });
+    /** Recipients learn that Leyway sent it, and where to find out what Leyway is. */
+    const withFooter = (text: string) => {
+      const site = runtime.config.docsPublicBaseUrl;
+      return `${text}\n\n-- \nSent with Leyway${site ? ` (${site})` : ""}.`;
+    };
+    async function readAttachments(
+      attachments: readonly { path: string; filename?: string }[],
+    ): Promise<ResendMailboxAttachmentInput[]> {
+      if (attachments.length === 0) {
+        return [];
+      }
+      await context.kernel.assertAuthorizedAll({
+        execution: context.execution,
+        requirements: attachments.map(({ path }) => ({
+          operation: BACKOFFICE_PERMISSION.upload.read,
+          resource: { path },
+        })),
+      });
+      const state = createRuntimeStateBackend({
+        runtime,
+        kernel: context.kernel,
+        execution: context.execution,
+      });
+      let remaining = MAX_MAILBOX_ATTACHMENT_BYTES;
+      const read: ResendMailboxAttachmentInput[] = [];
+      for (const { path, filename } of attachments) {
+        let bytes: Uint8Array;
+        try {
+          bytes = await state.readFileBytes(path, remaining);
+        } catch (error) {
+          if (error instanceof StateFileReadLimitError) {
+            throw new BackofficeOperationError(
+              "invalid_request",
+              `Attachments may hold at most ${MAX_MAILBOX_ATTACHMENT_BYTES} bytes together, and ${path} goes past that.`,
+            );
+          }
+          throw error;
+        }
+        remaining -= bytes.length;
+        read.push({
+          filename: filename ?? path.slice(path.lastIndexOf("/") + 1),
+          content: bytesToBase64(bytes),
+        });
+      }
+      return read;
+    }
     return {
       read: () =>
         invoke(BACKOFFICE_PERMISSION.connections.read, {}, () => inbound.getMailbox(owner)),
+      /** Only the person's own verified account email can receive it. */
+      sendToSelf: (input: z.output<typeof messageSendToSelfInputSchema>) =>
+        invoke(BACKOFFICE_PERMISSION.integrations.execute, {}, async () => {
+          await admitSend();
+          const { name, email, emailVerified } = await profile();
+          if (!emailVerified) {
+            throw new BackofficeOperationError(
+              "forbidden",
+              "This person's account email is not verified, so nothing is sent to it.",
+            );
+          }
+          const attachments = await readAttachments(input.attachments ?? []);
+          return sentEmail(
+            await inbound.sendFromMailbox(owner, {
+              to: email,
+              subject: input.subject,
+              text: withFooter(input.text),
+              fromName: senderName(name),
+              attachments,
+            }),
+          );
+        }),
+      /** This month's emails against the person's limit; null without Billing. */
+      sendingUsage: () =>
+        invoke(BACKOFFICE_PERMISSION.connections.read, {}, async () => {
+          if (!runtime.config.bindings.billing) {
+            return null;
+          }
+          const { limits } = await runtime.objects.billing.for(owner).commands.getUsageLimits();
+          const status = limits.find(({ meter }) => meter === MAILBOX_EMAIL_SENT_METER);
+          return status
+            ? {
+                used: Number(status.used),
+                limit: status.limit.kind === "limited" ? Number(status.limit.quantity) : null,
+              }
+            : null;
+        }),
+      /** The fragment replies only to a verified sender of email the person received. */
+      reply: async (input: z.output<typeof messageReplyInputSchema>) => {
+        try {
+          return await invoke(
+            BACKOFFICE_PERMISSION.email.send,
+            { emailId: input.emailId },
+            async () => {
+              await admitSend();
+              const { name } = await profile();
+              return sentEmail(
+                await inbound.replyFromMailbox(owner, {
+                  emailMessageId: input.emailId,
+                  text: withFooter(input.text),
+                  subject: input.subject ?? null,
+                  fromName: senderName(name),
+                }),
+                input.emailId,
+              );
+            },
+          );
+        } catch (error) {
+          // Routes that read mail lack email.send unless granted it, so say which grant replies need.
+          if (error instanceof BackofficeForbiddenError) {
+            throw new BackofficeForbiddenError(
+              `Replying needs the email.send permission: ${error.message}`,
+              error.reason,
+            );
+          }
+          throw error;
+        }
+      },
       /** Resumes the person's mailbox, or gives them one at a fresh address. */
       open: () =>
         invoke(BACKOFFICE_PERMISSION.connections.manage, {}, async () => {
@@ -327,7 +608,7 @@ export function createEmailIntegration({
         {
           id: emailIntegrationId,
           label: "Email address",
-          description: `A person's own address at ${domain}, three random words such as quiet-amber-falcon@${domain}, that receives email, such as forwarded receipts, as email.message.received events. It is theirs for good: disconnecting pauses delivery, setup resumes it, and only support replaces it.`,
+          description: `A person's own address at ${domain}, three random words such as quiet-amber-falcon@${domain}, that receives email, such as forwarded receipts, as email.message.received events. It also sends: replies to verified senders, and email to the person's own account email. It is theirs for good: disconnecting pauses delivery, setup resumes it, and only support replaces it.`,
           connectionCardinality: "singleton",
           availability:
             reason === null ? { status: "available" } : { status: "unavailable", reason },
@@ -393,7 +674,12 @@ export function createEmailIntegration({
           const current = await access.read();
           return {
             kind: "email",
-            mailbox: current && { address: current.address, paused: current.paused },
+            mailbox: current && {
+              address: current.address,
+              paused: current.paused,
+              sendingSuspended: current.sendingSuspended,
+            },
+            sending: await access.sendingUsage(),
           };
         },
         async settings() {
@@ -410,6 +696,7 @@ export function createEmailIntegration({
                   emailId: email.id,
                   address: email.recipientMailbox.address,
                   from: email.from,
+                  senderAddress: email.from === null ? null : inboundEmailSenderAddress(email.from),
                   senderDomain: email.from === null ? null : inboundEmailSenderDomain(email.from),
                   senderVerified: inboundEmailSenderVerified(email.authentication),
                   authentication: email.authentication,
@@ -431,6 +718,18 @@ export function createEmailIntegration({
                   })),
                   receivedAt: email.occurredAt,
                 });
+              },
+            },
+            {
+              definition: messageSendToSelfActionDefinition(),
+              async invoke(input) {
+                return await access.sendToSelf(messageSendToSelfInputSchema.parse(input));
+              },
+            },
+            {
+              definition: messageReplyActionDefinition(),
+              async invoke(input) {
+                return await access.reply(messageReplyInputSchema.parse(input));
               },
             },
             {

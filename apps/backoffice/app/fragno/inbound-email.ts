@@ -5,14 +5,22 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { z } from "zod";
 
-import type { ResendEmailAuthentication, ResendMailboxEmail } from "@fragno-dev/resend-fragment";
+import {
+  isSenderVerified,
+  type ResendEmailAuthentication,
+  type ResendEmailStatusUpdatedHookPayload,
+  type ResendMailboxEmail,
+  type ResendMailboxMatch,
+} from "@fragno-dev/resend-fragment";
 
+import { AUTOMATION_SYSTEM_INITIATOR } from "./automation/actors";
 import type { AutomationKnownEvent } from "./automation/contracts";
 import { AUTOMATION_SOURCES, AUTOMATION_SOURCE_EVENT_TYPES } from "./automation/contracts";
 import {
   INBOUND_EMAIL_MAX_EVENT_TEXT_LENGTH,
   inboundEmailSenderEntity,
   type inboundEmailReceivedPayloadSchema,
+  type mailboxEmailStatusPayloadSchema,
 } from "./backoffice-capabilities/capabilities/resend";
 
 /** The Resend fragment's opaque owner of an inbound address: the user scope it delivers to. */
@@ -37,20 +45,22 @@ function senderMailbox(from: string): string {
   return (/<([^<>]+)>\s*$/u.exec(from)?.[1] ?? from).trim().toLowerCase();
 }
 
-/** The domain of a From header's mailbox, lowercased; null when it names no address. */
-export function inboundEmailSenderDomain(from: string): string | null {
+/** A From header's address, lowercased; null when it names no address. */
+export function inboundEmailSenderAddress(from: string): string | null {
   const mailbox = senderMailbox(from);
   const at = mailbox.lastIndexOf("@");
-  return at > 0 && at < mailbox.length - 1 ? mailbox.slice(at + 1) : null;
+  return at > 0 && at < mailbox.length - 1 ? mailbox : null;
 }
 
-/**
- * Whether the From domain sent the email. Resend's DKIM passes only for a signature by the From
- * domain, and DMARC only for an aligned pass under an enforcing policy; SPF alone checks the
- * envelope sender, which forwarding replaces.
- */
+/** The domain of a From header's mailbox, lowercased; null when it names no address. */
+export function inboundEmailSenderDomain(from: string): string | null {
+  const address = inboundEmailSenderAddress(from);
+  return address === null ? null : address.slice(address.lastIndexOf("@") + 1);
+}
+
+/** Whether the From domain sent the email, as the Resend fragment decides it before a reply. */
 export function inboundEmailSenderVerified(authentication: ResendEmailAuthentication | null) {
-  return authentication?.dkim === "pass" || authentication?.dmarc === "pass";
+  return isSenderVerified(authentication);
 }
 
 /** One event per received message, in the scope of the user whose address it arrived at. */
@@ -68,6 +78,7 @@ export function buildInboundEmailAutomationEvent(
     connectionId: INBOUND_EMAIL_CONNECTION_ID,
     address: email.recipientMailbox.address,
     from,
+    senderAddress: inboundEmailSenderAddress(from),
     senderDomain: inboundEmailSenderDomain(from),
     senderVerified: inboundEmailSenderVerified(email.authentication),
     authentication: email.authentication,
@@ -106,6 +117,56 @@ export function buildInboundEmailAutomationEvent(
       principal: null,
       delegation: [],
     },
+    causation: { kind: "origin" },
+  };
+}
+
+const MAILBOX_EMAIL_STATUS_EVENT_TYPES = {
+  "email.delivered": AUTOMATION_SOURCE_EVENT_TYPES.email.messageDelivered,
+  "email.bounced": AUTOMATION_SOURCE_EVENT_TYPES.email.messageBounced,
+  "email.complained": AUTOMATION_SOURCE_EVENT_TYPES.email.messageComplained,
+} as const;
+
+/**
+ * What became of an email a person sent from their address, in their scope; null for the statuses
+ * people do not act on, such as Resend accepting it.
+ */
+export function buildMailboxEmailStatusAutomationEvent(
+  scope: BackofficeUserContextScope,
+  {
+    emailMessageId,
+    event,
+    senderMailbox,
+  }: Pick<ResendEmailStatusUpdatedHookPayload, "emailMessageId" | "event"> & {
+    senderMailbox: ResendMailboxMatch;
+  },
+): AutomationKnownEvent<typeof AUTOMATION_SOURCES.email> | null {
+  if (
+    event.type !== "email.delivered" &&
+    event.type !== "email.bounced" &&
+    event.type !== "email.complained"
+  ) {
+    return null;
+  }
+  const eventType = MAILBOX_EMAIL_STATUS_EVENT_TYPES[event.type];
+  const payload: z.input<typeof mailboxEmailStatusPayloadSchema> = {
+    emailId: emailMessageId,
+    connectionId: INBOUND_EMAIL_CONNECTION_ID,
+    address: senderMailbox.address,
+    to: event.data.to,
+    subject: event.data.subject ?? null,
+    reason: event.type === "email.bounced" ? (event.data.bounce?.message ?? null) : null,
+    occurredAt: new Date(event.created_at).toISOString(),
+  };
+  return {
+    id: `email:${emailMessageId}:${eventType}`,
+    scopeRestriction: null,
+    scope,
+    source: AUTOMATION_SOURCES.email,
+    eventType,
+    occurredAt: payload.occurredAt,
+    payload,
+    actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
     causation: { kind: "origin" },
   };
 }

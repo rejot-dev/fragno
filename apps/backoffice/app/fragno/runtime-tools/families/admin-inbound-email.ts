@@ -51,4 +51,86 @@ const replaceInboundEmailTool = defineBackofficeRuntimeTool({
   },
 });
 
-export const adminInboundEmailRuntimeTools = [replaceInboundEmailTool] as const;
+function defineInboundEmailSendingTool({
+  id,
+  name,
+  suspended,
+  description,
+  summary,
+}: {
+  id: "admin.inbound-email.suspend-sending" | "admin.inbound-email.resume-sending";
+  name: string;
+  suspended: boolean;
+  description: string;
+  summary: string;
+}) {
+  return defineBackofficeRuntimeTool({
+    id,
+    namespace: "admin",
+    name,
+    description,
+    requiredPermissions: [BACKOFFICE_PERMISSION.admin.usersManage],
+    inputSchema: z.strictObject({ userId: z.string().trim().min(1) }),
+    outputSchema: z.strictObject({ userId: z.string(), sendingSuspended: z.boolean() }),
+    execute: async (input, context: AdminInboundEmailToolContext) => {
+      const admin = context.runtimes.admin;
+      if (!admin) {
+        throw new Error("Admin runtime is not available in this execution context.");
+      }
+      return await admin.setInboundEmailSending({ ...input, suspended });
+    },
+    adapters: {
+      bash: {
+        command: id,
+        help: {
+          summary,
+          options: [
+            {
+              name: "user",
+              required: true,
+              valueRequired: true,
+              valueName: "id",
+              description: "ID of the user whose address sends or stops",
+            },
+          ],
+          examples: [`${id} --user user_123`],
+        },
+        parse: defineCliArgsParser(id, {
+          userId: { kind: "string", option: "user", required: true },
+        }),
+        format: (result, options) =>
+          options.format === "json" || options.print
+            ? { data: result }
+            : {
+                data: result,
+                stdout: `${result.userId}'s inbound address ${result.sendingSuspended ? "no longer sends" : "sends again"}; it still receives.\n`,
+              },
+      },
+    },
+  });
+}
+
+const suspendInboundEmailSendingTool = defineInboundEmailSendingTool({
+  id: "admin.inbound-email.suspend-sending",
+  name: "inboundEmailSuspendSending",
+  suspended: true,
+  description:
+    "Stop a person sending from their inbound email address, such as after spam complaints. It still receives. A recipient marking their email as spam does this on its own.",
+  summary: "admin.inbound-email.suspend-sending stops a person sending from their inbound address.",
+});
+
+const resumeInboundEmailSendingTool = defineInboundEmailSendingTool({
+  id: "admin.inbound-email.resume-sending",
+  name: "inboundEmailResumeSending",
+  suspended: false,
+  description:
+    "Let a person send from their inbound email address again, after support suspended it or a recipient marked their email as spam.",
+  summary:
+    "admin.inbound-email.resume-sending lets a person send from their inbound address again.",
+});
+
+export const adminInboundEmailRuntimeTools = [
+  replaceInboundEmailTool,
+  suspendInboundEmailSendingTool,
+  resumeInboundEmailSendingTool,
+] as const;

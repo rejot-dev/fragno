@@ -129,6 +129,20 @@ type AdminCodemodeProvider = {
     input: AdminInboundEmailReplaceInput,
   ): Promise<AdminInboundEmailReplaceOutput>;
   /**
+   * Stop a person sending from their inbound email address, such as after spam complaints. It still receives. A recipient marking their email as spam does this on its own.
+   * Requires `admin.users.manage`.
+   */
+  inboundEmailSuspendSending(
+    input: AdminInboundEmailSuspendSendingInput,
+  ): Promise<AdminInboundEmailSuspendSendingOutput>;
+  /**
+   * Let a person send from their inbound email address again, after support suspended it or a recipient marked their email as spam.
+   * Requires `admin.users.manage`.
+   */
+  inboundEmailResumeSending(
+    input: AdminInboundEmailResumeSendingInput,
+  ): Promise<AdminInboundEmailResumeSendingOutput>;
+  /**
    * Feature a published Marketplace listing, optionally scheduled with startsAt and ending at until, ordered by priority (higher first) with an optional curator note. Featuring an already featured listing replaces its settings. Expired and unpublished entries are removed to make room. System scope curates the public Marketplace (System administrators); organization scope curates that organization's Marketplace (owners and admins).
    * Requires `marketplace.read`.
    */
@@ -653,6 +667,20 @@ type AdminInboundEmailReplaceInput = {
 type AdminInboundEmailReplaceOutput = {
   userId: string;
   address: string;
+};
+type AdminInboundEmailSuspendSendingInput = {
+  userId: string;
+};
+type AdminInboundEmailSuspendSendingOutput = {
+  userId: string;
+  sendingSuspended: boolean;
+};
+type AdminInboundEmailResumeSendingInput = {
+  userId: string;
+};
+type AdminInboundEmailResumeSendingOutput = {
+  userId: string;
+  sendingSuspended: boolean;
 };
 type AdminMarketplaceFeatureInput = {
   listingId: string;

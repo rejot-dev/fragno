@@ -163,6 +163,20 @@ characters of the plain-text body; the connection's `message.get` reads the whol
 of the person's addresses, including replaced ones. The sender is an external `sender` identity that
 never links to a user, because anyone can write any From address.
 
+The address also sends, from the platform account, which has the domain verified for sending, and
+only to recipients who asked for its email. `message.sendToSelf` sends to the person's verified
+account email, read from Auth at each send, with workspace files of at most 1 MB together attached.
+`message.reply` answers an email the address received, and the Resend Fragment decides whom: only a
+sender whose DKIM or DMARC passed, at its From address and never a Reply-To; so nobody can make an
+address write to a third party by forging a From header or naming one as Reply-To. Replies need
+`email.send`, which a route's grants name explicitly, so routes that only read email cannot send.
+Both check the owner's monthly `email.sent` limit first; the fragment's durable hook records each
+queued email on the owner's ledger. Mail goes out as "Name via Leyway" from the address, with a
+footer naming Leyway, in plain text. Delivered, bounced, and complained statuses become `email`
+events in the owner's scope. A complaint suspends the address's sending, not its receiving, until
+support runs `admin.inbound-email.resume-sending --user <id>`; `admin.inbound-email.suspend-sending`
+stops it by hand.
+
 ### Workers AI address
 
 `backoffice#workers-ai` names the platform's Workers AI. Backoffice runs it on its own Cloudflare

@@ -92,8 +92,13 @@ export type IntegrationConnectionDetails =
       connectionName: string;
       accountId: string | null;
     }
-  // A person's inbound address; a paused one stays theirs and receives nothing.
-  | { kind: "email"; mailbox: { address: string; paused: boolean } | null }
+  // A person's inbound address; a paused one stays theirs and receives nothing. `sending` is this
+  // month's emails against the person's limit, null without Billing.
+  | {
+      kind: "email";
+      mailbox: { address: string; paused: boolean; sendingSuspended: boolean } | null;
+      sending: { used: number; limit: number | null } | null;
+    }
   // Native services without a page of their own say in a sentence how they work and change.
   | { kind: "summary"; summary: string }
   // Native services are managed on their own Backoffice pages.

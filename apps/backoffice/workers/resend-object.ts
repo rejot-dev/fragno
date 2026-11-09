@@ -9,16 +9,22 @@ import type {
 import { Resend as ResendClient } from "resend";
 import { z } from "zod";
 
-import { isUniqueConstraintError } from "@fragno-dev/db";
+import { isUniqueConstraintError, type HookContext } from "@fragno-dev/db";
 import type {
   ResendEmailReceivedHookPayload,
+  ResendEmailStatusUpdatedHookPayload,
   ResendFragmentConfig,
   ResendMailboxEmail,
+  ResendMailboxEmailQueuedPayload,
   ResendMailbox,
   ResendOpenMailboxResult,
   ResendPauseMailboxResult,
   ResendReplaceMailboxAddressResult,
+  ResendReplyFromMailboxResult,
+  ResendResumeMailboxSendingResult,
   ResendSendEmailInput,
+  ResendSendFromMailboxResult,
+  ResendSuspendMailboxSendingResult,
 } from "@fragno-dev/resend-fragment";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
@@ -34,9 +40,12 @@ import {
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { resendConfigureInputSchema } from "@/fragno/backoffice-capabilities/capabilities/resend";
+import { usageBillingForScope } from "@/fragno/billing/usage-billing";
+import { MAILBOX_EMAIL_SENT_METER } from "@/fragno/billing/usage-limits";
 import { type DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import {
   buildInboundEmailAutomationEvent,
+  buildMailboxEmailStatusAutomationEvent,
   inboundEmailOwner,
   inboundEmailOwnerScope,
 } from "@/fragno/inbound-email";
@@ -105,10 +114,10 @@ const WEBHOOK_EVENTS = [
   "email.received",
 ] as const;
 
-const prefixDevelopmentEmailSubject = (
-  input: ResendSendEmailInput,
+const prefixDevelopmentEmailSubject = <T extends { subject: string }>(
+  input: T,
   runtimeMode: string,
-): ResendSendEmailInput => {
+): T => {
   if (runtimeMode !== "development" || input.subject.startsWith(DEVELOPMENT_SUBJECT_PREFIX)) {
     return input;
   }
@@ -415,6 +424,14 @@ export class ResendObject implements ResendCommands, InboundEmailCommands {
                 ? (mailbox, context) =>
                     recordMailboxChange(this.#runtimeServices.objects, mailbox, context)
                 : null,
+            onMailboxEmailQueued:
+              this.#scope.kind === "system"
+                ? (payload, context) => this.#recordMailboxEmailSent(payload, context)
+                : null,
+            onEmailStatusUpdated:
+              this.#scope.kind === "system"
+                ? (payload) => this.#deliverMailboxEmailStatus(payload)
+                : null,
           },
           implementation.fragmentDatabase,
           new BackofficeKernel(runtime),
@@ -630,6 +647,42 @@ export class ResendObject implements ResendCommands, InboundEmailCommands {
       .commands.triggerIngestEvent(buildInboundEmailAutomationEvent(scope, email));
   }
 
+  /** Counts an email a person's address sent toward their monthly limit, once per email. */
+  async #recordMailboxEmailSent(
+    { emailMessageId, senderMailbox }: ResendMailboxEmailQueuedPayload,
+    context: HookContext,
+  ) {
+    const owner = inboundEmailOwnerScope(senderMailbox.owner);
+    const billing = usageBillingForScope(this.#runtimeServices, owner);
+    if (billing.kind === "system") {
+      return;
+    }
+    await billing.recordEvent(
+      {
+        id: `email-sent:${emailMessageId}`,
+        scope: owner,
+        source: "email",
+        eventType: "message.sent",
+        occurredAt: context.createdAt.toISOString(),
+        measurements: [{ meter: MAILBOX_EMAIL_SENT_METER, unit: "email", quantity: 1 }],
+      },
+      { propagationContext: context.capturePropagationContext() },
+    );
+  }
+
+  /** Tells the person what became of email they sent; the account's own email reaches no one. */
+  async #deliverMailboxEmailStatus(payload: ResendEmailStatusUpdatedHookPayload) {
+    const { senderMailbox } = payload;
+    if (senderMailbox === null) {
+      return;
+    }
+    const scope = inboundEmailOwnerScope(senderMailbox.owner);
+    const event = buildMailboxEmailStatusAutomationEvent(scope, { ...payload, senderMailbox });
+    if (event !== null) {
+      await this.#runtimeServices.objects.automations.for(scope).commands.triggerIngestEvent(event);
+    }
+  }
+
   #mailboxes() {
     if (this.#scope.kind !== "system") {
       throw new Error("Only the platform Resend account has inbound addresses.");
@@ -685,6 +738,45 @@ export class ResendObject implements ResendCommands, InboundEmailCommands {
     emailMessageId: string,
   ): Promise<ResendMailboxEmail | null> {
     return await this.#inboundEmail(inboundEmailOwner(owner), emailMessageId);
+  }
+
+  async sendFromMailbox(
+    owner: BackofficeUserContextScope,
+    email: Parameters<InboundEmailCommands["sendFromMailbox"]>[1],
+  ): Promise<ResendSendFromMailboxResult> {
+    const { runtime: fragment } = this.#mailboxes();
+    const { to, ...rest } = prefixDevelopmentEmailSubject(email, this.#runtimeMode);
+    return await fragment.callServices(() =>
+      fragment.services.sendFromMailbox({ owner: inboundEmailOwner(owner), to: [to], ...rest }),
+    );
+  }
+
+  async replyFromMailbox(
+    owner: BackofficeUserContextScope,
+    reply: Parameters<InboundEmailCommands["replyFromMailbox"]>[1],
+  ): Promise<ResendReplyFromMailboxResult> {
+    const { runtime: fragment } = this.#mailboxes();
+    return await fragment.callServices(() =>
+      fragment.services.replyFromMailbox({ owner: inboundEmailOwner(owner), ...reply }),
+    );
+  }
+
+  async suspendMailboxSending(
+    owner: BackofficeUserContextScope,
+  ): Promise<ResendSuspendMailboxSendingResult> {
+    const { runtime: fragment } = this.#mailboxes();
+    return await fragment.callServices(() =>
+      fragment.services.suspendMailboxSending(inboundEmailOwner(owner)),
+    );
+  }
+
+  async resumeMailboxSending(
+    owner: BackofficeUserContextScope,
+  ): Promise<ResendResumeMailboxSendingResult> {
+    const { runtime: fragment } = this.#mailboxes();
+    return await fragment.callServices(() =>
+      fragment.services.resumeMailboxSending(inboundEmailOwner(owner)),
+    );
   }
 
   /** Resend's signed URLs expire, so callers download the attachment soon after asking. */

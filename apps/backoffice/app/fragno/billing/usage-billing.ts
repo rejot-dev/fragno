@@ -30,7 +30,7 @@ export type UsageLimitCheck = { kind: "within" } | { kind: "exhausted"; message:
 
 /** Attribution follows ownership, independently of who will eventually receive an invoice. */
 export function usageBillingForScope(
-  runtime: BackofficeRuntimeServices,
+  runtime: Pick<BackofficeRuntimeServices, "objects" | "config">,
   scope: BackofficeContextScope,
 ): UsageBilling {
   const owner = backofficeScopeRootOwner(scope);
