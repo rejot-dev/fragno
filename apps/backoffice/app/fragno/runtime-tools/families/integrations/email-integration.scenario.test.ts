@@ -76,9 +76,13 @@ type ReceivedEmail = {
   authentication: { spf: string; dkim: string; dmarc: string };
 };
 
+/** An email the platform account asked Resend to send, with the ID Resend gave it. */
+type SentEmail = Parameters<Resend["emails"]["send"]>[0] & { id: string };
+
 /** The platform Resend account: its webhook, received emails, and attachment downloads. */
 function createResendProvider() {
   const received = new Map<string, ReceivedEmail>();
+  const sent: SentEmail[] = [];
   const attachment = {
     id: "att_1",
     filename: "receipt.pdf",
@@ -98,6 +102,11 @@ function createResendProvider() {
         verify: (input: Parameters<Resend["webhooks"]["verify"]>[0]) => real.webhooks.verify(input),
       },
       emails: {
+        send: async (payload: Parameters<Resend["emails"]["send"]>[0]) => {
+          const id = `re_out_${sent.length + 1}`;
+          sent.push({ ...payload, id });
+          return { data: { id }, error: null };
+        },
         receiving: {
           get: async (id: string) => {
             const email = received.get(id)!;
@@ -152,6 +161,44 @@ function createResendProvider() {
     return `v1,${btoa(String.fromCharCode(...new Uint8Array(mac)))}`;
   }
 
+  async function post(ctx: BackofficeScenarioContext, svixId: string, body: string) {
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const response = await ctx.runtime.objects.resend.for({ kind: "system" }).http.fetch(
+      new Request("https://resend.do/api/resend/webhook", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "svix-id": svixId,
+          "svix-timestamp": timestamp,
+          "svix-signature": await sign(svixId, timestamp, body),
+        },
+        body,
+      }),
+    );
+    assert(response.status === 200);
+  }
+
+  /** Resend reports what became of a sent email, such as its delivery. */
+  async function report(ctx: BackofficeScenarioContext, email: SentEmail, type: string) {
+    // Later than Resend accepting it, which the fragment recorded at send time.
+    const createdAt = "2099-01-01T09:00:00.000Z";
+    await post(
+      ctx,
+      `msg_${email.id}_${type}`,
+      JSON.stringify({
+        type,
+        created_at: createdAt,
+        data: {
+          email_id: email.id,
+          created_at: createdAt,
+          from: email.from,
+          to: [email.to].flat(),
+          subject: email.subject,
+        },
+      }),
+    );
+  }
+
   /** Resend delivers an email to `envelopeTo`; the message's own headers name `to`. */
   async function deliver(ctx: BackofficeScenarioContext, email: ReceivedEmail) {
     received.set(email.id, email);
@@ -170,23 +217,10 @@ function createResendProvider() {
         attachments: [attachment],
       },
     });
-    const timestamp = String(Math.floor(Date.now() / 1000));
-    const response = await ctx.runtime.objects.resend.for({ kind: "system" }).http.fetch(
-      new Request("https://resend.do/api/resend/webhook", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "svix-id": `msg_${email.id}`,
-          "svix-timestamp": timestamp,
-          "svix-signature": await sign(`msg_${email.id}`, timestamp, body),
-        },
-        body,
-      }),
-    );
-    assert(response.status === 200);
+    await post(ctx, `msg_${email.id}`, body);
   }
 
-  return { createClient, deliver };
+  return { createClient, deliver, report, sent };
 }
 
 async function receivedEmailEvents(
@@ -318,7 +352,8 @@ test("each person keeps one random inbound address that only support replaces", 
           addresses.alice = await currentAddress(ctx, alice);
           expect((await describeEmail(ctx)).details).toEqual({
             kind: "email",
-            mailbox: { address: addresses.alice, paused: false },
+            mailbox: { address: addresses.alice, paused: false, sendingSuspended: false },
+            sending: { used: 0, limit: 100 },
           });
         }),
         then.assert("a person cannot gather more addresses", async (ctx) => {
@@ -390,6 +425,7 @@ test("each person keeps one random inbound address that only support replaces", 
               connectionId: "backoffice#email",
               address: addresses.alice,
               from: "Shop <Orders@Shop.example>",
+              senderAddress: "orders@shop.example",
               senderDomain: "shop.example",
               senderVerified: true,
               authentication: { spf: "fail", dkim: "pass", dmarc: "pass" },
@@ -522,7 +558,8 @@ test("each person keeps one random inbound address that only support replaces", 
           expect(await receivedEmailEvents(ctx, alice)).toHaveLength(2);
           expect((await describeEmail(ctx)).details).toEqual({
             kind: "email",
-            mailbox: { address: addresses.replaced, paused: true },
+            mailbox: { address: addresses.replaced, paused: true, sendingSuspended: false },
+            sending: { used: 0, limit: 100 },
           });
         }),
       ],
@@ -733,3 +770,274 @@ test("setup is blocked until the platform Resend account is configured", async (
     }),
   );
 });
+
+async function emailEvents(
+  ctx: BackofficeScenarioContext,
+  scope: BackofficeUserContextScope,
+  eventType: string,
+) {
+  const page = await ctx.runtime.objects.automations
+    .for(scope)
+    .commands.listEventsOfType({ source: "email", eventType, cursor: null });
+  return page.events;
+}
+
+/** A workflow that replies to the email that started it, and says what came of trying. */
+const replyWorkflow = `export default defineWorkflow({ name: "auto-reply" }, async (event, step) => {
+  const { connectionId, emailId } = event.payload;
+  return await step.do("reply", async () => {
+    try {
+      const sent = await integrations.execute({
+        connectionId,
+        actionId: "message.reply",
+        input: { emailId, text: "Thanks, received." },
+      });
+      return { sentTo: sent.to };
+    } catch (error) {
+      return { refused: String(error instanceof Error ? error.message : error) };
+    }
+  });
+});`;
+
+function replyRoute(id: string, grants: readonly { namespace: string; permission: string }[]) {
+  return `await router.create({
+    id: ${JSON.stringify(id)},
+    name: ${JSON.stringify(id)},
+    trigger: {
+      kind: "event",
+      source: "email",
+      eventType: "message.received",
+      matcher: {
+        all: [
+          { path: "$.payload.senderDomain", op: "eq", value: "shop.example" },
+          { path: "$.payload.senderVerified", op: "eq", value: true },
+        ],
+      },
+    },
+    action: {
+      kind: "start_workflow",
+      authority: { kind: "organization-automation", grants: ${JSON.stringify(grants)} },
+      workflowScriptPath: "/workspace/automations/auto-reply.workflow.js",
+      instanceIdTemplate: ${JSON.stringify(`${id}-\${event.id}`)},
+    },
+  });`;
+}
+
+test("a person sends from their address: to themselves, and replies to verified senders", async () => {
+  const resend = createResendProvider();
+  let address = "";
+  const execute = (actionId: string, input: unknown) =>
+    `async () => await integrations.execute({ connectionId: "backoffice#email", actionId: ${JSON.stringify(actionId)}, input: ${JSON.stringify(input)} })`;
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Sending from an inbound address",
+      env: { INBOUND_EMAIL_DOMAIN: "ley.run" },
+      objects: {
+        ...scenarioObjects,
+        RESEND: (input) => new ResendObject({ ...input, createClient: resend.createClient }),
+      },
+      setup: ({ given }) => [
+        given.auth.user({ id: alice.userId, email: "alice@home.example" }),
+        given.auth.user({ id: "support-1", role: "admin" }),
+      ],
+      steps: ({ then, runner }) => [
+        then.assert("the person has an address, and a shop and a forger email it", async (ctx) => {
+          await ctx.runtime.objects.resend.for({ kind: "system" }).commands.setAdminConfig(
+            {
+              apiKey: "re_platform_key",
+              defaultFrom: "Leyway <noreply@leyway.com>",
+              webhookBaseUrl: "https://example.com",
+            },
+            { kind: "system" },
+            "https://example.com",
+          );
+          await ctx.runCodemode({
+            scope: alice,
+            code: `async () => await integrations.setup({ connectionId: "backoffice#email", kind: "input", input: {} })`,
+          });
+          address = await currentAddress(ctx, alice);
+          await resend.deliver(ctx, { id: "re_order", envelopeTo: address, ...receipt });
+          await resend.deliver(ctx, {
+            id: "re_forged",
+            envelopeTo: address,
+            ...receipt,
+            authentication: { spf: "fail", dkim: "fail", dmarc: "fail" },
+          });
+          await ctx.runCodemode({
+            scope: alice,
+            code: `async () => await state.writeFile({ path: "/workspace/reports/receipts.csv", content: "date,total\\n2026-11-04,12.00\\n" })`,
+          });
+        }),
+        runner.drain(),
+        then.assert("the person emails themselves a workspace file", async (ctx) => {
+          const { result } = await ctx.runCodemode({
+            scope: alice,
+            code: execute("message.sendToSelf", {
+              subject: "Receipts this week",
+              text: "One receipt, attached.",
+              attachments: [{ path: "/workspace/reports/receipts.csv" }],
+            }),
+          });
+          expect(result).toMatchObject({
+            from: `"alice via Leyway" <${address}>`,
+            to: ["alice@home.example"],
+            subject: "Receipts this week",
+          });
+        }),
+        then.assert("they reply to the shop, but not to the forged sender", async (ctx) => {
+          const { result } = await ctx.runCodemode({
+            scope: alice,
+            code: execute("message.reply", {
+              emailId: await emailIdOf(ctx, "re_order"),
+              text: "Thanks, received.",
+            }),
+          });
+          expect(result).toMatchObject({
+            to: ["orders@shop.example"],
+            subject: "Re: Fwd: Your receipt",
+          });
+          await expect(
+            ctx.runCodemode({
+              scope: alice,
+              code: execute("message.reply", {
+                emailId: await emailIdOf(ctx, "re_forged"),
+                text: "Thanks",
+              }),
+            }),
+          ).rejects.toThrow("sender is not verified");
+        }),
+        runner.drain(),
+        then.assert("Resend sent both, from the address, saying Leyway sent them", async () => {
+          expect(resend.sent).toHaveLength(2);
+          const [toSelf, reply] = resend.sent;
+          expect(toSelf).toMatchObject({
+            from: `"alice via Leyway" <${address}>`,
+            to: ["alice@home.example"],
+            replyTo: [address],
+            text: "One receipt, attached.\n\n-- \nSent with Leyway (https://example.com).",
+            attachments: [
+              { filename: "receipts.csv", content: btoa("date,total\n2026-11-04,12.00\n") },
+            ],
+          });
+          expect(reply).toMatchObject({
+            to: ["orders@shop.example"],
+            replyTo: [address],
+            headers: { "In-Reply-To": "<re_order@shop.example>" },
+          });
+        }),
+        then.assert("only a route granted email.send replies to the email", async (ctx) => {
+          await ctx.files
+            .forUser(alice.userId)
+            .writeFile("/workspace/automations/auto-reply.workflow.js", replyWorkflow);
+          await ctx.runCodemode({
+            scope: alice,
+            code: `async () => {
+              ${replyRoute("receipts-only", receivingEmailSkillGrants)}
+              ${replyRoute("replies", [...receivingEmailSkillGrants, BACKOFFICE_PERMISSION.email.send])}
+            }`,
+          });
+          await resend.deliver(ctx, { id: "re_second", envelopeTo: address, ...receipt });
+        }),
+        runner.drain(),
+        then.assert("the route without email.send was refused", async (ctx) => {
+          const eventId = `email-${await emailIdOf(ctx, "re_second")}`;
+          const outcome = async (route: string) => {
+            const run = await ctx.runCodemode({
+              scope: alice,
+              code: `async () => (await workflow.getInstance({ instanceId: ${JSON.stringify(`${route}-${eventId}`)} })).details.output`,
+            });
+            return run.result;
+          };
+          expect(await outcome("receipts-only")).toEqual({
+            refused: expect.stringContaining("email.send"),
+          });
+          expect(await outcome("replies")).toEqual({ sentTo: ["orders@shop.example"] });
+          expect(resend.sent).toHaveLength(3);
+        }),
+        then.assert("each sent email counts toward the monthly limit", async (ctx) => {
+          const { limits } = await ctx.runtime.objects.billing.for(alice).commands.getUsageLimits();
+          expect(limits.find(({ meter }) => meter === "email.sent")).toMatchObject({
+            setting: "default",
+            limit: { kind: "limited", quantity: "100" },
+            used: "3",
+          });
+          expect((await describeEmail(ctx)).details).toEqual({
+            kind: "email",
+            mailbox: { address, paused: false, sendingSuspended: false },
+            sending: { used: 3, limit: 100 },
+          });
+        }),
+        then.assert("Resend reports the reply delivered, then marked as spam", async (ctx) => {
+          const reply = resend.sent[1]!;
+          await resend.report(ctx, reply, "email.delivered");
+          await resend.report(ctx, reply, "email.complained");
+        }),
+        runner.drain(),
+        then.assert("the person hears of both, and the address stops sending", async (ctx) => {
+          const [delivered] = await emailEvents(ctx, alice, "message.delivered");
+          const [complained] = await emailEvents(ctx, alice, "message.complained");
+          for (const event of [delivered, complained]) {
+            expect(event).toMatchObject({
+              payload: {
+                connectionId: "backoffice#email",
+                address,
+                to: ["orders@shop.example"],
+                subject: "Re: Fwd: Your receipt",
+                reason: null,
+              },
+            });
+          }
+          expect((await describeEmail(ctx)).details).toMatchObject({
+            mailbox: { sendingSuspended: true },
+          });
+          await expect(
+            ctx.runCodemode({
+              scope: alice,
+              code: execute("message.sendToSelf", { subject: "Hi", text: "Hello" }),
+            }),
+          ).rejects.toThrow("Sending from this address is suspended");
+          // It still receives.
+          await resend.deliver(ctx, { id: "re_third", envelopeTo: address, ...receipt });
+        }),
+        runner.drain(),
+        then.assert("support resumes sending, and a lowered limit stops it", async (ctx) => {
+          expect((await emailEvents(ctx, alice, "message.received")).map(({ id }) => id)).toContain(
+            `email:${await emailIdOf(ctx, "re_third")}`,
+          );
+          const bash = await supportTerminal(ctx);
+          const resumed = await bash.exec(
+            `admin.inbound-email.resume-sending --user ${alice.userId}`,
+          );
+          assert(resumed.exitCode === 0, resumed.stderr);
+          const limited = await bash.exec(
+            `admin.usage-limits.set --user ${alice.userId} --meter email.sent --limit 4`,
+          );
+          assert(limited.exitCode === 0, limited.stderr);
+
+          await ctx.runCodemode({
+            scope: alice,
+            code: execute("message.sendToSelf", { subject: "Hi", text: "Hello" }),
+          });
+          await ctx.runtime.objects.resend.for({ kind: "system" }).commands.wakeDurableHooks();
+        }),
+        runner.drain(),
+        then.assert("the fifth email is refused", async (ctx) => {
+          await expect(
+            ctx.runCodemode({
+              scope: alice,
+              code: execute("message.sendToSelf", { subject: "Hi", text: "Hello" }),
+            }),
+          ).rejects.toThrow("USAGE_LIMIT_EXCEEDED");
+          expect(resend.sent).toHaveLength(4);
+        }),
+      ],
+    }),
+  );
+});
+
+/** The emailId Backoffice gave the received email Resend knows as `providerEmailId`. */
+async function emailIdOf(ctx: BackofficeScenarioContext, providerEmailId: string) {
+  const events = await emailEvents(ctx, alice, "message.received");
+  const event = events.find(({ id }) => id === `email:${providerEmailId}`);
+  return (event!.payload as { emailId: string }).emailId;
+}

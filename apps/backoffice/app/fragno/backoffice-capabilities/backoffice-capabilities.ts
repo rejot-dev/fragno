@@ -30,6 +30,7 @@ import { piCapability } from "./capabilities/pi";
 import { connectorCapability } from "./capabilities/project-connector";
 import {
   INBOUND_EMAIL_AUTOMATION_EVENT_MESSAGE_RECEIVED,
+  MAILBOX_EMAIL_STATUS_AUTOMATION_EVENTS,
   INBOUND_EMAIL_AUTOMATION_SOURCE,
   resendCapability,
 } from "./capabilities/resend";
@@ -267,6 +268,9 @@ export const AUTOMATION_SOURCE_EVENT_TYPES = {
   },
   [AUTOMATION_SOURCES.email]: {
     messageReceived: INBOUND_EMAIL_AUTOMATION_EVENT_MESSAGE_RECEIVED,
+    messageDelivered: MAILBOX_EMAIL_STATUS_AUTOMATION_EVENTS.delivered.eventType,
+    messageBounced: MAILBOX_EMAIL_STATUS_AUTOMATION_EVENTS.bounced.eventType,
+    messageComplained: MAILBOX_EMAIL_STATUS_AUTOMATION_EVENTS.complained.eventType,
   },
   [AUTOMATION_SOURCES.otp]: {
     identityClaimCompleted: "identity.claim.completed",

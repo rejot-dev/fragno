@@ -34,7 +34,8 @@ an organization, user, or project. It needs no outbound connection; when a provi
 directions, such as Slack, it has an `api#` and a `webhook#` connection. Follow
 `/static/skills/api-webhooks/SKILL.md` for its contract, events, and routes. Receiving email is
 another: `backoffice#email`, a person's one random address. Follow
-`/static/skills/receiving-email/SKILL.md` to set it up, hand it over, and route its email.
+`/static/skills/receiving-email/SKILL.md` to set it up, hand it over, and route its email, and
+`/static/skills/sending-email/SKILL.md` to reply from it.
 
 ## 1. Discover
 

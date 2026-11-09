@@ -65,12 +65,17 @@ import type { TelegramAdminConfigResponse } from "workers/telegram-object";
 
 import type { FragnoExecutionContext } from "@fragno-dev/core";
 import type {
+  ResendMailboxAttachmentInput,
   ResendMailboxEmail,
   ResendMailbox,
   ResendOpenMailboxResult,
   ResendPauseMailboxResult,
   ResendReplaceMailboxAddressResult,
+  ResendReplyFromMailboxResult,
+  ResendResumeMailboxSendingResult,
   ResendSendEmailInput,
+  ResendSendFromMailboxResult,
+  ResendSuspendMailboxSendingResult,
 } from "@fragno-dev/resend-fragment";
 
 import type { ClassifierResult } from "@earendil-works/pi-ai";
@@ -965,6 +970,33 @@ export type InboundEmailCommands = {
     emailMessageId: string,
     attachmentId: string,
   ): Promise<InboundEmailAttachment | null>;
+  /** Sends from the owner's address to `to`, which the caller has checked the owner may reach. */
+  sendFromMailbox(
+    owner: BackofficeUserContextScope,
+    email: {
+      to: string;
+      subject: string;
+      text: string;
+      fromName: string | null;
+      attachments: ResendMailboxAttachmentInput[];
+    },
+  ): Promise<ResendSendFromMailboxResult>;
+  /** Replies to an email the owner received, only when its sender is verified. */
+  replyFromMailbox(
+    owner: BackofficeUserContextScope,
+    reply: {
+      emailMessageId: string;
+      text: string;
+      subject: string | null;
+      fromName: string | null;
+    },
+  ): Promise<ResendReplyFromMailboxResult>;
+  suspendMailboxSending(
+    owner: BackofficeUserContextScope,
+  ): Promise<ResendSuspendMailboxSendingResult>;
+  resumeMailboxSending(
+    owner: BackofficeUserContextScope,
+  ): Promise<ResendResumeMailboxSendingResult>;
 };
 export type McpCommands = DurableHookCommands;
 /** Connector has HTTP operations only; provider tokens stay upstream. */

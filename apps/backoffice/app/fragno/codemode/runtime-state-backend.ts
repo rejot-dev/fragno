@@ -27,7 +27,7 @@ export function createRuntimeStateBackend({
   kernel,
   execution,
 }: {
-  runtime: BackofficeRuntimeServices;
+  runtime: Pick<BackofficeRuntimeServices, "objects" | "config">;
   kernel: BackofficeKernel;
   execution: BackofficeExecutionContext;
 }): BackofficeStateBackend {
@@ -51,7 +51,7 @@ function acceptedSharedFolders({
   kernel,
   scope,
 }: {
-  runtime: BackofficeRuntimeServices;
+  runtime: Pick<BackofficeRuntimeServices, "objects">;
   kernel: BackofficeKernel;
   scope: BackofficeRoutableScope;
 }): SharedFolders {

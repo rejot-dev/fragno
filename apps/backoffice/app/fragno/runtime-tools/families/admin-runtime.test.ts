@@ -64,6 +64,7 @@ function createAdminRuntimeDependencies() {
     },
     billingFor: null,
     replaceInboundEmailAddress: null,
+    setInboundEmailSending: null,
     publicBaseUrl: "https://backoffice.example/",
   } satisfies Parameters<typeof createAdminRuntime>[0];
 }

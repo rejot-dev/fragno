@@ -88,6 +88,10 @@ type AdminRuntimeDependencies = {
   replaceInboundEmailAddress:
     | ((owner: BackofficeUserContextScope) => Promise<{ address: string }>)
     | null;
+  /** Stops or resumes a person's sending; null without the inbound email domain. */
+  setInboundEmailSending:
+    | ((owner: BackofficeUserContextScope, suspended: boolean) => Promise<void>)
+    | null;
   publicBaseUrl: string | null;
 };
 
@@ -125,6 +129,7 @@ export function createAdminRuntime({
   automationsFor,
   billingFor,
   replaceInboundEmailAddress,
+  setInboundEmailSending,
   publicBaseUrl,
 }: AdminRuntimeDependencies): AdminRuntime {
   /** Access codes are shared as sign-up links, which need the public origin. */
@@ -311,6 +316,19 @@ export function createAdminRuntime({
         throw new Error(`Admin user command resolved user '${userId}' to an organization.`);
       }
       return { userId, ...(await replaceInboundEmailAddress(owner)) };
+    },
+    setInboundEmailSending: async ({ userId, suspended }) => {
+      if (!setInboundEmailSending) {
+        throw new Error(
+          "Admin inbound email sending requires INBOUND_EMAIL_DOMAIN and the RESEND binding.",
+        );
+      }
+      const owner = await requireAdminUserScope(auth, userId);
+      if (owner.kind !== "user") {
+        throw new Error(`Admin user command resolved user '${userId}' to an organization.`);
+      }
+      await setInboundEmailSending(owner, suspended);
+      return { userId, sendingSuspended: suspended };
     },
     setOrganizationManager: async ({ organizationSlug, managingOrganizationSlug }) =>
       await auth.setOrganizationManager({

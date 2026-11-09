@@ -154,6 +154,11 @@ export type AdminRuntime = {
     userId: string;
     address: string;
   }>;
+  /** Stops or resumes sending from a person's inbound address; it receives either way. */
+  setInboundEmailSending(input: { userId: string; suspended: boolean }): Promise<{
+    userId: string;
+    sendingSuspended: boolean;
+  }>;
 };
 
 type AdminToolContext = BackofficeToolContext<{ admin?: AdminRuntime }>;

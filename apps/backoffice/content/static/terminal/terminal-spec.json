@@ -1261,6 +1261,70 @@
     ]
   },
   {
+    "command": "admin.inbound-email.suspend-sending",
+    "summary": "admin.inbound-email.suspend-sending stops a person sending from their inbound address.",
+    "options": [
+      {
+        "name": "user",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "ID of the user whose address sends or stops"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.inbound-email.resume-sending",
+    "summary": "admin.inbound-email.resume-sending lets a person send from their inbound address again.",
+    "options": [
+      {
+        "name": "user",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "ID of the user whose address sends or stops"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "admin.events.delete",
     "summary": "admin.events.delete permanently deletes up to 50 of an organization's oldest stored events of one type, and their sync history, so browsers stop downloading them. Events stored in the last 8 days or whose routes are still being matched are kept, as are route dispatch records; traces rooted at a deleted event lose their root. pi and integrations events cannot be deleted until the organization finished folding its earlier ones into its agents and connections.",
     "options": [

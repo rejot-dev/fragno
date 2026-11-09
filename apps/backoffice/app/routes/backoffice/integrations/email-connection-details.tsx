@@ -10,7 +10,7 @@ export function EmailConnectionDetails({
 }: {
   details: Extract<IntegrationConnectionDetails, { kind: "email" }>;
 }) {
-  const { mailbox } = details;
+  const { mailbox, sending } = details;
   return (
     <DetailSection title="Email address">
       {mailbox === null ? (
@@ -30,6 +30,17 @@ export function EmailConnectionDetails({
               ? "Delivery is paused, and email sent here reaches no one. The address stays yours: ask your agent to set it up again to resume."
               : "Forward or send email here. Each email arrives as an email message.received event in this scope, where your automations act on it."}
           </p>
+          {mailbox.paused ? null : (
+            <p className="text-xs text-[var(--bo-muted)]">
+              {mailbox.sendingSuspended
+                ? "Sending is suspended, such as after a recipient marked an email from it as spam. It still receives; contact support to send again."
+                : `It also sends replies to verified senders, and email to your own account email${
+                    sending === null
+                      ? "."
+                      : `: ${sending.used} of ${sending.limit ?? "unlimited"} this month.`
+                  }`}
+            </p>
+          )}
         </div>
       )}
     </DetailSection>

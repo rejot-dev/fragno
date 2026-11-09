@@ -15,8 +15,8 @@ export type ResendConfig = Pick<
 >;
 
 /**
- * `onEmailReceived` and `onMailboxChanged` are null for accounts without people's inbound
- * addresses, whose received mail reaches no one but their threads.
+ * The callbacks are null for accounts without people's inbound addresses, whose received mail
+ * reaches no one but their threads.
  */
 export function createResendServer(
   config: ResendConfig,
@@ -24,10 +24,14 @@ export function createResendServer(
     client,
     onEmailReceived,
     onMailboxChanged,
+    onMailboxEmailQueued,
+    onEmailStatusUpdated,
   }: {
     client: ResendFragmentConfig["client"];
     onEmailReceived: ResendFragmentConfig["onEmailReceived"] | null;
     onMailboxChanged: ResendFragmentConfig["onMailboxChanged"] | null;
+    onMailboxEmailQueued: ResendFragmentConfig["onMailboxEmailQueued"] | null;
+    onEmailStatusUpdated: ResendFragmentConfig["onEmailStatusUpdated"] | null;
   },
   runtime: BackofficeFragmentRuntimeOptions,
   kernel: BackofficeKernel,
@@ -38,6 +42,8 @@ export function createResendServer(
       client,
       onEmailReceived: onEmailReceived ?? undefined,
       onMailboxChanged: onMailboxChanged ?? undefined,
+      onMailboxEmailQueued: onMailboxEmailQueued ?? undefined,
+      onEmailStatusUpdated: onEmailStatusUpdated ?? undefined,
     },
     {
       databaseAdapter: runtime.adapters.createAdapter({

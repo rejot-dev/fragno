@@ -84,6 +84,28 @@ export class Resend
     return await this.#object.getMailboxEmailAttachment(owner, emailMessageId, attachmentId);
   }
 
+  async sendFromMailbox(
+    owner: BackofficeUserContextScope,
+    email: Parameters<InboundEmailCommands["sendFromMailbox"]>[1],
+  ) {
+    return await this.#object.sendFromMailbox(owner, email);
+  }
+
+  async replyFromMailbox(
+    owner: BackofficeUserContextScope,
+    reply: Parameters<InboundEmailCommands["replyFromMailbox"]>[1],
+  ) {
+    return await this.#object.replyFromMailbox(owner, reply);
+  }
+
+  async suspendMailboxSending(owner: BackofficeUserContextScope) {
+    return await this.#object.suspendMailboxSending(owner);
+  }
+
+  async resumeMailboxSending(owner: BackofficeUserContextScope) {
+    return await this.#object.resumeMailboxSending(owner);
+  }
+
   async getDurableHookQueue(options?: DurableHookQueueOptions) {
     return await this.#object.getDurableHookQueue(options);
   }

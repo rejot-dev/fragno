@@ -114,6 +114,9 @@ describe("admin runtime tools", () => {
       replaceInboundEmailAddress: async () => {
         throw new Error("Inbound email is not configured in this fixture.");
       },
+      setInboundEmailSending: async () => {
+        throw new Error("Inbound email is not configured in this fixture.");
+      },
     };
     const context = createTrustedSystemBackofficeToolContext({ runtimes: { admin: runtime } });
 

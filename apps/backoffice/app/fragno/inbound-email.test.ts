@@ -1,6 +1,20 @@
 import { assert, describe, test } from "vitest";
 
-import { inboundEmailSenderDomain, inboundEmailSenderVerified } from "./inbound-email";
+import {
+  inboundEmailSenderAddress,
+  inboundEmailSenderDomain,
+  inboundEmailSenderVerified,
+} from "./inbound-email";
+
+describe("inboundEmailSenderAddress", () => {
+  test("reads the From address alone, lowercased, not one a display name holds", () => {
+    assert(inboundEmailSenderAddress("Shop <Orders@Shop.example>") === "orders@shop.example");
+    assert(
+      inboundEmailSenderAddress('"billing@shop.example" <x@attacker.test>') === "x@attacker.test",
+    );
+    assert(inboundEmailSenderAddress("Shop <orders@>") === null);
+  });
+});
 
 describe("inboundEmailSenderDomain", () => {
   test("reads the domain of the From address, lowercased", () => {
