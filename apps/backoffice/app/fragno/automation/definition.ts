@@ -74,11 +74,7 @@ import {
   validateAutomationEventPayload,
 } from "./event-definitions";
 import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
-import {
-  createEventFoldReplayServices,
-  replayEventFold,
-  type EventFoldReplayPass,
-} from "./event-fold-replay";
+import { createEventFoldReplayServices, replayEventFold } from "./event-fold-replay";
 import {
   createEventProjectionServices,
   foldProjectedEvents,
@@ -122,7 +118,7 @@ import {
   type StarterAutomationRoutesSeedResult,
 } from "./routing";
 import { createAutomationRouteServices } from "./routing-storage-runtime";
-import { automationFragmentSchema } from "./schema";
+import { automationFragmentSchema, type EventFoldReplayPass } from "./schema";
 import { createShareServices } from "./shares-storage-runtime";
 
 export type AutomationIngestResult = {

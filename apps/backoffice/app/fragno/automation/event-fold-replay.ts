@@ -7,7 +7,7 @@ import {
   projectedEventOf,
 } from "./event-projections";
 import type { AutomationInternalHooks } from "./internal-hooks";
-import { automationFragmentSchema } from "./schema";
+import { automationFragmentSchema, type EventFoldReplayPass } from "./schema";
 
 /**
  * Ingestion folds `pi` and `integrations` events into agents and connections as it stores them,
@@ -16,9 +16,6 @@ import { automationFragmentSchema } from "./schema";
  * folds again the events ingestion folded, which changes nothing but ties (see
  * `foldProjectedEvents`), so it needs no cutover.
  */
-
-/** One page of the replay: a type's events after the cursor, which is null for its first page. */
-export type EventFoldReplayPass = { source: string; eventType: string; cursor: string | null };
 
 /** The `event_fold_replay` row's ID; its `next` pass is null once the replay folded every type. */
 export const EVENT_FOLD_REPLAY_ID = "stored-events";
