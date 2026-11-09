@@ -60,6 +60,7 @@ export function BackofficeTopBar({
         {resolvedScope && projectOwner ? (
           <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
             <StreamedBackofficeProjectMenu
+              presentation="menu"
               owner={backofficeRouteScopeFromResolvedScope(projectOwner)}
               administeredMember={administeredMember}
               currentProject={

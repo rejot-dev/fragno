@@ -10,6 +10,7 @@ import {
   SelectorMenuTrigger,
 } from "@fragno-private/design-system/controls/selector-menu";
 import type { IconName } from "@fragno-private/design-system/icon";
+import { SheetOption, SheetSection } from "@fragno-private/design-system/overlays/sheet";
 import { useLocation } from "react-router";
 
 import {
@@ -241,6 +242,56 @@ export function BackofficeScopeMenu({
       </SelectorMenuPopup>
     </SelectorMenu>
   );
+}
+
+/** The scopes to switch to as sections of the phone's workspace sheet, which leaves signing out to
+ * the menu. */
+export function BackofficeScopeSheetSections({
+  me,
+  currentScope,
+  administeredMember,
+}: {
+  me: BackofficeMeData;
+  currentScope: BackofficeResolvedScope<Organization>;
+  administeredMember: AdministeredMember | null;
+}) {
+  const location = useLocation();
+  const selectedId = scopeOptionId(currentScope);
+
+  return scopeMenuGroups(me, administeredMember, selectedId).map((group) => (
+    <SheetSection key={group.key} label={group.label}>
+      {group.options.map((option) => (
+        <SheetOption
+          key={option.id}
+          to={scopeSwitchPath(
+            location.pathname,
+            backofficeRouteScopeFromResolvedScope(option.scope),
+            me.user.id,
+          )}
+          label={option.label}
+          description={option.description}
+          current={option.id === selectedId}
+        />
+      ))}
+      {group.shortcuts.map((shortcut) => (
+        <SheetOption
+          key={shortcut.key}
+          to={shortcut.to}
+          label={shortcut.label}
+          description={shortcut.description}
+          current={false}
+        />
+      ))}
+      {group.more ? (
+        <SheetOption
+          to={group.more.to}
+          label={group.more.label}
+          description={null}
+          current={false}
+        />
+      ) : null}
+    </SheetSection>
+  ));
 }
 
 /**

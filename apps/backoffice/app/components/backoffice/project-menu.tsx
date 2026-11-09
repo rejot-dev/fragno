@@ -7,6 +7,7 @@ import {
   SelectorMenuPopup,
   SelectorMenuTrigger,
 } from "@fragno-private/design-system/controls/selector-menu";
+import { SheetOption, SheetSection } from "@fragno-private/design-system/overlays/sheet";
 import { Suspense, use, type ReactNode } from "react";
 import { useLocation } from "react-router";
 
@@ -51,6 +52,71 @@ function ownerDescription(
   }
 }
 
+type ProjectChoice = {
+  key: string;
+  to: string;
+  label: string;
+  description: string;
+  current: boolean;
+};
+
+/**
+ * Where the menu and the sheet can go: out of the project or to another one, and to a new one, which
+ * follows any note about the list.
+ */
+function projectChoices({
+  pathname,
+  owner,
+  ownerScope,
+  currentProject,
+  projects,
+}: {
+  pathname: string;
+  owner: BackofficeProjectMenuOwner;
+  ownerScope: string;
+  currentProject: BackofficeProjectOption | null;
+  projects: BackofficeProjectOption[];
+}): { switches: ProjectChoice[]; create: ProjectChoice } {
+  return {
+    switches: [
+      ...(currentProject
+        ? [
+            {
+              key: "no-project",
+              to: scopeSwitchPath(pathname, owner),
+              label: "No project",
+              description: `Return to ${ownerScope}`,
+              current: false,
+            },
+          ]
+        : []),
+      ...projects.map((project) => ({
+        key: project.slug,
+        to: scopeSwitchPath(pathname, { kind: "project", owner, projectSlug: project.slug }),
+        label: project.label,
+        description: "Project scope",
+        current: project.slug === currentProject?.slug,
+      })),
+    ],
+    create: {
+      key: "new-project",
+      to: `/backoffice/dashboard/${backofficeRouteScopePath(owner)}?createProject=1`,
+      label: "+ New project",
+      description: "Create a project-scoped runtime",
+      current: false,
+    },
+  };
+}
+
+type ProjectListProps = {
+  owner: BackofficeProjectMenuOwner;
+  administeredMember: AdministeredMember | null;
+  currentProject: BackofficeProjectOption | null;
+  projects: BackofficeProjectOption[];
+  projectsError: string | null;
+  projectsLoading: boolean;
+};
+
 export function BackofficeProjectMenu({
   owner,
   administeredMember,
@@ -58,17 +124,16 @@ export function BackofficeProjectMenu({
   projects,
   projectsError,
   projectsLoading,
-}: {
-  owner: BackofficeProjectMenuOwner;
-  administeredMember: AdministeredMember | null;
-  currentProject: BackofficeProjectOption | null;
-  projects: BackofficeProjectOption[];
-  projectsError: string | null;
-  projectsLoading: boolean;
-}) {
+}: ProjectListProps) {
   const location = useLocation();
   const description = ownerDescription(owner, administeredMember);
-  const createProjectPath = `/backoffice/dashboard/${backofficeRouteScopePath(owner)}?createProject=1`;
+  const choices = projectChoices({
+    pathname: location.pathname,
+    owner,
+    ownerScope: description.scope,
+    currentProject,
+    projects,
+  });
 
   return (
     <SelectorMenu>
@@ -83,27 +148,14 @@ export function BackofficeProjectMenu({
         <SelectorMenuHeading>Switch project</SelectorMenuHeading>
 
         <SelectorMenuGroup label={null}>
-          {currentProject ? (
+          {choices.switches.map((choice) => (
             <SelectorMenuOption
-              to={scopeSwitchPath(location.pathname, owner)}
-              label="No project"
-              description={`Return to ${description.scope}`}
+              key={choice.key}
+              to={choice.to}
+              label={choice.label}
+              description={choice.description}
               badge={null}
-              current={false}
-            />
-          ) : null}
-          {projects.map((project) => (
-            <SelectorMenuOption
-              key={project.slug}
-              to={scopeSwitchPath(location.pathname, {
-                kind: "project",
-                owner,
-                projectSlug: project.slug,
-              })}
-              label={project.label}
-              description="Project scope"
-              badge={null}
-              current={project.slug === currentProject?.slug}
+              current={choice.current}
             />
           ))}
           {projectsLoading ? (
@@ -115,9 +167,9 @@ export function BackofficeProjectMenu({
           ) : null}
           {projectsError ? <SelectorMenuNote tone="error">{projectsError}</SelectorMenuNote> : null}
           <SelectorMenuOption
-            to={createProjectPath}
-            label="+ New project"
-            description="Create a project-scoped runtime"
+            to={choices.create.to}
+            label={choices.create.label}
+            description={choices.create.description}
             badge={null}
             current={false}
           />
@@ -127,22 +179,81 @@ export function BackofficeProjectMenu({
   );
 }
 
+/** The project choices as a section of the phone's workspace sheet. */
+function BackofficeProjectSheetSection({
+  owner,
+  administeredMember,
+  currentProject,
+  projects,
+  projectsError,
+  projectsLoading,
+}: ProjectListProps) {
+  const location = useLocation();
+  const description = ownerDescription(owner, administeredMember);
+  const choices = projectChoices({
+    pathname: location.pathname,
+    owner,
+    ownerScope: description.scope,
+    currentProject,
+    projects,
+  });
+
+  return (
+    <SheetSection label="Project">
+      {choices.switches.map((choice) => (
+        <SheetOption
+          key={choice.key}
+          to={choice.to}
+          label={choice.label}
+          description={choice.description}
+          current={choice.current}
+        />
+      ))}
+      {projectsLoading ? (
+        <p className="px-3 text-xs text-[var(--bo-muted-2)]">Loading projects…</p>
+      ) : projects.length === 0 && !projectsError ? (
+        <p className="px-3 text-xs text-[var(--bo-muted-2)]">
+          {description.name} has no projects yet.
+        </p>
+      ) : null}
+      {projectsError ? (
+        <p role="alert" className="px-3 text-xs text-[var(--bo-failed)]">
+          {projectsError}
+        </p>
+      ) : null}
+      <SheetOption
+        to={choices.create.to}
+        label={choices.create.label}
+        description={choices.create.description}
+        current={false}
+      />
+    </SheetSection>
+  );
+}
+
 const EMPTY_PROJECTS: BackofficeProjectOption[] = [];
 
-/** The project menu, which lists the owner's projects once the layout's loader streams them in. */
+/**
+ * The project menu, or the workspace sheet's project section, which lists the owner's projects
+ * once the layout's loader streams them in.
+ */
 export function StreamedBackofficeProjectMenu({
+  presentation,
   owner,
   administeredMember,
   currentProject,
   projectList,
 }: {
+  presentation: "menu" | "sheet";
   owner: BackofficeProjectMenuOwner;
   administeredMember: AdministeredMember | null;
   currentProject: BackofficeProjectOption | null;
   projectList: Promise<AutomationProjectList> | null;
 }) {
+  const Presentation =
+    presentation === "menu" ? BackofficeProjectMenu : BackofficeProjectSheetSection;
   const menu = (list: AutomationProjectList | null) => (
-    <BackofficeProjectMenu
+    <Presentation
       owner={owner}
       administeredMember={administeredMember}
       currentProject={currentProject}
