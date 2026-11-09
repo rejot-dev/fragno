@@ -57,7 +57,7 @@ export type MarketplacePackageFile = {
   content: string;
 };
 
-/** Listing ids repeat across Marketplaces, so organization packages are namespaced by their Marketplace. */
+/** Listing ids repeat across Marketplaces, so organization and app packages are namespaced by their Marketplace. */
 export function marketplacePackageUploadName({
   marketplace,
   listingId,
@@ -66,9 +66,14 @@ export function marketplacePackageUploadName({
   listingId: string;
 }): string {
   const listing = `listings/${bytesToHex(TEXT_ENCODER.encode(marketplaceListingIdSchema.parse(listingId)))}`;
-  return marketplace.kind === "system"
-    ? `marketplace/${listing}`
-    : `marketplace/org/${bytesToHex(TEXT_ENCODER.encode(marketplace.orgId))}/${listing}`;
+  if (marketplace.kind === "system") {
+    return `marketplace/${listing}`;
+  }
+  const owner =
+    marketplace.kind === "org"
+      ? `org/${bytesToHex(TEXT_ENCODER.encode(marketplace.orgId))}`
+      : `app/${bytesToHex(TEXT_ENCODER.encode(marketplace.appId))}`;
+  return `marketplace/${owner}/${listing}`;
 }
 
 export const normalizeMarketplacePackagePath = (path: string): string => {

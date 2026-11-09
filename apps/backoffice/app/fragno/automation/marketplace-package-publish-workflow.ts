@@ -10,6 +10,7 @@ import { z } from "zod";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { isBackofficeForbiddenError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { marketplaceObject } from "@/fragno/marketplace/owner";
 import { marketplacePackageUploadName } from "@/fragno/marketplace/package-files";
 import {
   marketplacePackagePublishRequestSchema,
@@ -122,7 +123,7 @@ export function defineMarketplacePackagePublishWorkflow(
           );
         }
       });
-      const marketplace = runtime.objects.marketplace.for(request.intent.marketplace).commands;
+      const marketplace = marketplaceObject(runtime.objects, request.intent.marketplace).commands;
       const context = {
         execution: createBackofficeSystemExecution({ kind: "system" }),
         propagationContext: null,

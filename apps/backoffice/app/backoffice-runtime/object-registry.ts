@@ -1125,7 +1125,8 @@ export const backofficeObjectScopePolicy = {
   PI_MANAGER: ["singleton", "org", "user", "project"],
   BILLING: ["org", "user"],
   CODEMODE: ["singleton", "org", "user", "app", "project"],
-  MARKETPLACE: ["singleton", "org"],
+  // Each registered app's Marketplace is named by the app; see `marketplaceObject`.
+  MARKETPLACE: ["singleton", "org", "named"],
 
   TELEGRAM: ["singleton", "org", "user", "project"],
   OTP: ["singleton", "org"],

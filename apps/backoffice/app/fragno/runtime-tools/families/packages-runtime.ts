@@ -21,7 +21,9 @@ import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
-import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
+import { installedAppIdOfActors } from "@/fragno/app-installations/authority";
+import { appInstallationReaches } from "@/fragno/app-installations/contracts";
+import { marketplaceScopeForSource } from "@/fragno/marketplace/owner";
 
 /** Package listing reads the current workspace's installations, not a registry query. */
 export type PackagesRuntime = {
@@ -86,7 +88,10 @@ export function createPackagesRuntime({
         workflowScope = owner;
       }
       // Organization visibility installs from the coordinating organization's own Marketplace.
-      const marketplace = marketplaceScopeForVisibility(visibility, workflowScope);
+      const marketplace = marketplaceScopeForSource(visibility, {
+        organization: workflowScope,
+        actors: execution.actors,
+      });
       const result = await kernel
         .scoped("AUTOMATIONS", workflowScope, objects.automations)
         .commands.restartMarketplaceIngestion(
@@ -118,8 +123,26 @@ export function createPackagesRuntime({
       return await targetAutomations().commands.getPackageInstallation(input);
     },
     async uninstall(input) {
-      if (!(await targetAutomations().commands.getPackageInstallation(input))) {
+      const installation = await targetAutomations().commands.getPackageInstallation(input);
+      if (!installation) {
         return null;
+      }
+      // An app's packages are its own while it reaches the workspace: removing them is uninstalling
+      // the app. Once it no longer does, nothing would remove them, so members may.
+      if (
+        installation.marketplace.kind === "app" &&
+        installedAppIdOfActors(execution.actors) !== installation.marketplace.appId
+      ) {
+        const { appId } = installation.marketplace;
+        const app = await objects.appInstallations
+          .for(backofficeScopeRootOwner(targetScope))
+          .commands.getInstallation({ appId });
+        if (app?.status === "active" && appInstallationReaches(app, targetScope)) {
+          throw new BackofficeOperationError(
+            "forbidden",
+            `Package '${input.listingId}' belongs to app '${appId}', which installed it. Uninstall the app to remove it.`,
+          );
+        }
       }
       // Agents go first: should the rest fail, the installation is still recorded to uninstall again.
       const removedAgents = piManagerAvailable

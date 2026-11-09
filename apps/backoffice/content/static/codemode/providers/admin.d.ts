@@ -147,6 +147,13 @@ type AdminCodemodeProvider = {
   marketplacePushStatic(
     input: AdminMarketplacePushStaticInput,
   ): Promise<AdminMarketplacePushStaticOutput>;
+  /**
+   * Publish a release into a registered app's Marketplace, which only the app's installations install from (packages.install with app visibility). The app owns the listing, app:<slug>#<package slug>. Versions are immutable: publishing a published version again with the same files changes nothing, and with other files fails. Publishing is durable; installs of a requested release fail until it is published.
+   * Requires `admin.apps.manage`.
+   */
+  marketplacePublishAppPackage(
+    input: AdminMarketplacePublishAppPackageInput,
+  ): Promise<AdminMarketplacePublishAppPackageOutput>;
 };
 declare const admin: AdminCodemodeProvider;
 
@@ -709,4 +716,25 @@ type AdminMarketplacePushStaticOutput = {
         };
       }
   )[];
+};
+type AdminMarketplacePublishAppPackageInput = {
+  appId: string;
+  slug: string;
+  version: string;
+  metadata: {
+    name: string;
+    summary: string;
+    description: string;
+    tags?: string[];
+    category: "communication" | "developer-tools" | "operations" | "productivity" | "reporting";
+  };
+  files: {
+    [key: string]: string;
+  };
+};
+type AdminMarketplacePublishAppPackageOutput = {
+  listingId: string;
+  version: string;
+  state: "requested" | "published";
+  workflowInstanceId: string;
 };

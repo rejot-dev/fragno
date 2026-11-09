@@ -6,14 +6,13 @@ import {
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEventDefinitionCreateInput } from "@fragno-dev/backoffice-api/v0/events";
 import type {
+  MarketplaceScope,
   PackageInstallation,
   PackageUninstallation,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import {
-  backofficeContextScopesEqual,
-  type BackofficeContextScope,
-} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z, ZodError } from "zod";
+
+import { marketplaceScopesEqual } from "@/fragno/marketplace/owner";
 
 import { AutomationEventDefinitionValidationError } from "./event-definitions";
 import type { createAutomationFragment } from "./index";
@@ -38,7 +37,7 @@ export class PackageInstallationError extends Error {
 /** Installing again replaces an installation only in its own folder, from its own Marketplace. */
 export function assertPackageInstallationReplaceable(
   existing: PackageInstallation | null,
-  next: { listingId: string; marketplace: BackofficeContextScope; installationRoot: string },
+  next: { listingId: string; marketplace: MarketplaceScope; installationRoot: string },
 ) {
   if (!existing) {
     return;
@@ -48,7 +47,7 @@ export function assertPackageInstallationReplaceable(
       `Package '${next.listingId}' is already installed at '${existing.installationRoot}'. Install it there, or uninstall it first.`,
     );
   }
-  if (!backofficeContextScopesEqual(existing.marketplace, next.marketplace)) {
+  if (!marketplaceScopesEqual(existing.marketplace, next.marketplace)) {
     throw new PackageInstallationError(
       `Package '${next.listingId}' is already installed from another Marketplace. Uninstall it first.`,
     );

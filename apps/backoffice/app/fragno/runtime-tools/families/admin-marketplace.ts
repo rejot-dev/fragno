@@ -3,6 +3,8 @@ import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/perm
 import { z } from "zod";
 
 import {
+  marketplaceAppPackagePublishInputSchema,
+  marketplaceAppPackagePublishResultSchema,
   marketplaceFeatureInputSchema,
   marketplaceStaticPublicationResultSchema,
   marketplaceUnfeatureInputSchema,
@@ -215,6 +217,75 @@ const pushStaticTool = defineBackofficeRuntimeTool({
   },
 });
 
+const publishAppPackageTool = defineBackofficeRuntimeTool({
+  id: "admin.marketplace.publish-app-package",
+  namespace: "admin",
+  name: "marketplacePublishAppPackage",
+  description:
+    "Publish a release into a registered app's Marketplace, which only the app's installations install from (packages.install with app visibility). The app owns the listing, app:<slug>#<package slug>. Versions are immutable: publishing a published version again with the same files changes nothing, and with other files fails. Publishing is durable; installs of a requested release fail until it is published.",
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
+  inputSchema: marketplaceAppPackagePublishInputSchema,
+  outputSchema: marketplaceAppPackagePublishResultSchema,
+  execute: async (input, context: AdminMarketplaceToolContext) =>
+    await getMarketplaceRuntime(context).publishAppPackage(input),
+  adapters: {
+    bash: {
+      command: "admin.marketplace.publish-app-package",
+      help: {
+        summary:
+          "admin.marketplace.publish-app-package publishes a release into an app's Marketplace (System administrators only).",
+        options: [
+          {
+            name: "app-id",
+            required: true,
+            valueRequired: true,
+            valueName: "id",
+            description: "Registered Backoffice app ID",
+          },
+          {
+            name: "slug",
+            required: true,
+            valueRequired: true,
+            description: "Package slug; the listing ID is app:<app slug>#SLUG",
+          },
+          { name: "version", required: true, valueRequired: true, description: "Release version" },
+          {
+            name: "metadata-json",
+            required: true,
+            valueRequired: true,
+            valueName: "json",
+            description: "Listing metadata: name, summary, description, category, and tags",
+          },
+          {
+            name: "files-json",
+            required: true,
+            valueRequired: true,
+            valueName: "json",
+            description: "File contents by package-relative path",
+          },
+        ],
+        examples: [
+          'admin.marketplace.publish-app-package --app-id APP_ID --slug books-agent --version 1.0.0 --metadata-json \'{"name":"Books agent","summary":"Answers questions about the books.","description":"Defines the agent that answers questions about the books.","category":"operations","tags":[]}\' --files-json \'{".marketplace/installation.json":"{\\"agents\\":[]}"}\'',
+        ],
+      },
+      parse: defineCliArgsParser("admin.marketplace.publish-app-package", {
+        appId: { kind: "string", required: true },
+        slug: { kind: "string", required: true },
+        version: { kind: "string", required: true },
+        metadata: { kind: "json", option: "metadata-json", required: true },
+        files: { kind: "json", option: "files-json", required: true },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              data: result,
+              stdout: `${result.listingId}@${result.version}\t${result.state}\t${result.workflowInstanceId}\n`,
+            },
+    },
+  },
+});
+
 /** Organization owners and admins curate their own Marketplace, so curation is not System-only. */
 export const adminMarketplaceCurationToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "admin",
@@ -226,7 +297,7 @@ export const adminMarketplaceCurationToolFamily = defineBackofficeRuntimeToolFam
 
 export const adminMarketplacePublicationToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "admin",
-  tools: [pushStaticTool],
+  tools: [pushStaticTool, publishAppPackageTool],
   isAvailable: (context: AdminMarketplaceToolContext) =>
     context.execution.scope.kind === "system" && !!context.runtimes.marketplace,
 });

@@ -1452,6 +1452,64 @@
     ]
   },
   {
+    "command": "admin.marketplace.publish-app-package",
+    "summary": "admin.marketplace.publish-app-package publishes a release into an app's Marketplace (System administrators only).",
+    "options": [
+      {
+        "name": "app-id",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "Registered Backoffice app ID"
+      },
+      {
+        "name": "slug",
+        "required": true,
+        "valueRequired": true,
+        "description": "Package slug; the listing ID is app:<app slug>#SLUG"
+      },
+      {
+        "name": "version",
+        "required": true,
+        "valueRequired": true,
+        "description": "Release version"
+      },
+      {
+        "name": "metadata-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Listing metadata: name, summary, description, category, and tags"
+      },
+      {
+        "name": "files-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "File contents by package-relative path"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "org.get",
     "summary": "org.get prints the current organization and your roles in it.",
     "options": [
@@ -4789,7 +4847,7 @@
       {
         "name": "visibility",
         "valueRequired": true,
-        "description": "public (default) reads the public Marketplace; organization reads the current organization's Marketplace."
+        "description": "public (default) reads the public Marketplace; organization reads the current organization's Marketplace; app reads an installed app's own Marketplace."
       },
       {
         "name": "page-size",
@@ -4835,7 +4893,7 @@
       {
         "name": "visibility",
         "valueRequired": true,
-        "description": "public (default) reads the public Marketplace; organization reads the current organization's Marketplace."
+        "description": "public (default) reads the public Marketplace; organization reads the current organization's Marketplace; app reads an installed app's own Marketplace."
       },
       {
         "name": "version",
@@ -4971,7 +5029,7 @@
       {
         "name": "visibility",
         "valueRequired": true,
-        "description": "public (default) installs from the public Marketplace; organization installs from the installing organization's Marketplace."
+        "description": "public (default) installs from the public Marketplace; organization installs from the installing organization's Marketplace; app installs from an installed app's own Marketplace."
       },
       {
         "name": "permission",

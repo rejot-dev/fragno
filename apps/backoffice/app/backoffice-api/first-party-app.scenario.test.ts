@@ -16,6 +16,7 @@ import type {
   ManagedOrganizationPage,
 } from "@fragno-dev/backoffice-api/v0/provisioning";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 const workers = vi.hoisted(() => ({
@@ -25,6 +26,7 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
@@ -47,6 +49,7 @@ import { AppInstallationsObject } from "../../workers/app-installations-object";
 import { AppsObject } from "../../workers/apps-object";
 import { AuthObject } from "../../workers/auth-object";
 import { AutomationsObject } from "../../workers/automations-object";
+import { MarketplaceObject } from "../../workers/marketplace-object";
 import { OtpObject } from "../../workers/otp-object";
 import { UploadObject } from "../../workers/upload-object";
 import { backofficeApiRouter } from "./backoffice-api-router";
@@ -57,7 +60,11 @@ const scenarioObjects = {
   APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
+  MARKETPLACE: (input) => new MarketplaceObject(input),
   OTP: (input) => new OtpObject(input),
+  // Installing a package defines its agents.
+  PI_MANAGER: allLocalObjects.PI_MANAGER,
+  TELEGRAM: null,
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
@@ -197,12 +204,8 @@ async function execAsAdministrator(ctx: Ctx, command: string): Promise<string> {
   return await execAs(ctx, { scope: { kind: "system" }, userId: "platform-admin" }, command);
 }
 
-/** Runs a Bash command as a user in a scope, as Backoffice's chat does. */
-async function execAs(
-  ctx: Ctx,
-  execution: Parameters<typeof createBackofficeUserExecution>[0],
-  command: string,
-): Promise<string> {
+/** A user's Bash in a scope, as Backoffice's chat gives them. */
+async function shellAs(ctx: Ctx, execution: Parameters<typeof createBackofficeUserExecution>[0]) {
   const context = createRouteBackedRuntimeContext({
     emitter: { kind: "caller" },
     runtime: ctx.runtime.services,
@@ -213,17 +216,26 @@ async function execAs(
   const { bash } = await createInteractiveBashHost({
     context: { ...context, stateBackend: context.stateBackend },
   });
-  const result = await bash.exec(command);
+  return bash;
+}
+
+/** Runs a Bash command as a user in a scope, as Backoffice's chat does. */
+async function execAs(
+  ctx: Ctx,
+  execution: Parameters<typeof createBackofficeUserExecution>[0],
+  command: string,
+): Promise<string> {
+  const result = await (await shellAs(ctx, execution)).exec(command);
   assert.equal(result.exitCode, 0, result.stderr);
   return result.stdout;
 }
 
-/** Plays Bookkeeping's server acting as its installation in the organization. */
-async function callAsInstallation(ctx: Ctx) {
+/** Plays Bookkeeping's server acting as its installation in a scope of its organization. */
+async function installationClient(ctx: Ctx, scope: BackofficeRoutableScope) {
   const request = new Request(`${origin}/api/backoffice/execution-token`, {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Bearer ${ctx.vars.token}` },
-    body: JSON.stringify({ scope: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null } }),
+    body: JSON.stringify({ scope }),
   });
   const exchanged = await exchangeAction({
     request,
@@ -233,7 +245,7 @@ async function callAsInstallation(ctx: Ctx) {
     pattern: "/api/backoffice/execution-token",
   });
   assert.equal(exchanged.status, 200, await exchanged.clone().text());
-  const client = createBackofficeApiClient({
+  return createBackofficeApiClient({
     origin,
     accessToken: backofficeExecutionTokenResultSchema.parse(await exchanged.json()).accessToken,
     fetch: async (url, init) =>
@@ -242,7 +254,12 @@ async function callAsInstallation(ctx: Ctx) {
         kernel: new BackofficeKernel(ctx.runtime.services),
       }),
   });
+}
+
+/** Plays Bookkeeping's server acting as its installation in the organization. */
+async function callAsInstallation(ctx: Ctx) {
   const scope = { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null } as const;
+  const client = await installationClient(ctx, scope);
   return {
     fire: () =>
       client.call(scope, "events.fire", {
@@ -1452,6 +1469,157 @@ test("Bookkeeping provisions a client managed by a firm, whose people work in it
           created: false,
           jurisdiction: null,
         });
+      },
+    ),
+  ]);
+});
+
+test("Bookkeeping installs its agent package from its own Marketplace into a project it provisioned, and only it removes the package while installed", async () => {
+  const listingId = "app:bookkeeping#books-agent";
+  const agent = {
+    agentName: "books",
+    description: "Answers questions about the books of an administration.",
+    model: null,
+    permissions: ["events.read"],
+    instructions: "Answer from the books.",
+  };
+  const install = {
+    listingId,
+    version: "1.0.0",
+    installationRoot: "/workspace/bookkeeping",
+    permissions: [],
+  };
+  const project = (ctx: Ctx) =>
+    ({
+      kind: "project",
+      owner: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null },
+      projectId: ctx.vars.projectId,
+    }) as const;
+
+  await runFirstPartyScenario("first-party agent package", (then) => [
+    then(
+      "an administrator publishes Bookkeeping's agent package into its Marketplace",
+      async (ctx) => {
+        const published = await execAsAdministrator(
+          ctx,
+          `admin.marketplace.publish-app-package --app-id ${ctx.vars.appId} --slug books-agent --version 1.0.0 --metadata-json '${JSON.stringify(
+            {
+              name: "Books agent",
+              summary: "The agent that answers questions about the books.",
+              description:
+                "Defines the agent Bookkeeping prompts in the project of each administration.",
+              category: "operations",
+              tags: [],
+            },
+          )}' --files-json '${JSON.stringify({
+            ".marketplace/installation.json": JSON.stringify({ agents: [agent] }),
+          })}' --format json`,
+        );
+        expect(JSON.parse(published)).toMatchObject({
+          listingId,
+          version: "1.0.0",
+          state: "requested",
+        });
+        await ctx.drain();
+      },
+    ),
+    then(
+      "Bookkeeping provisions an administration's project, and may install packages",
+      async (ctx) => {
+        await ctx.runtime.objects.apps.singleton().commands.updateAppPermissions({
+          appId: ctx.vars.appId,
+          requestedPermissions: [
+            emit,
+            BACKOFFICE_PERMISSION.packages.install,
+            BACKOFFICE_PERMISSION.packages.read,
+            BACKOFFICE_PERMISSION.pi.read,
+          ],
+        });
+        await authorizeBookkeeping(ctx, ctx.vars.existingCookie);
+        const client = provisioning(ctx);
+        ctx.vars.orgId = (
+          await client.call("organizations.provision", {
+            externalOrganizationId: "bk-org-1",
+            name: "Acme Books",
+            ownerUserId: ctx.vars.existingUserId,
+          })
+        ).organizationId;
+        ctx.vars.projectId = (
+          await client.call("projects.provision", {
+            organizationId: ctx.vars.orgId,
+            externalProjectId: "bk-administration-1",
+            name: "Acme Books",
+            createdByUserId: ctx.vars.existingUserId,
+          })
+        ).projectId;
+      },
+    ),
+    then("the package is only in Bookkeeping's Marketplace", async (ctx) => {
+      const bookkeeping = await installationClient(ctx, project(ctx));
+      await expect(
+        bookkeeping.call(project(ctx), "packages.install", { ...install, visibility: "public" }),
+      ).rejects.toThrow("Marketplace listing is not published");
+      // The organization's owner reaches the project, but is no installation of Bookkeeping.
+      const owner = await shellAs(ctx, { scope: project(ctx), userId: ctx.vars.existingUserId });
+      const refused = await owner.exec(
+        `packages.install --listing-id '${listingId}' --version 1.0.0 --installation-root /workspace/bookkeeping --visibility app`,
+      );
+      expect(refused.exitCode).not.toBe(0);
+      expect(refused.stderr).toContain("Only an installed app");
+    }),
+    then(
+      "Bookkeeping installs the package into the project, which defines its agent",
+      async (ctx) => {
+        const bookkeeping = await installationClient(ctx, project(ctx));
+        const installed = await bookkeeping.call(project(ctx), "packages.install", {
+          ...install,
+          visibility: "app",
+        });
+        await ctx.drain();
+        expect(
+          await bookkeeping.call(project(ctx), "packages.status", {
+            workflowInstanceId: installed.workflowInstanceId,
+            workflowScope: installed.workflowScope,
+          }),
+        ).toMatchObject({ status: "complete" });
+        expect(await bookkeeping.call(project(ctx), "packages.ls", {})).toEqual({
+          installations: [
+            {
+              marketplace: { kind: "app", appId: ctx.vars.appId },
+              listingId,
+              version: "1.0.0",
+              installationRoot: "/workspace/bookkeeping",
+              permissions: [],
+              settings: {},
+            },
+          ],
+        });
+        expect(
+          await bookkeeping.call(project(ctx), "pi.agent.get", { agentName: "books" }),
+        ).toMatchObject({ ...agent, steward: { kind: "package", listingId } });
+      },
+    ),
+    then(
+      "members cannot uninstall Bookkeeping's package, until the organization uninstalls Bookkeeping",
+      async (ctx) => {
+        const owner = await shellAs(ctx, { scope: project(ctx), userId: ctx.vars.existingUserId });
+        const refused = await owner.exec(`packages.uninstall --listing-id '${listingId}'`);
+        expect(refused.exitCode).not.toBe(0);
+        expect(refused.stderr).toContain("Uninstall the app to remove it.");
+        // Nor can they delete or change the package's agent.
+        const deleted = await owner.exec("pi.agent.delete --agent books");
+        expect(deleted.exitCode).not.toBe(0);
+
+        const uninstalled = await ctx.runtime.objects.appInstallations
+          .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
+          .commands.uninstallApp({ appId: ctx.vars.appId });
+        assert(uninstalled.ok);
+        const removed = await owner.exec(`packages.uninstall --listing-id '${listingId}'`);
+        assert.equal(removed.exitCode, 0, removed.stderr);
+        assert((await owner.exec("packages.ls")).stdout === "");
+        const agents = await owner.exec("pi.agent.list --format json");
+        assert.equal(agents.exitCode, 0, agents.stderr);
+        expect(agents.stdout).not.toContain('"books"');
       },
     ),
   ]);

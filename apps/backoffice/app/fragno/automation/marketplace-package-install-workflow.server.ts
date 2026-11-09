@@ -29,6 +29,7 @@ import {
 import type { BackofficeObjectHandle, UploadCommands } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
+import { marketplaceObject } from "@/fragno/marketplace/owner";
 import {
   assertPackagePermissionsApproved,
   EMPTY_MARKETPLACE_PACKAGE_DECLARATION,
@@ -240,6 +241,7 @@ export function defineMarketplacePackageInstallWorkflow(
         assertMarketplaceIngestionSourceAccessible({
           organizationId,
           marketplace: input.marketplace,
+          actors: input.metadata[BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY],
         });
       } catch (error) {
         if (error instanceof MarketplaceIngestionTargetAccessError) {
@@ -296,11 +298,12 @@ export function defineMarketplacePackageInstallWorkflow(
         "resolve published marketplace package",
         MARKETPLACE_EXTERNAL_STEP_RETRIES,
         async function resolvePublishedMarketplacePackage() {
-          const manifest = await runtime.objects.marketplace
-            .for(input.marketplace)
-            .commands.getListingStorage({
-              listingId: input.listingId,
-            });
+          const manifest = await marketplaceObject(
+            runtime.objects,
+            input.marketplace,
+          ).commands.getListingStorage({
+            listingId: input.listingId,
+          });
           let resolvedPackage;
           try {
             resolvedPackage = resolveMarketplaceIngestionPackageVersion(manifest, input.version);

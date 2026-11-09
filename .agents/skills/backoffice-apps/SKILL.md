@@ -130,6 +130,18 @@ restrictions, and refusal, reauthorization, and unknown outcomes take distinct p
 - **Agents calling the app, the app reacting to Backoffice events, or app-triggered automations:**
   read [actions and events](references/actions-and-events.md). Actions and event notifications reach
   the app's endpoint; emitted events go the other way. None is a prerequisite for sign-in.
+- **What the app ships into its users' workspaces (agents, routes, event definitions, and files such
+  as skills):** publish it as a package in the app's own Marketplace and install it with
+  `packages.install` and `visibility: "app"` (Backoffice's
+  [apps README](../../../apps/backoffice/app/fragno/apps/README.md#app-packages)). Published
+  versions are immutable and each workspace keeps the version it installed, so the app installs each
+  new version itself and its actions accept calls from the previous one meanwhile. An upgrade fails
+  if members edited a file it would replace, so ship files members only read. Only the app
+  uninstalls its packages while installed; uninstalling keeps the files.
+  `admin.marketplace.publish-app-package` publishes text files only. Bookkeeping's
+  [agent packages](../../../apps/bookkeeping/README.md#agent-packages) install where a project is
+  created, upgrade after a deploy from a Durable Object's start, and reinstall when an agent is
+  missing.
 - **Durable onboarding:** also read [Fragno Workflows](../fragno-workflows/SKILL.md) before
   implementing replayable steps. Bootstrap belongs in the app: the Backoffice tenant it would run in
   may not exist yet.

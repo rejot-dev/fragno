@@ -193,6 +193,35 @@ export type MarketplaceStaticPublicationResult = z.infer<
   typeof marketplaceStaticPublicationResultSchema
 >;
 
+/**
+ * A release an administrator publishes into a registered app's Marketplace, from its files. System
+ * owns it, since the app has no organization to publish as.
+ */
+export const marketplaceAppPackagePublishInputSchema = z.strictObject({
+  appId: z.string().trim().min(1),
+  slug: marketplaceSlugSchema,
+  version: marketplaceVersionSchema,
+  metadata: marketplaceListingMetadataSchema,
+  /** File contents by package-relative path, such as `.marketplace/installation.json`. */
+  files: z.record(z.string(), z.string()),
+});
+
+export type MarketplaceAppPackagePublishInput = z.infer<
+  typeof marketplaceAppPackagePublishInputSchema
+>;
+
+/** Publishing is durable: `requested` completes in the background, `published` already did. */
+export const marketplaceAppPackagePublishResultSchema = z.strictObject({
+  listingId: marketplaceListingIdSchema,
+  version: marketplaceVersionSchema,
+  state: z.enum(["requested", "published"]),
+  workflowInstanceId: z.string(),
+});
+
+export type MarketplaceAppPackagePublishResult = z.infer<
+  typeof marketplaceAppPackagePublishResultSchema
+>;
+
 export const marketplaceArchiveListingInputSchema = z.object({
   owner: marketplaceOwnerSchema,
   listingId: marketplaceListingIdSchema,

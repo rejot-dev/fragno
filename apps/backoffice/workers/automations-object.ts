@@ -143,7 +143,7 @@ import type {
   MarketplaceStaticPublicationResult,
 } from "@/fragno/marketplace/contracts";
 import { MarketplaceListingArchivedError } from "@/fragno/marketplace/definition";
-import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { marketplaceListingId, marketplaceObject } from "@/fragno/marketplace/owner";
 import {
   assertPackagePermissionsApproved,
   readMarketplacePackageDeclaration,
@@ -945,6 +945,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     assertMarketplaceIngestionSourceAccessible({
       organizationId: scope.orgId,
       marketplace: input.marketplace,
+      actors: context.execution.actors,
     });
 
     await this.#ensureConfigured({ scope });
@@ -971,9 +972,10 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     });
 
     const resolvedPackage = resolveMarketplaceIngestionPackageVersion(
-      await this.#runtimeServices.objects.marketplace
-        .for(input.marketplace)
-        .commands.getListingStorage({ listingId: input.listingId }),
+      await marketplaceObject(
+        this.#runtimeServices.objects,
+        input.marketplace,
+      ).commands.getListingStorage({ listingId: input.listingId }),
       input.version,
     );
     const version = resolvedPackage.version;

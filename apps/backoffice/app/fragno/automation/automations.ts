@@ -51,6 +51,7 @@ import {
   gitHubInstallationMoveDependencies,
   type GitHubInstallationMoveParams,
 } from "@/fragno/github-installation-move-workflow";
+import { marketplaceObject } from "@/fragno/marketplace/owner";
 import { defineOnboardingWorkflow } from "@/fragno/onboarding/onboarding-workflow";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import type { PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
@@ -281,13 +282,14 @@ export const createAutomationsRuntime = (
               current.runGeneration === payload.runGeneration &&
               current.status === payload.status
             ) {
-              await config.runtime.objects.marketplace
-                .for(params.request.intent.marketplace)
-                .commands.failPackagePublish({
-                  listingId: params.request.intent.release.listingId,
-                  version: params.request.intent.release.version,
-                  workflowInstanceId: payload.instanceId,
-                });
+              await marketplaceObject(
+                config.runtime.objects,
+                params.request.intent.marketplace,
+              ).commands.failPackagePublish({
+                listingId: params.request.intent.release.listingId,
+                version: params.request.intent.release.version,
+                workflowInstanceId: payload.instanceId,
+              });
             }
           }
           if (

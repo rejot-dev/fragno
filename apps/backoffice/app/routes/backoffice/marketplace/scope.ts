@@ -1,7 +1,4 @@
-import type {
-  MarketplaceScope,
-  MarketplaceVisibility,
-} from "@fragno-dev/backoffice-api/v0/marketplace";
+import type { MarketplaceVisibility } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
   type BackofficeContextScope,
   backofficeScopeOrganization,
@@ -12,6 +9,7 @@ import {
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
 import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
+import type { BrowsableMarketplaceScope } from "@/fragno/marketplace/owner";
 
 /** Catalog route segments; "marketplace" keeps the public catalog's established URL. */
 export type MarketplaceCatalog = "marketplace" | "organization";
@@ -39,7 +37,7 @@ export const marketplaceScopeTabPath = (
 export function marketplaceForCatalog(
   scope: BackofficeContextScope,
   catalog: string | undefined,
-): { catalog: MarketplaceCatalog; marketplace: MarketplaceScope } {
+): { catalog: MarketplaceCatalog; marketplace: BrowsableMarketplaceScope } {
   if (catalog === "marketplace") {
     return { catalog, marketplace: { kind: "system" } };
   }
