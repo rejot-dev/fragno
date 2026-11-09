@@ -93,7 +93,7 @@ test("the agent's package is Bookkeeping's while it is installed, and opening th
     const { ada, clientPath } = await scenario.practice();
     await scenario.openAdministration(ada, clientPath, ADMINISTRATION);
     expect(scenario.backoffice.installedPackages(CLIENT, ADMINISTRATION)).toEqual([
-      { listingId: "app:bookkeeping#books-agent", version: "1.0.0" },
+      { listingId: "app:bookkeeping#books-agent", version: "1.0.1" },
     ]);
 
     // Members cannot uninstall the package while Bookkeeping is installed. Once its owners
@@ -109,7 +109,7 @@ test("the agent's package is Bookkeeping's while it is installed, and opening th
 
     expect(await askPage(ada)).toEqual({ agent: { ok: true, provisioned: false } });
     expect(scenario.backoffice.installedPackages(CLIENT, ADMINISTRATION)).toEqual([
-      { listingId: "app:bookkeeping#books-agent", version: "1.0.0" },
+      { listingId: "app:bookkeeping#books-agent", version: "1.0.1" },
     ]);
     expect(await ask(ada, "rent", "What did we spend on rent?")).toEqual({ error: null });
   });

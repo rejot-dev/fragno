@@ -125,6 +125,8 @@ const agentDefinitionPayloadSchema = z.object({
   definition: piAgentDefinitionSchema._zod.innerType.extend({
     // Events recorded before agents had stewards lack one; their agents were members'.
     steward: piAgentDefinitionSchema._zod.innerType.shape.steward.optional(),
+    // Events recorded before agents chose an effort lack one; their agents ran at low.
+    thinkingLevel: piAgentDefinitionSchema._zod.innerType.shape.thinkingLevel.default("low"),
   }),
 });
 

@@ -1,11 +1,15 @@
+import type { PiThinkingLevel } from "@fragno-dev/backoffice-api/v0/pi";
 import { ChatComposerModelMenu } from "@fragno-private/design-system/agents/chat-composer";
 
-import { piAgentModelRef, piBuiltInAgentDefaultModel } from "@/fragno/pi/agent/agent-definitions";
+import {
+  piAgentModelRef,
+  piBuiltInAgentDefaultModel,
+  piSupportedThinkingLevel,
+} from "@/fragno/pi/agent/agent-definitions";
 import {
   piAgentModelChoiceSchema,
   type PiAgentModelChoice,
   type PiAvailableModel,
-  type PiThinkingLevel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
 const THINKING_LEVEL_LABELS: Record<PiThinkingLevel, string> = {
@@ -63,7 +67,7 @@ export function agentModelChoiceFromFormData(formData: FormData): PiAgentModelCh
 
 /**
  * Chooses the model and reasoning effort a built-in agent's next messages run with. A model that
- * does not support the current effort switches to medium, or else its lowest effort.
+ * does not support the current effort switches to the nearest one below, or else its lowest.
  */
 export function AgentModelMenu({
   choice,
@@ -87,12 +91,7 @@ export function AgentModelMenu({
         if (!model) {
           return;
         }
-        const thinkingLevel = model.thinkingLevels.includes(choice.thinkingLevel)
-          ? choice.thinkingLevel
-          : model.thinkingLevels.includes("medium")
-            ? "medium"
-            : model.thinkingLevels[0];
-        onChoose({ model, thinkingLevel });
+        onChoose({ model, thinkingLevel: piSupportedThinkingLevel(model, choice.thinkingLevel) });
       }}
       effort={choice.thinkingLevel}
       efforts={choice.model.thinkingLevels.map((level) => ({

@@ -1409,7 +1409,7 @@ test("once the firm's agent's package is gone, the next upload installs it again
 
     const id = await uploaded(ada, pdf("Babbage Instruments, invoice 10"));
     expect(scenario.backoffice.installedPackages(FIRM, FIRM_AGENT)).toEqual([
-      { listingId: "app:bookkeeping#bookkeeper-agent", version: "1.0.0" },
+      { listingId: "app:bookkeeping#bookkeeper-agent", version: "1.0.1" },
     ]);
     const [prompt, ...more] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
     expect(more).toEqual([]);

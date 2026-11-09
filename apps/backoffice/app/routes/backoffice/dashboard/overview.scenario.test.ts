@@ -233,6 +233,7 @@ function piEvent(
     agentName,
     description,
     model: null,
+    thinkingLevel: "low",
     permissions: [],
     instructions: "Review carefully.",
   };

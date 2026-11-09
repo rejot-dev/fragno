@@ -399,6 +399,7 @@ type MarketplaceViewOutput = {
     agents: {
       description: string;
       model: string | null;
+      thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
       permissions: string[];
       instructions: string;
       agentName: string;

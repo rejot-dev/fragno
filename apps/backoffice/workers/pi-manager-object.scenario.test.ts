@@ -1060,6 +1060,7 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
     agentName: "reviewer",
     description: "Reviews changes.",
     model: null,
+    thinkingLevel: "low",
     permissions: ["*"],
     instructions: "Review carefully.",
   };
@@ -1423,6 +1424,7 @@ test("a backfill records what the agent events lack, once, so they list the defi
     agentName,
     description,
     model: null,
+    thinkingLevel: "low",
     permissions: ["*"],
     instructions: "Work carefully.",
   });
@@ -2425,6 +2427,105 @@ test("the assistant runs each message with the model it chose, and later ones ke
             assert.equal(kept.status, 202, await kept.clone().text());
             await runtime.drain();
             expect(calls).toEqual(["faux-1:medium", "faux-thinker:high", "faux-thinker:high"]);
+          },
+        ),
+      ],
+    }),
+  );
+});
+
+test("a defined agent reasons as hard as its definition says, or as near below as its model can", async () => {
+  const scope: BackofficeContextScope = {
+    kind: "org",
+    orgId: "defined-effort-org",
+    jurisdiction: null,
+  };
+  const calls: string[] = [];
+  const answer: FauxResponseStep = (_context, options, _state, model) => {
+    calls.push(`${model.id}:${options?.reasoning ?? "off"}`);
+    return fauxAssistantMessage([fauxText("Answered.")]);
+  };
+  const thinker = {
+    provider: "faux",
+    modelId: "faux-thinker",
+    label: "Faux Thinker",
+    contextWindow: 128_000,
+    thinkingLevels: ["low", "medium", "high"],
+  } as const;
+  const reviewer = {
+    description: "Reviews changes.",
+    model: "faux/faux-thinker",
+    permissions: ["upload.read"],
+    instructions: "",
+  };
+  async function define(runtime: InMemoryBackofficeRuntime, thinkingLevel: string) {
+    const defined = await managerRequest(
+      runtime,
+      scope,
+      "/agents/reviewer",
+      { ...reviewer, thinkingLevel },
+      scopeExecution(scope),
+      "PUT",
+    );
+    assert.equal(defined.status, 200, await defined.clone().text());
+  }
+  async function ask(runtime: InMemoryBackofficeRuntime, requestId: string) {
+    const asked = await prompt(runtime, scope, {
+      requestId,
+      content: "Review.",
+      agentName: "reviewer",
+    });
+    assert.equal(asked.status, 202, await asked.clone().text());
+    await runtime.drain();
+  }
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "defined agent effort",
+      options: { drain: false },
+      piAvailableModels: [...PI_SCENARIO_AVAILABLE_MODELS, thinker],
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          const faux = fauxProvider({
+            models: [{ id: "faux-1" }, { id: "faux-thinker", reasoning: true }],
+          });
+          faux.setResponses([answer, answer, answer, answer]);
+          const models = createModels();
+          models.setProvider(faux.provider);
+          return new PiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+        },
+      },
+      setup: ({ given }) => [given.organization.exists({ id: scope.orgId })],
+      steps: ({ then }) => [
+        then.assert("an agent defined without an effort reasons at low", async ({ runtime }) => {
+          const created = await managerRequest(runtime, scope, "/agents", {
+            ...reviewer,
+            agentName: "reviewer",
+          });
+          expect(await created.json()).toMatchObject({ thinkingLevel: "low" });
+          await ask(runtime, "unset");
+          expect(calls).toEqual(["faux-thinker:low"]);
+        }),
+        then.assert("its next turns reason at the effort it is given", async ({ runtime }) => {
+          await define(runtime, "high");
+          await ask(runtime, "high");
+          assert(calls.at(-1) === "faux-thinker:high");
+        }),
+        then.assert(
+          "an effort its model lacks runs at the nearest below, or else the model's lowest",
+          async ({ runtime }) => {
+            await define(runtime, "max");
+            await ask(runtime, "max");
+            await define(runtime, "off");
+            await ask(runtime, "off");
+            expect(calls.slice(-2)).toEqual(["faux-thinker:high", "faux-thinker:low"]);
           },
         ),
       ],

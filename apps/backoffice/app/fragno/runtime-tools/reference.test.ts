@@ -348,6 +348,7 @@ describe("runtime tool reference generation", () => {
             "instructions",
             "permission",
             "model",
+            "thinking-level",
             "managed-by",
           ],
         })),

@@ -19,6 +19,7 @@ await pi.createAgent({
   agentName: "triage",
   description: "Reviews workflow failures and proposes fixes.",
   model: null,
+  thinkingLevel: "low",
   permissions: ["*"],
   instructions:
     "Investigate the failure you are given before changing anything. Report the cause and the fix.",
@@ -30,6 +31,9 @@ await pi.createAgent({
 - `description` tells people and other agents what the agent is for.
 - `model` is `provider/modelId`, or null for the preferred available model. The created agent's
   `resolvedModel` names the model it runs, so you can tell whoever asked which one that is.
+- `thinkingLevel` is how hard the agent reasons: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`,
+  or `max`; omitted is `low`. Higher efforts answer harder questions better but cost more and take
+  longer. A model that lacks the effort runs the nearest one below it, or else its lowest.
 - `permissions`: use `["*"]` unless you want to limit the agent. Each turn already runs with the
   prompter's permissions; these grants only narrow them, so `["*"]` narrows nothing. To limit the
   agent, list `namespace.*` or `namespace.permission` entries from the permission catalog. At least

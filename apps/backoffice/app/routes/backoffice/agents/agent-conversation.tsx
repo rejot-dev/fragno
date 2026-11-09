@@ -1,4 +1,8 @@
-import type { PiManagerAgent, PiPromptReceipt } from "@fragno-dev/backoffice-api/v0/pi";
+import type {
+  PiManagerAgent,
+  PiPromptReceipt,
+  PiThinkingLevel,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import { ChatExtensionsProvider } from "@fragno-private/backoffice-chat/extensions";
 import { SessionDisplayOptions } from "@fragno-private/backoffice-chat/thread/display-options";
 import {
@@ -57,7 +61,6 @@ import { estimatePiContextTokens } from "@/fragno/pi/agent/context-usage";
 import type {
   PiAgentCompactionStatus,
   PiAvailableModel,
-  PiThinkingLevel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 

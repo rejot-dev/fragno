@@ -1029,6 +1029,7 @@ test("an agent's backfill records agent events as the agent's turn, keeping its 
                   agentName: "ghost",
                   description: "Gone already.",
                   model: null,
+                  thinkingLevel: "low",
                   permissions: ["*"],
                   instructions: "",
                 },

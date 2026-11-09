@@ -1,6 +1,8 @@
 import {
   piAgentPermissionGrantRequirements,
+  piThinkingLevelSchema,
   type PiAgentDefinition,
+  type PiThinkingLevel,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
@@ -14,6 +16,8 @@ export const BUILT_IN_PI_AGENT_DEFINITIONS: readonly PiAgentDefinition[] = [
     description:
       "General-purpose Backoffice assistant that works with everything the person prompting it may use.",
     model: null,
+    // Unused: the built-in agent runs the effort its prompts choose.
+    thinkingLevel: "medium",
     permissions: ["*"],
     instructions: "",
     steward: { kind: "backoffice" },
@@ -23,9 +27,6 @@ export const BUILT_IN_PI_AGENT_DEFINITIONS: readonly PiAgentDefinition[] = [
 export function builtInPiAgentDefinition(agentName: string): PiAgentDefinition | null {
   return BUILT_IN_PI_AGENT_DEFINITIONS.find((agent) => agent.agentName === agentName) ?? null;
 }
-
-/** Defined agents run their definition's model at this effort. */
-export const PI_DEFINED_AGENT_THINKING_LEVEL = "low";
 
 export function piAgentModelRef(model: Pick<PiAvailableModel, "provider" | "modelId">): string {
   return `${model.provider}/${model.modelId}`;
@@ -39,6 +40,21 @@ function findAvailableModel(
     availableModels.find((available) => piAgentModelRef(available) === piAgentModelRef(model)) ??
     null
   );
+}
+
+/**
+ * The effort a model runs when asked for `requested`: that effort, or else the nearest one below it
+ * the model supports, or else its lowest.
+ */
+export function piSupportedThinkingLevel(
+  model: Pick<PiAvailableModel, "thinkingLevels">,
+  requested: PiThinkingLevel,
+): PiThinkingLevel {
+  const levels = piThinkingLevelSchema._zod.innerType.options;
+  const atMost = model.thinkingLevels.filter(
+    (level) => levels.indexOf(level) <= levels.indexOf(requested),
+  );
+  return atMost[atMost.length - 1] ?? model.thinkingLevels[0];
 }
 
 /**
@@ -147,7 +163,7 @@ function resolvePiAgentModel(
         model: {
           provider: model.provider,
           modelId: model.modelId,
-          thinkingLevel: PI_DEFINED_AGENT_THINKING_LEVEL,
+          thinkingLevel: piSupportedThinkingLevel(model, definition.thinkingLevel),
         },
       }
     : { type: "unavailable" };
