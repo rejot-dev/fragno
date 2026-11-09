@@ -4,7 +4,12 @@ import { drainDurableHooks } from "@fragno-dev/test";
 
 import type { ResendSendEmailInput } from "./routes";
 import { resendSchema } from "./schema";
-import { createResendTestContext, sendMock } from "./test-context";
+import {
+  createResendTestContext,
+  drainDurableHooksWithRetries,
+  sendMock,
+  verifyMock,
+} from "./test-context";
 
 describe("resend-fragment emails", async () => {
   const ctx = await createResendTestContext();
@@ -237,8 +242,10 @@ describe("resend-fragment emails", async () => {
     assert(updated.errorMessage === "Invalid from");
   });
 
-  test("marks failed when Resend throws", async () => {
-    sendMock.mockRejectedValue(new Error("boom"));
+  test("retries when Resend throws, and sends once it answers", async () => {
+    sendMock
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValue({ data: { id: "re_after_retry" }, error: null, headers: null });
 
     const response = await callRoute("POST", "/emails", {
       body: {
@@ -256,17 +263,105 @@ describe("resend-fragment emails", async () => {
     const emailId = response.data.id;
     await drainDurableHooks(fragment);
 
-    const updated = await ctx.getEmail(emailId);
-    expect(updated).toBeTruthy();
-    if (!updated) {
-      throw new Error("Expected updated email record");
-    }
-    assert(updated.status === "failed");
-    assert(updated.errorMessage === "boom");
-    assert(updated.errorCode === "Error");
+    // The network, not Resend, failed, so the email waits for the hook's next attempt.
+    const waiting = await ctx.getEmail(emailId);
+    assert(waiting?.status === "queued");
+    assert(waiting.errorMessage === "boom");
+    assert(waiting.errorCode === "Error");
+
+    await drainDurableHooksWithRetries(fragment);
+    const sent = await ctx.getEmail(emailId);
+    assert(sent?.status === "sent");
+    assert(sent.providerEmailId === "re_after_retry");
+    assert(sent.errorCode === null);
+    expect(sendMock).toHaveBeenCalledTimes(2);
+    // Both attempts are one email to Resend.
+    assert(
+      sendMock.mock.calls[0]?.[1]?.idempotencyKey === sendMock.mock.calls[1]?.[1]?.idempotencyKey,
+    );
   });
 
-  test("marks failed when Resend returns no data", async () => {
+  test("gives each email queued in one transaction its own Resend key, kept across retries", async () => {
+    // Whichever email goes first loses its answer once, and is retried.
+    sendMock
+      .mockRejectedValueOnce(new Error("connection reset"))
+      .mockResolvedValue({ data: { id: "re_sent" }, error: null, headers: null });
+    const queued = await fragment.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              fragment.services.queueEmail({ to: "a@example.com", subject: "First", text: "One" }),
+              fragment.services.queueEmail({ to: "b@example.com", subject: "Second", text: "Two" }),
+            ] as const,
+        )
+        .transform(({ serviceResult }) => serviceResult)
+        .execute();
+    });
+
+    await drainDurableHooksWithRetries(fragment);
+    const keysBySubject = new Map<string, string[]>();
+    for (const [payload, options] of sendMock.mock.calls) {
+      keysBySubject.set(payload.subject, [
+        ...(keysBySubject.get(payload.subject) ?? []),
+        options.idempotencyKey,
+      ]);
+    }
+    const [once, retried] = [...keysBySubject.values()].toSorted((a, b) => a.length - b.length);
+    assert(once?.length === 1 && retried?.length === 2);
+    assert(retried[0] === retried[1]);
+    assert(once[0] !== retried[0]);
+    for (const email of queued) {
+      assert((await ctx.getEmail(email.id))?.status === "sent");
+    }
+  });
+
+  test("reports statuses Resend sent before a retry learned the email was accepted", async () => {
+    // Resend accepts the email, but its answer is lost; the retry gets the same email back.
+    sendMock
+      .mockRejectedValueOnce(new Error("connection reset"))
+      .mockResolvedValue({ data: { id: "re_accepted" }, error: null, headers: null });
+    const response = await callRoute("POST", "/emails", {
+      body: { to: "user@example.com", subject: "Late", text: "Hello" },
+    });
+    assert(response.type === "json");
+    const deliveredAt = new Date(Date.now() + 1_000).toISOString();
+    await drainDurableHooksWithRetries(fragment);
+    assert((await ctx.getEmail(response.data.id))?.status === "sent");
+
+    const event = {
+      type: "email.delivered",
+      created_at: deliveredAt,
+      data: {
+        email_id: "re_accepted",
+        from: "Acme <hello@example.com>",
+        to: ["user@example.com"],
+        subject: "Late",
+        created_at: deliveredAt,
+      },
+    };
+    verifyMock.mockReturnValue(event);
+    const webhook = await fragment.handler(
+      new Request(`http://localhost${fragment.mountRoute}/webhook`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "svix-id": "delivered-late",
+          "svix-timestamp": "123456",
+          "svix-signature": "sig",
+        },
+        body: JSON.stringify(event),
+      }),
+    );
+    assert(webhook.status === 200);
+    await drainDurableHooks(fragment);
+
+    // The delivery came after acceptance, so it counts, however late the retry learned of it.
+    assert((await ctx.getEmail(response.data.id))?.status === "delivered");
+    expect(ctx.onEmailStatusUpdated).toHaveBeenCalledTimes(1);
+  });
+
+  test("marks failed once Resend returns no data on every attempt", async () => {
     sendMock.mockResolvedValue({ data: null, error: null, headers: null });
 
     const response = await callRoute("POST", "/emails", {
@@ -283,13 +378,14 @@ describe("resend-fragment emails", async () => {
     }
 
     const emailId = response.data.id;
-    await drainDurableHooks(fragment);
+    await drainDurableHooksWithRetries(fragment);
 
     const updated = await ctx.getEmail(emailId);
     expect(updated).toBeTruthy();
     if (!updated) {
       throw new Error("Expected updated email record");
     }
+    expect(sendMock).toHaveBeenCalledTimes(10);
     assert(updated.status === "failed");
     assert(updated.errorCode === "missing_response");
     assert(updated.errorMessage === "Resend returned no data");

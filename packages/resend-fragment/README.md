@@ -46,7 +46,8 @@ Example prompt: **"Integrate the Resend fragment into my application"**
 ## Features
 
 - **Send email** — transactional sends via Resend without blocking your request flow on downstream
-  delivery.
+  delivery. Rate limits and Resend outages are retried, as one email; other refusals mark it
+  `failed`.
 - **Webhooks** — verified inbound events, retries, and status sync packaged in the fragment.
 - **Inbound email** — body and metadata persisted locally when mail is received, with Resend's SPF,
   DKIM, and DMARC results as `authentication`.

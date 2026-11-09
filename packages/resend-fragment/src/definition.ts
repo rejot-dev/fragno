@@ -217,6 +217,17 @@ const formatResendApiError = (error: ErrorResponse) => {
   return { message: error.message, code: error.name };
 };
 
+/** Resend errors another attempt can get past: rate limits, and failures on Resend's side. */
+const RETRYABLE_RESEND_ERRORS: ReadonlySet<string> = new Set([
+  "rate_limit_exceeded",
+  "concurrent_idempotent_requests",
+  "application_error",
+  "internal_server_error",
+]);
+
+const isRetryableResendError = (error: ErrorResponse) =>
+  RETRYABLE_RESEND_ERRORS.has(error.name) || error.statusCode === null || error.statusCode >= 500;
+
 const normalizeAddressList = (value?: string[] | null) => {
   if (!value || value.length === 0) {
     return undefined;
@@ -764,26 +775,42 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
         return;
       }
 
-      const resendIdempotencyKey = this.idempotencyKey;
+      // The hook's own ID, not its transaction's nonce: one transaction may queue several emails,
+      // and each needs its own key, kept across the hook's retries.
+      const resendIdempotencyKey = this.hookId.externalId;
+      const lastAttempt = this.attempts + 1 >= this.maxAttempts;
 
-      const updateEmail = async (
-        handler: (uow: ResendUow, email: ResendEmailMessageRow) => void,
-      ) => {
+      // Nothing else writes the claimed email until Resend's ID is on it, since webhooks find it by
+      // that ID, so the result is written by ID alone, without reading the email again.
+      const updateEmail = async (write: (uow: ResendUow, id: string) => void) => {
         await this.handlerTx()
-          .retrieve(({ forSchema }) =>
-            forSchema(resendSchema).findFirst("emailMessage", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", prepared.email.id)),
-            ),
-          )
-          .mutate(({ forSchema, retrieveResult: [email] }) => {
-            if (!email) {
-              return;
-            }
-
-            const uow = forSchema(resendSchema);
-            handler(uow, email);
+          .mutate(({ forSchema }) => {
+            write(forSchema(resendSchema), prepared.email.id);
           })
           .execute();
+      };
+
+      // A failure Resend may get past, such as a rate limit, waits for the hook's next attempt;
+      // Resend's idempotency key keeps a retry from sending the email twice. Any other failure, or
+      // the last attempt's, is final.
+      const fail = async (
+        { code, message }: { code: string; message: string },
+        retryable: boolean,
+      ) => {
+        const retry = retryable && !lastAttempt;
+        await updateEmail((uow, id) => {
+          uow.update("emailMessage", id, (b) =>
+            b.set({
+              status: retry ? "queued" : "failed",
+              updatedAt: uow.now(),
+              errorCode: code,
+              errorMessage: message,
+            }),
+          );
+        });
+        if (retry) {
+          throw new Error(`Resend did not accept email ${prepared.email.id}: ${message} (${code})`);
+        }
       };
 
       let response;
@@ -792,70 +819,36 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
           idempotencyKey: resendIdempotencyKey,
         });
       } catch (error) {
-        const formatted = formatResendError(error);
-        await updateEmail((uow, email) => {
-          uow.update("emailMessage", email.id, (b) =>
-            b
-              .set({
-                status: "failed",
-                updatedAt: uow.now(),
-                errorCode: formatted.code,
-                errorMessage: formatted.message,
-              })
-              .check(),
-          );
-        });
+        // Thrown errors are the network's or the client's, not Resend's verdict on the email.
+        await fail(formatResendError(error), true);
         return;
       }
 
       if (response.error) {
-        const formatted = formatResendApiError(response.error);
-        await updateEmail((uow, email) => {
-          uow.update("emailMessage", email.id, (b) =>
-            b
-              .set({
-                status: "failed",
-                updatedAt: uow.now(),
-                errorCode: formatted.code,
-                errorMessage: formatted.message,
-              })
-              .check(),
-          );
-        });
+        await fail(formatResendApiError(response.error), isRetryableResendError(response.error));
         return;
       }
 
       if (!response.data) {
-        await updateEmail((uow, email) => {
-          uow.update("emailMessage", email.id, (b) =>
-            b
-              .set({
-                status: "failed",
-                updatedAt: uow.now(),
-                errorCode: "missing_response",
-                errorMessage: "Resend returned no data",
-              })
-              .check(),
-          );
-        });
+        await fail({ code: "missing_response", message: "Resend returned no data" }, true);
         return;
       }
 
-      await updateEmail((uow, email) => {
+      await updateEmail((uow, id) => {
         const now = uow.now();
-        uow.update("emailMessage", email.id, (b) =>
-          b
-            .set({
-              providerEmailId: response.data.id,
-              status: "sent",
-              sentAt: now,
-              updatedAt: now,
-              lastEventType: "email.sent",
-              lastEventAt: now,
-              errorCode: null,
-              errorMessage: null,
-            })
-            .check(),
+        uow.update("emailMessage", id, (b) =>
+          b.set({
+            providerEmailId: response.data.id,
+            status: "sent",
+            sentAt: now,
+            updatedAt: now,
+            // lastEventAt is the time of Resend's latest event, which later webhooks are measured
+            // against. A retry may learn of an acceptance well after it happened, so this write's
+            // own time leaves it alone, and no event Resend reported after acceptance looks stale.
+            lastEventType: "email.sent",
+            errorCode: null,
+            errorMessage: null,
+          }),
         );
       });
     }),

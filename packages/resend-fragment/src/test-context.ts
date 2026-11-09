@@ -1,7 +1,7 @@
 import { vi, type Mock } from "vitest";
 
 import { instantiate } from "@fragno-dev/core";
-import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
+import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test";
 
 import { resendFragmentDefinition, type ResendFragmentConfig } from "./definition";
 import {
@@ -145,6 +145,21 @@ interface ResendTestCallRoute {
     path: "/threads/:threadId/reply",
     inputOptions: ResendTestRouteInput<unknown>,
   ): Promise<FragnoResponse<ResendThreadMutationOutput>>;
+}
+
+/** Drains hooks through every retry they have, an hour apart, as if the hours passed. */
+export async function drainDurableHooksWithRetries(
+  fragment: Parameters<typeof drainDurableHooks>[0],
+) {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    for (let hour = 0; hour < 12; hour++) {
+      await drainDurableHooks(fragment);
+      vi.setSystemTime(Date.now() + 60 * 60_000);
+    }
+  } finally {
+    vi.useRealTimers();
+  }
 }
 
 export const createResendTestContext = async () => {
