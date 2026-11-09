@@ -50,9 +50,10 @@ pnpm --dir apps/<app> backoffice:connect
 The script owns convergence on the declaration above:
 
 1. Read the app's local configuration and explicit origin overrides. Offer `--help`,
-   `--backoffice-url`, an app-origin flag, and `--slug`; derive callback, action, and first-party
-   branding URLs from those origins. Import action declarations from the handler's canonical
-   definition.
+   `--backoffice-url`, an app-origin flag, and `--slug` unless the app's code names its slug, as in
+   a connection ID its agents call or its packages' listing IDs; then that constant is the slug.
+   Derive callback, action, and first-party branding URLs from those origins. Import action
+   declarations from the handler's canonical definition.
 2. Build the Backoffice CLI, then use its `login` and `exec system` flow against the selected
    Backoffice origin. Parse structured command results and stop on a failed subprocess.
 3. Find the stored OAuth client, following list cursors. Create it only when absent; otherwise

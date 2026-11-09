@@ -11,6 +11,13 @@ import {
 import routeConfig from "../app/routes";
 import { Auth } from "../workers/auth/auth";
 import { BACKOFFICE_ACTIONS_PATH, handleBackofficeAction } from "../workers/backoffice/actions";
+import {
+  AGENT_PACKAGES,
+  agentPackageFiles,
+  agentPackageListingId,
+  type AgentPackage,
+  type AgentPackageName,
+} from "../workers/backoffice/agents";
 import { Books } from "../workers/books/books";
 import { Directory } from "../workers/directory/directory";
 import { env as workerEnv } from "./cloudflare-workers";
@@ -313,6 +320,8 @@ export class BookkeepingScenario {
     bookkeepingOrigin: BOOKKEEPING_ORIGIN,
   });
   readonly env: CloudflareEnv;
+  /** The agent packages Bookkeeping shipped before `deploy` replaced them. */
+  readonly #shippedAgentPackages = new Map<AgentPackageName, AgentPackage>();
   readonly #bindings: Record<
     "AUTH" | "DIRECTORY" | "BOOKS",
     FakeDurableObjectNamespace<object, CloudflareEnv>
@@ -339,6 +348,42 @@ export class BookkeepingScenario {
       env,
       bindings as unknown as Pick<CloudflareEnv, keyof typeof bindings>,
     );
+    this.#publishAgentPackages();
+  }
+
+  /** Backoffice's administrator publishes the agent packages Bookkeeping ships, as `backoffice:connect` does. */
+  #publishAgentPackages(): void {
+    for (const agentPackage of Object.values(AGENT_PACKAGES)) {
+      this.backoffice.admin.publishAppPackage({
+        listingId: agentPackageListingId(agentPackage),
+        version: agentPackage.version,
+        files: agentPackageFiles(agentPackage),
+      });
+    }
+  }
+
+  /**
+   * Bookkeeping deploys a release shipping these agent packages: `backoffice:connect` publishes
+   * them, then the Directory, which installs them, starts again with the release's code. The
+   * packages Bookkeeping shipped before return when the scenario ends.
+   */
+  deploy(agentPackages: Partial<Record<AgentPackageName, AgentPackage>>): void {
+    this.deployBeforePublishing(agentPackages);
+    this.#publishAgentPackages();
+  }
+
+  /** As `deploy`, but nobody ran `backoffice:connect`, so Backoffice has not published them. */
+  deployBeforePublishing(agentPackages: Partial<Record<AgentPackageName, AgentPackage>>): void {
+    for (const [name, agentPackage] of Object.entries(agentPackages) as [
+      AgentPackageName,
+      AgentPackage,
+    ][]) {
+      if (!this.#shippedAgentPackages.has(name)) {
+        this.#shippedAgentPackages.set(name, AGENT_PACKAGES[name]);
+      }
+      AGENT_PACKAGES[name] = agentPackage;
+    }
+    this.#bindings.DIRECTORY.restart();
   }
 
   browser(): ScenarioBrowser {
@@ -550,6 +595,9 @@ export class BookkeepingScenario {
   close(): void {
     for (const namespace of Object.values(this.#bindings)) {
       namespace.close();
+    }
+    for (const [name, agentPackage] of this.#shippedAgentPackages) {
+      AGENT_PACKAGES[name] = agentPackage;
     }
   }
 }

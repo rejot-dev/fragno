@@ -8,17 +8,11 @@ type LinkedBooks = {
   parties: readonly { accounts: readonly { id: string; role: string; code: string }[] }[];
 };
 
-/**
- * How the agent links what it names to its page, by the codes it reads from the books, which pages
- * address by ID. The agent's instructions teach these; see `booksLinkPath`.
- */
-export const BOOKS_LINKS = `Link what you name to its page in Bookkeeping, with these relative links and nothing else: an account by code as \`[1000 Bank](accounts/1000)\`, an entry by journal code and number as \`[SAL 3](entries/SAL/3)\`, a customer or supplier by code as \`[Acme](customers/C001)\` or \`[Acme](suppliers/S001)\`, and a document by ID as \`[invoice.pdf](documents/<id>)\`.`;
-
 const LINK = /^(accounts|entries|customers|suppliers|documents)\/([^/?#]+)(?:\/([^/?#]+))?$/u;
 
 /**
  * The page of the books a link the agent wrote leads to, under `base`; null when it names nothing
- * these books have, or is no link to the books.
+ * these books have, or is no link to the books. `BOOKS_AGENT`'s instructions teach these links.
  */
 export function booksLinkPath(href: string, books: LinkedBooks, base: string): string | null {
   const match = LINK.exec(href);

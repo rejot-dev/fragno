@@ -137,24 +137,24 @@ pnpm --dir apps/bookkeeping backoffice:connect
 
 The script signs in through the Backoffice CLI, creates Bookkeeping's OAuth client (or repairs the
 one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with
-`org.read`; `upload.read` and `upload.modify` (for [documents](#documents)); `pi.manage`,
-`pi.modify`, `pi.read`, `models.extract`, `integrations.read`, and `integrations.execute` (for the
-[bookkeeping agent](#the-bookkeeping-agent)); and the actions declared in
-`workers/backoffice/actions.ts`, and writes the client ID, secret, and both origins to `.dev.vars`.
-It then finds or creates the operator organization (slug `bookkeeping-operators`; pass
-`--operators-slug` to choose another) with the signed-in administrator as owner, installs
-Bookkeeping there, and writes its ID to `BOOKKEEPING_OPERATOR_ORGANIZATION_ID`. Bookkeeping is
-registered as a first-party app with every provisioning permission: Backoffice skips its consent
-screen and permission review, and Bookkeeping may create organizations and administrations in
-Backoffice, and create, send, and accept invitations for its users (see Backoffice's
-`app/fragno/apps/README.md`). It reads both origins from `.dev.vars` and defaults to
-`http://127.0.0.1:5173` and `http://127.0.0.1:4173`; pass `--backoffice-url` or `--bookkeeping-url`
-to change them, which also moves the callback and the action endpoint. The app is registered as
-`app#bookkeeping`; pass `--slug` to choose another permanent name. Rerunning converges on the same
-client and app, updating its requested permissions and actions in place; as a first-party app,
-Bookkeeping has new permissions in every organization within a minute. Action changes apply
-automatically to existing installations; pass `--change-approval installation` to make each
-installation's owner approve them. Production requires HTTPS.
+`org.read`; `upload.read` and `upload.modify` (for [documents](#documents)); `packages.install`,
+`packages.read`, `pi.modify`, `pi.read`, `models.extract`, `integrations.read`, and
+`integrations.execute` (for the [agents](#agent-packages)); and the actions declared in
+`workers/backoffice/actions.ts`; publishes the [agents' packages](#agent-packages) in Bookkeeping's
+Marketplace; and writes the client ID, secret, and both origins to `.dev.vars`. It then finds or
+creates the operator organization (slug `bookkeeping-operators`; pass `--operators-slug` to choose
+another) with the signed-in administrator as owner, installs Bookkeeping there, and writes its ID to
+`BOOKKEEPING_OPERATOR_ORGANIZATION_ID`. Bookkeeping is registered as a first-party app with every
+provisioning permission: Backoffice skips its consent screen and permission review, and Bookkeeping
+may create organizations and administrations in Backoffice, and create, send, and accept invitations
+for its users (see Backoffice's `app/fragno/apps/README.md`). It reads both origins from `.dev.vars`
+and defaults to `http://127.0.0.1:5173` and `http://127.0.0.1:4173`; pass `--backoffice-url` or
+`--bookkeeping-url` to change them, which also moves the callback and the action endpoint. The app
+is registered as `app#bookkeeping`, the name its agents' instructions and packages use. Rerunning
+converges on the same client and app, updating its requested permissions and actions in place; as a
+first-party app, Bookkeeping has new permissions in every organization within a minute. Action
+changes apply automatically to existing installations; pass `--change-approval installation` to make
+each installation's owner approve them. Production requires HTTPS.
 
 ## Firms and clients
 
@@ -289,6 +289,44 @@ Backoffice passes to the agent.
 
 After changing the actions, run `pnpm backoffice:connect` to register them.
 
+## Agent packages
+
+Bookkeeping's two agents, the firm's [bookkeeping agent](#the-bookkeeping-agent) and each
+administration's [assistant](#asking-about-the-books), come from Marketplace packages it publishes
+in its own Marketplace in Backoffice, which only Bookkeeping's installations install from (see
+Backoffice's `app/fragno/apps/README.md`, "App packages"). `workers/backoffice/agents.ts` defines
+them: `bookkeeper-agent` for the firm's agent project and `books-agent` for each administration's
+project, each a version and a declaration defining one agent. `pnpm backoffice:connect` publishes
+them as `app:bookkeeping#bookkeeper-agent` and `app:bookkeeping#books-agent`.
+
+The Directory installs each package in its projects with `packages.install`, as Bookkeeping's
+installation, and follows the install with `packages.status`
+(`workers/backoffice/agent-packages.ts`). It records each project's installed version in
+`agent_package`: it starts installing when the project is recorded, a firm's agent project when an
+owner or admin opens the firm and an administration's when it is created, and when it starts, after
+a deploy, it installs the version Bookkeeping ships wherever another is installed. Its alarm takes
+the steps, twenty projects at a time, one after another with one app token; a step Backoffice
+refused or failed, or an install that failed, waits ten seconds, doubling with each failure in a row
+up to an hour, and the install's error is logged. A failure retrying cannot fix, as when Backoffice
+no longer accepts Bookkeeping's OAuth client or rejects a request as invalid, fails the alarm
+instead. An install still running is followed until it finishes before another version's starts, as
+after a rollback during an upgrade: Backoffice would run both, and the older could undo the newer.
+The Directory records an install before it asks for it, so one whose answer never arrived is asked
+for again, which answers with its run while it runs; one Backoffice refused, as a version not
+published yet, started nothing, so the next step installs the shipped version. Backoffice keeps a
+package's agent as its release declares it, so members can neither change nor delete it, and only
+Bookkeeping uninstalls the package while it is installed. When Bookkeeping finds the agent missing
+as it prompts it, as after its owners uninstalled Bookkeeping, removed the package, and installed
+Bookkeeping again, the Directory installs the package again and Bookkeeping prompts once more. An
+agent of the package's name the members defined, as Bookkeeping defined its agents before it shipped
+packages, becomes the package's when it is identical to the package's agent; one that differs blocks
+the install until they delete it.
+
+Published versions never change. After changing an agent, bump its package's version, deploy, and
+run `pnpm backoffice:connect` first, which publishes it: until a version is published, installing it
+fails and is retried. Between the deploy and the install, a project's agent runs the previous
+version's instructions, so the actions keep accepting what the previous version calls them with.
+
 ## Administrations
 
 An administration is the books of one business. A client can have several, e.g. for a holding and
@@ -388,15 +426,13 @@ shared for its request, before the share exists, so sharing records the file sha
 afterwards, and revokes it again, without asking the agent, when the request no longer awaits an
 answer. Bookkeeping asks as its installation, not as the person, so the agent's calls to Bookkeeping
 arrive as the installation's: they read the books and answer reviews (`documents.propose` and
-`documents.decline`), and every other change is refused, whatever a document tells the agent.
-Bookkeeping defines the agent when the firm's project has none, granting it `upload.read`,
-`models.extract`, `integrations.read` (to read the actions' input schemas), and
-`integrations.execute`, and updates it to its own definition whenever that changes; a definition the
-firm's members changed in Backoffice is left as it is (`workers/backoffice/agents.ts`). It then
-submits the prompt, naming the administration and where the file is shared, with `pi.prompt.submit`
-as a `subagent`: each document runs in a new conversation of the agent, beside the others, so
-documents uploaded together are read side by side and no document sees another's text. Backoffice
-bills the turn to the firm.
+`documents.decline`), and every other change is refused, whatever a document tells the agent. The
+agent comes from the `bookkeeper-agent` [package](#agent-packages) installed in the firm's project,
+which grants it `upload.read`, `models.extract`, `integrations.read` (to read the actions' input
+schemas), and `integrations.execute`. Bookkeeping submits the prompt, naming the administration and
+where the file is shared, with `pi.prompt.submit` as a `subagent`: each document runs in a new
+conversation of the agent, beside the others, so documents uploaded together are read side by side
+and no document sees another's text. Backoffice bills the turn to the firm.
 
 The agent reads the document with `documents.get` and `models.extract`, the books with
 `books.describe` and `entries.list`, and answers with `documents.propose`, an entry as
@@ -437,16 +473,16 @@ numbers mean. It shows the conversation as Backoffice's agent chat does, with th
 shares its one conversation. The agent lives with the client, so it reads only these books, the
 firm's skills never reach it, and Backoffice bills its turns to the client.
 
-Opening the page defines the agent as `defineAgent` keeps the firm's: granting it `upload.read`,
-`models.extract`, `integrations.read`, and `integrations.execute`, and leaving a definition the
-client's members changed in Backoffice as it is. Until the first question provisions the agent's
-conversation, as `pi.agent.get` says, the page shows a start panel. Bookkeeping asks, stops, and
-resumes the agent as its installation, through `ask/agent`: its calls to Bookkeeping then only read
-the books, whoever asks and whatever a document tells it. A question joins the running turn and
-resumes a stopped agent (`whenBusy: "steer"`, `whenPaused: "resume"`), as in Backoffice. The browser
-follows the conversation over the agent's `pi.agent.watch` socket, straight from Backoffice: for
-each connection, `ask/agent` asks `pi.agent.watchTicket` as the person, so Backoffice checks they
-may read the agent, and returns the socket's URL with the ticket. Earlier messages, from before the
+The agent comes from the `books-agent` [package](#agent-packages) installed in the administration's
+project, which grants it `upload.read`, `models.extract`, `integrations.read`, and
+`integrations.execute`. Until the first question provisions the agent's conversation, as
+`pi.agent.get` says, the page shows a start panel. Bookkeeping asks, stops, and resumes the agent as
+its installation, through `ask/agent`: its calls to Bookkeeping then only read the books, whoever
+asks and whatever a document tells it. A question joins the running turn and resumes a stopped agent
+(`whenBusy: "steer"`, `whenPaused: "resume"`), as in Backoffice. The browser follows the
+conversation over the agent's `pi.agent.watch` socket, straight from Backoffice: for each
+connection, `ask/agent` asks `pi.agent.watchTicket` as the person, so Backoffice checks they may
+read the agent, and returns the socket's URL with the ticket. Earlier messages, from before the
 agent's newest compaction, load a page at a time through `ask/history`, which reads
 `pi.agent.history` as the person too.
 

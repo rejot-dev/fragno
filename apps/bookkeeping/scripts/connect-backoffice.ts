@@ -3,8 +3,8 @@
 /**
  * Connects this Bookkeeping checkout to a Backoffice server through the Backoffice CLI: signs in,
  * creates or repairs Bookkeeping's OAuth client, registers the app as first-party with its actions,
- * and writes the resulting credentials to apps/bookkeeping/.dev.vars. Safe to rerun; every step
- * converges.
+ * publishes its agents' packages in its Marketplace, and writes the resulting credentials to
+ * apps/bookkeeping/.dev.vars. Safe to rerun; every step converges.
  */
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -21,6 +21,12 @@ import {
   BACKOFFICE_ACTIONS_PATH,
   BOOKKEEPING_BACKOFFICE_ACTIONS,
 } from "../workers/backoffice/actions";
+import {
+  AGENT_PACKAGES,
+  agentPackageFiles,
+  agentPackageListingId,
+} from "../workers/backoffice/agents";
+import { BOOKKEEPING_APP_SLUG } from "../workers/backoffice/connection";
 
 // Failures are user-facing messages, not crashes.
 process.on("uncaughtException", (error) => {
@@ -37,14 +43,16 @@ const OAUTH_SCOPES = ["openid", "profile", "email", "offline_access", "backoffic
 // Firms and clients are Backoffice organizations: Bookkeeping reads them and their members as the
 // person signed in. Owners and admins invite through provisioning, since apps never hold org.manage.
 // Documents' files live in their administration's project workspace, stored and read as the person.
-// Bookkeeping defines the bookkeeping agent in each firm's agent project, shares a document's folder
-// with it, and asks it about the document, as the installation; the agent's turns run with these
-// grants, so they include what it reads the files and the books with.
+// Bookkeeping installs its agents' packages in the projects it prompts them in, and follows the
+// installs, shares a document's folder with the firm's agent, and asks it about the document, as the
+// installation; the agents' turns run with these grants, so they include what they read the files
+// and the books with.
 const REQUESTED_PERMISSIONS = [
   { namespace: "org", permission: "read" },
   { namespace: "upload", permission: "read" },
   { namespace: "upload", permission: "modify" },
-  { namespace: "pi", permission: "manage" },
+  { namespace: "packages", permission: "install" },
+  { namespace: "packages", permission: "read" },
   { namespace: "pi", permission: "modify" },
   { namespace: "pi", permission: "read" },
   { namespace: "models", permission: "extract" },
@@ -124,7 +132,6 @@ const { values: flags } = parseArgs({
     "backoffice-url": { type: "string" },
     "bookkeeping-url": { type: "string" },
     name: { type: "string", default: "Bookkeeping" },
-    slug: { type: "string", default: "bookkeeping" },
     "operators-slug": { type: "string", default: "bookkeeping-operators" },
     "change-approval": { type: "string", default: "automatic" },
     help: { type: "boolean", short: "h" },
@@ -137,16 +144,16 @@ if (flags.help) {
   console.log(`Usage: pnpm --dir apps/bookkeeping backoffice:connect [options]
 
 Signs in to Backoffice with the Backoffice CLI (a global administrator is required), creates or
-repairs Bookkeeping's OAuth client, registers the app as first-party with its actions, creates the
-operator organization with the administrator as owner and installs Bookkeeping there, and updates
-apps/bookkeeping/.dev.vars. Rerunning converges on the same client, app, and organization.
+repairs Bookkeeping's OAuth client, registers the app as first-party with its actions, publishes its
+agents' packages in its Marketplace, creates the operator organization with the administrator as
+owner and installs Bookkeeping there, and updates apps/bookkeeping/.dev.vars. Rerunning converges on
+the same client, app, packages, and organization.
 
 Options:
   --backoffice-url URL     Backoffice origin (default: this worktree's local Backoffice,
                            ${localBackofficeUrl})
   --bookkeeping-url URL    Bookkeeping origin (default: BOOKKEEPING_BASE_URL or http://127.0.0.1:4173)
   --name NAME              OAuth client name for a new client (default: Bookkeeping)
-  --slug SLUG              Permanent app slug, addressed as app#SLUG (default: bookkeeping)
   --operators-slug SLUG    The operator organization's slug (default: bookkeeping-operators)
   --change-approval MODE   automatic (default) or installation`);
   process.exit(0);
@@ -197,7 +204,7 @@ const actions = {
 
 console.log(`Backoffice:  ${backofficeUrl}\nBookkeeping: ${bookkeepingUrl}\n`);
 
-console.log("1/5 Building the Backoffice CLI");
+console.log("1/6 Building the Backoffice CLI");
 const build = spawnSync(
   "pnpm",
   [
@@ -214,7 +221,7 @@ if (build.status !== 0) {
   throw new Error("Building the Backoffice CLI failed.");
 }
 
-console.log("\n2/5 Signing in to Backoffice");
+console.log("\n2/6 Signing in to Backoffice");
 // The CLI prints the approval link and code; the user opens it themselves.
 runCli(["login", "--base-url", backofficeUrl], "inherit");
 const account = execSystem(
@@ -224,7 +231,7 @@ const account = execSystem(
 );
 console.log(`Signed in as ${account.email} (user ID ${account.userId})`);
 
-console.log("\n3/5 Creating or repairing the OAuth client");
+console.log("\n3/6 Creating or repairing the OAuth client");
 // An app keeps the OAuth client it was registered with, so the client of the app holding the slug
 // wins over the stored one. A stored client from another Backoffice server is not found here, so
 // without such an app a new one is created.
@@ -234,7 +241,7 @@ const client = execSystem(
     const want = ${JSON.stringify({
       storedClientId: devVars.get("BACKOFFICE_OAUTH_CLIENT_ID") ?? null,
       hasStoredSecret: Boolean(devVars.get("BACKOFFICE_OAUTH_CLIENT_SECRET")),
-      slug: flags.slug,
+      slug: BOOKKEEPING_APP_SLUG,
       name: flags.name,
       redirectUris: [callbackUrl],
       scopes: OAUTH_SCOPES,
@@ -266,7 +273,7 @@ const client = execSystem(
       ? (await listClients()).find((client) => client.clientId === wantedClientId)
       : undefined;
     if (appWithSlug && !existing) {
-      throw new Error("app#" + want.slug + " is registered with OAuth client " + appWithSlug.oauthClientId + ", which no longer exists; pass another --slug.");
+      throw new Error("app#" + want.slug + " is registered with OAuth client " + appWithSlug.oauthClientId + ", which no longer exists. Bookkeeping's agents and packages name that slug, so it cannot register under another.");
     }
     let clientId;
     let clientSecret = null;
@@ -323,12 +330,12 @@ console.log(
   `${client.created ? "Created" : "Verified"} OAuth client ${client.clientId}${client.clientSecret && !client.created ? " (rotated its secret)" : ""}`,
 );
 
-console.log("\n4/5 Registering the app and its actions");
+console.log("\n4/6 Registering the app and its actions");
 const app = execSystem(
   backofficeUrl,
   `async () => {
     const want = ${JSON.stringify({
-      slug: flags.slug,
+      slug: BOOKKEEPING_APP_SLUG,
       oauthClientId: client.clientId,
       requestedPermissions: REQUESTED_PERMISSIONS,
       actions,
@@ -362,7 +369,7 @@ const app = execSystem(
     const problems = [];
     if (!app) problems.push("the app is missing after registering it");
     else {
-      if (app.slug !== want.slug) problems.push("it is registered as app#" + app.slug + "; slugs never change, so pass --slug " + app.slug);
+      if (app.slug !== want.slug) problems.push("it is registered as app#" + app.slug + ", but Bookkeeping's agents and packages name app#" + want.slug + "; slugs never change, so connect with a new OAuth client");
       if (JSON.stringify(app.actions) !== JSON.stringify(want.actions)) problems.push("the stored actions differ from Bookkeeping's");
       if (JSON.stringify(app.trust) !== JSON.stringify(want.trust)) problems.push("it is not registered as a first-party app with every provisioning permission");
       const requested = app.requestedPermissions.map((p) => p.namespace + "." + p.permission).sort();
@@ -388,7 +395,48 @@ console.log(
   `${app.created ? "Registered" : "Verified"} app#${app.slug} (app ID ${app.appId}, actions revision ${app.actionsRevision}${app.actionsChanged ? ", updated" : ""}${app.permissionsChanged ? ", requested permissions updated" : ""})`,
 );
 
-console.log("\n5/5 Creating or finding the operator organization");
+console.log("\n5/6 Publishing the agents' packages");
+// Published versions never change: a package whose agent changed needs a new version, or publishing
+// it fails. Bookkeeping installs each new version in every project it prompts the agent in.
+const published = execSystem(
+  backofficeUrl,
+  `async () => {
+    const packages = ${JSON.stringify(
+      Object.values(AGENT_PACKAGES).map((agentPackage) => ({
+        appId: app.appId,
+        slug: agentPackage.slug,
+        version: agentPackage.version,
+        metadata: agentPackage.metadata,
+        files: agentPackageFiles(agentPackage),
+      })),
+    )};
+    const published = [];
+    for (const agentPackage of packages) {
+      published.push(await admin.marketplacePublishAppPackage(agentPackage));
+    }
+    return published;
+  }`,
+  z.array(
+    z.object({
+      listingId: z.string(),
+      version: z.string(),
+      state: z.enum(["requested", "published"]),
+    }),
+  ),
+);
+for (const release of published) {
+  console.log(
+    `${release.state === "published" ? "Verified" : "Published"} ${release.listingId}@${release.version}`,
+  );
+}
+// The listing IDs Bookkeeping installs are the ones Backoffice published.
+for (const agentPackage of Object.values(AGENT_PACKAGES)) {
+  if (!published.some(({ listingId }) => listingId === agentPackageListingId(agentPackage))) {
+    throw new Error(`Backoffice published ${agentPackage.slug} under another listing ID.`);
+  }
+}
+
+console.log("\n6/6 Creating or finding the operator organization");
 // Its members operate Bookkeeping. Backoffice's administrator creates it: Bookkeeping can only
 // provision organizations for people who already signed in to it.
 const operators = execSystem(
