@@ -83,6 +83,8 @@ const PERSONAL_WORKSPACE_PERMISSION_DECISIONS = {
   apps: { read: "deny", manage: "deny" },
   cloudflare: { browserRun: "grant" },
   connections: { manage: "grant", read: "grant" },
+  // Replies from the person's own address; routes that read their mail get it only when granted.
+  email: { send: "grant" },
   events: { emit: "grant", manage: "grant", read: "grant", route: "deny" },
   hooks: { read: "grant" },
   identity: { link: "deny", bind: "deny", read: "grant", resolve: "deny", revoke: "deny" },
@@ -137,6 +139,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     apps: { read: "grant", manage: "grant" },
     cloudflare: { browserRun: "grant" },
     connections: { manage: "grant", read: "grant" },
+    email: { send: "grant" },
     events: { emit: "grant", manage: "grant", read: "grant", route: "grant" },
     hooks: { read: "grant" },
     identity: { link: "grant", bind: "grant", read: "grant", resolve: "grant", revoke: "grant" },
@@ -176,6 +179,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     apps: { read: "deny", manage: "deny" },
     cloudflare: { browserRun: "grant" },
     connections: { manage: "grant", read: "grant" },
+    email: { send: "grant" },
     events: { emit: "grant", manage: "grant", read: "grant", route: "grant" },
     hooks: { read: "grant" },
     // Binding or revoking an external identity for an arbitrary user lets the caller act as them.
@@ -216,6 +220,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     cloudflare: { browserRun: "deny" },
     // Integrations are not available in a workspace, so there is nothing of them to read.
     connections: { manage: "deny", read: "deny" },
+    email: { send: "deny" },
     events: { emit: "deny", manage: "deny", read: "grant", route: "deny" },
     hooks: { read: "grant" },
     identity: { link: "deny", bind: "deny", read: "grant", resolve: "deny", revoke: "deny" },

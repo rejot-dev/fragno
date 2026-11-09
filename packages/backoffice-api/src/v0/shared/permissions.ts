@@ -32,6 +32,9 @@ export const BACKOFFICE_PERMISSION = {
     manage: { namespace: "connections", permission: "manage" },
     read: { namespace: "connections", permission: "read" },
   },
+  email: {
+    send: { namespace: "email", permission: "send" },
+  },
   events: {
     emit: { namespace: "events", permission: "emit" },
     manage: { namespace: "events", permission: "manage" },
