@@ -82,6 +82,10 @@ type BackofficePermissionRequirement =
       permission: "manage" | "read";
     }
   | {
+      namespace: "email";
+      permission: "send";
+    }
+  | {
       namespace: "events";
       permission: "emit" | "manage" | "read" | "route";
     }
