@@ -17,9 +17,15 @@ import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
-import type { EventFoldReplayPass } from "./event-fold-replay";
 import type { AutomationEventSource } from "./event-sources";
 import type { StoredAutomationRouteMetadata } from "./route-records";
+
+/**
+ * One page of `event-fold-replay`'s replay of stored events: a type's events after the cursor, which
+ * is null for its first page. Defined with the table storing it, so reading the schema reads no
+ * replay.
+ */
+export type EventFoldReplayPass = { source: string; eventType: string; cursor: string | null };
 
 const jsonColumn = <T>() => column("json") as Column<"json", T, T>;
 
