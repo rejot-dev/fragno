@@ -180,15 +180,51 @@ const result = await resendFragment.callServices(() =>
 - `pauseMailbox(owner)` stops delivery; the mailbox keeps its address.
 - `replaceMailboxAddress({ owner, address })` moves a mailbox to a new address.
 - `getMailbox(owner)` and `findMailbox(address)` read mailboxes.
-- `onMailboxChanged(mailbox, context)` receives each change, as `{ owner, address, paused }`: a
-  mailbox opened, resumed, paused, or moved. A durable hook, triggered in the transaction that makes
-  the change, delivers it and retries until it succeeds.
+- `onMailboxChanged(mailbox, context)` receives each change, as
+  `{ owner, address, paused, sendingSuspended }`: a mailbox opened, resumed, paused, moved, or its
+  sending suspended or resumed. A durable hook, triggered in the transaction that makes the change,
+  delivers it and retries until it succeeds.
 - Concurrent calls settle as if made one after another: two opens for one owner return the same
   mailbox, and of two owners claiming one address, one gets `taken`.
 - An address is issued once: after it is replaced, no owner can get it again, so mail people still
   send there reaches no one new.
 - Addresses are lowercased. Local parts may not contain `+`, which marks thread reply addresses, or
   be a role that can act for the domain, such as `postmaster` or `admin`.
+
+### Sending from a mailbox
+
+A mailbox also sends plain text from its address, once the domain is verified for sending in Resend.
+Each email goes out with the mailbox as From and Reply-To, and its own Message-ID, so answers to it
+come back to the mailbox in the same thread.
+
+```ts
+await resendFragment.callServices(() =>
+  resendFragment.services.replyFromMailbox({
+    owner: user.id,
+    emailMessageId,
+    text: "Thanks, received.",
+    subject: null,
+    fromName: "Alice",
+  }),
+);
+// { status: "queued", email } | { status: "email-not-found" } | { status: "sender-unverified" }
+// | { status: "not-found" } | { status: "paused" } | { status: "sending-suspended" }
+```
+
+- `replyFromMailbox` answers a message the owner's mailbox received, at its From address only:
+  Reply-To can name anyone, even on the From domain. It refuses a sender whose DKIM and DMARC both
+  failed to pass (`isSenderVerified`), so nobody can make a mailbox write to an address by forging a
+  From header. The reply joins the received message's thread, with `In-Reply-To` and `References`.
+- `sendFromMailbox({ owner, to, subject, text, fromName, attachments })` sends to recipients you
+  vouch for, such as the owner's own verified address. Attachments are base64 `content` of at most
+  `MAX_MAILBOX_ATTACHMENT_BYTES` together; the stored message drops them once Resend accepts the
+  email or it fails for good.
+- `onMailboxEmailQueued({ emailMessageId, senderMailbox }, context)` runs once per queued email,
+  through a durable hook, so you can count each owner's sending.
+- `onEmailStatusUpdated` carries the `senderMailbox` a status concerns. A complaint about a
+  mailbox's email suspends its sending, not its receiving; `suspendMailboxSending(owner)` and
+  `resumeMailboxSending(owner)` change it by hand. Email still queued when its mailbox is paused or
+  suspended fails instead of going out.
 
 ## Development
 

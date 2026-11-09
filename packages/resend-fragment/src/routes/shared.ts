@@ -494,15 +494,26 @@ export const buildThreadMessage = (message: {
     inReplyTo,
     references,
     providerEmailId: message.providerEmailId ?? null,
+    // Named field by field: a sent message's attachments hold their content until Resend has it.
     attachments: Array.isArray(message.attachments)
-      ? (message.attachments as Array<{
-          id: string;
-          filename: string | null;
-          size: number;
-          contentType: string;
-          contentDisposition: string | null;
-          contentId: string | null;
-        }>)
+      ? (
+          message.attachments as Array<{
+            id: string;
+            filename: string | null;
+            size: number;
+            contentType: string | null;
+            contentDisposition: string | null;
+            contentId: string | null;
+          }>
+        ).map(({ id, filename, size, contentType, contentDisposition, contentId }) => ({
+          id,
+          filename,
+          size,
+          // Resend infers a sent file's type from its name when the sender named none.
+          contentType: contentType ?? "application/octet-stream",
+          contentDisposition,
+          contentId,
+        }))
       : [],
     html: message.html ?? null,
     text: message.text ?? null,

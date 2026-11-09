@@ -43,3 +43,11 @@ export const readEmailAuthentication = (value: unknown): ResendEmailAuthenticati
   const { spf, dkim, dmarc } = value as Record<string, unknown>;
   return { spf: readResult(spf), dkim: readResult(dkim), dmarc: readResult(dmarc) };
 };
+
+/**
+ * Whether the From domain sent the email. Resend's DKIM passes only for a signature by the From
+ * domain, and DMARC only for an aligned pass under an enforcing policy; SPF alone checks the
+ * envelope sender, which forwarding replaces.
+ */
+export const isSenderVerified = (authentication: ResendEmailAuthentication | null): boolean =>
+  authentication?.dkim === "pass" || authentication?.dmarc === "pass";

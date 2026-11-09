@@ -25,6 +25,7 @@ type MockFn = ReturnType<typeof vi.fn>;
 type OnEmailStatusUpdatedMock = Mock<NonNullable<ResendFragmentConfig["onEmailStatusUpdated"]>>;
 type OnEmailReceivedMock = Mock<NonNullable<ResendFragmentConfig["onEmailReceived"]>>;
 type OnMailboxChangedMock = Mock<NonNullable<ResendFragmentConfig["onMailboxChanged"]>>;
+type OnMailboxEmailQueuedMock = Mock<NonNullable<ResendFragmentConfig["onMailboxEmailQueued"]>>;
 
 export const sendMock: MockFn = vi.fn();
 export const verifyMock: MockFn = vi.fn();
@@ -166,6 +167,7 @@ export const createResendTestContext = async () => {
   const onEmailStatusUpdatedMock: OnEmailStatusUpdatedMock = vi.fn();
   const onEmailReceivedMock: OnEmailReceivedMock = vi.fn();
   const onMailboxChangedMock: OnMailboxChangedMock = vi.fn();
+  const onMailboxEmailQueuedMock: OnMailboxEmailQueuedMock = vi.fn();
 
   const config: ResendFragmentConfig = {
     apiKey: "re_test",
@@ -174,6 +176,7 @@ export const createResendTestContext = async () => {
     onEmailStatusUpdated: onEmailStatusUpdatedMock,
     onEmailReceived: onEmailReceivedMock,
     onMailboxChanged: onMailboxChangedMock,
+    onMailboxEmailQueued: onMailboxEmailQueuedMock,
   };
 
   const { fragments, test: testContext } = await buildDatabaseFragmentsTest()
@@ -198,6 +201,7 @@ export const createResendTestContext = async () => {
     onEmailStatusUpdatedMock.mockReset();
     onEmailReceivedMock.mockReset();
     onMailboxChangedMock.mockReset();
+    onMailboxEmailQueuedMock.mockReset();
     config.defaultFrom = "Acme <hello@example.com>";
     config.webhookSecret = "whsec_test";
   };
@@ -260,6 +264,7 @@ export const createResendTestContext = async () => {
     onEmailStatusUpdated: onEmailStatusUpdatedMock,
     onEmailReceived: onEmailReceivedMock,
     onMailboxChanged: onMailboxChangedMock,
+    onMailboxEmailQueued: onMailboxEmailQueuedMock,
     db: fragments.resend.db,
     config,
     reset,
