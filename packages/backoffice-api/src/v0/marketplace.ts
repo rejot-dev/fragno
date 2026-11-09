@@ -47,9 +47,22 @@ const marketplaceAppOwnerScopeSchema = z.lazy(() =>
   }),
 );
 
+/**
+ * A registered app, which owns the packages in its own Marketplace. Listing IDs name it by its
+ * slug, which never changes, as its `app#<slug>` connection does; its ID names its Marketplace.
+ */
+const marketplaceRegisteredAppOwnerScopeSchema = z.lazy(() =>
+  z.object({
+    kind: z.literal("registered-app"),
+    appId: marketplaceOwnerIdSchema,
+    slug: marketplaceOwnerIdSchema,
+  }),
+);
+
 export const marketplaceOwnerScopeSchema = z.lazy(() =>
   z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("system") }),
+    marketplaceRegisteredAppOwnerScopeSchema,
     marketplaceOrganizationOwnerScopeSchema,
     marketplaceUserOwnerScopeSchema,
     marketplaceAppOwnerScopeSchema,
@@ -76,11 +89,16 @@ export const marketplaceOwnerSchema = z.lazy(() =>
 
 export type MarketplaceOwner = z.infer<typeof marketplaceOwnerSchema>;
 
-/** System hosts the public Marketplace; each organization has its own members-only Marketplace. */
+/**
+ * System hosts the public Marketplace; each organization has its own members-only Marketplace; and
+ * each registered app has one that only its installations install from. The app Marketplace names
+ * the registered app, unlike the `app` scope, which is one installation's workspace.
+ */
 export const marketplaceScopeSchema = z.lazy(() =>
   z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("system") }),
     backofficeOrganizationScopeSchema,
+    z.strictObject({ kind: z.literal("app"), appId: marketplaceOwnerIdSchema }),
   ]),
 );
 
@@ -90,6 +108,16 @@ export type MarketplaceScope = z.infer<typeof marketplaceScopeSchema>;
 export const marketplaceVisibilitySchema = z.lazy(() => z.enum(["public", "organization"]));
 
 export type MarketplaceVisibility = z.infer<typeof marketplaceVisibilitySchema>;
+
+/**
+ * Where reads and installs find a listing: besides where packages are published, an installed app
+ * reads and installs from its own app's Marketplace.
+ */
+export const marketplaceSourceVisibilitySchema = z.lazy(() =>
+  z.enum(["public", "organization", "app"]),
+);
+
+export type MarketplaceSourceVisibility = z.infer<typeof marketplaceSourceVisibilitySchema>;
 
 export const marketplaceListingContentSchema = z.lazy(() =>
   z.object({
@@ -195,7 +223,7 @@ export const marketplaceListingIdSchema = z
       .min(5)
       .max(MARKETPLACE_DATABASE_ID_MAX_LENGTH)
       .regex(
-        /^(?:system|org:[^#]+|user:[^#]+|project:[^#:]+:[^#]+)#[a-z0-9]+(?:-[a-z0-9]+)*$/u,
+        /^(?:system|app:[a-z0-9-]+|org:[^#]+|user:[^#]+|project:[^#:]+:[^#]+)#[a-z0-9]+(?:-[a-z0-9]+)*$/u,
         "Use an owner-qualified marketplace listing id.",
       ),
   )
@@ -378,9 +406,9 @@ export const packagesInstallResultSchema = z.lazy(() =>
   }),
 );
 
-/** Read and install tools address the public Marketplace unless organization visibility is requested. */
+/** Read and install tools address the public Marketplace unless another visibility is requested. */
 const marketplaceReadVisibilityField = {
-  visibility: z.lazy(() => marketplaceVisibilitySchema.default("public")),
+  visibility: z.lazy(() => marketplaceSourceVisibilitySchema.default("public")),
 };
 
 /** Package installation takes its destination scope and organization Marketplace from the runtime, not caller input. */
@@ -567,14 +595,14 @@ const MARKETPLACE_CURATION_AUTHORITY =
 export const marketplaceOperations = {
   "marketplace.search": {
     description:
-      "Search published package metadata in the public Marketplace, or in the current organization's Marketplace with organization visibility. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches.",
+      "Search published package metadata in the public Marketplace, in the current organization's Marketplace with organization visibility, or, for an installed app, in its app's Marketplace with app visibility. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches.",
     permissions: [BACKOFFICE_PERMISSION.marketplace.read],
     input: marketplaceSearchInputSchema,
     output: marketplaceSearchResultSchema,
   },
   "marketplace.view": {
     description:
-      "Inspect published package metadata and cursor-paginated releases in the public Marketplace, or in the current organization's Marketplace with organization visibility. `release` is what installing one release (the latest unless version is given) sets up: the permissions to approve with packages.install, and the routes, event definitions, and agents it defines. Its routes' start_workflow paths are relative to the installation folder.",
+      "Inspect published package metadata and cursor-paginated releases in the public Marketplace, in the current organization's Marketplace with organization visibility, or, for an installed app, in its app's Marketplace with app visibility. `release` is what installing one release (the latest unless version is given) sets up: the permissions to approve with packages.install, and the routes, event definitions, and agents it defines. Its routes' start_workflow paths are relative to the installation folder.",
     permissions: [BACKOFFICE_PERMISSION.marketplace.read],
     input: marketplaceViewInputSchema,
     output: marketplaceViewResultSchema,
@@ -720,7 +748,7 @@ export const packagesStatusInputSchema = z.lazy(() =>
 export const packagesOperations = {
   "packages.install": {
     description:
-      "Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous: follow workflowInstanceId with packages.status. Pass the release's declared permissions, which marketplace.view returns, to approve them; the install is refused unless they match exactly, and you must hold each one. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.",
+      "Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, from the installing organization's Marketplace with organization visibility, or, for an installed app, from its app's Marketplace with app visibility. Installation is asynchronous: follow workflowInstanceId with packages.status. Pass the release's declared permissions, which marketplace.view returns, to approve them; the install is refused unless they match exactly, and you must hold each one. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.",
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packagesInstallInputSchema,
     output: packagesInstallResultSchema,
@@ -747,7 +775,7 @@ export const packagesOperations = {
   },
   "packages.uninstall": {
     description:
-      "Uninstall a package from the current workspace: delete the agents, routes, and event definitions it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.",
+      "Uninstall a package from the current workspace: delete the agents, routes, and event definitions it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null. A package an app installed from its Marketplace is uninstalled only by that app while it is installed and reaches the workspace; otherwise, uninstall the app.",
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packageListingInputSchema,
     output: z.lazy(() => packageUninstallationSchema.nullable()),

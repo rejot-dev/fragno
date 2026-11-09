@@ -38,6 +38,7 @@ import {
   type BackofficeStateBackend,
 } from "@/fragno/codemode/state-backend";
 import type { MarketplaceListingStorage } from "@/fragno/marketplace/contracts";
+import { marketplaceObject } from "@/fragno/marketplace/owner";
 import { marketplacePackageUploadName } from "@/fragno/marketplace/package-files";
 import { marketplacePackageManifestSchema } from "@/fragno/marketplace/package-manifest";
 import { marketplacePackagePublishRequestSchema } from "@/fragno/marketplace/package-publishing";
@@ -183,9 +184,10 @@ async function publishedManifest(
   listingId = LISTING_ID,
   marketplace: MarketplaceScope = { kind: "system" },
 ): Promise<MarketplaceListingStorage> {
-  const manifest = await ctx.runtime.objects.marketplace
-    .for(marketplace)
-    .commands.getListingStorage({ listingId });
+  const manifest = await marketplaceObject(
+    ctx.runtime.objects,
+    marketplace,
+  ).commands.getListingStorage({ listingId });
   assert(manifest?.listingStatus === "published");
   return manifest;
 }

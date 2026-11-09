@@ -50,7 +50,7 @@ const marketplaceSearchTool = defineBackofficeRuntimeTool({
             name: "visibility",
             valueRequired: true,
             description:
-              "public (default) reads the public Marketplace; organization reads the current organization's Marketplace.",
+              "public (default) reads the public Marketplace; organization reads the current organization's Marketplace; app reads an installed app's own Marketplace.",
           },
           {
             name: "page-size",
@@ -113,7 +113,7 @@ const marketplaceViewTool = defineBackofficeRuntimeTool({
             name: "visibility",
             valueRequired: true,
             description:
-              "public (default) reads the public Marketplace; organization reads the current organization's Marketplace.",
+              "public (default) reads the public Marketplace; organization reads the current organization's Marketplace; app reads an installed app's own Marketplace.",
           },
           {
             name: "version",

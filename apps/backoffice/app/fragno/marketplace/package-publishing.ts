@@ -171,17 +171,20 @@ export async function assertMarketplacePublicationAuthority({
     execution,
     operation: BACKOFFICE_PERMISSION.marketplace.publish,
   });
-  if (owner.scope.kind === "system") {
+  // Administrators publish an app's packages for it, from System context.
+  if (owner.scope.kind === "system" || owner.scope.kind === "registered-app") {
     if (execution.scope.kind !== "system") {
       throw new MarketplacePublicationAccessError(
-        "System-owned Marketplace releases require System context.",
+        owner.scope.kind === "system"
+          ? "System-owned Marketplace releases require System context."
+          : "An app's Marketplace releases require System context.",
       );
     }
     return;
   }
   if (owner.scope.kind !== "org") {
     throw new MarketplacePublicationAccessError(
-      "Marketplace release publishing supports System and organization ownership.",
+      "Marketplace release publishing supports System, app, and organization ownership.",
     );
   }
   const organizationId = owner.scope.orgId;
@@ -218,7 +221,11 @@ export async function marketplacePackagePublishWorkflowInstanceId(
   const { intent, expectedVersionRevision, expectedFiles } = input;
   const { marketplace } = intent;
   const identity = [
-    marketplace.kind === "org" ? `org:${marketplace.orgId}` : marketplace.kind,
+    marketplace.kind === "org"
+      ? `org:${marketplace.orgId}`
+      : marketplace.kind === "app"
+        ? `app:${marketplace.appId}`
+        : marketplace.kind,
     intent.release.listingId,
     intent.release.snapshotId,
     // Schema parsing may reorder object keys; hash execution fields in a fixed order.

@@ -10,7 +10,7 @@ import {
   marketplaceViewInputSchema,
   type MarketplaceScope,
   type MarketplaceViewResult,
-  type MarketplaceVisibility,
+  type MarketplaceSourceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
   marketplaceFeaturedResultSchema,
@@ -32,14 +32,21 @@ import {
   resolveMarketplaceIngestionPackageVersion,
 } from "@/fragno/automation/marketplace-ingestions";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
+import { captureBundledMarketplaceRelease } from "@/fragno/marketplace/bundled-release";
 import type {
+  MarketplaceAppPackagePublishInput,
+  MarketplaceAppPackagePublishResult,
   MarketplaceOperationResult,
   MarketplaceStaticPublicationResult,
   marketplaceFeatureInputSchema,
   marketplaceUnfeatureInputSchema,
   marketplaceUnfeatureResultSchema,
 } from "@/fragno/marketplace/contracts";
-import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
+import {
+  marketplaceObject,
+  marketplaceScopeForSource,
+  marketplaceScopeForVisibility,
+} from "@/fragno/marketplace/owner";
 import { readMarketplacePackageDeclaration } from "@/fragno/marketplace/package-declaration";
 import { captureMarketplacePackageSnapshot } from "@/fragno/marketplace/package-manifest";
 import { resolveMarketplacePackageOwner } from "@/fragno/marketplace/package-publishing";
@@ -58,6 +65,9 @@ export type MarketplaceRuntime = {
   ): Promise<z.output<typeof marketplaceUnfeatureResultSchema>>;
   featured(): Promise<z.output<typeof marketplaceFeaturedResultSchema>>;
   pushStaticEntries(input: { force?: boolean }): Promise<MarketplaceStaticPublicationResult>;
+  publishAppPackage(
+    input: MarketplaceAppPackagePublishInput,
+  ): Promise<MarketplaceAppPackagePublishResult>;
 };
 
 function marketplaceOperationValue<TResult>(result: MarketplaceOperationResult<TResult>): TResult {
@@ -71,8 +81,9 @@ function marketplaceOperationValue<TResult>(result: MarketplaceOperationResult<T
 }
 
 /**
- * Discovery reads the public or current organization's Marketplace; publishing targets the package
- * owner's; curation targets the Marketplace the execution scope administers.
+ * Discovery reads the public Marketplace, the current organization's, or an installed app's own;
+ * publishing targets the package owner's; curation targets the Marketplace the execution scope
+ * administers.
  */
 export function createMarketplaceRuntime({
   objects,
@@ -85,19 +96,14 @@ export function createMarketplaceRuntime({
   kernel: BackofficeKernel;
   publication: { state: BackofficeStateBackend } | null;
 }): MarketplaceRuntime {
-  // The organization comes from the execution scope, so callers cannot read another organization's Marketplace.
-  function readableMarketplace(visibility: MarketplaceVisibility) {
-    if (visibility === "public") {
-      return objects.marketplace.singleton().commands;
-    }
-    const organization = backofficeScopeOrganization(execution.scope);
-    if (!organization) {
-      throw new BackofficeOperationError(
-        "forbidden",
-        "Organization Marketplace reads require an organization or project workspace.",
-      );
-    }
-    return objects.marketplace.for(organization).commands;
+  function readableMarketplace(visibility: MarketplaceSourceVisibility) {
+    return marketplaceObject(
+      objects,
+      marketplaceScopeForSource(visibility, {
+        organization: backofficeScopeOrganization(execution.scope),
+        actors: execution.actors,
+      }),
+    ).commands;
   }
 
   /**
@@ -242,6 +248,37 @@ export function createMarketplaceRuntime({
       return await objects.automations
         .singleton()
         .commands.requestStaticMarketplacePublications(input);
+    },
+    async publishAppPackage({ appId, files, ...identity }) {
+      const app = await objects.apps.singleton().commands.getApp({ appId });
+      if (!app) {
+        throw new BackofficeOperationError("not_found", `App '${appId}' is not registered.`);
+      }
+      const release = await captureBundledMarketplaceRelease({
+        ...identity,
+        owner: {
+          scope: { kind: "registered-app", appId, slug: app.slug },
+          publisherName:
+            app.trust.kind === "first-party" ? app.trust.branding.displayName : app.slug,
+        },
+        files,
+      });
+      const result = await marketplaceObject(objects, {
+        kind: "app",
+        appId,
+      }).commands.publishRelease(
+        { release, dryRun: false, skipAuthorCheck: false, skipVersionCheck: false },
+        { execution, propagationContext: null },
+      );
+      if (result.state === "preview") {
+        throw new Error("Publishing an app package previewed it instead.");
+      }
+      return {
+        listingId: release.listingId,
+        version: release.version,
+        state: result.state,
+        workflowInstanceId: result.workflowInstanceId,
+      };
     },
   };
 }

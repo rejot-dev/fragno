@@ -1,7 +1,6 @@
-import {
-  marketplaceScopeSchema,
-  type MarketplacePublishResult,
-  type MarketplaceScope,
+import type {
+  MarketplacePublishResult,
+  MarketplaceScope,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
   MarketplaceFeatureEntry,
@@ -11,7 +10,6 @@ import type {
   MarketplacePublishedListingInput,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
 import { RpcTarget } from "cloudflare:workers";
 
@@ -23,7 +21,8 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import {
-  requireBackofficeContextScopeFromDurableObjectId,
+  assertBackofficeObjectAddressAllowed,
+  decodeBackofficeObjectScope,
   type BackofficeActionRpcContext,
   type MarketplaceCommands,
 } from "@/backoffice-runtime/object-registry";
@@ -61,7 +60,11 @@ import { MarketplacePublicationConflictError } from "@/fragno/marketplace/defini
 import { MarketplaceDomainError } from "@/fragno/marketplace/definition";
 import type { MarketplaceFragment } from "@/fragno/marketplace/index";
 import { createMarketplaceServer } from "@/fragno/marketplace/marketplace";
-import { marketplaceScopeForVisibility } from "@/fragno/marketplace/owner";
+import {
+  marketplaceOfObject,
+  marketplaceScopeForVisibility,
+  marketplaceScopesEqual,
+} from "@/fragno/marketplace/owner";
 import {
   marketplacePackageFileInventoryMatches,
   marketplacePackageUploadName,
@@ -112,9 +115,12 @@ export class MarketplaceObject extends RpcTarget implements MarketplaceCommands 
   }) {
     super();
     this.#runtime = runtime;
-    const scope = marketplaceScopeSchema.parse(
-      requireBackofficeContextScopeFromDurableObjectId(state.id, "MARKETPLACE"),
-    );
+    const objectScope = state.id.name ? decodeBackofficeObjectScope(state.id.name) : null;
+    if (!objectScope) {
+      throw new Error("Marketplace Durable Object requires a named identity.");
+    }
+    assertBackofficeObjectAddressAllowed({ binding: "MARKETPLACE", scope: objectScope });
+    const scope = marketplaceOfObject(objectScope);
     this.#scope = scope;
     this.#host = implementation.createFragmentHost({
       name: "Marketplace",
@@ -147,7 +153,7 @@ export class MarketplaceObject extends RpcTarget implements MarketplaceCommands 
 
   /** Publication work names its Marketplace, so it cannot be committed into another one. */
   #assertMarketplace(marketplace: MarketplaceScope): void {
-    if (!backofficeContextScopesEqual(marketplace, this.#scope)) {
+    if (!marketplaceScopesEqual(marketplace, this.#scope)) {
       throw new MarketplacePublicationAccessError(
         "Marketplace publication targets a different Marketplace.",
       );

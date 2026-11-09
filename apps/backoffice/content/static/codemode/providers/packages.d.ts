@@ -1,7 +1,7 @@
 // Package installs into the workspace. Read to install a Marketplace package or list installed ones.
 type PackagesCodemodeProvider = {
   /**
-   * Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, or from the installing organization's Marketplace with organization visibility. Installation is asynchronous: follow workflowInstanceId with packages.status. Pass the release's declared permissions, which marketplace.view returns, to approve them; the install is refused unless they match exactly, and you must hold each one. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.
+   * Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, from the installing organization's Marketplace with organization visibility, or, for an installed app, from its app's Marketplace with app visibility. Installation is asynchronous: follow workflowInstanceId with packages.status. Pass the release's declared permissions, which marketplace.view returns, to approve them; the install is refused unless they match exactly, and you must hold each one. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.
    * Requires `packages.install`.
    */
   install(input: PackagesInstallInput): Promise<PackagesInstallOutput>;
@@ -21,7 +21,7 @@ type PackagesCodemodeProvider = {
    */
   get(input: PackagesGetInput): Promise<PackagesGetOutput>;
   /**
-   * Uninstall a package from the current workspace: delete the agents, routes, and event definitions it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null.
+   * Uninstall a package from the current workspace: delete the agents, routes, and event definitions it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null. A package an app installed from its Marketplace is uninstalled only by that app while it is installed and reaches the workspace; otherwise, uninstall the app.
    * Requires `packages.install`.
    */
   uninstall(input: PackagesUninstallInput): Promise<PackagesUninstallOutput>;
@@ -142,7 +142,7 @@ type PackagesInstallInput = {
   listingId: string;
   version?: string;
   permissions?: BackofficePermissionRequirement[];
-  visibility?: "public" | "organization";
+  visibility?: "public" | "organization" | "app";
 };
 type PackagesInstallOutput = {
   listingId: string;
@@ -202,6 +202,10 @@ type PackagesLsOutput = {
           kind: "org";
           orgId: string;
           jurisdiction: "eu" | "us" | null;
+        }
+      | {
+          kind: "app";
+          appId: string;
         };
     listingId: string;
     version: string;
@@ -224,6 +228,10 @@ type PackagesGetOutput = {
         kind: "org";
         orgId: string;
         jurisdiction: "eu" | "us" | null;
+      }
+    | {
+        kind: "app";
+        appId: string;
       };
   listingId: string;
   version: string;
@@ -246,6 +254,10 @@ type PackagesUninstallOutput = {
           kind: "org";
           orgId: string;
           jurisdiction: "eu" | "us" | null;
+        }
+      | {
+          kind: "app";
+          appId: string;
         };
     listingId: string;
     version: string;
@@ -278,6 +290,10 @@ type PackagesImportLegacyOutput = {
           kind: "org";
           orgId: string;
           jurisdiction: "eu" | "us" | null;
+        }
+      | {
+          kind: "app";
+          appId: string;
         };
     listingId: string;
     version: string;

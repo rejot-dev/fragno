@@ -57,7 +57,7 @@ Neither fragment exposes HTTP routes. System admin runtime tools expose OAuth cl
 app registration, and listing. Organization and user runtime tools expose declaration review and
 installation management. An installed app can act for a signed-in member through an app-bound
 credential (see below). Ordinary developer registration and app-only background execution remain
-outside this scaffold. Marketplace packages remain independent.
+outside this scaffold. Apps ship agents and files as [app packages](#app-packages).
 
 ## System admin OAuth client tools
 
@@ -384,6 +384,41 @@ Apps verify requests with `createAppActionVerifier` from
 `@fragno-dev/backoffice-api/v0/app-actions`, which checks the signature against Backoffice's JWKS,
 the audience, expiry, and body hash, and parses the body. Bookkeeping's
 `workers/backoffice/actions.ts` is a complete endpoint.
+
+## App packages
+
+An app ships agents, files, routes, and event definitions into its users' workspaces as Marketplace
+packages, from a Marketplace of its own. Only the app's installations install from it, with
+`packages.install` and `visibility: "app"`, into the scopes they reach; people neither browse nor
+install it, and it is not public. Each installation of a package is then like any other: the
+workspace runs the release it installed until the app installs another version, Backoffice keeps the
+package's agents, routes, and event definitions as the release declares them, members cannot change
+them, and uninstalling the package removes them. Only the app uninstalls its packages while it is
+installed and reaches the workspace: members uninstall the app instead. Once it is uninstalled, or
+no longer reaches the workspace, members may uninstall them. A package's files are copied into the
+folder it is installed at. An upgrade replaces or removes the files that still match the installed
+version, and fails without changes if members edited one, so ship files members only read.
+Uninstalling keeps the files.
+
+A system administrator publishes the app's releases, which the app owns, from their files, which are
+text:
+
+```bash
+admin.marketplace.publish-app-package --app-id APP_ID --slug books-agent --version 1.0.0 \
+  --metadata-json "$(cat metadata.json)" \
+  --files-json '{".marketplace/installation.json":"{\"agents\":[...]}"}'
+```
+
+The listing is `app:<app slug>#<slug>` in the app's Marketplace, so the agents it defines name the
+app as their steward's package. Versions are immutable: publishing a published version with the same
+files changes nothing, and with other files fails, so a changed package needs a new version.
+Publishing is durable; installing a release fails until it is published. The app needs
+`packages.install`, plus `packages.read` to follow installs with `packages.status`. Installing needs
+none of the permissions the package's agents list: an agent's permissions only narrow the turns of
+whoever prompts it.
+
+The app's Marketplace is the `MARKETPLACE` object named `app:<appId>`, since a registered app has no
+scope; `marketplaceObject` in `app/fragno/marketplace/owner.ts` addresses every Marketplace.
 
 ## First-party apps
 

@@ -1,12 +1,12 @@
 // Marketplace packages: search, inspect, publish, feature. Read to find or publish a package.
 type MarketplaceCodemodeProvider = {
   /**
-   * Search published package metadata in the public Marketplace, or in the current organization's Marketplace with organization visibility. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches.
+   * Search published package metadata in the public Marketplace, in the current organization's Marketplace with organization visibility, or, for an installed app, in its app's Marketplace with app visibility. Follow nextCursor while hasNextPage is true, even when a candidate page has no matches.
    * Requires `marketplace.read`.
    */
   search(input: MarketplaceSearchInput): Promise<MarketplaceSearchOutput>;
   /**
-   * Inspect published package metadata and cursor-paginated releases in the public Marketplace, or in the current organization's Marketplace with organization visibility. `release` is what installing one release (the latest unless version is given) sets up: the permissions to approve with packages.install, and the routes, event definitions, and agents it defines. Its routes' start_workflow paths are relative to the installation folder.
+   * Inspect published package metadata and cursor-paginated releases in the public Marketplace, in the current organization's Marketplace with organization visibility, or, for an installed app, in its app's Marketplace with app visibility. `release` is what installing one release (the latest unless version is given) sets up: the permissions to approve with packages.install, and the routes, event definitions, and agents it defines. Its routes' start_workflow paths are relative to the installation folder.
    * Requires `marketplace.read`.
    */
   view(input: MarketplaceViewInput): Promise<MarketplaceViewOutput>;
@@ -319,7 +319,7 @@ type MarketplaceSearchInput = {
   pageSize?: number;
   cursor?: string;
   query: string;
-  visibility?: "public" | "organization";
+  visibility?: "public" | "organization" | "app";
 };
 type MarketplaceSearchOutput = {
   listings: {
@@ -339,7 +339,7 @@ type MarketplaceViewInput = {
   listingId: string;
   versionPageSize?: number;
   versionCursor?: string;
-  visibility?: "public" | "organization";
+  visibility?: "public" | "organization" | "app";
   version?: string;
 };
 type MarketplaceViewOutput = {
@@ -430,6 +430,10 @@ type MarketplacePublishOutput =
             kind: "org";
             orgId: string;
             jurisdiction: "eu" | "us" | null;
+          }
+        | {
+            kind: "app";
+            appId: string;
           };
       files: {
         relativePath: string;
@@ -459,6 +463,10 @@ type MarketplacePublishOutput =
             kind: "org";
             orgId: string;
             jurisdiction: "eu" | "us" | null;
+          }
+        | {
+            kind: "app";
+            appId: string;
           };
       files: {
         relativePath: string;

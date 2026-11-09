@@ -8,6 +8,7 @@ import {
   backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
+import { marketplaceScopeKey } from "@/fragno/marketplace/owner";
 import { sha256Hex } from "@/lib/crypto";
 
 /** Package installation is coordinated by the destination's organization Automations object. */
@@ -41,7 +42,7 @@ export async function buildMarketplacePackageInstallWorkflowInstanceId(input: {
 }) {
   return `${MARKETPLACE_PACKAGE_INSTALL_INSTANCE_PREFIX}${await sha256Hex(
     new TextEncoder().encode(
-      `${backofficeScopePathSegment(input.marketplace)}\0${backofficeScopePathSegment(input.targetScope)}\0${input.installationRoot}\0${marketplaceListingIdSchema.parse(input.listingId)}\0${marketplaceVersionSchema.parse(input.version)}`,
+      `${marketplaceScopeKey(input.marketplace)}\0${backofficeScopePathSegment(input.targetScope)}\0${input.installationRoot}\0${marketplaceListingIdSchema.parse(input.listingId)}\0${marketplaceVersionSchema.parse(input.version)}`,
     ),
   )}`;
 }

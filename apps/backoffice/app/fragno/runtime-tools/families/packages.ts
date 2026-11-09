@@ -3,6 +3,8 @@ import {
   packagesImportLegacyInputSchema,
   packagesInstallInputSchema,
   packagesStatusInputSchema,
+  type MarketplaceScope,
+  type MarketplaceSourceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { z } from "zod";
 
@@ -15,6 +17,13 @@ import {
   type BackofficeToolContext,
 } from "../runtime-tools";
 import { type PackagesRuntime } from "./packages-runtime";
+
+/** How `packages.ls` names the Marketplace an installation came from: the visibility it used. */
+const MARKETPLACE_VISIBILITY_LABELS = {
+  system: "public",
+  org: "organization",
+  app: "app",
+} satisfies Record<MarketplaceScope["kind"], MarketplaceSourceVisibility>;
 
 type PackagesToolContext = BackofficeToolContext<{ packages: PackagesRuntime | undefined }>;
 
@@ -64,7 +73,7 @@ const packagesInstallTool = defineBackofficeRuntimeTool({
             name: "visibility",
             valueRequired: true,
             description:
-              "public (default) installs from the public Marketplace; organization installs from the installing organization's Marketplace.",
+              "public (default) installs from the public Marketplace; organization installs from the installing organization's Marketplace; app installs from an installed app's own Marketplace.",
           },
           {
             name: "permission",
@@ -164,7 +173,7 @@ const packagesListTool = defineBackofficeRuntimeTool({
               stdout: result.installations
                 .map(
                   (installation) =>
-                    `${installation.listingId}@${installation.version}\t${installation.installationRoot}\t${installation.marketplace.kind === "org" ? "organization" : "public"}\n`,
+                    `${installation.listingId}@${installation.version}\t${installation.installationRoot}\t${MARKETPLACE_VISIBILITY_LABELS[installation.marketplace.kind]}\n`,
                 )
                 .join(""),
             },

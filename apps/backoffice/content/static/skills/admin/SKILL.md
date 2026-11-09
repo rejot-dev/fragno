@@ -53,6 +53,12 @@ Bundled seeding skips published versions unless forced, submits backfills throug
 override, and never regresses the latest version. Its shared listing-root documents are initialized
 separately; they are not part of release replacement.
 
+`admin.marketplacePublishAppPackage` / `admin.marketplace.publish-app-package` publishes a release
+from its files into a registered app's own Marketplace, which only that app's installations install
+from (`packages.install` with `visibility: "app"`). The app owns the listing,
+`app:<app slug>#<slug>`, and only the app uninstalls it while it is installed. Versions are
+immutable there too: publish a changed package as a new version.
+
 Workspace manifests and bundled System entries are capture adapters for the same release publisher.
 Both freeze ownership, metadata, and file bytes before enqueueing `marketplace-package-publish`.
 Replacements atomically write the complete file set and remove omitted files, then update the

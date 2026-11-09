@@ -1,3 +1,4 @@
+import type { AutomationActors } from "@fragno-dev/backoffice-api/v0/automation";
 import {
   marketplaceIngestionRequestInputSchema,
   marketplaceVersionSchema,
@@ -10,6 +11,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
+import { installedAppIdOfActors } from "@/fragno/app-installations/authority";
 import { type MarketplaceListingStorage } from "@/fragno/marketplace/contracts";
 
 import { backofficeWorkflowActorMetadataSchema } from "./actors";
@@ -47,14 +49,26 @@ export const assertMarketplaceIngestionTargetBelongsToOrganization = (input: {
   }
 };
 
-/** Organizations install from the public Marketplace or their own, never another organization's. */
+/**
+ * Organizations install from the public Marketplace or their own, never another organization's;
+ * only an installed app installs from its app's Marketplace.
+ */
 export const assertMarketplaceIngestionSourceAccessible = (input: {
   organizationId: string;
   marketplace: MarketplaceScope;
+  actors: AutomationActors;
 }): void => {
   if (input.marketplace.kind === "org" && input.marketplace.orgId !== input.organizationId) {
     throw new MarketplaceIngestionTargetAccessError(
       "Marketplace ingestion source belongs to another organization.",
+    );
+  }
+  if (
+    input.marketplace.kind === "app" &&
+    installedAppIdOfActors(input.actors) !== input.marketplace.appId
+  ) {
+    throw new MarketplaceIngestionTargetAccessError(
+      "Only the app's installations install from its Marketplace.",
     );
   }
 };
