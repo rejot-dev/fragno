@@ -148,9 +148,15 @@ export function FilesExplorerView({
   const openedPane: NarrowPane =
     searchQuery !== "" || selectedDetail?.node.kind === "file" ? "detail" : "tree";
   const [narrowPane, setNarrowPane] = useState(openedPane);
-  const [paneOpenedFor, setPaneOpenedFor] = useState({ selectedPath, searchQuery });
-  if (paneOpenedFor.selectedPath !== selectedPath || paneOpenedFor.searchQuery !== searchQuery) {
-    setPaneOpenedFor({ selectedPath, searchQuery });
+  // Workspace files can reach the tree after it first renders, so a linked file is opened once it
+  // appears, not only when the selection changes.
+  const [paneOpenedFor, setPaneOpenedFor] = useState({ selectedPath, searchQuery, openedPane });
+  if (
+    paneOpenedFor.selectedPath !== selectedPath ||
+    paneOpenedFor.searchQuery !== searchQuery ||
+    paneOpenedFor.openedPane !== openedPane
+  ) {
+    setPaneOpenedFor({ selectedPath, searchQuery, openedPane });
     setNarrowPane(openedPane);
   }
 
