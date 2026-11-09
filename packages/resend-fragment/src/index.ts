@@ -43,21 +43,30 @@ export function createResendFragmentClients(fragnoConfig: FragnoPublicClientConf
 export { resendFragmentDefinition } from "./definition";
 export { resendRoutesFactory } from "./routes";
 export { resendSchema } from "./schema";
+export { isSenderVerified } from "./email-authentication";
 export type {
   ResendEmailAuthentication,
   ResendEmailAuthenticationResult,
 } from "./email-authentication";
+export { MAX_MAILBOX_ATTACHMENT_BYTES } from "./mailbox-sending";
+export type { ResendMailboxAttachmentInput } from "./mailbox-sending";
 export type {
   ResendEmailReceivedHookPayload,
   ResendEmailStatusUpdatedHookPayload,
   ResendFragmentConfig,
   ResendMailboxMatch,
   ResendMailboxEmail,
+  ResendMailboxEmailQueuedPayload,
+  ResendMailboxSentEmail,
   ResendReceivedEmailAttachment,
   ResendMailbox,
   ResendOpenMailboxResult,
   ResendPauseMailboxResult,
   ResendReplaceMailboxAddressResult,
+  ResendReplyFromMailboxResult,
+  ResendResumeMailboxSendingResult,
+  ResendSendFromMailboxResult,
+  ResendSuspendMailboxSendingResult,
 } from "./definition";
 export type {
   ResendDomain,

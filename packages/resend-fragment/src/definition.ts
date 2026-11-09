@@ -12,19 +12,39 @@ import {
   type TypedUnitOfWork,
 } from "@fragno-dev/db";
 
-import { readEmailAuthentication, type ResendEmailAuthentication } from "./email-authentication";
+import {
+  isSenderVerified,
+  readEmailAuthentication,
+  type ResendEmailAuthentication,
+} from "./email-authentication";
 import { normalizeMailboxAddress, parseMailboxAddress } from "./mailbox-address";
+import {
+  buildMailboxMessageId,
+  formatMailboxFrom,
+  headerMailbox,
+  prepareMailboxAttachments,
+  readPendingAttachments,
+  replyRecipients,
+  replySubject,
+  replyThreadingHeaders,
+  withoutAttachmentContent,
+  type ResendMailboxAttachmentInput,
+  type StoredMailboxAttachment,
+} from "./mailbox-sending";
 import type { ResendSendEmailInput } from "./routes/emails";
-import { buildThreadMessage, resolveEmailPayload, toArray } from "./routes/shared";
+import { asHeadersRecord, buildThreadMessage, resolveEmailPayload, toArray } from "./routes/shared";
 import type { ResendThreadMessage } from "./routes/threads";
 import { resendSchema } from "./schema";
 import {
   buildHeuristicKey,
   buildInboundThreadEnvelope,
   buildParticipantKey,
+  buildPreviewText,
   extractMailbox,
   generateOpaqueToken,
   mergeParticipants,
+  normalizeParticipants,
+  normalizeSubject,
   withinRecencyWindow,
   type ReceivedEmailDetailLike,
 } from "./threading";
@@ -43,6 +63,8 @@ export interface ResendEmailStatusUpdatedHookPayload {
   status: string;
   eventType: string;
   event: WebhookEventPayload;
+  /** The mailbox the email was sent from; null for email the account sent as itself. */
+  senderMailbox: ResendMailboxMatch | null;
   idempotencyKey: string;
 }
 
@@ -52,12 +74,46 @@ export interface ResendMailboxMatch {
   owner: string;
 }
 
-/** An owner's one address. A paused mailbox keeps its address but is not in use. */
+/**
+ * An owner's one address. A paused mailbox keeps its address but is not in use; one whose sending
+ * is suspended still receives.
+ */
 export type ResendMailbox = {
   owner: string;
   address: string;
   paused: boolean;
+  sendingSuspended: boolean;
 };
+
+/** An email a mailbox queued for Resend to send. */
+export type ResendMailboxSentEmail = {
+  emailMessageId: string;
+  from: string;
+  to: string[];
+  subject: string;
+};
+
+export type ResendSendFromMailboxResult =
+  | { status: "queued"; email: ResendMailboxSentEmail }
+  /** The owner has no mailbox. */
+  | { status: "not-found" }
+  | { status: "paused" }
+  | { status: "sending-suspended" };
+
+export type ResendReplyFromMailboxResult =
+  | ResendSendFromMailboxResult
+  /** No such email reached the owner's mailbox. */
+  | { status: "email-not-found" }
+  /** Its From domain passed neither DKIM nor DMARC, so anyone may have written its From address. */
+  | { status: "sender-unverified" };
+
+export type ResendSuspendMailboxSendingResult = { status: "suspended" } | { status: "not-found" };
+export type ResendResumeMailboxSendingResult = { status: "resumed" } | { status: "not-found" };
+
+export interface ResendMailboxEmailQueuedPayload {
+  emailMessageId: string;
+  senderMailbox: ResendMailboxMatch;
+}
 
 export type ResendOpenMailboxResult =
   | { status: "opened"; mailbox: ResendMailbox }
@@ -122,6 +178,14 @@ export interface ResendFragmentConfig {
    * change commits, and retried until it succeeds.
    */
   onMailboxChanged?: (mailbox: ResendMailbox, context: HookContext) => Promise<void> | void;
+  /**
+   * A mailbox queued an email. It is delivered durably after the email commits, once per email, so
+   * an owner's sending can be counted.
+   */
+  onMailboxEmailQueued?: (
+    payload: ResendMailboxEmailQueuedPayload,
+    context: HookContext,
+  ) => Promise<void> | void;
 }
 
 type ResendEmailWebhookEvent = Extract<WebhookEventPayload, { type: `email.${string}` }>;
@@ -138,14 +202,19 @@ type DeliverEmailReceivedHookPayload = {
 type DeliverEmailStatusUpdatedHookPayload = {
   event: ResendEmailWebhookEvent;
   emailMessageId: string;
+  /** Absent from deliveries queued before mailboxes sent email. */
+  senderMailbox?: ResendMailboxMatch | null;
 };
 
 export type ResendHooksMap = {
-  sendEmail: HookFn<{ emailId: string }>;
+  /** `senderOwner` names the mailbox that sends the email, so the hook reads it with the email. */
+  sendEmail: HookFn<{ emailId: string; senderOwner?: string }>;
   onResendWebhook: HookFn<{ event: WebhookEventPayload }>;
   deliverEmailReceived: HookFn<DeliverEmailReceivedHookPayload>;
   deliverEmailStatusUpdated: HookFn<DeliverEmailStatusUpdatedHookPayload>;
   deliverMailboxChanged: HookFn<ResendMailbox>;
+  deliverMailboxEmailQueued: HookFn<ResendMailboxEmailQueuedPayload>;
+  suspendMailboxSending: HookFn<{ owner: string }>;
 };
 
 type ResendUow = TypedUnitOfWork<typeof resendSchema>;
@@ -184,6 +253,10 @@ const buildReceivedEmailDeliveryHookId = (emailMessageId: string, position: numb
 /** The mailboxes a received message reached; none for sent messages. */
 const readRecipientMailboxes = (stored: unknown): ResendMailboxMatch[] =>
   (stored as ResendMailboxMatch[] | null | undefined) ?? [];
+
+/** The mailbox a message was sent from; null for received messages and the account's own. */
+const readSenderMailbox = (stored: unknown): ResendMailboxMatch | null =>
+  (stored as ResendMailboxMatch | null | undefined) ?? null;
 
 const buildStatusUpdatedDeliveryHookId = (
   emailMessageId: string,
@@ -248,6 +321,7 @@ const buildReceivedEmailAttachments = (
 };
 
 const buildResendPayload = (email: ResendEmailMessageRow): CreateEmailOptions => {
+  const attachments = readPendingAttachments(email.attachments);
   const renderOptions = email.html
     ? { html: email.html, text: email.text ?? undefined }
     : { text: email.text ?? "" };
@@ -262,6 +336,7 @@ const buildResendPayload = (email: ResendEmailMessageRow): CreateEmailOptions =>
     replyTo: normalizeAddressList(email.replyTo as string[] | null),
     tags: (email.tags as CreateEmailOptions["tags"]) ?? undefined,
     headers: (email.headers as CreateEmailOptions["headers"]) ?? undefined,
+    ...(attachments.length > 0 ? { attachments } : {}),
   };
 };
 
@@ -270,7 +345,21 @@ function toMailbox(row: ResendMailboxRow): ResendMailbox {
     owner: row.owner,
     address: row.address,
     paused: row.pausedAt !== null,
+    sendingSuspended: row.sendingSuspendedAt !== null,
   };
+}
+
+/** Why a mailbox cannot send now; null when it can. */
+function mailboxSendingUnavailable(
+  row: ResendMailboxRow | null | undefined,
+): Exclude<ResendSendFromMailboxResult, { status: "queued" }> | null {
+  if (!row) {
+    return { status: "not-found" };
+  }
+  if (row.pausedAt !== null) {
+    return { status: "paused" };
+  }
+  return row.sendingSuspendedAt === null ? null : { status: "sending-suspended" };
 }
 
 const sortThreadsByRecent = (threads: ResendThreadRow[]) => {
@@ -391,6 +480,64 @@ const createResendServiceMethods = (config: ResendFragmentConfig) => {
     if (config.onMailboxChanged) {
       uow.triggerHook("deliverMailboxChanged", mailbox);
     }
+  };
+
+  /**
+   * Stores an email from the mailbox and queues it for Resend. Replies come back to the mailbox,
+   * whatever the account's default Reply-To.
+   */
+  const queueMailboxEmail = (
+    uow: Pick<
+      TypedUnitOfWork<typeof resendSchema, [], unknown, ResendHooksMap>,
+      "create" | "triggerHook"
+    >,
+    mailbox: ResendMailboxRow,
+    email: {
+      threadId: ResendThreadRow["id"] | string | null;
+      to: string[];
+      subject: string;
+      text: string;
+      fromName: string | null;
+      headers: Record<string, string>;
+      attachments: StoredMailboxAttachment[];
+      occurredAt: Date;
+    },
+  ): ResendMailboxSentEmail => {
+    const from = formatMailboxFrom(mailbox.address, email.fromName);
+    const messageId = buildMailboxMessageId(mailbox.address);
+    const senderMailbox = { address: mailbox.address, owner: mailbox.owner };
+    const emailId = uow.create("emailMessage", {
+      threadId: email.threadId,
+      direction: "outbound",
+      status: "queued",
+      providerEmailId: null,
+      from,
+      to: email.to,
+      cc: null,
+      bcc: null,
+      replyTo: [mailbox.address],
+      subject: email.subject,
+      messageId,
+      headers: { ...config.defaultHeaders, ...email.headers, "Message-ID": messageId },
+      html: null,
+      text: email.text,
+      attachments: email.attachments.length > 0 ? email.attachments : null,
+      tags: config.defaultTags ?? null,
+      occurredAt: email.occurredAt,
+      scheduledAt: null,
+      sentAt: null,
+      lastEventType: null,
+      lastEventAt: null,
+      errorCode: null,
+      errorMessage: null,
+      senderMailbox,
+    });
+    const emailMessageId = emailId.valueOf();
+    uow.triggerHook("sendEmail", { emailId: emailMessageId, senderOwner: mailbox.owner });
+    if (config.onMailboxEmailQueued) {
+      uow.triggerHook("deliverMailboxEmailQueued", { emailMessageId, senderMailbox });
+    }
+    return { emailMessageId, from, to: email.to, subject: email.subject };
   };
 
   const services = defineResendServiceMethods({
@@ -584,8 +731,18 @@ const createResendServiceMethods = (config: ResendFragmentConfig) => {
             address: parsed.address,
           });
           uow.create("mailboxAddress", { address: parsed.address, owner });
-          uow.create("mailbox", { owner, address: parsed.address, pausedAt: null });
-          const opened = { owner, address: parsed.address, paused: false };
+          uow.create("mailbox", {
+            owner,
+            address: parsed.address,
+            pausedAt: null,
+            sendingSuspendedAt: null,
+          });
+          const opened = {
+            owner,
+            address: parsed.address,
+            paused: false,
+            sendingSuspended: false,
+          };
           announceMailboxChange(uow, opened);
           return { status: "opened", mailbox: opened };
         })
@@ -704,6 +861,183 @@ const createResendServiceMethods = (config: ResendFragmentConfig) => {
         )
         .build();
     },
+
+    /**
+     * Sends plain text from the owner's mailbox to `to`, which the caller vouches for: the fragment
+     * checks only that the mailbox may send.
+     */
+    sendFromMailbox: function ({
+      owner,
+      to,
+      subject,
+      text,
+      fromName,
+      attachments = [],
+    }: {
+      owner: string;
+      to: string[];
+      subject: string;
+      text: string;
+      /** Shown with the mailbox's address in From. */
+      fromName: string | null;
+      attachments?: readonly ResendMailboxAttachmentInput[];
+    }) {
+      const recipients = to.map((address) => {
+        const mailbox = headerMailbox(address);
+        if (mailbox === null) {
+          throw new Error(`${address} is not an email address.`);
+        }
+        return mailbox;
+      });
+      const stored = prepareMailboxAttachments(attachments);
+      return this.serviceTx(resendSchema)
+        .retrieve((uow) =>
+          uow.findFirst("mailbox", (b) =>
+            b.whereIndex("idx_mailbox_owner", (eb) => eb("owner", "=", owner)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [mailbox] }): ResendSendFromMailboxResult => {
+          const unavailable = mailboxSendingUnavailable(mailbox);
+          if (unavailable !== null || !mailbox) {
+            return unavailable ?? { status: "not-found" };
+          }
+          return {
+            status: "queued",
+            email: queueMailboxEmail(uow, mailbox, {
+              threadId: null,
+              to: recipients,
+              subject,
+              text,
+              fromName,
+              headers: {},
+              attachments: stored,
+              occurredAt: new Date(),
+            }),
+          };
+        })
+        .build();
+    },
+
+    /**
+     * Replies in plain text to an email the owner's mailbox received, at its From address. Only a
+     * verified sender gets a reply, so nobody can make the mailbox write to an address by forging it.
+     */
+    replyFromMailbox: function ({
+      owner,
+      emailMessageId,
+      text,
+      subject,
+      fromName,
+    }: {
+      owner: string;
+      emailMessageId: string;
+      text: string;
+      /** Null replies under the received email's subject. */
+      subject: string | null;
+      fromName: string | null;
+    }) {
+      return this.serviceTx(resendSchema)
+        .retrieve((uow) =>
+          uow
+            .findFirst("mailbox", (b) =>
+              b.whereIndex("idx_mailbox_owner", (eb) => eb("owner", "=", owner)),
+            )
+            .findFirst("emailMessage", (b) =>
+              b
+                .whereIndex("primary", (eb) => eb("id", "=", emailMessageId))
+                .joinOne("emailMessageThread", "emailThread", (thread) =>
+                  thread.onIndex("primary", (eb) => eb("id", "=", eb.parent("threadId"))),
+                ),
+            ),
+        )
+        .mutate(({ uow, retrieveResult: [mailbox, email] }): ResendReplyFromMailboxResult => {
+          const unavailable = mailboxSendingUnavailable(mailbox);
+          if (unavailable !== null || !mailbox) {
+            return unavailable ?? { status: "not-found" };
+          }
+          if (
+            email?.direction !== "inbound" ||
+            !readRecipientMailboxes(email.recipientMailboxes).some((match) => match.owner === owner)
+          ) {
+            return { status: "email-not-found" };
+          }
+          const to = replyRecipients(email);
+          if (!isSenderVerified(readEmailAuthentication(email.authentication)) || to.length === 0) {
+            return { status: "sender-unverified" };
+          }
+          const occurredAt = new Date();
+          const replySubjectValue = subject ?? replySubject(email.subject);
+          // Every received message is threaded on receipt; the reply joins its thread.
+          const thread = appendToThreadSummary(uow, email.emailMessageThread ?? null, {
+            subject: replySubjectValue,
+            normalizedSubject: normalizeSubject(replySubjectValue),
+            participants: normalizeParticipants([mailbox.address, ...to]),
+            occurredAt,
+            direction: "outbound",
+            preview: buildPreviewText(text),
+          });
+          return {
+            status: "queued",
+            email: queueMailboxEmail(uow, mailbox, {
+              threadId: thread.threadId,
+              to,
+              subject: replySubjectValue,
+              text,
+              fromName,
+              headers: replyThreadingHeaders({
+                messageId: email.messageId,
+                headers: asHeadersRecord(email.headers) ?? null,
+              }),
+              attachments: [],
+              occurredAt,
+            }),
+          };
+        })
+        .build();
+    },
+
+    /** Stops the mailbox sending, such as after a complaint; it still receives. */
+    suspendMailboxSending: function (owner: string) {
+      return this.serviceTx(resendSchema)
+        .retrieve((uow) =>
+          uow.findFirst("mailbox", (b) =>
+            b.whereIndex("idx_mailbox_owner", (eb) => eb("owner", "=", owner)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [mailbox] }): ResendSuspendMailboxSendingResult => {
+          if (!mailbox) {
+            return { status: "not-found" };
+          }
+          if (!mailbox.sendingSuspendedAt) {
+            uow.update("mailbox", mailbox.id, (b) =>
+              b.set({ sendingSuspendedAt: uow.now() }).check(),
+            );
+            announceMailboxChange(uow, { ...toMailbox(mailbox), sendingSuspended: true });
+          }
+          return { status: "suspended" };
+        })
+        .build();
+    },
+
+    resumeMailboxSending: function (owner: string) {
+      return this.serviceTx(resendSchema)
+        .retrieve((uow) =>
+          uow.findFirst("mailbox", (b) =>
+            b.whereIndex("idx_mailbox_owner", (eb) => eb("owner", "=", owner)),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [mailbox] }): ResendResumeMailboxSendingResult => {
+          if (!mailbox) {
+            return { status: "not-found" };
+          }
+          if (mailbox.sendingSuspendedAt) {
+            uow.update("mailbox", mailbox.id, (b) => b.set({ sendingSuspendedAt: null }).check());
+            announceMailboxChange(uow, { ...toMailbox(mailbox), sendingSuspended: false });
+          }
+          return { status: "resumed" };
+        })
+        .build();
+    },
   });
 
   return services;
@@ -724,13 +1058,21 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
   .providesBaseService(({ defineService, config }) => createResendServices(defineService, config))
   .provideHooks<ResendHooksMap>(({ defineHook, deps, config, services }) => ({
     sendEmail: defineHook(async function (payload) {
+      // The sender's mailbox decides whether the email may still go out, so read it in the
+      // transaction that claims the email: a suspension stops email queued before it.
       const prepared = await this.handlerTx()
         .retrieve(({ forSchema }) =>
-          forSchema(resendSchema).findFirst("emailMessage", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", payload.emailId)),
-          ),
+          forSchema(resendSchema)
+            .findFirst("emailMessage", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", payload.emailId)),
+            )
+            .findFirst("mailbox", (b) =>
+              b.whereIndex("idx_mailbox_owner", (eb) =>
+                eb("owner", "=", payload.senderOwner ?? ""),
+              ),
+            ),
         )
-        .mutate(({ forSchema, retrieveResult: [email] }) => {
+        .mutate(({ forSchema, retrieveResult: [email, mailbox] }) => {
           if (!email) {
             return { action: "missing" as const };
           }
@@ -750,6 +1092,24 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
           }
 
           const uow = forSchema(resendSchema);
+          const unavailable = readSenderMailbox(email.senderMailbox)
+            ? mailboxSendingUnavailable(mailbox)
+            : null;
+          if (unavailable) {
+            uow.update("emailMessage", email.id, (b) =>
+              b
+                .set({
+                  status: "failed",
+                  updatedAt: uow.now(),
+                  errorCode: `mailbox_${unavailable.status.replaceAll("-", "_")}`,
+                  errorMessage: "The sender's mailbox stopped sending before this email went out.",
+                  attachments: withoutAttachmentContent(email.attachments),
+                })
+                .check(),
+            );
+            return { action: "skip" as const };
+          }
+
           uow.update("emailMessage", email.id, (b) =>
             b
               .set({
@@ -765,6 +1125,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
             action: "send" as const,
             email: {
               id: email.id.valueOf(),
+              attachments: email.attachments,
               payload: buildResendPayload(email),
             },
           };
@@ -780,6 +1141,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
       const resendIdempotencyKey = this.hookId.externalId;
       const lastAttempt = this.attempts + 1 >= this.maxAttempts;
 
+      const attachmentsSent = withoutAttachmentContent(prepared.email.attachments);
       // Nothing else writes the claimed email until Resend's ID is on it, since webhooks find it by
       // that ID, so the result is written by ID alone, without reading the email again.
       const updateEmail = async (write: (uow: ResendUow, id: string) => void) => {
@@ -790,9 +1152,9 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
           .execute();
       };
 
-      // A failure Resend may get past, such as a rate limit, waits for the hook's next attempt;
-      // Resend's idempotency key keeps a retry from sending the email twice. Any other failure, or
-      // the last attempt's, is final.
+      // A failure Resend may get past, such as a rate limit, waits for the hook's next attempt with
+      // the email whole; Resend's idempotency key keeps a retry from sending it twice. Any other
+      // failure, or the last attempt's, is final, and the attachments go with it.
       const fail = async (
         { code, message }: { code: string; message: string },
         retryable: boolean,
@@ -805,6 +1167,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
               updatedAt: uow.now(),
               errorCode: code,
               errorMessage: message,
+              ...(retry ? {} : { attachments: attachmentsSent }),
             }),
           );
         });
@@ -838,6 +1201,8 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
         const now = uow.now();
         uow.update("emailMessage", id, (b) =>
           b.set({
+            // Resend has the files now; keeping them would grow the account's storage for good.
+            attachments: attachmentsSent,
             providerEmailId: response.data.id,
             status: "sent",
             sentAt: now,
@@ -890,7 +1255,19 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
     deliverMailboxChanged: defineHook(async function (mailbox) {
       await config.onMailboxChanged?.(mailbox, this);
     }),
-    deliverEmailStatusUpdated: defineHook(async function ({ event, emailMessageId }) {
+    deliverMailboxEmailQueued: defineHook(async function (payload) {
+      await config.onMailboxEmailQueued?.(payload, this);
+    }),
+    suspendMailboxSending: defineHook(async function ({ owner }) {
+      await this.handlerTx()
+        .withServiceCalls(() => [services.suspendMailboxSending(owner)] as const)
+        .execute();
+    }),
+    deliverEmailStatusUpdated: defineHook(async function ({
+      event,
+      emailMessageId,
+      senderMailbox,
+    }) {
       if (!config.onEmailStatusUpdated) {
         return;
       }
@@ -901,6 +1278,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
         status: statusFromWebhookEvent(event),
         eventType: event.type,
         event,
+        senderMailbox: senderMailbox ?? null,
         idempotencyKey: this.idempotencyKey,
       });
     }),
@@ -1112,22 +1490,31 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
             return;
           }
 
-          if (email.lastEventAt && eventAt.getTime() <= email.lastEventAt.getTime()) {
+          // A complaint counts however late it arrives: it suspends the sending mailbox.
+          const complaint = event.type === "email.complained" && email.status !== "complained";
+          const stale =
+            email.lastEventAt !== null && eventAt.getTime() <= email.lastEventAt.getTime();
+          if (stale && !complaint) {
             return;
           }
 
           const uow = forSchema(resendSchema);
           const emailMessageId = email.id.valueOf();
+          const senderMailbox = readSenderMailbox(email.senderMailbox);
           uow.update("emailMessage", email.id, (b) =>
             b
               .set({
                 status,
-                lastEventType: event.type,
-                lastEventAt: eventAt,
+                lastEventType: stale ? email.lastEventType : event.type,
+                lastEventAt: stale ? email.lastEventAt : eventAt,
                 updatedAt: uow.now(),
               })
               .check(),
           );
+
+          if (complaint && senderMailbox) {
+            uow.triggerHook("suspendMailboxSending", { owner: senderMailbox.owner });
+          }
 
           if (!config.onEmailStatusUpdated) {
             return;
@@ -1138,6 +1525,7 @@ export const resendFragmentDefinition = defineFragment<ResendFragmentConfig>("re
             {
               event,
               emailMessageId,
+              senderMailbox,
             },
             { id: buildStatusUpdatedDeliveryHookId(emailMessageId, event.type) },
           );

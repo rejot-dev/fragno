@@ -98,7 +98,12 @@ describe("resend-fragment mailboxes", () => {
   test("an owner keeps one address however often it opens its mailbox", async () => {
     expect(await open("user:alice", "Receipts@Mail.Example")).toEqual({
       status: "opened",
-      mailbox: { owner: "user:alice", address: "receipts@mail.example", paused: false },
+      mailbox: {
+        owner: "user:alice",
+        address: "receipts@mail.example",
+        paused: false,
+        sendingSuspended: false,
+      },
     });
     expect(await open("user:alice", "other@mail.example")).toMatchObject({
       mailbox: { address: "receipts@mail.example" },
@@ -136,18 +141,18 @@ describe("resend-fragment mailboxes", () => {
     const alice = { owner: "user:alice", address: "receipts@mail.example" };
 
     await open(alice.owner, alice.address);
-    expect(await announced()).toEqual([{ ...alice, paused: false }]);
+    expect(await announced()).toEqual([{ ...alice, paused: false, sendingSuspended: false }]);
     // Nothing changes when an open mailbox opens again or a paused one pauses again.
     await open(alice.owner, "other@mail.example");
     expect(await announced()).toEqual([]);
     await pause(alice.owner);
     await pause(alice.owner);
-    expect(await announced()).toEqual([{ ...alice, paused: true }]);
+    expect(await announced()).toEqual([{ ...alice, paused: true, sendingSuspended: false }]);
     await open(alice.owner, "other@mail.example");
-    expect(await announced()).toEqual([{ ...alice, paused: false }]);
+    expect(await announced()).toEqual([{ ...alice, paused: false, sendingSuspended: false }]);
     await replace(alice.owner, "new@mail.example");
     expect(await announced()).toEqual([
-      { owner: alice.owner, address: "new@mail.example", paused: false },
+      { owner: alice.owner, address: "new@mail.example", paused: false, sendingSuspended: false },
     ]);
   });
 
@@ -158,7 +163,12 @@ describe("resend-fragment mailboxes", () => {
 
     expect(await open("user:alice", "other@mail.example")).toEqual({
       status: "opened",
-      mailbox: { owner: "user:alice", address: "receipts@mail.example", paused: false },
+      mailbox: {
+        owner: "user:alice",
+        address: "receipts@mail.example",
+        paused: false,
+        sendingSuspended: false,
+      },
     });
     expect(await find("receipts@mail.example")).toEqual({
       address: "receipts@mail.example",
@@ -171,7 +181,12 @@ describe("resend-fragment mailboxes", () => {
     await open("user:alice", "receipts@mail.example");
     expect(await replace("user:alice", "fresh@mail.example")).toEqual({
       status: "replaced",
-      mailbox: { owner: "user:alice", address: "fresh@mail.example", paused: false },
+      mailbox: {
+        owner: "user:alice",
+        address: "fresh@mail.example",
+        paused: false,
+        sendingSuspended: false,
+      },
     });
     expect(await find("receipts@mail.example")).toBeNull();
     expect(await find("fresh@mail.example")).toEqual({

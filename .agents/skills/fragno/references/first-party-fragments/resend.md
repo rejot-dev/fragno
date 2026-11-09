@@ -46,8 +46,14 @@ What the fragment needs via options:
   give each opaque owner one receiving address; `onEmailReceived` runs once per matched owner with
   its `recipientMailbox`, and `getMailboxEmail` reads a message only for an owner it reached. An
   address is issued once, so a replaced one never reaches another owner.
-  `onMailboxChanged(mailbox, context)` receives each opened, resumed, paused, or moved mailbox
-  through a durable hook triggered in the transaction that changes it.
+  `onMailboxChanged(mailbox, context)` receives each opened, resumed, paused, or moved mailbox, and
+  each suspension or resumption of its sending, through a durable hook triggered in the transaction
+  that changes it.
+- Sending from a mailbox: `replyFromMailbox` answers a received message only when its sender passed
+  DKIM or DMARC (`isSenderVerified`), at its From address; `sendFromMailbox` sends to recipients the
+  caller vouches for, with base64 attachments. `onMailboxEmailQueued` counts each queued email
+  durably, `onEmailStatusUpdated` carries the `senderMailbox`, and a complaint suspends the
+  mailbox's sending (`suspendMailboxSending`, `resumeMailboxSending`).
 
 ## Docs
 

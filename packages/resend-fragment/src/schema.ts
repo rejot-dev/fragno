@@ -107,5 +107,14 @@ export const resendSchema = schema("resend", (s) => {
         // computed them; null for sent messages and for email received before Resend reported
         // them.
         .addColumn("authentication", column("json").nullable()),
+    )
+    .alterTable("emailMessage", (t) =>
+      // The mailbox a message was sent from, as { address, owner }; null for received messages
+      // and those the account sent as itself.
+      t.addColumn("senderMailbox", column("json").nullable()),
+    )
+    .alterTable("mailbox", (t) =>
+      // A mailbox whose sending is suspended still receives.
+      t.addColumn("sendingSuspendedAt", column("timestamp").nullable()),
     );
 });
