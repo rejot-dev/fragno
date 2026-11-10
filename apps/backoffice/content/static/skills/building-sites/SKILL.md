@@ -25,9 +25,13 @@ read the scope's workspace open it. A site cannot be inside another site.
 
 1. **Plan.** Split the site into files the browser loads as they are, which go under `public/`, and
    requests that need code on the server, such as reads of automation data, which `worker.js`
-   answers. A site of HTML, CSS, and browser JavaScript alone needs no `worker.js`. Complete when
+   answers. A site of HTML, CSS, and browser JavaScript alone needs no `worker.js`. What viewers add
+   or change, such as TODOs, is kept as Writing data describes. The site serves the people who send
+   and read; what the scope's own people do with what was sent, such as accepting or denying a
+   request, happens in the workflow its event starts, as Starting workflows describes. Complete when
    every URL the site requests is either a file under `public/` or a route `worker.js` answers
-   itself.
+   itself, every change a viewer makes has its event and the read that shows it, and every decision
+   on what viewers send waits in a workflow.
 2. **Write.** Save each file with `state.writeFile`, following Serving below. Complete when every
    link between its files is relative, as Links defines.
 3. **Build.** Run `artifacts.buildSite({ path })` with the site's directory, such as
@@ -37,10 +41,12 @@ read the scope's workspace open it. A site cannot be inside another site.
    `artifacts.requestSite({ path, url })`, such as `url: "/api/todos?page=2"`, adding `method`,
    `headers`, and a text `body` for a route that takes a form or JSON, and `viewer` for a route that
    reads who is viewing, as Viewers defines. Each answer has the status, headers, and body a viewer
-   would get from the latest build, and `log`: what the Worker printed and threw while answering, or
-   null when the host answered before the Worker ran, such as a 404 for a site without a build. Fix
-   what a 4xx or 5xx status, a wrong body, or an exception in `log` names, then build and check
-   again. Complete when every route answers as the pages expect and no `log` has an exception.
+   would get from the latest build; `log`: what the Worker printed and threw while answering, or
+   null when the host answered before the Worker ran, such as a 404 for a site without a build; and
+   `events`: what the Worker fired, kept instead of fired unless the request sets `fire: true`, as
+   Writing data describes. Fix what a 4xx or 5xx status, a wrong body, an exception in `log`, or a
+   missing event names, then build and check again. Complete when every route answers as the pages
+   expect and fires what it should, and no `log` has an exception.
 5. **Hand off.** Give the user the `url` the build returned; selecting the directory in Files also
    shows an "Open site" link. Where `url` is null, tell them the site is built and checked, but this
    Backoffice cannot show it to people. Complete when the user has the URL, or knows why there is
@@ -146,6 +152,94 @@ read the scope's workspace open it. A site cannot be inside another site.
   empty. Treat them as a cache.
 - **Browser:** scripts in `public/` run in the viewer's browser, so they may import ES modules from
   a CDN such as `https://esm.sh/`.
+
+## Writing data
+
+A site writes nothing itself: the Worker fires an **event** for each thing a viewer adds or changes,
+and reads the events back with `env.DATA.sql` from the `events` relation. The events are the site's
+data, kept in the order they were fired.
+
+- **Fire:** `await env.DATA.fire({ type, payload, viewer })` fires an event into the scope's
+  automations from the source `site:<path>`, such as `site:/workspace/tools/todo.site`, and returns
+  `{ eventId }`, which is null when `artifacts.requestSite` keeps the event. Give each kind of thing
+  one type, such as `todos.changed`, and put in `payload` everything the site shows, such as the
+  viewer's email from `ley-viewer-email`: an object of at most 64 KB, as JSON reads it. `viewer`,
+  such as `request.headers.get("ley-viewer-id")`, names whom the event concerns, as its subject. A
+  viewer fires at most 60 events every 10 seconds on a site, and events naming no viewer share one
+  count; past it, `fire` throws.
+- **Permission:** a Worker fires only when whoever built it may emit events, which the build's
+  `firesEvents` reports. When it is false for a site that fires, tell the user firing needs
+  `events.emit`.
+- **Read back:** select the site's events by `source` and `eventType`, reading the payload with
+  `->>`. Where data only grows, such as a guestbook's notes, each event is an item. Where items
+  change, such as TODOs marked done or deleted, fire the whole item with each change, and keep each
+  item's latest event, leaving out deletions, as below. A fired event reaches reads within moments,
+  so the page shows a change at once from what it sent, then reads again every second until it
+  appears. The source is the site's path: a moved site reads none of the events it fired before.
+- **Check:** `artifacts.requestSite` keeps the events its request fires, with their payloads, and
+  fires none, so checking adds no data. With `fire: true` it fires them as a viewer's request does
+  and gives each its `eventId`: a real change, which the site then shows like any other, so fire
+  only what the user expects, such as a request marked as a test.
+
+```js
+const SOURCE = "site:/workspace/tools/todo.site";
+
+export default {
+  async fetch(request, env) {
+    const { sql, fire } = env.DATA;
+    const url = new URL(request.url);
+    if (url.pathname === "/api/todos" && request.method === "GET") {
+      // Each TODO's latest change, newest first, without the deleted ones.
+      const rows = await sql`SELECT todo FROM (
+          SELECT payload ->> '$.action' AS action, payload ->> '$.todo' AS todo, position,
+            row_number() OVER (PARTITION BY payload ->> '$.todo.id' ORDER BY position DESC) AS n
+          FROM events WHERE source = ${SOURCE} AND eventType = 'todos.changed')
+        WHERE n = 1 AND action != 'delete' ORDER BY position DESC`;
+      return Response.json(rows.map((row) => JSON.parse(row.todo)));
+    }
+    if (url.pathname === "/api/todos" && request.method === "POST") {
+      // { action: "save" or "delete", todo: { id, text, done } }
+      const { action, todo } = await request.json();
+      const viewer = request.headers.get("ley-viewer-id");
+      await fire({ type: "todos.changed", payload: { action, todo }, viewer });
+      return Response.json(todo, { status: 202 });
+    }
+    return env.ASSETS.fetch(request);
+  },
+};
+```
+
+### Starting workflows
+
+When what a viewer sends needs work beyond keeping it, such as someone accepting or denying a
+support request, its event starts a workflow, and the work happens there. Build the route and the
+workflow with `/static/skills/building-automations/SKILL.md`.
+
+- **Route:** triggered by the site's source and the event's type, with the action `start_workflow`,
+  `organization-automation` authority granted only what the workflow does, and an
+  `instanceIdTemplate` such as `support-${event.id}`. The event acts for nobody, so routes with
+  other authority fail on it.
+- **Decisions:** the workflow shows what the viewer sent and collects the decision with a form, then
+  waits for it, as Collecting workflow input in `/static/skills/generating-backoffice-uis/SKILL.md`
+  describes. Whoever decides acts on the run in Backoffice; `workflow.showInstance({ instanceId })`
+  shows it to the user.
+- **Progress:** the Worker names the run from the `eventId` that `fire` returned, and reads its
+  `status` and `output` from `runs`, such as
+  `` sql`SELECT status, output FROM runs WHERE instanceId = ${"support-" + eventId}` ``, so the page
+  tells the viewer whether their request waits or was decided.
+- **Check:** request the route that fires with `fire: true`, then follow the hand-off: the run's id
+  comes from the `eventId` in the answer's `events`, as the route's `instanceIdTemplate` names it;
+  read it with `workflow.getInstance({ instanceId })` once the route started it, and send it the
+  decisions it waits for with `workflow.sendEvent`, as its form would. Complete when the run reached
+  its end, and the Worker's progress read shows it. Tell the user about the test request it made.
+
+### Through the store
+
+Keep the current state in the store instead when data must be erased for good, such as personal data
+an event would keep; when a change must be checked against what is there, or call a connected
+service; or when a type's history grows past a few thousand events. The event starts a workflow, as
+Starting workflows describes, that writes one `kv_store` key per item, such as `todo/<id>`, with the
+item as JSON, granted only `store.modify`; the Worker reads `kv_store` by key prefix.
 
 ## Links
 

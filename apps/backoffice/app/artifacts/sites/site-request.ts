@@ -44,7 +44,7 @@ export function aborted(signal: AbortSignal): Promise<"aborted"> {
 export async function siteProbeResponse(
   response: Response,
   signal: AbortSignal,
-): Promise<Omit<ArtifactSiteResponse, "log">> {
+): Promise<Omit<ArtifactSiteResponse, "log" | "events">> {
   const type = response.headers.get("content-type");
   const kept = new Uint8Array(ARTIFACT_SITE_RESPONSE_MAX_TEXT_BYTES);
   let keptBytes = 0;

@@ -68,6 +68,11 @@
   // Codemode guests compile and run in the bridge, one request each. This Worker loads only site
   // Workers, per request, outside any Durable Object and its cap on concurrent Dynamic Workers.
   "worker_loaders": [{ "binding": "LOADER" }],
+  // Counts the events each viewer of a site fires, per site, as SITE_EVENT_LIMITS describes. Both
+  // Workers fire site events and share the namespace, so they share the count.
+  "ratelimits": [
+    { "name": "SITE_EVENTS", "namespace_id": "1001", "simple": { "limit": 60, "period": 10 } },
+  ],
   "services": [
     {
       "binding": "CODEMODE_COMPILER",

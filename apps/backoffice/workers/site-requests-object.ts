@@ -15,6 +15,7 @@ import {
   loadProbedSiteWorker,
   type SiteWorkerBindings,
 } from "@/artifacts/sites/serve.server";
+import { SITE_EVENT_LIMITS, type SiteProbeEvent } from "@/artifacts/sites/site-events";
 import type { SiteProbeReport } from "@/artifacts/sites/site-logs";
 import { aborted, siteProbeRequest, siteProbeResponse } from "@/artifacts/sites/site-request";
 import {
@@ -38,7 +39,7 @@ import type { BackofficeObjectImplementation } from "./lib/backoffice-object-imp
 const PROBE_REPORT_WAIT_MS = 5_000;
 
 /** The answer to a request whose Worker threw: a viewer gets Backoffice's error page. */
-const THREW: Omit<ArtifactSiteResponse, "log"> = {
+const THREW: Omit<ArtifactSiteResponse, "log" | "events"> = {
   status: 500,
   headers: {},
   body: null,
@@ -58,6 +59,8 @@ export class SiteRequestsObject implements SiteRequestsCommands {
   readonly #nowEpochMs: () => number;
   /** The requests agents sent whose record has not arrived, by probe. */
   readonly #probes = new Map<string, (entry: ArtifactSiteLogEntry) => void>();
+  /** The events the Workers of requests agents sent fired, by probe. */
+  readonly #probeEvents = new Map<string, SiteProbeEvent[]>();
   #fragment: SiteRequestsFragment | null = null;
 
   constructor({
@@ -117,12 +120,14 @@ export class SiteRequestsObject implements SiteRequestsCommands {
       bindings: this.#siteWorkerBindings,
       scope,
       sitePath: input.path,
-      probe,
+      probe: { id: probe, fire: input.fire ?? false },
     });
     // The host answered: the site has no build to run.
     if (loaded.kind === "answered") {
-      return { ...(await siteProbeResponse(loaded.response, deadline)), log: null };
+      return { ...(await siteProbeResponse(loaded.response, deadline)), log: null, events: [] };
     }
+    const events: SiteProbeEvent[] = [];
+    this.#probeEvents.set(probe, events);
     // Waits from before the request, as a tail may report it before its answer arrives.
     const reported = new Promise<ArtifactSiteLogEntry>((resolve) => {
       this.#probes.set(probe, resolve);
@@ -143,10 +148,27 @@ export class SiteRequestsObject implements SiteRequestsCommands {
         );
       }
       const answer = response ? await siteProbeResponse(response, deadline) : THREW;
-      return { ...answer, log: await within(reported, PROBE_REPORT_WAIT_MS) };
+      return { ...answer, log: await within(reported, PROBE_REPORT_WAIT_MS), events };
     } finally {
       this.#probes.delete(probe);
+      this.#probeEvents.delete(probe);
     }
+  }
+
+  async keepProbeEvent(
+    scope: BackofficeContextScope,
+    probe: string,
+    event: SiteProbeEvent,
+  ): Promise<boolean> {
+    this.#getFragment(scope);
+    const events = this.#probeEvents.get(probe);
+    // Fired events are limited as viewers' are; those kept instead stop at as many.
+    if (event.eventId === null && events && events.length >= SITE_EVENT_LIMITS.perViewer) {
+      return false;
+    }
+    // A Worker may fire after its request was answered, when the agent is gone and keeps nothing.
+    events?.push(event);
+    return true;
   }
 
   async append(

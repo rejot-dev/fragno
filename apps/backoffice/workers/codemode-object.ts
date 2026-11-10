@@ -494,6 +494,7 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
           throw new BackofficeForbiddenError(message, reason);
         }
       },
+      mayFire: async () => authority.fires,
     });
     if (built.kind !== "built") {
       return built;

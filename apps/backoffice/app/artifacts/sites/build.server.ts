@@ -3,7 +3,6 @@ import { CODEMODE_WORKER_RUNTIME } from "@fragno-dev/codemode/execution/codemode
 
 import { inferFileContentType } from "@/file-collection/file-content-type";
 import type { BlobsR2Access } from "@/fragno/blobs-r2-buckets";
-import { builtJavaScriptModuleSchema } from "@/fragno/codemode/built-javascript-module";
 import type { CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
 import { buildBackofficeJavaScriptModule } from "@/fragno/codemode/compiled-module-execute";
 import {
@@ -18,6 +17,7 @@ import { sha256Hex } from "@/lib/crypto";
 
 import {
   encodeSiteIndex,
+  encodeSiteWorker,
   readSiteIndex,
   SITE_BUILD_LAYOUT,
   SITE_INDEX_FILE,
@@ -33,8 +33,11 @@ import { checkSiteWorker, siteWorkerEntry } from "./site-worker.server";
 /** A rejected build names no site to build; a failed one leaves the site serving its last build. */
 export type SiteBuildOutcome =
   | { kind: "rejected"; message: string }
-  /** `worker` says whether the site has a worker.js, which may read the scope's data. */
-  | { kind: "built"; worker: boolean }
+  /**
+   * `worker` says whether the site has a worker.js, which may read the scope's data, and `fires`
+   * whether that Worker may fire events.
+   */
+  | { kind: "built"; worker: boolean; fires: boolean }
   | { kind: "failed"; message: string };
 
 /** A build's outcome as Backoffice reports it, with where people open a built site. */
@@ -43,6 +46,7 @@ export type SiteBuildResult =
   | {
       kind: "built";
       worker: boolean;
+      fires: boolean;
       /** At its scope's subdomain of the sites domain; null where sites have no domain. */
       url: string | null;
     };
@@ -79,7 +83,7 @@ const RETIRED_BUILD_KEPT_MS = 15 * 60 * 1000;
  * R2 where the deployment has buckets and in the workspace's `.build` otherwise, then serves it.
  * A failed build leaves the previous one serving, and sources that did not change since the
  * served build are not built again. `authorizeWorker` throws unless whoever builds may read what
- * a `worker.js` reads.
+ * a `worker.js` reads, and `mayFire` says whether they may emit the events it fires.
  */
 export async function buildSite({
   state,
@@ -89,6 +93,7 @@ export async function buildSite({
   scope,
   sitePath,
   authorizeWorker,
+  mayFire,
 }: {
   state: BackofficeStateBackend;
   codemode: CodemodeRunner;
@@ -97,6 +102,7 @@ export async function buildSite({
   scope: BackofficeContextScope;
   sitePath: string;
   authorizeWorker: () => Promise<void>;
+  mayFire: () => Promise<boolean>;
 }): Promise<SiteBuildOutcome> {
   const problem = sitePathProblem(sitePath);
   if (problem !== null) {
@@ -113,6 +119,9 @@ export async function buildSite({
   if (worker.kind === "worker.js") {
     await authorizeWorker();
   }
+  // Recorded in the build, which fires as its builder could, until someone builds it again.
+  const fires = worker.kind === "worker.js" && (await mayFire());
+  const built = { kind: "built", worker: worker.kind === "worker.js", fires } as const;
   const listed = await listSiteFiles(state, sitePath);
   if (listed.kind === "failed") {
     return listed;
@@ -124,25 +133,25 @@ export async function buildSite({
       message: `${sitePath} has neither a worker.js nor files under public/.`,
     };
   }
-  const sources = await siteSourcesFingerprint(worker.modules, files);
+  const sources = await siteSourcesFingerprint(worker.modules, files, fires);
   const store = siteStore({ siteStorage, state, scope, sitePath });
   const current = await store.readPointer();
   if (current.status === "built" && current.pointer.served.sources === sources) {
-    return { kind: "built", worker: worker.kind === "worker.js" };
+    return built;
   }
   if (!workerLoader) {
     return { kind: "failed", message: "This Backoffice runtime cannot run site Workers." };
   }
-  const built = await buildBackofficeJavaScriptModule({
+  const compiled = await buildBackofficeJavaScriptModule({
     entry: worker.entry,
     modules: worker.modules,
     dependencies: {},
     codemode,
   });
-  if (built.status === "error") {
-    return { kind: "failed", message: built.error };
+  if (compiled.status === "error") {
+    return { kind: "failed", message: compiled.error };
   }
-  const unusable = await checkSiteWorker(workerLoader, built.bundle);
+  const unusable = await checkSiteWorker(workerLoader, compiled.bundle);
   if (unusable !== null) {
     return { kind: "failed", message: unusable };
   }
@@ -153,10 +162,7 @@ export async function buildSite({
   await store.writeFile(
     build,
     SITE_WORKER_FILE,
-    JSON.stringify({
-      format: builtJavaScriptModuleSchema.shape.format.value,
-      bundle: built.bundle,
-    }),
+    encodeSiteWorker({ bundle: compiled.bundle, fires }),
     "application/json",
   );
   const index: SiteIndex = { files: {} };
@@ -169,9 +175,7 @@ export async function buildSite({
   // Written after the files it lists, so a build with an index is complete.
   await store.writeFile(build, SITE_INDEX_FILE, encodeSiteIndex(index), "application/json");
   const published = await publishSiteBuild(store, sitePath, { build, sources });
-  return published.kind === "built"
-    ? { kind: "built", worker: worker.kind === "worker.js" }
-    : published;
+  return published.kind === "built" ? built : published;
 }
 
 /**
@@ -362,15 +366,18 @@ async function mapAtMost<T, R>(
 /**
  * Fingerprints everything a build is made of, so sources that did not change are not built again.
  * It includes the Worker runtime because a stored bundle only loads on the runtime it was built
- * for, so a new runtime must rebuild it.
+ * for, so a new runtime must rebuild it, and whether it fires, so a build by someone who may emit
+ * events, or no longer may, replaces it.
  */
 async function siteSourcesFingerprint(
   modules: Record<string, string>,
   assets: readonly SiteFileSource[],
+  fires: boolean,
 ): Promise<string> {
   const inputs = JSON.stringify([
     SITE_BUILD_LAYOUT,
     CODEMODE_WORKER_RUNTIME,
+    fires,
     Object.entries(modules).sort(([left], [right]) => left.localeCompare(right)),
     // Sizes and modification times, not contents, so an unchanged site is not read: a file
     // written again with the same bytes builds the site again, which is harmless.

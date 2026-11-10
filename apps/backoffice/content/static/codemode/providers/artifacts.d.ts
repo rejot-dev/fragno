@@ -21,7 +21,7 @@ type ArtifactsCodemodeProvider = {
    */
   siteLogs(input: ArtifactsSiteLogsInput): Promise<ArtifactsSiteLogsOutput>;
   /**
-   * Request a built site as a viewer would, and return its answer with what its Worker logged and threw while answering. A site that does not answer within 15 seconds fails the request. Request the routes a site's pages call and its / after building it, before handing it to the user. The request reaches the site's latest build, reads the scope's data as the site does, and appears in the site's logs like any other.
+   * Request a built site as a viewer would, and return its answer with what its Worker logged, threw, and fired while answering. A site that does not answer within 15 seconds fails the request. Request the routes a site's pages call and its / after building it, before handing it to the user. The request reaches the site's latest build, reads the scope's data as the site does, and appears in the site's logs like any other.
    * Requires `upload.read` and `workflow.read` and `events.read` and `router.read` and `projects.read` and `store.read` and `connections.read` and `pi.read`.
    */
   requestSite(input: ArtifactsRequestSiteInput): Promise<ArtifactsRequestSiteOutput>;
@@ -50,6 +50,8 @@ type ArtifactsBuildSiteOutput =
       path: string;
       /** Where people open the site: its path at its scope's own subdomain of the sites domain, such as https://quiet-amber-falcon.ley.run/tools/shop.site/. Null where this deployment has no sites domain, so people cannot open its sites. */
       url: string | null;
+      /** Whether the site's Worker may fire events with env.DATA.fire: true when it has a worker.js and whoever built it may emit events, with events.emit. Building it again as someone else changes it. */
+      firesEvents: boolean;
     }
   | {
       status: "failed";
@@ -126,6 +128,8 @@ type ArtifactsRequestSiteInput = {
     id: string;
     email: string;
   };
+  /** Fire the events the Worker fires, as a viewer's request does, so routes act on them; requires events.emit. Unless true, they are kept in the answer instead. */
+  fire?: boolean;
 };
 type ArtifactsRequestSiteOutput = {
   /** The status a viewer gets: 500 when the Worker threw, and 503 while the scope's data is being copied. */
@@ -172,4 +176,14 @@ type ArtifactsRequestSiteOutput = {
       stack: string | null;
     }[];
   } | null;
+  /** The events the Worker fired with env.DATA.fire while answering, in order. Unless the request set fire, they are kept here instead of fired, so no automation acts on them. */
+  events: {
+    type: string;
+    payload: {
+      [key: string]: unknown;
+    };
+    viewer: string | null;
+    /** The fired event's id, for events.get, when the request set fire; null when the event was kept instead, as env.DATA.fire then returned. */
+    eventId: string | null;
+  }[];
 };

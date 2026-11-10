@@ -2,6 +2,7 @@ import {
   automationEntityRefsEqual,
   type AutomationActors,
 } from "@fragno-dev/backoffice-api/v0/automation";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   backofficeContextScopesEqual,
   backofficeScopeContains,
@@ -541,6 +542,18 @@ const createRuntimeContext = ({
                 throw new Error(problem);
               }
               const { scope } = execution;
+              // Its events start automations, as a viewer's would.
+              if (input.fire === true) {
+                await kernel.assertAuthorizedAll({
+                  execution,
+                  requirements: [
+                    {
+                      operation: BACKOFFICE_PERMISSION.events.emit,
+                      resource: { path: input.path },
+                    },
+                  ],
+                });
+              }
               return await kernel
                 .scoped("SITE_REQUESTS", scope, runtime.objects.siteRequests)
                 .commands.request(scope, input);
