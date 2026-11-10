@@ -396,6 +396,7 @@ describe("automation routing schemas", () => {
         kind: "send_workflow_event";
         target: AutomationWorkflowEventTarget;
         eventType: string;
+        /** What waitForEvent receives as the payload. Omitted, or "$event", sends the whole triggering event, so the workflow reads its fields at payload.payload, payload.subject, and payload.source; any other value is sent as it is. */
         payload?: unknown;
       };"
     `);
