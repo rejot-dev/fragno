@@ -12,6 +12,7 @@ import {
   type ScenarioPage,
 } from "../../scenario/bookkeeping-scenario";
 import { INVOICE } from "../../scenario/fixtures/invoice";
+import { AGENT_PACKAGES } from "../../workers/backoffice/agents";
 import type { DocumentView } from "../../workers/books/documents/documents";
 import type { BooksOutletContext } from "../books/layout";
 
@@ -1409,7 +1410,7 @@ test("once the firm's agent's package is gone, the next upload installs it again
 
     const id = await uploaded(ada, pdf("Babbage Instruments, invoice 10"));
     expect(scenario.backoffice.installedPackages(FIRM, FIRM_AGENT)).toEqual([
-      { listingId: "app:bookkeeping#bookkeeper-agent", version: "1.0.1" },
+      { listingId: "app:bookkeeping#bookkeeper-agent", version: AGENT_PACKAGES.bookkeeper.version },
     ]);
     const [prompt, ...more] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
     expect(more).toEqual([]);
