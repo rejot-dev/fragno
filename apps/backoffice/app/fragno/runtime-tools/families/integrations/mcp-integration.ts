@@ -24,7 +24,11 @@ import { z } from "zod";
 import type { Validator } from "@cfworker/json-schema";
 
 import { authorizedBackofficeObjectHttp } from "@/backoffice-runtime/authorized-object-http";
-import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
+import {
+  BackofficeForbiddenError,
+  BackofficeUnavailableError,
+  isBackofficeForbiddenError,
+} from "@/backoffice-runtime/kernel";
 import { isBackofficeObjectAvailableInContext } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { mcpCapability } from "@/fragno/backoffice-capabilities/capabilities/mcp";
@@ -470,6 +474,50 @@ export function createMcpIntegration({
   }
   type McpAccess = ReturnType<typeof createMcpAccess>;
 
+  /**
+   * Null when structured content conforms to the tool's output schema. Providers change schemas
+   * without notice and the tool has already run, so a result failing the cached schema is checked
+   * again against the one the server lists now, which also updates the cache.
+   */
+  async function findOutputViolation(
+    access: McpAccess,
+    slug: string,
+    toolName: string,
+    cached: Validator,
+    structuredContent: unknown,
+  ): Promise<{ violations: string; rechecked: boolean } | null> {
+    const stale = cached.validate(structuredContent);
+    if (stale.valid) {
+      return null;
+    }
+    const unchecked = { violations: describeSchemaViolations(stale.errors), rechecked: false };
+    let refreshed: Awaited<ReturnType<McpAccess["refresh"]>>;
+    try {
+      refreshed = await access.refresh(slug);
+    } catch (error) {
+      // The listing's failure is the error, but the caller must still learn the tool already ran.
+      const ran = `MCP tool ${toolName} has already run and must not be automatically retried; its structuredContent fails its output schema as last listed: ${unchecked.violations}`;
+      if (isBackofficeForbiddenError(error)) {
+        throw new BackofficeForbiddenError(`${error.message} ${ran}`, error.reason);
+      }
+      throw new Error(`Listing the server's tools again failed. ${ran}`, { cause: error });
+    }
+    const tool = refreshed?.ok
+      ? refreshed.tools.find((candidate) => candidate.name === toolName)
+      : undefined;
+    const contract = tool && mcpToolContract(tool);
+    if (contract?.kind !== "checked") {
+      return unchecked;
+    }
+    if (!contract.output) {
+      return null;
+    }
+    const current = contract.output.validate(structuredContent);
+    return current.valid
+      ? null
+      : { violations: describeSchemaViolations(current.errors), rechecked: true };
+  }
+
   async function describeStartedOAuth(
     access: McpAccess,
     slug: string,
@@ -812,17 +860,32 @@ export function createMcpIntegration({
                   await access.callTool(localId, tool.name, args),
                 );
                 const json = result.success ? jsonValueSchema.safeParse(result.data) : null;
-                if (
-                  !result.success ||
-                  !json?.success ||
-                  (contract.kind === "checked" &&
-                    contract.output &&
-                    !result.data.isError &&
-                    !contract.output.validate(result.data.structuredContent).valid)
-                ) {
+                if (!result.success || !json?.success) {
+                  const issues = (result.success ? json?.error : result.error)?.issues ?? [];
+                  const reasons = issues
+                    .map(({ path, message }) => `#/${path.map(String).join("/")}: ${message}`)
+                    .join(" ");
                   throw new Error(
-                    "MCP integration tool output failed its published schema. The tool has already run and must not be automatically retried.",
+                    `MCP tool ${tool.name} returned an invalid MCP tool result: ${reasons} The tool has already run and must not be automatically retried.`,
                   );
+                }
+                if (contract.kind === "checked" && contract.output && !result.data.isError) {
+                  const violation = await findOutputViolation(
+                    access,
+                    localId,
+                    tool.name,
+                    contract.output,
+                    result.data.structuredContent,
+                  );
+                  if (violation) {
+                    throw new Error(
+                      `MCP tool ${tool.name} returned structuredContent that fails its output schema${
+                        violation.rechecked
+                          ? ", also as the server lists it now"
+                          : " as last listed; run integrations.verify to list the server's tools again"
+                      }: ${violation.violations} The tool has already run and must not be automatically retried.`,
+                    );
+                  }
                 }
                 return json.data;
               },

@@ -96,9 +96,14 @@ type McpProviders = {
   expiring: TestMcpServer;
   /** Grants the delegated actor holds at both the caller and the receiving MCP object. */
   delegatedGrants: BackofficePermissionRequirement[];
+  /** The drift tool's published schema for `count`, which the provider changes after setup. */
+  driftCount: Record<string, unknown>;
+  /** Runs while the drift tool runs, between the call and any recheck of its output. */
+  onDrift: () => void;
 };
 
-function createToolsServer(calls: string[]) {
+function createToolsServer(providers: Pick<McpProviders, "calls" | "driftCount" | "onDrift">) {
+  const { calls } = providers;
   return createTestMcpServer({
     protocolVersion: "2026-07-28",
     requiredBearerToken: toolsToken,
@@ -144,11 +149,12 @@ function createToolsServer(calls: string[]) {
         inputSchema: { type: "object", properties: {} },
         outputSchema: {
           type: "object",
-          properties: { count: { type: "number" } },
+          properties: { count: providers.driftCount },
           required: ["count"],
         },
         call: () => {
           calls.push("drift");
+          providers.onDrift();
           return { content: [], structuredContent: { count: "many" } };
         },
       },
@@ -198,9 +204,11 @@ async function runMcpIntegrationScenario<TVars extends Record<string, unknown>>(
       omitRefreshTokenOnConsent: true,
     }),
     delegatedGrants: [],
+    driftCount: { type: "number" },
+    onDrift: () => {},
   };
   const servers = new Map([
-    [toolsOrigin, createToolsServer(calls)],
+    [toolsOrigin, createToolsServer(providers)],
     [oauthOrigin, providers.oauth],
     [staticOrigin, providers.static],
     [expiringOrigin, providers.expiring],
@@ -475,7 +483,8 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
             legacy: { isError: false, content: [], structuredContent: null },
             failures: {
               invalidInput: expect.stringContaining("failed its published JSON Schema"),
-              drift: expect.stringContaining("must not be automatically retried"),
+              drift:
+                'MCP tool drift returned structuredContent that fails its output schema, also as the server lists it now: #/count: Instance type "string" is invalid. Expected "number". The tool has already run and must not be automatically retried.',
               legacy: expect.stringContaining("Pass unchecked: true"),
             },
             inspected: {
@@ -501,6 +510,29 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
           expect(JSON.stringify(run.result)).not.toContain(toolsToken);
           // Invalid input and unchecked calls without opt-in never reach the server; drift already ran.
           expect(providers.calls).toEqual(["echo", "refuse", "legacy", "drift"]);
+        },
+      ),
+      then.assert(
+        "a result that fails the cached schema but matches the server's changed one succeeds",
+        async (ctx) => {
+          providers.driftCount.type = ["number", "string"];
+          const run = await ctx.runCodemode({
+            scope: orgScope,
+            code: `async () => {
+              const target = { connectionId: "mcp#tools" };
+              const drift = await integrations.execute({ ...target, actionId: "drift", input: {} });
+              const actions = await integrations.actions(target);
+              return { drift, published: actions.find((action) => action.id === "drift").outputSchema.$defs };
+            }`,
+          });
+          expect(run.result).toMatchObject({
+            drift: { isError: false, structuredContent: { count: "many" } },
+            // Rechecking replaced the cached contract, so later calls see it too.
+            published: {
+              structuredContent: { properties: { count: { type: ["number", "string"] } } },
+            },
+          });
+          expect(providers.calls).toEqual(["echo", "refuse", "legacy", "drift", "drift"]);
         },
       ),
       runner.drain(),
@@ -537,7 +569,7 @@ test("Codemode registers an MCP server through setup, publishes its tools as act
           },
           inspected: { checks: [{ status: "not-checked" }] },
         });
-        expect(providers.calls).toHaveLength(4);
+        expect(providers.calls).toHaveLength(5);
       }),
       then.assert(
         "a native credential reset asks for a new token instead of becoming unauthenticated",
@@ -1040,6 +1072,36 @@ test("mcp addresses resolve only in their own scope and require both authority l
             name: "BackofficeForbiddenError",
           });
           expect(providers.calls).toEqual(["echo"]);
+
+          // Rechecking an output lists the tools again, which authority revoked meanwhile denies.
+          const rechecking = createDelegatedExecution(ctx, orgScope, providers, [
+            BACKOFFICE_PERMISSION.integrations.execute,
+            BACKOFFICE_PERMISSION.connections.read,
+            BACKOFFICE_PERMISSION.upload.read,
+          ]);
+          const drift = (
+            await (
+              await createMcpIntegration({
+                runtime: ctx.runtime.services,
+                nowEpochMs: ctx.runtime.now,
+              }).resolve({ kernel: rechecking.kernel, execution: rechecking.execution }, "shared")
+            ).actions()
+          ).find((action) => action.definition.id === "drift");
+          assert(drift);
+          providers.onDrift = () => {
+            providers.delegatedGrants.splice(
+              providers.delegatedGrants.indexOf(BACKOFFICE_PERMISSION.connections.read),
+              1,
+            );
+          };
+          // The denial keeps its identity and still says the tool ran.
+          await expect(drift.invoke({})).rejects.toMatchObject({
+            name: "BackofficeForbiddenError",
+            message: expect.stringContaining(
+              'MCP tool drift has already run and must not be automatically retried; its structuredContent fails its output schema as last listed: #/count: Instance type "string" is invalid. Expected "number".',
+            ),
+          });
+          expect(providers.calls).toEqual(["echo", "drift"]);
         },
       ),
     ],
