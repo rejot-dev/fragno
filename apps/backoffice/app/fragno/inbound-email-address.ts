@@ -52,10 +52,11 @@ function randomIndex(length: number): number {
 }
 
 /**
- * A local part such as `quiet-amber-falcon`: two different adjectives and an animal, about 24 bits.
- * An address only lets someone send to it, so the words need to stop guessing, not keep secrets.
+ * Words such as `quiet-amber-falcon`: two different adjectives and an animal, about 24 bits. They
+ * name inbound addresses and the subdomains sites are served at, which need to stop guessing, not
+ * keep secrets.
  */
-function generateLocalPart(): string {
+export function generateRandomWords(): string {
   const first = randomIndex(ADJECTIVES.length);
   // Draws from the adjectives after `first`, wrapping around, so the two are never the same.
   const second = (first + 1 + randomIndex(ADJECTIVES.length - 1)) % ADJECTIVES.length;
@@ -71,7 +72,7 @@ export async function claimRandomInboundAddress<TResult extends { status: string
   claim: (address: string) => Promise<TResult>,
 ): Promise<Exclude<TResult, { status: "taken" }>> {
   for (let draw = 0; draw < MAX_ADDRESS_DRAWS; draw++) {
-    const result = await claim(`${generateLocalPart()}@${domain}`);
+    const result = await claim(`${generateRandomWords()}@${domain}`);
     if (result.status !== "taken") {
       return result as Exclude<TResult, { status: "taken" }>;
     }

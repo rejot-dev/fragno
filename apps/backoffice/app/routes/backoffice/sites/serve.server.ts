@@ -7,7 +7,7 @@ import {
   exportedSiteWorkerBindings,
   serveSite,
 } from "@/artifacts/sites/serve.server";
-import { isSitePath } from "@/artifacts/sites/site-path";
+import { siteRequestTarget } from "@/artifacts/sites/site-path";
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { requireScopeSelection } from "@/layouts/backoffice-shell-request.server";
@@ -36,7 +36,7 @@ export async function serveSiteRoute({
   }
   const scope = backofficeRuntimeScopeFromResolvedScope(requireScopeSelection(context));
   const url = new URL(request.url);
-  const target = siteRequestTarget(url.pathname);
+  const target = siteRequestTarget(url.pathname.split("/").slice(SITE_PATH_SEGMENT_OFFSET));
   if (scope.kind === "system" || target === null) {
     return new Response("Not Found", { status: 404 });
   }
@@ -68,32 +68,4 @@ export async function serveSiteRoute({
     sitePath: target.sitePath,
     pathname: target.pathname,
   });
-}
-
-/**
- * The site a request path names and the path within it, as spelled:
- * `…/tools/shop.site/api/orders` is `/workspace/tools/shop.site` at `/api/orders`, and the pathname
- * is null at the site's root without its trailing slash.
- */
-function siteRequestTarget(
-  requestPath: string,
-): { sitePath: string; pathname: string | null } | null {
-  const segments = requestPath.split("/").slice(SITE_PATH_SEGMENT_OFFSET);
-  let names: string[];
-  try {
-    names = segments.map((segment) => decodeURIComponent(segment));
-  } catch {
-    return null;
-  }
-  // Sites cannot nest, so the first `.site` segment ends the site's path.
-  const siteEnd = names.findIndex((name) => name.endsWith(".site"));
-  if (siteEnd === -1) {
-    return null;
-  }
-  const sitePath = `/workspace/${names.slice(0, siteEnd + 1).join("/")}`;
-  if (!isSitePath(sitePath)) {
-    return null;
-  }
-  const rest = segments.slice(siteEnd + 1);
-  return { sitePath, pathname: rest.length === 0 ? null : `/${rest.join("/")}` };
 }

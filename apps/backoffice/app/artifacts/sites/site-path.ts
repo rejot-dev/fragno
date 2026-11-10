@@ -40,3 +40,30 @@ export function isSitePath(path: string): boolean {
 export function siteBuildDirectory(sitePath: string): string {
   return `${BUILD_DIRECTORY}${sitePath.slice(WORKSPACE.length)}`;
 }
+
+/**
+ * The site a URL path names and the path within it, as spelled, from the segments after where
+ * sites are mounted: `tools/shop.site/api/orders` is `/workspace/tools/shop.site` at
+ * `/api/orders`, and the path within is null at the site's root without its trailing slash.
+ */
+export function siteRequestTarget(
+  segments: readonly string[],
+): { sitePath: string; pathname: string | null } | null {
+  let names: string[];
+  try {
+    names = segments.map((segment) => decodeURIComponent(segment));
+  } catch {
+    return null;
+  }
+  // Sites cannot nest, so the first `.site` segment ends the site's path.
+  const siteEnd = names.findIndex((name) => name.endsWith(SITE_SUFFIX));
+  if (siteEnd === -1) {
+    return null;
+  }
+  const sitePath = `${WORKSPACE}${names.slice(0, siteEnd + 1).join("/")}`;
+  if (!isSitePath(sitePath)) {
+    return null;
+  }
+  const rest = segments.slice(siteEnd + 1);
+  return { sitePath, pathname: rest.length === 0 ? null : `/${rest.join("/")}` };
+}
