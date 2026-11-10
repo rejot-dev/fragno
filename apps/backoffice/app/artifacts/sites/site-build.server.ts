@@ -1,3 +1,4 @@
+import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 import { z } from "zod";
 
 import { builtJavaScriptModuleSchema } from "@/fragno/codemode/built-javascript-module";
@@ -13,7 +14,19 @@ export type SiteFile = { contentType: string; etag: string };
  */
 export type SiteIndex = { files: Record<string, SiteFile> };
 
-export type SiteWorker = z.output<typeof builtJavaScriptModuleSchema>;
+const siteWorkerFileSchema = builtJavaScriptModuleSchema.extend({
+  /**
+   * Whether whoever built it could emit events, so the Worker may fire them. Builds from before
+   * sites fired events have none, and do not fire.
+   */
+  fires: z.boolean().default(false),
+});
+
+export type SiteWorker = z.output<typeof siteWorkerFileSchema>;
+
+export function encodeSiteWorker({ bundle, fires }: { bundle: WorkerBundle; fires: boolean }) {
+  return JSON.stringify({ format: builtJavaScriptModuleSchema.shape.format.value, bundle, fires });
+}
 
 /**
  * How builds are stored. It is part of every sources fingerprint, so a site built before the
@@ -61,7 +74,7 @@ export async function readSiteWorker(store: SiteStore, build: string): Promise<S
   if (body === null) {
     return null;
   }
-  return builtJavaScriptModuleSchema.parse(JSON.parse(await new Response(body).text()));
+  return siteWorkerFileSchema.parse(JSON.parse(await new Response(body).text()));
 }
 
 /** Every file a build holds, as far as its index lists them. */

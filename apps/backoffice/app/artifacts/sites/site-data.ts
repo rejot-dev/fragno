@@ -1,5 +1,8 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { SqliteValue } from "@fragno-dev/lofi/sqlite";
 import { PAGE_LIMITS } from "@fragno-private/backoffice-ui/pages/definition";
+
+import type { SiteEvent, SiteFireResult } from "./site-events";
 
 /**
  * What one read of a site's Worker may ask for and return. A query has the bounds of a page's;
@@ -26,8 +29,27 @@ export type SiteDataResult =
   | { status: "error"; message: string }
   | { status: "catching-up" };
 
-/** The site Worker's binding that `env.DATA` reads through. */
-export type SiteDataBinding = { query(query: SiteDataQuery): Promise<SiteDataResult> };
+/**
+ * What the host tells a site's `env.DATA` about the Worker it serves: whose data it reads, which
+ * site fires its events, and whether the build may fire them. A Worker loaded for the one request
+ * an agent sends carries that request's `probe`, which keeps its events for the agent, and fires
+ * them too when the agent asked to.
+ */
+export type SiteDataProps = {
+  scope: BackofficeContextScope;
+  sitePath: string;
+  fires: boolean;
+  probe?: SiteProbe;
+};
+
+/** The request an agent sent, and whether its events fire as a viewer's do. */
+export type SiteProbe = { id: string; fire: boolean };
+
+/** The site Worker's binding that `env.DATA` reads and fires events through. */
+export type SiteDataBinding = {
+  query(query: SiteDataQuery): Promise<SiteDataResult>;
+  fire(event: SiteEvent): Promise<SiteFireResult>;
+};
 
 /**
  * Why a query cannot be a site's read, or null: as a page's, it is one SELECT, which may start

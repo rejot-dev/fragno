@@ -6,6 +6,7 @@ import type {
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject } from "cloudflare:workers";
 
+import type { SiteProbeEvent } from "@/artifacts/sites/site-events";
 import type { SiteProbeReport } from "@/artifacts/sites/site-logs";
 import type { SiteRequestsCommands, SiteRequestsQuery } from "@/backoffice-runtime/object-registry";
 
@@ -41,6 +42,14 @@ export class SiteRequests extends DurableObject<CloudflareEnv> implements SiteRe
     input: ArtifactSiteRequestInput,
   ): Promise<ArtifactSiteResponse> {
     return await this.#object.request(scope, input);
+  }
+
+  async keepProbeEvent(
+    scope: BackofficeContextScope,
+    probe: string,
+    event: SiteProbeEvent,
+  ): Promise<boolean> {
+    return await this.#object.keepProbeEvent(scope, probe, event);
   }
 
   async append(

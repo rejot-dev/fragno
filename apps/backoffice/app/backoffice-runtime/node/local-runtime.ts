@@ -2,6 +2,7 @@ import type { WorkerTypeChecker } from "@fragno-dev/codemode/compiler/compile-wo
 
 import { defaultFragnoRuntime } from "@fragno-dev/core";
 
+import { createInMemorySiteEventLimiter } from "@/artifacts/sites/site-event-limiter";
 import { createControlPlaneAuthorityResolver } from "@/backoffice-runtime/control-plane-authority-resolver";
 import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
@@ -153,6 +154,7 @@ export async function createLocalBackofficeRuntime(
     workerTypeChecker: options.workerTypeChecker ?? null,
     workerLoader: options.runtimeEnv.workerLoader,
     siteStorage: options.runtimeEnv.siteStorage,
+    siteEventLimiter: createInMemorySiteEventLimiter(() => objectFactory.now()),
     siteFilesCache: null,
     reson8: options.runtimeEnv.RESON8_API_KEY
       ? createReson8Server(options.runtimeEnv.RESON8_API_KEY)

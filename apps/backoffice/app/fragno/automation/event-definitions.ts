@@ -20,11 +20,16 @@ export class AutomationEventDefinitionValidationError extends Error {
 }
 
 /**
- * Rethrows a definition validation failure from the automations object as a caller error. Object
- * RPC keeps an error's name but not its class, so it is recognized by name.
+ * Whether the automations object refused an event its definition does not allow. Object RPC keeps
+ * an error's name but not its class, so it is recognized by name.
  */
+export function isAutomationEventDefinitionFailure(error: unknown): error is Error {
+  return error instanceof Error && error.name === "AutomationEventDefinitionValidationError";
+}
+
+/** Rethrows a definition validation failure from the automations object as a caller error. */
 export function rethrowAutomationEventDefinitionFailure(error: unknown): never {
-  if (error instanceof Error && error.name === "AutomationEventDefinitionValidationError") {
+  if (isAutomationEventDefinitionFailure(error)) {
     throw new BackofficeOperationError("invalid_request", error.message);
   }
   throw error;

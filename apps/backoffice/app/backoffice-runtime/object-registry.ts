@@ -89,6 +89,7 @@ import type { ClassifierResult } from "@earendil-works/pi-ai";
 import type { SiteBuildResult } from "@/artifacts/sites/build.server";
 import type { SiteBuilderAuthority } from "@/artifacts/sites/site-builder-authority.server";
 import type { SiteDataQuery, SiteDataResult } from "@/artifacts/sites/site-data";
+import type { SiteProbeEvent } from "@/artifacts/sites/site-events";
 import type { SiteProbeReport } from "@/artifacts/sites/site-logs";
 import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { TelegramAutomationFileMetadata } from "@/backoffice-runtime/telegram-file-response";
@@ -1085,7 +1086,19 @@ export type SiteRequestsCommands = {
     entries: ArtifactSiteLogEntry[],
     probe: SiteProbeReport | null,
   ): Promise<void>;
-  /** Sends a request to a site's latest build, and answers with what its Worker logged. */
+  /**
+   * Keeps an event that the Worker of a request an agent sent fired, for the agent; false when the
+   * event was not fired and the request already kept as many as a viewer may fire at once.
+   */
+  keepProbeEvent(
+    scope: BackofficeContextScope,
+    probe: string,
+    event: SiteProbeEvent,
+  ): Promise<boolean>;
+  /**
+   * Sends a request to a site's latest build, and answers with what its Worker logged and the
+   * events it fired, which are kept rather than fired.
+   */
   request(
     scope: BackofficeContextScope,
     input: ArtifactSiteRequestInput,

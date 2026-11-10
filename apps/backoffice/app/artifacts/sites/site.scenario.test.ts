@@ -7,10 +7,11 @@ const workers = vi.hoisted(() => ({
 }));
 vi.mock("cloudflare:workers", () => workers);
 
-import type {
-  ArtifactSiteDataStatus,
-  ArtifactSiteLogEntry,
-  ArtifactSiteResponse,
+import {
+  ARTIFACT_SITE_DATA_PERMISSIONS,
+  type ArtifactSiteDataStatus,
+  type ArtifactSiteLogEntry,
+  type ArtifactSiteResponse,
 } from "@fragno-dev/backoffice-api/v0/artifacts";
 import {
   BACKOFFICE_PERMISSION,
@@ -118,7 +119,7 @@ async function writeFile(ctx: BackofficeScenarioContext, path: string, content: 
 }
 
 type SiteBuildResult =
-  | { status: "built"; path: string; url: string | null }
+  | { status: "built"; path: string; url: string | null; firesEvents: boolean }
   | { status: "failed"; path: string; message: string };
 
 async function buildSite(ctx: BackofficeScenarioContext, path: string): Promise<SiteBuildResult> {
@@ -145,8 +146,7 @@ function workspace(ctx: BackofficeScenarioContext) {
 let beforeNextAssetRead: (() => Promise<void>) | null = null;
 
 /**
- * Requests a site the way its host does, from a browser it signed in, without saying who views
- * it. Each request reads the pointer afresh unless it shares `pointers` with others, as one
+ * Requests a site the way its host does, from a browser it signed in as `viewer`, or as nobody. Each request reads the pointer afresh unless it shares `pointers` with others, as one
  * isolate's requests do.
  */
 async function request(
@@ -157,6 +157,7 @@ async function request(
     method?: string;
     headers?: Record<string, string>;
     pointers?: SitePointerCache;
+    viewer?: SiteViewer;
   } = {},
 ) {
   const runtime = ctx.runtime.services;
@@ -183,7 +184,7 @@ async function request(
     scope,
     sitePath,
     pathname: new URL(path, url).pathname,
-    viewer: null,
+    viewer: init.viewer ?? null,
   });
 }
 
@@ -250,11 +251,13 @@ test("a site serves its last good build: files from public/, everything else fro
             status: "built",
             path: SITE_PATH,
             url: null,
+            firesEvents: true,
           });
           assert.deepEqual(await buildSite(ctx, STATIC_SITE_PATH), {
             status: "built",
             path: STATIC_SITE_PATH,
             url: null,
+            firesEvents: false,
           });
         }),
         then.assert("the root serves index.html, revalidated by its ETag", async (ctx) => {
@@ -346,6 +349,7 @@ test("a site serves its last good build: files from public/, everything else fro
               status: "built",
               path: SITE_PATH,
               url: null,
+              firesEvents: true,
             });
             assert.equal(await greeting(ctx), "Welcome, Ada");
             assert.equal(await buildCount(ctx, SITE_PATH), 2);
@@ -695,6 +699,7 @@ test("a site's Worker reads the scope's automation data with sql, as pages read 
             status: "built",
             path: DATA_SITE_PATH,
             url: null,
+            firesEvents: true,
           });
           const status = await siteDataStatus(ctx);
           assert.equal(status.status, "catching-up");
@@ -900,6 +905,7 @@ test("a site's Worker reads the scope's automation data with sql, as pages read 
             body: { text: "/workspace/none.site has not been built.", truncated: false },
             bodyError: null,
             log: null,
+            events: [],
           });
         }),
         then.assert(
@@ -1109,6 +1115,13 @@ test("a copy that cannot set its next attempt, or read its own state, fails rath
   );
 });
 
+const SITE_BUILDER = {
+  scope: "internal",
+  type: "agent",
+  id: "site-builder",
+  role: "assistant",
+} as const;
+
 /** Calls an `artifacts` tool as an agent granted only `grants`, which may hold more. */
 async function callAsAgent(
   ctx: BackofficeScenarioContext,
@@ -1116,12 +1129,7 @@ async function callAsAgent(
   tool: string,
   input: Record<string, unknown>,
 ): Promise<unknown> {
-  const actor = {
-    scope: "internal",
-    type: "agent",
-    id: "site-builder",
-    role: "assistant",
-  } as const;
+  const actor = SITE_BUILDER;
   const system = createBackofficeSystemExecution(scope);
   const execution = { ...system, actors: { ...system.actors, delegation: [actor] } };
   const kernel = new BackofficeKernel({
@@ -1239,6 +1247,7 @@ export default { fetch() { return new Response(); } };`,
                 scope,
                 sitePath,
                 authorizeWorker: refuse,
+                mayFire: async () => true,
               });
             await expect(build(PROBE_SITE_PATH)).rejects.toThrow("Not granted store.read.");
             const store = siteStoreForServing({
@@ -1252,7 +1261,11 @@ export default { fetch() { return new Response(); } };`,
             // A site of files reads no data; built before, it is not built again.
             assert.equal((await buildSite(ctx, STATIC_SITE_PATH)).status, "built");
             refuse.mockClear();
-            assert.deepEqual(await build(STATIC_SITE_PATH), { kind: "built", worker: false });
+            assert.deepEqual(await build(STATIC_SITE_PATH), {
+              kind: "built",
+              worker: false,
+              fires: false,
+            });
             expect(refuse).not.toHaveBeenCalled();
           },
         ),
@@ -1805,6 +1818,279 @@ test("a scope's sites are served at its own subdomain, to viewers Backoffice sig
           assert.equal(reads(`/sites/hosts/${host}.json`), 1);
           assert.equal(reads("/sites/org%3Aorg-1/host.json"), 1);
         }),
+      ],
+    }),
+  );
+});
+
+const EVENTS_SITE_PATH = "/workspace/events.site";
+
+/**
+ * Fires an event at each path for the viewer the host names: `/order` an order, `/burst` `n` page
+ * views, and the rest events a site cannot fire. A refused event answers with its message.
+ */
+const EVENTS_WORKER = `export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    const viewer = request.headers.get("ley-viewer-id");
+    const answer = async (fire) => {
+      try {
+        return Response.json(await fire());
+      } catch (error) {
+        return Response.json({ error: error.message });
+      }
+    };
+    switch (url.pathname) {
+      case "/order":
+        return answer(() =>
+          env.DATA.fire({ type: "order.placed", payload: { sku: url.searchParams.get("sku"), at: new Date(0) }, viewer }),
+        );
+      case "/burst":
+        return answer(async () => {
+          const ids = [];
+          for (let i = 0; i < Number(url.searchParams.get("n")); i++) {
+            ids.push((await env.DATA.fire({ type: "page.viewed", viewer })).eventId);
+          }
+          return ids;
+        });
+      case "/untyped":
+        return answer(() => env.DATA.fire({ type: " ", payload: {} }));
+      case "/big":
+        return answer(() => env.DATA.fire({ type: "big", payload: { text: "x".repeat(70000) } }));
+      default:
+        return new Response("Not Found", { status: 404 });
+    }
+  },
+};
+`;
+
+/** Keeps each order it starts for in the store, under its SKU. */
+const ORDER_WORKFLOW = `export default defineWorkflow({ name: "site-order" }, async (event, step) => {
+  await step.do("keep the order", async () => {
+    await store.set({ key: "order/" + event.payload.sku, value: "kept" });
+  });
+});
+`;
+
+const ORDER_TRIGGER = {
+  kind: "event" as const,
+  source: `site:${EVENTS_SITE_PATH}`,
+  eventType: "order.placed",
+  matcher: null,
+};
+
+async function fired(ctx: BackofficeScenarioContext, path: string, viewer?: SiteViewer) {
+  return (await (await request(ctx, EVENTS_SITE_PATH, path, { viewer })).json()) as unknown;
+}
+
+async function stored(ctx: BackofficeScenarioContext, key: string) {
+  const run = await ctx.runCodemode({
+    scope,
+    code: `async () => await store.get({ key: ${JSON.stringify(key)} })`,
+  });
+  return run.result;
+}
+
+/** What an agent needs to build a site with a worker.js, without emitting events. */
+const QUIET_BUILDER_GRANTS = [
+  BACKOFFICE_PERMISSION.upload.read,
+  BACKOFFICE_PERMISSION.upload.modify,
+  ...ARTIFACT_SITE_DATA_PERMISSIONS,
+];
+
+test("a site's Worker fires events that only routes acting on their own authority act on", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: allLocalObjects,
+      env: { SITES_ENABLED: "true" },
+      name: "a site fires events",
+      setup: ({ given }) => [
+        given.organization.exists({ id: orgId }),
+        given.codemode.writeFile({
+          orgId,
+          path: `${EVENTS_SITE_PATH}/worker.js`,
+          content: EVENTS_WORKER,
+        }),
+        given.direct.file({
+          orgId,
+          path: "/workspace/automations/site-order.workflow.js",
+          content: ORDER_WORKFLOW,
+        }),
+        given.router.route({
+          orgId,
+          id: "orders",
+          name: "Orders",
+          enabled: true,
+          priority: 100,
+          trigger: ORDER_TRIGGER,
+          action: {
+            kind: "start_workflow",
+            authority: {
+              kind: "organization-automation",
+              grants: [BACKOFFICE_PERMISSION.store.modify],
+            },
+            workflowScriptPath: "/workspace/automations/site-order.workflow.js",
+            instanceIdTemplate: "order-${event.id}",
+          },
+        }),
+        given.router.route({
+          orgId,
+          id: "orders-as-viewer",
+          name: "Orders as the viewer",
+          enabled: true,
+          priority: 90,
+          trigger: ORDER_TRIGGER,
+          action: {
+            kind: "start_workflow",
+            authority: { kind: "delegated-user", grants: [BACKOFFICE_PERMISSION.store.modify] },
+            workflowScriptPath: "/workspace/automations/site-order.workflow.js",
+            instanceIdTemplate: "viewer-order-${event.id}",
+          },
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert("a build by someone who may emit events fires them", async (ctx) => {
+          assert.deepInclude(await buildSite(ctx, EVENTS_SITE_PATH), { firesEvents: true });
+        }),
+        then.assert(
+          "an order starts the organization's route, which names the viewer as its subject only",
+          async (ctx) => {
+            const { eventId } = (await fired(ctx, "/order?sku=book", VIEWER)) as {
+              eventId: string;
+            };
+            await ctx.drain();
+            const run = await ctx.runCodemode({
+              scope,
+              code: `async () => await events.get({ id: ${JSON.stringify(eventId)} })`,
+            });
+            const event = run.result as {
+              source: string;
+              payload: unknown;
+              subject: unknown;
+              actors: { initiator: unknown; principal: unknown };
+              routing: { routes: { routeId: string; status: string; error?: string }[] };
+            };
+            assert.equal(event.source, `site:${EVENTS_SITE_PATH}`);
+            // As JSON reads it.
+            assert.deepEqual(event.payload, { sku: "book", at: "1970-01-01T00:00:00.000Z" });
+            assert.deepEqual(event.subject, { userId: VIEWER.id });
+            assert.deepEqual(event.actors.initiator, {
+              scope: "internal",
+              type: "site",
+              id: EVENTS_SITE_PATH,
+              role: "initiator",
+            });
+            assert.isNull(event.actors.principal);
+            const routes = Object.fromEntries(
+              event.routing.routes.map((route) => [route.routeId, route]),
+            );
+            assert.equal(routes.orders?.status, "completed");
+            // The viewer is no principal for a route to act for.
+            assert.deepInclude(routes["orders-as-viewer"], {
+              error: "delegated-user-principal-required",
+            });
+            assert.deepInclude(await stored(ctx, "order/book"), { value: "kept" });
+          },
+        ),
+        then.assert("nothing else fires from a site's source", async (ctx) => {
+          const run = await ctx.runCodemode({
+            scope,
+            code: `async () => {
+              try {
+                return await events.fire({ source: "site:${EVENTS_SITE_PATH}", eventType: "order.placed", payload: { sku: "forged" } });
+              } catch (error) {
+                return { error: error.message };
+              }
+            }`,
+          });
+          assert.deepEqual(run.result, {
+            error: `The event source 'site:${EVENTS_SITE_PATH}' belongs to a site's Worker.`,
+          });
+        }),
+        then.assert("an agent's request keeps the events its Worker fires", async (ctx) => {
+          const probed = (await requestSite(ctx, {
+            path: EVENTS_SITE_PATH,
+            url: "/order?sku=probe",
+            viewer: VIEWER,
+          })) as ArtifactSiteResponse;
+          assert.deepEqual(probed.body, { text: '{"eventId":null}', truncated: false });
+          assert.deepEqual(probed.events, [
+            {
+              type: "order.placed",
+              payload: { sku: "probe", at: "1970-01-01T00:00:00.000Z" },
+              viewer: VIEWER.id,
+              eventId: null,
+            },
+          ]);
+          await ctx.drain();
+          assert.isNull(await stored(ctx, "order/probe"));
+        }),
+        then.assert(
+          "an agent's request fires them when it asks to, if it may emit events",
+          async (ctx) => {
+            const refused = await callAsAgent(ctx, QUIET_BUILDER_GRANTS, "requestSite", {
+              path: EVENTS_SITE_PATH,
+              url: "/order?sku=quiet",
+              fire: true,
+            }).catch((error: unknown) => error);
+            assert.instanceOf(refused, Error);
+            assert.match(refused.message, /not granted events\.emit/u);
+
+            const fired = (await requestSite(ctx, {
+              path: EVENTS_SITE_PATH,
+              url: "/order?sku=fired",
+              viewer: VIEWER,
+              fire: true,
+            })) as ArtifactSiteResponse;
+            const [event] = fired.events;
+            assert.isString(event?.eventId);
+            assert.deepEqual(fired.body, {
+              text: JSON.stringify({ eventId: event?.eventId }),
+              truncated: false,
+            });
+            await ctx.drain();
+            assert.deepInclude(await stored(ctx, "order/fired"), { value: "kept" });
+          },
+        ),
+        then.assert("a site cannot fire what is not an event", async (ctx) => {
+          assert.deepEqual(await fired(ctx, "/untyped"), {
+            error: "An event's type is text, such as 'order.placed'; received string.",
+          });
+          assert.deepEqual(await fired(ctx, "/big"), {
+            error: "An event's payload is at most 64 KB of JSON.",
+          });
+        }),
+        then.assert(
+          "each viewer fires at most 60 events every 10 seconds, and agents' requests keep as many",
+          async (ctx) => {
+            const limited = {
+              error: "A viewer fires at most 60 events every 10 seconds on a site.",
+            };
+            const other: SiteViewer = { id: "viewer-2", email: "other@example.com" };
+            assert.deepEqual(await fired(ctx, "/burst?n=61", other), limited);
+            assert.lengthOf((await fired(ctx, "/burst?n=1", VIEWER)) as unknown[], 1);
+            const probed = (await requestSite(ctx, {
+              path: EVENTS_SITE_PATH,
+              url: "/burst?n=61",
+            })) as ArtifactSiteResponse;
+            assert.deepEqual(probed.body, { text: JSON.stringify(limited), truncated: false });
+            assert.lengthOf(probed.events, 60);
+          },
+        ),
+        then.assert(
+          "a build by someone who may not emit events fires none, until someone who may builds it",
+          async (ctx) => {
+            const built = await callAsAgent(ctx, QUIET_BUILDER_GRANTS, "buildSite", {
+              path: EVENTS_SITE_PATH,
+            });
+            assert.deepInclude(built, { status: "built", firesEvents: false });
+            assert.deepEqual(await fired(ctx, "/order?sku=refused", VIEWER), {
+              error: `This build of ${EVENTS_SITE_PATH} may not fire events: build it again as someone allowed events.emit.`,
+            });
+            assert.deepInclude(await buildSite(ctx, EVENTS_SITE_PATH), { firesEvents: true });
+            assert.hasAllKeys(await fired(ctx, "/order?sku=again", VIEWER), ["eventId"]);
+          },
+        ),
       ],
     }),
   );

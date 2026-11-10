@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
+import { createInMemorySiteEventLimiter } from "@/artifacts/sites/site-event-limiter";
 import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import {
@@ -45,6 +46,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
     workerLoader: null,
     siteStorage: null,
     siteFilesCache: null,
+    siteEventLimiter: createInMemorySiteEventLimiter(Date.now),
     reson8: null,
     webFetch: fetch,
     adapters: {} as BackofficeRuntimeServices["adapters"],

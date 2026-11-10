@@ -72,7 +72,7 @@ const buildSiteTool = defineBackofficeRuntimeTool({
       case "failed":
         return { status: "failed" as const, path, message: built.message };
       case "built":
-        return { status: "built" as const, path, url: built.url };
+        return { status: "built" as const, path, url: built.url, firesEvents: built.fires };
     }
     throw new Error("Unsupported site build.");
   },

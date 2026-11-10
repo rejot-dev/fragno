@@ -10,7 +10,9 @@ import {
   type SiteAssetsProps,
 } from "./assets.server";
 import { readSiteWorker } from "./site-build.server";
-import type { SiteDataQuery } from "./site-data";
+import type { SiteDataProps, SiteDataQuery, SiteProbe } from "./site-data";
+import type { SiteEvent } from "./site-events";
+import { fireSiteEvent } from "./site-events.server";
 import { recordSiteTraces, type SiteTailProps, type SiteTraceItem } from "./site-logs";
 import { SITE_HOST_COOKIE_PREFIX, type SiteViewer } from "./site-session.server";
 import type { SitePointerRead, SiteStore } from "./site-store.server";
@@ -57,8 +59,8 @@ export function createSitePointerCache(now: () => number): SitePointerCache {
 export type SiteWorkerBindings = {
   workerLoader: WorkerLoader | null;
   siteAssets: (props: SiteAssetsProps) => SiteAssetsBinding;
-  /** The site Worker's `env.DATA`, which reads the scope's automation data. */
-  siteData: (scope: BackofficeContextScope) => unknown;
+  /** The site Worker's `env.DATA`, which reads the scope's automation data and fires events. */
+  siteData: (props: SiteDataProps) => unknown;
   /** The tail that keeps what the site's Worker logs and throws in the scope's site logs. */
   siteTail: (props: SiteTailProps) => unknown;
 };
@@ -66,7 +68,7 @@ export type SiteWorkerBindings = {
 /** The Worker entrypoints that bind a site's Worker, which a Worker exports to bind it. */
 type SiteWorkerExports = {
   SiteAssets(options: { props: SiteAssetsProps }): Fetcher;
-  SiteData(options: { props: { scope: BackofficeContextScope } }): Fetcher;
+  SiteData(options: { props: SiteDataProps }): Fetcher;
   SiteTail(options: { props: SiteTailProps }): Fetcher;
 };
 
@@ -80,7 +82,7 @@ export function exportedSiteWorkerBindings(
   return {
     workerLoader,
     siteAssets: (props) => site.SiteAssets({ props }),
-    siteData: (scope) => site.SiteData({ props: { scope } }),
+    siteData: (props) => site.SiteData({ props }),
     siteTail: (props) => site.SiteTail({ props }),
   };
 }
@@ -99,9 +101,16 @@ export function inProcessSiteWorkerBindings(
           props,
         }),
     }),
-    siteData: (scope) => ({
+    siteData: (props) => ({
       query: async (query: SiteDataQuery) =>
-        await runtime.objects.siteReplica.for(scope).commands.query(scope, query),
+        await runtime.objects.siteReplica.for(props.scope).commands.query(props.scope, query),
+      fire: async (event: SiteEvent) =>
+        await fireSiteEvent({
+          objects: runtime.objects,
+          limiter: runtime.siteEventLimiter,
+          props,
+          event,
+        }),
     }),
     siteTail: (props) => ({
       tail: async (events: SiteTraceItem[]) => {
@@ -123,7 +132,8 @@ export type SiteWorkerLoad =
 /**
  * Loads a site's Worker from the build its pointer names; the Worker reads its files through
  * `env.ASSETS`, which `siteAssets` binds to the build. A `probe` loads a Worker of its own, for the
- * one request an agent sends, whose tail hands that request's record to the agent.
+ * one request an agent sends, whose tail hands that request's record to the agent, and whose
+ * events are kept for the agent, and fired only when the agent asked.
  */
 export async function loadSiteWorker({
   store,
@@ -138,7 +148,7 @@ export async function loadSiteWorker({
   bindings: SiteWorkerBindings;
   scope: BackofficeContextScope;
   sitePath: string;
-  probe?: string;
+  probe?: SiteProbe;
 }): Promise<SiteWorkerLoad> {
   const site = `${backofficeContextScopeRoutePath(scope)}${sitePath}`;
   const read = await pointers.read(site, () => store.readPointer());
@@ -154,15 +164,20 @@ export async function loadSiteWorker({
   const props: SiteAssetsProps = { scope, sitePath, build: read.pointer.served.build };
   // The name includes the build, so an isolate stays warm until the site is rebuilt, and the
   // Worker's code is read only when an isolate starts.
-  const name = `${probe ? `probe:${probe}:` : ""}site:${site}@${props.build}`;
+  const name = `${probe ? `probe:${probe.id}:` : ""}site:${site}@${props.build}`;
   const worker = workerLoader.get(name, async () => {
     const built = await readSiteWorker(store, props.build);
     if (!built) {
       throw new Error(`The build of ${sitePath} is incomplete; build it again.`);
     }
-    return siteWorkerCode(built.bundle, { ASSETS: siteAssets(props), DATA: siteData(scope) }, [
-      siteTail({ scope, sitePath, ...(probe ? { probe } : {}) }) as Fetcher,
-    ]);
+    return siteWorkerCode(
+      built.bundle,
+      {
+        ASSETS: siteAssets(props),
+        DATA: siteData({ scope, sitePath, fires: built.fires, ...(probe ? { probe } : {}) }),
+      },
+      [siteTail({ scope, sitePath, ...(probe ? { probe: probe.id } : {}) }) as Fetcher],
+    );
   });
   return { kind: "worker", worker };
 }
@@ -182,7 +197,7 @@ export async function loadProbedSiteWorker({
   bindings: SiteWorkerBindings;
   scope: BackofficeContextScope;
   sitePath: string;
-  probe: string;
+  probe: SiteProbe;
 }): Promise<SiteWorkerLoad> {
   return await loadSiteWorker({
     store: siteStoreForServing({ runtime, scope, sitePath, cache: null }),

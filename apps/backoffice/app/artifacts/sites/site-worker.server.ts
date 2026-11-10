@@ -7,9 +7,9 @@ import { siteBuildDirectory } from "./site-path";
  * The module a site's Worker is built from. It wraps the site's `worker.js`, or, for a site
  * without one, a Worker that serves its files, in an entrypoint whose `check` the build calls
  * before publishing: a `worker.js` that throws while loading, or exports no `fetch`, fails its
- * build instead of replacing a working one. The site gets `env.DATA` as `sql`, which reads through
- * the binding the host gave it; a request that reads while the scope's data is still being copied
- * is answered 503. It lives under `.build`, where no saved module can take its path.
+ * build instead of replacing a working one. The site gets `env.DATA` as `sql` and `fire`, which
+ * read and fire through the binding the host gave it; a request that reads while the scope's data
+ * is still being copied is answered 503. It lives under `.build`, where no saved module can take its path.
  */
 export function siteWorkerEntry(
   sitePath: string,

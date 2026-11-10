@@ -14,6 +14,7 @@ import {
 } from "@fragno-dev/codemode/remote/codemode-service-executor";
 import { env } from "cloudflare:workers";
 
+import { createInMemorySiteEventLimiter } from "@/artifacts/sites/site-event-limiter";
 import { unrestrictedBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import { createCloudflareBackofficeObjectRegistry } from "@/backoffice-runtime/cloudflare-durable-object-factory";
 import {
@@ -816,6 +817,7 @@ const createScopedMcpRuntimeServices = (
     workerLoader: null,
     siteStorage: null,
     siteFilesCache: null,
+    siteEventLimiter: createInMemorySiteEventLimiter(Date.now),
     reson8: null,
     webFetch: fetch,
     config: {

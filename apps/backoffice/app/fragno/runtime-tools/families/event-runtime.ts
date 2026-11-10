@@ -10,6 +10,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/events";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
+import { isSiteEventSource } from "@/artifacts/sites/site-events";
 import {
   backofficeExecutionScopeRestriction,
   type BackofficeExecutionContext,
@@ -181,10 +182,15 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
             `Events from this credential have the source '${emittedEventSource}'.`,
           );
         }
-        // Inheriting a parent event's app source stays allowed: that event came from the app.
+        // Inheriting a parent event's app or site source stays allowed: that event came from it.
         if (isInstalledAppEventSource(source)) {
           throw new BackofficeForbiddenError(
             `The event source '${source}' belongs to an installed app.`,
+          );
+        }
+        if (isSiteEventSource(source)) {
+          throw new BackofficeForbiddenError(
+            `The event source '${source}' belongs to a site's Worker.`,
           );
         }
       }

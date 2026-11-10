@@ -53,6 +53,11 @@ const artifactSiteBuildOutputSchema = z.lazy(() =>
         .describe(
           "Where people open the site: its path at its scope's own subdomain of the sites domain, such as https://quiet-amber-falcon.ley.run/tools/shop.site/. Null where this deployment has no sites domain, so people cannot open its sites.",
         ),
+      firesEvents: z
+        .boolean()
+        .describe(
+          "Whether the site's Worker may fire events with env.DATA.fire: true when it has a worker.js and whoever built it may emit events, with events.emit. Building it again as someone else changes it.",
+        ),
     }),
     z.strictObject({ status: z.literal("failed"), path: z.string(), message: z.string() }),
   ]),
@@ -182,6 +187,12 @@ export const artifactSiteRequestInputSchema = z.lazy(() =>
         .describe(
           "Who the Worker is told views the site, in ley-viewer-id and ley-viewer-email; nobody unless given.",
         ),
+      fire: z
+        .boolean()
+        .optional()
+        .describe(
+          "Fire the events the Worker fires, as a viewer's request does, so routes act on them; requires events.emit. Unless true, they are kept in the answer instead.",
+        ),
     })
     .refine(
       ({ method, body }) =>
@@ -234,6 +245,23 @@ const artifactSiteResponseSchema = z.lazy(() =>
       .describe(
         "What the Worker logged and threw while answering, with its outcome; null when the runtime had not reported the request within 5 seconds.",
       ),
+    events: z
+      .array(
+        z.strictObject({
+          type: z.string(),
+          payload: z.record(z.string(), z.unknown()),
+          viewer: z.string().nullable(),
+          eventId: z
+            .string()
+            .nullable()
+            .describe(
+              "The fired event's id, for events.get, when the request set fire; null when the event was kept instead, as env.DATA.fire then returned.",
+            ),
+        }),
+      )
+      .describe(
+        "The events the Worker fired with env.DATA.fire while answering, in order. Unless the request set fire, they are kept here instead of fired, so no automation acts on them.",
+      ),
   }),
 );
 
@@ -271,7 +299,7 @@ export const artifactsOperations = {
   },
   "artifacts.sites.request": {
     description:
-      "Request a built site as a viewer would, and return its answer with what its Worker logged and threw while answering. A site that does not answer within 15 seconds fails the request. Request the routes a site's pages call and its / after building it, before handing it to the user. The request reaches the site's latest build, reads the scope's data as the site does, and appears in the site's logs like any other.",
+      "Request a built site as a viewer would, and return its answer with what its Worker logged, threw, and fired while answering. A site that does not answer within 15 seconds fails the request. Request the routes a site's pages call and its / after building it, before handing it to the user. The request reaches the site's latest build, reads the scope's data as the site does, and appears in the site's logs like any other.",
     permissions: [BACKOFFICE_PERMISSION.upload.read, ...ARTIFACT_SITE_DATA_PERMISSIONS],
     input: artifactSiteRequestInputSchema,
     output: artifactSiteResponseSchema,
