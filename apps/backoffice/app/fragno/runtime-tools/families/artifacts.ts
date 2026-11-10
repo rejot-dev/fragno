@@ -10,7 +10,7 @@ import type {
 import type { PageLoad } from "@fragno-private/backoffice-ui/pages/definition";
 import type { z } from "zod";
 
-import type { SiteBuildOutcome } from "@/artifacts/sites/build.server";
+import type { SiteBuildResult } from "@/artifacts/sites/build.server";
 
 import {
   backofficeApiOperationToolFields,
@@ -22,7 +22,7 @@ import {
 export type ArtifactsRuntime = {
   /** Builds a page as its route does, with the same cache, so the caller sees what viewers see. */
   loadPage(sourcePath: string): Promise<PageLoad>;
-  buildSite(sitePath: string): Promise<SiteBuildOutcome>;
+  buildSite(sitePath: string): Promise<SiteBuildResult>;
   /** Reports the copy of the scope's automation data its sites read. */
   siteDataStatus(): Promise<ArtifactSiteDataStatus>;
   siteLogs(input: z.output<typeof artifactSiteLogsInputSchema>): Promise<ArtifactSiteLogEntry[]>;
@@ -72,7 +72,7 @@ const buildSiteTool = defineBackofficeRuntimeTool({
       case "failed":
         return { status: "failed" as const, path, message: built.message };
       case "built":
-        return { status: "built" as const, path };
+        return { status: "built" as const, path, url: built.url };
     }
     throw new Error("Unsupported site build.");
   },

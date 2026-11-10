@@ -12,6 +12,7 @@ import {
 import { readSiteWorker } from "./site-build.server";
 import type { SiteDataQuery } from "./site-data";
 import { recordSiteTraces, type SiteTailProps, type SiteTraceItem } from "./site-logs";
+import { SITE_HOST_COOKIE_PREFIX, type SiteViewer } from "./site-session.server";
 import type { SitePointerRead, SiteStore } from "./site-store.server";
 import { siteWorkerCode } from "./site-worker.server";
 
@@ -193,6 +194,9 @@ export async function loadProbedSiteWorker({
   });
 }
 
+/** Headers that tell a site's Worker who is viewing it; only the host sets them. */
+export const SITE_VIEWER_HEADERS = { id: "ley-viewer-id", email: "ley-viewer-email" } as const;
+
 /**
  * Answers a request to a site with its Worker. `pathname` is the site-relative path as the
  * request spelled it, such as `/` or `/api/orders`.
@@ -200,38 +204,63 @@ export async function loadProbedSiteWorker({
 export async function serveSite({
   request,
   pathname,
+  viewer,
   ...site
 }: Parameters<typeof loadSiteWorker>[0] & {
   request: Request;
   pathname: string;
+  viewer: SiteViewer | null;
 }): Promise<Response> {
   const loaded = await loadSiteWorker(site);
   if (loaded.kind === "answered") {
     return loaded.response;
   }
-  return await fetchSiteWorker(loaded.worker, request, pathname);
+  return await fetchSiteWorker(loaded.worker, request, pathname, viewer);
 }
 
-/** A site Worker's answer to a request, as a viewer receives it. */
+/**
+ * A site Worker's answer to a request, as a viewer receives it. `viewer` is who the host signed
+ * in, or who an agent's probe says views the site; null for nobody.
+ */
 export async function fetchSiteWorker(
   worker: WorkerStub,
   request: Request,
   pathname: string,
+  viewer: SiteViewer | null,
 ): Promise<Response> {
-  return withoutSetCookie(await worker.getEntrypoint().fetch(siteWorkerRequest(request, pathname)));
+  const response = await worker.getEntrypoint().fetch(siteWorkerRequest(request, pathname, viewer));
+  return withoutHostCookies(response);
 }
 
 function answered(message: string, status: number): SiteWorkerLoad {
   return { kind: "answered", response: new Response(message, { status }) };
 }
 
-/** The request as the Worker sees it: at its site-relative path, without the viewer's session. */
-function siteWorkerRequest(request: Request, pathname: string): Request {
+/**
+ * The request as the Worker sees it: at its site-relative path, with its own cookies but not the
+ * host's, and with who the host says is viewing, whatever the request claimed.
+ */
+function siteWorkerRequest(request: Request, pathname: string, viewer: SiteViewer | null): Request {
   const url = new URL(request.url);
   url.pathname = pathname;
   const headers = new Headers(request.headers);
-  headers.delete("cookie");
-  headers.delete("authorization");
+  const cookies = (headers.get("cookie") ?? "")
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .filter((cookie) => cookie !== "" && !cookie.startsWith(SITE_HOST_COOKIE_PREFIX));
+  if (cookies.length > 0) {
+    headers.set("cookie", cookies.join("; "));
+  } else {
+    headers.delete("cookie");
+  }
+  // A browser or a probe could send these too; only the host's are true.
+  for (const name of [...headers.keys()].filter((key) => key.startsWith("ley-"))) {
+    headers.delete(name);
+  }
+  if (viewer) {
+    headers.set(SITE_VIEWER_HEADERS.id, viewer.id);
+    headers.set(SITE_VIEWER_HEADERS.email, viewer.email);
+  }
   return new Request(url, {
     method: request.method,
     headers,
@@ -241,13 +270,25 @@ function siteWorkerRequest(request: Request, pathname: string): Request {
   } as RequestInit & { duplex: "half" });
 }
 
-/** Sites share the Backoffice origin until they have their own, so they cannot set its cookies. */
-function withoutSetCookie(response: Response): Response {
-  if (!response.headers.has("set-cookie")) {
+/**
+ * On its own host a site sets its own cookies, but not the host's session, and not for the whole
+ * sites domain, where they would reach the other scopes' sites.
+ */
+function withoutHostCookies(response: Response): Response {
+  const cookies = response.headers.getSetCookie();
+  const kept = cookies.filter(
+    (cookie) =>
+      !cookie.trimStart().toLowerCase().startsWith(SITE_HOST_COOKIE_PREFIX.toLowerCase()) &&
+      !/;\s*domain\s*=/iu.test(cookie),
+  );
+  if (kept.length === cookies.length) {
     return response;
   }
   const headers = new Headers(response.headers);
   headers.delete("set-cookie");
+  for (const cookie of kept) {
+    headers.append("set-cookie", cookie);
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,

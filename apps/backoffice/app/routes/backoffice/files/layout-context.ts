@@ -6,6 +6,6 @@ export type FilesLayoutContext = {
   scope: BackofficeContextScope;
   selectedScope: BackofficeScopeSelection;
   origin: string;
-  /** Whether this deployment serves sites, which Files then links to. */
+  /** Whether this deployment serves sites at an address of their own, which Files then links to. */
   sites: boolean;
 };

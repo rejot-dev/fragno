@@ -1,3 +1,5 @@
+import { SITE_HOST_PATHS } from "./site-host-names";
+
 const WORKSPACE = "/workspace/";
 const BUILD_DIRECTORY = "/workspace/.build/";
 const SITE_SUFFIX = ".site";
@@ -20,6 +22,10 @@ export function sitePathProblem(path: string): string | null {
   const segments = path.slice(WORKSPACE.length).split("/");
   if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
     return `${path} is not a normalized path.`;
+  }
+  // A site is served at its path below /workspace, so the host's own paths cannot hold one.
+  if (`/${segments[0]}/` === SITE_HOST_PATHS) {
+    return `${path} is inside ${WORKSPACE}${segments[0]}, whose address sites cannot use.`;
   }
   const ancestor = segments.slice(0, -1).findIndex((segment) => segment.endsWith(SITE_SUFFIX));
   if (ancestor !== -1) {

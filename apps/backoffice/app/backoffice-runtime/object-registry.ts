@@ -86,7 +86,7 @@ import type {
 
 import type { ClassifierResult } from "@earendil-works/pi-ai";
 
-import type { SiteBuildOutcome } from "@/artifacts/sites/build.server";
+import type { SiteBuildResult } from "@/artifacts/sites/build.server";
 import type { SiteBuilderAuthority } from "@/artifacts/sites/site-builder-authority.server";
 import type { SiteDataQuery, SiteDataResult } from "@/artifacts/sites/site-data";
 import type { SiteProbeReport } from "@/artifacts/sites/site-logs";
@@ -700,7 +700,7 @@ export type CodemodeCommands = WarmableCommands &
       context: BackofficeActionRpcContext,
       parentRun: string | null,
       authority: SiteBuilderAuthority,
-    ): Promise<SiteBuildOutcome>;
+    ): Promise<SiteBuildResult>;
   };
 
 export type MarketplaceCommands = {

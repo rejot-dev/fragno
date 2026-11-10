@@ -55,6 +55,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
       signUpAccessCodesRequired: true,
       localEmailLog: false,
       sites: false,
+      sitesDomain: null,
       workersAi: false,
       inboundEmailDomain: null,
       bindings: {

@@ -21,7 +21,7 @@ type ArtifactsCodemodeProvider = {
    */
   siteLogs(input: ArtifactsSiteLogsInput): Promise<ArtifactsSiteLogsOutput>;
   /**
-   * Request a built site as a viewer would, without their session, and return its answer with what its Worker logged and threw while answering. A site that does not answer within 15 seconds fails the request. Request the routes a site's pages call and its / after building it, before handing it to the user. The request reaches the site's latest build, reads the scope's data as the site does, and appears in the site's logs like any other.
+   * Request a built site as a viewer would, and return its answer with what its Worker logged and threw while answering. A site that does not answer within 15 seconds fails the request. Request the routes a site's pages call and its / after building it, before handing it to the user. The request reaches the site's latest build, reads the scope's data as the site does, and appears in the site's logs like any other.
    * Requires `upload.read` and `workflow.read` and `events.read` and `router.read` and `projects.read` and `store.read` and `connections.read` and `pi.read`.
    */
   requestSite(input: ArtifactsRequestSiteInput): Promise<ArtifactsRequestSiteOutput>;
@@ -48,6 +48,8 @@ type ArtifactsBuildSiteOutput =
   | {
       status: "built";
       path: string;
+      /** Where people open the site: its path at its scope's own subdomain of the sites domain, such as https://quiet-amber-falcon.ley.run/tools/shop.site/. Null where this deployment has no sites domain, so people cannot open its sites. */
+      url: string | null;
     }
   | {
       status: "failed";
@@ -119,6 +121,11 @@ type ArtifactsRequestSiteInput = {
     [key: string]: string;
   };
   body?: string;
+  /** Who the Worker is told views the site, in ley-viewer-id and ley-viewer-email; nobody unless given. */
+  viewer?: {
+    id: string;
+    email: string;
+  };
 };
 type ArtifactsRequestSiteOutput = {
   /** The status a viewer gets: 500 when the Worker threw, and 503 while the scope's data is being copied. */

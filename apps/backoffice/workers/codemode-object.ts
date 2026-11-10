@@ -20,7 +20,7 @@ import { z } from "zod";
 
 import { decodeCursor, type HookContext } from "@fragno-dev/db";
 
-import type { SiteBuildOutcome } from "@/artifacts/sites/build.server";
+import type { SiteBuildResult } from "@/artifacts/sites/build.server";
 import type { SiteBuilderAuthority } from "@/artifacts/sites/site-builder-authority.server";
 import { reportFinishedCodemodeRuns } from "@/backoffice-runtime/backoffice-telemetry";
 import {
@@ -408,7 +408,7 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
     context: BackofficeActionRpcContext,
     parentRun: string | null,
     authority: SiteBuilderAuthority,
-  ): Promise<SiteBuildOutcome> {
+  ): Promise<SiteBuildResult> {
     const execution = backofficeExecutionContextSchema.parse(context.execution);
     if (!backofficeContextScopesEqual(execution.scope, this.#scope)) {
       throw new Error("Sites are built by the Codemode object of their own scope.");
@@ -442,11 +442,18 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
     execution: BackofficeExecutionContext,
     parentRun: string | null,
     authority: SiteBuilderAuthority,
-  ): Promise<SiteBuildOutcome> {
+  ): Promise<SiteBuildResult> {
     const runtime = this.#runtime;
     // Imported on first use, so an object that builds no site does not load the builder.
-    const [{ buildSite }, { createCodemodeRouteBackedRuntimeContext }] = await Promise.all([
+    const [
+      { buildSite },
+      { siteHostOrigin, siteUrl },
+      { runtimeSiteHosts },
+      { createCodemodeRouteBackedRuntimeContext },
+    ] = await Promise.all([
       import("@/artifacts/sites/build.server"),
+      import("@/artifacts/sites/site-host-names"),
+      import("@/artifacts/sites/site-hosts.server"),
       import("@/fragno/runtime-tools/route-backed-runtime-context"),
     ]);
     const kernel = new BackofficeKernel(runtime);
@@ -488,9 +495,12 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
         }
       },
     });
+    if (built.kind !== "built") {
+      return built;
+    }
+    const { scope } = execution;
     // Copying the scope's data starts now, so the site's first visitor need not find it copying.
-    if (built.kind === "built" && built.worker) {
-      const { scope } = execution;
+    if (built.worker) {
       await runtime.objects.siteReplica
         .for(scope)
         .commands.warm(scope)
@@ -498,7 +508,12 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
           console.error("Could not start copying the scope's data for its sites.", error);
         });
     }
-    return built;
+    const sites = runtimeSiteHosts(runtime);
+    const url =
+      sites === null
+        ? null
+        : siteUrl(siteHostOrigin(await sites.hosts.hostFor(scope), sites.domain), sitePath);
+    return { ...built, url };
   }
 
   async warm(): Promise<void> {}

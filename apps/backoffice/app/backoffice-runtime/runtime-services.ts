@@ -10,6 +10,7 @@ import type { FragmentDurableObjectHostOperations } from "@fragno-dev/db/dispatc
 
 import type { FragnoRuntime } from "@fragno-dev/core";
 
+import { normalizedSitesDomain } from "@/artifacts/sites/site-host-names";
 import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import { blobsR2BucketsFromEnv, type BlobsR2Access } from "@/fragno/blobs-r2-buckets";
@@ -48,11 +49,14 @@ export type BackofficeRuntimeConfig = {
   signUpAccessCodesRequired: boolean;
   /** Print outgoing email to the terminal, and skip delivery while Resend is unconfigured. */
   localEmailLog: boolean;
-  /**
-   * Whether Backoffice builds and serves sites. Until sites have their own domain they share
-   * Backoffice's origin, where a site's scripts run with the viewer's session.
-   */
+  /** Whether Backoffice builds and serves sites. */
   sites: boolean;
+  /**
+   * The domain each scope's sites are served under, at `<words>.<domain>`, such as `ley.run` or
+   * `localhost:5467`; null serves them nowhere, as Backoffice's own origin would run their scripts
+   * with the viewer's session.
+   */
+  sitesDomain: string | null;
   /** Whether PiManager runs Workers AI models, through the `AI` binding. */
   workersAi: boolean;
   /** The domain people's inbound addresses are on, such as ley.run; null when they have none. */
@@ -144,6 +148,22 @@ const parsePublicHttpUrl = (name: string, value: string | undefined): string => 
 export const parseInboundEmailDomain = (value: string | undefined): string | null =>
   value?.trim().toLowerCase() || null;
 
+/** A host name, with a port where one is given, under which each scope gets a subdomain. */
+export const parseSitesDomain = (value: string | undefined): string | null => {
+  const domain = value?.trim().toLowerCase();
+  if (!domain) {
+    return null;
+  }
+  if (
+    !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:\d{1,5})?$/u.test(domain)
+  ) {
+    throw new Error(
+      `SITES_DOMAIN must be a host name, such as ley.run or localhost:5467; ${value} is not.`,
+    );
+  }
+  return normalizedSitesDomain(domain);
+};
+
 /** Deployments admit new accounts only with an access code unless they opt out. */
 export const parseSignUpAccessCodesRequired = (value: string | undefined): boolean =>
   value === undefined ? true : parseBooleanEnv("SIGN_UP_ACCESS_CODES_REQUIRED", value);
@@ -176,6 +196,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
   signUpAccessCodesRequired: parseSignUpAccessCodesRequired(env.SIGN_UP_ACCESS_CODES_REQUIRED),
   localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", env.LOCAL_EMAIL_LOG),
   sites: parseBooleanEnv("SITES_ENABLED", env.SITES_ENABLED),
+  sitesDomain: parseSitesDomain(env.SITES_DOMAIN),
   workersAi: Boolean(env.AI),
   inboundEmailDomain: parseInboundEmailDomain(env.INBOUND_EMAIL_DOMAIN),
   bindings: {

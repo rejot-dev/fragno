@@ -37,6 +37,16 @@ export type SiteBuildOutcome =
   | { kind: "built"; worker: boolean }
   | { kind: "failed"; message: string };
 
+/** A build's outcome as Backoffice reports it, with where people open a built site. */
+export type SiteBuildResult =
+  | Exclude<SiteBuildOutcome, { kind: "built" }>
+  | {
+      kind: "built";
+      worker: boolean;
+      /** At its scope's subdomain of the sites domain; null where sites have no domain. */
+      url: string | null;
+    };
+
 /** A file under the site's `public/`, as listed; its bytes are read only to copy it. */
 type SiteFileSource = {
   workspacePath: string;

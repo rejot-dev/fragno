@@ -17,7 +17,7 @@ export async function loader({ context, url }: Route.LoaderArgs) {
   return {
     origin: url.origin,
     selectedScope,
-    sites: runtime.config.sites,
+    sites: runtime.config.sites && runtime.config.sitesDomain !== null,
     hasLargeFiles:
       runtime.config.bindings.blobs &&
       isBackofficeObjectAvailableInContext(
