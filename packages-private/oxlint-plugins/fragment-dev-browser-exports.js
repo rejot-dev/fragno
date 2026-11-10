@@ -19,7 +19,7 @@ const rule = {
   create(context) {
     const filename = context.filename;
 
-    if (!filename || !filename.endsWith("tsdown.config.ts")) {
+    if (!filename?.endsWith("tsdown.config.ts")) {
       return {};
     }
 
