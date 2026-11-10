@@ -706,9 +706,10 @@ export function createConnectorIntegration({
                   );
                 }
                 const output = jsonValueSchema.parse(result.data.output);
-                if (!outputValidator.validate(output).valid) {
+                const outputValidation = outputValidator.validate(output);
+                if (!outputValidation.valid) {
                   throw new Error(
-                    "Connector integration action output failed its published JSON Schema. The action has already run and must not be automatically retried.",
+                    `Connector action ${action.id} returned output that fails its published JSON Schema: ${describeSchemaViolations(outputValidation.errors)} The action has already run and must not be automatically retried.`,
                   );
                 }
                 return output;

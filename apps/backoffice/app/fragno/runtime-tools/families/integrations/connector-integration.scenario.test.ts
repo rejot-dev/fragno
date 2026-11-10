@@ -317,6 +317,29 @@ test("Connector setup resumes consent across restarts and binds the account only
           ].sort((left, right) => left.connectionId.localeCompare(right.connectionId)),
         );
       }),
+      then.assert("an output that fails its catalog schema names what fails", async (ctx) => {
+        const action = gateway.catalogActions.get("gmail.search_threads");
+        assert(action);
+        action.outputSchema = {
+          type: "object",
+          properties: { query: { type: "number" } },
+          required: ["query"],
+        };
+        const rejected = await ctx.runCodemode({
+          scope: owner,
+          code: `async () => {
+              try {
+                return await integrations.execute({ connectionId: ${JSON.stringify(target)}, actionId: "gmail.search_threads", input: { query: "is:unread" } });
+              } catch (error) {
+                return error.message;
+              }
+            }`,
+        });
+        assert(
+          rejected.result ===
+            'Connector action gmail.search_threads returned output that fails its published JSON Schema: #/query: Instance type "string" is invalid. Expected "number". The action has already run and must not be automatically retried.',
+        );
+      }),
     ],
   }));
 });
