@@ -90,6 +90,9 @@ importers:
       '@nanostores/query':
         specifier: ^0.3.4
         version: 0.3.4(nanostores@1.3.0)
+      '@rejot-dev/backoffice-local':
+        specifier: workspace:*
+        version: link:packages/backoffice-local
       fallow:
         specifier: ^3.36.0
         version: 3.36.0

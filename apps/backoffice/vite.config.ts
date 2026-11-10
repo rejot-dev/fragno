@@ -4,7 +4,10 @@ import path from "node:path";
 import { parseEnv } from "node:util";
 
 import { reactRouter } from "@react-router/dev/vite";
-import { backofficeDevServerPort } from "@rejot-dev/backoffice-local/dev-server-port";
+import {
+  backofficeDevServerPort,
+  backofficeInspectorPort,
+} from "@rejot-dev/backoffice-local/dev-server-port";
 import { defineConfig } from "vite";
 import type { EnvironmentOptions, Plugin, PreviewServer, ViteDevServer } from "vite";
 import devtoolsJson from "vite-plugin-devtools-json";
@@ -239,7 +242,8 @@ export default defineConfig(({ command }) => {
         viteEnvironment: {
           name: "ssr",
         },
-        // inspectorPort: false,
+        // Left unset, the plugin takes 9229, the Node debuggers' port, whenever it is free.
+        inspectorPort: isDevServer ? backofficeInspectorPort(__dirname) : false,
       }),
       tailwindcss(),
       reactRouter(),

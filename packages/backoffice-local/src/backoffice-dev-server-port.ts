@@ -35,6 +35,15 @@ export function backofficeDevServerPort(cwd: string): number {
 }
 
 /**
+ * Port the Workerd inspector of the Backoffice dev server and preview listens on in the git worktree
+ * containing `cwd`. It offsets the dev server port, so worktrees never share one, and never takes
+ * 9229, the default port of Node debuggers.
+ */
+export function backofficeInspectorPort(cwd: string): number {
+  return backofficeDevServerPort(cwd) + 10_000;
+}
+
+/**
  * Ports a local Backoffice may listen on, seen from `cwd`: its own worktree's port first, then
  * those of the repository's other worktrees. Outside a git repository only the main port remains.
  */

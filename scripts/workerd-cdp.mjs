@@ -5,9 +5,10 @@ import { stat, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
 
+import { backofficeInspectorPort } from "@rejot-dev/backoffice-local/dev-server-port";
 import WebSocket from "ws";
 
-const DEFAULT_INSPECTOR_URL = "http://localhost:9229";
+const DEFAULT_INSPECTOR_URL = `http://localhost:${backofficeInspectorPort(process.cwd())}`;
 const DEFAULT_ORIGIN = "http://localhost";
 const COMMAND_TIMEOUT_MS = 30_000;
 const HEAP_SNAPSHOT_TIMEOUT_MS = 5 * 60_000;
@@ -27,7 +28,8 @@ Commands:
       Send one Chrome DevTools Protocol command and print its result.
 
 Environment:
-  WORKERD_CDP_URL       Inspector discovery URL (default: ${DEFAULT_INSPECTOR_URL})
+  WORKERD_CDP_URL       Inspector discovery URL (default: this worktree's Backoffice,
+                        ${DEFAULT_INSPECTOR_URL})
   WORKERD_CDP_ORIGIN    WebSocket Origin header (default: ${DEFAULT_ORIGIN})`);
 }
 
