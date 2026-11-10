@@ -1,9 +1,15 @@
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { parseFrontmatter } from "@/lib/frontmatter";
 
+/**
+ * A skill, from a `SKILL.md`'s frontmatter and body. `disableModelInvocation`, from
+ * `disable-model-invocation: true`, leaves it out of the skills agents are offered: only an agent
+ * told its path reads it, as an app's package tells its agent.
+ */
 export type BackofficePiSkillDefinition = {
   name: string;
   description: string;
+  disableModelInvocation: boolean;
   body: string;
   directory: string;
   location: string;
@@ -35,11 +41,16 @@ const parseStateSkill = (path: string, content: string): BackofficePiSkillDefini
   if (typeof frontmatter.description !== "string") {
     throw new Error(`Skill ${path} is missing string frontmatter field 'description'.`);
   }
+  const disableModelInvocation = frontmatter["disable-model-invocation"] ?? false;
+  if (typeof disableModelInvocation !== "boolean") {
+    throw new Error(`Skill ${path} has non-boolean frontmatter field 'disable-model-invocation'.`);
+  }
 
   const directory = path.slice(0, path.lastIndexOf("/"));
   return {
     name: frontmatter.name,
     description: frontmatter.description,
+    disableModelInvocation,
     body,
     directory,
     location: path,

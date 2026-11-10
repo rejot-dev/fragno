@@ -39,7 +39,9 @@ await pi.createAgent({
   agent, list `namespace.*` or `namespace.permission` entries from the permission catalog. At least
   one grant is required. Prompting the agent requires the prompter's own `pi.modify`.
 - `instructions` is Markdown added to the agent's system prompt, up to 32,768 characters; empty adds
-  none.
+  none. Every agent is offered the workspace's skills, the `SKILL.md` files in its `skills` folders.
+  For a procedure only this agent follows, write a skill with `disable-model-invocation: true` in
+  its frontmatter, which no agent is offered, and name its path in the instructions.
 - An agent's `steward` says who may change it: `members` for agents defined this way, a `package`
   for agents a Marketplace package declares, as `/static/skills/marketplace-publishing/SKILL.md`
   shows, and `backoffice` for built-in agents.

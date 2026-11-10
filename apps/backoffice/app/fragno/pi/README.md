@@ -457,10 +457,15 @@ too, so the first publication after waking is taken whatever its revision.
 implementation. It uses the scoped filesystem, route-backed service runtimes, existing codemode
 execution environment, and kernel permission checks of the active turn. Agents discover guidance,
 skills, and declarations inside codemode through `state`, whose discovery methods the guidance
-section inlines, so discovery shares a turn with other reads. The guidance lists every other
-declaration file with a one-line summary of when to read it. Authorization does not rely on prompt
-sections or extension environment hooks: Pi reports their errors but continues generation, so the
-model boundary and every tool check fail closed.
+section inlines, so discovery shares a turn with other reads. Skills are the `SKILL.md` files under
+`/static/skills` and in any `skills` folder of `/workspace`, with a `name` and a `description` in
+their frontmatter; the system prompt offers each by name, description, and path
+(`extensions/backoffice/system-prompt.ts`). One marked `disable-model-invocation: true` is offered
+to no agent: an agent reads it only when its instructions name its path, as an app's package does
+for its own agent. The guidance lists every other declaration file with a one-line summary of when
+to read it. Authorization does not rely on prompt sections or extension environment hooks: Pi
+reports their errors but continues generation, so the model boundary and every tool check fail
+closed.
 
 Pi, codemode, and prerecorded transcription attribute usage to the execution scope's root owner.
 Scoped tool calls use the selected scope, not the calling agent's owner. Workflows snapshot the

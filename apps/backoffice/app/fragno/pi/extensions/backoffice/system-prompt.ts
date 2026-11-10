@@ -53,11 +53,13 @@ export async function buildBackofficePiSystemPrompt(options: {
 }): Promise<string> {
   const state = requirePiStateBackend(options.runtimeToolContext);
   const skillRegistry = await loadBackofficePiSkills(state);
-  const skills = Object.values(skillRegistry).map((skill) => ({
-    name: skill.name,
-    description: skill.description,
-    filePath: skill.location,
-  }));
+  const skills = Object.values(skillRegistry)
+    .filter((skill) => !skill.disableModelInvocation)
+    .map((skill) => ({
+      name: skill.name,
+      description: skill.description,
+      filePath: skill.location,
+    }));
   const baseSystemPrompt = [PI_SYSTEM_PROMPT, formatPiSkillsForSystemPrompt(skills)]
     .filter((part) => part.trim().length > 0)
     .join("\n\n");
