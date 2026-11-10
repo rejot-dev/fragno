@@ -296,8 +296,9 @@ administration's [assistant](#asking-about-the-books), come from Marketplace pac
 in its own Marketplace in Backoffice, which only Bookkeeping's installations install from (see
 Backoffice's `app/fragno/apps/README.md`, "App packages"). `workers/backoffice/agents.ts` defines
 them: `bookkeeper-agent` for the firm's agent project and `books-agent` for each administration's
-project, each a version and a declaration defining one agent. `pnpm backoffice:connect` publishes
-them as `app:bookkeeping#bookkeeper-agent` and `app:bookkeeping#books-agent`.
+project, each a version, a declaration defining one agent, and the files installed beside it in
+`/workspace/bookkeeping`. `pnpm backoffice:connect` publishes them as
+`app:bookkeeping#bookkeeper-agent` and `app:bookkeeping#books-agent`.
 
 The Directory installs each package in its projects with `packages.install`, as Bookkeeping's
 installation, and follows the install with `packages.status`
@@ -434,12 +435,16 @@ where the file is shared, with `pi.prompt.submit` as a `subagent`: each document
 conversation of the agent, beside the others, so documents uploaded together are read side by side
 and no document sees another's text. Backoffice bills the turn to the firm.
 
-The agent reads the document with `documents.get` and `models.extract`, the books with
-`books.describe` and `entries.list`, and answers with `documents.propose`, an entry as
-`entries.post` takes it that must balance, or with `documents.decline` and why. It cannot post:
-people review proposals. The document's page shows the proposal and the agent's note, and **Review
-and book** opens the new-entry form filled in from it; the documents list marks documents with a
-proposal. A proposal is checked against the books when made, and again by the ledger when booked.
+How the agent books a document is the `bookkeeping` skill its package installs at
+`/workspace/bookkeeping/skills/bookkeeping/SKILL.md`, which its instructions tell it to read and
+follow. The skill is marked `disable-model-invocation: true`, so Backoffice offers it to no agent:
+the firm's other agents never pick it up. Following it, the agent reads the document with
+`documents.get` and `models.extract`, the books with `books.describe` and `entries.list`, and
+answers with `documents.propose`, an entry as `entries.post` takes it that must balance, or with
+`documents.decline` and why. It cannot post: people review proposals. The document's page shows the
+proposal and the agent's note, and **Review and book** opens the new-entry form filled in from it;
+the documents list marks documents with a proposal. A proposal is checked against the books when
+made, and again by the ledger when booked.
 
 Each document records its review: asked, under a request ID; the proposed entry; or the reason it
 proposes none. The request is recorded before the agent is set up and asked, so one that never

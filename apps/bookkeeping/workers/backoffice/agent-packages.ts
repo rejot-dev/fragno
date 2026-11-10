@@ -3,11 +3,13 @@ import {
   BackofficeApiUnreachableError,
 } from "@fragno-dev/backoffice-api/v0/client";
 
-import { AGENT_PACKAGES, agentPackageListingId, type AgentPackageName } from "./agents";
+import {
+  AGENT_PACKAGE_ROOT,
+  AGENT_PACKAGES,
+  agentPackageListingId,
+  type AgentPackageName,
+} from "./agents";
 import { connectWithAppToken, isBackofficeUnavailable, requestAppToken } from "./client";
-
-/** Where each agent package is installed in its project, beside the files people keep there. */
-const AGENT_PACKAGE_ROOT = "/workspace/bookkeeping";
 
 /**
  * An install Bookkeeping asked for and has not seen finish: the version, and Backoffice's run, null

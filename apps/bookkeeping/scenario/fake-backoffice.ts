@@ -179,6 +179,8 @@ export class FakeBackoffice {
   readonly #downloads = new Map<string, string>();
   /** The agents each release in Bookkeeping's Marketplace defines, by listing ID and version. */
   readonly #appPackages = new Map<string, readonly PiAgentDefinitionCreate[]>();
+  /** Each release's files, which never change once published. */
+  readonly #appPackageFiles = new Map<string, Record<string, string>>();
   /**
    * The packages installed in each workspace, by scope and listing ID, with the run that installed
    * them, which completes at once unless installs are held.
@@ -550,10 +552,11 @@ export class FakeBackoffice {
       const declaration = marketplacePackageDeclarationSchema.parse(
         JSON.parse(input.files[".marketplace/installation.json"] ?? "{}"),
       );
-      const published = this.#appPackages.get(release);
-      if (published && JSON.stringify(published) !== JSON.stringify(declaration.agents)) {
+      const published = this.#appPackageFiles.get(release);
+      if (published && !isDeepStrictEqual(published, input.files)) {
         throw new Error(`${release} is published with other files.`);
       }
+      this.#appPackageFiles.set(release, input.files);
       this.#appPackages.set(release, declaration.agents);
     },
     /**

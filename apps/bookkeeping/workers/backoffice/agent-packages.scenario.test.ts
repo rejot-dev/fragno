@@ -38,7 +38,7 @@ test("a deploy shipping a new version of an agent's package upgrades every proje
     }
     // The firm's agent did not change, so its project is left as it was.
     expect(scenario.backoffice.installedPackages(FIRM, FIRM_AGENT)).toEqual([
-      { listingId: "app:bookkeeping#bookkeeper-agent", version: "1.0.1" },
+      { listingId: "app:bookkeeping#bookkeeper-agent", version: AGENT_PACKAGES.bookkeeper.version },
     ]);
     expect(scenario.backoffice.operationCount("packages.install")).toBe(installs + 2);
 
