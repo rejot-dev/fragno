@@ -43,9 +43,11 @@ import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
   createBackofficeServiceExecution,
   createBackofficeSystemExecution,
+  createBackofficeUserExecution,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
+import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { backofficeObjectScopeFromContextScope } from "@/backoffice-runtime/object-registry";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
@@ -60,6 +62,7 @@ import {
 import { BUILT_IN_PI_AGENT_DEFINITIONS } from "@/fragno/pi/agent/agent-definitions";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import type { PiAgentViewFrame } from "@/fragno/pi/agent/pi-agent-contract";
+import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import {
   createPiScenarioDependencies,
@@ -669,6 +672,74 @@ test("queued prompts each run a turn of their own, in arrival order, under the d
             ).toMatchObject({ status: "completed", requestId: "third" });
           },
         ),
+      ],
+    }),
+  );
+});
+
+test("an agent is offered the workspace's skills, except those only an agent told their path reads", async () => {
+  const scope: BackofficeContextScope = { kind: "org", orgId: "skills-org", jurisdiction: null };
+  const systemPrompts: string[] = [];
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi agent skills",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          const faux = fauxProvider();
+          faux.setResponses([
+            (context) => {
+              systemPrompts.push(getCurrentSystemPrompt(context.messages));
+              return fauxAssistantMessage([fauxText("Done.")]);
+            },
+          ]);
+          const models = createModels();
+          models.setProvider(faux.provider);
+          return new PiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+        },
+      },
+      setup: ({ given }) => [
+        given.organization.exists({ id: "skills-org", name: "Skills", ownerUserId: "ada" }),
+      ],
+      steps: ({ then }) => [
+        then.assert("a member's skills reach the prompt unless they opt out", async (ctx) => {
+          const member = createCodemodeRouteBackedRuntimeContext({
+            emitter: { kind: "caller" },
+            runtime: ctx.runtime.services,
+            kernel: new BackofficeKernel(ctx.runtime.services),
+            execution: {
+              ...createBackofficeUserExecution({ scope, userId: "ada" }),
+              scopeRestriction: scope,
+            },
+          });
+          await member.stateBackend.writeFile(
+            "/workspace/skills/invoicing/SKILL.md",
+            "---\nname: invoicing\ndescription: Sends the month's invoices.\n---\nSend them.\n",
+          );
+          await member.stateBackend.writeFile(
+            "/workspace/bookkeeping/skills/booking/SKILL.md",
+            "---\nname: booking\ndescription: Books a document.\ndisable-model-invocation: true\n---\nBook it.\n",
+          );
+
+          const prompted = await prompt(ctx.runtime, scope, {
+            requestId: "skills",
+            content: "Hi.",
+          });
+          assert.equal(prompted.status, 202, await prompted.clone().text());
+          await ctx.runtime.drain();
+          expect(systemPrompts).toEqual([
+            expect.stringContaining("<location>/workspace/skills/invoicing/SKILL.md</location>"),
+          ]);
+          expect(systemPrompts[0]).not.toContain("booking");
+        }),
       ],
     }),
   );

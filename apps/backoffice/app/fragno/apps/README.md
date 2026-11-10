@@ -398,7 +398,9 @@ installed and reaches the workspace: members uninstall the app instead. Once it 
 no longer reaches the workspace, members may uninstall them. A package's files are copied into the
 folder it is installed at. An upgrade replaces or removes the files that still match the installed
 version, and fails without changes if members edited one, so ship files members only read.
-Uninstalling keeps the files.
+Uninstalling keeps the files. A file at `skills/<name>/SKILL.md` is a skill every agent in the
+workspace is offered; one marked `disable-model-invocation: true` is offered to none, so only the
+package's agent, whose instructions name its path, reads it (see `app/fragno/pi/README.md`).
 
 A system administrator publishes the app's releases, which the app owns, from their files, which are
 text:
