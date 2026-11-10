@@ -2,6 +2,7 @@ import {
   backofficeScopeJurisdiction,
   backofficeScopePathSegment,
   type BackofficeContextScope,
+  type BackofficeJurisdiction,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { AwsClient } from "aws4fetch";
 import { z } from "zod";
@@ -145,26 +146,25 @@ function workspaceSiteStore(state: BackofficeStateBackend, sitePath: string): Si
 }
 
 /**
- * Builds in the bucket of the scope's jurisdiction, under `sites/`, apart from the `org/` and
- * `named/` prefixes blobs use. Requests are signed for R2's S3 API, as blobs' are.
+ * Signed requests to the objects under `prefix` in the bucket of `jurisdiction`, or of none. Keys
+ * are given as segments, each encoded on its own.
  */
-function r2SiteStore(
+export function r2SiteObjects(
   { buckets, fetch: send }: BlobsR2Access,
-  scope: BackofficeContextScope,
-  sitePath: string,
-): SiteStore {
-  const bucket = buckets[backofficeScopeJurisdiction(scope) ?? "none"];
+  jurisdiction: BackofficeJurisdiction | null,
+  prefix: readonly string[],
+) {
+  const bucket = buckets[jurisdiction ?? "none"];
   const client = new AwsClient({
     accessKeyId: bucket.accessKeyId,
     secretAccessKey: bucket.secretAccessKey,
     service: "s3",
     region: "auto",
   });
-  const site = ["sites", backofficeScopePathSegment(scope), ...sitePath.split("/").slice(2)];
   const objectUrl = (segments: readonly string[]) => {
     const url = new URL(bucket.endpoint);
     const base = url.pathname.replace(/^\/+|\/+$/g, "");
-    const key = [...site, ...segments].map(encodeURIComponent);
+    const key = [...prefix, ...segments].map(encodeURIComponent);
     url.pathname = `/${[base, bucket.bucket, ...key].filter(Boolean).join("/")}`;
     return url.toString();
   };
@@ -178,6 +178,23 @@ function r2SiteStore(
     const signed = await client.sign(url, { method, headers });
     return await send(signed.url, { method, headers: signed.headers, body });
   };
+  return { objectUrl, request };
+}
+
+/**
+ * Builds in the bucket of the scope's jurisdiction, under `sites/`, apart from the `org/` and
+ * `named/` prefixes blobs use. Requests are signed for R2's S3 API, as blobs' are.
+ */
+function r2SiteStore(
+  access: BlobsR2Access,
+  scope: BackofficeContextScope,
+  sitePath: string,
+): SiteStore {
+  const { objectUrl, request } = r2SiteObjects(access, backofficeScopeJurisdiction(scope), [
+    "sites",
+    backofficeScopePathSegment(scope),
+    ...sitePath.split("/").slice(2),
+  ]);
   const failed = (action: string, file: string, response: Response) =>
     new Error(`Could not ${action} ${file} of ${sitePath}: R2 answered ${response.status}.`);
   const pointerUrl = objectUrl([POINTER_FILE]);
