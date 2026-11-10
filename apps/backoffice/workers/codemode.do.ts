@@ -1,7 +1,7 @@
 import type { CodemodeHost } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { DurableObject } from "cloudflare:workers";
 
-import type { SiteBuildOutcome } from "@/artifacts/sites/build.server";
+import type { SiteBuildResult } from "@/artifacts/sites/build.server";
 import type { SiteBuilderAuthority } from "@/artifacts/sites/site-builder-authority.server";
 import type {
   BackofficeActionRpcContext,
@@ -57,7 +57,7 @@ export class Codemode extends DurableObject<CloudflareEnv> implements CodemodeCo
     context: BackofficeActionRpcContext,
     parentRun: string | null,
     authority: SiteBuilderAuthority,
-  ): Promise<SiteBuildOutcome> {
+  ): Promise<SiteBuildResult> {
     return this.#object.buildSite(sitePath, context, parentRun, authority);
   }
 

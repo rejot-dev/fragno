@@ -1,6 +1,7 @@
 import System from "typebox/system";
 import * as serverBuild from "virtual:react-router/server-build";
 
+import { siteHostOf } from "../app/artifacts/sites/site-host-names";
 import { isBackofficeApiPath } from "../app/backoffice-api/api-path";
 import { BackofficeKernel } from "../app/backoffice-runtime/kernel";
 import { createCloudflareBackofficeRuntimeServices } from "../app/backoffice-runtime/runtime-services";
@@ -20,6 +21,10 @@ const requestHandler = createLazyRequestHandler(serverBuild, import.meta.env.MOD
 // Imported on the first API request, so a cold Worker serving pages does not compile the API.
 const loadBackofficeApiRouter = async () =>
   (await import("../app/backoffice-api/backoffice-api-router")).backofficeApiRouter;
+// Imported on the first request to a site host, so a Worker serving only Backoffice does not
+// compile sites.
+const loadSiteHost = async () =>
+  (await import("../app/artifacts/sites/site-host.server")).serveSiteHostRequest;
 
 export default {
   async fetch(request, env, ctx) {
@@ -58,9 +63,18 @@ export default {
       let statusCode = 500;
 
       try {
-        const response = isBackofficeApiPath(new URL(request.url).pathname)
-          ? await (await loadBackofficeApiRouter()).fetch(request, { runtime, kernel })
-          : await requestHandler(request, context);
+        const url = new URL(request.url);
+        const { sitesDomain } = runtime.config;
+        // The sites domain serves only sites, never Backoffice, whose cookies it must not see.
+        const siteHost = sitesDomain === null ? undefined : siteHostOf(url, sitesDomain);
+        const response =
+          siteHost !== undefined
+            ? await (
+                await loadSiteHost()
+              )({ request, env, ctx, runtime, kernel, host: siteHost })
+            : isBackofficeApiPath(url.pathname)
+              ? await (await loadBackofficeApiRouter()).fetch(request, { runtime, kernel })
+              : await requestHandler(request, context);
         statusCode = response.status;
         // A socket travels only with the response that accepted it, so it cannot be rebuilt.
         if (response.webSocket) {

@@ -44,7 +44,16 @@ export const artifactSiteBuildInputSchema = z.lazy(() =>
 // A failed build leaves the site serving its previous build.
 const artifactSiteBuildOutputSchema = z.lazy(() =>
   z.discriminatedUnion("status", [
-    z.strictObject({ status: z.literal("built"), path: z.string() }),
+    z.strictObject({
+      status: z.literal("built"),
+      path: z.string(),
+      url: z
+        .string()
+        .nullable()
+        .describe(
+          "Where people open the site: its path at its scope's own subdomain of the sites domain, such as https://quiet-amber-falcon.ley.run/tools/shop.site/. Null where this deployment has no sites domain, so people cannot open its sites.",
+        ),
+    }),
     z.strictObject({ status: z.literal("failed"), path: z.string(), message: z.string() }),
   ]),
 );
@@ -158,8 +167,21 @@ export const artifactSiteRequestInputSchema = z.lazy(() =>
         .enum(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
         .optional()
         .describe("GET unless given."),
-      headers: z.record(z.string(), z.string()).optional(),
+      headers: z
+        .record(
+          z.string().refine((name) => !name.toLowerCase().startsWith("ley-"), {
+            message: "Headers starting with ley- are the host's; set viewer instead.",
+          }),
+          z.string(),
+        )
+        .optional(),
       body: z.string().max(ARTIFACT_SITE_REQUEST_MAX_BODY_CHARS).optional(),
+      viewer: z
+        .strictObject({ id: z.string().min(1), email: z.string() })
+        .optional()
+        .describe(
+          "Who the Worker is told views the site, in ley-viewer-id and ley-viewer-email; nobody unless given.",
+        ),
     })
     .refine(
       ({ method, body }) =>
@@ -249,7 +271,7 @@ export const artifactsOperations = {
   },
   "artifacts.sites.request": {
     description:
-      "Request a built site as a viewer would, without their session, and return its answer with what its Worker logged and threw while answering. A site that does not answer within 15 seconds fails the request. Request the routes a site's pages call and its / after building it, before handing it to the user. The request reaches the site's latest build, reads the scope's data as the site does, and appears in the site's logs like any other.",
+      "Request a built site as a viewer would, and return its answer with what its Worker logged and threw while answering. A site that does not answer within 15 seconds fails the request. Request the routes a site's pages call and its / after building it, before handing it to the user. The request reaches the site's latest build, reads the scope's data as the site does, and appears in the site's logs like any other.",
     permissions: [BACKOFFICE_PERMISSION.upload.read, ...ARTIFACT_SITE_DATA_PERMISSIONS],
     input: artifactSiteRequestInputSchema,
     output: artifactSiteResponseSchema,

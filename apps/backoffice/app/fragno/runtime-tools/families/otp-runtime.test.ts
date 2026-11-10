@@ -47,6 +47,7 @@ describe("createOtpRuntime", () => {
         signUpAccessCodesRequired: true,
         localEmailLog: false,
         sites: false,
+        sitesDomain: null,
         workersAi: false,
         inboundEmailDomain: null,
         bindings: {
@@ -94,6 +95,7 @@ describe("createOtpRuntime", () => {
         signUpAccessCodesRequired: true,
         localEmailLog: false,
         sites: false,
+        sitesDomain: null,
         workersAi: false,
         inboundEmailDomain: null,
         bindings: {

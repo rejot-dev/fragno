@@ -62,9 +62,14 @@ DURABLE_OBJECT_JURISDICTIONS=local
 # system Resend connection, email is only printed. Never set this outside local .dev.vars.
 LOCAL_EMAIL_LOG=true
 
-# Build and serve /workspace/**/<name>.site directories at /backoffice/sites/. Sites share
-# Backoffice's origin until they have their own domain, so never set this outside local .dev.vars.
+# Build and serve /workspace/**/<name>.site directories. Without SITES_DOMAIN, sites are built and
+# agents can request them, but no one can open them.
 SITES_ENABLED=true
+
+# The domain each scope's sites are served under, at <words>.<domain>, such as ley.run. A port may
+# follow, and *.localhost serves over http, such as localhost:5467. It needs the blobs buckets and
+# DOCS_PUBLIC_BASE_URL. Locally, localhost:5467 serves sites to a browser on this machine.
+SITES_DOMAIN=
 
 # Canonical public URL for links and proxy access. Use 127.0.0.1 for local Node development;
 # localhost remains an alias available only from loopback without proxy forwarding headers.

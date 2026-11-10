@@ -56,6 +56,7 @@ import {
   parseAuthEmailVerificationRuntimeConfig,
   parseBooleanEnv,
   parseInboundEmailDomain,
+  parseSitesDomain,
   parseSignUpAccessCodesRequired,
   type BackofficeRuntimeConfig,
   type BackofficeRuntimeServices,
@@ -419,6 +420,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
       ),
       localEmailLog: parseBooleanEnv("LOCAL_EMAIL_LOG", this.env.LOCAL_EMAIL_LOG),
       sites: parseBooleanEnv("SITES_ENABLED", this.env.SITES_ENABLED),
+      sitesDomain: parseSitesDomain(this.env.SITES_DOMAIN),
       workersAi: this.#workersAi,
       inboundEmailDomain: parseInboundEmailDomain(this.env.INBOUND_EMAIL_DOMAIN),
       bindings: {

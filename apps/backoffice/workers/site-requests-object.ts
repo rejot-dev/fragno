@@ -129,7 +129,12 @@ export class SiteRequestsObject implements SiteRequestsCommands {
     });
     try {
       const response = await Promise.race([
-        fetchSiteWorker(loaded.worker, request, new URL(request.url).pathname).catch(() => null),
+        fetchSiteWorker(
+          loaded.worker,
+          request,
+          new URL(request.url).pathname,
+          input.viewer ?? null,
+        ).catch(() => null),
         aborted(deadline),
       ]);
       if (response === "aborted") {
