@@ -164,14 +164,14 @@ const dailyReportSteps: FixtureStep[] = [
 // The view's state lives in the URL, as it would in Backoffice: `show` and `at` filter the runs,
 // `run` opens one, and `runStep` selects a step of it.
 function filterFromSearch(search: URLSearchParams): WorkflowHealthFilter {
-  switch (search.get("show")) {
-    case "failed":
-      return { kind: "failed" };
-    case "step":
-      return { kind: "step", step: search.get("at") };
-    default:
-      return { kind: "all" };
+  const show = search.get("show");
+  if (show === "failed") {
+    return { kind: "failed" };
   }
+  if (show === "step") {
+    return { kind: "step", step: search.get("at") };
+  }
+  return { kind: "all" };
 }
 
 function withParams(search: URLSearchParams, params: Record<string, string | null>): string {
@@ -195,6 +195,7 @@ function filterParams(filter: WorkflowHealthFilter): Record<string, string | nul
     case "step":
       return { show: "step", at: filter.step };
   }
+  throw new Error("Unsupported workflow health filter.");
 }
 
 function runEnd(run: WorkflowHealthRun): number | null {
@@ -208,6 +209,7 @@ function runEnd(run: WorkflowHealthRun): number | null {
     case "errored":
       return run.endedAt;
   }
+  throw new Error("Unsupported workflow run status.");
 }
 
 /** The run's steps on the run timeline, spread over the run's span: the fixtures keep no timings. */
@@ -252,9 +254,9 @@ function OpenedRunView({ run, name }: { run: WorkflowHealthRun; name: string }) 
         nodes={timelineNodes(run)}
         events={[]}
         selectedStepId={selectedStepId}
-        onSelectStep={(stepId) =>
-          setSearch(withParams(search, { runStep: stepId === selectedStepId ? null : stepId }))
-        }
+        onSelectStep={(stepId) => {
+          setSearch(withParams(search, { runStep: stepId === selectedStepId ? null : stepId }));
+        }}
         presentation={{ kind: "standalone", meta: null, actions: null, surface: "flush" }}
       />
       {run.status === "errored" ? (

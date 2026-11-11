@@ -199,7 +199,9 @@ export function WorkflowHealth({
                 <RunTable
                   runs={listed}
                   hiddenCount={filtered.length - listed.length}
-                  onShowAll={() => setShowAllRuns(true)}
+                  onShowAll={() => {
+                    setShowAllRuns(true);
+                  }}
                   openedId={openedId}
                   paths={paths}
                   now={now}
@@ -222,6 +224,7 @@ function matchesFilter(run: WorkflowHealthRun, filter: WorkflowHealthFilter): bo
     case "step":
       return run.status === "errored" && failedStep(run) === filter.step;
   }
+  throw new Error("Unsupported workflow health filter.");
 }
 
 /** The step a failed run stopped at; null when it failed outside every step. */
@@ -357,6 +360,7 @@ function stripTone(run: WorkflowHealthRun): RunStripTone {
     case "paused":
       return "progress";
   }
+  throw new Error("Unsupported workflow run status.");
 }
 
 /** The latest runs as a row of ticks, oldest on the left, each leading to its run. */
@@ -604,6 +608,7 @@ function runDetail(run: WorkflowHealthRun): { text: string; tone: "failed" | "wa
     case "terminated":
       return { text: "", tone: null };
   }
+  throw new Error("Unsupported workflow run status.");
 }
 
 const RUN_COLUMNS: readonly PanelTableColumn[] = [
