@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { parseEnv } from "node:util";
@@ -25,6 +26,7 @@ const boxdVmHost = process.env.BOXD_VM_HOST;
 const viteHost = boxdVmHost ? "0.0.0.0" : "127.0.0.1";
 const boxdAllowedHosts = boxdVmHost ? [`.${boxdVmHost}`] : [];
 const localDevVarsPath = path.resolve(__dirname, ".dev.vars");
+const buildCompleteMarkerPath = path.resolve(__dirname, "build/.build-complete");
 
 /** DOCS_PUBLIC_BASE_URL from .dev.vars: the boxd proxy or tunnel serving the local server. */
 function localPublicBaseUrl(): string | null {
@@ -208,6 +210,22 @@ function localR2PublicOriginPlugin(): Plugin {
   };
 }
 
+// scripts/run-vite-preview.mjs restarts a running preview when this marker changes. A build replaces
+// the output the preview serves, and the preview's Workers keep requesting the old asset chunks.
+function writeBuildCompleteMarkerPlugin(): Plugin {
+  return {
+    name: "write-build-complete-marker",
+    // Runs after React Router and the Cloudflare plugin have built every environment and written
+    // the Worker configs, as long as it stays after the Cloudflare plugin in the plugin list.
+    buildApp: {
+      order: "post",
+      async handler() {
+        await writeFile(buildCompleteMarkerPath, new Date().toISOString());
+      },
+    },
+  };
+}
+
 // Vite's dev server has a `u` shortcut, but its preview server does not. Shortcuts bound here merge
 // with the ones Vite's CLI binds after startup.
 function previewServerUrlShortcutPlugin(): Plugin {
@@ -297,6 +315,7 @@ export default defineConfig(({ command }) => {
       emitWorkerLocalDevVarsPlugin(),
       previewServerUrlShortcutPlugin(),
       printPublicBaseUrlPlugin(),
+      writeBuildCompleteMarkerPlugin(),
     ],
     ssr: {
       noExternal: ["@earendil-works/pi-ai"],

@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
+import { unwatchFile, watchFile } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 
 const enableContainersFlag = "--containers";
 const enableSourceMapsFlag = "--sourcemap";
@@ -81,25 +83,68 @@ const configPatches = [
   })),
 ];
 
-const originalConfigs = [];
-try {
-  for (const { url } of configPatches) {
-    originalConfigs.push(await readFile(url, "utf8"));
+// A build replaces the output the preview serves, but the running Workers keep requesting the old
+// asset chunks. vite.config.ts writes this marker once a build has finished, and the preview
+// restarts on the new output.
+const buildCompleteMarkerPath = fileURLToPath(new URL("../build/.build-complete", import.meta.url));
+let restartRequested = false;
+watchFile(buildCompleteMarkerPath, { interval: 500 }, (current, previous) => {
+  // A starting build deletes the marker; the preview keeps running until the build has finished.
+  if (current.mtimeMs === 0 || current.mtimeMs === previous.mtimeMs) {
+    return;
   }
-} catch (cause) {
-  throw new Error(
-    "Backoffice preview output is missing. Run `pnpm --filter @fragno-apps/backoffice-rr build` before previewing.",
-    { cause },
-  );
+  restartRequested = true;
+  activeChild?.kill("SIGTERM");
+});
+
+// A build that started meanwhile may have removed the output, but any other failure to read it
+// must not skip restoring the configs.
+async function readConfigIfPresent(url) {
+  try {
+    return await readFile(url, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function readOriginalConfigs() {
+  try {
+    return await Promise.all(configPatches.map(({ url }) => readFile(url, "utf8")));
+  } catch (cause) {
+    throw new Error(
+      "Backoffice preview output is missing. Run `pnpm --filter @fragno-apps/backoffice-rr build` before previewing.",
+      { cause },
+    );
+  }
 }
 
 try {
-  for (const [index, { url, patch }] of configPatches.entries()) {
-    await writeFile(url, JSON.stringify(patch(JSON.parse(originalConfigs[index]))));
-  }
-  process.exitCode = (await runViteCommand(previewCommand)).code;
+  do {
+    if (restartRequested) {
+      console.log("\nBackoffice build finished, restarting preview on the new output.\n");
+      restartRequested = false;
+    }
+    const originalConfigs = await readOriginalConfigs();
+    const patchedConfigs = configPatches.map(({ patch }, index) =>
+      JSON.stringify(patch(JSON.parse(originalConfigs[index]))),
+    );
+    try {
+      for (const [index, { url }] of configPatches.entries()) {
+        await writeFile(url, patchedConfigs[index]);
+      }
+      process.exitCode = (await runViteCommand(previewCommand)).code;
+    } finally {
+      // A build that ran meanwhile wrote its own configs, which must not be replaced by older ones.
+      for (const [index, { url }] of configPatches.entries()) {
+        if ((await readConfigIfPresent(url)) === patchedConfigs[index]) {
+          await writeFile(url, originalConfigs[index]);
+        }
+      }
+    }
+  } while (restartRequested && !stopSignal);
 } finally {
-  for (const [index, { url }] of configPatches.entries()) {
-    await writeFile(url, originalConfigs[index]);
-  }
+  unwatchFile(buildCompleteMarkerPath);
 }
