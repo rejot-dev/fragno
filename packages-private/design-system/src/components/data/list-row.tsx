@@ -32,16 +32,18 @@ export type ListRowExpansion = { label: string; content: ReactNode };
 /**
  * One row of a RowList: what it is, a line about it, and what it trails with, such as a time or a
  * status. With `to`, the whole row leads there, so its trailing content holds no links; while that
- * page is open, as when the row's record shows beside its list, the row reads as selected. With an
- * expansion, the row opens to show its content below, such as a form to answer; then only the
- * title leads to `to`, so the rest of the row toggles, and its trailing content can hold controls,
- * such as links or buttons, which act without toggling.
+ * page is open, as when the row's record shows beside its list, the row reads as selected. With
+ * actions, such as a button that asks an agent about the row, only the title leads to `to`, so the
+ * actions act on their own. With an expansion, the row opens to show its content below, such as a
+ * form to answer; then only the title leads to `to` too, so the rest of the row toggles, and its
+ * trailing content can hold controls, such as links or buttons, which act without toggling.
  */
 export function ListRow({
   leading,
   title,
   detail,
   trailing,
+  actions,
   to,
   expansion,
 }: {
@@ -49,10 +51,22 @@ export function ListRow({
   title: string;
   detail: ReactNode;
   trailing: ReactNode;
+  /** Controls at the row's end; null for none. */
+  actions: ReactNode;
   to: string | null;
   expansion: ListRowExpansion | null;
 }) {
   const titleClassName = "block truncate text-sm font-semibold text-[var(--bo-fg)]";
+  const titleLink =
+    to === null ? (
+      <span className={titleClassName} title={title}>
+        {title}
+      </span>
+    ) : (
+      <Link to={to} className={`${titleClassName} hover:underline`} title={title}>
+        {title}
+      </Link>
+    );
   const content = (titleElement: ReactNode, end: ReactNode) => (
     <>
       {leading}
@@ -66,6 +80,7 @@ export function ListRow({
       </span>
       <span className="ml-auto flex shrink-0 items-center gap-3 text-xs">
         {trailing}
+        {actions}
         {end}
       </span>
     </>
@@ -79,15 +94,7 @@ export function ListRow({
             className={`${rowClassName} cursor-pointer list-none [&::-webkit-details-marker]:hidden`}
           >
             {content(
-              to === null ? (
-                <span className={titleClassName} title={title}>
-                  {title}
-                </span>
-              ) : (
-                <Link to={to} className={`${titleClassName} hover:underline`} title={title}>
-                  {title}
-                </Link>
-              ),
+              titleLink,
               <span className="inline-flex items-center gap-1 font-semibold text-[var(--bo-accent-fg)]">
                 {expansion.label}
                 <Icon
@@ -100,6 +107,14 @@ export function ListRow({
           {/* Lines up with the title past a leading tile. */}
           <div className={`pb-3 ${leading === null ? "" : "pl-11"}`}>{expansion.content}</div>
         </details>
+      </li>
+    );
+  }
+
+  if (actions !== null) {
+    return (
+      <li>
+        <div className={rowClassName}>{content(titleLink, null)}</div>
       </li>
     );
   }

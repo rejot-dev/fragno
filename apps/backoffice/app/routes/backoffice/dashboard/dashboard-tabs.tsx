@@ -14,13 +14,19 @@ import { backofficeRouteScopePath } from "@/backoffice-runtime/route-scope";
 
 import type { PageSources } from "../pages/load.server";
 import { pageName, pagePath } from "../pages/path";
-import { dashboardActivityPath, dashboardMapPath, dashboardPath } from "./path";
+import {
+  dashboardActivityPath,
+  dashboardMapPath,
+  dashboardPath,
+  dashboardWorkflowsPath,
+} from "./path";
 import { usePinnedPages } from "./pinned-pages";
 
 /** Pages go by their file's name, as in Files; a page's title heads the page itself. */
 export type DashboardTab =
   | { kind: "overview" }
   | { kind: "activity" }
+  | { kind: "workflows" }
   | { kind: "map" }
   | { kind: "page"; name: string };
 
@@ -97,6 +103,17 @@ export function DashboardTabs({
           to: dashboardActivityPath(scope, { trace: null, filter: "all" }),
           groupId: "dashboard",
           active: active.kind === "activity",
+        },
+        {
+          id: "workflows",
+          label: "Workflows",
+          to: dashboardWorkflowsPath(scope, {
+            scriptPath: null,
+            filter: { kind: "all" },
+            run: null,
+          }),
+          groupId: "dashboard",
+          active: active.kind === "workflows",
         },
         {
           id: "map",

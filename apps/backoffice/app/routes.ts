@@ -27,6 +27,7 @@ export default [
       route("dashboard", "routes/backoffice/dashboard/index.tsx"),
       route("dashboard/:scopeKind/:scopeId", "routes/backoffice/dashboard/dashboard.tsx"),
       route("dashboard/:scopeKind/:scopeId/activity", "routes/backoffice/dashboard/activity.tsx"),
+      route("dashboard/:scopeKind/:scopeId/workflows", "routes/backoffice/dashboard/workflows.tsx"),
       route("dashboard/:scopeKind/:scopeId/map", "routes/backoffice/dashboard/map.tsx"),
       route("dashboard/:scopeKind/:scopeId/pages/*", "routes/backoffice/pages/page.tsx"),
       route("sites/open", "routes/backoffice/sites/open.ts"),

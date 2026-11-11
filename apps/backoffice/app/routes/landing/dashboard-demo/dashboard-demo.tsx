@@ -567,6 +567,7 @@ function AttentionPanel({
             title={item.workflow}
             detail="Waiting for your input"
             trailing={<RowTime time={formatRelativeTime(item.updatedAt, now)} />}
+            actions={null}
             expansion={null}
           />
         ))}
@@ -607,6 +608,7 @@ function RecentActivityPanel({
                 <RowTime time={formatRelativeTime(entry.occurredAt, now)} />
               </>
             }
+            actions={null}
             expansion={null}
           />
         ))}

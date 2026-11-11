@@ -506,6 +506,8 @@ export function InConversation() {
                 </ChatActivityStep>
               </ChatActivity>
               <ChatWorkflow
+                nameTo={null}
+                actions={null}
                 id={WORKFLOW_ELEMENT_ID}
                 name={WORKFLOW}
                 status={status}
@@ -607,7 +609,7 @@ function Workflow({
   ...props
 }: Omit<
   ComponentProps<typeof ChatWorkflow>,
-  "name" | "selectedId" | "onSelect" | "onStop" | "steps"
+  "name" | "nameTo" | "actions" | "selectedId" | "onSelect" | "onStop" | "steps"
 > & {
   /** Where the run is in its steps; null while they are not known. */
   phase: Phase | null;
@@ -615,6 +617,8 @@ function Workflow({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   return (
     <ChatWorkflow
+      nameTo={null}
+      actions={null}
       name={WORKFLOW}
       selectedId={selectedId}
       onSelect={setSelectedId}
@@ -723,6 +727,8 @@ export function LongRun() {
   return (
     <Column>
       <ChatWorkflow
+        nameTo={null}
+        actions={null}
         name="kc-initial-mirror"
         status={{ kind: "running" }}
         elements={[]}
@@ -758,6 +764,8 @@ export function Stop() {
   return (
     <Column>
       <ChatWorkflow
+        nameTo={null}
+        actions={null}
         name={WORKFLOW}
         status={
           stopped
@@ -780,6 +788,8 @@ export function Stop() {
         }
       />
       <ChatWorkflow
+        nameTo={null}
+        actions={null}
         name="Archive old invoices"
         status={{ kind: "running" }}
         elements={[]}

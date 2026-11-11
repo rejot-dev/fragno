@@ -17,6 +17,7 @@ export const ListRow: ComponentFn<typeof backofficeUiCatalog, "ListRow"> = ({
       title={props.title}
       detail={props.detail ?? null}
       trailing={children}
+      actions={null}
       to={props.to && links ? links(props.to) : null}
       expansion={
         slots?.expanded === undefined

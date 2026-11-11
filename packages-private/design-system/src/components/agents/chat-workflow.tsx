@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { Link } from "react-router";
 
 import { cn } from "../../cn";
 import { Button } from "../controls/button";
@@ -113,6 +114,8 @@ function statusError(status: ChatWorkflowStatus) {
  */
 export function ChatWorkflow({
   name,
+  nameTo,
+  actions,
   status,
   elements,
   selectedId,
@@ -122,6 +125,10 @@ export function ChatWorkflow({
   ...props
 }: Omit<ComponentProps<"section">, "className" | "children" | "onSelect"> & {
   name: string;
+  /** Where the name leads, such as the workflow's runs; null to leave it plain. */
+  nameTo: string | null;
+  /** Controls beside the stop control, such as a link to the conversation that started the run. */
+  actions: ReactNode;
   status: ChatWorkflowStatus;
   /** Oldest first. */
   elements: readonly ChatWorkflowElement[];
@@ -171,10 +178,19 @@ export function ChatWorkflow({
     >
       <header className="flex min-h-11 min-w-0 items-center gap-3 py-1.5 pr-1.5 pl-3">
         <Icon name="share-2" className="size-3.5 flex-none text-[var(--bo-muted-2)]" />
-        <p className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--bo-fg)]">{name}</p>
+        <p className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--bo-fg)]">
+          {nameTo === null ? (
+            name
+          ) : (
+            <Link to={nameTo} className="hover:underline">
+              {name}
+            </Link>
+          )}
+        </p>
         <BackofficeStatusLight tone={tone} role="status">
           {label}
         </BackofficeStatusLight>
+        {actions}
         {onStop === null ? null : <RunStopControl onStop={onStop} />}
       </header>
       {steps === null ? null : (

@@ -140,17 +140,7 @@ export function SessionWorkflow({ run: reference }: { run: WorkflowRunReference 
     selector: { type: "instance", ...reference },
   });
   const run = records.instances[0] ?? null;
-  const steps = useMemo(
-    () =>
-      run === null
-        ? []
-        : [...run.workflowSteps].sort(
-            (left, right) =>
-              workflowRunTime(left.createdAt) - workflowRunTime(right.createdAt) ||
-              left.id.localeCompare(right.id),
-          ),
-    [run],
-  );
+  const steps = useMemo(() => (run === null ? [] : orderedSteps(run)), [run]);
   const timeline = useWorkflowRunTimelineProjection(run);
   const syncError = records.error ?? (replica === null ? replicaError : null);
   const status: ChatWorkflowStatus =
@@ -227,6 +217,8 @@ export function SessionWorkflow({ run: reference }: { run: WorkflowRunReference 
   const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
   return (
     <ChatWorkflow
+      nameTo={null}
+      actions={null}
       ref={setCard}
       name={name}
       status={status}
@@ -247,6 +239,70 @@ export function SessionWorkflow({ run: reference }: { run: WorkflowRunReference 
           : null
       }
     />
+  );
+}
+
+/**
+ * A run outside a conversation, such as one waiting for input on the dashboard, as its card in a
+ * conversation shows it: every interface its steps produced, where it is in its steps, and a
+ * control that stops it.
+ */
+export function WorkflowRunCard({
+  run,
+  nameTo,
+  actions,
+}: {
+  run: AutomationWorkflowRun;
+  nameTo: string | null;
+  actions: ReactNode;
+}) {
+  const { resolvedScope } = useCurrentBackofficeContext();
+  const steps = useMemo(() => orderedSteps(run), [run]);
+  const timeline = useWorkflowRunTimelineProjection(run);
+  const elements = workflowElements(run, steps, (generatedUi) => (
+    <WorkflowRunGeneratedInterface
+      run={{ ...run, steps }}
+      generatedUi={generatedUi}
+      resolvedScope={resolvedScope}
+      standalone
+    />
+  ));
+  // A new element moves the card on to it, whichever one the reader was looking at.
+  const newestId = elements.at(-1)?.id ?? null;
+  const [selection, setSelection] = useState<{ id: string; newestId: string | null } | null>(null);
+  const runtimeScope = backofficeRuntimeScopeFromResolvedScope(resolvedScope);
+  return (
+    <ChatWorkflow
+      nameTo={nameTo}
+      actions={actions}
+      name={run.remoteWorkflowName ?? run.workflowName}
+      status={workflowStatus(run, steps)}
+      elements={elements}
+      steps={timeline === null ? null : <SessionWorkflowSteps timeline={timeline} />}
+      selectedId={selection?.newestId === newestId ? selection.id : null}
+      onSelect={(id) => {
+        setSelection(id === null ? null : { id, newestId });
+      }}
+      onStop={
+        stoppable(run)
+          ? () =>
+              terminateBackofficeWorkflowRun({
+                scope: runtimeScope,
+                workflowName: run.workflowName,
+                instanceId: run.instanceId,
+              })
+          : null
+      }
+    />
+  );
+}
+
+/** A run's steps in the order it recorded them. */
+function orderedSteps(run: AutomationWorkflowRun): WorkflowRunStep[] {
+  return [...run.workflowSteps].sort(
+    (left, right) =>
+      workflowRunTime(left.createdAt) - workflowRunTime(right.createdAt) ||
+      left.id.localeCompare(right.id),
   );
 }
 

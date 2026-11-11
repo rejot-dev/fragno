@@ -158,7 +158,7 @@ function cronWeekday(field: string): string | null {
  * How often a schedule fires, in words, for the common cron shapes; others keep their expression.
  * Times read in the schedule's own time zone, which the words name.
  */
-function describeScheduleCadence(cadence: AutomationScheduleCadence): string {
+export function describeScheduleCadence(cadence: AutomationScheduleCadence): string {
   if (cadence.kind === "once") {
     return "Once";
   }

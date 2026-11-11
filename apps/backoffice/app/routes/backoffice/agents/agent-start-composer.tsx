@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useFetcher } from "react-router";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import type { ComposerDraft } from "@/components/backoffice/ask-agent";
 import type { PiAvailableModel } from "@/fragno/pi/agent/pi-agent-contract";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 
@@ -37,6 +38,8 @@ type AgentStartComposerProps = {
   usageLabel: string;
   /** Where the files the first message carries are uploaded. */
   resolvedScope: BackofficeResolvedScope;
+  /** A message a page asked the agent, which fills the first message unsent. */
+  draft: ComposerDraft | null;
   /** Called once the first turn is accepted and the agent is provisioned. */
   onStarted: () => void;
 };
@@ -51,6 +54,7 @@ export function AgentStartComposer({
   permissions,
   usageLabel,
   resolvedScope,
+  draft,
   onStarted,
 }: AgentStartComposerProps) {
   const fetcher = useFetcher<{ ok: boolean; error?: string }>();
@@ -73,6 +77,14 @@ export function AgentStartComposer({
     (fetcher.data && !fetcher.data.ok ? (fetcher.data.error ?? null) : null);
   const started = fetcher.data?.ok === true;
   const displayName = formatPiAgentName(agentName);
+
+  useEffect(() => {
+    if (draft === null) {
+      return;
+    }
+    setDraftPrompt(draft.text);
+    draft.onFilled();
+  }, [draft]);
 
   useEffect(() => {
     if (started) {

@@ -1,7 +1,7 @@
 import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
 import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import { WorkflowRunTimeline } from "@fragno-private/design-system/workflow-runs/workflow-run-timeline";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { formatTimestamp } from "../automations/formatting";
 import type {
@@ -12,36 +12,37 @@ import type {
 import { useWorkflowRunTimeline } from "../automations/script-view/workflow-run-timeline-presentation";
 
 /**
- * How the run sits on its page. On its own it keeps its own step selection and draws its own time
- * axis. Embedded in an event trace, the trace's flame graph draws the run's time, owns the replay
- * cursor, and shares the selection, which it names by step record id because only recorded steps
- * appear in the trace.
+ * How the run sits on its page. On its own it draws its own time axis. Embedded in an event trace,
+ * the trace's flame graph draws the run's time and owns the replay cursor.
  */
 export type WorkflowRunDetailPresentation =
   | { kind: "standalone" }
   | {
       kind: "embedded";
       cursor: number | null;
-      selectedStepRecordId: string | null;
-      onSelectStepRecord: (stepRecordId: string | null) => void;
       onHoverStepRecord: (stepRecordId: string | null) => void;
     };
 
 /**
  * One workflow run as a step timeline, with the selected step's record or the run's outcome. It
- * draws no frame of its own because it fills a dashboard section.
+ * draws no frame of its own because it fills a dashboard section. The page holds the selection,
+ * which it names by step record id, as links and event traces name steps: only recorded steps have
+ * one, so selecting a step the run has not reached selects the run.
  */
 export function WorkflowRunDetail({
   replica,
   reference,
+  selectedStepRecordId,
+  onSelectStepRecord,
   presentation,
 }: {
   replica: LofiSqliteClient;
   reference: WorkflowRunReference;
+  selectedStepRecordId: string | null;
+  onSelectStepRecord: (stepRecordId: string | null) => void;
   presentation: WorkflowRunDetailPresentation;
 }) {
   const run = useWorkflowRunTimeline({ replica, reference });
-  const [ownSelectedStepId, setOwnSelectedStepId] = useState<string | null>(null);
   const stepRecordsByStepId = run.timeline?.stepRecordsByStepId;
   const stepIdsByRecordId = useMemo(
     () => new Map([...(stepRecordsByStepId ?? [])].map(([stepId, record]) => [record.id, stepId])),
@@ -64,11 +65,7 @@ export function WorkflowRunDetail({
 
   const { instance, timeline } = run;
   const selectedStepId =
-    presentation.kind === "standalone"
-      ? ownSelectedStepId
-      : presentation.selectedStepRecordId === null
-        ? null
-        : (stepIdsByRecordId.get(presentation.selectedStepRecordId) ?? null);
+    selectedStepRecordId === null ? null : (stepIdsByRecordId.get(selectedStepRecordId) ?? null);
   const selectedRecord =
     selectedStepId === null ? null : (timeline.stepRecordsByStepId.get(selectedStepId) ?? null);
   const unmatchedSteps =
@@ -97,15 +94,9 @@ export function WorkflowRunDetail({
         events={timeline.events}
         selectedStepId={selectedStepId}
         onSelectStep={(stepId) => {
-          if (presentation.kind === "standalone") {
-            setOwnSelectedStepId((current) => (current === stepId ? null : stepId));
-            return;
-          }
           // Steps the run has not recorded yet have nothing to show, so they select the run.
           const recordId = timeline.stepRecordsByStepId.get(stepId)?.id ?? null;
-          presentation.onSelectStepRecord(
-            recordId === presentation.selectedStepRecordId ? null : recordId,
-          );
+          onSelectStepRecord(recordId === selectedStepRecordId ? null : recordId);
         }}
         presentation={
           presentation.kind === "standalone"
