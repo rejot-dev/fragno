@@ -30,9 +30,7 @@
     // Keeps each organization's and user's Durable Objects in the jurisdiction they chose. Only
     // local .dev.vars says "local", as workerd does not implement jurisdictions.
     "DURABLE_OBJECT_JURISDICTIONS": "enforced",
-    // Sites share Backoffice's origin until they have their own domain, so only local .dev.vars
-    // turns them on.
-    "SITES_ENABLED": "false",
+    "SITES_ENABLED": "true",
     // Local servers started without the bridge's containers say "false", so sandbox starts fail at once.
     "SANDBOX_CONTAINERS": "true",
     "DOCS_PUBLIC_BASE_URL": "https://leyway.com/",
@@ -61,6 +59,12 @@
     {
       "pattern": "backoffice.rejot.dev",
       "custom_domain": true,
+    },
+    // Each scope's sites, at SITES_DOMAIN's subdomains. Custom domains cannot be wildcards, so a
+    // route serves them, behind the zone's proxied wildcard DNS record.
+    {
+      "pattern": "*.ley.run/*",
+      "zone_name": "ley.run",
     },
   ],
   // Tags telemetry with the deployed version, so errors and metrics can be compared per release.
