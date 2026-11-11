@@ -900,10 +900,11 @@ function RunSelection({
   return (
     <section className="min-w-0">
       {header(
+        // Runs of saved workflows open among the workflow's other runs, other runs on their own.
         <Link
           to={dashboardRunPath(selectedScope, reference)}
-          aria-label="Open on the overview"
-          title="Open on the overview"
+          aria-label="Open in Workflows"
+          title="Open in Workflows"
           className="inline-flex size-7 items-center justify-center rounded-[4px] text-[var(--bo-muted)] transition-colors duration-150 hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none"
         >
           <Icon name="arrow-up-right" className="size-4" />
@@ -924,16 +925,12 @@ function RunSelection({
       <WorkflowRunDetail
         replica={replica}
         reference={reference}
-        presentation={{
-          kind: "embedded",
-          cursor,
-          selectedStepRecordId,
-          // Deselecting a step goes back to the run that ran it.
-          onSelectStepRecord: (stepRecordId) => {
-            onSelect(stepRecordId === null ? runNodeId : eventTraceStepNodeId(stepRecordId));
-          },
-          onHoverStepRecord,
+        selectedStepRecordId={selectedStepRecordId}
+        // Deselecting a step goes back to the run that ran it.
+        onSelectStepRecord={(stepRecordId) => {
+          onSelect(stepRecordId === null ? runNodeId : eventTraceStepNodeId(stepRecordId));
         }}
+        presentation={{ kind: "embedded", cursor, onHoverStepRecord }}
       />
     </section>
   );

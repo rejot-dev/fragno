@@ -118,6 +118,7 @@ export default function BackofficeOrganizationPiAgentDetail({
           permissions={agent.permissions}
           usageLabel={usageLabel}
           resolvedScope={resolvedScope}
+          draft={null}
           // Starting revalidates this route, which then shows the conversation.
           onStarted={() => undefined}
         />
@@ -176,6 +177,7 @@ function PiAgentDetailConversation({
       availableModelOptions={availableModelOptions}
       dictationMountRoute={dictationMountRoute}
       header={header}
+      draft={null}
       resolvedScope={resolvedScope}
       workspace={{
         storageKey: `backoffice:pi-agent-workspace:${basePath}`,

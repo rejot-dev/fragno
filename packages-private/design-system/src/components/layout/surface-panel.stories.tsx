@@ -129,6 +129,7 @@ export function Rows() {
               title="reports/weekly.ts"
               detail="schedule · Oct 22, 2026, 9:00 AM"
               trailing={<BackofficeStatusLight tone="live">completed</BackofficeStatusLight>}
+              actions={null}
               expansion={null}
             />
             <ListRow
@@ -137,6 +138,7 @@ export function Rows() {
               title="inline"
               detail="agent · Oct 22, 2026, 9:04 AM"
               trailing={<BackofficeStatusLight tone="failed">failed</BackofficeStatusLight>}
+              actions={null}
               expansion={null}
             />
           </RowList>

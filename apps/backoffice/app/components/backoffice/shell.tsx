@@ -3,9 +3,10 @@ import {
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import {
+  backofficeRouteScopeFromResolvedScope,
   backofficeRuntimeScopeFromResolvedScope,
   type BackofficeNamedProject,
   type BackofficeResolvedScope,
@@ -14,8 +15,10 @@ import {
 import { scheduleBackofficeTokenRefresh } from "@/fragno/auth/browser-auth.client";
 import type { AdministeredMember, BackofficeMeData } from "@/fragno/auth/contracts";
 import type { AutomationProjectList } from "@/fragno/automation/project-list";
+import { piAgentsPath } from "@/routes/backoffice/agents/path";
 
 import { AgentDrawer } from "./agent-drawer";
+import { AskAgentContext, type AgentDraft } from "./ask-agent";
 import { BackofficeClsDebugger } from "./cls-debugger";
 import { CurrentBackofficeProvider } from "./current-context";
 import type { CurrentBackofficeContext } from "./current-context-state";
@@ -155,6 +158,20 @@ function BackofficeShellFrame({
   isLoading,
 }: BackofficeShellProps) {
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
+  const [agentDraft, setAgentDraft] = useState<AgentDraft | null>(null);
+  const agentsPath = resolvedScope
+    ? piAgentsPath(backofficeRouteScopeFromResolvedScope(resolvedScope))
+    : null;
+  const askAgent = useCallback(
+    ({ agentName, text }: { agentName: string; text: string }) => {
+      if (agentsPath === null) {
+        return;
+      }
+      setAgentDraft((current) => ({ id: (current?.id ?? 0) + 1, agentsPath, agentName, text }));
+      setAgentDrawerOpen(true);
+    },
+    [agentsPath],
+  );
   const sections = useBackofficeSections(resolvedScope, me);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarRestoredRef = useRef(false);
@@ -261,7 +278,9 @@ function BackofficeShellFrame({
               resolvedScope={resolvedScope}
               administeredMember={administeredMember}
             />
-            <div className="flex min-w-0 flex-1 flex-col">{children}</div>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <AskAgentContext.Provider value={askAgent}>{children}</AskAgentContext.Provider>
+            </div>
           </main>
         </div>
       </div>
@@ -269,6 +288,7 @@ function BackofficeShellFrame({
       <div className="hidden sm:contents">
         <AgentDrawer
           open={agentDrawerOpen}
+          draft={agentDraft}
           // Agents read their directory from the scope's Automations replica.
           resolvedScope={automationReplicaSource ? resolvedScope : null}
           onClose={() => {

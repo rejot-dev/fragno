@@ -87,6 +87,7 @@ export default function BackofficeCodemodeRuns() {
                         {run.status}
                       </BackofficeStatusLight>
                     }
+                    actions={null}
                     expansion={null}
                   />
                 ))}

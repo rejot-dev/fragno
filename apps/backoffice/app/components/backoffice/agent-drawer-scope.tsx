@@ -13,6 +13,7 @@ import type { PiAgentDirectoryState } from "@/routes/backoffice/agents/agent-typ
 import { usePiAgentDirectory } from "@/routes/backoffice/agents/agents-workspace";
 
 import { AgentDrawerHeader } from "./agent-drawer-header";
+import type { ComposerDraft } from "./ask-agent";
 
 /**
  * The conversation in the agent drawer, with what it renders: the chat, its markdown, and the
@@ -23,6 +24,7 @@ export function AgentDrawerScope({
   resolvedScope,
   agentsPath,
   agentName,
+  draft,
   onAgentChange,
   onClose,
 }: {
@@ -30,6 +32,8 @@ export function AgentDrawerScope({
   resolvedScope: BackofficeResolvedScope;
   agentsPath: string;
   agentName: string;
+  /** A message a page asked this agent, for its composer. */
+  draft: ComposerDraft | null;
   onAgentChange: (agentName: string) => void;
   onClose: () => void;
 }) {
@@ -88,6 +92,7 @@ export function AgentDrawerScope({
             permissions={agent.permissions}
             usageLabel={data.usageLabel}
             resolvedScope={resolvedScope}
+            draft={draft}
             onStarted={reload}
           />
         </div>
@@ -101,6 +106,7 @@ export function AgentDrawerScope({
       availableModelOptions={data.availableModelOptions}
       dictationMountRoute={data.dictationMountRoute}
       header={header}
+      draft={draft}
       // The drawer is too narrow to open what the conversation produced beside it.
       workspace={null}
       resolvedScope={resolvedScope}

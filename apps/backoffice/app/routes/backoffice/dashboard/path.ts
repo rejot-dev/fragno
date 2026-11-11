@@ -2,6 +2,7 @@ import type {
   OrchestrationGraphItem,
   OrchestrationGraphItemKind,
 } from "@fragno-private/design-system/orchestration/orchestration-graph-model";
+import type { WorkflowHealthFilter } from "@fragno-private/design-system/workflow-runs/workflow-health";
 import type { ShouldRevalidateFunctionArgs } from "react-router";
 
 import {
@@ -12,12 +13,9 @@ import {
   backofficeRouteScopePath,
   type BackofficeRouteScope,
 } from "@/backoffice-runtime/route-scope";
+import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import type { WorkflowRunReference } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 
-// The overview shows one workflow run above its other panels. The run lives in the URL, so browser
-// back, reload, and links from elsewhere all reach it.
-const RUN_WORKFLOW_PARAM = "workflow";
-const RUN_INSTANCE_PARAM = "run";
 // The orchestration selection lives in the URL too, so links can point at a route or an event.
 const SELECTION_KIND_PARAM = "selection";
 const SELECTION_ID_PARAM = "selected";
@@ -115,21 +113,92 @@ export function withSelectedTraceNode(
   return next;
 }
 
+/**
+ * A run open on the Workflows tab, which the tab shows among the runs of the saved workflow it ran,
+ * or on its own when it ran none.
+ */
 export function dashboardRunPath(
   scope: BackofficeResolvedScope,
   run: WorkflowRunReference,
 ): string {
-  const search = new URLSearchParams({
-    [RUN_WORKFLOW_PARAM]: run.workflowName,
-    [RUN_INSTANCE_PARAM]: run.instanceId,
+  return dashboardWorkflowsPath(backofficeRouteScopeFromResolvedScope(scope), {
+    scriptPath: null,
+    filter: { kind: "all" },
+    run: { workflowName: run.workflowName, instanceId: run.instanceId, stepRecordId: null },
   });
-  return `${dashboardPath(backofficeRouteScopeFromResolvedScope(scope))}?${search.toString()}`;
 }
 
-export function dashboardOpenedRun(searchParams: URLSearchParams): WorkflowRunReference | null {
-  const workflowName = searchParams.get(RUN_WORKFLOW_PARAM);
-  const instanceId = searchParams.get(RUN_INSTANCE_PARAM);
-  return workflowName && instanceId ? { workflowName, instanceId } : null;
+// The Workflows tab keeps the workflow it shows, which of its runs the list shows, and the run open
+// with its selected step in the URL. A workflow goes by its script's path.
+const WORKFLOW_SCRIPT_PATH_PARAM = "workflow";
+const WORKFLOW_FILTER_PARAM = "show";
+const WORKFLOW_FILTER_STEP_PARAM = "at";
+const WORKFLOW_RUN_PARAM = "run";
+// Nearly every run the tab opens is a Codemode run, so only other runs name their workflow.
+const WORKFLOW_RUN_WORKFLOW_PARAM = "runOf";
+const WORKFLOW_RUN_STEP_PARAM = "step";
+
+/** A run open on the Workflows tab, on the step record it selects. */
+export type DashboardWorkflowRun = WorkflowRunReference & { stepRecordId: string | null };
+
+/**
+ * What the Workflows tab shows; null where nothing is picked. A run opened without its workflow
+ * shows among the runs of the saved workflow it ran, or on its own.
+ */
+export type DashboardWorkflowsView = {
+  scriptPath: string | null;
+  filter: WorkflowHealthFilter;
+  run: DashboardWorkflowRun | null;
+};
+
+export function dashboardWorkflowsPath(
+  scope: BackofficeRouteScope,
+  { scriptPath, filter, run }: DashboardWorkflowsView,
+): string {
+  const search = new URLSearchParams();
+  if (scriptPath !== null) {
+    search.set(WORKFLOW_SCRIPT_PATH_PARAM, scriptPath);
+  }
+  if (filter.kind !== "all") {
+    search.set(WORKFLOW_FILTER_PARAM, filter.kind);
+  }
+  // Failures outside every step go without a step.
+  if (filter.kind === "step" && filter.step !== null) {
+    search.set(WORKFLOW_FILTER_STEP_PARAM, filter.step);
+  }
+  if (run !== null) {
+    search.set(WORKFLOW_RUN_PARAM, run.instanceId);
+    if (run.workflowName !== CODEMODE_WORKFLOW) {
+      search.set(WORKFLOW_RUN_WORKFLOW_PARAM, run.workflowName);
+    }
+    if (run.stepRecordId !== null) {
+      search.set(WORKFLOW_RUN_STEP_PARAM, run.stepRecordId);
+    }
+  }
+  const query = search.toString();
+  return `${dashboardPath(scope)}/workflows${query === "" ? "" : `?${query}`}`;
+}
+
+export function dashboardWorkflowsView(searchParams: URLSearchParams): DashboardWorkflowsView {
+  const instanceId = searchParams.get(WORKFLOW_RUN_PARAM);
+  const filterKind = searchParams.get(WORKFLOW_FILTER_PARAM);
+  return {
+    scriptPath: searchParams.get(WORKFLOW_SCRIPT_PATH_PARAM),
+    filter:
+      filterKind === "failed"
+        ? { kind: "failed" }
+        : filterKind === "step"
+          ? { kind: "step", step: searchParams.get(WORKFLOW_FILTER_STEP_PARAM) }
+          : { kind: "all" },
+    run:
+      instanceId === null
+        ? null
+        : {
+            workflowName: searchParams.get(WORKFLOW_RUN_WORKFLOW_PARAM) ?? CODEMODE_WORKFLOW,
+            instanceId,
+            stepRecordId: searchParams.get(WORKFLOW_RUN_STEP_PARAM),
+          },
+  };
 }
 
 export function dashboardMapPath(scope: BackofficeRouteScope): string {

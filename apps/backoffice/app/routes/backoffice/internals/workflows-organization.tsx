@@ -139,6 +139,7 @@ export default function BackofficeWorkflowsOrganization() {
                           {instance.status}
                         </BackofficeStatusLight>
                       }
+                      actions={null}
                       expansion={null}
                     />
                   );

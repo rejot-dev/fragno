@@ -146,6 +146,8 @@ export function LandingDemo() {
           </ChatActivity>
           <p>Set up. Maya Chen just filled in the form, and her reply is ready for you.</p>
           <ChatWorkflow
+            nameTo={null}
+            actions={null}
             name="qualify-lead"
             status={workflowStatus(run)}
             elements={elements}

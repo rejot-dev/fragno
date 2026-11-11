@@ -365,7 +365,7 @@ function usePageResults(
   return useSyncExternalStore(store.subscribe, store.get, store.get);
 }
 
-/** Runs and routes open on the scope's dashboard, and connections in Integrations. */
+/** Runs open on the dashboard's Workflows tab, routes on its Map, and connections in Integrations. */
 function pageLinks(scope: BackofficeResolvedScope) {
   return (target: BackofficeUiLinkTarget) => {
     switch (target.kind) {

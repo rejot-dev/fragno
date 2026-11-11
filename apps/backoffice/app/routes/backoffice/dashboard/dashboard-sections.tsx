@@ -1,6 +1,4 @@
-import type { LofiSqliteClient } from "@fragno-dev/lofi/sqlite";
-import { RunStopControl } from "@fragno-private/design-system/agents/run-stop-control";
-import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
 import { ListRow, ListRowIcon, RowList } from "@fragno-private/design-system/data/list-row";
 import { formatRelativeTime } from "@fragno-private/design-system/data/relative-time";
 import { SparkBars } from "@fragno-private/design-system/data/spark-bars";
@@ -8,16 +6,14 @@ import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/st
 import type { BackofficeStatusTone } from "@fragno-private/design-system/feedback/status-tone";
 import { Icon } from "@fragno-private/design-system/icon";
 import { Panel, PanelFooter } from "@fragno-private/design-system/layout/panel";
-import { useEffect, useRef } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link } from "react-router";
 
 import {
   backofficeRouteScopeFromResolvedScope,
-  backofficeRuntimeScopeFromResolvedScope,
   type BackofficeScopeSelection,
 } from "@/backoffice-runtime/resolved-scope";
-import { terminateBackofficeWorkflowRun } from "@/backoffice-ui/workflow-events.client";
-import { WorkflowRunGeneratedInterface } from "@/components/backoffice/workflow-run-generated-interface";
+import { useAskAgent } from "@/components/backoffice/ask-agent";
+import { MAIN_PI_AGENT_NAME } from "@/fragno/pi/agent/pi-agent-name";
 
 import {
   describePiAgentActivity,
@@ -25,6 +21,7 @@ import {
   type PiAgentListing,
 } from "../agents/agent-activity";
 import { piAgentsPath } from "../agents/path";
+import { WorkflowRunCard } from "../agents/session-detail/session-workflow";
 import type { AutomationWorkflowRun } from "../automations/script-view/workflow-run-presentation";
 import { integrationConnectionPath } from "../integrations/connection-paths";
 import {
@@ -38,16 +35,12 @@ import type { EventTraceListEntry, EventTraceSummary } from "./event-traces";
 import type { BackofficeDashboard, DashboardAttention } from "./overview";
 import {
   dashboardActivityPath,
-  dashboardOpenedRun,
-  dashboardPath,
   dashboardRunPath,
   dashboardSelectionPath,
+  dashboardWorkflowsPath,
 } from "./path";
-import { WorkflowRunDetail } from "./workflow-run-detail";
 
 const WINDOW_LABEL = "24 hours";
-// Clears the sticky top bar when an opened run scrolls into view.
-const openedRunScrollMarginClassName = "scroll-mt-20";
 
 export type DashboardLoaderData = { selectedScope: BackofficeScopeSelection; hasAgents: boolean };
 
@@ -59,14 +52,12 @@ export function DashboardSections({
   dashboard,
   now,
   loaderData,
-  replica,
   recentActivity,
   agents,
 }: {
   dashboard: BackofficeDashboard;
   now: number;
   loaderData: DashboardLoaderData;
-  replica: LofiSqliteClient;
   /** The latest traces that set something in motion, in list order. */
   recentActivity: readonly EventTraceListEntry[];
   agents: readonly PiAgentListing[];
@@ -77,7 +68,6 @@ export function DashboardSections({
   return (
     <>
       <AttentionPanel attention={dashboard.attention} now={now} selectedScope={selectedScope} />
-      <OpenedRunPanel selectedScope={selectedScope} replica={replica} />
       <div className="grid items-start gap-x-12 gap-y-10 lg:grid-cols-2">
         <ComingUpPanel dashboard={dashboard} now={now} selectedScope={selectedScope} />
         {loaderData.hasAgents ? (
@@ -86,21 +76,6 @@ export function DashboardSections({
       </div>
       <RecentActivityPanel entries={recentActivity} now={now} selectedScope={selectedScope} />
     </>
-  );
-}
-
-/** Leads back from the detail a panel shows. */
-function BackLink({ to }: { to: string }) {
-  return (
-    <Link
-      to={to}
-      preventScrollReset
-      aria-label="Back"
-      title="Back"
-      className="-ml-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-[4px] text-[var(--bo-muted)] hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)]"
-    >
-      <Icon name="arrow-left" className="size-4" />
-    </Link>
   );
 }
 
@@ -169,36 +144,29 @@ function AttentionRow({
   selectedScope: BackofficeScopeSelection;
 }) {
   switch (item.kind) {
+    // The run shows what it asks right here, as its card in a conversation does.
     case "awaiting-input":
       return (
-        <ListRow
-          to={dashboardRunPath(selectedScope, item.run)}
-          leading={<ListRowIcon name="edit-3" tone="info" />}
-          title={item.workflow}
-          detail="Waiting for your input"
-          trailing={
-            <>
-              <AwaitingInputActions run={item.run} selectedScope={selectedScope} />
-              <RowTime time={formatRelativeTime(item.run.updatedAt, now)} />
-            </>
-          }
-          expansion={{
-            label: "Respond",
-            content: (
-              <WorkflowRunGeneratedInterface
-                run={{ ...item.run, steps: item.run.workflowSteps }}
-                generatedUi={item.generatedUi}
-                resolvedScope={selectedScope}
-                standalone={false}
-              />
-            ),
-          }}
-        />
+        <li className="py-3">
+          <WorkflowRunCard
+            run={item.run}
+            nameTo={dashboardRunPath(selectedScope, item.run)}
+            actions={<ConversationLink run={item.run} selectedScope={selectedScope} />}
+          />
+        </li>
       );
     case "failing-workflow":
       return (
         <ListRow
-          to={dashboardRunPath(selectedScope, item.latestRun)}
+          to={dashboardWorkflowsPath(backofficeRouteScopeFromResolvedScope(selectedScope), {
+            scriptPath: null,
+            filter: { kind: "failed" },
+            run: {
+              workflowName: item.latestRun.workflowName,
+              instanceId: item.latestRun.instanceId,
+              stepRecordId: null,
+            },
+          })}
           leading={<ListRowIcon name="alert-triangle" tone="failed" />}
           title={item.workflow}
           detail={item.error ?? "Errored"}
@@ -210,6 +178,7 @@ function AttentionRow({
               <RowTime time={formatRelativeTime(item.latestRun.updatedAt, now)} />
             </>
           }
+          actions={<InvestigateButton item={item} />}
           expansion={null}
         />
       );
@@ -221,6 +190,7 @@ function AttentionRow({
           title={item.connection.displayName}
           detail={`${item.connection.kindLabel} connection is unavailable`}
           trailing={<RowTime time={formatRelativeTime(item.connection.changedAt, now)} />}
+          actions={null}
           expansion={null}
         />
       );
@@ -228,11 +198,8 @@ function AttentionRow({
   throw new Error("Unsupported dashboard attention item.");
 }
 
-/**
- * What a person can do about a run waiting for them besides answering it: open the conversation
- * whose agent started it, or stop it, as its card in that conversation does.
- */
-function AwaitingInputActions({
+/** The conversation whose agent started a run waiting for input, when an agent did. */
+function ConversationLink({
   run,
   selectedScope,
 }: {
@@ -240,70 +207,53 @@ function AwaitingInputActions({
   selectedScope: BackofficeScopeSelection;
 }) {
   const agentName = run.codemode?.agentName ?? null;
-  return (
-    <>
-      {agentName === null ? null : (
-        <ButtonLink
-          variant="ghost"
-          to={`${piAgentsPath(backofficeRouteScopeFromResolvedScope(selectedScope))}/${encodeURIComponent(agentName)}`}
-          className="min-h-8 px-2 text-xs text-[var(--bo-muted)]"
-        >
-          <Icon name="message-square" className="size-3.5" />
-          Conversation
-        </ButtonLink>
-      )}
-      <RunStopControl
-        onStop={() =>
-          terminateBackofficeWorkflowRun({
-            scope: backofficeRuntimeScopeFromResolvedScope(selectedScope),
-            workflowName: run.workflowName,
-            instanceId: run.instanceId,
-          })
-        }
-      />
-    </>
-  );
-}
-
-/** The run a link elsewhere on the page or beyond it opened, above everything but what needs a person. */
-function OpenedRunPanel({
-  selectedScope,
-  replica,
-}: {
-  selectedScope: BackofficeScopeSelection;
-  replica: LofiSqliteClient;
-}) {
-  const [searchParams] = useSearchParams();
-  const openedRun = dashboardOpenedRun(searchParams);
-  const openedRunKey = openedRun ? `${openedRun.workflowName}:${openedRun.instanceId}` : null;
-  const panelRef = useRef<HTMLDivElement>(null);
-  // Runs open from links anywhere on the page, so bring the panel that shows them into view.
-  useEffect(() => {
-    if (openedRunKey !== null) {
-      panelRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
-    }
-  }, [openedRunKey]);
-
-  if (openedRun === null) {
+  if (agentName === null) {
     return null;
   }
   return (
-    <div ref={panelRef} className={`min-w-0 ${openedRunScrollMarginClassName}`}>
-      <Panel
-        title="Run"
-        leading={
-          <BackLink to={dashboardPath(backofficeRouteScopeFromResolvedScope(selectedScope))} />
-        }
-        footer={null}
-      >
-        <WorkflowRunDetail
-          key={openedRunKey}
-          replica={replica}
-          reference={openedRun}
-          presentation={{ kind: "standalone" }}
-        />
-      </Panel>
-    </div>
+    <ButtonLink
+      variant="ghost"
+      to={`${piAgentsPath(backofficeRouteScopeFromResolvedScope(selectedScope))}/${encodeURIComponent(agentName)}`}
+      className="min-h-8 px-2 text-xs text-[var(--bo-muted)]"
+    >
+      <Icon name="message-square" className="size-3.5" />
+      Conversation
+    </ButtonLink>
+  );
+}
+
+/**
+ * Opens the assistant with a request to find out why a workflow fails, ready for the person to
+ * add what they know and send.
+ */
+function InvestigateButton({
+  item,
+}: {
+  item: Extract<DashboardAttention, { kind: "failing-workflow" }>;
+}) {
+  const askAgent = useAskAgent();
+  if (askAgent === null) {
+    return null;
+  }
+  const runs = item.erroredRuns === 1 ? "once" : `${item.erroredRuns} times`;
+  const error = item.error === null ? "" : ` It failed with "${item.error}".`;
+  return (
+    <Button
+      variant="ghost"
+      onClick={() => {
+        askAgent({
+          agentName: MAIN_PI_AGENT_NAME,
+          text: `The workflow ${item.workflow} failed ${runs} since it last completed. Its latest failed run is ${item.latestRun.instanceId}.${error}
+
+Investigate why it fails: look at its failed runs, the steps they failed at, and the workflow's source. Tell me the cause and how to fix it.`,
+        });
+      }}
+      // The agent drawer only opens from the sm breakpoint up.
+      className="hidden min-h-8 px-2 text-xs text-[var(--bo-muted)] sm:inline-flex"
+    >
+      <Icon name="search" className="size-3.5" />
+      Investigate
+    </Button>
   );
 }
 
@@ -328,6 +278,7 @@ function ComingUpPanel({
             title={schedule.name}
             detail={schedule.cadence}
             trailing={<RowTime time={formatRelativeTime(schedule.at, now)} />}
+            actions={null}
             expansion={null}
           />
         ))}
@@ -339,6 +290,7 @@ function ComingUpPanel({
             title={entry.workflow}
             detail={describeWaiting(entry.runCount, entry.waitingFor)}
             trailing={<RowTime time={formatRelativeTime(entry.latestRun.updatedAt, now)} />}
+            actions={null}
             expansion={null}
           />
         ))}
@@ -416,6 +368,7 @@ function RecentActivityPanel({
                   <RowTime time={formatRelativeTime(newest.occurredAt, now)} />
                 </>
               }
+              actions={null}
               expansion={null}
             />
           );
@@ -475,6 +428,7 @@ function AgentsPanel({
                   ) : null}
                 </>
               }
+              actions={null}
               expansion={null}
             />
           );

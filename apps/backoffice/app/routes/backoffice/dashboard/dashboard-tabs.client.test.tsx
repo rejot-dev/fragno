@@ -42,10 +42,12 @@ function openDashboard(pageSources: Promise<PageSources>) {
   );
 }
 
+const DASHBOARD_TABS = new Set(["Overview", "Activity", "Workflows", "Map"]);
+
 function pageTabs(): string[] {
   const links = screen.getByRole("navigation", { name: "Dashboard" }).querySelectorAll("a");
   return Array.from(links, (link) => link.textContent).filter(
-    (label) => label !== "Overview" && label !== "Activity" && label !== "Map",
+    (label) => !DASHBOARD_TABS.has(label),
   );
 }
 

@@ -56,7 +56,7 @@ export async function loader({ context }: Route.LoaderArgs) {
   } satisfies DashboardLoaderData & { pageSources: Promise<PageSources> };
 }
 
-/** Opening a run only changes the URL; everything the page shows comes from the replica. */
+/** Everything the page shows comes from the replica, so navigating within the scope reads nothing. */
 export const shouldRevalidate = shouldRevalidateWithinScope;
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -264,7 +264,6 @@ function DashboardWorkspace({
       dashboard={dashboard}
       now={now}
       loaderData={loaderData}
-      replica={replica}
       recentActivity={recentActivity}
       agents={agents}
     />

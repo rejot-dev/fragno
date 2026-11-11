@@ -56,6 +56,7 @@ import {
 import type { ConversationView } from "@earendil-works/pi-durable";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import type { ComposerDraft } from "@/components/backoffice/ask-agent";
 import { FileScopeProvider } from "@/components/backoffice/file-scope";
 import { estimatePiContextTokens } from "@/fragno/pi/agent/context-usage";
 import type {
@@ -110,6 +111,8 @@ type AgentConversationProps = {
   dictationMountRoute: string | null;
   /** Renders the frame's header with the conversation's options, which are null until it loads. */
   header: (options: ReactNode | null) => ReactNode;
+  /** A message a page asked the agent, which fills the composer unsent. */
+  draft: ComposerDraft | null;
   /** Null where there is no room beside the conversation. */
   workspace: AgentConversationWorkspace | null;
   /** Where the conversation's workspace files, such as the files its messages carry, live. */
@@ -375,6 +378,7 @@ function AgentConversationThread({
   availableModelOptions,
   dictationMountRoute,
   header,
+  draft,
   workspace,
   resolvedScope,
   view,
@@ -580,6 +584,14 @@ function AgentConversationThread({
       runtimeRef.current = null;
     };
   }, [runtime]);
+
+  useEffect(() => {
+    if (draft === null) {
+      return;
+    }
+    runtime.thread.composer.setText(draft.text);
+    draft.onFilled();
+  }, [draft, runtime]);
 
   const handleCompact = useCallback(() => {
     // One compaction at a time: another would summarize the same history again.

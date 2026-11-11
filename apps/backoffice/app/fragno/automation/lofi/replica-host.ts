@@ -6,6 +6,11 @@ import {
   readEventTraceSummaries,
 } from "@/routes/backoffice/dashboard/event-traces-replica";
 import { readDashboardOverview } from "@/routes/backoffice/dashboard/overview-replica";
+import {
+  readWorkflowList,
+  readWorkflowRunScript,
+  readWorkflowScriptRuns,
+} from "@/routes/backoffice/dashboard/workflows-replica";
 import { readWebhookDeliveries } from "@/routes/backoffice/integrations/integrations-replica";
 
 import { AUTOMATION_PAGE_VIEWS_SQL } from "./page-relations";
@@ -48,6 +53,9 @@ export const automationReads = {
   webhookDeliveries: readWebhookDeliveries,
   eventTraceSummaries: readEventTraceSummaries,
   eventTrace: readEventTrace,
+  workflowList: readWorkflowList,
+  workflowScriptRuns: readWorkflowScriptRuns,
+  workflowRunScript: readWorkflowRunScript,
 };
 
 /**
