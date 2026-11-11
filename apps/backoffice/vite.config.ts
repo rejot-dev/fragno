@@ -26,6 +26,14 @@ const viteHost = boxdVmHost ? "0.0.0.0" : "127.0.0.1";
 const boxdAllowedHosts = boxdVmHost ? [`.${boxdVmHost}`] : [];
 const localDevVarsPath = path.resolve(__dirname, ".dev.vars");
 
+/** DOCS_PUBLIC_BASE_URL from .dev.vars: the boxd proxy or tunnel serving the local server. */
+function localPublicBaseUrl(): string | null {
+  if (!existsSync(localDevVarsPath)) {
+    return null;
+  }
+  return parseEnv(readFileSync(localDevVarsPath, "utf8")).DOCS_PUBLIC_BASE_URL || null;
+}
+
 function emitWorkerLocalDevVarsPlugin(): Plugin {
   return {
     name: "emit-worker-local-dev-vars",
@@ -143,10 +151,7 @@ function lazyServerRouteModulesPlugin(): Plugin {
  */
 function printPublicBaseUrlPlugin(): Plugin {
   function listPublicBaseUrl(server: ViteDevServer | PreviewServer) {
-    if (!existsSync(localDevVarsPath)) {
-      return;
-    }
-    const publicBaseUrl = parseEnv(readFileSync(localDevVarsPath, "utf8")).DOCS_PUBLIC_BASE_URL;
+    const publicBaseUrl = localPublicBaseUrl();
     if (!publicBaseUrl || /^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(publicBaseUrl)) {
       return;
     }
@@ -164,6 +169,42 @@ function printPublicBaseUrlPlugin(): Plugin {
     name: "print-public-base-url",
     configureServer: listPublicBaseUrl,
     configurePreviewServer: listPublicBaseUrl,
+  };
+}
+
+/**
+ * Lets pages served at DOCS_PUBLIC_BASE_URL move blobs through the local R2 bucket, which Miniflare
+ * serves under /cdn-cgi/local/r2/. Miniflare refuses /cdn-cgi/ requests whose Origin is neither
+ * localhost nor one of the Worker's routes, and the Cloudflare plugin passes it no routes, so
+ * browsers behind the boxd proxy or a tunnel could not upload large files. The public origin is
+ * dropped from those requests before Miniflare sees them; other origins are still refused.
+ */
+function localR2PublicOriginPlugin(): Plugin {
+  function acceptPublicOrigin(server: ViteDevServer | PreviewServer) {
+    const publicBaseUrl = localPublicBaseUrl();
+    if (!publicBaseUrl) {
+      return;
+    }
+    const publicOrigin = new URL(publicBaseUrl).origin;
+    server.middlewares.use("/cdn-cgi/local/r2/", (req, _res, next) => {
+      if (req.headers.origin === publicOrigin) {
+        delete req.headers.origin;
+        // The Cloudflare plugin builds Miniflare's request from the raw name/value pairs.
+        const at = req.rawHeaders.findIndex(
+          (name, index) => index % 2 === 0 && name.toLowerCase() === "origin",
+        );
+        req.rawHeaders.splice(at, 2);
+      }
+      next();
+    });
+  }
+
+  return {
+    name: "local-r2-public-origin",
+    // Runs before the Cloudflare plugin's middleware hands the request to Miniflare.
+    enforce: "pre",
+    configureServer: acceptPublicOrigin,
+    configurePreviewServer: acceptPublicOrigin,
   };
 }
 
@@ -225,6 +266,7 @@ export default defineConfig(({ command }) => {
       },
     },
     plugins: [
+      localR2PublicOriginPlugin(),
       cloudflare({
         configPath: "./wrangler.web.jsonc",
         config: disableSandboxContainersOnDevServer,

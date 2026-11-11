@@ -216,7 +216,18 @@ Before the first release with blobs:
 
 `BLOBS_R2_BUCKET` is set in `wrangler.jsonc` and `wrangler.web.jsonc`. Clients reach the presigned
 URLs with `curl` and other non-browser tools, which need no CORS policy; a browser that moves blobs
-directly does, on each of the three buckets (`wrangler r2 bucket cors set ... --jurisdiction ...`).
+directly does, such as the chat composer uploading large files. Allow the domains in
+`wrangler.web.jsonc` on each of the three buckets, and set the policy again when they change:
+
+```bash
+cat > /tmp/blobs-cors.json <<'EOF'
+{"rules":[{"allowed":{"origins":["https://leyway.com","https://backoffice.rejot.dev"],"methods":["PUT","GET"],"headers":["Content-Type"]},"maxAgeSeconds":3600}]}
+EOF
+for jurisdiction in "" eu us; do
+  pnpm exec wrangler r2 bucket cors set rejot-backoffice-blobs --file /tmp/blobs-cors.json \
+    ${jurisdiction:+--jurisdiction $jurisdiction}
+done
+```
 
 ## Run on Node with file-backed SQLite
 
