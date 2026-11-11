@@ -69,6 +69,12 @@ async function postUploadStep(
   return (await response.json()) as LargeFileUploadResult;
 }
 
+/** S3 explains a refusal in an XML `<Error>`; Miniflare's own checks answer in plain text. */
+function storageRefusalReason(body: string): string {
+  const message = /<Message>([^<]*)<\/Message>/.exec(body)?.[1];
+  return (message ?? body).trim().slice(0, 200);
+}
+
 /** XHR rather than fetch, because only XHR reports how much of a request body was sent. */
 function putToStorage(
   upload: Extract<LargeFileUploadResult, { step: "start" }>["upload"],
@@ -88,11 +94,21 @@ function putToStorage(
       if (request.status >= 200 && request.status < 300) {
         resolve();
       } else {
-        reject(new Error(`Storage rejected the upload (${request.status}).`));
+        const reason = storageRefusalReason(request.responseText);
+        reject(
+          new Error(
+            `Storage refused the upload (${request.status}${reason ? `: ${reason}` : ""}).`,
+          ),
+        );
       }
     });
+    // Browsers hide why a request failed; a storage CORS policy without this site is the usual cause.
     request.addEventListener("error", () => {
-      reject(new Error("The upload could not reach storage."));
+      reject(
+        new Error(
+          "The upload could not reach storage, or storage does not accept uploads from this site.",
+        ),
+      );
     });
     request.send(file);
   });

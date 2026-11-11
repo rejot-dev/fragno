@@ -105,7 +105,7 @@ function uploadNote(upload: ChatAttachmentUpload, file: ChatAttachmentFile) {
     return upload.fraction === null ? "Uploading…" : `Uploading… ${percent(upload.fraction)}%`;
   }
   if (upload.kind === "failed") {
-    return upload.message;
+    return "Upload failed";
   }
   return `${typeLabel(file)} · ${formatBytes(file.sizeBytes)}`;
 }
@@ -276,9 +276,7 @@ function ComposerFileTile({
             failed ? "text-[var(--bo-failed)]" : "text-[var(--bo-muted-2)]",
           )}
         >
-          <span title={failed ? upload.message : undefined} className="truncate">
-            {uploadNote(upload, file)}
-          </span>
+          <span className="truncate">{uploadNote(upload, file)}</span>
           {failed ? (
             <button
               type="button"
@@ -299,6 +297,7 @@ function ComposerFileTile({
 /**
  * The files a message will carry, above the composer's input: images as thumbnails, other files
  * by type and name. Each shows its upload until it is saved, and can be removed before sending.
+ * Why an upload failed is spelled out below them, as a reason does not fit in a tile.
  */
 export function ChatComposerAttachments({
   attachments,
@@ -308,19 +307,36 @@ export function ChatComposerAttachments({
   if (attachments.length === 0) {
     return null;
   }
+  const failures = attachments.flatMap(({ id, file, upload }) =>
+    upload.kind === "failed" ? [{ id, name: file.name, message: upload.message }] : [],
+  );
   return (
-    <ul
-      aria-label="Attached files"
-      className="backoffice-scroll flex gap-2 overflow-x-auto px-1 pt-1 pb-2"
-    >
-      {attachments.map((item) =>
-        hasPreview(item) && isSettling(item) ? (
-          <ComposerImageTile key={item.id} item={item} />
-        ) : (
-          <ComposerFileTile key={item.id} item={item} />
-        ),
+    <>
+      <ul
+        aria-label="Attached files"
+        className="backoffice-scroll flex gap-2 overflow-x-auto px-1 pt-1 pb-2"
+      >
+        {attachments.map((item) =>
+          hasPreview(item) && isSettling(item) ? (
+            <ComposerImageTile key={item.id} item={item} />
+          ) : (
+            <ComposerFileTile key={item.id} item={item} />
+          ),
+        )}
+      </ul>
+      {failures.length === 0 ? null : (
+        <ul
+          aria-label="Upload errors"
+          className="space-y-0.5 px-1 pb-2 text-xs text-pretty text-[var(--bo-failed)]"
+        >
+          {failures.map(({ id, name, message }) => (
+            <li key={id}>
+              <span className="font-medium">{name}</span>: {message}
+            </li>
+          ))}
+        </ul>
       )}
-    </ul>
+    </>
   );
 }
 

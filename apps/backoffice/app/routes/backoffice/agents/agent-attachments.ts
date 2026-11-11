@@ -86,21 +86,14 @@ async function uploadAttachment(
     throw new Error(`Files hold at most ${formatBytes(BLOB_MAX_SIZE_BYTES)}.`);
   }
   if (file.size > STATE_FILE_MAX_BYTES) {
-    try {
-      await uploadLargeFile({
-        uploadsPath: largeFileUploadsPath(scope),
-        file,
-        key,
-        onProgress: (progress) => {
-          onProgress(progress.phase === "uploading" ? progress.sentBytes / file.size : 1);
-        },
-      });
-    } catch (error) {
-      throw new Error(
-        `Over ${formatBytes(STATE_FILE_MAX_BYTES)}, too large for the workspace, and not kept as a large file: ${error instanceof Error ? error.message : "the upload failed."}`,
-        { cause: error },
-      );
-    }
+    await uploadLargeFile({
+      uploadsPath: largeFileUploadsPath(scope),
+      file,
+      key,
+      onProgress: (progress) => {
+        onProgress(progress.phase === "uploading" ? progress.sentBytes / file.size : 1);
+      },
+    });
     return { kind: "blob", key };
   }
   const result = await createScopedUploadHelpers(scope).createUploadAndTransfer(file, {
