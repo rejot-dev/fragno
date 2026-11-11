@@ -73,6 +73,16 @@ Listen options:
   --after-versionstamp VALUE
                          Resume after an Automations stream versionstamp
 
+Exec and bash options:
+  -                      Read the code or command from stdin instead of an argument
+  --file PATH            Read the code or command from a file
+  --timeout MS           Abort after MS milliseconds
+  --dependencies JSON    exec only: npm packages to install, e.g. '{"zod":"4.1.0"}'
+  --cwd PATH             bash only: working directory
+
+  exec prints the function's return value, strings verbatim, and its logs to stderr.
+  bash prints the combined output and exits with the command's exit code.
+
 Global options:
   --base-url URL         Select a Backoffice server instead of auto-discovery
   -h, --help             Show this help
@@ -348,14 +358,19 @@ async function execCodemode(args: string[]): Promise<void> {
     usage();
   }
   const baseUrl = await resolveCliBaseUrl(requestedBaseUrl);
-  const result = await executeBackofficeCodemode({
+  const response = (await executeBackofficeCodemode({
     baseUrl,
     scope: parseBackofficeScope(scopeArg),
     code,
     ...(dependencies ? { dependencies } : {}),
     ...(timeout ? { timeout } : {}),
-  });
-  console.log(JSON.stringify(result, null, 2));
+  })) as { result?: unknown; logs: Array<{ channel: string; text: string }> };
+  for (const { channel, text } of response.logs) {
+    console.error(`[${channel}] ${text}`);
+  }
+  // A defineWorkflow program returns no result; its envelope carries the workflow definition.
+  const output = "result" in response ? response.result : response;
+  console.log(typeof output === "string" ? output : JSON.stringify(output, null, 2));
 }
 
 function backofficeWorkspaceFileKey(path: string): string {
@@ -436,14 +451,15 @@ async function execBash(args: string[]): Promise<void> {
     usage();
   }
   const baseUrl = await resolveCliBaseUrl(requestedBaseUrl);
-  const result = await executeBackofficeBash({
+  const result = (await executeBackofficeBash({
     baseUrl,
     scope: parseBackofficeScope(scopeArg),
     command,
     ...(cwd ? { cwd } : {}),
     ...(timeout ? { timeout } : {}),
-  });
-  console.log(JSON.stringify(result, null, 2));
+  })) as { output: string; exitCode: number };
+  console.log(result.output);
+  process.exitCode = result.exitCode;
 }
 
 export async function runBackofficeCli(argv = process.argv.slice(2)): Promise<void> {

@@ -5,9 +5,9 @@ The officially supported command-line client for a local Fragno Backoffice serve
 From the repository root:
 
 ```bash
-pnpm --filter @rejot-dev/backoffice-cli backoffice-cli --help
-pnpm --filter @rejot-dev/backoffice-cli backoffice-cli login --open
-pnpm --filter @rejot-dev/backoffice-cli backoffice-cli scopes
+pnpm backoffice --help
+pnpm backoffice login --open
+pnpm backoffice scopes
 ```
 
 The CLI discovers local Backoffice servers, authenticates through the OAuth device flow, manages
