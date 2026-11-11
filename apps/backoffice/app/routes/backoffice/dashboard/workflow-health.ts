@@ -129,6 +129,7 @@ export function projectWorkflowHealthRuns(
           failedStepId: failedStepId(record),
         };
     }
+    throw new Error("Unsupported workflow run status.");
   });
 }
 
