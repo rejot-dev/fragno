@@ -1,7 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { CLOUDFLARE_OBSERVABILITY_SERVER } from "./observability.js";
-
 const CLOUDFLARE_MCP_SERVERS = {
   cloudflare: {
     url: "https://mcp.cloudflare.com/mcp",
@@ -13,7 +11,11 @@ const CLOUDFLARE_MCP_SERVERS = {
     description: "Search Cloudflare documentation",
     exposure: "codemode",
   },
-  [CLOUDFLARE_OBSERVABILITY_SERVER.name]: CLOUDFLARE_OBSERVABILITY_SERVER.config,
+  "cloudflare-observability": {
+    url: "https://observability.mcp.cloudflare.com/mcp",
+    description: "Inspect Cloudflare Workers logs and observability data",
+    exposure: "codemode",
+  },
 } as const;
 
 const CLOUDFLARE_MODE_SYSTEM_PROMPT =
