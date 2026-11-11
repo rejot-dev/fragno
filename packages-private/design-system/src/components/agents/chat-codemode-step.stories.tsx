@@ -16,6 +16,47 @@ function Column({ children }: { children: ReactNode }) {
   return <div className="mx-auto flex max-w-3xl flex-col gap-6">{children}</div>;
 }
 
+function ReplayButton({ onReplay }: { onReplay: () => void }) {
+  return (
+    <button
+      type="button"
+      className="self-start text-xs text-[var(--bo-accent-fg)] underline"
+      onClick={onReplay}
+    >
+      Replay
+    </button>
+  );
+}
+
+/** Plays a run from its start to `endMs` in real time, from the start again on every replay. */
+function usePlayback(endMs: number) {
+  const [replays, setReplays] = useState(0);
+  const [atMs, setAtMs] = useState(0);
+  const [startedAt, setStartedAt] = useState(() => new Date());
+  useEffect(() => {
+    const start = Date.now();
+    setStartedAt(new Date(start));
+    setAtMs(0);
+    const interval = setInterval(() => {
+      const elapsed = Math.min(Date.now() - start, endMs);
+      setAtMs(elapsed);
+      if (elapsed === endMs) {
+        clearInterval(interval);
+      }
+    }, 50);
+    return () => {
+      clearInterval(interval);
+    };
+  }, [replays, endMs]);
+  return {
+    atMs,
+    startedAt,
+    replay: () => {
+      setReplays((current) => current + 1);
+    },
+  };
+}
+
 /** A call as recorded: when it started, how long it took, and how it failed, if it did. */
 type SampleCall = {
   id: string;
@@ -329,27 +370,9 @@ const WRITING_MS = 1_200;
  * left through the waits between calls, as they do when a server reports calls only as they happen.
  */
 export function Live() {
-  const [replays, setReplays] = useState(0);
-  const [atMs, setAtMs] = useState(0);
-  const [startedAt, setStartedAt] = useState(() => new Date());
   const endMs = WRITING_MS + WAITING_MS;
+  const { atMs, startedAt, replay } = usePlayback(endMs);
   const settled = atMs >= endMs;
-
-  useEffect(() => {
-    const start = Date.now();
-    setStartedAt(new Date(start));
-    setAtMs(0);
-    const interval = setInterval(() => {
-      const elapsed = Math.min(Date.now() - start, endMs);
-      setAtMs(elapsed);
-      if (elapsed === endMs) {
-        clearInterval(interval);
-      }
-    }, 50);
-    return () => {
-      clearInterval(interval);
-    };
-  }, [replays, endMs]);
 
   const writing = atMs < WRITING_MS;
   const items = writing ? [] : callsAt(WAITING, atMs - WRITING_MS);
@@ -358,15 +381,7 @@ export function Live() {
 
   return (
     <Column>
-      <button
-        type="button"
-        className="self-start text-xs text-[var(--bo-accent-fg)] underline"
-        onClick={() => {
-          setReplays((current) => current + 1);
-        }}
-      >
-        Replay
-      </button>
+      <ReplayButton onReplay={replay} />
       <ChatActivity
         status={{
           kind: "running",
@@ -440,7 +455,10 @@ export function WithoutCalls() {
   );
 }
 
-/** A lookup fanned out over 40 contacts: the list folds, and calls past the record's cap are counted. */
+/**
+ * A lookup fanned out over 40 contacts: the list folds to its newest calls, keeping the failure in
+ * view, and calls past the record's cap are counted.
+ */
 export function ManyCalls() {
   const [startedAt] = useState(() => new Date(Date.now() - 9_000));
   const fanned: ChatCodemodeCall[] = [
@@ -494,6 +512,132 @@ export function ManyCalls() {
           calls={{ startedAt: new Date(0), items: fanned, unrecorded: 12 }}
           durationMs={720}
           views={views("async () => { /* … */ }", '{ "ranked": 52 }', null)}
+          actions={null}
+        />
+      </ChatActivity>
+    </Column>
+  );
+}
+
+const CUSTOMERS = [
+  "acme",
+  "globex",
+  "initech",
+  "umbrella",
+  "hooli",
+  "stark",
+  "wayne",
+  "wonka",
+  "tyrell",
+  "cyberdyne",
+  "soylent",
+  "aperture",
+  "massive",
+  "oscorp",
+  "vandelay",
+  "gekko",
+  "dunder",
+  "pied-piper",
+  "prestige",
+  "monarch",
+];
+
+const SWEEP_CODE = `async () => {
+  const customers = await crm.contacts.list({ tag: "overdue" });
+  for (const customer of customers) {
+    const invoice = await bookkeeping.invoices.latest({ contactId: customer.id });
+    await email.send({ to: customer.email, template: "reminder", invoice: invoice.id });
+  }
+}`;
+
+// One customer at a time: look up the latest invoice, then send its reminder. One address bounced.
+const SWEEP: SampleCall[] = [
+  {
+    id: "list",
+    subject: { kind: "call", name: "crm.contacts.list", scope: null, input: '{"tag":"overdue"}' },
+    offsetMs: 0,
+    durationMs: 380,
+    error: null,
+  },
+  ...CUSTOMERS.flatMap((customer, index): SampleCall[] => {
+    const offsetMs = 420 + index * 640;
+    return [
+      {
+        id: `invoice-${customer}`,
+        subject: {
+          kind: "action",
+          connectionId: "app#bookkeeping",
+          actionId: "invoices.latest",
+          scope: null,
+          input: `{"contactId":"con_${customer}"}`,
+        },
+        offsetMs,
+        durationMs: 180 + ((index * 53) % 120),
+        error: null,
+      },
+      {
+        id: `send-${customer}`,
+        subject: {
+          kind: "call",
+          name: "email.send",
+          scope: null,
+          input: `{"to":"ap@${customer}.test","template":"reminder"}`,
+        },
+        offsetMs: offsetMs + 320,
+        durationMs: 240 + ((index * 31) % 60),
+        error:
+          index === 3
+            ? "ap@umbrella.test bounced on Oct 18 and is suppressed. Remove it from the suppression list to send again."
+            : null,
+      },
+    ];
+  }),
+];
+
+const SWEEP_MS = 420 + CUSTOMERS.length * 640;
+
+/**
+ * A run longer than the fold, as it happens: one call after another, well past the first eight. The
+ * folded list follows the run, showing its newest calls and the failure further back.
+ */
+export function LiveLongRun() {
+  const endMs = WRITING_MS + SWEEP_MS;
+  const { atMs, startedAt, replay } = usePlayback(endMs);
+  const settled = atMs >= endMs;
+  const writing = atMs < WRITING_MS;
+  const items = writing ? [] : callsAt(SWEEP, atMs - WRITING_MS);
+  const newest = items.filter((call) => call.status === "running").at(-1);
+  return (
+    <Column>
+      <ReplayButton onReplay={replay} />
+      <ChatActivity
+        status={{
+          kind: "running",
+          headline: settled
+            ? "Writing the summary"
+            : writing
+              ? "Writing code"
+              : newest === undefined
+                ? "Running codemode"
+                : codemodeCallHeadline(newest.subject),
+          startedAt,
+        }}
+        artifacts={null}
+      >
+        <ChatCodemodeStep
+          state={settled ? "done" : "running"}
+          detail={writing ? "writing code…" : null}
+          calls={
+            items.length === 0
+              ? null
+              : {
+                  startedAt: new Date(startedAt.getTime() + WRITING_MS),
+                  items,
+                  unrecorded: 0,
+                }
+          }
+          durationMs={settled ? SWEEP_MS : null}
+          views={views(SWEEP_CODE, settled ? '{ "reminded": 19 }' : null, null)}
           actions={null}
         />
       </ChatActivity>

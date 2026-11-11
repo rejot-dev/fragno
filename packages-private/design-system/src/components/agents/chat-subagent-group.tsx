@@ -1,5 +1,5 @@
 import { Collapsible } from "@base-ui/react/collapsible";
-import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "../../cn";
 import { Button } from "../controls/button";
@@ -222,7 +222,17 @@ function SubagentRow({ subagent }: { subagent: ChatSubagentRun }) {
   );
 }
 
-// A large batch shows its first rows; folding only a few more would hide less than the button costs.
+/** Marks where a folded batch leaves out rows between the ones it shows. */
+function SkippedRows({ count }: { count: number }) {
+  return (
+    <li className="flex min-h-7 items-center border-t border-[color:var(--bo-border)] pl-[2.125rem] text-[10px] text-[var(--bo-muted-2)] tabular-nums first:border-t-0">
+      ⋯ {count} {count === 1 ? "subagent" : "subagents"}
+    </li>
+  );
+}
+
+// A large batch shows its newest rows, so subagents asked for one by one show as they arrive;
+// folding only a few more would hide less than the button costs.
 const FOLDED_ROWS = 5;
 const FOLD_AFTER = 7;
 
@@ -244,8 +254,18 @@ export function ChatSubagentGroup({
   const [expanded, setExpanded] = useState(false);
   const statuses = subagents.map(({ status }) => status);
   const counts = countKinds(statuses);
-  const folds = subagents.length > FOLD_AFTER && !expanded;
-  const shown = folds ? subagents.slice(0, FOLDED_ROWS) : subagents;
+  // A folded batch still shows what runs now and what failed, wherever they are in it.
+  const kept =
+    subagents.length > FOLD_AFTER
+      ? subagents.filter(
+          ({ status }, index) =>
+            index >= subagents.length - FOLDED_ROWS ||
+            status.kind === "running" ||
+            status.kind === "failed",
+        )
+      : subagents;
+  const hidden = statuses.filter((_, index) => !kept.includes(subagents[index]));
+  const shown = expanded ? subagents : kept;
   const active = counts.running + counts.queued > 0;
   return (
     <section
@@ -271,26 +291,40 @@ export function ChatSubagentGroup({
         </p>
         <SubagentProgress statuses={statuses} />
       </header>
-      <ol>
-        {shown.map((subagent) => (
-          <SubagentRow key={subagent.id} subagent={subagent} />
-        ))}
-      </ol>
-      {folds ? (
+      {/* Above the rows, where a folded batch hides most of them. */}
+      {hidden.length > 0 ? (
         <button
           type="button"
+          aria-expanded={expanded}
           onClick={() => {
-            setExpanded(true);
+            setExpanded((current) => !current);
           }}
-          className="flex min-h-9 w-full items-center gap-2 border-t border-[color:var(--bo-border)] px-3 text-left text-[10px] font-medium text-[var(--bo-muted)] transition-colors duration-150 outline-none hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset"
+          className="flex min-h-9 w-full items-center gap-2 border-b border-[color:var(--bo-border)] px-3 text-left text-[10px] font-medium text-[var(--bo-muted)] transition-colors duration-150 outline-none hover:bg-[var(--bo-panel-2)] hover:text-[var(--bo-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset"
         >
-          <Icon name="chevron-down" className="size-3.5" />
-          Show {subagents.length - FOLDED_ROWS} more
-          <span className="text-[var(--bo-muted-2)]">
-            {countSummary(countKinds(statuses.slice(FOLDED_ROWS)))}
-          </span>
+          <Icon name={expanded ? "chevron-up" : "chevron-down"} className="size-3.5" />
+          {expanded ? (
+            "Show fewer"
+          ) : (
+            <>
+              Show {hidden.length} more
+              <span className="text-[var(--bo-muted-2)]">{countSummary(countKinds(hidden))}</span>
+            </>
+          )}
         </button>
       ) : null}
+      <ol>
+        {shown.map((subagent, index) => {
+          const skipped =
+            subagents.indexOf(subagent) -
+            (index === 0 ? 0 : subagents.indexOf(shown[index - 1]) + 1);
+          return (
+            <Fragment key={subagent.id}>
+              {skipped > 0 ? <SkippedRows count={skipped} /> : null}
+              <SubagentRow subagent={subagent} />
+            </Fragment>
+          );
+        })}
+      </ol>
     </section>
   );
 }

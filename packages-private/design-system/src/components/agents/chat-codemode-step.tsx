@@ -59,7 +59,8 @@ export type ChatCodemodeCalls = {
 /** Something the run produced that a reader can open in its own tab, such as its code. */
 export type ChatCodemodeView = { label: string; content: ReactNode };
 
-// A long run shows its first calls; folding only a few more would hide less than the button costs.
+// A long run shows its newest calls, so a live run's list follows the program as it goes; folding
+// only a few more would hide less than the button costs.
 const FOLDED_CALLS = 8;
 const FOLD_AFTER = 12;
 
@@ -307,13 +308,16 @@ function CallList({
   const spanMs = useCallsSpanMs(calls, live, durationMs);
   const { items, unrecorded } = calls;
   const [expanded, setExpanded] = useState(false);
-  const folded = !expanded && items.length > FOLD_AFTER;
+  const foldable = items.length > FOLD_AFTER;
+  const folded = foldable && !expanded;
   // A folded list still shows every failure, since failures are what a reader looks for, and
   // what runs now.
   const shown = folded
     ? items.filter(
         (call, index) =>
-          index < FOLDED_CALLS || call.status === "failed" || call.status === "running",
+          index >= items.length - FOLDED_CALLS ||
+          call.status === "failed" ||
+          call.status === "running",
       )
     : items;
   return (
@@ -321,6 +325,21 @@ function CallList({
       {unrecorded > 0 ? (
         <div className="flex min-h-6 items-center pl-5 text-[10px] text-[var(--bo-muted-2)]">
           {unrecorded} earlier not recorded
+        </div>
+      ) : null}
+      {/* Above the calls, where a folded list hides them. */}
+      {foldable ? (
+        <div className="flex min-h-6 items-center pl-5 text-[10px] text-[var(--bo-muted-2)]">
+          <button
+            type="button"
+            aria-expanded={expanded}
+            className="font-medium text-[var(--bo-accent-fg)] hover:underline"
+            onClick={() => {
+              setExpanded((current) => !current);
+            }}
+          >
+            {folded ? `Show all ${items.length}` : "Show fewer"}
+          </button>
         </div>
       ) : null}
       <ol>
@@ -335,19 +354,6 @@ function CallList({
           );
         })}
       </ol>
-      {folded ? (
-        <div className="flex min-h-6 items-center pl-5 text-[10px] text-[var(--bo-muted-2)]">
-          <button
-            type="button"
-            className="font-medium text-[var(--bo-accent-fg)] hover:underline"
-            onClick={() => {
-              setExpanded(true);
-            }}
-          >
-            Show all {items.length}
-          </button>
-        </div>
-      ) : null}
     </>
   );
 }

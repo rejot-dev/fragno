@@ -430,7 +430,7 @@ const LARGE_BATCH: ChatSubagentRunStatus[] = Array.from(
         : { kind: "queued" },
 );
 
-/** Every status a row shows, a large batch folded after its first rows, and the running notice. */
+/** Every status a row shows, a large batch folded to its running and newest rows, and the running notice. */
 export function States() {
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -439,6 +439,116 @@ export function States() {
       <div>
         <ChatSubagentsRunning statuses={LARGE_BATCH} onShow={() => undefined} />
       </div>
+    </div>
+  );
+}
+
+const MANY_DOCUMENTS: Document[] = Array.from({ length: 14 }, (_, index) => ({
+  id: `doc_9${String(index).padStart(2, "0")}`,
+  file: `receipt-${String(index + 1).padStart(2, "0")}.pdf`,
+  entry: `Proposed a €${(24 + index * 17.35).toFixed(2)} expense on 4520 Travel, 9% VAT, paid by the company card.`,
+}));
+
+/** A subagent of a sample batch: when it was asked for and how long it runs, in ticks. */
+type SampleSubagent = { askedAt: number; duration: number; fails: boolean };
+
+/**
+ * A batch's statuses `tick` seconds in: each subagent takes the earliest slot to free up once it is
+ * asked for, and waits until then.
+ */
+function scheduleAt(
+  tick: number,
+  startedAt: Date,
+  subagents: readonly SampleSubagent[],
+  slots: number,
+): ChatSubagentRunStatus[] {
+  const frees: number[] = [];
+  return subagents
+    .filter(({ askedAt }) => askedAt <= tick)
+    .map(({ askedAt, duration, fails }, index): ChatSubagentRunStatus => {
+      let start = askedAt;
+      if (frees.length >= slots) {
+        const earliest = Math.min(...frees);
+        frees.splice(frees.indexOf(earliest), 1);
+        start = Math.max(askedAt, earliest);
+      }
+      const end = start + duration;
+      frees.push(end);
+      if (tick < start) {
+        return { kind: "queued" };
+      }
+      if (tick < end) {
+        return {
+          kind: "running",
+          headline: HEADLINES[Math.min(HEADLINES.length - 1, tick - start)],
+          startedAt: new Date(startedAt.getTime() + start * 1000),
+        };
+      }
+      return fails
+        ? FAILED
+        : { kind: "completed", durationMs: duration * 2_300, answer: MANY_DOCUMENTS[index].entry };
+    });
+}
+
+/** Ticks the story's clock once a second, starting over after `loop` seconds. */
+function useTicks(loop: number) {
+  const [clock, setClock] = useState(() => ({ tick: 0, startedAt: new Date() }));
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setClock((current) =>
+        current.tick + 1 === loop
+          ? { tick: 0, startedAt: new Date() }
+          : { tick: current.tick + 1, startedAt: current.startedAt },
+      );
+    }, 1_000);
+    return () => {
+      clearInterval(interval);
+    };
+  }, [loop]);
+  return clock;
+}
+
+// All asked for at once, three running at a time.
+const FANNED_OUT: SampleSubagent[] = MANY_DOCUMENTS.map((_, index) => ({
+  askedAt: 0,
+  duration: 3 + ((index * 5) % 4),
+  fails: index === 9,
+}));
+
+/**
+ * A large batch the agent fans out at once, as it runs: three at a time, in order. Folded, the card
+ * shows the ones running and failed wherever they are, then its newest rows. Replays every 30s.
+ */
+export function LiveLargeBatch() {
+  const { tick, startedAt } = useTicks(30);
+  const statuses = scheduleAt(tick, startedAt, FANNED_OUT, 3);
+  return (
+    <div className="mx-auto max-w-3xl">
+      <ChatSubagentGroup title="Subagents" subagents={runs(statuses, MANY_DOCUMENTS)} />
+    </div>
+  );
+}
+
+// One upload every two seconds, each asking Bookkeeping for a subagent.
+const UPLOADED: SampleSubagent[] = MANY_DOCUMENTS.map((_, index) => ({
+  askedAt: index * 2,
+  duration: 3 + (index % 3),
+  fails: index === 4,
+}));
+
+/**
+ * A batch someone else keeps adding to, here Bookkeeping as receipts are uploaded one by one. Past
+ * seven, the card folds its settled rows, keeping each new subagent in view as it arrives and the
+ * failed one further back. Replays every 40s.
+ */
+export function LiveGrowingBatch() {
+  const { tick, startedAt } = useTicks(40);
+  const statuses = scheduleAt(tick, startedAt, UPLOADED, 3);
+  return (
+    <div className="mx-auto max-w-3xl">
+      {statuses.length === 0 ? null : (
+        <ChatSubagentGroup title="Bookkeeping" subagents={runs(statuses, MANY_DOCUMENTS)} />
+      )}
     </div>
   );
 }
