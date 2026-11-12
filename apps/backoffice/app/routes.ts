@@ -117,6 +117,8 @@ export default [
           route(":agentName/debug", "routes/backoffice/agents/debug-agent-detail.tsx"),
         ]),
       ]),
+      route("artifacts", "routes/backoffice/artifacts/index.tsx"),
+      route("artifacts/:scopeKind/:scopeId", "routes/backoffice/artifacts/artifacts.tsx"),
       route("files", "routes/backoffice/files/index.tsx"),
       route("files/:scopeKind/:scopeId/download", "routes/backoffice/files/download.ts"),
       route("files/:scopeKind/:scopeId/preview", "routes/backoffice/files/preview.ts"),
