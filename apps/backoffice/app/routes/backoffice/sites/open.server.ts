@@ -2,7 +2,7 @@ import {
   backofficeScopeOrganization,
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { RouterContextProvider } from "react-router";
+import { redirectDocument, type RouterContextProvider } from "react-router";
 
 import {
   SITE_SIGN_IN_PATH,
@@ -30,16 +30,23 @@ const SUBMIT_SCRIPT = "document.forms[0].submit();";
 export async function openSiteHost({
   request,
   context,
+  url,
 }: {
   request: Request;
   context: Readonly<RouterContextProvider>;
+  /** React Router's page URL; on client navigations `request.url` is the `.data` endpoint. */
+  url: URL;
 }): Promise<Response> {
+  // Sign-in sends the viewer here with a client navigation, which would take this page as route
+  // data and never post its ticket, so the browser loads it as a document.
+  if (new URL(request.url).pathname !== url.pathname) {
+    throw redirectDocument(`${url.pathname}${url.search}`);
+  }
   const { runtime, env } = context.get(BackofficeWorkerContext);
   const sites = runtimeSiteHosts(runtime);
   if (!runtime.config.sites || sites === null) {
     return new Response("Not Found", { status: 404 });
   }
-  const url = new URL(request.url);
   const host = url.searchParams.get("host") ?? "";
   const nonceHash = url.searchParams.get("nonceHash") ?? "";
   const scope = await sites.hosts.scopeFor(host);
