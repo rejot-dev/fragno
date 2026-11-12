@@ -679,6 +679,7 @@ export const createAutomationsRuntime = (
         enabled: true,
         payloadSchema: definition.payloadSchema,
         storedPayload: definition.storedPayload ?? null,
+        keyPath: definition.keyPath ?? null,
       })),
       env: config.env,
       runtime: config.runtime,

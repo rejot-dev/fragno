@@ -50,10 +50,15 @@ function connectionEvent(
   connectionId: string,
   at: number,
 ) {
+  const service = connectionId.split("#", 1)[0];
   return event(id, "integrations", `connection.${state}`, at, {
-    // Disconnections carry no label.
-    payload: state === "disconnected" ? {} : { name: connectionId, authMethod: null },
-    subject: { scope, service: connectionId.split("#", 1)[0], connectionId },
+    payload: {
+      connectionId,
+      service,
+      // Disconnections carry no label.
+      ...(state === "disconnected" ? {} : { name: connectionId, authMethod: null }),
+    },
+    subject: { scope, service, connectionId },
   });
 }
 
