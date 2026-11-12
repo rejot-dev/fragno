@@ -177,6 +177,8 @@ export interface AutomationFragmentConfig {
   > & {
     /** Shrinks the validated payload a stored event keeps; routes still see the whole payload. */
     storedPayload: ((payload: Record<string, unknown>) => Record<string, unknown>) | null;
+    /** Where its events hold the key their state is kept under, or null; see `event-state`. */
+    keyPath: string | null;
   })[];
   env?: CloudflareEnv;
   runtime?: BackofficeRuntimeServices;
@@ -923,30 +925,12 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               .find("pi_agent", (b) => b.whereIndex("primary", (eb) => eb("id", "in", keys.agents)))
               .find("pi_agent_request", (b) =>
                 b.whereIndex("primary", (eb) => eb("id", "in", keys.requests)),
-              )
-              .find("pi_agent_turn", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "in", keys.turns)),
-              )
-              .find("integration_connection", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "in", keys.connections)),
-              )
-              .find("integration_connection_change", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "in", keys.changes)),
               ),
           )
           .mutate(
             ({
               uow,
-              retrieveResult: [
-                storedDefinition,
-                existingEvent,
-                acceptRows,
-                agentRows,
-                requestRows,
-                turnRows,
-                connectionRows,
-                changeRows,
-              ],
+              retrieveResult: [storedDefinition, existingEvent, acceptRows, agentRows, requestRows],
             }) => {
               if (existingEvent) {
                 return true;
@@ -967,18 +951,11 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               ingestAutomationEvent(uow as AutomationHookUnitOfWork, event, {
                 reclassificationChain,
                 storedPayload: builtInDefinition?.storedPayload ?? null,
-                // Built-in types cannot be defined again, so only stored definitions name keys.
-                stateKey: requireEventKey(
-                  event,
-                  builtInDefinition ? null : (storedDefinition?.keyPath ?? null),
-                ),
+                stateKey: requireEventKey(event, definition?.keyPath ?? null),
               });
               foldProjectedEvents(uow as AutomationHookUnitOfWork, projected, {
                 agentRows,
                 requestRows,
-                turnRows,
-                connectionRows,
-                changeRows,
               });
               return true;
             },
@@ -994,7 +971,10 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
         await replayEventFold(pass, this.handlerTx.bind(this));
       }),
       internalKeepEventState: defineHook(async function (entry: EventStateEntry) {
-        await keepEventState(entry, this.handlerTx.bind(this));
+        const builtIn = config.builtInEventDefinitions.find(
+          ({ source, eventType }) => source === entry.source && eventType === entry.eventType,
+        );
+        await keepEventState(entry, this.handlerTx.bind(this), builtIn?.keyPath ?? null);
       }),
       internalDispatchRouteSchedule: defineHook(async function (payload) {
         await dispatchAutomationRouteSchedule({

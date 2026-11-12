@@ -101,6 +101,8 @@ type BackofficeAutomationEventDescriptor = {
    * integration retains. Routes still see the whole payload. Omitted, events are stored whole.
    */
   storedPayload?: (payload: Record<string, unknown>) => Record<string, unknown>;
+  /** Where its events hold the key their state is kept under; omitted, no state is kept. */
+  keyPath?: string;
 };
 
 /** Declares a user-facing event producer independently from lifecycle events a capability emits. */

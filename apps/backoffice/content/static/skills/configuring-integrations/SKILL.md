@@ -201,7 +201,9 @@ Every source reports connection state as automation events with `source: "integr
 - `connection.disconnected`: the connection was removed.
 
 They fire for changes made anywhere, including native pages, OAuth callbacks, and provider webhooks,
-and can repeat. Route one connection with
+and can repeat. Each payload names the `connectionId` and `service`, and a ready or unavailable one
+the connection's `name` and `authMethod`. Pages read each connection as it is now from the
+`connections` relation. Route one connection with
 `{ path: "$.subject.connectionId", op: "eq", value: connectionId }`, or one source with
 `$.subject.service`. An OAuth access token without a refresh token fires `connection.unavailable`
 when it expires.

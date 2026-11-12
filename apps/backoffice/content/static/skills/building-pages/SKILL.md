@@ -208,8 +208,10 @@ The title heads the page. Return the root element from the callback; `page.defin
   `event.payload ->> '$.action'`; nest a JSON column in other JSON with `json(...)`.
 - `event_state` holds what things are now: for each event type whose definition has a `keyPath`, one
   row per `key` with its latest event's `payload`, such as an account's balance or an order's
-  status. `events` holds what happened. A type without a `keyPath` has no state;
-  `/static/skills/building-automations/references/event-state.md` describes giving it one.
+  status. `events` holds what happened, for activity and counts over time; events are history and
+  may be deleted, so lists of things and values that must last come from `event_state`. A type
+  without a `keyPath` has no state; `/static/skills/building-automations/references/event-state.md`
+  describes giving it one.
 - Components show a bounded number of rows, such as a table's 64, so order and `LIMIT` lists.
 - Keep each query under about a second over the scope's data. The build runs queries on an empty
   database, so a slow query builds and then fails on the page.
@@ -259,8 +261,9 @@ The title heads the page. Return the root element from the callback; `page.defin
 ## Supported today
 
 Pages show the synchronized relations and what Backoffice derives from them: `connections` holds
-each connection's current state, `agents` each agent's activity and queue, `agent_turns` the turns
-agents ended, and `workflow_waits` what waiting runs wait for and whether they ask a person. The
-home page example reads all four. Data from outside Backoffice arrives through a feed, as step 1
-describes. When the user asks for forms, build the closest page and tell them which part pages
-cannot express yet.
+each connection's current state, `agents` each agent's activity and queue, and `workflow_waits` what
+waiting runs wait for and whether they ask a person. An agent's turns are `events` from the source
+`pi`: `turn.completed`, `turn.aborted`, and `turn.failed` end one, naming the agent as
+`subject ->> '$.agentName'`. The home page example reads all of these. Data from outside Backoffice
+arrives through a feed, as step 1 describes. When the user asks for forms, build the closest page
+and tell them which part pages cannot express yet.

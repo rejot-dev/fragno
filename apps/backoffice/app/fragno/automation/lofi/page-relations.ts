@@ -9,6 +9,14 @@ import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import { BUILT_IN_PI_AGENT_DEFINITIONS } from "@/fragno/pi/agent/agent-definitions";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import { PI_AGENT_ACTIVITY } from "@/fragno/pi/agent/pi-agent-records";
+import {
+  integrationConnectionKindLabels,
+  kindsByNamespace,
+} from "@/fragno/runtime-tools/families/integrations/integration-connections";
+import {
+  connectionEventStates,
+  INTEGRATIONS_EVENT_SOURCE,
+} from "@/fragno/runtime-tools/families/integrations/integration-events";
 
 import { automationFragmentSchema } from "../schema";
 import { AUTOMATION_REPLICA_SCHEMAS } from "./replica-schemas";
@@ -261,6 +269,54 @@ function agentsSql() {
 }
 
 /**
+ * `integrationConnectionsOfStates` as SQL: each connection's state from the latest of its events'
+ * states, and its label from the latest that carries one. Keep the two alike.
+ */
+function connectionsSql() {
+  const cases = (entries: Record<string, string>) =>
+    Object.entries(entries)
+      .map(([value, result]) => `WHEN ${sqlString(value)} THEN ${sqlString(result)}`)
+      .join(" ");
+  const eventTypes = Object.keys(connectionEventStates).map(sqlString).join(", ");
+  const namespace = `substr("connectionId", 1, instr("connectionId", '#') - 1)`;
+  return `WITH "state" AS (
+      SELECT "key" AS "connectionId", "payload" ->> '$.service' AS "service", "eventType",
+        "eventId", "occurredAt", "payload" ->> '$.name' AS "name",
+        "payload" ->> '$.authMethod' AS "authMethod",
+        row_number() OVER (PARTITION BY "key" ORDER BY "occurredAt" DESC, "storedAt") AS "latest",
+        row_number() OVER (
+          PARTITION BY "key", "payload" ->> '$.name' IS NULL ORDER BY "occurredAt" DESC, "storedAt"
+        ) AS "labeled"
+      FROM ${automationTable("automation_event_state")}
+      WHERE "source" = ${sqlString(INTEGRATIONS_EVENT_SOURCE)} AND "eventType" IN (${eventTypes})
+    ),
+    "connection" AS (
+      SELECT "latest"."connectionId", "latest"."service",
+        CASE ${namespace.replaceAll('"connectionId"', '"latest"."connectionId"')} ${cases(kindsByNamespace)} END AS "kind",
+        CASE "latest"."eventType" ${cases(connectionEventStates)} END AS "state",
+        "label"."name", "label"."authMethod", "latest"."eventId", "latest"."occurredAt" AS "changedAt"
+      FROM "state" AS "latest"
+      LEFT JOIN "state" AS "label" ON "label"."connectionId" = "latest"."connectionId"
+        AND "label"."name" IS NOT NULL AND "label"."labeled" = 1
+      WHERE "latest"."latest" = 1
+    )
+    SELECT *,
+      CASE
+        WHEN "kind" = 'connector' THEN
+          CASE WHEN "name" IS NULL OR "name" = "service" THEN "service"
+            ELSE "service" || ' · ' || "name" END
+        WHEN "name" IS NOT NULL THEN "name"
+        WHEN ${namespace} = 'backoffice' THEN "service"
+        ELSE substr("connectionId", instr("connectionId", '#') + 1)
+      END AS "displayName",
+      CASE "kind" ${cases(integrationConnectionKindLabels)} END
+        || CASE WHEN "kind" IN ('connector', 'native') THEN ' · ' || "service" ELSE '' END
+        AS "kindLabel"
+    FROM "connection"
+    WHERE "kind" IS NOT NULL`;
+}
+
+/**
  * `pendingWaitEventTypes` from `@fragno-dev/workflows/pending-waits` as SQL: a row of `instanceRef`
  * and `eventType` for each run and type it still needs sent. Waiting steps outnumbering the queued
  * events of their type is what leaves one without an event. Keep the two alike.
@@ -340,7 +396,7 @@ const QUERY_RELATIONS: (PageRelation & { sql: string })[] = [
     name: "connections",
     description:
       "Integration connections as their latest state change reports them, disconnected ones included; name and authMethod are null until a change carries a label. displayName is what people call the connection and kindLabel its kind, such as MCP.",
-    sql: `SELECT "id" AS "connectionId", "service", "kind", "state", "name", "authMethod", "eventId", "changedAt", "displayName", "kindLabel" FROM ${automationTable("integration_connection")}`,
+    sql: connectionsSql(),
     columns: [
       { name: "connectionId", type: "text", nullable: false },
       { name: "service", type: "text", nullable: false },
@@ -357,22 +413,6 @@ const QUERY_RELATIONS: (PageRelation & { sql: string })[] = [
       { name: "changedAt", type: "time", nullable: false },
       { name: "displayName", type: "text", nullable: false },
       { name: "kindLabel", type: "text", nullable: false },
-    ],
-  },
-  {
-    name: "agent_turns",
-    description: "Turns agents ended, one row each.",
-    sql: `SELECT "id", "agentName", "outcome", "endedAt" FROM ${automationTable("pi_agent_turn")}`,
-    columns: [
-      { name: "id", type: "text", nullable: false },
-      { name: "agentName", type: "text", nullable: false },
-      {
-        name: "outcome",
-        type: "text",
-        nullable: false,
-        values: ["answered", "cut-off", "failed"],
-      },
-      { name: "endedAt", type: "time", nullable: false },
     ],
   },
   {
