@@ -86,6 +86,13 @@ const TABLE_RELATIONS: TableRelation[] = [
     table: "automation_event",
   },
   {
+    name: "event_state",
+    description:
+      "Each key's state for event types whose definition has a keyPath: a copy of the latest event with that key, which outlives the event. key is what keyPath read, keyPath the key path that read it, eventId the event's id, and payload its payload, such as payload ->> '$.status'. States read with a key path the type no longer has stay until an agent deletes them.",
+    schema: automationFragmentSchema,
+    table: "automation_event_state",
+  },
+  {
     name: "event_sources",
     description: "The sources events come from.",
     schema: automationFragmentSchema,

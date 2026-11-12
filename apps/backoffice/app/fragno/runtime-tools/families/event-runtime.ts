@@ -6,6 +6,8 @@ import {
   automationEventListResultSchema,
   automationEventRoutesListResultSchema,
   automationEventRouteDispatchSchema,
+  automationEventStateDeleteResultSchema,
+  automationEventStateListResultSchema,
   automationEventParentOf,
 } from "@fragno-dev/backoffice-api/v0/events";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -142,6 +144,33 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
         `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
       );
     },
+    listEventState: async ({ source, eventType, limit, cursor }) => {
+      const query: Record<string, string> = { source, eventType };
+      if (limit !== undefined) {
+        query.limit = limit.toString();
+      }
+      if (cursor !== undefined) {
+        query.cursor = cursor;
+      }
+      const response = await callRoute("GET", "/event-state", { query });
+      if (response.type === "json") {
+        return automationEventStateListResultSchema.parse(response.data);
+      }
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
+      );
+    },
+    deleteEventState: async (input) => {
+      const response = await callRoute("POST", "/event-state/delete", { body: input });
+      if (response.type === "json") {
+        return automationEventStateDeleteResultSchema.parse(response.data);
+      }
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
+      );
+    },
     emitEvent: async ({ eventType, source, subjectUserId, payload, targetScope }) => {
       const { emitter } = options;
       const parentEvent = emitter.kind === "workflow" ? emitter.event : undefined;
@@ -259,6 +288,12 @@ export function createUnavailableEventRuntime(
       throw new Error(message);
     },
     retryEventRoute: async () => {
+      throw new Error(message);
+    },
+    listEventState: async () => {
+      throw new Error(message);
+    },
+    deleteEventState: async () => {
       throw new Error(message);
     },
   };

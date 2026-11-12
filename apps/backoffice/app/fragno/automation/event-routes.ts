@@ -7,6 +7,10 @@ import {
   automationEventListResultSchema,
   automationEventRoutesListInputSchema,
   automationEventRoutesListResultSchema,
+  automationEventStateDeleteInputSchema,
+  automationEventStateDeleteResultSchema,
+  automationEventStateListInputSchema,
+  automationEventStateListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
 import { getFragmentDurableHooks } from "@fragno-dev/db/durable-hooks";
 
@@ -14,6 +18,7 @@ import { defineRoutes } from "@fragno-dev/core";
 import { decodeCursor } from "@fragno-dev/db";
 
 import { automationFragmentDefinition } from "./definition";
+import { STATE_INDEX } from "./event-state";
 import { EVENTS_BY_TIME_INDEX } from "./events-storage-runtime";
 import {
   eventRouteDispatchesOfRows,
@@ -117,6 +122,82 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
             );
         }
         throw new Error("Unsupported automation route retry status.");
+      },
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/event-state",
+      queryParameters: ["source", "eventType", "limit", "cursor"],
+      outputSchema: automationEventStateListResultSchema,
+      errorCodes: ["EVENT_STATE_LIST_INPUT_INVALID"],
+      handler: async function ({ query }, { json, error }) {
+        const limitRaw = query.get("limit")?.trim();
+        const parsed = automationEventStateListInputSchema.safeParse({
+          source: query.get("source") ?? undefined,
+          eventType: query.get("eventType") ?? undefined,
+          limit: limitRaw ? Number(limitRaw) : undefined,
+        });
+        const cursorRaw = query.get("cursor")?.trim();
+        let cursor;
+        try {
+          cursor = cursorRaw ? decodeCursor(cursorRaw) : undefined;
+        } catch {
+          cursor = null;
+        }
+        if (
+          !parsed.success ||
+          cursor === null ||
+          (cursor &&
+            (cursor.indexName !== STATE_INDEX ||
+              cursor.orderDirection !== "asc" ||
+              cursor.pageSize <= 0 ||
+              cursor.pageSize > 500))
+        ) {
+          return error(
+            {
+              message:
+                "Event state list needs a source, an eventType, a limit of 1 to 500, and a cursor from a previous page.",
+              code: "EVENT_STATE_LIST_INPUT_INVALID",
+            },
+            400,
+          );
+        }
+
+        const result = await this.handlerTx()
+          .withServiceCalls(
+            () =>
+              [
+                services.listEventState({
+                  source: parsed.data.source,
+                  eventType: parsed.data.eventType,
+                  limit: parsed.data.limit ?? 100,
+                  cursor,
+                }),
+              ] as const,
+          )
+          .transform(({ serviceResult: [result] }) => result)
+          .execute();
+
+        return json({
+          states: result.states,
+          nextCursor: result.cursor?.encode(),
+          hasNextPage: result.hasNextPage,
+        });
+      },
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/event-state/delete",
+      inputSchema: automationEventStateDeleteInputSchema,
+      outputSchema: automationEventStateDeleteResultSchema,
+      handler: async function ({ input }, { json }) {
+        const payload = await input.valid();
+        return json(
+          await this.handlerTx()
+            .withServiceCalls(() => [services.deleteEventState(payload)] as const)
+            .transform(({ serviceResult: [result] }) => result)
+            .execute(),
+        );
       },
     }),
     defineRoute({

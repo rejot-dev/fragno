@@ -187,8 +187,8 @@ private again.
 ## Writing data
 
 A site writes nothing itself: the Worker fires an **event** for each thing a viewer adds or changes,
-and reads the events back with `env.DATA.sql` from the `events` relation. The events are the site's
-data, kept in the order they were fired.
+and reads them back with `env.DATA.sql`: what happened from the `events` relation, in the order it
+was fired, and what each item is now from `event_state`.
 
 - **Fire:** `await env.DATA.fire({ type, payload, viewer })` fires an event into the scope's
   automations from the source `site:<path>`, such as `site:/workspace/tools/todo.site`, and returns
@@ -203,10 +203,16 @@ data, kept in the order they were fired.
   `events.emit`.
 - **Read back:** select the site's events by `source` and `eventType`, reading the payload with
   `->>`. Where data only grows, such as a guestbook's notes, each event is an item. Where items
-  change, such as TODOs marked done or deleted, fire the whole item with each change, and keep each
-  item's latest event, leaving out deletions, as below. A fired event reaches reads within moments,
-  so the page shows a change at once from what it sent, then reads again every second until it
-  appears. The source is the site's path: a moved site reads none of the events it fired before.
+  change, such as TODOs marked done or deleted, fire the whole item with each change, and before the
+  first fire create the type with a key path naming the item's id, which needs `events.manage`:
+  `events.catalogCreate({ source: "site:/workspace/tools/todo.site", eventType: "todos.changed", label: "TODO changed", keyPath: "$.todo.id" })`.
+  `event_state` then holds each item's latest event as `key` and `payload`; read it leaving out
+  deletions, as below. To change the key path, follow
+  `/static/skills/building-automations/references/event-state.md`. `fire` throws for an event
+  without the key. A fired event reaches reads within moments, so the page shows a change at once
+  from what it sent, then reads again every second until it appears. The source is the site's path:
+  a moved site reads none of the events it fired before, and needs its types created again under its
+  new path.
 - **Check:** `artifacts.requestSite` keeps the events its request fires, with their payloads, and
   fires none, so checking adds no data. With `fire: true` it fires them as a viewer's request does
   and gives each its `eventId`: a real change, which the site then shows like any other, so fire
@@ -220,12 +226,11 @@ export default {
     const { sql, fire } = env.DATA;
     const url = new URL(request.url);
     if (url.pathname === "/api/todos" && request.method === "GET") {
-      // Each TODO's latest change, newest first, without the deleted ones.
-      const rows = await sql`SELECT todo FROM (
-          SELECT payload ->> '$.action' AS action, payload ->> '$.todo' AS todo, position,
-            row_number() OVER (PARTITION BY payload ->> '$.todo.id' ORDER BY position DESC) AS n
-          FROM events WHERE source = ${SOURCE} AND eventType = 'todos.changed')
-        WHERE n = 1 AND action != 'delete' ORDER BY position DESC`;
+      // Each TODO as it is now, latest change first, without the deleted ones.
+      const rows = await sql`SELECT payload ->> '$.todo' AS todo FROM event_state
+        WHERE source = ${SOURCE} AND eventType = 'todos.changed'
+          AND payload ->> '$.action' != 'delete'
+        ORDER BY occurredAt DESC`;
       return Response.json(rows.map((row) => JSON.parse(row.todo)));
     }
     if (url.pathname === "/api/todos" && request.method === "POST") {
@@ -267,10 +272,10 @@ workflow with `/static/skills/building-automations/SKILL.md`.
 ### Through the store
 
 Keep the current state in the store instead when data must be erased for good, such as personal data
-an event would keep; when a change must be checked against what is there, or call a connected
-service; or when a type's history grows past a few thousand events. The event starts a workflow, as
-Starting workflows describes, that writes one `kv_store` key per item, such as `todo/<id>`, with the
-item as JSON, granted only `store.modify`; the Worker reads `kv_store` by key prefix.
+an event and its state would keep; or when a change must be checked against what is there, or call a
+connected service. The event starts a workflow, as Starting workflows describes, that writes one
+`kv_store` key per item, such as `todo/<id>`, with the item as JSON, granted only `store.modify`;
+the Worker reads `kv_store` by key prefix.
 
 ## Links
 

@@ -41,6 +41,7 @@ import { cloudflareToolFamily, type CloudflareRuntime } from "./families/cloudfl
 import {
   eventFireToolFamily,
   eventReadToolFamily,
+  eventStateDeleteToolFamily,
   eventRetryToolFamily,
   type EventRuntime,
 } from "./families/event";
@@ -136,6 +137,7 @@ export const runtimeToolFamilies = [
   eventFireToolFamily,
   eventReadToolFamily,
   eventRetryToolFamily,
+  eventStateDeleteToolFamily,
   eventCatalogToolFamily,
   cloudflareToolFamily,
   webToolFamily,

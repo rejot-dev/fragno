@@ -343,6 +343,21 @@ export type AutomationEventRoutesListResult = z.infer<typeof automationEventRout
 
 const jsonSchemaDocumentSchema = z.lazy(() => z.record(z.string(), z.unknown()));
 
+const AUTOMATION_EVENT_KEY_PATH_DESCRIPTION =
+  "Where events of this type hold the key of what they are about, such as $.entityId: $ and .field names of letters, digits, and underscores. The key is a string or number; an event without one is refused. The event_state relation keeps a copy of each key's latest event, which outlives the events. Changing the key path, or deleting the definition, leaves the state as it is: events.state.list shows each key's state with the key path it was read with, and events.state.delete deletes what is no longer wanted.";
+
+/** An event definition's key path; see `AUTOMATION_EVENT_KEY_PATH_DESCRIPTION`. */
+const automationEventKeyPathSchema = z
+  .string()
+  .max(200)
+  .regex(
+    /^\$(?:\.[A-Za-z0-9_]+)+$/u,
+    "A key path is $ followed by .field names, such as $.entityId.",
+  )
+  .nullable()
+  .optional()
+  .describe(AUTOMATION_EVENT_KEY_PATH_DESCRIPTION);
+
 /**
  * An event definition a workspace adds to the catalog. Members define their own; a package's are
  * declared by the package and only change when it is installed again or uninstalled.
@@ -358,6 +373,7 @@ export const automationEventDefinitionSchema = z.lazy(() =>
     actorSchema: jsonSchemaDocumentSchema.nullable().optional(),
     subjectSchema: jsonSchemaDocumentSchema.nullable().optional(),
     example: z.unknown().nullable().optional(),
+    keyPath: automationEventKeyPathSchema,
     enabled: z.boolean(),
     capabilityId: z.string(),
     steward: automationStewardSchema,
@@ -378,6 +394,7 @@ export const automationEventDefinitionCreateInputSchema = z.lazy(() =>
     actorSchema: jsonSchemaDocumentSchema.nullable().optional(),
     subjectSchema: jsonSchemaDocumentSchema.nullable().optional(),
     example: z.unknown().nullable().optional(),
+    keyPath: automationEventKeyPathSchema,
     enabled: z.boolean().default(true),
   }),
 );
@@ -395,6 +412,7 @@ export const automationEventDefinitionUpdatePayloadSchema = z.lazy(() =>
       actorSchema: jsonSchemaDocumentSchema.nullable().optional(),
       subjectSchema: jsonSchemaDocumentSchema.nullable().optional(),
       example: z.unknown().nullable().optional(),
+      keyPath: automationEventKeyPathSchema,
       enabled: z.boolean().optional(),
     })
     .refine((patch) => Object.values(patch).some((value) => typeof value !== "undefined"), {
@@ -412,6 +430,68 @@ export const automationEventDefinitionUpdateInputSchema = z.lazy(() =>
 
 export type AutomationEventDefinitionUpdateInput = z.input<
   typeof automationEventDefinitionUpdateInputSchema
+>;
+
+/** One key's state: a copy of the latest event of its type with that key. */
+export const automationEventStateSchema = z.lazy(() =>
+  z.object({
+    key: z.string(),
+    keyPath: z
+      .string()
+      .describe(
+        "The key path the key was read with. One other than the type's keyPath now is left from before the key path changed.",
+      ),
+    eventId: z.string(),
+    payload: z.record(z.string(), z.unknown()),
+    occurredAt: z.string(),
+    storedAt: z.string(),
+  }),
+);
+
+export type AutomationEventState = z.infer<typeof automationEventStateSchema>;
+
+export const automationEventStateListInputSchema = z.lazy(() =>
+  z.object({
+    source: z.string().trim().min(1),
+    eventType: z.string().trim().min(1),
+    limit: z.number().int().positive().max(500).optional(),
+    cursor: z.string().trim().min(1).optional(),
+  }),
+);
+
+export type AutomationEventStateListInput = z.infer<typeof automationEventStateListInputSchema>;
+
+/** A type's states by key. */
+export const automationEventStateListResultSchema = z.lazy(() =>
+  z.object({
+    states: z.array(automationEventStateSchema),
+    nextCursor: z.string().optional(),
+    hasNextPage: z.boolean(),
+  }),
+);
+
+export type AutomationEventStateListResult = z.infer<typeof automationEventStateListResultSchema>;
+
+export const automationEventStateDeleteInputSchema = z.lazy(() =>
+  z.object({
+    source: z.string().trim().min(1),
+    eventType: z.string().trim().min(1),
+    // Durable Object SQLite binds at most 100 parameters per statement, and reading the keys'
+    // states binds each key besides the type.
+    keys: z.array(z.string().min(1)).min(1).max(50),
+  }),
+);
+
+export type AutomationEventStateDeleteInput = z.infer<typeof automationEventStateDeleteInputSchema>;
+
+export const automationEventStateDeleteResultSchema = z.lazy(() =>
+  z.object({
+    deleted: z.array(z.string()).describe("The keys whose state was deleted; the others had none."),
+  }),
+);
+
+export type AutomationEventStateDeleteResult = z.infer<
+  typeof automationEventStateDeleteResultSchema
 >;
 
 const eventListInputSchema = z.lazy(() =>
@@ -453,6 +533,7 @@ const automationEventDescriptorSchema = z.lazy(() =>
     actorSchema: z.record(z.string(), z.unknown()).optional(),
     subjectSchema: z.record(z.string(), z.unknown()).optional(),
     example: z.unknown().optional(),
+    keyPath: z.string().optional().describe(AUTOMATION_EVENT_KEY_PATH_DESCRIPTION),
   }),
 );
 
@@ -511,6 +592,20 @@ export const eventsOperations = {
     ),
     output: z.lazy(() => automationEventRouteDispatchSchema.nullable()),
   },
+  "events.state.list": {
+    description:
+      "List an event type's state, which the event_state relation holds: for a type whose definition has a keyPath, each key's latest event, ordered by key. Each state names the key path its key was read with.",
+    permissions: [BACKOFFICE_PERMISSION.events.read],
+    input: automationEventStateListInputSchema,
+    output: automationEventStateListResultSchema,
+  },
+  "events.state.delete": {
+    description:
+      "Delete the state of an event type's keys, such as keys read with a key path the type no longer has. The events stay. A key's next event starts its state again.",
+    permissions: [BACKOFFICE_PERMISSION.events.manage],
+    input: automationEventStateDeleteInputSchema,
+    output: automationEventStateDeleteResultSchema,
+  },
   "events.catalog.list": {
     description:
       "List known automation event source/type pairs from the Backoffice capability registry.",
@@ -529,6 +624,13 @@ export const eventsOperations = {
     permissions: [BACKOFFICE_PERMISSION.events.manage],
     input: automationEventDefinitionCreateInputSchema,
     output: automationEventDefinitionSchema,
+  },
+  "events.catalog.update": {
+    description:
+      "Change a scoped dynamic automation event definition; the patch names only the fields that change. Returns null when the scope defines no such type.",
+    permissions: [BACKOFFICE_PERMISSION.events.manage],
+    input: automationEventDefinitionUpdateInputSchema,
+    output: z.lazy(() => automationEventDefinitionSchema.nullable()),
   },
 } satisfies Record<string, BackofficeApiOperation>;
 

@@ -15,6 +15,7 @@ const RELATION_PERMISSIONS: Record<string, BackofficePermissionRequirement> = {
   workflow_events: BACKOFFICE_PERMISSION.workflow.read,
   workflow_waits: BACKOFFICE_PERMISSION.workflow.read,
   events: BACKOFFICE_PERMISSION.events.read,
+  event_state: BACKOFFICE_PERMISSION.events.read,
   event_sources: BACKOFFICE_PERMISSION.events.read,
   event_definitions: BACKOFFICE_PERMISSION.events.read,
   routes: BACKOFFICE_PERMISSION.router.read,

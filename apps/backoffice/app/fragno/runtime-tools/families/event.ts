@@ -3,6 +3,10 @@ import {
   type AutomationEventDetail,
   type AutomationEventRoutesListInput,
   type AutomationEventRoutesListResult,
+  type AutomationEventStateDeleteInput,
+  type AutomationEventStateDeleteResult,
+  type AutomationEventStateListInput,
+  type AutomationEventStateListResult,
   automationEventListResultSchema,
   type AutomationEventRouteDispatch,
 } from "@fragno-dev/backoffice-api/v0/events";
@@ -41,6 +45,10 @@ export type EventRuntime = {
     eventId: string;
     routeId: string;
   }): Promise<AutomationEventRouteDispatch | null>;
+  listEventState(input: AutomationEventStateListInput): Promise<AutomationEventStateListResult>;
+  deleteEventState(
+    input: AutomationEventStateDeleteInput,
+  ): Promise<AutomationEventStateDeleteResult>;
 };
 
 type EventToolContext = BackofficeToolContext<{ event?: EventRuntime }>;
@@ -403,13 +411,139 @@ const retryEventRouteTool = defineBackofficeRuntimeTool({
   },
 });
 
-/** Event runtime tools expose emission, current-scope stored event reads, and route retries. */
+const listEventStateTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("events.state.list"),
+  namespace: "events",
+  name: "stateList",
+  execute: async (input, context: EventToolContext) =>
+    await getEventRuntime(context.runtimes.event).listEventState(input),
+  adapters: {
+    bash: {
+      command: "events.state.list",
+      help: {
+        summary:
+          "events.state.list lists an event type's state: each key's latest event, with the key path that read its key.",
+        options: [
+          {
+            name: "source",
+            required: true,
+            valueRequired: true,
+            valueName: "source",
+            description: "Automation event source.",
+          },
+          {
+            name: "event-type",
+            required: true,
+            valueRequired: true,
+            valueName: "event-type",
+            description: "Automation event type.",
+          },
+          {
+            name: "limit",
+            valueRequired: true,
+            valueName: "number",
+            description: "Page size (1–500; defaults to 100).",
+          },
+          {
+            name: "cursor",
+            valueRequired: true,
+            valueName: "cursor",
+            description: "Cursor returned by the previous page.",
+          },
+        ],
+        examples: [
+          "events.state.list --source bank --event-type balance.updated",
+          "events.state.list --source bank --event-type balance.updated --format json",
+        ],
+      },
+      parse: defineCliArgsParser<AutomationEventStateListInput>("events.state.list", {
+        source: { required: true },
+        eventType: { required: true },
+        limit: { kind: "integer" },
+        cursor: {},
+      }),
+      outputOptions: readEventOutputOptions,
+      format: (result, options) => {
+        if (options.format === "json" || options.print) {
+          return { data: result };
+        }
+        const lines = result.states.length
+          ? [
+              "key\tkey path\tevent id\toccurred at",
+              ...result.states.map(
+                (state) => `${state.key}\t${state.keyPath}\t${state.eventId}\t${state.occurredAt}`,
+              ),
+            ]
+          : ["No state found."];
+        if (result.hasNextPage && result.nextCursor) {
+          lines.push(`next cursor: ${result.nextCursor}`);
+        }
+        return { stdout: `${lines.join("\n")}\n` };
+      },
+    },
+  },
+});
+
+const deleteEventStateTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("events.state.delete"),
+  namespace: "events",
+  name: "stateDelete",
+  execute: async (input, context: EventToolContext) =>
+    await getEventRuntime(context.runtimes.event).deleteEventState(input),
+  adapters: {
+    bash: {
+      command: "events.state.delete",
+      help: {
+        summary: "events.state.delete deletes the state of an event type's keys; the events stay.",
+        options: [
+          {
+            name: "source",
+            required: true,
+            valueRequired: true,
+            valueName: "source",
+            description: "Automation event source.",
+          },
+          {
+            name: "event-type",
+            required: true,
+            valueRequired: true,
+            valueName: "event-type",
+            description: "Automation event type.",
+          },
+          {
+            name: "key",
+            required: true,
+            valueRequired: true,
+            valueName: "key",
+            description: "Key whose state to delete; repeat for each, up to 50.",
+          },
+        ],
+        examples: [
+          "events.state.delete --source bank --event-type balance.updated --key acc-1 --key acc-2",
+        ],
+      },
+      parse: defineCliArgsParser<AutomationEventStateDeleteInput>("events.state.delete", {
+        source: { required: true },
+        eventType: { required: true },
+        keys: { required: true, option: "key", kind: "stringArray" },
+      }),
+      format: (result, options) =>
+        options.format === "json"
+          ? { data: result }
+          : { stdout: `Deleted the state of ${result.deleted.length} keys.\n` },
+    },
+  },
+});
+
+/** Event runtime tools expose emission, current-scope stored event reads, route retries, and state. */
 export const eventRuntimeTools = [
   fireEventTool,
   listEventsTool,
   getEventTool,
   listEventRoutesTool,
   retryEventRouteTool,
+  listEventStateTool,
+  deleteEventStateTool,
 ] as const;
 
 export const eventFireToolFamily = defineBackofficeRuntimeToolFamily({
@@ -425,9 +559,16 @@ export const eventRetryToolFamily = defineBackofficeRuntimeToolFamily({
   isAvailable: (context: EventToolContext) => !!context.runtimes.event,
 });
 
+/** Deleting an event type's state needs events.manage. */
+export const eventStateDeleteToolFamily = defineBackofficeRuntimeToolFamily({
+  namespace: "events",
+  tools: [deleteEventStateTool],
+  isAvailable: (context: EventToolContext) => !!context.runtimes.event,
+});
+
 /** Stored event reads use the events.read permission in the current scope. */
 export const eventReadToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "events",
-  tools: [listEventsTool, getEventTool, listEventRoutesTool],
+  tools: [listEventsTool, getEventTool, listEventRoutesTool, listEventStateTool],
   isAvailable: (context: EventToolContext) => !!context.runtimes.event,
 });

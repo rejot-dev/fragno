@@ -3484,6 +3484,57 @@
     ]
   },
   {
+    "command": "events.state.list",
+    "summary": "events.state.list lists an event type's state: each key's latest event, with the key path that read its key.",
+    "options": [
+      {
+        "name": "source",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "source",
+        "description": "Automation event source."
+      },
+      {
+        "name": "event-type",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "event-type",
+        "description": "Automation event type."
+      },
+      {
+        "name": "limit",
+        "valueRequired": true,
+        "valueName": "number",
+        "description": "Page size (1–500; defaults to 100)."
+      },
+      {
+        "name": "cursor",
+        "valueRequired": true,
+        "valueName": "cursor",
+        "description": "Cursor returned by the previous page."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "events.routes.retry",
     "summary": "events.routes.retry runs a route that failed for good on a stored event again, as the route was when the event matched it, with the route's current permissions.",
     "options": [
@@ -3500,6 +3551,52 @@
         "valueRequired": true,
         "valueName": "id",
         "description": "Id of a route the event matched, as events.routes.list or events.get shows it."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "events.state.delete",
+    "summary": "events.state.delete deletes the state of an event type's keys; the events stay.",
+    "options": [
+      {
+        "name": "source",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "source",
+        "description": "Automation event source."
+      },
+      {
+        "name": "event-type",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "event-type",
+        "description": "Automation event type."
+      },
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "Key whose state to delete; repeat for each, up to 50."
       },
       {
         "name": "help",
@@ -3596,6 +3693,52 @@
         "valueRequired": true,
         "valueName": "json",
         "description": "Event definition JSON payload."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "events.catalog.update",
+    "summary": "events.catalog.update changes a dynamic automation event definition.",
+    "options": [
+      {
+        "name": "source",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "source",
+        "description": "Automation event source."
+      },
+      {
+        "name": "event-type",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "event-type",
+        "description": "Automation event type."
+      },
+      {
+        "name": "json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Patch JSON naming only the fields that change."
       },
       {
         "name": "help",

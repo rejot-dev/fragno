@@ -8,6 +8,8 @@ import {
   type AutomationEventDefinitionCreateInput,
   automationEventDefinitionCreateInputSchema,
   automationEventDefinitionSchema,
+  type AutomationEventDefinitionUpdateInput,
+  automationEventDefinitionUpdateInputSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type { z } from "zod";
 
@@ -44,6 +46,9 @@ export type EventCatalogRuntime = {
   createAutomationEvent(
     input: z.output<typeof automationEventDefinitionCreateInputSchema>,
   ): Promise<AutomationEventDefinition>;
+  updateAutomationEvent(
+    input: z.output<typeof automationEventDefinitionUpdateInputSchema>,
+  ): Promise<AutomationEventDefinition | null>;
 };
 
 type EventCatalogToolContext = BackofficeToolContext<{ eventCatalog?: EventCatalogRuntime }>;
@@ -71,6 +76,17 @@ function parseAutomationEventCatalogCreate(args: string[]) {
     payload: { kind: "json", option: "json", required: true },
   })(args);
   return payload as AutomationEventDefinitionCreateInput;
+}
+
+function parseAutomationEventCatalogUpdate(args: string[]) {
+  return defineCliArgsParser<{ source: string; eventType: string; patch: unknown }>(
+    "events.catalog.update",
+    {
+      source: { required: true },
+      eventType: { required: true },
+      patch: { kind: "json", option: "json", required: true },
+    },
+  )(args) as AutomationEventDefinitionUpdateInput;
 }
 
 function formatAutomationEventsCatalogList(
@@ -111,7 +127,7 @@ function formatAutomationEventCatalogEntry(
     return { data };
   }
   return {
-    stdout: `${data.source}:${data.eventType}\n${data.description ?? data.label}\n\npayload\n${formatJsonSchemaFields(data.payloadSchema)}\n\nactor\n${formatJsonSchemaFields(data.actorSchema)}\n\nsubject\n${formatJsonSchemaFields(data.subjectSchema)}\n`,
+    stdout: `${data.source}:${data.eventType}\n${data.description ?? data.label}\n\npayload\n${formatJsonSchemaFields(data.payloadSchema)}\n\nactor\n${formatJsonSchemaFields(data.actorSchema)}\n\nsubject\n${formatJsonSchemaFields(data.subjectSchema)}\n${data.keyPath ? `\nkey path\n${data.keyPath}\n` : ""}`,
   };
 }
 
@@ -127,6 +143,7 @@ function formatAutomationEventDefinitionEntry(
       actorSchema: data.actorSchema ?? undefined,
       subjectSchema: data.subjectSchema ?? undefined,
       example: data.example ?? undefined,
+      keyPath: data.keyPath ?? undefined,
     },
     options,
   );
@@ -229,6 +246,55 @@ export const automationEventsCatalogCreateTool = defineBackofficeRuntimeTool({
   },
 });
 
+/** Changes a dynamic event catalog definition in the current scope. */
+export const automationEventsCatalogUpdateTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("events.catalog.update"),
+  namespace: "events",
+  name: "catalogUpdate",
+  execute: async (input, context: EventCatalogToolContext) =>
+    await getEventCatalogRuntime(context).updateAutomationEvent(input),
+  adapters: {
+    bash: {
+      command: "events.catalog.update",
+      help: {
+        summary: "events.catalog.update changes a dynamic automation event definition.",
+        options: [
+          {
+            name: "source",
+            required: true,
+            valueRequired: true,
+            valueName: "source",
+            description: "Automation event source.",
+          },
+          {
+            name: "event-type",
+            required: true,
+            valueRequired: true,
+            valueName: "event-type",
+            description: "Automation event type.",
+          },
+          {
+            name: "json",
+            required: true,
+            valueRequired: true,
+            valueName: "json",
+            description: "Patch JSON naming only the fields that change.",
+          },
+        ],
+        examples: [
+          'events.catalog.update --source custom --event-type thing.changed --json \'{"keyPath":"$.thingId"}\' --format json',
+        ],
+      },
+      parse: parseAutomationEventCatalogUpdate,
+      outputOptions: readCatalogCreateOutputOptions,
+      format: (data, options) =>
+        data
+          ? formatAutomationEventDefinitionEntry(data, options)
+          : { stderr: "Automation event not found\n", exitCode: 1 },
+    },
+  },
+});
+
 /** Builds the event catalog from static descriptors and scoped dynamic definitions. */
 export function createEventCatalogRuntime({
   objects,
@@ -240,7 +306,7 @@ export function createEventCatalogRuntime({
   execution: BackofficeExecutionContext;
 }): EventCatalogRuntime {
   const { scope } = execution;
-  // Creation goes through the route, which reports duplicate and invalid definitions.
+  // Creation and changes go through the routes, which report duplicate and invalid definitions.
   const callRoute = createAutomationsRouteCaller({
     object: kernel.scoped("AUTOMATIONS", scope, objects.automations),
     context: { execution },
@@ -254,10 +320,19 @@ export function createEventCatalogRuntime({
       return [
         ...staticEvents,
         ...dynamicEvents.map(
-          ({ payloadSchema, actorSchema, subjectSchema, description, example, ...event }) => ({
+          ({
+            payloadSchema,
+            actorSchema,
+            subjectSchema,
+            description,
+            example,
+            keyPath,
+            ...event
+          }) => ({
             ...event,
             description: description ?? undefined,
             example: example ?? undefined,
+            keyPath: keyPath ?? undefined,
           }),
         ),
       ];
@@ -282,10 +357,29 @@ export function createEventCatalogRuntime({
         actorSchema: dynamicEvent.actorSchema ?? undefined,
         subjectSchema: dynamicEvent.subjectSchema ?? undefined,
         example: dynamicEvent.example ?? undefined,
+        keyPath: dynamicEvent.keyPath ?? undefined,
       };
     },
     createAutomationEvent: async (input) => {
       const response = await callRoute("POST", "/event-definitions", { body: input });
+      if (response.type === "json") {
+        return automationEventDefinitionSchema.parse(response.data);
+      }
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        response.type === "error"
+          ? response.error.message
+          : `Event definitions backend returned ${response.status}`,
+      );
+    },
+    updateAutomationEvent: async ({ source, eventType, patch }) => {
+      const response = await callRoute("PATCH", "/event-definitions/:source/:eventType", {
+        pathParams: { source, eventType },
+        body: patch,
+      });
+      if (response.type === "error" && response.status === 404) {
+        return null;
+      }
       if (response.type === "json") {
         return automationEventDefinitionSchema.parse(response.data);
       }
@@ -304,6 +398,7 @@ export const eventCatalogRuntimeTools = [
   automationEventsCatalogListTool,
   automationEventsCatalogGetTool,
   automationEventsCatalogCreateTool,
+  automationEventsCatalogUpdateTool,
 ] as const;
 
 /** Event catalog availability is independent of event emission and stored event reads. */

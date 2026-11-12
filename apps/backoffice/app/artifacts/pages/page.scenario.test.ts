@@ -763,7 +763,7 @@ describe("workspace pages", () => {
             const { verifyError } = await writePage(ctx, queryPage("SELECT instanceId FROM run"));
             assert.equal(
               verifyError,
-              "queries.q0: no such table: run. Read one of: runs, steps, workflow_events, events, event_sources, event_definitions, routes, route_schedules, route_dispatches, projects, kv_store, connections, agent_turns, agents, workflow_waits.",
+              "queries.q0: no such table: run. Read one of: runs, steps, workflow_events, events, event_state, event_sources, event_definitions, routes, route_schedules, route_dispatches, projects, kv_store, connections, agent_turns, agents, workflow_waits.",
             );
           }),
           then.assert(

@@ -25,7 +25,7 @@ as the data changes.
    `/static/codemode/ui-catalog.d.ts` for the components. Read the example in
    `/static/skills/building-pages/examples/` closest to the page:
    - `home.page.js`, the scope's home page: an overview of its automations;
-   - `bank-accounts.page.js`: figures projected from a synced system's versioned events;
+   - `bank-accounts.page.js`: a synced system's records as they are now, and totals over them;
    - `delivery-tracker.page.js`: one value a workflow keeps checking, with its history.
 
    Complete when every value the page shows has a column in `PageRelations` or a workspace file to
@@ -206,11 +206,15 @@ The title heads the page. Return the root element from the callback; `page.defin
   so intervals without rows show.
 - JSON columns read with `->>`, such as `route.trigger ->> '$.kind'` or
   `event.payload ->> '$.action'`; nest a JSON column in other JSON with `json(...)`.
+- `event_state` holds what things are now: for each event type whose definition has a `keyPath`, one
+  row per `key` with its latest event's `payload`, such as an account's balance or an order's
+  status. `events` holds what happened. A type without a `keyPath` has no state;
+  `/static/skills/building-automations/references/event-state.md` describes giving it one.
 - Components show a bounded number of rows, such as a table's 64, so order and `LIMIT` lists.
 - Keep each query under about a second over the scope's data. The build runs queries on an empty
   database, so a slow query builds and then fails on the page.
 - Booleans are 0 or 1, so `WHERE route.enabled = 1`, and `sum(status = 'errored')` counts rows.
-- Start from the examples' queries: the latest version of each entity among versioned events in
+- Start from the examples' queries: records as they are now, and totals over them, in
   `bank-accounts.page.js`; consecutive runs with the same outcome as one streak, and a value's first
   reading with each change after it, in `delivery-tracker.page.js`; counts per interval in
   `home.page.js`.
