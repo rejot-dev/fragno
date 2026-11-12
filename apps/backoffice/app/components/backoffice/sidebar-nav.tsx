@@ -55,6 +55,14 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     phoneStart: mainPiAgentPath,
   },
   {
+    label: "Artifacts",
+    to: "/backoffice/artifacts",
+    icon: "layers",
+    isActive: (pathname) => pathname.startsWith("/backoffice/artifacts"),
+    phoneTab: false,
+    phoneStart: null,
+  },
+  {
     label: "Files",
     to: "/backoffice/files",
     icon: "folder",

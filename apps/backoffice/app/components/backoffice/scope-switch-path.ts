@@ -64,6 +64,8 @@ export const scopeSwitchPath = (
         : `/backoffice/computers/${scopePath}/sandboxes`;
     case "agents":
       return `/backoffice/agents/${scopePath}/agents`;
+    case "artifacts":
+      return `/backoffice/artifacts/${scopePath}`;
     case "files":
       return `/backoffice/files/${scopePath}`;
     // Connection addresses resolve only in their own scope, so a selection does not carry over.
