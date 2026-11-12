@@ -72,10 +72,10 @@ reclassifies the event, or forwards it to another scope.
    user has been told exactly what remains missing.
 
 4. Create the required artifacts in dependency order: destination event definitions or saved
-   workflows, then routes. Give a type whose events are about things that change, such as orders or
-   records a feed syncs, a `keyPath`, so pages read each thing as it is now. Read
-   `/static/skills/building-automations/references/event-state.md` to choose one, and before
-   changing a type's key path or deleting its state.
+   workflows, then routes. Give a type whose events are about things pages or sites show, such as
+   orders, a site's notes, or records a feed syncs, a `keyPath`, so they read each thing as it is
+   now. Read `/static/skills/building-automations/references/event-state.md` to choose one, and
+   before changing a type's key path or deleting its state.
 
    Save workflow implementations in `/workspace/automations/` with a `.workflow.js` suffix. A saved
    workflow is a module: it imports saved modules, such as integration clients, with static `import`
