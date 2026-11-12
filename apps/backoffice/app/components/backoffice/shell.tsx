@@ -47,6 +47,7 @@ type BackofficeShellProps = {
   automationReplicaSource: CurrentBackofficeContext["automationReplicaSource"] | null;
   /** The project owner's projects, streamed in after the page; null without a project owner. */
   projectList: Promise<AutomationProjectList> | null;
+  sitesDomain: string | null;
   isLoading?: boolean;
 };
 
@@ -128,6 +129,7 @@ export function BackofficeShell(props: BackofficeShellProps) {
           resolvedScope: props.resolvedScope,
           automationReplicaSource: props.automationReplicaSource,
           resolveScope: resolveScopeFor(props.me, props.resolvedScope),
+          sitesDomain: props.sitesDomain,
         }
       : null;
   return currentContext ? (

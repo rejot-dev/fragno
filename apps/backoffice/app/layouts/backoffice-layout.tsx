@@ -55,6 +55,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     }),
   );
 
+  const { config } = context.get(BackofficeWorkerContext).runtime;
   return {
     me,
     accessTokenExpiresAt,
@@ -62,6 +63,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     administeredMember,
     automationReplicaSource,
     projectList,
+    sitesDomain: config.sites ? config.sitesDomain : null,
   };
 }
 

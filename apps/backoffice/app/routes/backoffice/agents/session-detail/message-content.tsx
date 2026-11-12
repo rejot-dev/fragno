@@ -2,8 +2,9 @@ import {
   MarkdownImage,
   MarkdownText as ChatMarkdownText,
 } from "@fragno-private/backoffice-chat/messages/markdown";
-import type { ComponentType } from "react";
+import { createContext, useContext, type ComponentType, type ReactNode } from "react";
 
+import { siteHostOf, siteHostOrigin } from "@/artifacts/sites/site-host-names";
 import {
   FileImage,
   FileLink,
@@ -23,8 +24,34 @@ const markdownComponents = {
   "unavailable-image": MarkdownImage,
 };
 
+// Outside the Backoffice layout no sites domain is known, so every link asks before it opens.
+const SitesDomainContext = createContext<string | null>(null);
+
+/** Lets links to sites, which Backoffice serves under `domain`, open without asking first. */
+export function SitesDomainProvider({
+  domain,
+  children,
+}: {
+  domain: string | null;
+  children: ReactNode;
+}) {
+  return <SitesDomainContext.Provider value={domain}>{children}</SitesDomainContext.Provider>;
+}
+
+function isSiteUrl(href: string, domain: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return false;
+  }
+  const host = siteHostOf(url, domain);
+  return typeof host === "string" && url.origin === siteHostOrigin(host, domain);
+}
+
 /** Markdown whose workspace paths link to, and show, the scope's files. */
 export function MarkdownText({ text, className }: { text: string; className?: string }) {
+  const sitesDomain = useContext(SitesDomainContext);
   return (
     <ChatMarkdownText
       text={text}
@@ -32,6 +59,7 @@ export function MarkdownText({ text, className }: { text: string; className?: st
       components={markdownComponents}
       remarkPlugins={remarkPlugins}
       rehypePlugins={rehypePlugins}
+      opensWithoutAsking={(url) => sitesDomain !== null && isSiteUrl(url, sitesDomain)}
     />
   );
 }

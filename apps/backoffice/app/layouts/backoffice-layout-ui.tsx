@@ -31,6 +31,7 @@ export default function BackofficeLayout({
     administeredMember,
     automationReplicaSource,
     projectList,
+    sitesDomain,
   } = loaderData;
 
   useEffect(
@@ -56,6 +57,7 @@ export default function BackofficeLayout({
       accessTokenExpiresAt={accessTokenExpiresAt}
       automationReplicaSource={automationReplicaSource}
       projectList={projectList}
+      sitesDomain={sitesDomain}
       isLoading={false}
     >
       {children ?? <Outlet context={{ me }} />}
@@ -102,6 +104,7 @@ export function ErrorBoundary() {
       accessTokenExpiresAt={layoutData?.accessTokenExpiresAt ?? null}
       automationReplicaSource={layoutData?.automationReplicaSource ?? null}
       projectList={layoutData?.projectList ?? null}
+      sitesDomain={layoutData?.sitesDomain ?? null}
       isLoading={false}
     >
       <div className="space-y-4">
