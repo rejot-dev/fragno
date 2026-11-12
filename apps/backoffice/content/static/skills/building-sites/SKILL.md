@@ -11,10 +11,12 @@ description:
 A site is an artifact: a `<name>.site` directory anywhere under `/workspace`, built into a snapshot
 served at its scope's own address, at the directory's path under `/workspace`, such as
 `https://quiet-amber-falcon.ley.run/tools/todo.site/`. Only people signed in to Backoffice who may
-read the scope's workspace open it. A site cannot be inside another site.
+read the scope's workspace open it, unless it is public, as Public sites describes. A site cannot be
+inside another site.
 
 ```text
 /workspace/tools/todo.site/
+  site.json           { "public": true } for a site anyone may open; leave it out otherwise
   public/index.html   the file at …/tools/todo.site/
   public/app.js       the file at …/tools/todo.site/app.js
   worker.js           handles every request, such as …/tools/todo.site/api/todos
@@ -72,6 +74,8 @@ read the scope's workspace open it. A site cannot be inside another site.
   permission such as `store.read`, tell the user: a Worker reads all of the scope's automation data,
   so these need the read permissions of all of it. Give the agent those permissions, or build a site
   of files only.
+- When the user asks for a site anyone may open, such as a landing page or a public form, make it
+  public, as Public sites describes.
 - When a site answers 503 or shows old data, check `artifacts.siteDataStatus({})`: whether the copy
   of the scope's data for sites is still running, how far it got, and its last error. Request again
   once it is `caught-up`.
@@ -136,7 +140,8 @@ read the scope's workspace open it. A site cannot be inside another site.
   all; a package import fails the build.
 - **Viewers:** each request carries `ley-viewer-id` and `ley-viewer-email` headers naming who is
   viewing, which only the host sets. `artifacts.requestSite` sets them from its
-  `viewer: { id, email }`, and refuses `ley-` headers of its own.
+  `viewer: { id, email }`, and refuses `ley-` headers of its own. Requests to a public site carry
+  none.
 - **Isolation:** the Worker has no network, so `fetch` throws, and no bindings besides `ASSETS` and
   `DATA`. It receives the cookies the scope's sites set; a cookie it sets for the whole domain is
   dropped. The scope's sites share one address, and with it cookies and browser storage, so name
@@ -152,6 +157,32 @@ read the scope's workspace open it. A site cannot be inside another site.
   empty. Treat them as a cache.
 - **Browser:** scripts in `public/` run in the viewer's browser, so they may import ES modules from
   a CDN such as `https://esm.sh/`.
+
+## Public sites
+
+A site whose `site.json` is `{ "public": true }` serves anyone who opens its URL, without signing
+in, at the scope's public address, such as
+`https://quiet-amber-falcon-public.ley.run/tools/todo.site/`. Write the file and build again to make
+a site public; remove it, or set `"public": false`, and build again to make it private. Each build
+returns the site's `url`, which changes with it: give the user the new one. Links to the old address
+lead to the new one while the site is public, and stop working at the public address once it is
+private again.
+
+- **Ask first.** Make a site public only when the user asked for it by name or plainly meant it,
+  such as "a page our customers can open". Tell them its URL is open to anyone who has it.
+- **Viewers:** no request names a viewer, even from someone signed in, so `viewer` is null in every
+  event the Worker fires. Ask visitors for what the site needs, such as their email in a form.
+- **Data:** the Worker returns what it reads to anyone on the internet. Answer each route with the
+  columns and rows its page shows, selected by fixed SQL: never put SQL, a relation, or a column
+  from the request into a query, never return whole rows of `kv_store`, `connections`, `agents`, or
+  `agent_turns`, and leave out routes that list or debug data. Bind what a visitor sends only as a
+  value, such as an id they look up.
+- **Events:** every visitor shares the one count of events naming no viewer, as Writing data
+  describes, so a public site fires only for what a visitor does on purpose, such as sending a form,
+  not for page views.
+- **Address:** the scope's public sites share their address, and with it cookies and browser
+  storage, with each other but not with its other sites. Show what visitors send as text, such as
+  with `textContent`, never as HTML, so no visitor's script runs in another's browser.
 
 ## Writing data
 

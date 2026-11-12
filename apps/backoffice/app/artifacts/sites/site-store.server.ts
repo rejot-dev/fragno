@@ -13,11 +13,12 @@ import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { siteBuildDirectory, sitePathProblem } from "./site-path";
 
 /**
- * The build a site serves, with the fingerprint of the sources it was built from, and the builds
- * it replaced, each since when, which keep their files for requests that started before.
+ * The build a site serves, with the fingerprint of the sources it was built from and whether anyone
+ * may open it, and the builds it replaced, each since when, which keep their files for requests
+ * that started before.
  */
 export type SitePointer = {
-  served: { build: string; sources: string };
+  served: { build: string; sources: string; public: boolean };
   retired: { build: string; at: number }[];
 };
 
@@ -56,7 +57,12 @@ export type SiteStore = {
 // In the workspace, anyone who may write files may edit the pointer, so it is read as input.
 const sitePointerFileSchema = z.strictObject({
   version: z.literal(5),
-  served: z.strictObject({ build: z.uuid(), sources: z.string().regex(/^[0-9a-f]{64}$/u) }),
+  served: z.strictObject({
+    build: z.uuid(),
+    sources: z.string().regex(/^[0-9a-f]{64}$/u),
+    // Builds from before public sites name none, and are not public.
+    public: z.boolean().default(false),
+  }),
   retired: z.array(z.strictObject({ build: z.uuid(), at: z.number().int() })),
 });
 

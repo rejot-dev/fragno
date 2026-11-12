@@ -1,5 +1,6 @@
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { CODEMODE_WORKER_RUNTIME } from "@fragno-dev/codemode/execution/codemode-worker-bundle";
+import { z } from "zod";
 
 import { inferFileContentType } from "@/file-collection/file-content-type";
 import type { BlobsR2Access } from "@/fragno/blobs-r2-buckets";
@@ -34,10 +35,10 @@ import { checkSiteWorker, siteWorkerEntry } from "./site-worker.server";
 export type SiteBuildOutcome =
   | { kind: "rejected"; message: string }
   /**
-   * `worker` says whether the site has a worker.js, which may read the scope's data, and `fires`
-   * whether that Worker may fire events.
+   * `worker` says whether the site has a worker.js, which may read the scope's data, `fires`
+   * whether that Worker may fire events, and `public` whether anyone may open the site.
    */
-  | { kind: "built"; worker: boolean; fires: boolean }
+  | { kind: "built"; worker: boolean; fires: boolean; public: boolean }
   | { kind: "failed"; message: string };
 
 /** A build's outcome as Backoffice reports it, with where people open a built site. */
@@ -47,6 +48,7 @@ export type SiteBuildResult =
       kind: "built";
       worker: boolean;
       fires: boolean;
+      public: boolean;
       /** At its scope's subdomain of the sites domain; null where sites have no domain. */
       url: string | null;
     };
@@ -67,6 +69,14 @@ type SiteFileSource = {
 const SITE_MAX_FILES = 1000;
 const SITE_MAX_BYTES = 50 * 1024 * 1024;
 const SITE_FILES_AT_ONCE = 8;
+
+/** A site's settings, which its `site.json` holds when it has them. */
+const siteSettingsSchema = z.strictObject({
+  /** Anyone may open a public site, without signing in to Backoffice. */
+  public: z.boolean(),
+});
+
+type SiteSettings = z.output<typeof siteSettingsSchema>;
 
 // A publish that keeps losing to other builds of the site gives up rather than spin.
 const PUBLISH_ATTEMPTS = 5;
@@ -111,6 +121,11 @@ export async function buildSite({
   if ((await state.stat(sitePath))?.type !== "directory") {
     return { kind: "rejected", message: `${sitePath} is not a directory; write its files first.` };
   }
+  const read = await readSiteSettings(state, sitePath);
+  if (read.kind === "failed") {
+    return read;
+  }
+  const { settings } = read;
   const worker = await readSiteWorkerSource(state, sitePath);
   if (worker.kind === "failed") {
     return worker;
@@ -121,7 +136,12 @@ export async function buildSite({
   }
   // Recorded in the build, which fires as its builder could, until someone builds it again.
   const fires = worker.kind === "worker.js" && (await mayFire());
-  const built = { kind: "built", worker: worker.kind === "worker.js", fires } as const;
+  const built = {
+    kind: "built",
+    worker: worker.kind === "worker.js",
+    fires,
+    public: settings.public,
+  } as const;
   const listed = await listSiteFiles(state, sitePath);
   if (listed.kind === "failed") {
     return listed;
@@ -133,7 +153,7 @@ export async function buildSite({
       message: `${sitePath} has neither a worker.js nor files under public/.`,
     };
   }
-  const sources = await siteSourcesFingerprint(worker.modules, files, fires);
+  const sources = await siteSourcesFingerprint(worker.modules, files, fires, settings);
   const store = siteStore({ siteStorage, state, scope, sitePath });
   const current = await store.readPointer();
   if (current.status === "built" && current.pointer.served.sources === sources) {
@@ -174,7 +194,11 @@ export async function buildSite({
   }
   // Written after the files it lists, so a build with an index is complete.
   await store.writeFile(build, SITE_INDEX_FILE, encodeSiteIndex(index), "application/json");
-  const published = await publishSiteBuild(store, sitePath, { build, sources });
+  const published = await publishSiteBuild(store, sitePath, {
+    build,
+    sources,
+    public: settings.public,
+  });
   return published.kind === "built" ? built : published;
 }
 
@@ -222,6 +246,30 @@ async function publishSiteBuild(
 
 async function removeSiteBuild(store: SiteStore, build: string) {
   await store.removeBuild(build, siteBuildFiles(await readSiteIndex(store, build)));
+}
+
+/** The site's settings from its `site.json`, those of a private site without one, or why not. */
+async function readSiteSettings(
+  state: BackofficeStateBackend,
+  sitePath: string,
+): Promise<{ kind: "read"; settings: SiteSettings } | { kind: "failed"; message: string }> {
+  const path = `${sitePath}/site.json`;
+  if ((await state.stat(path))?.type !== "file") {
+    return { kind: "read", settings: { public: false } };
+  }
+  let file: unknown;
+  try {
+    file = JSON.parse(await state.readFile(path));
+  } catch (error) {
+    return { kind: "failed", message: `${path} is not JSON: ${String(error)}` };
+  }
+  const parsed = siteSettingsSchema.safeParse(file);
+  return parsed.success
+    ? { kind: "read", settings: parsed.data }
+    : {
+        kind: "failed",
+        message: `${path} is not site settings, such as { "public": true }: ${parsed.error.message}`,
+      };
 }
 
 /**
@@ -366,18 +414,20 @@ async function mapAtMost<T, R>(
 /**
  * Fingerprints everything a build is made of, so sources that did not change are not built again.
  * It includes the Worker runtime because a stored bundle only loads on the runtime it was built
- * for, so a new runtime must rebuild it, and whether it fires, so a build by someone who may emit
- * events, or no longer may, replaces it.
+ * for, so a new runtime must rebuild it, whether it fires, so a build by someone who may emit
+ * events, or no longer may, replaces it, and the settings, which the pointer to the build records.
  */
 async function siteSourcesFingerprint(
   modules: Record<string, string>,
   assets: readonly SiteFileSource[],
   fires: boolean,
+  settings: SiteSettings,
 ): Promise<string> {
   const inputs = JSON.stringify([
     SITE_BUILD_LAYOUT,
     CODEMODE_WORKER_RUNTIME,
     fires,
+    settings,
     Object.entries(modules).sort(([left], [right]) => left.localeCompare(right)),
     // Sizes and modification times, not contents, so an unchanged site is not read: a file
     // written again with the same bytes builds the site again, which is harmless.

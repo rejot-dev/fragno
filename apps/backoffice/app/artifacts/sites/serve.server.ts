@@ -55,6 +55,23 @@ export function createSitePointerCache(now: () => number): SitePointerCache {
   };
 }
 
+/** The site's pointer, as this isolate read it within `POINTER_TRUSTED_MS`. */
+export async function readSitePointer({
+  store,
+  pointers,
+  scope,
+  sitePath,
+}: {
+  store: SiteStore;
+  pointers: SitePointerCache;
+  scope: BackofficeContextScope;
+  sitePath: string;
+}): Promise<SitePointerRead> {
+  return await pointers.read(`${backofficeContextScopeRoutePath(scope)}${sitePath}`, () =>
+    store.readPointer(),
+  );
+}
+
 /** The bindings the host gives a site's Worker, each bound to the props the host sets. */
 export type SiteWorkerBindings = {
   workerLoader: WorkerLoader | null;
@@ -130,28 +147,27 @@ export type SiteWorkerLoad =
   | { kind: "answered"; response: Response };
 
 /**
- * Loads a site's Worker from the build its pointer names; the Worker reads its files through
- * `env.ASSETS`, which `siteAssets` binds to the build. A `probe` loads a Worker of its own, for the
- * one request an agent sends, whose tail hands that request's record to the agent, and whose
- * events are kept for the agent, and fired only when the agent asked.
+ * Loads a site's Worker from the build its pointer, as `read`, names; the Worker reads its files
+ * through `env.ASSETS`, which `siteAssets` binds to the build. The caller passes the read it decided
+ * who may open the site by, so the build it serves is the one it checked. A `probe` loads a Worker
+ * of its own, for the one request an agent sends, whose tail hands that request's record to the
+ * agent, and whose events are kept for the agent, and fired only when the agent asked.
  */
 export async function loadSiteWorker({
   store,
-  pointers,
+  read,
   bindings: { workerLoader, siteAssets, siteData, siteTail },
   scope,
   sitePath,
   probe,
 }: {
   store: SiteStore;
-  pointers: SitePointerCache;
+  read: SitePointerRead;
   bindings: SiteWorkerBindings;
   scope: BackofficeContextScope;
   sitePath: string;
   probe?: SiteProbe;
 }): Promise<SiteWorkerLoad> {
-  const site = `${backofficeContextScopeRoutePath(scope)}${sitePath}`;
-  const read = await pointers.read(site, () => store.readPointer());
   if (read.status === "none") {
     return answered(`${sitePath} has not been built.`, 404);
   }
@@ -164,6 +180,7 @@ export async function loadSiteWorker({
   const props: SiteAssetsProps = { scope, sitePath, build: read.pointer.served.build };
   // The name includes the build, so an isolate stays warm until the site is rebuilt, and the
   // Worker's code is read only when an isolate starts.
+  const site = `${backofficeContextScopeRoutePath(scope)}${sitePath}`;
   const name = `${probe ? `probe:${probe.id}:` : ""}site:${site}@${props.build}`;
   const worker = workerLoader.get(name, async () => {
     const built = await readSiteWorker(store, props.build);
@@ -199,9 +216,10 @@ export async function loadProbedSiteWorker({
   sitePath: string;
   probe: SiteProbe;
 }): Promise<SiteWorkerLoad> {
+  const store = siteStoreForServing({ runtime, scope, sitePath, cache: null });
   return await loadSiteWorker({
-    store: siteStoreForServing({ runtime, scope, sitePath, cache: null }),
-    pointers: { read: async (_site, load) => await load() },
+    store,
+    read: await store.readPointer(),
     bindings,
     scope,
     sitePath,

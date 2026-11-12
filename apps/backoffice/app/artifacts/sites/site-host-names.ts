@@ -6,6 +6,24 @@ export const SITE_HOST_PATHS = "/__ley/";
 /** Where Backoffice posts a viewer's ticket to a site host. */
 export const SITE_SIGN_IN_PATH = `${SITE_HOST_PATHS}sign-in`;
 
+const PUBLIC_HOST_SUFFIX = "-public";
+
+/**
+ * The subdomain a scope's public sites are served at, beside `host`, where its other sites are, so
+ * no public page runs at an origin a viewer's session reaches. Claimed subdomains are three words,
+ * so it is never one.
+ */
+export function publicSiteHost(host: string): string {
+  return `${host}${PUBLIC_HOST_SUFFIX}`;
+}
+
+/** The claimed subdomain a subdomain of the sites domain serves, and whether its public sites. */
+export function readSiteHost(subdomain: string): { host: string; public: boolean } {
+  return subdomain.endsWith(PUBLIC_HOST_SUFFIX)
+    ? { host: subdomain.slice(0, -PUBLIC_HOST_SUFFIX.length), public: true }
+    : { host: subdomain, public: false };
+}
+
 /**
  * The origin a scope's sites are served at, such as `https://quiet-amber-falcon.ley.run`. A
  * `*.localhost` domain is served over http, as browsers treat it as secure.
