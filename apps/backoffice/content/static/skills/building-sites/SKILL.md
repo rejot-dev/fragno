@@ -175,8 +175,8 @@ private again.
 - **Data:** the Worker returns what it reads to anyone on the internet. Answer each route with the
   columns and rows its page shows, selected by fixed SQL: never put SQL, a relation, or a column
   from the request into a query, never return whole rows of `kv_store`, `connections`, `agents`, or
-  `agent_turns`, and leave out routes that list or debug data. Bind what a visitor sends only as a
-  value, such as an id they look up.
+  `agent_turns`, and leave out routes that list or debug data. Bind what a visitor sends only as a value,
+  such as an id they look up.
 - **Events:** every visitor shares the one count of events naming no viewer, as Writing data
   describes, so a public site fires only for what a visitor does on purpose, such as sending a form,
   not for page views.
@@ -187,8 +187,8 @@ private again.
 ## Writing data
 
 A site writes nothing itself: the Worker fires an **event** for each thing a viewer adds or changes,
-and reads them back with `env.DATA.sql`: what happened from the `events` relation, in the order it
-was fired, and what each item is now from `event_state`.
+and reads them back with `env.DATA.sql`: what each item is now from `event_state`, and what happened
+from the `events` relation, in the order it was fired.
 
 - **Fire:** `await env.DATA.fire({ type, payload, viewer })` fires an event into the scope's
   automations from the source `site:<path>`, such as `site:/workspace/tools/todo.site`, and returns
@@ -201,17 +201,20 @@ was fired, and what each item is now from `event_state`.
 - **Permission:** a Worker fires only when whoever built it may emit events, which the build's
   `firesEvents` reports. When it is false for a site that fires, tell the user firing needs
   `events.emit`.
-- **Read back:** select the site's events by `source` and `eventType`, reading the payload with
-  `->>`. Where data only grows, such as a guestbook's notes, each event is an item. Where items
-  change, such as TODOs marked done or deleted, fire the whole item with each change, and before the
-  first fire create the type with a key path naming the item's id, which needs `events.manage`:
+- **Items:** give each thing the site keeps an id, such as `crypto.randomUUID()` for a new guestbook
+  note, and fire the whole thing with every change. Before the first fire, create its type with a
+  key path naming the id, which needs `events.manage`:
   `events.catalogCreate({ source: "site:/workspace/tools/todo.site", eventType: "todos.changed", label: "TODO changed", keyPath: "$.todo.id" })`.
-  `event_state` then holds each item's latest event as `key` and `payload`; read it leaving out
-  deletions, as below. To change the key path, follow
-  `/static/skills/building-automations/references/event-state.md`. `fire` throws for an event
-  without the key. A fired event reaches reads within moments, so the page shows a change at once
-  from what it sent, then reads again every second until it appears. The source is the site's path:
-  a moved site reads none of the events it fired before, and needs its types created again under its
+  `event_state` then holds each item as its latest event, by `key`, with its `payload`, whether
+  items only grow, such as a guestbook's notes, or change, such as TODOs marked done or deleted.
+  Read the site's items from it by `source` and `eventType`, reading the payload with `->>` and
+  leaving out deletions, as below. `fire` throws for an event without the key. To change the key
+  path, follow `/static/skills/building-automations/references/event-state.md`.
+- **History:** `events` holds what was fired, for activity such as the latest notes or changes per
+  day. Events are history and may be deleted, so items come from `event_state`.
+- **Timing:** a fired event reaches reads within moments, so the page shows a change at once from
+  what it sent, then reads again every second until it appears. The source is the site's path: a
+  moved site reads none of the events it fired before, and needs its types created again under its
   new path.
 - **Check:** `artifacts.requestSite` keeps the events its request fires, with their payloads, and
   fires none, so checking adds no data. With `fire: true` it fires them as a viewer's request does
