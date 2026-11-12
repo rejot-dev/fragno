@@ -82,6 +82,12 @@ import {
   projectedEventOf,
 } from "./event-projections";
 import { createAutomationEventSourceServices } from "./event-sources-storage-runtime";
+import {
+  createEventStateServices,
+  type EventStateKey,
+  keepEventState,
+  requireEventKey,
+} from "./event-state";
 import { createAutomationEventServices } from "./events-storage-runtime";
 import { buildExternalIdentityBindingId, canLinkExternalIdentity } from "./external-identities";
 import { createExternalIdentityBindingServices } from "./external-identity-bindings-storage-runtime";
@@ -95,6 +101,7 @@ import type {
   AutomationHookUnitOfWork,
   AutomationInternalHooks,
   AutomationRouteDispatchPayload,
+  EventStateEntry,
 } from "./internal-hooks";
 import { createPackageInstallationServices } from "./package-installations-storage-runtime";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
@@ -197,6 +204,8 @@ type IngestAutomationEventOptions = {
    * retains. Routing reads the hook's copy of the event, so it still sees the whole payload.
    */
   storedPayload?: ((payload: Record<string, unknown>) => Record<string, unknown>) | null;
+  /** The key its type's state keeps the event under, or null; see `event-state`. */
+  stateKey?: EventStateKey | null;
 };
 
 const ingestAutomationEvent = (
@@ -206,6 +215,7 @@ const ingestAutomationEvent = (
     reclassificationChain = [getAutomationEventIdentity(event)],
     route,
     storedPayload = null,
+    stateKey = null,
   }: IngestAutomationEventOptions = {},
 ) => {
   const now = uow.now();
@@ -232,6 +242,14 @@ const ingestAutomationEvent = (
     routesMatched: false,
     createdAt: now,
   });
+  if (stateKey !== null) {
+    uow.triggerHook("internalKeepEventState", {
+      eventId: validatedEvent.id,
+      source: validatedEvent.source,
+      eventType: validatedEvent.eventType,
+      ...stateKey,
+    });
+  }
 
   uow.triggerHook(
     "internalIngestEvent",
@@ -771,6 +789,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     const eventServices = createAutomationEventServices(defineService);
     const eventProjectionServices = createEventProjectionServices(defineService);
     const eventFoldReplayServices = createEventFoldReplayServices(defineService);
+    const eventStateServices = createEventStateServices(defineService);
     const eventSourceServices = createAutomationEventSourceServices(defineService);
     const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);
     const externalIdentityBindingServices = createExternalIdentityBindingServices(defineService);
@@ -788,6 +807,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...eventServices,
       ...eventProjectionServices,
       ...eventFoldReplayServices,
+      ...eventStateServices,
       ...eventSourceServices,
       ...eventDefinitionServices,
       ...externalIdentityBindingServices,
@@ -947,6 +967,11 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               ingestAutomationEvent(uow as AutomationHookUnitOfWork, event, {
                 reclassificationChain,
                 storedPayload: builtInDefinition?.storedPayload ?? null,
+                // Built-in types cannot be defined again, so only stored definitions name keys.
+                stateKey: requireEventKey(
+                  event,
+                  builtInDefinition ? null : (storedDefinition?.keyPath ?? null),
+                ),
               });
               foldProjectedEvents(uow as AutomationHookUnitOfWork, projected, {
                 agentRows,
@@ -967,6 +992,9 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     return {
       internalReplayEventFold: defineHook(async function (pass: EventFoldReplayPass) {
         await replayEventFold(pass, this.handlerTx.bind(this));
+      }),
+      internalKeepEventState: defineHook(async function (entry: EventStateEntry) {
+        await keepEventState(entry, this.handlerTx.bind(this));
       }),
       internalDispatchRouteSchedule: defineHook(async function (payload) {
         await dispatchAutomationRouteSchedule({

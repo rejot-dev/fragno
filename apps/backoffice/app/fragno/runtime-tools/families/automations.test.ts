@@ -200,6 +200,9 @@ describe("automation runtime tools", () => {
       createAutomationEvent: async () => {
         throw new Error("unused");
       },
+      updateAutomationEvent: async () => {
+        throw new Error("unused");
+      },
       listAutomationEvents: async () => {
         calls.push(["listAutomationEvents"]);
         return [

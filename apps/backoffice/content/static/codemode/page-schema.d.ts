@@ -108,6 +108,19 @@ type PageRelations = {
     routesMatched: PageSqlBoolean;
     position: number;
   };
+  /** Each key's state for event types whose definition has a keyPath: a copy of the latest event with that key, which outlives the event. key is what keyPath read, keyPath the key path that read it, eventId the event's id, and payload its payload, such as payload ->> '$.status'. States read with a key path the type no longer has stay until an agent deletes them. */
+  event_state: {
+    id: string;
+    source: string;
+    eventType: string;
+    key: string;
+    keyPath: string;
+    eventId: string;
+    payload: PageSqlJson;
+    occurredAt: PageSqlTime;
+    storedAt: PageSqlTime;
+    position: number;
+  };
   /** The sources events come from. */
   event_sources: {
     id: string;
@@ -134,6 +147,7 @@ type PageRelations = {
     createdAt: PageSqlTime;
     updatedAt: PageSqlTime;
     steward: PageSqlJson | null;
+    keyPath: string | null;
     position: number;
   };
   /** Automation routes. trigger and action are JSON, such as trigger ->> '$.kind'; route_schedules holds a scheduled route's next occurrence by the same id. */

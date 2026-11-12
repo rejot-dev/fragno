@@ -378,6 +378,7 @@ const createBackofficeRuntime = (
   listHookScopes: async () => [],
   listAutomationEvents: async () => [],
   getAutomationEvent: async () => null,
+  updateAutomationEvent: async () => null,
   createAutomationEvent: async (input) => ({
     id: `${input.source}:${input.eventType}`,
     source: input.source,

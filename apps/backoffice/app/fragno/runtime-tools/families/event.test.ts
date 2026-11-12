@@ -8,6 +8,7 @@ import {
   eventFireToolFamily,
   eventReadToolFamily,
   eventRetryToolFamily,
+  eventStateDeleteToolFamily,
   eventRuntimeTools,
 } from "./event";
 import { eventCatalogToolFamily } from "./event-catalog";
@@ -20,6 +21,8 @@ describe("event runtime tools", () => {
       "events.get",
       "events.routes.list",
       "events.routes.retry",
+      "events.state.list",
+      "events.state.delete",
     ]);
   });
 
@@ -28,6 +31,7 @@ describe("event runtime tools", () => {
       eventFireToolFamily,
       eventReadToolFamily,
       eventRetryToolFamily,
+      eventStateDeleteToolFamily,
       eventCatalogToolFamily,
     ];
     const availableToolIds = (runtimes: Record<string, unknown>) =>
@@ -41,12 +45,15 @@ describe("event runtime tools", () => {
       "events.list",
       "events.get",
       "events.routes.list",
+      "events.state.list",
       "events.routes.retry",
+      "events.state.delete",
     ]);
     expect(availableToolIds({ eventCatalog: {} })).toEqual([
       "events.catalog.list",
       "events.catalog.get",
       "events.catalog.create",
+      "events.catalog.update",
     ]);
     expect(availableToolIds({})).toEqual([]);
   });

@@ -21,10 +21,20 @@ type EventsCodemodeProvider = {
    */
   routesList(input: EventsRoutesListInput): Promise<EventsRoutesListOutput>;
   /**
+   * List an event type's state, which the event_state relation holds: for a type whose definition has a keyPath, each key's latest event, ordered by key. Each state names the key path its key was read with.
+   * Requires `events.read`.
+   */
+  stateList(input: EventsStateListInput): Promise<EventsStateListOutput>;
+  /**
    * Retry a route that failed for good on a stored event, with a fresh set of attempts. The route acts as it was when the event matched it, with the route's current permissions, so retry after fixing what it depends on, such as a missing workflow run or permission; changes to the route's action apply only to new events. Returns the route, now pending, or null when the event did not match it.
    * Requires `router.modify`.
    */
   routesRetry(input: EventsRoutesRetryInput): Promise<EventsRoutesRetryOutput>;
+  /**
+   * Delete the state of an event type's keys, such as keys read with a key path the type no longer has. The events stay. A key's next event starts its state again.
+   * Requires `events.manage`.
+   */
+  stateDelete(input: EventsStateDeleteInput): Promise<EventsStateDeleteOutput>;
   /**
    * List known automation event source/type pairs from the Backoffice capability registry.
    * Requires `events.read`.
@@ -40,6 +50,11 @@ type EventsCodemodeProvider = {
    * Requires `events.manage`.
    */
   catalogCreate(input: EventsCatalogCreateInput): Promise<EventsCatalogCreateOutput>;
+  /**
+   * Change a scoped dynamic automation event definition; the patch names only the fields that change. Returns null when the scope defines no such type.
+   * Requires `events.manage`.
+   */
+  catalogUpdate(input: EventsCatalogUpdateInput): Promise<EventsCatalogUpdateOutput>;
 };
 declare const events: EventsCodemodeProvider;
 
@@ -1206,6 +1221,27 @@ type EventsRoutesListOutput = {
   nextCursor?: string;
   hasNextPage: boolean;
 };
+type EventsStateListInput = {
+  source: string;
+  eventType: string;
+  limit?: number;
+  cursor?: string;
+};
+type EventsStateListOutput = {
+  states: {
+    key: string;
+    /** The key path the key was read with. One other than the type's keyPath now is left from before the key path changed. */
+    keyPath: string;
+    eventId: string;
+    payload: {
+      [key: string]: unknown;
+    };
+    occurredAt: string;
+    storedAt: string;
+  }[];
+  nextCursor?: string;
+  hasNextPage: boolean;
+};
 type EventsRoutesRetryInput = {
   eventId: string;
   routeId: string;
@@ -1333,6 +1369,15 @@ type EventsRoutesRetryOutput =
       failedAttempts: number;
     }
   | null;
+type EventsStateDeleteInput = {
+  source: string;
+  eventType: string;
+  keys: string[];
+};
+type EventsStateDeleteOutput = {
+  /** The keys whose state was deleted; the others had none. */
+  deleted: string[];
+};
 type EventsCatalogListOutput = {
   source: string;
   eventType: string;
@@ -1340,6 +1385,8 @@ type EventsCatalogListOutput = {
   description?: string;
   capabilityId: string;
   example?: unknown;
+  /** Where events of this type hold the key of what they are about, such as $.entityId: $ and .field names of letters, digits, and underscores. The key is a string or number; an event without one is refused. The event_state relation keeps a copy of each key's latest event, which outlives the events. Changing the key path, or deleting the definition, leaves the state as it is: events.state.list shows each key's state with the key path it was read with, and events.state.delete deletes what is no longer wanted. */
+  keyPath?: string;
 }[];
 type EventsCatalogGetInput = {
   source: string;
@@ -1361,6 +1408,8 @@ type EventsCatalogGetOutput = {
     [key: string]: unknown;
   };
   example?: unknown;
+  /** Where events of this type hold the key of what they are about, such as $.entityId: $ and .field names of letters, digits, and underscores. The key is a string or number; an event without one is refused. The event_state relation keeps a copy of each key's latest event, which outlives the events. Changing the key path, or deleting the definition, leaves the state as it is: events.state.list shows each key's state with the key path it was read with, and events.state.delete deletes what is no longer wanted. */
+  keyPath?: string;
 } | null;
 type EventsCatalogCreateInput = {
   source: string;
@@ -1377,6 +1426,8 @@ type EventsCatalogCreateInput = {
     [key: string]: unknown;
   } | null;
   example?: unknown | null;
+  /** Where events of this type hold the key of what they are about, such as $.entityId: $ and .field names of letters, digits, and underscores. The key is a string or number; an event without one is refused. The event_state relation keeps a copy of each key's latest event, which outlives the events. Changing the key path, or deleting the definition, leaves the state as it is: events.state.list shows each key's state with the key path it was read with, and events.state.delete deletes what is no longer wanted. */
+  keyPath?: string | null;
   enabled?: boolean;
 };
 type EventsCatalogCreateOutput = {
@@ -1395,6 +1446,8 @@ type EventsCatalogCreateOutput = {
     [key: string]: unknown;
   } | null;
   example?: unknown | null;
+  /** Where events of this type hold the key of what they are about, such as $.entityId: $ and .field names of letters, digits, and underscores. The key is a string or number; an event without one is refused. The event_state relation keeps a copy of each key's latest event, which outlives the events. Changing the key path, or deleting the definition, leaves the state as it is: events.state.list shows each key's state with the key path it was read with, and events.state.delete deletes what is no longer wanted. */
+  keyPath?: string | null;
   enabled: boolean;
   capabilityId: string;
   steward: AutomationSteward;
@@ -1403,3 +1456,50 @@ type EventsCatalogCreateOutput = {
   /** ISO 8601 datetime string. */
   updatedAt?: string;
 };
+type EventsCatalogUpdateInput = {
+  source: string;
+  eventType: string;
+  patch: {
+    label?: string;
+    description?: string | null;
+    payloadSchema?: {
+      [key: string]: unknown;
+    } | null;
+    actorSchema?: {
+      [key: string]: unknown;
+    } | null;
+    subjectSchema?: {
+      [key: string]: unknown;
+    } | null;
+    example?: unknown | null;
+    /** Where events of this type hold the key of what they are about, such as $.entityId: $ and .field names of letters, digits, and underscores. The key is a string or number; an event without one is refused. The event_state relation keeps a copy of each key's latest event, which outlives the events. Changing the key path, or deleting the definition, leaves the state as it is: events.state.list shows each key's state with the key path it was read with, and events.state.delete deletes what is no longer wanted. */
+    keyPath?: string | null;
+    enabled?: boolean;
+  };
+};
+type EventsCatalogUpdateOutput = {
+  id: string;
+  source: string;
+  eventType: string;
+  label: string;
+  description?: string | null;
+  payloadSchema?: {
+    [key: string]: unknown;
+  } | null;
+  actorSchema?: {
+    [key: string]: unknown;
+  } | null;
+  subjectSchema?: {
+    [key: string]: unknown;
+  } | null;
+  example?: unknown | null;
+  /** Where events of this type hold the key of what they are about, such as $.entityId: $ and .field names of letters, digits, and underscores. The key is a string or number; an event without one is refused. The event_state relation keeps a copy of each key's latest event, which outlives the events. Changing the key path, or deleting the definition, leaves the state as it is: events.state.list shows each key's state with the key path it was read with, and events.state.delete deletes what is no longer wanted. */
+  keyPath?: string | null;
+  enabled: boolean;
+  capabilityId: string;
+  steward: AutomationSteward;
+  /** ISO 8601 datetime string. */
+  createdAt?: string;
+  /** ISO 8601 datetime string. */
+  updatedAt?: string;
+} | null;

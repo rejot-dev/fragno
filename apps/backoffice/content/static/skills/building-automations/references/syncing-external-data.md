@@ -7,14 +7,25 @@ fetches, compares each record with its checkpoint, and fires an event for each r
 ## Steps
 
 1. **Define the events.** Name a `source` for the service, such as `bank`, and one event type per
-   kind of change, such as `balance.updated`, `transaction.created`, and `transaction.updated`.
-   Create each with `events.catalogCreate`, giving a payload schema. Every payload carries the
-   record's `entityId`, a `version` that counts its changes, and the `record`'s values, including
-   its `kind`. **Complete when** `events.catalogGet` returns each type.
+   kind of record, such as `balance.updated`, `account-transaction.changed`, and
+   `card-transaction.changed`. A kind is what the service's ids are unique within: a bank whose
+   account and card transactions may share an id fires them as two types. Create each with
+   `events.catalogCreate`, giving a payload schema and `keyPath: "$.entityId"`. Every payload
+   carries the record's `entityId`, the service's id, a `version` that counts its changes, and the
+   `record`'s values, including its `kind`. The key path makes the `event_state` relation keep each
+   record's latest event: its current state, which pages read. **Complete when** `events.catalogGet`
+   returns each type with its `keyPath`.
 2. **Save the workflow** in `/workspace/automations/`, one step per stage:
 
    ```js
    import { fetchRecords } from "/workspace/automations/bank-feed.js";
+
+   // The bank's ids are unique within a kind of record, so each kind has a type of its own.
+   const EVENT_TYPES = {
+     balance: "balance.updated",
+     account: "account-transaction.changed",
+     card: "card-transaction.changed",
+   };
 
    export default defineWorkflow({ name: "bank-feed" }, async (event, step) => {
      const records = await step.do(
@@ -31,12 +42,7 @@ fetches, compares each record with its checkpoint, and fires an event for each r
          const fingerprint = JSON.stringify(record);
          if (previous?.fingerprint === fingerprint) continue;
          const version = (previous?.version ?? 0) + 1;
-         const eventType =
-           record.kind === "balance"
-             ? "balance.updated"
-             : previous
-               ? "transaction.updated"
-               : "transaction.created";
+         const eventType = EVENT_TYPES[record.kind];
          changed.push({ key, fingerprint, version, eventType, entityId: id, record });
        }
        return changed;
@@ -57,9 +63,9 @@ fetches, compares each record with its checkpoint, and fires an event for each r
 
    **Dedupe** lives in the checkpoints: a record fires only when its fingerprint differs from the
    stored one, and a retried run resumes after its completed steps. A step that fails after its fire
-   can fire one record twice at the same version; pages read the latest event per entity, which
-   absorbs it. Fingerprint only the fields the record shows, so a changing timestamp the page never
-   reads fires nothing.
+   can fire one record twice at the same version; the record's state keeps the later of the two,
+   which holds the same values. Fingerprint only the fields the record shows, so a changing
+   timestamp the page never reads fires nothing.
 
    **Fetch window**: the first run backfills what the page needs, such as this year. Later runs
    fetch a recent window that overlaps the last one, such as the last 30 days, so status changes on
@@ -77,7 +83,7 @@ fetches, compares each record with its checkpoint, and fires an event for each r
 
 ## Pages over a feed
 
-`/static/skills/building-pages/examples/bank-accounts.page.js` reads this feed: it keeps the latest
-event per `record.kind` and `entityId`, ordered by `version`. The feed's health comes from the
-relations too: its latest run from `runs` by `remoteWorkflowName`, and its next occurrence from
-`route_schedules` by the route's id.
+`/static/skills/building-pages/examples/bank-accounts.page.js` reads this feed: each account and
+transaction as it is now from `event_state`, and what the feed fired recently from `events`. The
+feed's health comes from the relations too: its latest run from `runs` by `remoteWorkflowName`, and
+its next occurrence from `route_schedules` by the route's id.

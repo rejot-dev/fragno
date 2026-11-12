@@ -1,22 +1,19 @@
 // Bank accounts kept current by a feed: each hourly run of the bank-feed workflow emits every
-// record that changed as a versioned event, as
+// record that changed as an event keyed by its entityId, one type per kind of record, as
 // /static/skills/building-automations/references/syncing-external-data.md describes, and the page
-// shows the latest version of each. Totals lead, then accounts and transactions; the sync's health
-// and activity sit in the side column. Copy it into /workspace as a <name>.page.js file to open it
-// or start from it.
+// shows each record as event_state holds it now. Totals lead, then accounts and transactions; the
+// sync's health and activity sit in the side column. Copy it into /workspace as a <name>.page.js
+// file to open it or start from it.
 export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
-  // The latest version of every transaction, account and card alike.
+  // Every transaction as it is now, account and card alike. Their ids are unique only within a
+  // kind, so each kind has its type, and an id names a transaction only with its kind.
   const transactions = sql`
-    WITH versioned AS (
-      SELECT payload, payload ->> '$.record.status' AS status,
-        row_number() OVER (
-          PARTITION BY payload ->> '$.record.kind', payload ->> '$.entityId'
-          ORDER BY CAST(payload ->> '$.version' AS INTEGER) DESC, occurredAt DESC, id DESC
-        ) AS n
-      FROM events
-      WHERE source = 'bank' AND eventType IN ('transaction.created', 'transaction.updated')
+    WITH current AS (
+      SELECT key, payload, payload ->> '$.record.status' AS status FROM event_state
+      WHERE source = 'bank'
+        AND eventType IN ('account-transaction.changed', 'card-transaction.changed')
     )
-    SELECT payload ->> '$.entityId' AS entityId,
+    SELECT key AS entityId,
       payload ->> '$.record.kind' AS kind,
       payload ->> '$.record.accountId' AS accountId,
       payload ->> '$.record.date' AS date,
@@ -36,20 +33,12 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
       coalesce(payload ->> '$.record.owner', '') AS owner,
       coalesce(payload ->> '$.record.source', '') AS fromName,
       coalesce(payload ->> '$.record.target', '') AS toName
-    FROM versioned WHERE n = 1
+    FROM current
   `;
 
-  // Each account's latest balance and its completed movement this UTC month.
+  // Each account's balance and its completed movement this UTC month.
   const accounts = sql`
-    WITH balance AS (
-      SELECT payload,
-        row_number() OVER (
-          PARTITION BY payload ->> '$.entityId'
-          ORDER BY CAST(payload ->> '$.version' AS INTEGER) DESC, occurredAt DESC, id DESC
-        ) AS n
-      FROM events WHERE source = 'bank' AND eventType = 'balance.updated'
-    ),
-    tx AS (${transactions}),
+    WITH tx AS (${transactions}),
     movement AS (
       SELECT accountId, currency, sum(amountCents) AS cents FROM tx
       WHERE kind = 'account' AND status = 'PROCESSED'
@@ -57,7 +46,7 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
         AND date <= strftime('%Y-%m-%dT%H:%M:%S', ${now} / 1000, 'unixepoch')
       GROUP BY accountId, currency
     )
-    SELECT balance.payload ->> '$.entityId' AS accountId,
+    SELECT balance.key AS accountId,
       balance.payload ->> '$.record.name' AS name,
       '••' || (balance.payload ->> '$.record.lastFour') AS lastFour,
       balance.payload ->> '$.record.currency' AS currency,
@@ -67,10 +56,10 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
       coalesce(movement.cents, 0) / 100.0 AS change,
       CASE WHEN movement.cents < 0 THEN 'failed' WHEN movement.cents > 0 THEN 'live' ELSE 'muted' END
         AS changeTone
-    FROM balance
-    LEFT JOIN movement ON movement.accountId = balance.payload ->> '$.entityId'
+    FROM event_state balance
+    LEFT JOIN movement ON movement.accountId = balance.key
       AND movement.currency = balance.payload ->> '$.record.currency'
-    WHERE balance.n = 1
+    WHERE balance.source = 'bank' AND balance.eventType = 'balance.updated'
     ORDER BY currency DESC, balanceCents DESC
   `.columns({
     name: "string",
@@ -169,22 +158,23 @@ export default page.define({ title: "Bank accounts" }, ({ sql, now }) => {
     status: ["active", "paused", "waiting", "complete", "errored", "terminated"],
     detail: "string",
   });
+  // What the feed fired, history rather than state, so it reads events. A record fired twice at
+  // one version shows once.
   const activity = sql`
     WITH e AS (
       SELECT *,
         row_number() OVER (
-          PARTITION BY payload ->> '$.record.kind', payload ->> '$.entityId', payload ->> '$.version'
+          PARTITION BY eventType, payload ->> '$.entityId', payload ->> '$.version'
           ORDER BY occurredAt DESC, id DESC
         ) AS n
       FROM events WHERE source = 'bank'
     )
     SELECT id,
       coalesce(payload ->> '$.record.description', payload ->> '$.record.name') AS title,
-      CASE eventType
-        WHEN 'transaction.created' THEN 'New transaction'
-        WHEN 'transaction.updated' THEN 'Transaction updated'
-        WHEN 'balance.updated' THEN 'Balance updated'
-        ELSE eventType
+      CASE
+        WHEN eventType = 'balance.updated' THEN 'Balance updated'
+        WHEN payload ->> '$.version' = 1 THEN 'New transaction'
+        ELSE 'Transaction updated'
       END AS detail,
       occurredAt AS at
     FROM e WHERE n = 1

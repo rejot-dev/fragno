@@ -190,6 +190,7 @@ async function syncPackageInstallation(
                 actorSchema: definition.actorSchema ?? null,
                 subjectSchema: definition.subjectSchema ?? null,
                 example: definition.example ?? null,
+                keyPath: definition.keyPath ?? null,
               },
             },
             writer,

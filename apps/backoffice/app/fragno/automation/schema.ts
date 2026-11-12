@@ -456,5 +456,30 @@ export const automationFragmentSchema = schema("automations", (s) => {
           .addColumn("id", idColumn())
           .addColumn("next", jsonColumn<EventFoldReplayPass>().nullable()),
       )
+      // Where a type's events hold the key of what they are about, or null when they hold none.
+      .alterTable("automation_event_definition", (t) =>
+        t.addColumn("keyPath", column("string").nullable()),
+      )
+      // Each key's state: a copy of the latest event of its type with that key, which `event-state`
+      // keeps. A copy, so the state outlives the events it was read from.
+      .addTable("automation_event_state", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("source", column("string"))
+          .addColumn("eventType", column("string"))
+          .addColumn("key", column("string"))
+          .addColumn("keyPath", column("string"))
+          .addColumn("eventId", column("string"))
+          .addColumn("payload", jsonColumn<AutomationEvent["payload"]>())
+          .addColumn("occurredAt", column("timestamp"))
+          .addColumn("storedAt", column("timestamp"))
+          .createIndex(
+            "idx_automation_event_state_source_type_key",
+            ["source", "eventType", "key"],
+            {
+              unique: true,
+            },
+          ),
+      )
   );
 });

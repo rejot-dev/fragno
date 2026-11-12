@@ -38,6 +38,15 @@ export type AutomationRouteScheduleDispatchPayload =
       route: AutomationRouteDefinition;
     };
 
+/** One event to keep in its type's state, under the key its key path read as it was stored. */
+export type EventStateEntry = {
+  eventId: string;
+  source: string;
+  eventType: string;
+  key: string;
+  keyPath: string;
+};
+
 /**
  * Shared by storage runtimes that emit fragment hooks. Keeping the complete hook contract here
  * prevents unrelated feature runtimes from importing one another when a new hook is added.
@@ -47,6 +56,7 @@ export type AutomationInternalHooks = {
   internalDispatchRoute: HookFn<AutomationRouteDispatchPayload>;
   internalDispatchRouteSchedule: HookFn<AutomationRouteScheduleDispatchPayload>;
   internalReplayEventFold: HookFn<EventFoldReplayPass>;
+  internalKeepEventState: HookFn<EventStateEntry>;
 };
 
 export type AutomationHookUnitOfWork = TypedUnitOfWork<

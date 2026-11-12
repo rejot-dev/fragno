@@ -16,6 +16,7 @@ import {
   assertAutomationEventDefinitionSchemas,
   buildAutomationEventDefinitionId,
 } from "./event-definitions";
+import { assertEventKeyPathFitsExample } from "./event-state";
 import { automationFragmentSchema } from "./schema";
 import { assertStewardWrite, MEMBERS_STEWARD, stewardsEqual } from "./stewards";
 
@@ -31,6 +32,7 @@ type AutomationEventDefinitionRow = {
   actorSchema: AutomationEventDefinition["actorSchema"] | null;
   subjectSchema: AutomationEventDefinition["subjectSchema"] | null;
   example: unknown;
+  keyPath: string | null;
   enabled: boolean;
   steward: AutomationSteward | null;
   createdAt: Date;
@@ -55,6 +57,7 @@ function automationEventDefinitionFromRow(
     actorSchema: row.actorSchema ?? null,
     subjectSchema: row.subjectSchema ?? null,
     example: row.example ?? null,
+    keyPath: row.keyPath ?? null,
     enabled: row.enabled,
     capabilityId: "dynamic",
     steward: row.steward ?? MEMBERS_STEWARD,
@@ -74,7 +77,8 @@ function eventDefinitionContentEqual(
     JSON.stringify(left.payloadSchema ?? null) === JSON.stringify(right.payloadSchema ?? null) &&
     JSON.stringify(left.actorSchema ?? null) === JSON.stringify(right.actorSchema ?? null) &&
     JSON.stringify(left.subjectSchema ?? null) === JSON.stringify(right.subjectSchema ?? null) &&
-    JSON.stringify(left.example ?? null) === JSON.stringify(right.example ?? null)
+    JSON.stringify(left.example ?? null) === JSON.stringify(right.example ?? null) &&
+    (left.keyPath ?? null) === (right.keyPath ?? null)
   );
 }
 
@@ -123,6 +127,7 @@ export const createAutomationEventDefinitionServices = (
         );
       }
       assertAutomationEventDefinitionSchemas(definition);
+      assertEventKeyPathFitsExample(definition);
       const id = buildAutomationEventDefinitionId(definition.source, definition.eventType);
 
       return this.serviceTx(automationFragmentSchema)
@@ -137,6 +142,7 @@ export const createAutomationEventDefinitionServices = (
             actorSchema: definition.actorSchema ?? null,
             subjectSchema: definition.subjectSchema ?? null,
             example: definition.example ?? null,
+            keyPath: definition.keyPath ?? null,
             enabled: definition.enabled,
             steward: writer,
           };
@@ -181,6 +187,7 @@ export const createAutomationEventDefinitionServices = (
             subjectSchema:
               "subjectSchema" in patch ? (patch.subjectSchema ?? null) : current.subjectSchema,
             example: "example" in patch ? (patch.example ?? null) : current.example,
+            keyPath: "keyPath" in patch ? (patch.keyPath ?? null) : (current.keyPath ?? null),
             enabled: patch.enabled ?? current.enabled,
           };
           const contentChanged = !eventDefinitionContentEqual(current, next);
@@ -197,6 +204,7 @@ export const createAutomationEventDefinitionServices = (
           });
           if (contentChanged) {
             assertAutomationEventDefinitionSchemas(next);
+            assertEventKeyPathFitsExample(next);
           }
           const steward = contentChanged || writer.kind === "package" ? writer : current.steward;
           if (
@@ -216,6 +224,7 @@ export const createAutomationEventDefinitionServices = (
                 actorSchema: next.actorSchema,
                 subjectSchema: next.subjectSchema,
                 example: next.example,
+                keyPath: next.keyPath,
                 enabled: next.enabled,
                 steward,
                 updatedAt: uow.now(),

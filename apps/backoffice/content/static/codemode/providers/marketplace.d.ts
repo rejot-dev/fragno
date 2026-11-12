@@ -395,6 +395,8 @@ type MarketplaceViewOutput = {
         [key: string]: unknown;
       } | null;
       example?: unknown | null;
+      /** Where events of this type hold the key of what they are about, such as $.entityId: $ and .field names of letters, digits, and underscores. The key is a string or number; an event without one is refused. The event_state relation keeps a copy of each key's latest event, which outlives the events. Changing the key path, or deleting the definition, leaves the state as it is: events.state.list shows each key's state with the key path it was read with, and events.state.delete deletes what is no longer wanted. */
+      keyPath?: string | null;
       enabled: boolean;
     }[];
     agents: {
