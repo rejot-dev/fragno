@@ -91,17 +91,18 @@ Codemode installer run it starts with `readWorkflowRuns`, one run by workflow an
 
 Agents (`routes/backoffice/agents/`) and the agent drawer read the scope's agents, with the turns
 each ended per hour of the last day, through `readPiAgentDirectory` (`agents-replica.ts`), over the
-`pi_agent` and `pi_agent_turn` tables. An agent's conversation stays on the pi-manager stream; it
-reads from the replica only which of the Codemode runs it started have recorded a step
-(`readStartedCodemodeRuns`), to open them in its workspace, and the opened run (`readWorkflowRuns`).
-These render before the replica opens, so they take it from `useCurrentAutomationReplica` instead of
-suspending, and show the directory as loading until the replica first catches up.
+`pi_agent` table and the `pi` events that ended turns. An agent's conversation stays on the
+pi-manager stream; it reads from the replica only which of the Codemode runs it started have
+recorded a step (`readStartedCodemodeRuns`), to open them in its workspace, and the opened run
+(`readWorkflowRuns`). These render before the replica opens, so they take it from
+`useCurrentAutomationReplica` instead of suspending, and show the directory as loading until the
+replica first catches up.
 
 Integrations (`routes/backoffice/integrations/`) lists every connection, disconnected ones too, from
 the `integration_connection` table, and filters them on the page, so showing disconnected
-connections opens no new read. A connection's state history reads the
-`integration_connection_change` table by connection ID. A webhook endpoint's recent deliveries are
-its latest `api/webhook.received` events and those routes reclassified under the endpoint ID
+connections opens no new read. A connection's state history reads the `integrations` connection
+events and keeps the connection's. A webhook endpoint's recent deliveries are its latest
+`api/webhook.received` events and those routes reclassified under the endpoint ID
 (`integrations-replica.ts`), narrowed by the subject's endpoint with `json_extract`. They stay a
 read of events: `webhook.received` events can be deleted, and a deletion reaches the replica as a
 truncate notification.
@@ -118,13 +119,11 @@ the replica mirrors like any other (`../automation/event-projections.ts`). Stori
 into the rows it changes, in the transaction that stores it: the rows' IDs come from the event, so
 the transaction reads them in the same round trip as its other reads.
 
-- `pi_agent`, `pi_agent_request`, and `pi_agent_turn`, by `applyPiAgentEvent` and
-  `piAgentTurnEndedBy` (`../pi/agent/pi-agent-records.ts`). An agent's counts of running, queued,
-  and steering requests change by what each event did to its request, so a request's row keeps what
-  its earlier events recorded.
+- `pi_agent` and `pi_agent_request`, by `applyPiAgentEvent` (`../pi/agent/pi-agent-records.ts`). An
+  agent's counts of running, queued, and steering requests change by what each event did to its
+  request, so a request's row keeps what its earlier events recorded.
 - `integration_connection`, by `applyIntegrationConnectionChange`
-  (`../runtime-tools/families/integrations/integration-connections.ts`), and
-  `integration_connection_change`, every change that led there.
+  (`../runtime-tools/families/integrations/integration-connections.ts`).
 
 Because the rows outlive the events, a browser that downloads the outbox after events were deleted
 still reads every agent and connection, and the replica keeps no local projections. Workflow waits
@@ -152,12 +151,12 @@ page's interface.
   short names, such as `runs`, `steps`, and `events`, with `id` the row's id, references as the
   referenced row's id (`steps.runId`), and `position` the replica's internal id, which orders rows
   as the backend created them; its other bookkeeping columns are left out. A run's steps from one
-  tick share their `createdAt` and order by `position`. `connections` and `agent_turns` are views of
-  the tables the backend folds events into. `agents` and `workflow_waits` are SQL views too, which
-  state again in SQL what `piAgentRecord` and `currentWorkflowWaits`, which the dashboard uses,
-  compute: `agents` writes the built-in agents and activity labels into its SQL from the code that
-  defines them, and `workflow_waits` states the workflows package's `pendingWaitEventTypes` as SQL.
-  Every relation is plain SQL, so anything holding the replica's tables reads them alike.
+  tick share their `createdAt` and order by `position`. `connections` is a view of the table the
+  backend folds connection events into. `agents` and `workflow_waits` are SQL views too, which state
+  again in SQL what `piAgentRecord` and `currentWorkflowWaits`, which the dashboard uses, compute:
+  `agents` writes the built-in agents and activity labels into its SQL from the code that defines
+  them, and `workflow_waits` states the workflows package's `pendingWaitEventTypes` as SQL. Every
+  relation is plain SQL, so anything holding the replica's tables reads them alike.
   `page-schema.d.ts`, which agents read, is generated from the same list.
 - **Guard.** A page's query only reads: it cannot write, begin or end transactions, attach
   databases, or set a pragma, and stops at 125 million operations, about a second, as the build's
