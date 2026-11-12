@@ -7,6 +7,11 @@ import { dirname, extname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// Shared by every worktree on the machine. A fixed path rather than `os.tmpdir()`: Turbo filters a
+// task's environment, and runs through Turbo and direct runs must share the lock.
+const testLock = "/tmp/fragno-test.lock";
+// What `flock -E` and `lockf -t 0` (EX_TEMPFAIL) exit with when another process holds the lock.
+const testLockBusyStatus = 75;
 const packagePath = relative(repositoryRoot, process.cwd()).split(sep).join("/");
 const importGraphExtensions = new Set([
   ".ts",
@@ -100,12 +105,35 @@ function fullRunReason(files) {
   return null;
 }
 
-function run(args) {
-  const result = spawnSync("pnpm", ["exec", ...args], { stdio: "inherit" });
+function spawn([command, ...args]) {
+  const result = spawnSync(command, args, { stdio: "inherit" });
   if (result.error) {
     throw result.error;
   }
   return result.status ?? 1;
+}
+
+/**
+ * Runs Vitest holding the machine-wide test lock, so worktrees take turns instead of overloading
+ * the machine together. The kernel releases the lock when Vitest exits, even on a crash. Linux
+ * ships `flock`, macOS `lockf`.
+ */
+function run(args) {
+  const hasFlock = spawnSync("sh", ["-c", "command -v flock"]).status === 0;
+  function lock(wait) {
+    if (hasFlock) {
+      return ["flock", ...(wait ? [] : ["-n", "-E", `${testLockBusyStatus}`]), testLock];
+    }
+    // `-k` keeps the lock file, so waiters never race on its deletion.
+    return ["lockf", "-k", ...(wait ? [] : ["-t", "0"]), testLock];
+  }
+  const command = ["pnpm", "exec", ...args];
+  const status = spawn([...lock(false), ...command]);
+  if (status !== testLockBusyStatus) {
+    return status;
+  }
+  console.log(`Waiting for another worktree's tests to release ${testLock}.`);
+  return spawn([...lock(true), ...command]);
 }
 
 function runChangedTests() {
