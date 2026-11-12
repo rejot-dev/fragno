@@ -17,11 +17,14 @@ import { siteFilesCacheFor, siteStoreForServing, type SiteFilesCache } from "./a
 import {
   createSitePointerCache,
   exportedSiteWorkerBindings,
+  readSitePointer,
   serveSite,
   type SitePointerCache,
   type SiteWorkerBindings,
 } from "./serve.server";
 import {
+  publicSiteHost,
+  readSiteHost,
   SITE_HOST_PATHS,
   SITE_SIGN_IN_PATH,
   siteHostDestination,
@@ -41,6 +44,7 @@ import {
   verifySiteTicket,
   type SiteSignIn,
 } from "./site-session.server";
+import type { SitePointerRead } from "./site-store.server";
 
 const SITE_SIGN_OUT_PATH = `${SITE_HOST_PATHS}sign-out`;
 
@@ -103,8 +107,9 @@ export async function serveSiteHostRequest({
 
 /**
  * Serves a request to a scope's subdomain of the sites domain: a site of the scope, at its path
- * below `/workspace`, to a viewer Backoffice signed in who may read it. `host` is the subdomain,
- * or null for the sites domain itself.
+ * below `/workspace`, to a viewer Backoffice signed in who may read it. Public sites are served to
+ * anyone, only at the scope's public subdomain, which never signs anyone in. `host` is the
+ * subdomain, or null for the sites domain itself.
  */
 export async function serveSiteHost(input: {
   request: Request;
@@ -139,7 +144,8 @@ async function answer({
   if (!runtime.config.sites || host === null) {
     return text("Not Found", 404);
   }
-  const scope = await hosts.scopeFor(host);
+  const { host: claimed, public: onPublicHost } = readSiteHost(host);
+  const scope = await hosts.scopeFor(claimed);
   if (scope === null) {
     return text(`${host}.${domain} serves no sites.`, 404);
   }
@@ -147,10 +153,10 @@ async function answer({
   const tokens = { secret, origin, now: now() };
   const url = new URL(request.url);
 
-  if (url.pathname === SITE_SIGN_IN_PATH) {
+  if (!onPublicHost && url.pathname === SITE_SIGN_IN_PATH) {
     return await signIn(request, tokens, origin);
   }
-  if (url.pathname === SITE_SIGN_OUT_PATH) {
+  if (!onPublicHost && url.pathname === SITE_SIGN_OUT_PATH) {
     return new Response("Signed out of this scope's sites.", {
       headers: { "set-cookie": siteSessionCookie(null), "cache-control": "no-store" },
     });
@@ -163,13 +169,41 @@ async function answer({
     return text("Requests that change something must come from this site's own pages.", 403);
   }
 
-  const session = readCookie(request, SITE_SESSION_COOKIE);
+  const target = siteRequestTarget(url.pathname.split("/").slice(1));
+  const storeOf = (sitePath: string) => siteStoreForServing({ runtime, scope, sitePath, cache });
+  // Read once: the site is served from this read, so the build it serves is the one checked here.
+  const read: SitePointerRead =
+    target === null
+      ? { status: "none" }
+      : await readSitePointer({
+          store: storeOf(target.sitePath),
+          pointers: state.pointers,
+          scope,
+          sitePath: target.sitePath,
+        });
+  // Each site is served only at the host of its kind, so a public site's pages, and what its
+  // visitors put in them, never run at an origin a viewer's session reaches.
+  const isPublic = read.status === "built" && read.pointer.served.public;
+  if (onPublicHost && !isPublic) {
+    return text("No public site at this path.", 404);
+  }
+  // Not permanently, as the site may be built private again.
+  if (!onPublicHost && isPublic) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: `${siteHostOrigin(publicSiteHost(claimed), domain)}${url.pathname}${url.search}`,
+        "cache-control": "no-store",
+      },
+    });
+  }
+  // Anyone may open a public site, so its requests name no viewer.
+  const session = onPublicHost ? null : readCookie(request, SITE_SESSION_COOKIE);
   const signedIn = session === null ? null : await verifySiteSession(tokens, session);
-  if (signedIn === null) {
+  if (!onPublicHost && signedIn === null) {
     return await signInFirst(request, url, host, runtime);
   }
 
-  const target = siteRequestTarget(url.pathname.split("/").slice(1));
   if (target === null) {
     return text("No site at this path. Open a site at its path, such as /shop.site/.", 404);
   }
@@ -180,18 +214,21 @@ async function answer({
       headers: { location: `${url.pathname}/${url.search}` },
     });
   }
-  if (!(await mayRead({ kernel, state, scope, signedIn, sitePath: target.sitePath, now: now() }))) {
+  if (
+    signedIn !== null &&
+    !(await mayRead({ kernel, state, scope, signedIn, sitePath: target.sitePath, now: now() }))
+  ) {
     return text(`${signedIn.viewer.email} may not open ${target.sitePath}.`, 403);
   }
   return await serveSite({
     request,
-    store: siteStoreForServing({ runtime, scope, sitePath: target.sitePath, cache }),
-    pointers: state.pointers,
+    store: storeOf(target.sitePath),
+    read,
     bindings,
     scope,
     sitePath: target.sitePath,
     pathname: target.pathname,
-    viewer: signedIn.viewer,
+    viewer: signedIn?.viewer ?? null,
   });
 }
 

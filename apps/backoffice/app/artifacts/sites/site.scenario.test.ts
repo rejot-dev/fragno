@@ -53,6 +53,7 @@ import { buildSite as buildSiteDirectly } from "./build.server";
 import {
   createSitePointerCache,
   inProcessSiteWorkerBindings,
+  readSitePointer,
   serveSite,
   type SitePointerCache,
 } from "./serve.server";
@@ -162,13 +163,19 @@ async function request(
 ) {
   const runtime = ctx.runtime.services;
   const url = new URL(`https://quiet-amber-falcon.ley.run${path}`);
+  const store = siteStoreForServing({ runtime, scope, sitePath, cache: null });
   return await serveSite({
     request: new Request(url, {
       method: init.method ?? "GET",
       headers: { cookie: "__Host-ley-session=viewer", ...init.headers },
     }),
-    store: siteStoreForServing({ runtime, scope, sitePath, cache: null }),
-    pointers: init.pointers ?? createSitePointerCache(() => 0),
+    store,
+    read: await readSitePointer({
+      store,
+      pointers: init.pointers ?? createSitePointerCache(() => 0),
+      scope,
+      sitePath,
+    }),
     bindings: {
       ...inProcessSiteWorkerBindings(runtime),
       siteAssets: (props) => ({
@@ -1265,6 +1272,7 @@ export default { fetch() { return new Response(); } };`,
               kind: "built",
               worker: false,
               fires: false,
+              public: false,
             });
             expect(refuse).not.toHaveBeenCalled();
           },
@@ -1818,6 +1826,124 @@ test("a scope's sites are served at its own subdomain, to viewers Backoffice sig
           assert.equal(reads(`/sites/hosts/${host}.json`), 1);
           assert.equal(reads("/sites/org%3Aorg-1/host.json"), 1);
         }),
+        then.assert(
+          "a public site serves anyone at the scope's public host, which signs no one in",
+          async (ctx) => {
+            const runtime = ctx.runtime.services;
+            const publicOrigin = origin.replace(/^(https:\/\/[a-z-]+)\./u, "$1-public.");
+            const whoami = `${publicOrigin}/tools/shop.site/whoami`;
+            const settings = `${SHOP_SITE_PATH}/site.json`;
+            await writeFile(ctx, settings, JSON.stringify({ public: true }));
+            assert.deepInclude(await buildSite(ctx, SHOP_SITE_PATH), {
+              status: "built",
+              url: `${publicOrigin}/tools/shop.site/`,
+            });
+
+            const session = await signedIn(runtime, origin);
+            for (const cookie of ["", session]) {
+              const response = await hostRequest(runtime, whoami, {
+                headers: { cookie, "ley-viewer-id": "someone-else" },
+                readers: [],
+              });
+              assert.equal(response.status, 200);
+              assert.deepEqual(await response.json(), {
+                id: null,
+                email: null,
+                ley: [],
+                cookie: null,
+                method: "GET",
+              });
+            }
+            const status = async (url: string, init: RequestInit = {}) =>
+              (await hostRequest(runtime, url, init)).status;
+            assert.equal(await status(`${publicOrigin}/tools/shop.site`), 308);
+            assert.equal(
+              await status(whoami, { method: "POST", headers: { "sec-fetch-site": "cross-site" } }),
+              403,
+            );
+
+            // The scope's own host sends anyone to the public one, even someone signed in.
+            const atScopeHost = await hostRequest(runtime, `${origin}/tools/shop.site/?tab=all`, {
+              headers: { cookie: session },
+            });
+            assert.equal(atScopeHost.status, 302);
+            assert.equal(
+              atScopeHost.headers.get("location"),
+              `${publicOrigin}/tools/shop.site/?tab=all`,
+            );
+            // The public host serves no other site, and never signs anyone in.
+            assert.equal(await status(`${publicOrigin}/tools/other.site/`), 404);
+            assert.equal(await status(`${origin}/tools/other.site/`), 302);
+            assert.equal(
+              await status(`${publicOrigin}/__ley/sign-in`, { method: "POST", body: "" }),
+              404,
+            );
+            assert.equal(await status(`${publicOrigin}/__ley/sign-out`), 404);
+
+            await writeFile(ctx, settings, JSON.stringify({ public: "yes" }));
+            const invalid = await buildSite(ctx, SHOP_SITE_PATH);
+            assert(invalid.status === "failed");
+            assert.include(invalid.message, `${settings} is not site settings`);
+            assert.equal(await status(whoami), 200);
+
+            await writeFile(ctx, settings, JSON.stringify({ public: false }));
+            assert.deepInclude(await buildSite(ctx, SHOP_SITE_PATH), {
+              status: "built",
+              url: `${origin}/tools/shop.site/`,
+            });
+            assert.equal(await status(whoami), 404);
+            assert.equal(await status(`${origin}/tools/shop.site/whoami`), 302);
+            assert.equal(
+              await status(`${origin}/tools/shop.site/whoami`, { headers: { cookie: session } }),
+              200,
+            );
+          },
+        ),
+        then.assert(
+          "a request is served by the build whose visibility it was checked against",
+          async (ctx) => {
+            const runtime = ctx.runtime.services;
+            const publicOrigin = origin.replace(/^(https:\/\/[a-z-]+)\./u, "$1-public.");
+            const settings = `${SHOP_SITE_PATH}/site.json`;
+            await writeFile(ctx, settings, JSON.stringify({ public: true }));
+            assert.equal((await buildSite(ctx, SHOP_SITE_PATH)).status, "built");
+
+            // The site is built private, with a Worker of its own, right after the host checked
+            // that it is public, as an isolate's kept pointer expires.
+            let rebuild: (() => Promise<void>) | null = async () => {
+              await writeFile(ctx, settings, JSON.stringify({ public: false }));
+              await writeFile(
+                ctx,
+                `${SHOP_SITE_PATH}/worker.js`,
+                'export default { fetch: () => new Response("private build") };',
+              );
+              assert.equal((await buildSite(ctx, SHOP_SITE_PATH)).status, "built");
+            };
+            const kept = createSitePointerCache(() => Date.now());
+            const state: SiteHostState = {
+              pointers: {
+                async read(site, load) {
+                  const read = await kept.read(site, load);
+                  const next = rebuild;
+                  rebuild = null;
+                  await next?.();
+                  return read;
+                },
+              },
+              authorized: new Map(),
+            };
+            const response = await hostRequest(runtime, `${publicOrigin}/tools/shop.site/whoami`, {
+              state,
+            });
+            assert.equal(response.status, 200);
+            assert.notEqual(await response.text(), "private build");
+
+            assert.equal(
+              (await hostRequest(runtime, `${publicOrigin}/tools/shop.site/whoami`)).status,
+              404,
+            );
+          },
+        ),
       ],
     }),
   );

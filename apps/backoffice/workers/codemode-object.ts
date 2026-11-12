@@ -447,7 +447,7 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
     // Imported on first use, so an object that builds no site does not load the builder.
     const [
       { buildSite },
-      { siteHostOrigin, siteUrl },
+      { publicSiteHost, siteHostOrigin, siteUrl },
       { runtimeSiteHosts },
       { createCodemodeRouteBackedRuntimeContext },
     ] = await Promise.all([
@@ -510,11 +510,12 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
         });
     }
     const sites = runtimeSiteHosts(runtime);
-    const url =
-      sites === null
-        ? null
-        : siteUrl(siteHostOrigin(await sites.hosts.hostFor(scope), sites.domain), sitePath);
-    return { ...built, url };
+    if (sites === null) {
+      return { ...built, url: null };
+    }
+    const host = await sites.hosts.hostFor(scope);
+    const origin = siteHostOrigin(built.public ? publicSiteHost(host) : host, sites.domain);
+    return { ...built, url: siteUrl(origin, sitePath) };
   }
 
   async warm(): Promise<void> {}
