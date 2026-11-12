@@ -16,7 +16,7 @@ inside another site.
 
 ```text
 /workspace/tools/todo.site/
-  site.json           { "public": true } for a site anyone may open; leave it out otherwise
+  site.json           settings, such as { "public": true }; leave it out for none
   public/index.html   the file at …/tools/todo.site/
   public/app.js       the file at …/tools/todo.site/app.js
   worker.js           handles every request, such as …/tools/todo.site/api/todos
@@ -38,7 +38,7 @@ inside another site.
    link between its files is relative, as Links defines.
 3. **Build.** Run `artifacts.buildSite({ path })` with the site's directory, such as
    `/workspace/tools/todo.site`. Complete when it returns `{ status: "built", url }`; a `failed`
-   result's `message` names what to fix, such as an import of a package.
+   result's `message` names what to fix, such as an import of a package `site.json` does not list.
 4. **Check.** Request the site's `/` and every route its pages call with
    `artifacts.requestSite({ path, url })`, such as `url: "/api/todos?page=2"`, adding `method`,
    `headers`, and a text `body` for a route that takes a form or JSON, and `viewer` for a route that
@@ -137,7 +137,10 @@ inside another site.
   ```
 
 - **Imports:** `worker.js` imports saved `.js` modules by relative path, at most 1 MB of source in
-  all; a package import fails the build.
+  all, and npm packages that `site.json` lists under `dependencies` with their versions, such as
+  `{ "dependencies": { "zod": "4.1.5" } }`. Give exact versions: a range may install a newer version
+  the next time the site is built. The build bundles each package into the Worker, which runs with
+  Node.js compatibility.
 - **Viewers:** each request carries `ley-viewer-id` and `ley-viewer-email` headers naming who is
   viewing, which only the host sets. `artifacts.requestSite` sets them from its
   `viewer: { id, email }`, and refuses `ley-` headers of its own. Requests to a public site carry
@@ -160,13 +163,12 @@ inside another site.
 
 ## Public sites
 
-A site whose `site.json` is `{ "public": true }` serves anyone who opens its URL, without signing
-in, at the scope's public address, such as
-`https://quiet-amber-falcon-public.ley.run/tools/todo.site/`. Write the file and build again to make
-a site public; remove it, or set `"public": false`, and build again to make it private. Each build
-returns the site's `url`, which changes with it: give the user the new one. Links to the old address
-lead to the new one while the site is public, and stop working at the public address once it is
-private again.
+A site whose `site.json` sets `"public": true` serves anyone who opens its URL, without signing in,
+at the scope's public address, such as `https://quiet-amber-falcon-public.ley.run/tools/todo.site/`.
+Set it and build again to make a site public; remove it, or set `"public": false`, and build again
+to make it private. Each build returns the site's `url`, which changes with it: give the user the
+new one. Links to the old address lead to the new one while the site is public, and stop working at
+the public address once it is private again.
 
 - **Ask first.** Make a site public only when the user asked for it by name or plainly meant it,
   such as "a page our customers can open". Tell them its URL is open to anyone who has it.

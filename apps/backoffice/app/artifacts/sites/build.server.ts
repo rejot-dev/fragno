@@ -73,7 +73,9 @@ const SITE_FILES_AT_ONCE = 8;
 /** A site's settings, which its `site.json` holds when it has them. */
 const siteSettingsSchema = z.strictObject({
   /** Anyone may open a public site, without signing in to Backoffice. */
-  public: z.boolean(),
+  public: z.boolean().default(false),
+  /** The npm packages the Worker imports, each with its version, as `package.json` lists them. */
+  dependencies: z.record(z.string().trim().min(1), z.string().trim().min(1)).default({}),
 });
 
 type SiteSettings = z.output<typeof siteSettingsSchema>;
@@ -165,7 +167,7 @@ export async function buildSite({
   const compiled = await buildBackofficeJavaScriptModule({
     entry: worker.entry,
     modules: worker.modules,
-    dependencies: {},
+    dependencies: settings.dependencies,
     codemode,
   });
   if (compiled.status === "error") {
@@ -255,7 +257,7 @@ async function readSiteSettings(
 ): Promise<{ kind: "read"; settings: SiteSettings } | { kind: "failed"; message: string }> {
   const path = `${sitePath}/site.json`;
   if ((await state.stat(path))?.type !== "file") {
-    return { kind: "read", settings: { public: false } };
+    return { kind: "read", settings: siteSettingsSchema.parse({}) };
   }
   let file: unknown;
   try {
@@ -268,7 +270,7 @@ async function readSiteSettings(
     ? { kind: "read", settings: parsed.data }
     : {
         kind: "failed",
-        message: `${path} is not site settings, such as { "public": true }: ${parsed.error.message}`,
+        message: `${path} is not site settings, such as { "public": true, "dependencies": { "zod": "4.1.5" } }: ${parsed.error.message}`,
       };
 }
 
@@ -289,16 +291,11 @@ async function readSiteWorkerSource(
     return { kind: "files only", entry: main.path, modules: { [main.path]: main.source } };
   }
   try {
-    const { modules, packages } = await readSavedModuleImports({
+    // Package imports are left for the compiler, which installs those `site.json` lists.
+    const { modules } = await readSavedModuleImports({
       readFile: (path) => state.readFile(path),
       program: { kind: "file", path: entry },
     });
-    if (packages.length > 0) {
-      return {
-        kind: "failed",
-        message: `Site Workers import saved modules by path, not packages (${packages.join(", ")}).`,
-      };
-    }
     const main = siteWorkerEntry(sitePath, "worker.js");
     return {
       kind: "worker.js",

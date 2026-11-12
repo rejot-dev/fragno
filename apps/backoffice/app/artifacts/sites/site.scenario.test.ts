@@ -420,11 +420,10 @@ test("a site serves its last good build: files from public/, everything else fro
             `${SITE_PATH}/worker.js`,
             'import { Hono } from "hono";\nexport default new Hono();',
           );
-          assert.deepEqual(await buildSite(ctx, SITE_PATH), {
-            status: "failed",
-            path: SITE_PATH,
-            message: "Site Workers import saved modules by path, not packages (hono).",
-          });
+          // `site.json` lists no packages.
+          const failed = await buildSite(ctx, SITE_PATH);
+          assert(failed.status === "failed");
+          assert.include(failed.message, "hono");
           assert.equal(await greeting(ctx), "Welcome, Ada");
         }),
         then.assert("a Worker that cannot load or answer fails its build", async (ctx) => {
