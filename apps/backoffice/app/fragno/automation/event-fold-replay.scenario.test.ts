@@ -28,7 +28,7 @@ const scope = { kind: "org", orgId, jurisdiction: null } as const;
 const start = Date.parse("2026-01-01T00:00:00.000Z");
 const at = (second: number) => start + second * 1000;
 
-const FOLDED_TABLES = ["pi_agent", "pi_agent_request", "integration_connection"];
+const FOLDED_TABLES = ["pi_agent", "pi_agent_request"];
 
 function event(
   id: string,
@@ -91,9 +91,14 @@ function connectionEvent(
   connectionId: string,
   second: number,
 ) {
+  const service = connectionId.split("#", 1)[0];
   return event(id, "integrations", `connection.${state}`, second, {
-    payload: state === "disconnected" ? {} : { name: connectionId, authMethod: null },
-    subject: { scope, service: connectionId.split("#", 1)[0], connectionId },
+    payload: {
+      connectionId,
+      service,
+      ...(state === "disconnected" ? {} : { name: connectionId, authMethod: null }),
+    },
+    subject: { scope, service, connectionId },
   });
 }
 
@@ -153,6 +158,35 @@ function foldedRows(directory: string) {
   );
 }
 
+/** The kept states, without the row IDs each write picks. */
+function stateRows(directory: string) {
+  return eachAutomationsDatabase(directory, (database) =>
+    (
+      database
+        .prepare(
+          `SELECT "eventType", "key", "keyPath", "eventId", "payload", "occurredAt", "storedAt"
+           FROM ${automationsTable("automation_event_state")} ORDER BY "eventType", "key"`,
+        )
+        .all() as { payload: string }[]
+    ).map((row) => ({ ...row, payload: JSON.parse(row.payload) as unknown })),
+  );
+}
+
+/** Connection events stored before their payloads named the connection held only its label. */
+function storeConnectionEventsAsBefore(directory: string) {
+  return eachAutomationsDatabase(
+    directory,
+    (database) =>
+      database
+        .prepare(
+          `UPDATE ${automationsTable("automation_event")}
+           SET "payload" = json_remove("payload", '$.connectionId', '$.service')
+           WHERE "source" = 'integrations' AND "payload" ->> '$.connectionId' IS NOT NULL`,
+        )
+        .run().changes,
+  );
+}
+
 function deleteRows(directory: string, tables: readonly string[]) {
   return eachAutomationsDatabase(directory, (database) => {
     for (const name of tables) {
@@ -164,6 +198,7 @@ function deleteRows(directory: string, tables: readonly string[]) {
 test("the replay folds stored events as ingestion did, and folding them again changes nothing", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-event-fold-replay-"));
   let folded: Awaited<ReturnType<typeof foldedRows>> = {};
+  let kept: Awaited<ReturnType<typeof stateRows>> = {};
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -197,41 +232,69 @@ test("the replay folds stored events as ingestion did, and folding them again ch
             connectionEvent("agensi-gone", "disconnected", "mcp#agensi", 2),
           ].map((stored) => when.automation.ingestEvent(stored)),
           runner.drain(),
-          then.assert("ingestion folded each event as it stored it", async () => {
-            folded = await foldedRows(directory);
-            const [org] = Object.values(folded).filter((tables) => tables.pi_agent.length > 0);
-            expect(org).toMatchObject({
-              pi_agent: [
-                { id: "drafter", definition: null, running: 1 },
-                { id: "reviewer", latestKind: "stopped", paused: 1, running: 0, steering: 1 },
-              ],
-              integration_connection: [
-                { id: "api#billing", state: "ready", eventId: "billing-back" },
-                { id: "mcp#agensi", state: "disconnected", name: "mcp#agensi" },
-              ],
-            });
-          }),
+          then.assert(
+            "ingestion folded each agent event and kept each connection event's state",
+            async () => {
+              folded = await foldedRows(directory);
+              const [org] = Object.values(folded).filter((tables) => tables.pi_agent.length > 0);
+              expect(org).toMatchObject({
+                pi_agent: [
+                  { id: "drafter", definition: null, running: 1 },
+                  { id: "reviewer", latestKind: "stopped", paused: 1, running: 0, steering: 1 },
+                ],
+              });
+              kept = await stateRows(directory);
+              const [states] = Object.values(kept).filter((rows) => rows.length > 0);
+              expect(states).toMatchObject([
+                { eventType: "connection.disconnected", key: "mcp#agensi", eventId: "agensi-gone" },
+                { eventType: "connection.ready", key: "api#billing", eventId: "billing-back" },
+                { eventType: "connection.ready", key: "mcp#agensi", eventId: "agensi-ready" },
+                {
+                  eventType: "connection.unavailable",
+                  key: "api#billing",
+                  eventId: "billing-down",
+                  payload: {
+                    connectionId: "api#billing",
+                    service: "api",
+                    name: "api#billing",
+                    authMethod: null,
+                  },
+                },
+              ]);
+            },
+          ),
           then.assert("the replay starts again on the folded rows", async () => {
             await deleteRows(directory, ["event_fold_replay"]);
           }),
           runner.restartObject({ binding: "AUTOMATIONS", scope }),
           runner.drain(),
-          then.assert("folding every event again leaves each row as it was", async () => {
+          then.assert("reading every event again leaves each row as it was", async () => {
             expect(await foldedRows(directory)).toEqual(folded);
+            expect(await stateRows(directory)).toEqual(kept);
           }),
           then.assert(
-            "the folded rows are gone, as before ingestion folded events, and no event they hold is deleted",
+            "the rows are gone, as before ingestion folded and kept events, and no event they hold is deleted",
             async (ctx) => {
-              await deleteRows(directory, [...FOLDED_TABLES, "event_fold_replay"]);
+              const rewritten = await storeConnectionEventsAsBefore(directory);
+              assert(Object.values(rewritten).reduce((total, count) => total + count) === 5);
+              await deleteRows(directory, [
+                ...FOLDED_TABLES,
+                "automation_event_state",
+                "event_fold_replay",
+              ]);
               await expect(countDeletablePiEvents(ctx)).rejects.toThrow("not yet folded");
             },
           ),
           runner.restartObject({ binding: "AUTOMATIONS", scope }),
           runner.drain(),
-          then.assert("the replay folds every stored event into the same rows", async (ctx) => {
-            expect(await foldedRows(directory)).toEqual(folded);
-            assert((await countDeletablePiEvents(ctx)) === 1);
-          }),
+          then.assert(
+            "the replay folds and keeps every stored event into the same rows, reading connections off their subjects",
+            async (ctx) => {
+              expect(await foldedRows(directory)).toEqual(folded);
+              expect(await stateRows(directory)).toEqual(kept);
+              assert((await countDeletablePiEvents(ctx)) === 1);
+            },
+          ),
           then.hooks.noFailed({ orgId, fragments: ["automations"] }),
         ],
       }),

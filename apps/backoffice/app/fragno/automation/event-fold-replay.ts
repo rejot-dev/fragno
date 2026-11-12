@@ -1,24 +1,45 @@
 import { decodeCursor, type DatabaseHandlerTx, type DatabaseServiceContext } from "@fragno-dev/db";
 
 import {
+  readIntegrationConnectionStateChange,
+  type IntegrationConnectionStateChange,
+} from "@/fragno/runtime-tools/families/integrations/integration-connections";
+import {
+  INTEGRATION_CONNECTION_KEY_PATH,
+  integrationConnectionEvents,
+  type IntegrationConnectionStatePayload,
+} from "@/fragno/runtime-tools/families/integrations/integration-events";
+
+import {
   FOLDED_EVENT_TYPES,
   foldProjectedEvents,
   projectedEventKeys,
   projectedEventOf,
 } from "./event-projections";
+import { occurredAfter, STATE_INDEX, writeEventState } from "./event-state";
 import type { AutomationInternalHooks } from "./internal-hooks";
 import { automationFragmentSchema, type EventFoldReplayPass } from "./schema";
 
 /**
- * Ingestion folds `pi` and `integrations` events into agents and connections as it stores them,
- * but events stored before it did were never folded. The replay folds every stored event of the
- * types the fold reads, one page per pass, in a chain of `internalReplayEventFold` hooks. It also
- * folds again the events ingestion folded, which changes nothing but ties (see
- * `foldProjectedEvents`), so it needs no cutover.
+ * Ingestion folds `pi` events into agents as it stores them, and keeps `integrations` connection
+ * events in their states, but events stored before it did were never folded or kept. The replay
+ * reads every stored event of those types, one page per pass, in a chain of
+ * `internalReplayEventFold` hooks. It also reads again the events ingestion handled, which changes
+ * nothing but ties (see `foldProjectedEvents`), so it needs no cutover.
  */
 
-/** The `event_fold_replay` row's ID; its `next` pass is null once the replay folded every type. */
-export const EVENT_FOLD_REPLAY_ID = "stored-events";
+/**
+ * The `event_fold_replay` row's ID; its `next` pass is null once the replay read every type. A new
+ * ID replays again: this one keeps connection events in their states, which scopes replayed before
+ * did not.
+ */
+export const EVENT_FOLD_REPLAY_ID = "stored-events:connection-state";
+
+/** Every type the replay reads, in order; deleting their events waits for it. */
+export const REPLAYED_EVENT_TYPES: readonly { source: string; eventType: string }[] = [
+  ...FOLDED_EVENT_TYPES,
+  ...integrationConnectionEvents.map(({ source, eventType }) => ({ source, eventType })),
+];
 
 const EVENTS_OF_TYPE_INDEX = "idx_automation_event_source_type_occurredAt";
 
@@ -26,7 +47,7 @@ const EVENTS_OF_TYPE_INDEX = "idx_automation_event_source_type_occurredAt";
 const EVENTS_REPLAYED_PER_PASS = 100;
 
 function firstPassOfType(typeIndex: number): EventFoldReplayPass | null {
-  const type = FOLDED_EVENT_TYPES[typeIndex];
+  const type = REPLAYED_EVENT_TYPES[typeIndex];
   return type ? { ...type, cursor: null } : null;
 }
 
@@ -36,7 +57,7 @@ function passAfter(pass: EventFoldReplayPass, cursor: string | null) {
     return { ...pass, cursor };
   }
   return firstPassOfType(
-    FOLDED_EVENT_TYPES.findIndex(
+    REPLAYED_EVENT_TYPES.findIndex(
       ({ source, eventType }) => source === pass.source && eventType === pass.eventType,
     ) + 1,
   );
@@ -49,6 +70,33 @@ function samePass(stored: EventFoldReplayPass | null, pass: EventFoldReplayPass)
     stored.eventType === pass.eventType &&
     stored.cursor === pass.cursor
   );
+}
+
+/** Of a page of one type's events, each connection's latest change; empty for other types. */
+function latestConnectionChanges(
+  events: readonly (Parameters<typeof readIntegrationConnectionStateChange>[0] & {
+    createdAt: Date;
+  })[],
+) {
+  const latest = new Map<string, { change: IntegrationConnectionStateChange; createdAt: Date }>();
+  for (const event of events) {
+    const change = readIntegrationConnectionStateChange(event);
+    const kept = change && latest.get(change.connectionId);
+    if (change && (!kept || occurredAfter(event, { ...kept.change, storedAt: kept.createdAt }))) {
+      latest.set(change.connectionId, { change, createdAt: event.createdAt });
+    }
+  }
+  return latest;
+}
+
+/**
+ * What the change's state holds. Events stored before their payloads named the connection take it
+ * from their subject.
+ */
+function connectionStatePayload(
+  change: IntegrationConnectionStateChange,
+): IntegrationConnectionStatePayload {
+  return { connectionId: change.connectionId, service: change.service, ...change.label };
 }
 
 /**
@@ -94,10 +142,14 @@ export async function replayEventFold(
       continue;
     }
 
-    const projected = events.map((event) =>
-      projectedEventOf({ ...event, id: event.id.externalId, subject: event.subject ?? null }),
-    );
+    const stored = events.map((event) => ({
+      ...event,
+      id: event.id.externalId,
+      subject: event.subject ?? null,
+    }));
+    const projected = stored.map(projectedEventOf);
     const keys = projectedEventKeys(projected);
+    const connections = latestConnectionChanges(stored);
     await handlerTx({ name: "automations.replayEventFold" })
       .retrieve(({ forSchema }) =>
         forSchema(automationFragmentSchema)
@@ -105,13 +157,33 @@ export async function replayEventFold(
           .find("pi_agent_request", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "in", keys.requests)),
           )
-          .find("integration_connection", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "in", keys.connections)),
+          .find("automation_event_state", (b) =>
+            b.whereIndex(STATE_INDEX, (eb) =>
+              eb.and(
+                eb("source", "=", current.source),
+                eb("eventType", "=", current.eventType),
+                eb("key", "in", [...connections.keys()]),
+              ),
+            ),
           ),
       )
-      .mutate(({ forSchema, retrieveResult: [agentRows, requestRows, connectionRows] }) => {
+      .mutate(({ forSchema, retrieveResult: [agentRows, requestRows, stateRows] }) => {
         const uow = forSchema(automationFragmentSchema);
-        foldProjectedEvents(uow, projected, { agentRows, requestRows, connectionRows });
+        foldProjectedEvents(uow, projected, { agentRows, requestRows });
+        const states = new Map(stateRows.map((state) => [state.key, state]));
+        for (const [key, { change, createdAt }] of connections) {
+          writeEventState(
+            uow,
+            { ...current, key, keyPath: INTEGRATION_CONNECTION_KEY_PATH },
+            {
+              id: change.eventId,
+              payload: connectionStatePayload(change),
+              occurredAt: change.occurredAt,
+              createdAt,
+            },
+            states.get(key) ?? null,
+          );
+        }
         uow.update("event_fold_replay", replay.id, (b) => b.set({ next }).check());
         if (next !== null) {
           uow.triggerHook("internalReplayEventFold", next);

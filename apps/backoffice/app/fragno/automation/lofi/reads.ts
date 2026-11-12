@@ -25,7 +25,9 @@ import {
   type PiAgentTurnRecord,
 } from "@/fragno/pi/agent/pi-agent-records";
 import {
+  integrationConnectionsOfStates,
   readIntegrationConnectionStateChange,
+  type IntegrationConnectionEventState,
   type IntegrationConnectionRecord,
   type IntegrationConnectionStateChange,
 } from "@/fragno/runtime-tools/families/integrations/integration-connections";
@@ -621,33 +623,28 @@ function readEventsOfTypes(
 export function readIntegrationConnections(
   reader: LofiSqliteReader,
 ): IntegrationConnectionRecord[] {
-  const connection = automationFragmentSchema.tables.integration_connection.columns;
-  const rows = reader.query({
-    sql: `SELECT "id" AS "connectionId", "service", "kind", "state", "name", "authMethod",
-            "eventId", "changedAt", "displayName", "kindLabel"
-          FROM ${automationTable("integration_connection")}
-          ORDER BY "service", "id"`,
-    params: [],
+  const state = automationFragmentSchema.tables.automation_event_state.columns;
+  const eventTypes = integrationConnectionEvents.map(({ eventType }) => eventType);
+  const states = reader.query({
+    sql: `SELECT "eventType", "eventId", "payload", "occurredAt", "storedAt"
+          FROM ${automationTable("automation_event_state")}
+          WHERE "source" = ? AND "eventType" IN (${eventTypes.map(() => "?").join(", ")})`,
+    params: [INTEGRATIONS_EVENT_SOURCE, ...eventTypes],
     columns: {
-      connectionId: "text",
-      service: connection.service,
-      kind: connection.kind,
-      state: connection.state,
-      name: connection.name,
-      authMethod: connection.authMethod,
-      eventId: connection.eventId,
-      changedAt: connection.changedAt,
-      displayName: connection.displayName,
-      kindLabel: connection.kindLabel,
+      eventType: state.eventType,
+      eventId: state.eventId,
+      payload: state.payload,
+      occurredAt: state.occurredAt,
+      storedAt: state.storedAt,
     },
   });
-  // Only `projectStoredEvent` writes these rows, from `IntegrationConnectionRecord`.
-  return rows as IntegrationConnectionRecord[];
+  // Only connection events of these types, which name their connection, keep these states.
+  return integrationConnectionsOfStates(states as IntegrationConnectionEventState[]);
 }
 
 /**
  * The state changes a connection's events reported, newest first. Of changes made in the same
- * instant, the first applied comes first, as it is the one `applyIntegrationConnectionChange` keeps.
+ * instant, the first applied comes first, as it is the one `integrationConnectionsOfStates` keeps.
  */
 export function readIntegrationConnectionHistory(
   reader: LofiSqliteReader,

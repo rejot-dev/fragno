@@ -2,6 +2,7 @@ import type {
   AutomationEventState,
   AutomationEventStateDeleteResult,
 } from "@fragno-dev/backoffice-api/v0/events";
+import type { FragnoId } from "@fragno-dev/db/schema";
 
 import type { Cursor, DatabaseHandlerTx, DatabaseServiceContext } from "@fragno-dev/db";
 
@@ -9,7 +10,11 @@ import {
   AutomationEventDefinitionValidationError,
   buildAutomationEventDefinitionId,
 } from "./event-definitions";
-import type { AutomationInternalHooks, EventStateEntry } from "./internal-hooks";
+import type {
+  AutomationHookUnitOfWork,
+  AutomationInternalHooks,
+  EventStateEntry,
+} from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
 
 /**
@@ -88,7 +93,7 @@ export function assertEventKeyPathFitsExample(definition: {
  * Whether the event occurred after the one the state holds. Providers deliver late, so the time it
  * occurred decides, and then the time it was stored.
  */
-function occurredAfter(
+export function occurredAfter(
   event: { id: string; occurredAt: Date; createdAt: Date },
   state: { eventId: string; occurredAt: Date; storedAt: Date },
 ) {
@@ -103,11 +108,13 @@ function occurredAfter(
  * Keeps one event in its type's state, unless the state of its key holds a later event, whichever
  * key path read that one. An event whose key was read with a key path its type no longer has is
  * left out, as are events stored before the type had one, so a state an agent deleted after the
- * key path changed stays deleted.
+ * key path changed stays deleted. `builtInKeyPath` is a built-in type's, which only a deploy
+ * changes; it is null for types the scope defines.
  */
 export async function keepEventState(
   entry: EventStateEntry,
   handlerTx: DatabaseHandlerTx<AutomationInternalHooks>,
+  builtInKeyPath: string | null,
 ) {
   await handlerTx({ name: "automations.keepEventState" })
     .retrieve(({ forSchema }) =>
@@ -132,35 +139,56 @@ export async function keepEventState(
     )
     .mutate(({ forSchema, retrieveResult: [event, definition, state] }) => {
       const uow = forSchema(automationFragmentSchema);
-      if (!event || !definition || definition.keyPath !== entry.keyPath) {
+      const defined = builtInKeyPath === null ? definition : null;
+      if (!event || (builtInKeyPath ?? defined?.keyPath ?? null) !== entry.keyPath) {
         return;
       }
-      const stored = { ...event, id: event.id.externalId };
-      if (state && !occurredAfter(stored, state)) {
-        return;
+      const kept = writeEventState(uow, entry, { ...event, id: event.id.externalId }, state);
+      if (kept && defined) {
+        // A key path changed since the definition was read must leave this state unwritten, so the
+        // write retries after such a change instead of landing after an agent's cleanup.
+        uow.check("automation_event_definition", defined.id);
       }
-      // A key path changed since the definition was read must leave this state unwritten, so the
-      // write retries after such a change instead of landing after an agent's cleanup.
-      uow.check("automation_event_definition", definition.id);
-      const values = {
-        keyPath: entry.keyPath,
-        eventId: stored.id,
-        payload: event.payload,
-        occurredAt: event.occurredAt,
-        storedAt: event.createdAt,
-      };
-      if (state) {
-        uow.update("automation_event_state", state.id, (b) => b.set(values).check());
-        return;
-      }
-      // Two events of a new key race to create its state; the one that retries compares them.
-      uow.create(
-        "automation_event_state",
-        { source: entry.source, eventType: entry.eventType, key: entry.key, ...values },
-        { retryOnUniqueConflict: ({ error }) => error.kind === "unique" },
-      );
     })
     .execute();
+}
+
+/**
+ * Writes the event as the state of its key, unless `state`, that key's state as read, holds a
+ * later event. Returns whether it wrote.
+ */
+export function writeEventState(
+  uow: AutomationHookUnitOfWork,
+  entry: Pick<EventStateEntry, "source" | "eventType" | "key" | "keyPath">,
+  event: {
+    id: string;
+    payload: AutomationEventState["payload"];
+    occurredAt: Date;
+    createdAt: Date;
+  },
+  state: { id: FragnoId; eventId: string; occurredAt: Date; storedAt: Date } | null,
+) {
+  if (state && !occurredAfter(event, state)) {
+    return false;
+  }
+  const values = {
+    keyPath: entry.keyPath,
+    eventId: event.id,
+    payload: event.payload,
+    occurredAt: event.occurredAt,
+    storedAt: event.createdAt,
+  };
+  if (state) {
+    uow.update("automation_event_state", state.id, (b) => b.set(values).check());
+    return true;
+  }
+  // Two events of a new key race to create its state; the one that retries compares them.
+  uow.create(
+    "automation_event_state",
+    { source: entry.source, eventType: entry.eventType, key: entry.key, ...values },
+    { retryOnUniqueConflict: ({ error }) => error.kind === "unique" },
+  );
+  return true;
 }
 
 function eventStateOfRow(row: {

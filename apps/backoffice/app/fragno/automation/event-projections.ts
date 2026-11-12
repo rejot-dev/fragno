@@ -21,20 +21,15 @@ import {
   type PiAgentState,
 } from "@/fragno/pi/agent/pi-agent-records";
 import {
-  applyIntegrationConnectionChange,
-  integrationConnectionRecord,
-  readIntegrationConnectionStateChange,
-  type IntegrationConnectionFold,
-  type IntegrationConnectionKind,
-  type IntegrationConnectionRecord,
-  type IntegrationConnectionStateChange,
+  integrationConnectionsOfStates,
+  type IntegrationConnectionEventState,
 } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import {
   INTEGRATIONS_EVENT_SOURCE,
   integrationConnectionEvents,
-  type IntegrationConnectionLabel,
 } from "@/fragno/runtime-tools/families/integrations/integration-events";
 
+import { STATE_INDEX } from "./event-state";
 import type { AutomationHookUnitOfWork } from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
 
@@ -56,27 +51,21 @@ type StoredEvent = {
  * stored later.
  */
 export const FOLDED_EVENT_TYPES: readonly { source: string; eventType: string }[] = [
-  ...[
-    PI_AGENT_AUTOMATION_EVENTS.created,
-    PI_AGENT_AUTOMATION_EVENTS.updated,
-    PI_AGENT_AUTOMATION_EVENTS.deleted,
-    PI_AGENT_AUTOMATION_EVENTS.stopped,
-    PI_AGENT_AUTOMATION_EVENTS.resumed,
-    PI_QUEUE_AUTOMATION_EVENTS.added,
-    PI_QUEUE_AUTOMATION_EVENTS.dispatched,
-    PI_QUEUE_AUTOMATION_EVENTS.dropped,
-    PI_TURN_AUTOMATION_EVENTS.started,
-    PI_TURN_AUTOMATION_EVENTS.completed,
-    PI_TURN_AUTOMATION_EVENTS.aborted,
-    PI_TURN_AUTOMATION_EVENTS.failed,
-  ].map(({ eventType }) => ({ source: PI_AUTOMATION_SOURCE, eventType })),
-  ...integrationConnectionEvents.map(({ eventType }) => ({
-    source: INTEGRATIONS_EVENT_SOURCE,
-    eventType,
-  })),
-];
+  PI_AGENT_AUTOMATION_EVENTS.created,
+  PI_AGENT_AUTOMATION_EVENTS.updated,
+  PI_AGENT_AUTOMATION_EVENTS.deleted,
+  PI_AGENT_AUTOMATION_EVENTS.stopped,
+  PI_AGENT_AUTOMATION_EVENTS.resumed,
+  PI_QUEUE_AUTOMATION_EVENTS.added,
+  PI_QUEUE_AUTOMATION_EVENTS.dispatched,
+  PI_QUEUE_AUTOMATION_EVENTS.dropped,
+  PI_TURN_AUTOMATION_EVENTS.started,
+  PI_TURN_AUTOMATION_EVENTS.completed,
+  PI_TURN_AUTOMATION_EVENTS.aborted,
+  PI_TURN_AUTOMATION_EVENTS.failed,
+].map(({ eventType }) => ({ source: PI_AUTOMATION_SOURCE, eventType }));
 
-/** What a stored event records of an agent or a connection, read before its rows are. */
+/** What a stored event records of an agent, read before its rows are. */
 type ProjectedEvent =
   | {
       kind: "pi";
@@ -85,7 +74,6 @@ type ProjectedEvent =
       read: PiAgentEvent;
       requestKey: string | null;
     }
-  | { kind: "connection"; change: IntegrationConnectionStateChange }
   | { kind: "none" };
 
 export function projectedEventOf(event: StoredEvent): ProjectedEvent {
@@ -100,8 +88,7 @@ export function projectedEventOf(event: StoredEvent): ProjectedEvent {
       requestKey: requestId === null ? null : piAgentRequestKey(read.agentName, requestId),
     };
   }
-  const change = readIntegrationConnectionStateChange(event);
-  return change ? { kind: "connection", change } : { kind: "none" };
+  return { kind: "none" };
 }
 
 /** The IDs of the rows the events change, by table; empty for the tables they leave alone. */
@@ -109,7 +96,6 @@ export function projectedEventKeys(events: readonly ProjectedEvent[]) {
   const keys = {
     agents: new Set<string>(),
     requests: new Set<string>(),
-    connections: new Set<string>(),
   };
   for (const event of events) {
     if (event.kind === "pi") {
@@ -117,14 +103,11 @@ export function projectedEventKeys(events: readonly ProjectedEvent[]) {
       if (event.requestKey !== null) {
         keys.requests.add(event.requestKey);
       }
-    } else if (event.kind === "connection") {
-      keys.connections.add(event.change.connectionId);
     }
   }
   return {
     agents: [...keys.agents],
     requests: [...keys.requests],
-    connections: [...keys.connections],
   };
 }
 
@@ -144,34 +127,21 @@ type PiAgentRow = {
 
 type PiAgentRequestRow = PiAgentRequestState & { id: FragnoId };
 
-type IntegrationConnectionRow = {
-  id: FragnoId;
-  service: string;
-  kind: string;
-  state: string;
-  eventId: string;
-  changedAt: Date;
-  name: string | null;
-  authMethod: string | null;
-  labelAt: Date | null;
-};
-
 /** The rows `projectedEventKeys` names, as the transaction that folds the events read them. */
 type ProjectedRows = {
   agentRows: readonly PiAgentRow[];
   requestRows: readonly PiAgentRequestRow[];
-  connectionRows: readonly IntegrationConnectionRow[];
 };
 
 /**
  * Folds stored events, in order, into the rows they change, and writes each row once. Ingestion
  * folds each event as it stores it; the replay folds events stored before ingestion did, and those
  * stored since, again. Folding an event again changes nothing but ties: requests record what
- * happened to them, not how often, and agents and connections keep their latest changes by when they happened. Of an agent's changes in the same
- * instant the one folded last wins, and of a connection's the first, so the replay, which folds by
- * type, can settle such a tie unlike ingestion did. Events about one agent or connection can be
- * folded concurrently: updates check the row's version, and creating a row another transaction
- * created meanwhile retries, so the loser folds into the winner's row.
+ * happened to them, not how often, and agents keep their latest changes by when they happened. Of
+ * an agent's changes in the same instant the one folded last wins, so the replay, which folds by
+ * type, can settle such a tie unlike ingestion did. Events about one agent can be folded
+ * concurrently: updates check the row's version, and creating a row another transaction created
+ * meanwhile retries, so the loser folds into the winner's row.
  */
 export function foldProjectedEvents(
   uow: AutomationHookUnitOfWork,
@@ -181,9 +151,6 @@ export function foldProjectedEvents(
   const agents = new Map(rows.agentRows.map((row) => [row.id.externalId, piAgentState(row)]));
   const requests = new Map<string, PiAgentRequestState>(
     rows.requestRows.map(({ id, ...request }) => [id.externalId, request]),
-  );
-  const connections = new Map(
-    rows.connectionRows.map((row) => [row.id.externalId, integrationConnectionFold(row)]),
   );
   for (const event of events) {
     switch (event.kind) {
@@ -198,14 +165,6 @@ export function foldProjectedEvents(
         if (event.requestKey !== null && applied.request) {
           requests.set(event.requestKey, applied.request);
         }
-        break;
-      }
-      case "connection": {
-        const { change } = event;
-        connections.set(
-          change.connectionId,
-          applyIntegrationConnectionChange(connections.get(change.connectionId) ?? null, change),
-        );
         break;
       }
       case "none":
@@ -239,20 +198,6 @@ export function foldProjectedEvents(
       );
     }
   }
-  const connectionRows = new Map(rows.connectionRows.map((row) => [row.id.externalId, row]));
-  for (const [connectionId, fold] of connections) {
-    const row = connectionRows.get(connectionId);
-    const connection = integrationConnectionColumns(fold);
-    if (row) {
-      updateChangedColumns(uow, "integration_connection", row, connection);
-    } else {
-      uow.create(
-        "integration_connection",
-        { id: connectionId, ...connection },
-        { retryOnUniqueConflict: () => true },
-      );
-    }
-  }
 }
 
 /**
@@ -263,7 +208,7 @@ export function foldProjectedEvents(
  */
 function updateChangedColumns(
   uow: AutomationHookUnitOfWork,
-  table: "pi_agent" | "pi_agent_request" | "integration_connection",
+  table: "pi_agent" | "pi_agent_request",
   row: { id: FragnoId } & Record<string, unknown>,
   columns: Record<string, unknown>,
 ) {
@@ -329,47 +274,6 @@ function piAgentColumns(agent: PiAgentState) {
   };
 }
 
-function integrationConnectionColumns(fold: IntegrationConnectionFold) {
-  const record = integrationConnectionRecord(fold);
-  return {
-    service: record.service,
-    kind: record.kind,
-    state: record.state,
-    eventId: record.eventId,
-    changedAt: record.changedAt,
-    name: record.name,
-    authMethod: record.authMethod,
-    labelAt: fold.labelAt,
-    displayName: record.displayName,
-    kindLabel: record.kindLabel,
-  };
-}
-
-function integrationConnectionFold(row: IntegrationConnectionRow): IntegrationConnectionFold {
-  // Only `projectStoredEvent` writes these rows, from `IntegrationConnectionFold`. Folding reads
-  // when the latest change happened, not its own label.
-  const label: IntegrationConnectionLabel | null =
-    row.labelAt === null
-      ? null
-      : {
-          name: row.name!,
-          authMethod: row.authMethod as IntegrationConnectionLabel["authMethod"],
-        };
-  return {
-    latest: {
-      eventId: row.eventId,
-      connectionId: row.id.externalId,
-      service: row.service,
-      kind: row.kind as IntegrationConnectionKind,
-      state: row.state as IntegrationConnectionStateChange["state"],
-      label,
-      occurredAt: row.changedAt,
-    },
-    label,
-    labelAt: row.labelAt,
-  };
-}
-
 /** An agent's latest definition change; `definition` is null when it deleted the agent. */
 export type RecordedPiAgentDefinition = {
   agentName: string;
@@ -397,14 +301,27 @@ export const createEventProjectionServices = (
         )
         .build();
     },
-    /** Every connection, disconnected ones too. A scope keeps few connections. */
+    /** Every connection, disconnected ones too, from its events' states. A scope keeps few. */
     listIntegrationConnections() {
       return this.serviceTx(automationFragmentSchema)
-        .retrieve((uow) => uow.find("integration_connection", (b) => b.whereIndex("primary")))
-        .transformRetrieve(([rows]) =>
-          rows.map(
-            (row): IntegrationConnectionRecord =>
-              integrationConnectionRecord(integrationConnectionFold(row)),
+        .retrieve((uow) =>
+          uow.find("automation_event_state", (b) =>
+            b.whereIndex(STATE_INDEX, (eb) =>
+              eb.and(
+                eb("source", "=", INTEGRATIONS_EVENT_SOURCE),
+                eb(
+                  "eventType",
+                  "in",
+                  integrationConnectionEvents.map(({ eventType }) => eventType),
+                ),
+              ),
+            ),
+          ),
+        )
+        .transformRetrieve(([states]) =>
+          integrationConnectionsOfStates(
+            // Only connection events of these types, which name their connection, keep these.
+            states as unknown as IntegrationConnectionEventState[],
           ),
         )
         .build();

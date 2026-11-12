@@ -10,7 +10,7 @@ vi.mock("cloudflare:workers", () => workers);
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import { readAutomationReplica } from "@/fragno/automation/lofi/testing";
+import { queryAutomationReplica, readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -104,8 +104,9 @@ test("the integrations section shows each connection's reported state and source
         }),
         when.codemode.run({
           scope,
-          label: "an agent fires a connection event no source reported",
-          code: `async () => await events.fire({ source: "integrations", eventType: "connection.ready", payload: { name: "Forged", authMethod: null } })`,
+          // Connections are the states of their events, whoever fired the latest.
+          label: "an agent reports a connection under another name, as its source would",
+          code: `async () => await events.fire({ source: "integrations", eventType: "connection.ready", payload: { connectionId: "api#billing", service: "api", name: "Billing", authMethod: "bearer" } })`,
           assertToolCalls: ["events.fire"],
         }),
         runner.drain(),
@@ -131,7 +132,7 @@ test("the integrations section shows each connection's reported state and source
               connectionId: "api#billing",
               kind: "api",
               state: "ready",
-              name: "billing",
+              name: "Billing",
               authMethod: "bearer",
             },
             // A disconnection carries no label, so the removed connection keeps its earlier one.
@@ -158,6 +159,20 @@ test("the integrations section shows each connection's reported state and source
               authMethod: "signature",
             },
           ]);
+          // Pages read the same connections through the relation, which states the read in SQL.
+          expect(
+            await queryAutomationReplica(
+              replica,
+              `SELECT "connectionId", "service", "kind", "state", "name", "authMethod", "eventId",
+                 "changedAt", "displayName", "kindLabel"
+               FROM "connections" ORDER BY "service", "connectionId"`,
+            ),
+          ).toEqual(
+            connections.map((connection) => ({
+              ...connection,
+              changedAt: connection.changedAt.getTime(),
+            })),
+          );
         }),
         then.assert("each connection describes its own source without secrets", async (ctx) => {
           const described = {

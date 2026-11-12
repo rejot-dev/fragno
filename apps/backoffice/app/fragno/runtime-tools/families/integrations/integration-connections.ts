@@ -1,7 +1,9 @@
 import {
+  connectionEventStates,
   readIntegrationConnectionEvent,
   type IntegrationConnectionLabel,
   type IntegrationConnectionState,
+  type IntegrationConnectionStatePayload,
 } from "./integration-events";
 
 export type IntegrationConnectionKind = "api" | "webhook" | "mcp" | "connector" | "native";
@@ -10,7 +12,7 @@ export type IntegrationConnectionKind = "api" | "webhook" | "mcp" | "connector" 
  * Each address namespace names the source that owns it; native services share one view. Sources may
  * only claim addresses in these namespaces, so every source's connections reach the views.
  */
-const kindsByNamespace = {
+export const kindsByNamespace = {
   api: "api",
   webhook: "webhook",
   mcp: "mcp",
@@ -46,14 +48,84 @@ export function readIntegrationConnectionStateChange(
   event: StoredEvent,
 ): IntegrationConnectionStateChange | null {
   const change = readIntegrationConnectionEvent(event);
-  const namespace = change?.connectionId.split("#", 1)[0];
-  // Stored events are untrusted, so their namespace may be any string.
-  const kind =
-    namespace !== undefined && Object.hasOwn(kindsByNamespace, namespace)
-      ? kindsByNamespace[namespace as IntegrationConnectionNamespace]
-      : null;
+  const kind = change && kindOfConnectionId(change.connectionId);
   return change && kind
     ? { ...change, eventId: event.id, kind, occurredAt: event.occurredAt }
+    : null;
+}
+
+/** Any principal may fire `integrations` events, so an address's namespace may be any string. */
+function kindOfConnectionId(connectionId: string): IntegrationConnectionKind | null {
+  const namespace = connectionId.split("#", 1)[0];
+  return Object.hasOwn(kindsByNamespace, namespace)
+    ? kindsByNamespace[namespace as IntegrationConnectionNamespace]
+    : null;
+}
+
+/** A connection event's state, as `event_state` keeps it. */
+export type IntegrationConnectionEventState = {
+  eventType: keyof typeof connectionEventStates;
+  eventId: string;
+  payload: IntegrationConnectionStatePayload;
+  occurredAt: Date;
+  storedAt: Date;
+};
+
+/**
+ * Every connection, disconnected ones too, by service and then connection ID, from the states of
+ * its events. Each event type keeps a state of its own, so a connection's state is the latest of
+ * them, and its label the latest labeled one's: disconnections carry none. The `connections` page
+ * relation states this again in SQL; keep the two alike.
+ */
+export function integrationConnectionsOfStates(
+  states: readonly IntegrationConnectionEventState[],
+): IntegrationConnectionRecord[] {
+  const connections = new Map<string, IntegrationConnectionFold>();
+  const inOrder = [...states].sort(
+    (left, right) =>
+      left.occurredAt.getTime() - right.occurredAt.getTime() ||
+      left.storedAt.getTime() - right.storedAt.getTime(),
+  );
+  for (const state of inOrder) {
+    const change = connectionChangeOfState(state);
+    if (change) {
+      connections.set(
+        change.connectionId,
+        applyIntegrationConnectionChange(connections.get(change.connectionId) ?? null, change),
+      );
+    }
+  }
+  return [...connections.values()]
+    .map(integrationConnectionRecord)
+    .sort(
+      (left, right) =>
+        compareText(left.service, right.service) ||
+        compareText(left.connectionId, right.connectionId),
+    );
+}
+
+function compareText(left: string, right: string) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function connectionChangeOfState({
+  eventType,
+  eventId,
+  payload,
+  occurredAt,
+}: IntegrationConnectionEventState): IntegrationConnectionStateChange | null {
+  const kind = kindOfConnectionId(payload.connectionId);
+  return kind
+    ? {
+        eventId,
+        connectionId: payload.connectionId,
+        service: payload.service,
+        kind,
+        state: connectionEventStates[eventType],
+        // Events stored before state events carried labels hold none.
+        label: "name" in payload ? { name: payload.name, authMethod: payload.authMethod } : null,
+        occurredAt,
+      }
     : null;
 }
 
@@ -80,7 +152,7 @@ export type IntegrationConnectionRecord = {
  * A connection as its changes so far leave it: the state of its latest change, and the label of its
  * latest labeled change, with when that change happened.
  */
-export type IntegrationConnectionFold = {
+type IntegrationConnectionFold = {
   latest: IntegrationConnectionStateChange;
   label: IntegrationConnectionLabel | null;
   labelAt: Date | null;
@@ -91,7 +163,7 @@ export type IntegrationConnectionFold = {
  * so a removed connection keeps the name it had. Of changes made in the same instant, the first
  * applied wins.
  */
-export function applyIntegrationConnectionChange(
+function applyIntegrationConnectionChange(
   current: IntegrationConnectionFold | null,
   change: IntegrationConnectionStateChange,
 ): IntegrationConnectionFold {
@@ -105,7 +177,7 @@ export function applyIntegrationConnectionChange(
   };
 }
 
-export function integrationConnectionRecord({
+function integrationConnectionRecord({
   latest,
   label,
 }: IntegrationConnectionFold): IntegrationConnectionRecord {
@@ -124,7 +196,7 @@ export function integrationConnectionRecord({
   };
 }
 
-const integrationConnectionKindLabels = {
+export const integrationConnectionKindLabels = {
   api: "API",
   webhook: "Webhook",
   mcp: "MCP",

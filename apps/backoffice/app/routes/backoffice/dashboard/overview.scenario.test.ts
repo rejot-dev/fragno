@@ -207,9 +207,10 @@ function connectionEvent(
   at: number,
   name = connectionId,
 ) {
+  const service = connectionId.split("#", 1)[0];
   return event(id, "integrations", `connection.${state}`, at, {
-    payload: { name, authMethod: null },
-    subject: { scope, service: connectionId.split("#", 1)[0], connectionId },
+    payload: { connectionId, service, name, authMethod: null },
+    subject: { scope, service, connectionId },
   });
 }
 
