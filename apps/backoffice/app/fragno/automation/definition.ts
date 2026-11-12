@@ -924,14 +924,8 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               .find("pi_agent_request", (b) =>
                 b.whereIndex("primary", (eb) => eb("id", "in", keys.requests)),
               )
-              .find("pi_agent_turn", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "in", keys.turns)),
-              )
               .find("integration_connection", (b) =>
                 b.whereIndex("primary", (eb) => eb("id", "in", keys.connections)),
-              )
-              .find("integration_connection_change", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "in", keys.changes)),
               ),
           )
           .mutate(
@@ -943,9 +937,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 acceptRows,
                 agentRows,
                 requestRows,
-                turnRows,
                 connectionRows,
-                changeRows,
               ],
             }) => {
               if (existingEvent) {
@@ -976,9 +968,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               foldProjectedEvents(uow as AutomationHookUnitOfWork, projected, {
                 agentRows,
                 requestRows,
-                turnRows,
                 connectionRows,
-                changeRows,
               });
               return true;
             },

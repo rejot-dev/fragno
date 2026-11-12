@@ -25,7 +25,6 @@ const RELATION_PERMISSIONS: Record<string, BackofficePermissionRequirement> = {
   kv_store: BACKOFFICE_PERMISSION.store.read,
   connections: BACKOFFICE_PERMISSION.connections.read,
   agents: BACKOFFICE_PERMISSION.pi.read,
-  agent_turns: BACKOFFICE_PERMISSION.pi.read,
 };
 
 test("sites that read data require the permission of every relation they can read", () => {

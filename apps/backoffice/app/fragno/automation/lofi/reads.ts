@@ -12,16 +12,27 @@ import type { AnyTable } from "@fragno-dev/db/schema";
 import { lofiSqliteTableName, type LofiSqliteReader } from "@fragno-dev/lofi/sqlite";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
+import {
+  PI_AUTOMATION_SOURCE,
+  PI_TURN_AUTOMATION_EVENTS,
+  readPiAgentEvent,
+} from "@/fragno/backoffice-capabilities/capabilities/pi";
 import { BUILT_IN_PI_AGENT_DEFINITIONS } from "@/fragno/pi/agent/agent-definitions";
 import {
   piAgentRecord,
+  piAgentTurnEndedBy,
   type PiAgentRecord,
   type PiAgentTurnRecord,
 } from "@/fragno/pi/agent/pi-agent-records";
-import type {
-  IntegrationConnectionRecord,
-  IntegrationConnectionStateChange,
+import {
+  readIntegrationConnectionStateChange,
+  type IntegrationConnectionRecord,
+  type IntegrationConnectionStateChange,
 } from "@/fragno/runtime-tools/families/integrations/integration-connections";
+import {
+  INTEGRATIONS_EVENT_SOURCE,
+  integrationConnectionEvents,
+} from "@/fragno/runtime-tools/families/integrations/integration-events";
 import type { AutomationWorkflowRun } from "@/routes/backoffice/automations/script-view/workflow-run-presentation";
 import {
   automationWorkflowRunsFromRecords,
@@ -564,16 +575,45 @@ export function readPiAgents(reader: LofiSqliteReader): PiAgentRecord[] {
     );
 }
 
-/** The turns agents ended since `since`. */
-export function readPiAgentTurns(
+const TURN_ENDED_EVENT_TYPES = [
+  PI_TURN_AUTOMATION_EVENTS.completed,
+  PI_TURN_AUTOMATION_EVENTS.aborted,
+  PI_TURN_AUTOMATION_EVENTS.failed,
+].map(({ eventType }) => eventType);
+
+/** The turns agents ended since `since`, by the events that ended them. */
+export function readPiAgentTurns(reader: LofiSqliteReader, since: Date): PiAgentTurnRecord[] {
+  return readEventsOfTypes(reader, {
+    source: PI_AUTOMATION_SOURCE,
+    eventTypes: TURN_ENDED_EVENT_TYPES,
+    since: since.getTime(),
+  }).flatMap((event) => piAgentTurnEndedBy(event, readPiAgentEvent(event)) ?? []);
+}
+
+/**
+ * The source's events of the types, oldest first, as stored. Of events in the same instant, the
+ * one stored first comes first.
+ */
+function readEventsOfTypes(
   reader: LofiSqliteReader,
-  since: Date,
-): Pick<PiAgentTurnRecord, "agentName" | "endedAt">[] {
-  const turn = automationFragmentSchema.tables.pi_agent_turn.columns;
+  { source, eventTypes, since }: { source: string; eventTypes: string[]; since: number },
+) {
+  const event = automationFragmentSchema.tables.automation_event;
   return reader.query({
-    sql: `SELECT "agentName", "endedAt" FROM ${automationTable("pi_agent_turn")} WHERE "endedAt" >= ?`,
-    params: [since.getTime()],
-    columns: { agentName: turn.agentName, endedAt: turn.endedAt },
+    sql: `SELECT "id", "source", "eventType", "payload", "subject", "occurredAt"
+          FROM ${automationTable("automation_event")}
+          WHERE "source" = ? AND "eventType" IN (${eventTypes.map(() => "?").join(", ")})
+            AND "occurredAt" >= ?
+          ORDER BY "occurredAt", "${event.getInternalIdColumn().name}"`,
+    params: [source, ...eventTypes, since],
+    columns: {
+      id: "text",
+      source: event.columns.source,
+      eventType: event.columns.eventType,
+      payload: event.columns.payload,
+      subject: event.columns.subject,
+      occurredAt: event.columns.occurredAt,
+    },
   });
 }
 
@@ -613,26 +653,14 @@ export function readIntegrationConnectionHistory(
   reader: LofiSqliteReader,
   { connectionId }: { connectionId: string },
 ): IntegrationConnectionStateChange[] {
-  const change = automationFragmentSchema.tables.integration_connection_change;
-  const rows = reader.query({
-    sql: `SELECT "id" AS "eventId", "connectionId", "service", "kind", "state", "label",
-            "occurredAt"
-          FROM ${automationTable("integration_connection_change")}
-          WHERE "connectionId" = ?
-          ORDER BY "occurredAt" DESC, "${change.getInternalIdColumn().name}"`,
-    params: [connectionId],
-    columns: {
-      eventId: "text",
-      connectionId: change.columns.connectionId,
-      service: change.columns.service,
-      kind: change.columns.kind,
-      state: change.columns.state,
-      label: change.columns.label,
-      occurredAt: change.columns.occurredAt,
-    },
-  });
-  // Only `projectStoredEvent` writes these rows, from `IntegrationConnectionStateChange`.
-  return rows as IntegrationConnectionStateChange[];
+  const changes = readEventsOfTypes(reader, {
+    source: INTEGRATIONS_EVENT_SOURCE,
+    eventTypes: integrationConnectionEvents.map(({ eventType }) => eventType),
+    since: 0,
+  })
+    .flatMap((event) => readIntegrationConnectionStateChange(event) ?? [])
+    .filter((change) => change.connectionId === connectionId);
+  return changes.sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
 }
 
 /** The connections that are not disconnected, by service and then connection ID. */

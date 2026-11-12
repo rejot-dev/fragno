@@ -221,13 +221,6 @@ type PageRelations = {
     displayName: string;
     kindLabel: string;
   };
-  /** Turns agents ended, one row each. */
-  agent_turns: {
-    id: string;
-    agentName: string;
-    outcome: "answered" | "cut-off" | "failed";
-    endedAt: PageSqlTime;
-  };
   /** Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and steward. */
   agents: {
     agentName: string;

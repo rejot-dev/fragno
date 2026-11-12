@@ -28,13 +28,7 @@ const scope = { kind: "org", orgId, jurisdiction: null } as const;
 const start = Date.parse("2026-01-01T00:00:00.000Z");
 const at = (second: number) => start + second * 1000;
 
-const FOLDED_TABLES = [
-  "pi_agent",
-  "pi_agent_request",
-  "pi_agent_turn",
-  "integration_connection",
-  "integration_connection_change",
-];
+const FOLDED_TABLES = ["pi_agent", "pi_agent_request", "integration_connection"];
 
 function event(
   id: string,
@@ -211,13 +205,11 @@ test("the replay folds stored events as ingestion did, and folding them again ch
                 { id: "drafter", definition: null, running: 1 },
                 { id: "reviewer", latestKind: "stopped", paused: 1, running: 0, steering: 1 },
               ],
-              pi_agent_turn: [{ id: "r1-completed", agentName: "reviewer", outcome: "answered" }],
               integration_connection: [
                 { id: "api#billing", state: "ready", eventId: "billing-back" },
                 { id: "mcp#agensi", state: "disconnected", name: "mcp#agensi" },
               ],
             });
-            expect(org?.integration_connection_change).toHaveLength(5);
           }),
           then.assert("the replay starts again on the folded rows", async () => {
             await deleteRows(directory, ["event_fold_replay"]);

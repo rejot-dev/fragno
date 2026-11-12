@@ -360,22 +360,6 @@ const QUERY_RELATIONS: (PageRelation & { sql: string })[] = [
     ],
   },
   {
-    name: "agent_turns",
-    description: "Turns agents ended, one row each.",
-    sql: `SELECT "id", "agentName", "outcome", "endedAt" FROM ${automationTable("pi_agent_turn")}`,
-    columns: [
-      { name: "id", type: "text", nullable: false },
-      { name: "agentName", type: "text", nullable: false },
-      {
-        name: "outcome",
-        type: "text",
-        nullable: false,
-        values: ["answered", "cut-off", "failed"],
-      },
-      { name: "endedAt", type: "time", nullable: false },
-    ],
-  },
-  {
     name: "agents",
     description:
       "Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and steward.",

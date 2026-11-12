@@ -105,33 +105,18 @@ export async function replayEventFold(
           .find("pi_agent_request", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "in", keys.requests)),
           )
-          .find("pi_agent_turn", (b) => b.whereIndex("primary", (eb) => eb("id", "in", keys.turns)))
           .find("integration_connection", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "in", keys.connections)),
-          )
-          .find("integration_connection_change", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "in", keys.changes)),
           ),
       )
-      .mutate(
-        ({
-          forSchema,
-          retrieveResult: [agentRows, requestRows, turnRows, connectionRows, changeRows],
-        }) => {
-          const uow = forSchema(automationFragmentSchema);
-          foldProjectedEvents(uow, projected, {
-            agentRows,
-            requestRows,
-            turnRows,
-            connectionRows,
-            changeRows,
-          });
-          uow.update("event_fold_replay", replay.id, (b) => b.set({ next }).check());
-          if (next !== null) {
-            uow.triggerHook("internalReplayEventFold", next);
-          }
-        },
-      )
+      .mutate(({ forSchema, retrieveResult: [agentRows, requestRows, connectionRows] }) => {
+        const uow = forSchema(automationFragmentSchema);
+        foldProjectedEvents(uow, projected, { agentRows, requestRows, connectionRows });
+        uow.update("event_fold_replay", replay.id, (b) => b.set({ next }).check());
+        if (next !== null) {
+          uow.triggerHook("internalReplayEventFold", next);
+        }
+      })
       .execute();
     return;
   }

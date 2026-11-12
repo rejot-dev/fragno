@@ -175,7 +175,7 @@ private again.
 - **Data:** the Worker returns what it reads to anyone on the internet. Answer each route with the
   columns and rows its page shows, selected by fixed SQL: never put SQL, a relation, or a column
   from the request into a query, never return whole rows of `kv_store`, `connections`, `agents`, or
-  `agent_turns`, and leave out routes that list or debug data. Bind what a visitor sends only as a value,
+  `events`, and leave out routes that list or debug data. Bind what a visitor sends only as a value,
   such as an id they look up.
 - **Events:** every visitor shares the one count of events naming no viewer, as Writing data
   describes, so a public site fires only for what a visitor does on purpose, such as sending a form,

@@ -481,5 +481,8 @@ export const automationFragmentSchema = schema("automations", (s) => {
             },
           ),
       )
+      // Turns and connection changes are read from the events that record them.
+      .dropTable("pi_agent_turn")
+      .dropTable("integration_connection_change")
   );
 });
