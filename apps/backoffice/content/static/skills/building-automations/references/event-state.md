@@ -24,29 +24,73 @@ that read its key.
 ## Change a key path
 
 Changing a type's key path, or deleting its definition, leaves the state as it is: the states read
-with the old key path stay beside the new ones until you delete them.
+with the old key path stay beside the new ones until you delete them. Their payloads are the copy
+that lasts, as old events may be gone, so fill the new state from them before deleting them.
 
 1. **Change it** with
    `events.catalogUpdate({ source, eventType, patch: { keyPath: "$.productId" } })`. A package's
    type changes only when the package is installed again. **Complete when** `events.catalogGet`
    returns the new `keyPath`.
-2. **Delete the old states.** Page through the state and delete each key read with another key path,
-   at most 50 keys per call. After a deleted definition, the type's states are all old.
+2. **Fill it again** by firing each old state's `payload` again, so the new key path reads its key.
+   A fired event is the latest, so skip things that changed since and have a state under the new key
+   path already. Firing again runs the type's routes: read `router.list` for routes on the type
+   first, and ask the user before firing where a route does more than keep data, such as starting a
+   workflow per request.
 
    ```js
    async () => {
      const type = { source: "warehouse", eventType: "stock.changed" };
      const { keyPath } = await events.catalogGet(type);
-     const stale = [];
+     const keyOf = (payload) =>
+       String(
+         keyPath
+           .split(".")
+           .slice(1)
+           .reduce((value, field) => value?.[field], payload),
+       );
+     const old = [];
+     const current = new Set();
      let cursor;
      do {
        const page = await events.stateList({ ...type, cursor });
-       stale.push(...page.states.filter((state) => state.keyPath !== keyPath));
+       for (const state of page.states) {
+         if (state.keyPath === keyPath) current.add(state.key);
+         else old.push(state);
+       }
+       cursor = page.hasNextPage ? page.nextCursor : undefined;
+     } while (cursor);
+     const stale = old.filter((state) => !current.has(keyOf(state.payload)));
+     for (const state of stale) {
+       await events.fire({ ...type, payload: state.payload });
+     }
+     return { fired: stale.length };
+   };
+   ```
+
+   A feed can instead fetch every record again: delete its checkpoints, such as the `store` keys
+   `store.list({ prefix: "bank:entity:" })` returns, then run its route with `router.triggerNow`, as
+   `/static/skills/building-automations/references/syncing-external-data.md` describes. Events from
+   a site or an installed app fire only from it, so their old states stay until each thing changes;
+   meanwhile read only the states with the type's `keyPath`. **Complete when** each thing an old
+   state holds also has a state under the new key path, or the user knows which stay old.
+
+3. **Delete the old states,** at most 50 keys per call. After a deleted definition, the type's
+   states are all old.
+
+   ```js
+   async () => {
+     const type = { source: "warehouse", eventType: "stock.changed" };
+     const { keyPath } = await events.catalogGet(type);
+     const old = [];
+     let cursor;
+     do {
+       const page = await events.stateList({ ...type, cursor });
+       old.push(...page.states.filter((state) => state.keyPath !== keyPath));
        cursor = page.hasNextPage ? page.nextCursor : undefined;
      } while (cursor);
      const deleted = [];
-     for (let i = 0; i < stale.length; i += 50) {
-       const keys = stale.slice(i, i + 50).map((state) => state.key);
+     for (let i = 0; i < old.length; i += 50) {
+       const keys = old.slice(i, i + 50).map((state) => state.key);
        deleted.push(...(await events.stateDelete({ ...type, keys })).deleted);
      }
      return { deleted: deleted.length };
@@ -55,21 +99,8 @@ with the old key path stay beside the new ones until you delete them.
 
    **Complete when** `events.stateList` lists no state with another `keyPath`.
 
-3. **Fill it again.** Each new event fills its key's state. Things that change rarely need firing
-   again, as their latest values:
-   - a feed fires every record again once its checkpoints are gone: delete its `store` keys, such as
-     those `store.list({ prefix: "bank:entity:" })` returns, then run its route with
-     `router.triggerNow`, as
-     `/static/skills/building-automations/references/syncing-external-data.md` describes;
-   - other sources fire each thing's latest event again with `events.fire`.
-
-   Firing again runs the type's routes again. Read `router.list` for routes on the type first, and
-   ask the user before firing again where a route does more than keep data, such as starting a
-   workflow per request. **Complete when** `events.stateList` holds a state for each thing the
-   type's pages and sites show, or the user knows which stay empty until they change.
-
 ## Delete state
 
 `events.stateDelete({ source, eventType, keys })` deletes the state of keys, such as a removed
-type's or one thing's that must go for good; their events stay in `events`, and a key's next event
-starts its state again. Deleting needs `events.manage`.
+type's or one thing's that must go for good. Deleting is permanent: events are history and may be
+gone, so a key's state starts again only with its next event. Deleting needs `events.manage`.
