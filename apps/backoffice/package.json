@@ -37,6 +37,7 @@
     "heap:profile": "node scripts/profile-worker-heap.mjs",
     "prestartup:profile": "node scripts/clean-build-output.mjs && turbo run build --filter=@fragno-apps/backoffice-rr --output-logs=errors-only",
     "startup:profile": "node scripts/profile-worker-startup.mjs",
+    "workerd:cdp": "node scripts/workerd-cdp.mjs",
     "preview": "node scripts/run-vite-preview.mjs",
     "preview:containers": "node scripts/run-vite-preview.mjs --containers",
     "types:check": "tsc -b --noEmit",
@@ -155,6 +156,7 @@
     "vite": "catalog:",
     "vite-plugin-devtools-json": "^1.0.0",
     "vitest": "catalog:",
-    "wrangler": "catalog:"
+    "wrangler": "catalog:",
+    "ws": "^8.21.3"
   }
 }
