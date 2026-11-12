@@ -8,9 +8,14 @@ export function MarkdownImage({ src, alt = "" }: ComponentProps<"img">) {
 
 const plainComponents = { img: MarkdownImage };
 
+function asksBeforeEveryLink() {
+  return false;
+}
+
 /**
  * Markdown as the chat shows it, while it streams in. A host whose Markdown links its own files
- * passes the plugins that find them and the components that show them.
+ * passes the plugins that find them and the components that show them. Links ask before they open
+ * another site, unless `opensWithoutAsking` says the host serves it.
  */
 export function MarkdownText({
   text,
@@ -18,12 +23,14 @@ export function MarkdownText({
   components = plainComponents,
   remarkPlugins,
   rehypePlugins,
+  opensWithoutAsking = asksBeforeEveryLink,
 }: {
   text: string;
   className?: string;
   components?: StreamdownProps["components"];
   remarkPlugins?: StreamdownProps["remarkPlugins"];
   rehypePlugins?: StreamdownProps["rehypePlugins"];
+  opensWithoutAsking?: (url: string) => boolean;
 }) {
   return (
     <Streamdown
@@ -33,6 +40,7 @@ export function MarkdownText({
       components={components}
       remarkPlugins={remarkPlugins}
       rehypePlugins={rehypePlugins}
+      linkSafety={{ enabled: true, onLinkCheck: opensWithoutAsking }}
       skipHtml
     >
       {text}

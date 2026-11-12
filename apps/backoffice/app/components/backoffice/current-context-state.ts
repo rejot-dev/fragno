@@ -26,4 +26,6 @@ export type CurrentBackofficeContext = {
    * know the scope's slugs, such as another owner's project.
    */
   resolveScope: (scope: BackofficeContextScope) => BackofficeResolvedScope<Organization> | null;
+  /** The domain Backoffice serves sites under, or null when it serves none. */
+  sitesDomain: string | null;
 };
