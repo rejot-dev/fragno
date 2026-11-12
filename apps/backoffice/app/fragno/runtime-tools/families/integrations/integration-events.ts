@@ -21,10 +21,10 @@ export type IntegrationConnectionState = "ready" | "unavailable";
 /** How an existing connection presents itself; its state events carry it so views need no source read. */
 export type IntegrationConnectionLabel = Pick<IntegrationConnection, "name" | "authMethod">;
 
-const integrationConnectionLabelSchema = z.strictObject({
+const integrationConnectionLabelShape = {
   name: z.string().describe("The connection's display name, as integrations.list reports it."),
   authMethod: integrationAuthMethodSchema.nullable(),
-});
+};
 
 /** For sources whose readiness is exactly stored configuration plus authorization. */
 export function connectionStateOfInspection(
@@ -49,6 +49,25 @@ export function connectionStateOfInspection(
   }
 }
 
+/**
+ * Each event names its connection in its payload too, as the key its state is kept under, so the
+ * latest event of each state is the connection's state.
+ */
+export const INTEGRATION_CONNECTION_KEY_PATH = "$.connectionId";
+
+const integrationConnectionPayloadShape = {
+  connectionId: integrationConnectionIdSchema.describe(
+    "Integration address, e.g. api#billing; the same as the subject's.",
+  ),
+  service: z.string().min(1).describe("Service ID from integrations.discover, e.g. api."),
+};
+
+/** What the state of a connection event holds; events stored before payloads named it hold no more. */
+export type IntegrationConnectionStatePayload = {
+  connectionId: string;
+  service: string;
+} & ({} | IntegrationConnectionLabel);
+
 const integrationConnectionSubjectSchema = z.object({
   scope: z.looseObject({ kind: z.string().min(1) }),
   orgId: z.string().min(1).optional(),
@@ -59,7 +78,7 @@ const integrationConnectionSubjectSchema = z.object({
   ),
 });
 
-const connectionEventStates = {
+export const connectionEventStates = {
   "connection.ready": "ready",
   "connection.unavailable": "unavailable",
   "connection.disconnected": "disconnected",
@@ -83,7 +102,8 @@ export function readIntegrationConnectionEvent(event: {
   ) {
     return null;
   }
-  const label = integrationConnectionLabelSchema.safeParse(event.payload);
+  // Reads the label off a payload that also names the connection.
+  const label = z.object(integrationConnectionLabelShape).safeParse(event.payload);
   return {
     state: connectionEventStates[event.eventType as keyof typeof connectionEventStates],
     service: subject.data.service,
@@ -104,27 +124,46 @@ export const integrationConnectionEvents = [
     eventType: "connection.ready",
     label: "Integration connection ready",
     description: `The connection's stored configuration and authorization are in place. Providers can still reject requests; integrations.verify checks live access. ${repeatNote}`,
-    payloadSchema: integrationConnectionLabelSchema,
+    payloadSchema: z.strictObject({
+      ...integrationConnectionPayloadShape,
+      ...integrationConnectionLabelShape,
+    }),
     subjectSchema: integrationConnectionSubjectSchema,
-    example: { name: "Billing API", authMethod: "bearer" },
+    example: {
+      connectionId: "api#billing",
+      service: "api",
+      name: "Billing API",
+      authMethod: "bearer",
+    },
+    keyPath: INTEGRATION_CONNECTION_KEY_PATH,
   },
   {
     source: INTEGRATIONS_EVENT_SOURCE,
     eventType: "connection.unavailable",
     label: "Integration connection unavailable",
     description: `The connection exists but cannot be used, for example while consent is pending, after credentials were cleared or rejected, or while the provider installation is suspended. It also fires when an API or MCP access token without a refresh token expires. integrations.get lists the next steps. ${repeatNote}`,
-    payloadSchema: integrationConnectionLabelSchema,
+    payloadSchema: z.strictObject({
+      ...integrationConnectionPayloadShape,
+      ...integrationConnectionLabelShape,
+    }),
     subjectSchema: integrationConnectionSubjectSchema,
-    example: { name: "Billing API", authMethod: "bearer" },
+    example: {
+      connectionId: "api#billing",
+      service: "api",
+      name: "Billing API",
+      authMethod: "bearer",
+    },
+    keyPath: INTEGRATION_CONNECTION_KEY_PATH,
   },
   {
     source: INTEGRATIONS_EVENT_SOURCE,
     eventType: "connection.disconnected",
     label: "Integration connection disconnected",
     description: `The connection was removed; its address resolves again only after setup. ${repeatNote}`,
-    payloadSchema: z.strictObject({}),
+    payloadSchema: z.strictObject(integrationConnectionPayloadShape),
     subjectSchema: integrationConnectionSubjectSchema,
-    example: {},
+    example: { connectionId: "api#billing", service: "api" },
+    keyPath: INTEGRATION_CONNECTION_KEY_PATH,
   },
 ] as const;
 
@@ -156,7 +195,11 @@ export async function recordIntegrationConnectionState(
       source: INTEGRATIONS_EVENT_SOURCE,
       eventType: `connection.${change.state}`,
       occurredAt: change.occurredAt.toISOString(),
-      payload: change.state === "disconnected" ? {} : change.label,
+      payload: {
+        connectionId: change.connectionId,
+        service: change.service,
+        ...(change.state === "disconnected" ? {} : change.label),
+      } satisfies IntegrationConnectionStatePayload,
       actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
       subject: {
         scope: change.scope,

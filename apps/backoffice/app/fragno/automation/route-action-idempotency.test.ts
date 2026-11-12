@@ -255,6 +255,7 @@ describe("automation route action idempotency", () => {
             eventType: "issues.opened",
             enabled: true,
             storedPayload: null,
+            keyPath: null,
             payloadSchema: {
               type: "object",
               properties: { value: { type: "string" } },
@@ -340,6 +341,7 @@ describe("automation route action idempotency", () => {
             eventType: "push",
             enabled: true,
             storedPayload: null,
+            keyPath: null,
             payloadSchema: {
               type: "object",
               properties: { ref: { type: "string" } },

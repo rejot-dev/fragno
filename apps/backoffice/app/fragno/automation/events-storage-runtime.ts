@@ -2,8 +2,7 @@ import { automationEventListInputSchema } from "@fragno-dev/backoffice-api/v0/ev
 
 import { decodeCursor, type Cursor, type DatabaseServiceContext } from "@fragno-dev/db";
 
-import { EVENT_FOLD_REPLAY_ID } from "./event-fold-replay";
-import { FOLDED_EVENT_TYPES } from "./event-projections";
+import { EVENT_FOLD_REPLAY_ID, REPLAYED_EVENT_TYPES } from "./event-fold-replay";
 import { automationFragmentSchema } from "./schema";
 
 type AutomationEventServiceContext = DatabaseServiceContext<Record<string, never>>;
@@ -14,11 +13,11 @@ const EVENTS_OF_TYPE_PAGE_SIZE = 100;
 export const EVENTS_BY_TIME_INDEX = "idx_automation_event_occurredAt_id";
 
 /**
- * Sources whose events `event-projections` folds into current agents and connections. Events stored
- * before it did are the only record of what they did until `event-fold-replay` folds them too.
+ * Sources whose events ingestion folds into agents and keeps in connection states. Events stored
+ * before it did are the only record of what they did until `event-fold-replay` reads them too.
  */
-const FOLDED_EVENT_SOURCES: ReadonlySet<string> = new Set(
-  FOLDED_EVENT_TYPES.map(({ source }) => source),
+const REPLAYED_EVENT_SOURCES: ReadonlySet<string> = new Set(
+  REPLAYED_EVENT_TYPES.map(({ source }) => source),
 );
 
 /** More than a page of arrivals, and few enough rows to stay below Durable Object SQLite's limits. */
@@ -145,7 +144,7 @@ export const createAutomationEventServices = (
             ),
         )
         .mutate(({ uow, retrieveResult: [page, replay] }) => {
-          if (FOLDED_EVENT_SOURCES.has(input.source) && !(replay?.next === null)) {
+          if (REPLAYED_EVENT_SOURCES.has(input.source) && !(replay?.next === null)) {
             throw new Error(
               `Events from ${input.source} are not yet folded into agents and connections and cannot be deleted.`,
             );
