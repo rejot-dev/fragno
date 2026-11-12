@@ -17,10 +17,8 @@ import {
   applyPiAgentEvent,
   piAgentEventRequestId,
   piAgentRequestKey,
-  piAgentTurnEndedBy,
   type PiAgentRequestState,
   type PiAgentState,
-  type PiAgentTurnRecord,
 } from "@/fragno/pi/agent/pi-agent-records";
 import {
   applyIntegrationConnectionChange,
@@ -86,7 +84,6 @@ type ProjectedEvent =
       occurredAt: Date;
       read: PiAgentEvent;
       requestKey: string | null;
-      turn: PiAgentTurnRecord | null;
     }
   | { kind: "connection"; change: IntegrationConnectionStateChange }
   | { kind: "none" };
@@ -101,7 +98,6 @@ export function projectedEventOf(event: StoredEvent): ProjectedEvent {
       occurredAt: event.occurredAt,
       read,
       requestKey: requestId === null ? null : piAgentRequestKey(read.agentName, requestId),
-      turn: piAgentTurnEndedBy(event, read),
     };
   }
   const change = readIntegrationConnectionStateChange(event);
@@ -113,9 +109,7 @@ export function projectedEventKeys(events: readonly ProjectedEvent[]) {
   const keys = {
     agents: new Set<string>(),
     requests: new Set<string>(),
-    turns: new Set<string>(),
     connections: new Set<string>(),
-    changes: new Set<string>(),
   };
   for (const event of events) {
     if (event.kind === "pi") {
@@ -123,20 +117,14 @@ export function projectedEventKeys(events: readonly ProjectedEvent[]) {
       if (event.requestKey !== null) {
         keys.requests.add(event.requestKey);
       }
-      if (event.turn) {
-        keys.turns.add(event.turn.id);
-      }
     } else if (event.kind === "connection") {
       keys.connections.add(event.change.connectionId);
-      keys.changes.add(event.change.eventId);
     }
   }
   return {
     agents: [...keys.agents],
     requests: [...keys.requests],
-    turns: [...keys.turns],
     connections: [...keys.connections],
-    changes: [...keys.changes],
   };
 }
 
@@ -172,17 +160,14 @@ type IntegrationConnectionRow = {
 type ProjectedRows = {
   agentRows: readonly PiAgentRow[];
   requestRows: readonly PiAgentRequestRow[];
-  turnRows: readonly { id: FragnoId }[];
   connectionRows: readonly IntegrationConnectionRow[];
-  changeRows: readonly { id: FragnoId }[];
 };
 
 /**
  * Folds stored events, in order, into the rows they change, and writes each row once. Ingestion
  * folds each event as it stores it; the replay folds events stored before ingestion did, and those
  * stored since, again. Folding an event again changes nothing but ties: requests record what
- * happened to them, not how often, turns and changes are keyed by their event, and agents and
- * connections keep their latest changes by when they happened. Of an agent's changes in the same
+ * happened to them, not how often, and agents and connections keep their latest changes by when they happened. Of an agent's changes in the same
  * instant the one folded last wins, and of a connection's the first, so the replay, which folds by
  * type, can settle such a tie unlike ingestion did. Events about one agent or connection can be
  * folded concurrently: updates check the row's version, and creating a row another transaction
@@ -200,7 +185,6 @@ export function foldProjectedEvents(
   const connections = new Map(
     rows.connectionRows.map((row) => [row.id.externalId, integrationConnectionFold(row)]),
   );
-  const recorded = new Set([...rows.turnRows, ...rows.changeRows].map((row) => row.id.externalId));
   for (const event of events) {
     switch (event.kind) {
       case "pi": {
@@ -214,10 +198,6 @@ export function foldProjectedEvents(
         if (event.requestKey !== null && applied.request) {
           requests.set(event.requestKey, applied.request);
         }
-        if (event.turn && !recorded.has(event.turn.id)) {
-          recorded.add(event.turn.id);
-          uow.create("pi_agent_turn", event.turn);
-        }
         break;
       }
       case "connection": {
@@ -226,18 +206,6 @@ export function foldProjectedEvents(
           change.connectionId,
           applyIntegrationConnectionChange(connections.get(change.connectionId) ?? null, change),
         );
-        if (!recorded.has(change.eventId)) {
-          recorded.add(change.eventId);
-          uow.create("integration_connection_change", {
-            id: change.eventId,
-            connectionId: change.connectionId,
-            service: change.service,
-            kind: change.kind,
-            state: change.state,
-            label: change.label,
-            occurredAt: change.occurredAt,
-          });
-        }
         break;
       }
       case "none":

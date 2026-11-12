@@ -121,7 +121,12 @@ export default page.define({ title: "Home" }, ({ sql, now, intervals, bucket }) 
   // The most recently active agents come first; agents without activity keep built-in agents
   // first, then go by name. Steers join the running turn, so only queued work waits on a stop.
   const agents = sql`
-    WITH turn AS (SELECT agentName, endedAt FROM agent_turns WHERE endedAt >= ${day}),
+    WITH turn AS (
+      SELECT subject ->> '$.agentName' AS agentName, occurredAt AS endedAt
+      FROM events
+      WHERE source = 'pi' AND eventType IN ('turn.completed', 'turn.aborted', 'turn.failed')
+        AND occurredAt >= ${day}
+    ),
     counted AS (SELECT agentName, count(*) AS turns FROM turn GROUP BY agentName),
     hourly AS (
       SELECT agentName, json_group_array(json_object('hour', hour, 'turns', turns)) AS hourly
