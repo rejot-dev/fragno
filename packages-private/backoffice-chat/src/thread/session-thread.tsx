@@ -1,5 +1,6 @@
 import type {
   PiCompactionMessageMetadata,
+  PiConversationCompaction,
   PiConversationQueueLabel,
   PiNotificationsMessageMetadata,
   PiResetMessageMetadata,
@@ -133,6 +134,52 @@ function ScrollToLatest() {
       <ChatScrollToLatestButton />
     </ThreadPrimitive.ScrollToBottom>
   );
+}
+
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+
+function isEditable(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA")
+  );
+}
+
+/**
+ * Where the reader is: the messages from the first they see to the last, by id, with how far below
+ * the viewport's top each starts, and how far the bottom is. History that lands above can join the
+ * first with the earlier half of its turn, which renames it, so the ones after it hold the place
+ * then; when it was the last, all that changed lies above, and the bottom does.
+ */
+type ScrollAnchor = {
+  messages: readonly { messageId: string; offset: number }[];
+  fromBottom: number;
+};
+
+function readingPlace(viewport: HTMLElement): ScrollAnchor {
+  const viewportTop = viewport.getBoundingClientRect().top;
+  const messages = [...viewport.querySelectorAll<HTMLElement>("[data-message-id]")].flatMap(
+    (message) => {
+      const { top, bottom } = message.getBoundingClientRect();
+      const { messageId } = message.dataset;
+      return messageId !== undefined && bottom > viewportTop
+        ? [{ messageId, offset: top - viewportTop }]
+        : [];
+    },
+  );
+  return { messages, fromBottom: viewport.scrollHeight - viewport.scrollTop };
+}
+
+/** How far the reader's place has moved: the first anchored message still shown, or the bottom. */
+function anchorDrift(viewport: HTMLElement, { messages, fromBottom }: ScrollAnchor) {
+  const viewportTop = viewport.getBoundingClientRect().top;
+  for (const { messageId, offset } of messages) {
+    const message = viewport.querySelector(`[data-message-id="${CSS.escape(messageId)}"]`);
+    if (message !== null) {
+      return message.getBoundingClientRect().top - viewportTop - offset;
+    }
+  }
+  return viewport.scrollHeight - viewport.scrollTop - fromBottom;
 }
 
 /** Sends what the composer holds, including files without text. */
@@ -292,7 +339,7 @@ export function SessionThread({
   showToolCalls,
   showUsage,
   statusText,
-  compacting,
+  compaction,
   context,
   activeContextStartMessageId,
   hasMoreHistory,
@@ -325,8 +372,8 @@ export function SessionThread({
   showToolCalls: boolean;
   showUsage: boolean;
   statusText: string | null;
-  /** The agent's context is being compacted, whoever started it. */
-  compacting: boolean;
+  /** Whether and where the agent's context is being compacted, whoever started it. */
+  compaction: PiConversationCompaction;
   /** Null where the reader leaves the agent's context to the agent. */
   context: ContextControls | null;
   /** The message the context divider precedes; null while no earlier history is shown. */
@@ -343,6 +390,9 @@ export function SessionThread({
   const { agentLabel, composerHeader } = useChatExtensions();
   const composerAction = context?.action ?? "message";
   const disabled = disabledReason !== null;
+  const compacting = compaction !== "none";
+  // Steers reach a running turn; without one, what the reader sends waits for the next turn.
+  const steering = running && compaction !== "between turns";
   // Clearing takes no text, so nothing can be written for it.
   // Compaction instructions and clearing say nothing to the agent, so carry no files.
   const attachingDisabled = disabled || composerAction !== "message" || attachments === null;
@@ -353,9 +403,16 @@ export function SessionThread({
       : null;
   const viewportRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  // While older history loads, the reader's distance from the bottom stays fixed, so content
-  // inserted above them does not move what they are reading.
-  const historyScrollAnchorRef = useRef<number | null>(null);
+  // Once older history is asked for, what the reader sees stays where it is while history and its
+  // rendering land above it, until the reader scrolls or a run starts.
+  const historyScrollAnchorRef = useRef<ScrollAnchor | null>(null);
+
+  // The runtime follows a new run to the bottom; holding the reader's place would fight it.
+  useEffect(() => {
+    if (running) {
+      historyScrollAnchorRef.current = null;
+    }
+  }, [running]);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -364,30 +421,39 @@ export function SessionThread({
       return undefined;
     }
     const observer = new ResizeObserver(() => {
-      const distanceFromBottom = historyScrollAnchorRef.current;
-      if (distanceFromBottom !== null) {
-        viewport.scrollTo({ top: viewport.scrollHeight - distanceFromBottom, behavior: "instant" });
+      const anchor = historyScrollAnchorRef.current;
+      if (anchor === null) {
+        return;
+      }
+      const drift = anchorDrift(viewport, anchor);
+      if (drift !== 0) {
+        viewport.scrollTo({ top: viewport.scrollTop + drift, behavior: "instant" });
       }
     });
+    const release = () => {
+      historyScrollAnchorRef.current = null;
+    };
+    const releaseOnScrollKey = (event: KeyboardEvent) => {
+      if (SCROLL_KEYS.has(event.key) && !isEditable(event.target)) {
+        release();
+      }
+    };
+    const listening = new AbortController();
     observer.observe(content);
+    for (const type of ["wheel", "touchmove", "pointerdown"]) {
+      viewport.addEventListener(type, release, { passive: true, signal: listening.signal });
+    }
+    viewport.addEventListener("keydown", releaseOnScrollKey, { signal: listening.signal });
     return () => {
       observer.disconnect();
+      listening.abort();
     };
   }, []);
 
-  const loadOlderHistory = async () => {
+  const loadOlderHistory = () => {
     const viewport = viewportRef.current;
-    historyScrollAnchorRef.current = viewport ? viewport.scrollHeight - viewport.scrollTop : null;
-    try {
-      await onLoadMoreHistory();
-    } finally {
-      // The loaded entries reach the thread over a render or two after the request settles.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          historyScrollAnchorRef.current = null;
-        });
-      });
-    }
+    historyScrollAnchorRef.current = viewport && readingPlace(viewport);
+    void onLoadMoreHistory();
   };
   return (
     <ChatAttachmentDropZone
@@ -410,7 +476,7 @@ export function SessionThread({
                     hasMore={hasMoreHistory}
                     loading={historyLoading}
                     error={historyError}
-                    onLoadMore={() => void loadOlderHistory()}
+                    onLoadMore={loadOlderHistory}
                   />
                 ) : null}
 
@@ -509,9 +575,11 @@ export function SessionThread({
                             ? disabledReason
                             : composerAction === "compact"
                               ? `Tell ${agentLabel} what the compaction summary must preserve`
-                              : running
+                              : steering
                                 ? `Steer ${agentLabel}; it reads this after the current step`
-                                : `Message ${agentLabel}`
+                                : running
+                                  ? `Message ${agentLabel}; it reads this once compaction ends`
+                                  : `Message ${agentLabel}`
                         }
                         rows={1}
                         className={chatComposerInputClassName}
@@ -562,14 +630,12 @@ export function SessionThread({
                                 >
                                   Stop
                                 </ChatComposerButton>
-                                {compacting ? null : (
-                                  <SendButton
-                                    label="Steer"
-                                    joined={false}
-                                    disabled={disabled}
-                                    sendFiles={sendFiles}
-                                  />
-                                )}
+                                <SendButton
+                                  label={steering ? "Steer" : "Send"}
+                                  joined={false}
+                                  disabled={disabled}
+                                  sendFiles={sendFiles}
+                                />
                               </>
                             ) : (
                               <>

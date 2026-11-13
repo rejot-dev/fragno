@@ -347,6 +347,20 @@ export function isPiConversationRunning(view: ConversationView) {
   return (inbox?.items?.length ?? 0) > 0;
 }
 
+/**
+ * A compaction within a turn still takes the reader's steers. One between turns, which the reader
+ * or a finished turn started, holds what they send for the next turn.
+ */
+export type PiConversationCompaction = "none" | "within turn" | "between turns";
+
+export function piConversationCompaction(view: ConversationView): PiConversationCompaction {
+  const live = view.docs["pi.live"] as Readonly<LiveState> | undefined;
+  if ((live?.compactions?.length ?? 0) === 0) {
+    return "none";
+  }
+  return live?.run ? "within turn" : "between turns";
+}
+
 /** Projects Pi's committed live document into the existing Assistant UI draft model. */
 export function piConversationDraftAgentMessage(
   view: ConversationView,
@@ -484,6 +498,21 @@ function convertDraftTool(
   };
 }
 
+/**
+ * Names messages by what they are rather than where they sit, so history loaded above renames
+ * nothing, and the thread keeps the messages it rendered and where the reader is. Messages that
+ * would share a name are told apart in order, which only history holding a message of the same
+ * name and millisecond could shift.
+ */
+function uniqueMessageIds() {
+  const seen = new Map<string, number>();
+  return (name: string) => {
+    const count = seen.get(name) ?? 0;
+    seen.set(name, count + 1);
+    return count === 0 ? name : `${name}-${count}`;
+  };
+}
+
 /** `activeContextStartMessageId` is the first rendered message of `activeContextStartIndex` on. */
 export function createAssistantUiMessages({
   draftAgentMessage,
@@ -515,6 +544,7 @@ export function createAssistantUiMessages({
     }
   }
   const converted: ThreadMessageLike[] = [];
+  const messageId = uniqueMessageIds();
   // Tool results render inside their calls, so the next message converted marks the start.
   let activeContextStartPosition: number | null = null;
 
@@ -552,7 +582,7 @@ export function createAssistantUiMessages({
     }
     if (message.role === "notification-request") {
       converted.push({
-        id: `pi-notification-request-${message.timestamp}-${index}`,
+        id: messageId(`pi-notification-request-${message.timestamp}`),
         role: "system",
         content: [{ type: "text", text: notificationRequestLabel(message.notifications, "asked") }],
         createdAt: new Date(message.timestamp),
@@ -576,7 +606,7 @@ export function createAssistantUiMessages({
     }
     if (message.role === "compaction") {
       converted.push({
-        id: `pi-compaction-${message.timestamp}-${index}`,
+        id: messageId(`pi-compaction-${message.timestamp}`),
         role: "system",
         content: [{ type: "text", text: message.summary }],
         createdAt: new Date(message.timestamp),
@@ -606,7 +636,7 @@ export function createAssistantUiMessages({
         return prompt.text === "" ? [] : [{ ...block, text: prompt.text }];
       });
       converted.push({
-        id: `pi-user-${message.timestamp ?? index}-${index}`,
+        id: messageId(`pi-user-${message.timestamp}`),
         role: "user",
         content: text,
         createdAt: new Date(message.timestamp),
@@ -636,7 +666,7 @@ export function createAssistantUiMessages({
 
     const visibleErrorMessage = message.stopReason === "aborted" ? undefined : message.errorMessage;
     converted.push({
-      id: `pi-assistant-${message.timestamp ?? index}-${index}`,
+      id: messageId(`pi-assistant-${message.timestamp}`),
       role: "assistant",
       content,
       createdAt: new Date(message.timestamp),
@@ -752,6 +782,7 @@ function joinAgentTurns(
   activeContextStartPosition: number | null,
 ): { messages: ThreadMessageLike[]; activeContextStartMessageId: string | null } {
   const joined: ThreadMessageLike[] = [];
+  const messageId = uniqueMessageIds();
   let activeContextStartMessageId: string | null = null;
   let turnStartPosition = activeContextStartPosition;
   let notificationRequest: PiNotificationReference[] | null = null;
@@ -771,8 +802,14 @@ function joinAgentTurns(
     if (notifications.length === 0 && request === null) {
       return;
     }
+    // Named by the first event it shows, or the first it was asked to handle.
+    const [first] = notifications;
+    const [asked] = request ?? [];
+    const event = first
+      ? `${first.routeId}-${first.event.id}`
+      : `${asked?.routeId}-${asked?.eventId}`;
     joined.push({
-      id: `pi-notifications-${joined.length}`,
+      id: messageId(`pi-notifications-${event}`),
       role: "system",
       content: [{ type: "text", text: notificationsLabel(notifications, request) }],
       createdAt: at,

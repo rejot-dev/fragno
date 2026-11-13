@@ -13,6 +13,7 @@ import {
   createAssistantUiMessages,
   getAppendMessageText,
   isPiConversationRunning,
+  piConversationCompaction,
   piConversationDraftAgentMessage,
   piConversationMessages,
   piConversationQueue,
@@ -328,11 +329,6 @@ const historyPageSchema = z.object({
   cursor: z.string().nullable(),
 });
 
-function isCompacting(view: ConversationView) {
-  const live = view.docs["pi.live"] as { compactions?: readonly unknown[] } | undefined;
-  return (live?.compactions?.length ?? 0) > 0;
-}
-
 /**
  * The conversation as Backoffice's chat shows it, without what only Backoffice offers: files,
  * models, dictation, and managing the agent's context, which the agent compacts itself.
@@ -352,7 +348,7 @@ function BooksChatThread({
   const history = usePiEarlierHistory(view, useHistoryPageReader(historyPath));
   const { activeContextStart, transcript } = history;
   const running = isPiConversationRunning(view);
-  const compacting = isCompacting(view);
+  const compaction = piConversationCompaction(view);
   const { messages, activeContextStartIndex } = useMemo(
     () => piConversationMessages(transcript, activeContextStart),
     [activeContextStart, transcript],
@@ -377,7 +373,7 @@ function BooksChatThread({
     });
     return { items: [...queue.items, ...sending], labels };
   }, [view, agentQueue.items, running, pendingMessages]);
-  const statusText = compacting ? "Compacting…" : running ? "Working…" : null;
+  const statusText = compaction !== "none" ? "Compacting…" : running ? "Working…" : null;
   const { assistantMessages, activeContextStartMessageId } = useMemo(() => {
     const converted = createAssistantUiMessages({
       draftAgentMessage,
@@ -515,7 +511,7 @@ function BooksChatThread({
         showToolCalls
         showUsage={false}
         statusText={statusText}
-        compacting={compacting}
+        compaction={compaction}
         context={null}
         activeContextStartMessageId={activeContextStartMessageId}
         hasMoreHistory={history.hasMore}

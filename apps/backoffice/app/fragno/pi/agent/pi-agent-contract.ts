@@ -128,10 +128,19 @@ export type PiAgentSettledTurn = {
   compact: boolean;
 };
 
+/** A compaction the queue dispatched between turns; `instructions` say what its summary keeps. */
+export const piAgentCompactionWorkSchema = z.object({
+  type: z.literal("compaction"),
+  requestId: z.string().min(1),
+  instructions: z.string().min(1).nullable(),
+});
+export type PiAgentCompactionWork = z.infer<typeof piAgentCompactionWorkSchema>;
+
 /**
  * What a dispatched turn asks the agent for: one prompt, or the notifications it handles together,
  * named by the oldest one's request ID. A dispatched compaction runs between turns instead, under
- * the authority of the turn before it; the next turn waits until it settles.
+ * the authority of the turn before it or of whoever requested it; the next turn waits until it
+ * settles.
  */
 export const piAgentWorkSchema = z.lazy(() =>
   z.discriminatedUnion("type", [
@@ -141,7 +150,7 @@ export const piAgentWorkSchema = z.lazy(() =>
       requestId: z.string().min(1),
       notifications: z.array(piAgentNotificationSchema).min(1),
     }),
-    z.object({ type: z.literal("compaction"), requestId: z.string().min(1) }),
+    piAgentCompactionWorkSchema,
   ]),
 );
 export type PiAgentWork = z.infer<typeof piAgentWorkSchema>;
@@ -351,11 +360,16 @@ export type PiAgent = {
   getActivity(config: PiAgentConfig, subagent: string | null): Promise<PiAgentActivity>;
   /** The conversation as JSONL; only `history` reaches past the newest compaction or reset. */
   exportEntries(config: PiAgentConfig, history: boolean): Promise<ReadableStream<Uint8Array>>;
+  /**
+   * Starts a compaction the queue dispatched, as `dispatch` does, and returns its Pi task, which
+   * `getCompaction` reads. Null when a stop fenced queue `revision` first (see `abort`).
+   */
   compact(
     config: PiAgentConfig,
+    revision: number,
     turn: PiAgentTurn,
-    request: z.infer<typeof piAgentCompactionSchema>,
-  ): Promise<{ taskId: number }>;
+    work: PiAgentCompactionWork,
+  ): Promise<{ taskId: number } | null>;
   getCompaction(config: PiAgentConfig, taskId: number): Promise<PiAgentCompactionStatus | null>;
   /**
    * Starts a new, empty context; earlier entries stay in history. A running turn ends at its next

@@ -1370,7 +1370,7 @@ const createFakePiManagerApi = (
       });
     },
     async compact() {
-      return { taskId: 1 };
+      throw new Error("The fake Pi agent does not compact.");
     },
     async getCompaction(_config, taskId) {
       return { taskId, status: "completed", message: null };
