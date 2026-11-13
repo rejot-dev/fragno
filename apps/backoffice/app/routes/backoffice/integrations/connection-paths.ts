@@ -10,6 +10,10 @@ import {
 export const integrationsScopeBasePath = (scope: BackofficeResolvedScope): string =>
   `/backoffice/integrations/${backofficeRouteScopePath(backofficeRouteScopeFromResolvedScope(scope))}`;
 
+/** The wizard that connects a new source and optionally automates it. */
+export const integrationsConnectPath = (scope: BackofficeResolvedScope): string =>
+  `${integrationsScopeBasePath(scope)}/connect`;
+
 export const integrationBasePath = (scope: BackofficeResolvedScope, integration: string) =>
   `${integrationsScopeBasePath(scope)}/${integration}`;
 
@@ -21,6 +25,24 @@ export type IntegrationOAuthOutcome =
   | { status: "success" }
   | { status: "error"; message: string | null }
   | { status: "returned" };
+
+/** A provider's return to the Connect wizard, which resumes the service `connectionId` belongs to. */
+export function integrationConnectReturn({
+  request,
+  routeScope,
+  connectionId,
+}: {
+  request: Request;
+  routeScope: BackofficeRouteScope;
+  connectionId: string;
+}): Response {
+  const url = new URL(
+    `/backoffice/integrations/${backofficeRouteScopePath(routeScope)}/connect`,
+    request.url,
+  );
+  url.searchParams.set("connection", connectionId);
+  return Response.redirect(url, 302);
+}
 
 /**
  * Provider returns land in Integrations: on the connection's detail view when the callback knows

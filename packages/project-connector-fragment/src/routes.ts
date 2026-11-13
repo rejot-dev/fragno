@@ -15,6 +15,7 @@ import {
   projectConnectorNamedAccountSchema,
   projectConnectorStatusSchema,
   projectConnectorProviderConfigsSchema,
+  projectConnectorProvidersSchema,
   projectConnectorProviderActionsSchema,
   projectConnectorConnectInputSchema,
   projectConnectorConnectionSchema,
@@ -60,6 +61,25 @@ export const projectConnectorRoutes = defineRoutes(projectConnectorFragmentDefin
         }
         try {
           return json(await deps.projectConnector.listProviderConfigs());
+        } catch (cause) {
+          if (!(cause instanceof ProjectConnectorClientError)) {
+            throw cause;
+          }
+          return error({ code: "PROJECT_CONNECTOR_ERROR", message: cause.message }, 502);
+        }
+      },
+    }),
+    defineRoute({
+      method: "GET",
+      path: "/providers",
+      outputSchema: projectConnectorProvidersSchema,
+      errorCodes: ["UNAUTHENTICATED", "PROJECT_CONNECTOR_ERROR"],
+      handler: async function ({ headers }, { json, error }) {
+        if (!(await config.getExternalUserId(headers))) {
+          return error({ code: "UNAUTHENTICATED", message: "Authentication required" }, 401);
+        }
+        try {
+          return json(await deps.projectConnector.listProviders());
         } catch (cause) {
           if (!(cause instanceof ProjectConnectorClientError)) {
             throw cause;

@@ -11,6 +11,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import { generateTelegramWebhookSecretToken } from "@/fragno/telegram-webhook-secret";
 
 import { createTelegramRuntime } from "../telegram-runtime";
+import { INTEGRATION_CATEGORY } from "./integration-categories";
 import type { IntegrationSetupOperation } from "./integration-contracts";
 import { connectionStateOfInspection } from "./integration-events";
 import {
@@ -317,6 +318,8 @@ export function createTelegramIntegration({
           id: telegramConnectionIdentity.integrationId,
           label: telegramConnectionIdentity.name,
           description: "A Telegram bot that receives chat messages and replies to them.",
+          iconUrl: null,
+          categories: [INTEGRATION_CATEGORY.communication],
           connectionCardinality: "singleton",
           availability:
             unavailableReason === null

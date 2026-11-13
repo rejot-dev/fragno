@@ -26,6 +26,7 @@ export function AgentDrawerScope({
   agentName,
   draft,
   onAgentChange,
+  onExpand,
   onClose,
 }: {
   open: boolean;
@@ -35,6 +36,8 @@ export function AgentDrawerScope({
   /** A message a page asked this agent, for its composer. */
   draft: ComposerDraft | null;
   onAgentChange: (agentName: string) => void;
+  /** Called as the agent's page at the given path opens in the drawer's place. */
+  onExpand: (agentPath: string) => void;
   onClose: () => void;
 }) {
   const directory = usePiAgentDirectory();
@@ -46,7 +49,14 @@ export function AgentDrawerScope({
       options={
         <>
           <AgentSelect directory={directory} agentName={agentName} onChange={onAgentChange} />
-          <IconButtonLink to={agentPath} label={`Open ${formatPiAgentName(agentName)}`}>
+          <IconButtonLink
+            to={agentPath}
+            viewTransition
+            onClick={() => {
+              onExpand(agentPath);
+            }}
+            label={`Open ${formatPiAgentName(agentName)}`}
+          >
             <Icon name="maximize-2" className="size-4" />
           </IconButtonLink>
           {options}

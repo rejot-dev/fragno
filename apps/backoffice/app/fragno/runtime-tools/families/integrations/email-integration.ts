@@ -39,6 +39,7 @@ import {
 import { claimRandomInboundAddress } from "@/fragno/inbound-email-address";
 import { bytesToBase64 } from "@/lib/base64";
 
+import { INTEGRATION_CATEGORY } from "./integration-categories";
 import type { IntegrationSetupOperation } from "./integration-contracts";
 import type { IntegrationConnectionState } from "./integration-events";
 import { recordIntegrationConnectionState } from "./integration-events";
@@ -609,6 +610,8 @@ export function createEmailIntegration({
           id: emailIntegrationId,
           label: "Email address",
           description: `A person's own address at ${domain}, three random words such as quiet-amber-falcon@${domain}, that receives email, such as forwarded receipts, as email.message.received events. It also sends: replies to verified senders, and email to the person's own account email. It is theirs for good: disconnecting pauses delivery, setup resumes it, and only support replaces it.`,
+          iconUrl: null,
+          categories: [INTEGRATION_CATEGORY.communication],
           connectionCardinality: "singleton",
           availability:
             reason === null ? { status: "available" } : { status: "unavailable", reason },

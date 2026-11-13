@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
@@ -5,12 +6,12 @@ import { z } from "zod";
 
 import type {
   projectConnectorActionSchema,
-  projectConnectorProviderConfigsSchema,
+  projectConnectorGatewayProviderConfigsSchema,
 } from "../project-connector-contracts";
 
 type GatewayProviderConfig = z.infer<
-  typeof projectConnectorProviderConfigsSchema
->["providerConfigs"][number] & { actionIds: string[] };
+  typeof projectConnectorGatewayProviderConfigsSchema
+>["providerConfigs"][number];
 
 const connectSchema = z.object({
   userId: z.string(),
@@ -107,6 +108,25 @@ export async function startProjectConnectorTestGateway() {
       },
     ],
   ]);
+  // Ordered most specific first, as the gateway's catalog orders them.
+  const catalogProviders = new Map([
+    [
+      "gmail",
+      {
+        service: "gmail",
+        displayName: "Gmail",
+        description: "Email conversations, labels, drafts, and mailbox management",
+        searchAliases: ["google mail"],
+        iconUrl: "https://static.example/logo/Gmail.svg",
+        homepageUrl: "https://workspace.google.com/gmail/",
+        categories: [
+          { id: "communication", displayName: "Communication" },
+          { id: "productivity", displayName: "Productivity" },
+        ],
+        authTypes: ["oauth2"],
+      },
+    ],
+  ]);
   const executions: {
     externalUserId: string;
     providerConfigId: string;
@@ -138,6 +158,9 @@ export async function startProjectConnectorTestGateway() {
       | null;
     discoveryReads: number;
     catalogReads: string[];
+    providerCatalogReads: string[][];
+    /** How each read of the project's whole catalog was answered. */
+    providerListReads: ("full" | "not-modified")[];
     catalogFailure: "wrong-service" | "redirect" | null;
     redirectReads: number;
   } = {
@@ -149,6 +172,8 @@ export async function startProjectConnectorTestGateway() {
     discoveryFailure: null,
     discoveryReads: 0,
     catalogReads: [],
+    providerCatalogReads: [],
+    providerListReads: [],
     catalogFailure: null,
     redirectReads: 0,
   };
@@ -194,6 +219,21 @@ export async function startProjectConnectorTestGateway() {
       });
       return;
     }
+    if (req.method === "GET" && url.pathname === "/v1/providers") {
+      if (req.headers.authorization !== "Bearer test-catalog-key") {
+        res.writeHead(401).end("Unauthorized test-catalog-key");
+        return;
+      }
+      const services = url.searchParams.getAll("service");
+      control.providerCatalogReads.push(services);
+      json({
+        success: true,
+        data: [...catalogProviders.values()].filter(
+          (provider) => services.length === 0 || services.includes(provider.service),
+        ),
+      });
+      return;
+    }
     if (req.headers.authorization !== "Bearer test-project-key") {
       res.writeHead(401).end("Unauthorized");
       return;
@@ -209,6 +249,19 @@ export async function startProjectConnectorTestGateway() {
         chunks.push(chunk as string);
       }
       payload = JSON.parse(chunks.join(""));
+    }
+    if (req.method === "GET" && url.pathname === "/v1/saas/providers") {
+      const body = JSON.stringify({ success: true, data: [...catalogProviders.values()] });
+      // Like the gateway, the whole catalog is one response, revalidated by its ETag.
+      const etag = `W/"${createHash("sha1").update(body).digest("hex")}"`;
+      if (req.headers["if-none-match"] === etag) {
+        control.providerListReads.push("not-modified");
+        res.writeHead(304, { etag }).end();
+        return;
+      }
+      control.providerListReads.push("full");
+      res.writeHead(200, { "content-type": "application/json", etag }).end(body);
+      return;
     }
     if (req.method === "GET" && url.pathname === "/v1/saas/oauth/provider-configs") {
       control.discoveryReads += 1;
@@ -419,6 +472,7 @@ export async function startProjectConnectorTestGateway() {
     accounts,
     providerConfigs,
     catalogActions,
+    catalogProviders,
     executions,
     deletions,
     control,
