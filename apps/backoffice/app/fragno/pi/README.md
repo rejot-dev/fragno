@@ -197,10 +197,16 @@ compacts nothing. A turn that outgrows the window on its own still compacts at P
 threshold, or on overflow. Thresholds are the model's own: its `modelOverrides` entry over the
 harness-wide policy.
 
+A compaction someone requests (`POST /agents/:agentName/compact`) is the same item, named
+`compaction:<uuid>`, carrying their instructions for its summary and running under their authority.
+The queue dispatches it only while the conversation is free, even when paused, and refuses it as
+`AGENT_BUSY` otherwise, so what anyone sends meanwhile waits for its summary.
+
 Pi's compaction carries no request ID, so the agent records the newest one it started with the queue
-revision of its handover. The queue dispatches a compaction only once the one before it settled, at
-a later revision, so a handover of a compaction again, or of an older one, starts nothing. Like a
-turn, a compaction handed over before a stop starts only once the queue resumes.
+revision of its handover and its task, which a requested compaction's route returns. The queue
+dispatches a compaction only once the one before it settled, at a later revision, so a handover of a
+compaction again, or of an older one, starts nothing. Like a turn, a compaction handed over before a
+stop starts only once the queue resumes.
 
 Subagent items (see Subagents) run beside the agent's turns rather than in them, so they wait only
 for a slot: up to `PI_AGENT_SUBAGENT_LIMIT`, four, run at once per agent, each dispatched as its own
@@ -397,7 +403,8 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
 - `GET /agents/:agentName/export?history=true`: streaming JSONL export of the durable entries,
   oldest first, after a `{ type: "pi-durable-agent", version: 3, order: "oldest-first", history }`
   header line; see Reading conversations.
-- `POST /agents/:agentName/compact`: admits manual durable compaction with optional instructions.
+- `POST /agents/:agentName/compact`: dispatches a compaction with optional instructions while the
+  conversation is free; see Queue.
 - `GET /agents/:agentName/compactions/:taskId`: public running/completed/failed compaction state.
 - `POST /agents/:agentName/stop`: aborts the agent's current work, including background work, and
   pauses its queue; see Queue.

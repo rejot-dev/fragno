@@ -16,6 +16,7 @@ import {
 import {
   PI_INTERNAL_REQUEST_ID_PREFIX,
   type PiAgent,
+  type PiAgentCompactionWork,
   type PiAgentModelChoice,
   type PiAgentPrompt,
   type PiAgentSteer,
@@ -239,7 +240,7 @@ function dispatchedWork(
     return { type: "prompt", requestId: head.requestId, content: head.input.content };
   }
   if (head.input.type === "compaction") {
-    return { type: "compaction", requestId: head.requestId };
+    return { type: "compaction", requestId: head.requestId, instructions: head.input.instructions };
   }
   return {
     type: "notifications",
@@ -1050,7 +1051,7 @@ export function piAgentQueueServices(
                 agentName,
                 position: revision,
                 requestId: compactionRequestId,
-                input: { type: "compaction" },
+                input: { type: "compaction", instructions: null },
                 provenance: settled.provenance,
                 replyTo: null,
                 ...itemState({ status: "dispatched", turn, turnRequestId: compactionRequestId }),
@@ -1063,7 +1064,11 @@ export function piAgentQueueServices(
                     agent: agentConfig(agentName),
                     revision,
                     turn,
-                    work: { type: "compaction", requestId: compactionRequestId },
+                    work: {
+                      type: "compaction",
+                      requestId: compactionRequestId,
+                      instructions: null,
+                    },
                   },
                 ],
                 queue: waitingQueue(revision, false, queued),
@@ -1080,6 +1085,80 @@ export function piAgentQueueServices(
             return {
               handovers: started.handover ? [started.handover] : [],
               queue: waitingQueue(revision, false, started.waiting),
+            };
+          },
+        )
+        .build();
+    },
+    /**
+     * Dispatches a compaction someone requested, which runs between turns like the queue's own: the
+     * conversation must be free, and the next turn waits until it settles. A paused queue stays
+     * paused, so nothing starts after it. A compaction is a new model call, which `allowance`
+     * refuses.
+     */
+    startCompaction: function (input: {
+      agentName: string;
+      requestId: string;
+      instructions: string | null;
+      provenance: PiAgentTurnProvenance;
+      availableModels: readonly PiAvailableModel[];
+      allowance: UsageLimitCheck;
+    }) {
+      const { agentName, requestId } = input;
+      return this.serviceTx(piAgentDirectorySchema)
+        .retrieve((uow) => findAgentQueue(uow, agentName))
+        .mutate(
+          ({
+            uow,
+            retrieveResult: [definitionRow, agent, dispatched, , steered],
+          }):
+            | Extract<PiAgentAdmission, { type: "error" }>
+            | { type: "not-started" }
+            | { type: "limited"; message: string }
+            | { type: "busy" }
+            | {
+                type: "dispatched";
+                revision: number;
+                turn: PiAgentTurn;
+                work: PiAgentCompactionWork;
+              } => {
+            if (!agent) {
+              return { type: "not-started" };
+            }
+            if (input.allowance.kind === "exhausted") {
+              return { type: "limited", message: input.allowance.message };
+            }
+            // Compaction runs on the conversation's model, which a turn without a choice keeps.
+            const admitted = admitPiAgentTurn(
+              definitionOf(agentName, definitionRow),
+              agentName,
+              input.provenance,
+              input.availableModels,
+              null,
+            );
+            if (admitted.type === "error") {
+              return admitted;
+            }
+            if (isConversationBusy(dispatched, steered)) {
+              return { type: "busy" };
+            }
+            const revision = changeAgentQueue(uow, agent, agent.paused);
+            const { turn } = admitted;
+            uow.create("agent_queue_item", {
+              agentName,
+              position: revision,
+              requestId,
+              input: { type: "compaction", instructions: input.instructions },
+              provenance: input.provenance,
+              replyTo: null,
+              ...itemState({ status: "dispatched", turn, turnRequestId: requestId }),
+            });
+            uow.triggerHook("redispatchAgentQueue", { agentName });
+            return {
+              type: "dispatched",
+              revision,
+              turn,
+              work: { type: "compaction", requestId, instructions: input.instructions },
             };
           },
         )

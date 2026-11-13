@@ -42,7 +42,7 @@ import { piConversationActivity } from "@/fragno/pi/agent/conversation-activity"
 import { listPiConversationMessages } from "@/fragno/pi/agent/conversation-messages";
 import { createPiConversationExportStream } from "@/fragno/pi/agent/conversation-streams";
 import {
-  piAgentCompactionSchema,
+  piAgentCompactionWorkSchema,
   piAgentEntryPageRequestSchema,
   piAgentMessagePageRequestSchema,
   piAgentPromptSchema,
@@ -53,6 +53,7 @@ import {
   PiConversationViewDamagedError,
   type PiAgent,
   type PiAgentCompactionStatus,
+  type PiAgentCompactionWork,
   type PiAgentPrompt,
   type PiAgentSteer,
   type PiAgentSubmission,
@@ -83,11 +84,11 @@ import {
   runningPiSubagentConversations,
 } from "@/fragno/pi/agent/pi-agent-subagents";
 import {
-  isObsoleteQueuedPiCompaction,
   readPiAgentRun,
   recordAdmittedPiAgentTurn,
   recordPiAgentCompactionTurn,
   recordPiAgentTurn,
+  readQueuedPiCompactionStart,
   recordQueuedPiCompaction,
   withdrawPiAgentTurn,
 } from "@/fragno/pi/agent/pi-agent-turns";
@@ -182,7 +183,7 @@ export class PiObject extends RpcTarget implements PiAgent {
   #admitting = 0;
   // Handovers of the queue's compactions start one at a time, so each sees what the one before it
   // recorded and a repeated or older one starts nothing.
-  #startingCompaction: Promise<void> = Promise.resolve();
+  #startingCompaction: Promise<unknown> = Promise.resolve();
   // An alarm waiting for the agent's work to stop follows its wakeups and its session's end.
   readonly #waiters = new Set<PiAgentWaiter>();
   // Only the manager knows the queue; it publishes every change, and before each viewer connects.
@@ -580,11 +581,7 @@ export class PiObject extends RpcTarget implements PiAgent {
     }
     const opened = await this.#requireAgent(config);
     if (work.type === "compaction") {
-      const starting = this.#startingCompaction.then(() =>
-        this.#startQueuedCompaction(opened, revision, turn, work.requestId),
-      );
-      this.#startingCompaction = starting.catch(() => undefined);
-      await starting;
+      await this.#startQueuedCompaction(opened, revision, turn, work);
       return;
     }
     const root = await opened.harness.root(BACKGROUND_CONTEXT);
@@ -615,41 +612,59 @@ export class PiObject extends RpcTarget implements PiAgent {
   }
 
   /**
-   * Starts the compaction the queue dispatched between turns, which runs as the turn before it.
-   * Starting the task and recording it are two commits, so an object lost between them leaves a
-   * compaction a repeated handover starts again; Pi keeps the furthest cut of the two.
+   * Starts the compaction the queue dispatched between turns, which runs as the turn before it or
+   * whoever requested it, and returns its Pi task; null when it was fenced or superseded. Starting
+   * the task and recording it are two commits, so an object lost between them leaves a compaction
+   * a repeated handover starts again; Pi keeps the furthest cut of the two.
    */
-  async #startQueuedCompaction(
+  #startQueuedCompaction(
     opened: OpenPiAgent,
     // The queue revision that handed it over, which a stop may fence.
     revision: number,
     turn: PiAgentTurn,
-    requestId: string,
-  ) {
-    const { harness } = opened;
-    if (await isObsoleteQueuedPiCompaction(harness, requestId, revision, BACKGROUND_CONTEXT)) {
-      return;
-    }
-    this.#admitting += 1;
-    try {
-      // The alarm reports the compaction once it ends, which the queue waits for.
-      await this.#state.storage.setAlarm(this.#nowEpochMs());
-      await recordPiAgentCompactionTurn(harness, turn, BACKGROUND_CONTEXT);
-      const root = await harness.root(BACKGROUND_CONTEXT);
-      // A stop that landed while it was admitted found nothing to abort. The compaction stays
-      // dispatched, so resuming hands it over again.
-      if (await this.#fenced(revision)) {
-        return;
+    work: PiAgentCompactionWork,
+  ): Promise<number | null> {
+    const starting = this.#startingCompaction.then(async () => {
+      const { harness } = opened;
+      const start = await readQueuedPiCompactionStart(
+        harness,
+        work.requestId,
+        revision,
+        BACKGROUND_CONTEXT,
+      );
+      if (start.type !== "new") {
+        return start.type === "started" ? start.taskId : null;
       }
-      const taskId = await root.compact(undefined, BACKGROUND_CONTEXT);
-      await recordQueuedPiCompaction(harness, requestId, revision, taskId, BACKGROUND_CONTEXT);
-      // A stop that landed after that check aborted before the compaction existed.
-      if (await this.#fenced(revision)) {
-        await root.abort(BACKGROUND_CONTEXT, { background: true });
+      this.#admitting += 1;
+      try {
+        // The alarm reports the compaction once it ends, which the queue waits for.
+        await this.#state.storage.setAlarm(this.#nowEpochMs());
+        await recordPiAgentCompactionTurn(harness, turn, BACKGROUND_CONTEXT);
+        const root = await harness.root(BACKGROUND_CONTEXT);
+        // A stop that landed while it was admitted found nothing to abort. The compaction stays
+        // dispatched, so resuming hands it over again.
+        if (await this.#fenced(revision)) {
+          return null;
+        }
+        const taskId = await root.compact(work.instructions ?? undefined, BACKGROUND_CONTEXT);
+        await recordQueuedPiCompaction(
+          harness,
+          work.requestId,
+          revision,
+          taskId,
+          BACKGROUND_CONTEXT,
+        );
+        // A stop that landed after that check aborted before the compaction existed.
+        if (await this.#fenced(revision)) {
+          await root.abort(BACKGROUND_CONTEXT, { background: true });
+        }
+        return taskId;
+      } finally {
+        this.#admitting -= 1;
       }
-    } finally {
-      this.#admitting -= 1;
-    }
+    });
+    this.#startingCompaction = starting.catch(() => undefined);
+    return starting;
   }
 
   async writeNotifications(config: PiAgentConfig, rawNotifications: PiAgentNotification[]) {
@@ -767,23 +782,18 @@ export class PiObject extends RpcTarget implements PiAgent {
 
   async compact(
     config: PiAgentConfig,
+    revision: number,
     rawTurn: PiAgentTurn,
-    rawRequest: z.infer<typeof piAgentCompactionSchema>,
-  ): Promise<{ taskId: number }> {
-    const request = piAgentCompactionSchema.parse(rawRequest);
+    rawWork: PiAgentCompactionWork,
+  ): Promise<{ taskId: number } | null> {
+    const work = piAgentCompactionWorkSchema.parse(rawWork);
     const turn = piAgentTurnSchema.parse(rawTurn);
-    const { harness } = await this.#requireAgent(config);
-    this.#admitting += 1;
-    try {
-      await this.#state.storage.setAlarm(this.#nowEpochMs());
-      await recordPiAgentCompactionTurn(harness, turn, BACKGROUND_CONTEXT);
-      const taskId = await (
-        await harness.root(BACKGROUND_CONTEXT)
-      ).compact(request.instructions ?? undefined, BACKGROUND_CONTEXT);
-      return { taskId };
-    } finally {
-      this.#admitting -= 1;
+    if (await this.#fenced(revision)) {
+      return null;
     }
+    const opened = await this.#requireAgent(config);
+    const taskId = await this.#startQueuedCompaction(opened, revision, turn, work);
+    return taskId === null ? null : { taskId };
   }
 
   async getCompaction(
