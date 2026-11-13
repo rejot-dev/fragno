@@ -1,0 +1,15 @@
+{
+  "owner": {
+    "scope": { "kind": "system" },
+    "publisherName": "Fragno"
+  },
+  "slug": "slack-alert-investigation",
+  "metadata": {
+    "name": "Slack alert investigation",
+    "summary": "Investigate every new alert in a Slack channel and post a read-only report in its thread.",
+    "description": "Watches one Slack channel. For each new alert it traces the error through your GitHub repository's main branch in a sandbox, optionally checks the alerting Cloudflare Worker's telemetry, and posts a report with code links in the alert's thread. It also posts when it starts and when it fails.",
+    "category": "operations",
+    "tags": ["slack", "alerts", "incidents", "github", "cloudflare"]
+  },
+  "versions": ["1.0.0"]
+}

@@ -655,6 +655,190 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
     );
   });
 
+  test("installs Slack alert investigation with its settings, routes and agents", async () => {
+    const listingId = marketplaceListingId({
+      ownerScope: { kind: "system" },
+      slug: "slack-alert-investigation",
+    });
+    const orgScope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "install Slack alert investigation without Cloudflare",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ when, then, runner }) => [
+          then.assert("publish the built-in Marketplace listings", async (ctx) => {
+            await ctx.runtime.objects.automations
+              .singleton()
+              .commands.requestStaticMarketplacePublications();
+          }),
+          runner.drain(),
+          then.assert("request the installation", async (ctx) => {
+            await expect(
+              ctx.runtime.objects.automations.for(orgScope).commands.requestMarketplaceIngestion(
+                {
+                  marketplace: { kind: "system" },
+                  installationRoot: "/workspace",
+                  listingId,
+                  version: "1.0.0",
+                  targetScope: orgScope,
+                  permissions: bundledMarketplacePermissions({
+                    slug: "slack-alert-investigation",
+                    version: "1.0.0",
+                  }),
+                },
+                { execution: createBackofficeSystemExecution(orgScope), propagationContext: null },
+              ),
+            ).resolves.toMatchObject({ state: "requested", version: "1.0.0" });
+          }),
+          runner.drain(),
+          then.assert("the installer receives its settings", async (ctx) => {
+            const ingestionInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
+              marketplace: { kind: "system" },
+              installationRoot: "/workspace",
+              targetScope: orgScope,
+              listingId,
+              version: "1.0.0",
+            });
+            const workflows = createWorkflowsRouteCaller({
+              object: ctx.runtime.objects.automations.for(orgScope),
+              context: {
+                execution: createBackofficeSystemExecution(orgScope),
+                propagationContext: null,
+              },
+            });
+            const submitted = await workflows(
+              "POST",
+              "/:workflowName/instances/:instanceId/events",
+              {
+                pathParams: {
+                  workflowName: CODEMODE_WORKFLOW,
+                  instanceId: `${ingestionInstanceId}:installation`,
+                },
+                body: {
+                  id: `configure:${ingestionInstanceId}`,
+                  type: "slack-alert-investigation.settings-configured",
+                  payload: {
+                    slackTeamId: " T0ADA ",
+                    slackChannelId: "C0ALERTS",
+                    repository: "ada-labs/backoffice",
+                    githubConnectionId: "github#ada-labs/backoffice",
+                    cloudflareAccountId: "",
+                  },
+                },
+              },
+            );
+            assert(submitted.type === "json");
+          }),
+          runner.drain(),
+          then.assert("the installation keeps the settings and declared routes", async (ctx) => {
+            await expect(
+              readPackageInstallation(ctx, { listingId, targetScope: orgScope }),
+            ).resolves.toMatchObject({
+              version: "1.0.0",
+              settings: {
+                slackTeamId: "T0ADA",
+                slackChannelId: "C0ALERTS",
+                repository: "ada-labs/backoffice",
+                githubConnectionId: "github#ada-labs/backoffice",
+                cloudflareAccountId: null,
+              },
+            });
+            const automations = ctx.runtime.objects.automations.for(orgScope);
+            for (const routeId of [
+              "slack-alert-investigation-start",
+              "alert-investigator-turn-completed",
+              "alert-investigator-turn-failed",
+              "alert-investigator-turn-aborted",
+              "alert-investigator-queue-dropped",
+            ]) {
+              const response = await automations.http.fetch(
+                new Request(`https://automations.test/api/automations/routes/${routeId}`),
+              );
+              assert(response.ok);
+              await expect(response.json()).resolves.toMatchObject({
+                id: routeId,
+                steward: { kind: "package", listingId },
+              });
+            }
+          }),
+          then.files.exists({
+            orgId: "org-1",
+            path: "/workspace/automations/alert-investigation.workflow.js",
+          }),
+          then.assert("the installation defines both agents", async (ctx) => {
+            for (const [agentName, permissions] of [
+              ["alert-code-investigator", ["sandbox.read", "sandbox.modify"]],
+              ["alert-investigator", expect.not.arrayContaining(["sandbox.modify"])],
+            ] as const) {
+              const response = await ctx.runtime.objects.piManager
+                .for(orgScope)
+                .http.fetchAuthorized(
+                  new Request(`https://pi-manager.test/api/pi-manager/agents/${agentName}`),
+                  {
+                    execution: createBackofficeServiceExecution({
+                      scope: orgScope,
+                      service: { type: "automation", id: "alert-agent-check" },
+                    }),
+                  },
+                );
+              assert(response.ok);
+              await expect(response.json()).resolves.toMatchObject({ agentName, permissions });
+            }
+          }),
+          then.assert("routes can read the installed workflow files", async (ctx) => {
+            // Scenario routes read scripts from the scenario's file system, not from the Upload
+            // files an installation writes, so mirror the installed scripts there.
+            const release = getStaticMarketplaceEntry({
+              slug: "slack-alert-investigation",
+              version: "1.0.0",
+            });
+            assert(release);
+            for (const [path, source] of Object.entries(release.files)) {
+              if (path.startsWith("automations/")) {
+                await ctx.files.forOrg("org-1").writeFile(`/workspace/${path}`, source);
+              }
+            }
+          }),
+          when.automation.ingestEvent({
+            id: "slack-message-other-channel",
+            scopeRestriction: null,
+            scope: orgScope,
+            source: "slack",
+            eventType: "message.received",
+            occurredAt: "2026-11-13T12:00:00.000Z",
+            payload: {
+              deliveryId: "Ev-other-channel",
+              teamId: "T0ADA",
+              channelId: "C0GENERAL",
+              event: {
+                type: "message",
+                channel: "C0GENERAL",
+                ts: "1794578358.878659",
+                text: "Lunch?",
+              },
+            },
+            actors: {
+              initiator: { scope: "internal", type: "system", id: "scenario", role: "initiator" },
+              principal: null,
+              delegation: [],
+            },
+            subject: { scope: orgScope },
+            causation: { kind: "origin" },
+          }),
+          runner.drain(),
+          then.workflow.instance({
+            remoteWorkflowName: "slack-alert-investigation",
+            instanceId: "alert-investigation-slack-message-other-channel",
+            status: "complete",
+            output: { status: "skipped", reason: "not the configured alert channel" },
+          }),
+        ],
+      }),
+    );
+  });
+
   test("installs Telegram Channel into project and personal scopes", async () => {
     const telegramChannelListingId = marketplaceListingId({
       ownerScope: { kind: "system" },
