@@ -26,6 +26,7 @@ import {
   createAssistantUiMessages,
   getAppendMessageText,
   isPiConversationRunning,
+  piConversationCompaction,
   piConversationDraftAgentMessage,
   piConversationMessages,
   piConversationQueue,
@@ -118,11 +119,6 @@ type AgentConversationProps = {
   /** Where the conversation's workspace files, such as the files its messages carry, live. */
   resolvedScope: BackofficeResolvedScope;
 };
-
-function isPiConversationCompacting(view: ConversationView) {
-  const live = view.docs["pi.live"] as { compactions?: readonly unknown[] } | undefined;
-  return (live?.compactions?.length ?? 0) > 0;
-}
 
 function useSessionDisplayOptions() {
   const [displayOptions, setDisplayOptions] = useState({
@@ -229,7 +225,7 @@ type PiCompactionRequest =
   | { status: "failed"; message: string };
 
 /** Requests a compaction and follows its task until it settles, from the event that asked for it. */
-function usePiCompaction(agentPath: string, onCompleted: () => void) {
+function usePiCompaction(agentPath: string, onFailed: (instructions: string) => void) {
   const [request, setRequest] = useState<PiCompactionRequest>({ status: "idle" });
   const controllerRef = useRef<AbortController | null>(null);
   useEffect(
@@ -255,7 +251,6 @@ function usePiCompaction(agentPath: string, onCompleted: () => void) {
           controller.signal,
         );
         if (status.status === "completed") {
-          onCompleted();
           setRequest({ status: "idle" });
         } else if (status.status === "unchanged") {
           setRequest({
@@ -263,10 +258,12 @@ function usePiCompaction(agentPath: string, onCompleted: () => void) {
             message: status.message ?? "Pi context did not need compaction.",
           });
         } else {
+          onFailed(instructions);
           setRequest({ status: "failed", message: status.message ?? "Context compaction failed." });
         }
       } catch (cause) {
         if (!controller.signal.aborted) {
+          onFailed(instructions);
           setRequest({
             status: "failed",
             message: cause instanceof Error ? cause.message : String(cause),
@@ -274,7 +271,7 @@ function usePiCompaction(agentPath: string, onCompleted: () => void) {
         }
       }
     },
-    [agentPath, onCompleted],
+    [agentPath, onFailed],
   );
   const dismiss = useCallback(() => {
     setRequest({ status: "idle" });
@@ -388,17 +385,24 @@ function AgentConversationThread({
   const fetcher = useFetcher<PiAgentActionData>();
   const [composerAction, setComposerAction] = useState<ComposerAction>("message");
   const runtimeRef = useRef<AssistantRuntime | null>(null);
-  const clearCompactionInstructions = useCallback(() => {
-    runtimeRef.current?.thread.composer.setText("");
-    setComposerAction("message");
+  // Failed instructions return to the composer for a retry, unless the reader started a message.
+  const restoreCompactionInstructions = useCallback((instructions: string) => {
+    const composer = runtimeRef.current?.thread.composer;
+    if (composer?.getState().text === "") {
+      composer.setText(instructions);
+      setComposerAction("compact");
+    }
   }, []);
-  const compaction = usePiCompaction(agentPath, clearCompactionInstructions);
+  const compaction = usePiCompaction(agentPath, restoreCompactionInstructions);
   const requestingCompaction = compaction.request.status === "compacting";
+  const dismissCompaction = compaction.dismiss;
   const { displayOptions, updateDisplayOption } = useSessionDisplayOptions();
   const history = usePiEarlierHistory(view, useEntryPageReader(`${agentPath}/entries`));
   const { activeContextStart, transcript } = history;
   const running = isPiConversationRunning(view) || requestingCompaction;
-  const compacting = isPiConversationCompacting(view) || requestingCompaction;
+  // The manager dispatches a requested compaction alone, between turns.
+  const compactionState = requestingCompaction ? "between turns" : piConversationCompaction(view);
+  const compacting = compactionState !== "none";
   const { messages, activeContextStartIndex } = useMemo(
     () => piConversationMessages(transcript, activeContextStart),
     [activeContextStart, transcript],
@@ -487,6 +491,8 @@ function AgentConversationThread({
     async (text: string) => {
       setAttachmentError(null);
       setMessageError(null);
+      // The conversation moved on from how the last compaction ended.
+      dismissCompaction();
       const requestId = crypto.randomUUID();
       if (text) {
         addPendingMessage(requestId, text);
@@ -527,6 +533,7 @@ function AgentConversationThread({
       }
     },
     [
+      dismissCompaction,
       takeAttachments,
       posthog,
       addPendingMessage,
@@ -605,6 +612,9 @@ function AgentConversationThread({
         has_instructions: Boolean(instructions),
       });
     }
+    // The instructions went with the request, so the composer is free for what follows it.
+    runtimeRef.current?.thread.composer.setText("");
+    setComposerAction("message");
     void compaction.compact(instructions);
   }, [posthog, compaction, running, compacting, agent.agentName]);
 
@@ -662,7 +672,7 @@ function AgentConversationThread({
         showToolCalls={displayOptions.showToolCalls}
         showUsage={displayOptions.showUsage}
         statusText={statusText}
-        compacting={compacting}
+        compaction={compactionState}
         context={{
           action: composerAction,
           onActionChange: setComposerAction,

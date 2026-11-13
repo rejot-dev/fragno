@@ -1,5 +1,6 @@
 import type {
   PiCompactionMessageMetadata,
+  PiConversationCompaction,
   PiConversationQueueLabel,
   PiNotificationsMessageMetadata,
   PiResetMessageMetadata,
@@ -292,7 +293,7 @@ export function SessionThread({
   showToolCalls,
   showUsage,
   statusText,
-  compacting,
+  compaction,
   context,
   activeContextStartMessageId,
   hasMoreHistory,
@@ -325,8 +326,8 @@ export function SessionThread({
   showToolCalls: boolean;
   showUsage: boolean;
   statusText: string | null;
-  /** The agent's context is being compacted, whoever started it. */
-  compacting: boolean;
+  /** Whether and where the agent's context is being compacted, whoever started it. */
+  compaction: PiConversationCompaction;
   /** Null where the reader leaves the agent's context to the agent. */
   context: ContextControls | null;
   /** The message the context divider precedes; null while no earlier history is shown. */
@@ -343,6 +344,9 @@ export function SessionThread({
   const { agentLabel, composerHeader } = useChatExtensions();
   const composerAction = context?.action ?? "message";
   const disabled = disabledReason !== null;
+  const compacting = compaction !== "none";
+  // Steers reach a running turn; without one, what the reader sends waits for the next turn.
+  const steering = running && compaction !== "between turns";
   // Clearing takes no text, so nothing can be written for it.
   // Compaction instructions and clearing say nothing to the agent, so carry no files.
   const attachingDisabled = disabled || composerAction !== "message" || attachments === null;
@@ -509,9 +513,11 @@ export function SessionThread({
                             ? disabledReason
                             : composerAction === "compact"
                               ? `Tell ${agentLabel} what the compaction summary must preserve`
-                              : running
+                              : steering
                                 ? `Steer ${agentLabel}; it reads this after the current step`
-                                : `Message ${agentLabel}`
+                                : running
+                                  ? `Message ${agentLabel}; it reads this once compaction ends`
+                                  : `Message ${agentLabel}`
                         }
                         rows={1}
                         className={chatComposerInputClassName}
@@ -562,14 +568,12 @@ export function SessionThread({
                                 >
                                   Stop
                                 </ChatComposerButton>
-                                {compacting ? null : (
-                                  <SendButton
-                                    label="Steer"
-                                    joined={false}
-                                    disabled={disabled}
-                                    sendFiles={sendFiles}
-                                  />
-                                )}
+                                <SendButton
+                                  label={steering ? "Steer" : "Send"}
+                                  joined={false}
+                                  disabled={disabled}
+                                  sendFiles={sendFiles}
+                                />
                               </>
                             ) : (
                               <>
