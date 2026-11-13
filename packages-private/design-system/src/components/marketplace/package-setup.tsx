@@ -31,6 +31,16 @@ export type PackageSetupRoute = {
   runsAs: { actor: string; grants: readonly string[] | "inherit" } | null;
 };
 
+/** A service the release needs connected, and what the latest check of it found. */
+export type PackageSetupConnection = {
+  /** The service in the package's own words, such as "Slack". */
+  name: string;
+  optional: boolean;
+  status: "ready" | "not-ready" | "unchecked";
+  /** What the check found, such as the connections it used; null before a check. */
+  detail: string | null;
+};
+
 export type PackageSetupEventType = {
   source: string;
   eventType: string;
@@ -41,21 +51,30 @@ export type PackageSetupEventType = {
 };
 
 /**
- * What installing a Marketplace release sets up in a workspace: the permissions the installer
- * approves, and the agents, routes, and event types Backoffice keeps in sync for the installation.
+ * What installing a Marketplace release sets up in a workspace: the services it needs connected,
+ * the permissions the installer approves, and the agents, routes, and event types Backoffice keeps
+ * in sync for the installation.
  */
 export function PackageSetup({
+  connections,
   permissions,
   agents,
   routes,
   eventTypes,
 }: {
+  connections: readonly PackageSetupConnection[];
   permissions: readonly string[];
   agents: readonly PackageSetupAgent[];
   routes: readonly PackageSetupRoute[];
   eventTypes: readonly PackageSetupEventType[];
 }) {
-  if (!permissions.length && !agents.length && !routes.length && !eventTypes.length) {
+  if (
+    !connections.length &&
+    !permissions.length &&
+    !agents.length &&
+    !routes.length &&
+    !eventTypes.length
+  ) {
     return (
       <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
         Installing copies the package&apos;s files and sets up nothing else.
@@ -65,6 +84,22 @@ export function PackageSetup({
 
   return (
     <div className="space-y-7">
+      {connections.length ? (
+        <PackageSetupSection
+          icon="link"
+          title="Connections"
+          count={connections.length}
+          description="Services the package needs connected. Installing waits until the connections agent finds each required one ready."
+        >
+          <ul className="divide-y divide-[color:var(--bo-border)] border border-[color:var(--bo-border)] bg-[var(--bo-panel)]">
+            {connections.map((connection) => (
+              <li key={connection.name}>
+                <ConnectionRow connection={connection} />
+              </li>
+            ))}
+          </ul>
+        </PackageSetupSection>
+      ) : null}
       {permissions.length ? (
         <PackageSetupSection
           icon="key"
@@ -160,6 +195,34 @@ function PackageSetupSection({
       </div>
       {children}
     </section>
+  );
+}
+
+const CONNECTION_STATUS = {
+  ready: { tone: "live", label: "Ready" },
+  "not-ready": { tone: "failed", label: "Not ready" },
+  unchecked: { tone: "waiting", label: "Not checked" },
+} as const;
+
+function ConnectionRow({ connection }: { connection: PackageSetupConnection }) {
+  const status = CONNECTION_STATUS[connection.status];
+  return (
+    <div className="flex items-start justify-between gap-4 px-3 py-2.5">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-[var(--bo-fg)]">
+          {connection.name}
+          {connection.optional ? null : (
+            <span className="ml-2 text-xs font-normal text-[var(--bo-muted)]">Required</span>
+          )}
+        </p>
+        {connection.detail ? (
+          <p className="mt-0.5 text-xs leading-5 text-pretty text-[var(--bo-muted)]">
+            {connection.detail}
+          </p>
+        ) : null}
+      </div>
+      <BackofficeStatusLight tone={status.tone}>{status.label}</BackofficeStatusLight>
+    </div>
   );
 }
 

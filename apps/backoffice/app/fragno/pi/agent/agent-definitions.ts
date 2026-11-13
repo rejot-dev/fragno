@@ -6,8 +6,9 @@ import {
 } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
+import connectionsAgentInstructions from "../../../../content/agents/connections.md?raw";
 import type { PiAgentModelChoice, PiAgentTurn, PiAvailableModel } from "./pi-agent-contract";
-import { MAIN_PI_AGENT_NAME } from "./pi-agent-name";
+import { CONNECTIONS_PI_AGENT_NAME, MAIN_PI_AGENT_NAME } from "./pi-agent-name";
 
 /** Defined by Backoffice in every scope; a scope cannot create, replace, or delete them. */
 export const BUILT_IN_PI_AGENT_DEFINITIONS: readonly PiAgentDefinition[] = [
@@ -20,6 +21,35 @@ export const BUILT_IN_PI_AGENT_DEFINITIONS: readonly PiAgentDefinition[] = [
     thinkingLevel: "medium",
     permissions: ["*"],
     instructions: "",
+    steward: { kind: "backoffice" },
+  },
+  {
+    agentName: CONNECTIONS_PI_AGENT_NAME,
+    description:
+      "Checks and sets up this scope's connections to outside services, such as those a Marketplace package needs before it can be installed.",
+    model: null,
+    // Unused: the built-in agent runs the effort its prompts choose.
+    thinkingLevel: "medium",
+    // Only what setting up connections takes: their inbound routes, the durable forms that collect
+    // secrets, and the Marketplace setup skills that describe them. Reading files is how it reads
+    // its skills and the /static API declarations.
+    permissions: [
+      "upload.read",
+      "integrations.read",
+      "integrations.manage",
+      "integrations.execute",
+      "connections.read",
+      "connections.manage",
+      "router.read",
+      "router.modify",
+      "workflow.read",
+      "workflow.modify",
+      "workflow.executeCode",
+      "marketplace.read",
+      "packages.read",
+      "packages.install",
+    ],
+    instructions: connectionsAgentInstructions.trim(),
     steward: { kind: "backoffice" },
   },
 ];

@@ -8,3 +8,6 @@ export function formatPiAgentName(agentName: string) {
 
 /** The built-in agent every scope has, which people talk to first. */
 export const MAIN_PI_AGENT_NAME = "assistant";
+
+/** The built-in agent that checks and sets up connections, such as those a package needs. */
+export const CONNECTIONS_PI_AGENT_NAME = "connections";

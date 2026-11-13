@@ -9,6 +9,7 @@ import type {
 import type {
   MarketplaceIngestionRequestInput,
   PackagesImportLegacyInput,
+  PackagesConfirmConnectionsInput,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { SharedContents } from "@fragno-dev/backoffice-api/v0/shares";
@@ -201,6 +202,14 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async getPackageInstallation(input: { listingId: string }) {
     return await this.#object.getPackageInstallation(input);
+  }
+
+  async getPackageConnectionCheck(input: { listingId: string }) {
+    return await this.#object.getPackageConnectionCheck(input);
+  }
+
+  async confirmPackageConnections(input: PackagesConfirmConnectionsInput) {
+    return await this.#object.confirmPackageConnections(input);
   }
 
   async getPackageInstallationRecord(input: { listingId: string }) {

@@ -114,6 +114,11 @@ describe("package agents", () => {
     expect(await readAgents(fragment)).toEqual([
       { agentName: "assistant", instructions: "", steward: { kind: "backoffice" } },
       {
+        agentName: "connections",
+        instructions: expect.stringContaining("packages.confirmConnections"),
+        steward: { kind: "backoffice" },
+      },
+      {
         agentName: "telegram",
         instructions: "Keep answers short.",
         steward: { kind: "package", listingId: LISTING_ID },
@@ -148,12 +153,16 @@ describe("package agents", () => {
     await expect(apply(fragment, [])).resolves.toEqual({ ok: true });
     expect((await readAgents(fragment)).map(({ agentName }) => agentName)).toEqual([
       "assistant",
+      "connections",
       "other",
     ]);
     await expect(
       removePackageAgents(fragment, { listingId: OTHER_LISTING_ID, actors }),
     ).resolves.toEqual(["other"]);
-    expect((await readAgents(fragment)).map(({ agentName }) => agentName)).toEqual(["assistant"]);
+    expect((await readAgents(fragment)).map(({ agentName }) => agentName)).toEqual([
+      "assistant",
+      "connections",
+    ]);
   });
 
   test("a package takes over the agent its pre-stewardship install script labelled", async () => {

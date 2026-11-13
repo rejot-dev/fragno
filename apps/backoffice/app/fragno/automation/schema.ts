@@ -11,7 +11,10 @@ import type {
   AutomationRouteDispatchOutcome,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type { IntegrationConnection } from "@fragno-dev/backoffice-api/v0/integrations";
-import type { MarketplaceScope } from "@fragno-dev/backoffice-api/v0/marketplace";
+import type {
+  MarketplaceScope,
+  PackageConnectionResult,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -480,6 +483,16 @@ export const automationFragmentSchema = schema("automations", (s) => {
               unique: true,
             },
           ),
+      )
+      // The latest check of a listing's connections, by listing id, which installing a release
+      // that declares connections requires. Written and read only through
+      // `package-connection-checks-storage-runtime`.
+      .addTable("package_connection_check", (t) =>
+        t
+          .addColumn("id", idColumn())
+          .addColumn("version", column("string"))
+          .addColumn("results", jsonColumn<PackageConnectionResult[]>())
+          .addColumn("confirmedAt", column("timestamp")),
       )
   );
 });

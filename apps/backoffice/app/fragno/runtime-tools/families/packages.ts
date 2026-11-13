@@ -1,5 +1,6 @@
 import {
   MARKETPLACE_LOCK_PATH,
+  packagesConfirmConnectionsInputSchema,
   packagesImportLegacyInputSchema,
   packagesInstallInputSchema,
   packagesStatusInputSchema,
@@ -210,6 +211,57 @@ const packagesGetTool = defineBackofficeRuntimeTool({
   },
 });
 
+const packagesConfirmConnectionsTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("packages.confirmConnections"),
+  namespace: "packages",
+  name: "confirmConnections",
+  getResource: (input) => ({ kind: "package-installation", listingId: input.listingId }),
+  execute: async (input, context: PackagesToolContext) =>
+    await getPackagesRuntime(context).confirmConnections(input),
+  adapters: {
+    bash: {
+      command: "packages.confirm-connections",
+      help: {
+        summary:
+          "Record whether the services a release needs are connected in the selected workspace.",
+        options: [
+          {
+            name: "listing-id",
+            required: true,
+            valueRequired: true,
+            description: "Owner-qualified Marketplace listing ID.",
+          },
+          {
+            name: "version",
+            required: true,
+            valueRequired: true,
+            description: "The release whose declared connections were checked.",
+          },
+          {
+            name: "results",
+            required: true,
+            valueRequired: true,
+            description:
+              "JSON array with one result per declared connection: connection, ready, connectionIds, detail.",
+          },
+        ],
+        examples: [
+          `packages.confirm-connections --listing-id 'system#slack-alert-investigation' --version 1.1.0 --results '[{"connection":"Slack","ready":true,"connectionIds":["api#slack","webhook#slack"],"detail":"Posting and message events verified."}]' --format json`,
+        ],
+      },
+      parse: defineCliArgsParser<z.input<typeof packagesConfirmConnectionsInputSchema>>(
+        "packages.confirm-connections",
+        {
+          listingId: { required: true },
+          version: { required: true },
+          results: { required: true, kind: "json" },
+        },
+      ),
+      format: (result) => ({ data: result }),
+    },
+  },
+});
+
 const packagesUninstallTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("packages.uninstall"),
   namespace: "packages",
@@ -323,6 +375,7 @@ export const packagesToolFamily = defineBackofficeRuntimeToolFamily({
     packagesStatusTool,
     packagesListTool,
     packagesGetTool,
+    packagesConfirmConnectionsTool,
     packagesUninstallTool,
     packagesImportLegacyTool,
   ],

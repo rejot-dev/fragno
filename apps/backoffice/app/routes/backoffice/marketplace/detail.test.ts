@@ -644,7 +644,7 @@ function renderMarketplaceDetail(
     },
     installationSetup: {
       state: "ready",
-      setup: { permissions: [], agents: [], routes: [], eventTypes: [] },
+      setup: { connections: [], permissions: [], agents: [], routes: [], eventTypes: [] },
     },
     packageFiles: {
       state: "ready",

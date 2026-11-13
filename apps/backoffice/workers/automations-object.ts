@@ -12,11 +12,16 @@ import type {
 import type {
   MarketplaceIngestionRequestInput,
   MarketplaceIngestionRestartResult,
+  PackageConnectionCheck,
   PackageInstallation,
+  PackagesConfirmConnectionsInput,
   PackageInstallStatus,
   PackagesImportLegacyInput,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
-import { marketplaceIngestionRequestInputSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  marketplaceIngestionRequestInputSchema,
+  packagesConfirmConnectionsInputSchema,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
@@ -144,6 +149,10 @@ import type {
 } from "@/fragno/marketplace/contracts";
 import { MarketplaceListingArchivedError } from "@/fragno/marketplace/definition";
 import { marketplaceListingId, marketplaceObject } from "@/fragno/marketplace/owner";
+import {
+  PackageConnectionsUnconfirmedError,
+  unconfirmedPackageConnections,
+} from "@/fragno/marketplace/package-connections";
 import {
   assertPackagePermissionsApproved,
   readMarketplacePackageDeclaration,
@@ -1005,6 +1014,26 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
           .for(input.targetScope)
           .commands.getPackageInstallation({ listingId: input.listingId });
     assertPackageInstallationReplaceable(installed, input);
+    if (declaration.connections.length) {
+      const connectionCheck = backofficeContextScopesEqual(input.targetScope, scope)
+        ? await runtime.automationFragment.callServices(() =>
+            runtime.automationFragment.services.getPackageConnectionCheck({
+              listingId: input.listingId,
+            }),
+          )
+        : await this.#runtimeServices.objects.automations
+            .for(input.targetScope)
+            .commands.getPackageConnectionCheck({ listingId: input.listingId });
+      const unconfirmed = unconfirmedPackageConnections({
+        declared: declaration.connections,
+        version,
+        check: connectionCheck,
+        now: new Date(),
+      });
+      if (unconfirmed.length) {
+        throw new PackageConnectionsUnconfirmedError(unconfirmed);
+      }
+    }
     const workflowInstanceId = await buildMarketplacePackageInstallWorkflowInstanceId({
       marketplace: input.marketplace,
       targetScope: input.targetScope,
@@ -1454,6 +1483,36 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     return await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.getPackageInstallation(input),
     );
+  }
+
+  async getPackageConnectionCheck(input: {
+    listingId: string;
+  }): Promise<PackageConnectionCheck | null> {
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getPackageConnectionCheck(input),
+    );
+  }
+
+  async confirmPackageConnections(
+    rawInput: PackagesConfirmConnectionsInput,
+  ): Promise<PackageConnectionCheck> {
+    const input = packagesConfirmConnectionsInputSchema.parse(rawInput);
+    await this.#ensureConfigured({ scope: this.#requireScope() });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.putPackageConnectionCheck(input),
+    );
+    const check = await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.getPackageConnectionCheck({ listingId: input.listingId }),
+    );
+    if (!check) {
+      throw new Error("Package connection check was not recorded.");
+    }
+    return check;
   }
 
   async getPackageInstallationRecord(input: {

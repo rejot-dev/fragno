@@ -1,7 +1,7 @@
 // Package installs into the workspace. Read to install a Marketplace package or list installed ones.
 type PackagesCodemodeProvider = {
   /**
-   * Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, from the installing organization's Marketplace with organization visibility, or, for an installed app, from its app's Marketplace with app visibility. Installation is asynchronous: follow workflowInstanceId with packages.status. Pass the release's declared permissions, which marketplace.view returns, to approve them; the install is refused unless they match exactly, and you must hold each one. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.
+   * Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, from the installing organization's Marketplace with organization visibility, or, for an installed app, from its app's Marketplace with app visibility. Installation is asynchronous: follow workflowInstanceId with packages.status. Pass the release's declared permissions, which marketplace.view returns, to approve them; the install is refused unless they match exactly, and you must hold each one. A release that declares connections installs only after packages.confirmConnections recorded its required ones ready in the last 24 hours; ask the built-in connections agent to check and set them up. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.
    * Requires `packages.install`.
    */
   install(input: PackagesInstallInput): Promise<PackagesInstallOutput>;
@@ -20,6 +20,13 @@ type PackagesCodemodeProvider = {
    * Requires `packages.read`.
    */
   get(input: PackagesGetInput): Promise<PackagesGetOutput>;
+  /**
+   * Record whether the services a release needs, its declared connections that marketplace.view returns, are connected in the current workspace: one result per declared entry, in its exact words, with the connection IDs checked and a short detail. Installing a release that declares connections is refused until a check of that version from the last 24 hours shows each entry ready, except entries ending in '(optional)'. Record the check even when something is not ready; the latest check replaces earlier ones.
+   * Requires `packages.install`.
+   */
+  confirmConnections(
+    input: PackagesConfirmConnectionsInput,
+  ): Promise<PackagesConfirmConnectionsOutput>;
   /**
    * Uninstall a package from the current workspace: delete the agents, routes, and event definitions it manages and its installation record. Its files stay in its installation folder. Uninstalling a listing that is not installed changes nothing and returns null. A package an app installed from its Marketplace is uninstalled only by that app while it is installed and reaches the workspace; otherwise, uninstall the app.
    * Requires `packages.install`.
@@ -245,6 +252,27 @@ type PackagesGetOutput = {
     [key: string]: unknown;
   };
 } | null;
+type PackagesConfirmConnectionsInput = {
+  listingId: string;
+  version: string;
+  results: {
+    connection: string;
+    ready: boolean;
+    connectionIds: string[];
+    detail: string;
+  }[];
+};
+type PackagesConfirmConnectionsOutput = {
+  listingId: string;
+  version: string;
+  results: {
+    connection: string;
+    ready: boolean;
+    connectionIds: string[];
+    detail: string;
+  }[];
+  confirmedAt: string;
+};
 type PackagesUninstallInput = {
   listingId: string;
 };

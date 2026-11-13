@@ -888,7 +888,10 @@ describe("dashboard", () => {
                   "unavailable: mcp#agensi",
                 ],
                 conversations: ["approve-refund: no conversation"],
-                agents: ["assistant (General-purpose Back): no activity"],
+                agents: [
+                  "assistant (General-purpose Back): no activity",
+                  "connections (Checks and sets up t): no activity",
+                ],
                 schedules: [
                   `Morning digest: Every day at 07:00 UTC at ${nextMorning(twoDaysLater)}`,
                   `New year digest: Once at ${SCHEDULED_AT}`,
@@ -1513,6 +1516,8 @@ describe("dashboard", () => {
               assert.deepEqual((await readDashboard(ctx)).agents, [
                 "assistant (General-purpose Back): queued, 2 turns in 1 hours; 1 queued · paused",
                 "reviewer (Approves changes.): updated, 0 turns in 0 hours",
+                // Agents with activity come first; built-in ones only lead among equals.
+                "connections (Checks and sets up t): no activity",
               ]);
             },
           ),
@@ -1525,6 +1530,7 @@ describe("dashboard", () => {
           then.assert("the Agents directory lists each agent with its turns", async (ctx) => {
             assert.deepEqual(await readAgentDirectory(ctx), [
               "assistant (built in): Answering, 1 queued, paused; turns 2",
+              "connections (built in): No recorded activity, 0 queued; turns none",
               "reviewer: Definition updated, 0 queued; turns none",
             ]);
           }),

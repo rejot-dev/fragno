@@ -79,7 +79,10 @@ describe("runtime tool reference generation", () => {
       PackagesLsOutput["installations"][number]["installationRoot"]
     >().toEqualTypeOf<string>();
     const reference = createRuntimeToolFamilyReference({ family: findBashFamily("packages") });
-    for (const tool of reference.tools) {
+    // A connection check is of a listing, before it has an installation folder.
+    for (const tool of reference.tools.filter(
+      ({ codemode }) => codemode.toolName !== "confirmConnections",
+    )) {
       assert(tool.codemode.outputType.includes("installationRoot: string;"));
       assert(!tool.codemode.outputType.includes("installationRoot: unknown;"));
     }

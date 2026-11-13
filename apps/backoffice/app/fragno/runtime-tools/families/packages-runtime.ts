@@ -2,8 +2,10 @@ import {
   packagesInstallInputSchema,
   packagesInstallResultSchema,
   packagesStatusInputSchema,
+  type PackageConnectionCheck,
   type PackageInstallation,
   type PackageInstallStatus,
+  type PackagesConfirmConnectionsInput,
   type PackagesImportLegacyInput,
   type PackagesImportLegacyResult,
   type PackageUninstallation,
@@ -33,6 +35,7 @@ export type PackagesRuntime = {
   status(input: z.output<typeof packagesStatusInputSchema>): Promise<PackageInstallStatus | null>;
   ls(): Promise<{ installations: PackageInstallation[] }>;
   get(input: { listingId: string }): Promise<PackageInstallation | null>;
+  confirmConnections(input: PackagesConfirmConnectionsInput): Promise<PackageConnectionCheck>;
   uninstall(input: { listingId: string }): Promise<PackageUninstallation | null>;
   importLegacy(input: PackagesImportLegacyInput): Promise<PackagesImportLegacyResult>;
 };
@@ -121,6 +124,11 @@ export function createPackagesRuntime({
     },
     async get(input) {
       return await targetAutomations().commands.getPackageInstallation(input);
+    },
+    async confirmConnections(input) {
+      // Checks are kept where the package would install, which an app's workspace never is.
+      installationTarget();
+      return await targetAutomations().commands.confirmPackageConnections(input);
     },
     async uninstall(input) {
       const installation = await targetAutomations().commands.getPackageInstallation(input);

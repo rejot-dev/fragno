@@ -345,14 +345,32 @@ export const packagePermissionsSchema = z.lazy(() =>
 );
 
 /**
+ * The outside services a release needs connected, in plain words such as "Slack" or "GitHub". An
+ * entry ending in "(optional)" is one the package can work without. They name services, not
+ * connection IDs or versions: the connections agent works out which connections serve each one.
+ */
+export const packageConnectionsSchema = z.lazy(() =>
+  z
+    .array(z.string().trim().min(1).max(60))
+    .max(10)
+    .refine(
+      (connections) =>
+        new Set(connections.map((connection) => connection.toLowerCase())).size ===
+        connections.length,
+      "Package connections must be unique.",
+    ),
+);
+
+/**
  * What installing a release sets up beyond copying its files: the permissions its routes and install
- * workflow use, and the routes, event definitions, and agents Backoffice keeps in sync for each
- * installation. A route's `start_workflow` names a file in the package; the installation resolves it
- * to the installed copy.
+ * workflow use, the services it needs connected, and the routes, event definitions, and agents
+ * Backoffice keeps in sync for each installation. A route's `start_workflow` names a file in the
+ * package; the installation resolves it to the installed copy.
  */
 export const marketplacePackageDeclarationSchema = z.lazy(() =>
   z.strictObject({
     permissions: packagePermissionsSchema.default([]),
+    connections: packageConnectionsSchema.default([]),
     routes: z
       .array(automationRouteCreateInputSchema)
       .default([])
@@ -602,7 +620,7 @@ export const marketplaceOperations = {
   },
   "marketplace.view": {
     description:
-      "Inspect published package metadata and cursor-paginated releases in the public Marketplace, in the current organization's Marketplace with organization visibility, or, for an installed app, in its app's Marketplace with app visibility. `release` is what installing one release (the latest unless version is given) sets up: the permissions to approve with packages.install, and the routes, event definitions, and agents it defines. Its routes' start_workflow paths are relative to the installation folder.",
+      "Inspect published package metadata and cursor-paginated releases in the public Marketplace, in the current organization's Marketplace with organization visibility, or, for an installed app, in its app's Marketplace with app visibility. `release` is what installing one release (the latest unless version is given) sets up: the permissions to approve with packages.install, the services it needs connected, and the routes, event definitions, and agents it defines. Its routes' start_workflow paths are relative to the installation folder.",
     permissions: [BACKOFFICE_PERMISSION.marketplace.read],
     input: marketplaceViewInputSchema,
     output: marketplaceViewResultSchema,
@@ -745,10 +763,51 @@ export const packagesStatusInputSchema = z.lazy(() =>
   }),
 );
 
+/** Whether the connections serving one declared service are ready, in its declared words. */
+export const packageConnectionResultSchema = z.lazy(() =>
+  z.strictObject({
+    connection: z.string().trim().min(1).max(60),
+    ready: z.boolean(),
+    connectionIds: z.array(z.string().trim().min(1)).max(10),
+    detail: z.string().max(500),
+  }),
+);
+
+export type PackageConnectionResult = z.infer<typeof packageConnectionResultSchema>;
+
+export const packagesConfirmConnectionsInputSchema = z.lazy(() =>
+  z.strictObject({
+    listingId: marketplaceListingIdSchema,
+    version: marketplaceVersionSchema,
+    results: z.array(packageConnectionResultSchema).max(10),
+  }),
+);
+
+export type PackagesConfirmConnectionsInput = z.infer<typeof packagesConfirmConnectionsInputSchema>;
+
+/** The latest check of a listing's connections in a workspace, which installing it requires. */
+export const packageConnectionCheckSchema = z.lazy(() =>
+  z.strictObject({
+    listingId: marketplaceListingIdSchema,
+    version: marketplaceVersionSchema,
+    results: z.array(packageConnectionResultSchema),
+    confirmedAt: z.string(),
+  }),
+);
+
+export type PackageConnectionCheck = z.infer<typeof packageConnectionCheckSchema>;
+
 export const packagesOperations = {
+  "packages.confirmConnections": {
+    description:
+      "Record whether the services a release needs, its declared connections that marketplace.view returns, are connected in the current workspace: one result per declared entry, in its exact words, with the connection IDs checked and a short detail. Installing a release that declares connections is refused until a check of that version from the last 24 hours shows each entry ready, except entries ending in '(optional)'. Record the check even when something is not ready; the latest check replaces earlier ones.",
+    permissions: [BACKOFFICE_PERMISSION.packages.install],
+    input: packagesConfirmConnectionsInputSchema,
+    output: packageConnectionCheckSchema,
+  },
   "packages.install": {
     description:
-      "Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, from the installing organization's Marketplace with organization visibility, or, for an installed app, from its app's Marketplace with app visibility. Installation is asynchronous: follow workflowInstanceId with packages.status. Pass the release's declared permissions, which marketplace.view returns, to approve them; the install is refused unless they match exactly, and you must hold each one. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.",
+      "Start the Marketplace installation workflow in the current workspace at a required folder under /workspace. Installs from the public Marketplace, from the installing organization's Marketplace with organization visibility, or, for an installed app, from its app's Marketplace with app visibility. Installation is asynchronous: follow workflowInstanceId with packages.status. Pass the release's declared permissions, which marketplace.view returns, to approve them; the install is refused unless they match exactly, and you must hold each one. A release that declares connections installs only after packages.confirmConnections recorded its required ones ready in the last 24 hours; ask the built-in connections agent to check and set them up. A workspace holds one installation per listing: installing another version upgrades it in place, replacing and removing files that still match the installed version, and fails without changes if a file it would replace was edited. Installing the installed version again re-runs its install workflow, which is how its settings are changed. Omit version to use the latest release.",
     permissions: [BACKOFFICE_PERMISSION.packages.install],
     input: packagesInstallInputSchema,
     output: packagesInstallResultSchema,

@@ -21,6 +21,7 @@ export function TelegramChannel() {
   return (
     <div className="max-w-3xl">
       <PackageSetup
+        connections={[]}
         permissions={["identity.resolve", "integrations.execute", "otp.create", "store.modify"]}
         agents={[
           {
@@ -102,6 +103,7 @@ export function GitHubChannel() {
   return (
     <div className="max-w-3xl">
       <PackageSetup
+        connections={[]}
         permissions={[]}
         agents={[]}
         routes={[
@@ -157,6 +159,7 @@ export function ScheduledReport() {
   return (
     <div className="max-w-3xl">
       <PackageSetup
+        connections={[]}
         permissions={["integrations.execute", "pi.modify"]}
         agents={[
           {
@@ -186,7 +189,35 @@ export function ScheduledReport() {
 export function NothingToSetUp() {
   return (
     <div className="max-w-3xl">
-      <PackageSetup permissions={[]} agents={[]} routes={[]} eventTypes={[]} />
+      <PackageSetup connections={[]} permissions={[]} agents={[]} routes={[]} eventTypes={[]} />
+    </div>
+  );
+}
+
+export function SlackAlertInvestigation() {
+  return (
+    <div className="max-w-3xl">
+      <PackageSetup
+        connections={[
+          {
+            name: "Slack",
+            optional: false,
+            status: "ready",
+            detail: "api#slack and webhook#slack: posting and message events verified.",
+          },
+          {
+            name: "GitHub",
+            optional: false,
+            status: "not-ready",
+            detail: "No connection can read acme/app yet.",
+          },
+          { name: "Cloudflare (optional)", optional: true, status: "unchecked", detail: null },
+        ]}
+        permissions={["integrations.execute", "sandbox.modify", "workflow.read"]}
+        agents={[]}
+        routes={[]}
+        eventTypes={[]}
+      />
     </div>
   );
 }

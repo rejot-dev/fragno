@@ -27,7 +27,9 @@ import type {
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
   MarketplacePublishResult,
+  PackageConnectionCheck,
   PackageInstallation,
+  PackagesConfirmConnectionsInput,
   PackageInstallStatus,
   PackagesImportLegacyInput,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
@@ -858,6 +860,11 @@ export type AutomationsCommands = {
   }): Promise<AutomationProjectExecutionTarget | null>;
   listPackageInstallations(): Promise<PackageInstallation[]>;
   getPackageInstallation(input: { listingId: string }): Promise<PackageInstallation | null>;
+  /** The latest check of a listing's connections in this workspace, which installing requires. */
+  getPackageConnectionCheck(input: { listingId: string }): Promise<PackageConnectionCheck | null>;
+  confirmPackageConnections(
+    input: PackagesConfirmConnectionsInput,
+  ): Promise<PackageConnectionCheck>;
   /** The installation and the install run that last wrote it, which installing checks against. */
   getPackageInstallationRecord(input: {
     listingId: string;

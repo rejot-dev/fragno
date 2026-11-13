@@ -22,6 +22,10 @@ Investigations are read-only. They never change code, infrastructure or alerts.
 
 ## Before you install
 
+From version 1.1.0, installing waits until the built-in **connections** agent has checked Slack and
+GitHub: choose **Check connections** on the installation tab. It sets up what is missing and records
+the result; Cloudflare is optional.
+
 - **Slack:** the `api#slack` connection, and a route that turns the channel's Slack webhooks into
   `slack` `message.received` events with `teamId`, `channelId` and the Slack `event` in their
   payload. This package does not create that route.

@@ -29,11 +29,13 @@ import {
 } from "react-router";
 
 import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
+import { useAskAgent } from "@/components/backoffice/ask-agent";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { fetchAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source.server";
 import { buildMarketplacePackageInstallWorkflowInstanceId } from "@/fragno/automation/marketplace-package-install-identity";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { packageConnectionStatuses } from "@/fragno/marketplace/package-connections";
 import {
   EMPTY_MARKETPLACE_PACKAGE_DECLARATION,
   MarketplacePackageDeclarationError,
@@ -43,6 +45,7 @@ import {
   decodeMarketplacePublishedVersionCursor,
   MarketplaceListingCursorError,
 } from "@/fragno/marketplace/pagination";
+import { CONNECTIONS_PI_AGENT_NAME } from "@/fragno/pi/agent/pi-agent-name";
 import {
   getBackofficeShellRequest,
   requireRouteScope,
@@ -299,7 +302,7 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
     packageFiles.state === "ready" ? packageFiles.selectedVersion : detail.listing.latestVersion;
   let installationSetup: InstallationSetup = {
     state: "ready",
-    setup: describeMarketplacePackageSetup(EMPTY_MARKETPLACE_PACKAGE_DECLARATION),
+    setup: describeMarketplacePackageSetup(EMPTY_MARKETPLACE_PACKAGE_DECLARATION, []),
   };
   if (listingStorage) {
     try {
@@ -307,7 +310,25 @@ export async function loader({ request, params, context, url }: Route.LoaderArgs
         http: runtime.objects.upload.forName(listingStorage.uploadName).http,
         version: installationVersion,
       });
-      installationSetup = { state: "ready", setup: describeMarketplacePackageSetup(declaration) };
+      // A check is kept in the workspace the package would install into.
+      const connectionCheck =
+        declaration.connections.length && installationTarget.state === "ready"
+          ? await runtime.objects.automations
+              .for(installationTarget.targetScope)
+              .commands.getPackageConnectionCheck({ listingId })
+          : null;
+      installationSetup = {
+        state: "ready",
+        setup: describeMarketplacePackageSetup(
+          declaration,
+          packageConnectionStatuses({
+            declared: declaration.connections,
+            version: installationVersion,
+            check: connectionCheck,
+            now: new Date(),
+          }),
+        ),
+      };
     } catch (error) {
       if (!(error instanceof MarketplacePackageDeclarationError)) {
         throw error;
@@ -454,6 +475,14 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
     packageFiles,
   } = loaderData;
   const installation = useFetcher<IngestionActionData>();
+  const askAgent = useAskAgent();
+  // The server refuses the install until a recent check finds each required service ready.
+  const unconfirmedConnections =
+    installationSetup.state === "ready"
+      ? installationSetup.setup.connections
+          .filter((connection) => !connection.optional && connection.status !== "ready")
+          .map((connection) => connection.name)
+      : [];
   const navigationActionData = useActionData<IngestionActionData>();
   const actionData = installation.data ?? navigationActionData;
   const [installationRoot, setInstallationRoot] = useState(
@@ -704,16 +733,32 @@ function MarketplaceListingDetail({ loaderData }: Route.ComponentProps) {
                         {installationPathError}
                       </p>
                       <div className="mt-5 flex items-center gap-3">
-                        <Button
-                          type="submit"
-                          variant="solid"
-                          disabled={installationSetup.state === "invalid"}
-                        >
-                          {installationSetup.state === "ready" &&
-                          installationSetup.setup.permissions.length
-                            ? "Approve and install"
-                            : "Install"}
-                        </Button>
+                        {unconfirmedConnections.length && installationSetup.state === "ready" ? (
+                          <Button
+                            type="button"
+                            variant="solid"
+                            disabled={!askAgent}
+                            onClick={() =>
+                              askAgent?.({
+                                agentName: CONNECTIONS_PI_AGENT_NAME,
+                                text: `Check the connections ${listing.name} ${installationVersion} (${listing.listingId}) needs: ${installationSetup.setup.connections.map((connection) => connection.name).join(", ")}. Set up any that are missing, then record the result with packages.confirmConnections.`,
+                              })
+                            }
+                          >
+                            Check connections
+                          </Button>
+                        ) : (
+                          <Button
+                            type="submit"
+                            variant="solid"
+                            disabled={installationSetup.state === "invalid"}
+                          >
+                            {installationSetup.state === "ready" &&
+                            installationSetup.setup.permissions.length
+                              ? "Approve and install"
+                              : "Install"}
+                          </Button>
+                        )}
                         <ButtonLink
                           to={buildMarketplacePackageTabPath(
                             location.pathname,

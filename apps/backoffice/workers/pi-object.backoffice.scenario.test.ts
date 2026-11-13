@@ -254,7 +254,7 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
       result: {
         first: "queued",
         second: "queued",
-        agents: ["assistant", "researcher"],
+        agents: ["assistant", "connections", "researcher"],
         assistant: "assistant",
       },
     });
@@ -303,6 +303,7 @@ test("durable Pi runs a workspace agent with its instructions, scoped skills, Ba
           ).json<PiManagerAgentDirectory>();
           expect(directory.agents.map((agent) => [agent.agentName, agent.provisioned])).toEqual([
             ["assistant", true],
+            ["connections", false],
             ["researcher", true],
           ]);
         }),
