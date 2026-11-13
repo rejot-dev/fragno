@@ -6,6 +6,7 @@ export default [
   index("routes/landing/index.tsx"),
   route("marketplace", "routes/marketplace/index.tsx"),
   route("marketplace/:publisher/:packageSlug", "routes/marketplace/listing.tsx"),
+  route("legal/:document", "routes/legal/legal-document.tsx"),
 
   route("backoffice/login", "routes/backoffice/login.tsx"),
   route("backoffice/forgot-password", "routes/backoffice/forgot-password.tsx"),

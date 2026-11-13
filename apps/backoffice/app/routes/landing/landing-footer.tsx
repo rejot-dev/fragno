@@ -4,7 +4,7 @@ import { Link } from "react-router";
 const footerLinkClassName =
   "inline-flex min-h-9 items-center text-sm font-semibold text-[var(--bo-fg)] no-underline transition-colors duration-150 hover:text-[var(--bo-accent-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--bo-accent)]";
 
-/** Provides the Leyway product, community, and Fragno reference links. */
+/** Provides the Leyway product, community, legal, and Fragno reference links. */
 export function LandingFooter() {
   return (
     // Black closes the warm page. It stays fixed in both themes, so the footer redefines
@@ -14,7 +14,7 @@ export function LandingFooter() {
       className="bg-black [--bo-accent:#f58a1f] [--bo-border:#262626] [--bo-fg:#f1f4f9] [--bo-muted-2:#7d899c] [--bo-muted:#a8b3c5]"
     >
       <div className="mx-auto max-w-[1180px] px-7 py-16 sm:px-8 lg:px-12">
-        <div className="grid gap-10 md:grid-cols-[1.3fr_0.7fr]">
+        <div className="grid gap-10 md:grid-cols-[1.3fr_0.7fr_0.7fr]">
           <div className="space-y-6">
             <Link
               to="/"
@@ -65,6 +65,27 @@ export function LandingFooter() {
                 >
                   Discord
                 </a>
+              </li>
+            </ul>
+          </nav>
+
+          <nav aria-labelledby="landing-footer-legal">
+            <h2
+              id="landing-footer-legal"
+              className="text-[11px] font-semibold text-[var(--bo-muted-2)]"
+            >
+              Legal
+            </h2>
+            <ul className="mt-3">
+              <li>
+                <Link className={footerLinkClassName} to="/legal/privacy">
+                  Privacy policy
+                </Link>
+              </li>
+              <li>
+                <Link className={footerLinkClassName} to="/legal/subprocessors">
+                  Subprocessors
+                </Link>
               </li>
             </ul>
           </nav>
