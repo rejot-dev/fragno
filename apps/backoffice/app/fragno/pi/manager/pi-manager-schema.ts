@@ -27,7 +27,8 @@ export type PiAgentTurnProvenance = Pick<PiAgentTurn, "actors" | "scopeRestricti
  * null leaves as the conversation's. A subagent is a prompt that runs in a new conversation of its
  * own, beside the agent's, so its model starts that conversation; its agent's page lists it by when
  * it was submitted, an ISO timestamp. A compaction never waits: the queue dispatches it when a turn
- * leaves the context past its threshold, and the next turn waits until it settles.
+ * leaves the context past its threshold, or when someone requests one while the conversation is
+ * free, with their instructions for its summary. The next turn waits until it settles.
  */
 export type PiAgentQueueInput =
   | { type: "prompt"; content: string; model: PiAgentModelChoice | null }
@@ -40,7 +41,7 @@ export type PiAgentQueueInput =
       askingToolCall: string | null;
     }
   | { type: "notification"; notification: PiAgentNotification }
-  | { type: "compaction" };
+  | { type: "compaction"; instructions: string | null };
 
 /**
  * Where an item is in its agent's queue. Dispatched items are the turn Pi runs, several when it
