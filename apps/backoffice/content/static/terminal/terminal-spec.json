@@ -5370,6 +5370,49 @@
     ]
   },
   {
+    "command": "packages.confirm-connections",
+    "summary": "Record whether the services a release needs are connected in the selected workspace.",
+    "options": [
+      {
+        "name": "listing-id",
+        "required": true,
+        "valueRequired": true,
+        "description": "Owner-qualified Marketplace listing ID."
+      },
+      {
+        "name": "version",
+        "required": true,
+        "valueRequired": true,
+        "description": "The release whose declared connections were checked."
+      },
+      {
+        "name": "results",
+        "required": true,
+        "valueRequired": true,
+        "description": "JSON array with one result per declared connection: connection, ready, connectionIds, detail."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "packages.uninstall",
     "summary": "Uninstall a package from the selected workspace, deleting the routes and event definitions it manages. Its files stay.",
     "options": [

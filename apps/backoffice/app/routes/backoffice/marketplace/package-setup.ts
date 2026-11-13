@@ -11,17 +11,24 @@ import type {
 } from "@fragno-private/design-system/marketplace/package-setup";
 import type { ComponentProps } from "react";
 
+import type { PackageConnectionStatus } from "@/fragno/marketplace/package-connections";
+
 import { formatTimestamp } from "../automations/formatting";
 import { automationAuthorityActorLabel } from "../automations/route-action";
 import { matcherOperatorLabel, matcherValueLabel } from "../automations/route-configuration";
 
 export type MarketplacePackageSetup = ComponentProps<typeof PackageSetup>;
 
-/** What installing a release sets up, in the words the installation tab shows. */
+/**
+ * What installing a release sets up, in the words the installation tab shows, with what the latest
+ * check found for each service it needs connected.
+ */
 export function describeMarketplacePackageSetup(
   declaration: MarketplacePackageDeclaration,
+  connections: readonly PackageConnectionStatus[],
 ): MarketplacePackageSetup {
   return {
+    connections,
     permissions: declaration.permissions.map(
       ({ namespace, permission }) => `${namespace}.${permission}`,
     ),

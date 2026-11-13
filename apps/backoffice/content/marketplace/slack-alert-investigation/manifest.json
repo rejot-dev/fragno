@@ -1,6 +1,8 @@
 {
   "owner": {
-    "scope": { "kind": "system" },
+    "scope": {
+      "kind": "system"
+    },
     "publisherName": "Fragno"
   },
   "slug": "slack-alert-investigation",
@@ -11,5 +13,5 @@
     "category": "operations",
     "tags": ["slack", "alerts", "incidents", "github", "cloudflare"]
   },
-  "versions": ["1.0.0"]
+  "versions": ["1.0.0", "1.1.0"]
 }

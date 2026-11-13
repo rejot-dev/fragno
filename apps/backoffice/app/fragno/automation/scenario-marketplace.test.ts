@@ -839,6 +839,94 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
     );
   });
 
+  test("installs a release that declares connections only once they are confirmed ready", async () => {
+    const listingId = marketplaceListingId({
+      ownerScope: { kind: "system" },
+      slug: "slack-alert-investigation",
+    });
+    const orgScope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
+    const requestInstall = (ctx: BackofficeScenarioContext) =>
+      ctx.runtime.objects.automations.for(orgScope).commands.requestMarketplaceIngestion(
+        {
+          marketplace: { kind: "system" },
+          installationRoot: "/workspace",
+          listingId,
+          version: "1.1.0",
+          targetScope: orgScope,
+          permissions: bundledMarketplacePermissions({
+            slug: "slack-alert-investigation",
+            version: "1.1.0",
+          }),
+        },
+        { execution: createBackofficeSystemExecution(orgScope), propagationContext: null },
+      );
+    const confirm = (
+      ctx: BackofficeScenarioContext,
+      results: { connection: string; ready: boolean }[],
+    ) =>
+      ctx.runCodemode({
+        scope: orgScope,
+        code: `async () => await packages.confirmConnections(${JSON.stringify({
+          listingId,
+          version: "1.1.0",
+          results: results.map((result) => ({ ...result, connectionIds: [], detail: "" })),
+        })})`,
+        assertToolCalls: ["packages.confirmConnections"],
+      });
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "install Slack alert investigation 1.1.0 after its connections are confirmed",
+        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+        steps: ({ then, runner }) => [
+          then.assert("publish the built-in Marketplace listings", async (ctx) => {
+            await ctx.runtime.objects.automations
+              .singleton()
+              .commands.requestStaticMarketplacePublications();
+          }),
+          runner.drain(),
+          then.assert("installing is refused before any check", async (ctx) => {
+            await expect(requestInstall(ctx)).rejects.toThrow(
+              "Connect Slack, GitHub before installing this release.",
+            );
+          }),
+          then.assert(
+            "a check that leaves a required service not ready still refuses",
+            async (ctx) => {
+              await confirm(ctx, [
+                { connection: "Slack", ready: true },
+                { connection: "GitHub", ready: false },
+              ]);
+              await expect(requestInstall(ctx)).rejects.toThrow(
+                "Connect GitHub before installing this release.",
+              );
+            },
+          ),
+          then.assert("required services ready, the optional one not, installs", async (ctx) => {
+            await confirm(ctx, [
+              { connection: "slack", ready: true },
+              { connection: "GitHub", ready: true },
+              { connection: "Cloudflare (optional)", ready: false },
+            ]);
+            await expect(
+              ctx.runtime.objects.automations
+                .for(orgScope)
+                .commands.getPackageConnectionCheck({ listingId }),
+            ).resolves.toMatchObject({
+              version: "1.1.0",
+              results: [{ connection: "slack", ready: true }, {}, {}],
+            });
+            await expect(requestInstall(ctx)).resolves.toMatchObject({
+              state: "requested",
+              version: "1.1.0",
+            });
+          }),
+        ],
+      }),
+    );
+  });
+
   test("installs Telegram Channel into project and personal scopes", async () => {
     const telegramChannelListingId = marketplaceListingId({
       ownerScope: { kind: "system" },

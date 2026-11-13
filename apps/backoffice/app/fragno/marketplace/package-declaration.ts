@@ -13,6 +13,7 @@ export const MARKETPLACE_DECLARATION_PATH = ".marketplace/installation.json";
 
 export const EMPTY_MARKETPLACE_PACKAGE_DECLARATION: MarketplacePackageDeclaration = {
   permissions: [],
+  connections: [],
   routes: [],
   eventDefinitions: [],
   agents: [],

@@ -253,6 +253,7 @@ test("agents are defined through the manager, checked on write, and keep their c
           ).json<PiManagerAgentDirectory>();
           expect(directory.agents.map(({ agentName, steward }) => [agentName, steward])).toEqual([
             ["assistant", { kind: "backoffice" }],
+            ["connections", { kind: "backoffice" }],
             ["offline", { kind: "members" }],
             ["reviewer", { kind: "members" }],
           ]);
@@ -1580,6 +1581,7 @@ test("a backfill records what the agent events lack, once, so they list the defi
               ),
             ).toEqual([
               `assistant: ${BUILT_IN_PI_AGENT_DEFINITIONS[0]?.description}`,
+              `connections: ${BUILT_IN_PI_AGENT_DEFINITIONS[1]?.description}`,
               "drafter: Drafts replies.",
               "reviewer: Reviews changes.",
             ]);

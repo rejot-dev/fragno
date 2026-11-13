@@ -103,6 +103,7 @@ import type {
   AutomationRouteDispatchPayload,
   EventStateEntry,
 } from "./internal-hooks";
+import { createPackageConnectionCheckServices } from "./package-connection-checks-storage-runtime";
 import { createPackageInstallationServices } from "./package-installations-storage-runtime";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
@@ -795,6 +796,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     const externalIdentityBindingServices = createExternalIdentityBindingServices(defineService);
     const routeDispatchServices = createAutomationRouteDispatchServices(defineService);
     const packageInstallationServices = createPackageInstallationServices(defineService);
+    const packageConnectionCheckServices = createPackageConnectionCheckServices(defineService);
     const shareServices = createShareServices(defineService);
     const forwardAcceptServices = createForwardAcceptServices(defineService, {
       ownerScope: config.ownerScope,
@@ -813,6 +815,7 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...externalIdentityBindingServices,
       ...routeDispatchServices,
       ...packageInstallationServices,
+      ...packageConnectionCheckServices,
       ...shareServices,
       ...forwardAcceptServices,
       seedStarterAutomationRoutes: function () {

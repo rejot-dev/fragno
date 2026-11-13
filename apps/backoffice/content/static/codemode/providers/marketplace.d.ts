@@ -6,7 +6,7 @@ type MarketplaceCodemodeProvider = {
    */
   search(input: MarketplaceSearchInput): Promise<MarketplaceSearchOutput>;
   /**
-   * Inspect published package metadata and cursor-paginated releases in the public Marketplace, in the current organization's Marketplace with organization visibility, or, for an installed app, in its app's Marketplace with app visibility. `release` is what installing one release (the latest unless version is given) sets up: the permissions to approve with packages.install, and the routes, event definitions, and agents it defines. Its routes' start_workflow paths are relative to the installation folder.
+   * Inspect published package metadata and cursor-paginated releases in the public Marketplace, in the current organization's Marketplace with organization visibility, or, for an installed app, in its app's Marketplace with app visibility. `release` is what installing one release (the latest unless version is given) sets up: the permissions to approve with packages.install, the services it needs connected, and the routes, event definitions, and agents it defines. Its routes' start_workflow paths are relative to the installation folder.
    * Requires `marketplace.read`.
    */
   view(input: MarketplaceViewInput): Promise<MarketplaceViewOutput>;
@@ -371,6 +371,7 @@ type MarketplaceViewOutput = {
   hasNextVersionPage: boolean;
   release: {
     permissions: BackofficePermissionRequirement[];
+    connections: string[];
     routes: {
       id: string;
       name: string;
