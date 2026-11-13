@@ -347,6 +347,20 @@ export function isPiConversationRunning(view: ConversationView) {
   return (inbox?.items?.length ?? 0) > 0;
 }
 
+/**
+ * A compaction within a turn still takes the reader's steers. One between turns, which the reader
+ * or a finished turn started, holds what they send for the next turn.
+ */
+export type PiConversationCompaction = "none" | "within turn" | "between turns";
+
+export function piConversationCompaction(view: ConversationView): PiConversationCompaction {
+  const live = view.docs["pi.live"] as Readonly<LiveState> | undefined;
+  if ((live?.compactions?.length ?? 0) === 0) {
+    return "none";
+  }
+  return live?.run ? "within turn" : "between turns";
+}
+
 /** Projects Pi's committed live document into the existing Assistant UI draft model. */
 export function piConversationDraftAgentMessage(
   view: ConversationView,
