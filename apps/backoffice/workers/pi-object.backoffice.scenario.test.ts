@@ -901,6 +901,98 @@ test("compaction between turns follows the model's own policy, and nothing compa
   );
 });
 
+test("a requested compaction runs between turns, and a message sent meanwhile waits for it", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "requested-compaction-scenario" },
+  });
+  // The summary and the fourth answer wait until what was sent meanwhile was looked at.
+  let summarize: () => void = () => undefined;
+  const summarized = new Promise<void>((resolve) => {
+    summarize = resolve;
+  });
+  let answerFourth: () => void = () => undefined;
+  const fourthAnswered = new Promise<void>((resolve) => {
+    answerFourth = resolve;
+  });
+  const { PI: createAgent } = scriptedAgents(
+    [
+      fauxAssistantMessage("First answer."),
+      fauxAssistantMessage("Second answer."),
+      async () => {
+        await summarized;
+        return fauxAssistantMessage("Both answers were given.");
+      },
+      fauxAssistantMessage("Third answer."),
+      async () => {
+        await fourthAnswered;
+        return fauxAssistantMessage("Fourth answer.");
+      },
+    ],
+    { compaction: { keepRecentTokens: 1 } },
+  );
+  assert(createAgent);
+
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi compacts on request between turns",
+      options: { drain: false },
+      objects: { ...scenarioObjects, PI: createAgent },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [given.organization.exists({ id: "org-1" })],
+      steps: ({ then }) => [
+        then.assert("a message sent while it runs waits for it", async ({ runtime }) => {
+          await prompt(runtime, execution, { requestId: "first", content: "First question?" });
+          await runtime.drain();
+          await prompt(runtime, execution, { requestId: "second", content: "Second question?" });
+          await runtime.drain();
+          const compacted = await request(runtime, execution, "/agents/assistant/compact", {
+            instructions: "Keep the answers.",
+          });
+          assert.equal(compacted.status, 202, await compacted.clone().text());
+          const third = await request(runtime, execution, "/agents/assistant/prompts", {
+            requestId: "third",
+            content: "Third question?",
+          });
+          expect(await third.json()).toEqual({ requestId: "third", status: "queued" });
+          const waiting = await request(
+            runtime,
+            execution,
+            "/agents/assistant/prompts/third",
+            null,
+          );
+          expect(await waiting.json()).toEqual({ requestId: "third", status: "queued" });
+          summarize();
+          await runtime.drain();
+
+          expect(await transcript(runtime, execution)).toEqual([
+            ["pi.user", expect.stringContaining("First question?")],
+            ["pi.assistant", expect.stringContaining("First answer.")],
+            ["pi.user", expect.stringContaining("Second question?")],
+            ["pi.assistant", expect.stringContaining("Second answer.")],
+            ["pi.compaction", expect.stringContaining("Both answers were given.")],
+            ["pi.user", expect.stringContaining("Third question?")],
+            ["pi.assistant", expect.stringContaining("Third answer.")],
+          ]);
+        }),
+        then.assert("one is refused while a turn runs", async ({ runtime }) => {
+          await prompt(runtime, execution, { requestId: "fourth", content: "Fourth question?" });
+          const refused = await request(runtime, execution, "/agents/assistant/compact", {});
+          assert.equal(refused.status, 409, await refused.clone().text());
+          expect(await refused.json()).toMatchObject({ code: "AGENT_BUSY" });
+          answerFourth();
+          await runtime.drain();
+
+          expect((await transcript(runtime, execution)).at(-1)).toEqual([
+            "pi.assistant",
+            expect.stringContaining("Fourth answer."),
+          ]);
+        }),
+      ],
+    }),
+  );
+});
+
 test("a stop that lands while a compaction starts holds it back until the agent resumes", async () => {
   const execution = createBackofficeServiceExecution({
     scope: { kind: "org", orgId: "org-1", jurisdiction: null },

@@ -5,7 +5,6 @@ import {
   piPromptStatusSchema,
   piPromptWhenBusySchema,
   piPromptWhenPausedSchema,
-  type PiAgentDefinition,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { piAgentNotificationSchema } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -15,7 +14,6 @@ import { defineRoutes } from "@fragno-dev/core";
 import type { HookHandlerTx } from "@fragno-dev/db";
 
 import { checkUsageLimits } from "@/fragno/billing/usage-billing";
-import { admitPiAgentTurn } from "@/fragno/pi/agent/agent-definitions";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import {
   isPiInternalRequestId,
@@ -106,21 +104,6 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
           record,
         }))
         .execute();
-    }
-
-    async function admitTurn(
-      definition: PiAgentDefinition | null,
-      agentName: string,
-      provenance: PiAgentTurnProvenance,
-    ) {
-      // Compaction runs on the conversation's model, which a turn without a choice keeps.
-      return admitPiAgentTurn(
-        definition,
-        agentName,
-        provenance,
-        await config.supportedAvailableModels(),
-        null,
-      );
     }
 
     async function handOver(handovers: readonly PiAgentHandover[]) {
@@ -328,29 +311,66 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
           "AGENT_NOT_STARTED",
           "AGENT_NOT_FOUND",
           "MODEL_UNAVAILABLE",
+          "AGENT_BUSY",
+          "AGENT_STOPPED",
           "USAGE_LIMIT_EXCEEDED",
         ],
         handler: async function ({ pathParams, input }, { json, error }) {
-          const { provenance, ...request } = await input.valid();
-          // A manual compaction is a new model call; compactions within a turn are not checked.
-          const [allowance, { definition, config: agent }] = await Promise.all([
+          const { provenance, instructions } = await input.valid();
+          const { agentName } = pathParams;
+          // Compactions the queue starts after a turn are not checked; this one is asked for.
+          const [allowance, availableModels] = await Promise.all([
             checkUsageLimits(config.billing(config.scope), ["ai.cost.total"]),
-            this.handlerTx()
-              .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
-              .transform(({ serviceResult: [agent] }) => agent)
-              .execute(),
+            config.supportedAvailableModels(),
           ]);
-          if (!agent) {
+          const started = await this.handlerTx()
+            .withServiceCalls(
+              () =>
+                [
+                  services.startCompaction({
+                    agentName,
+                    requestId: `${PI_INTERNAL_REQUEST_ID_PREFIX.compaction}${crypto.randomUUID()}`,
+                    instructions,
+                    provenance,
+                    availableModels,
+                    allowance,
+                  }),
+                ] as const,
+            )
+            .transform(({ serviceResult: [result] }) => result)
+            .execute();
+          if (started.type === "not-started") {
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
-          if (allowance.kind === "exhausted") {
-            return error({ code: "USAGE_LIMIT_EXCEEDED", message: allowance.message }, 403);
+          if (started.type === "limited") {
+            return error({ code: "USAGE_LIMIT_EXCEEDED", message: started.message }, 403);
           }
-          const admitted = await admitTurn(definition, pathParams.agentName, provenance);
-          if (admitted.type === "error") {
-            return error({ code: admitted.code, message: admitted.message }, admitted.status);
+          if (started.type === "error") {
+            return error({ code: started.code, message: started.message }, started.status);
           }
-          return json(await config.agent(agent).compact(agent, admitted.turn, request), 202);
+          if (started.type === "busy") {
+            return error(
+              {
+                code: "AGENT_BUSY",
+                message: `Agent "${agentName}" is busy; compact its context between turns.`,
+              },
+              409,
+            );
+          }
+          const agent = { scope: config.scope, agentName };
+          const task = await config
+            .agent(agent)
+            .compact(agent, started.revision, started.turn, started.work);
+          if (task === null) {
+            return error(
+              {
+                code: "AGENT_STOPPED",
+                message: `Agent "${agentName}" was stopped; the compaction starts once it resumes.`,
+              },
+              409,
+            );
+          }
+          return json(task, 202);
         },
       }),
       defineRoute({

@@ -152,11 +152,11 @@ type PiQueuedCompactionsState = {
   /** Pi's compaction task of each compaction the queue dispatched, until its settlement is reported. */
   pending: { [requestId: string]: number };
   /**
-   * The newest compaction started, and the queue revision of the handover that started it. The
-   * queue dispatches a compaction only once the one before it settled, at a later revision, so a
-   * handover of it again, or one older than it, is obsolete.
+   * The newest compaction started, the queue revision of the handover that started it, and its Pi
+   * task. The queue dispatches a compaction only once the one before it settled, at a later
+   * revision, so a handover of it again, or one older than it, is obsolete.
    */
-  latest: { requestId: string; revision: number } | null;
+  latest: { requestId: string; revision: number; taskId: number } | null;
 };
 
 const PiQueuedCompactionsDoc = defineDoc<PiQueuedCompactionsState>({
@@ -168,17 +168,20 @@ const PiQueuedCompactionsDoc = defineDoc<PiQueuedCompactionsState>({
 });
 
 /**
- * Whether a handover of the queue's compaction `requestId` at queue `revision` comes too late: that
- * compaction already started, or a newer one did.
+ * Whether a handover of the queue's compaction `requestId` at queue `revision` comes too late:
+ * that compaction already started, as Pi's task `taskId`, or a newer one did.
  */
-export async function isObsoleteQueuedPiCompaction(
+export async function readQueuedPiCompactionStart(
   read: DocumentReader,
   requestId: string,
   revision: number,
   context: Context,
-): Promise<boolean> {
+): Promise<{ type: "new" } | { type: "started"; taskId: number } | { type: "superseded" }> {
   const latest = (await read.snapshot(PiQueuedCompactionsDoc, context))?.latest ?? null;
-  return latest !== null && (latest.requestId === requestId || revision < latest.revision);
+  if (latest?.requestId === requestId) {
+    return { type: "started", taskId: latest.taskId };
+  }
+  return latest !== null && revision < latest.revision ? { type: "superseded" } : { type: "new" };
 }
 
 /**
@@ -195,7 +198,7 @@ export async function recordQueuedPiCompaction(
   await harness.commit(async (tx) => {
     const compactions = await tx.doc(PiQueuedCompactionsDoc);
     compactions.pending[requestId] = taskId;
-    compactions.latest = { requestId, revision };
+    compactions.latest = { requestId, revision, taskId };
   }, context);
 }
 
@@ -226,7 +229,7 @@ export async function forgetReportedQueuedPiCompaction(
   }, context);
 }
 
-/** Manual compaction runs outside a turn, as whoever requested it. */
+/** A compaction runs between turns, as the turn before it or whoever requested it. */
 export async function recordPiAgentCompactionTurn(
   harness: Harness,
   turn: PiAgentTurn,

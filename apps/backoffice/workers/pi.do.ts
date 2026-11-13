@@ -13,8 +13,8 @@ import type {
   PiAgentWork,
   piAgentEntryPageRequestSchema,
   piAgentMessagePageRequestSchema,
-  piAgentCompactionSchema,
   PiAgentCompactionStatus,
+  PiAgentCompactionWork,
   PiAgentWaitingQueue,
   PiQueuedSubagent,
   PiSubagentRun,
@@ -150,10 +150,11 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   }
   async compact(
     config: PiAgentConfig,
+    revision: number,
     turn: PiAgentTurn,
-    request: z.infer<typeof piAgentCompactionSchema>,
-  ): Promise<{ taskId: number }> {
-    return await this.#object.compact(config, turn, request);
+    work: PiAgentCompactionWork,
+  ): Promise<{ taskId: number } | null> {
+    return await this.#object.compact(config, revision, turn, work);
   }
   async getCompaction(
     config: PiAgentConfig,
