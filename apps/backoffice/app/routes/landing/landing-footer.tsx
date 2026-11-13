@@ -71,7 +71,8 @@ export function LandingFooter() {
         </div>
 
         <div className="mt-14 flex flex-col gap-4 border-t border-[color:var(--bo-border)] pt-8 text-xs text-[var(--bo-muted-2)] md:flex-row md:items-center md:justify-between">
-          <p>© 2026 ReJot</p>
+          {/* Rendered on the server per request; around New Year the visitor's clock can disagree. */}
+          <p suppressHydrationWarning>© {new Date().getFullYear()} ReJot Nederland B.V.</p>
         </div>
       </div>
     </footer>
