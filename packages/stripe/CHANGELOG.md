@@ -1,5 +1,152 @@
 # @fragno-dev/stripe
 
+## 2.1.0
+
+### Minor Changes
+
+- f77b3bc: feat!: process Stripe webhooks with durable hooks
+
+  The webhook route now verifies an event, records it once and returns; durable hooks fetch the
+  subscription from Stripe and store it, so redelivered, late and out-of-order events cannot roll it
+  back. Applications must run a durable hooks processor.
+
+  Breaking changes:
+  - The fragment links Stripe customers to entities itself in a new `customer` table and replaces
+    the `subscription` table: rows are keyed by Stripe IDs, with `customerId`, `itemId`, `priceId`,
+    `quantity`, `currentPeriodStart`/`End`, `canceledAt` and `endedAt`.
+  - `resolveEntityFromRequest` returns `{ referenceId, customerEmail, customerMetadata }` or `null`
+    for unauthenticated requests (401 `UNAUTHENTICATED`).
+  - `onStripeCustomerCreated` and `onEvent` are replaced by the durable callbacks
+    `onCustomerLinked`, `onSubscriptionChanged` and `onStripeEvent`, which receive the hook context.
+  - `enableAdminRoutes`, `stripeClientOptions` and `logger` are removed; protect `/admin/*` with
+    middleware. `fetch` replaces the HTTP client option.
+  - Services are reduced to `getSubscriptionsByReferenceId`, `getCustomerByReferenceId`,
+    `syncSubscriptions(referenceId)` and `linkCustomer`.
+  - `/subscription/upgrade`, `/subscription/cancel` and `/portal` respond with `{ url }`. Unknown
+    promotion codes fail with `PROMOTION_CODE_INVALID`, and canceling a subscription that is already
+    scheduled to cancel fails with `SUBSCRIPTION_ALREADY_CANCELED`.
+  - `/subscription/upgrade` and `/subscription/cancel` decide from the customer's subscriptions as
+    Stripe lists them, so they act on the current state before webhooks arrive.
+  - `/admin/subscriptions` is cursor-paginated, the admin Stripe lists return narrowed objects and
+    the client hook is renamed to `useSubscriptions`. Invalid `limit`, `pageSize`, `startingAfter`
+    or `cursor` values fail with `400 INVALID_QUERY`.
+  - Requires `stripe` 23 and pins API version `2026-09-30.endive`.
+
+### Patch Changes
+
+- Updated dependencies [0d4cbe8]
+- Updated dependencies [2797663]
+- Updated dependencies [fcecfed]
+- Updated dependencies [d2da73f]
+- Updated dependencies [cff3b99]
+- Updated dependencies [fcd0179]
+- Updated dependencies [4db850e]
+- Updated dependencies [766f977]
+- Updated dependencies [27b7db5]
+- Updated dependencies [9419f78]
+- Updated dependencies [73e14d7]
+- Updated dependencies [a8010b8]
+- Updated dependencies [26a21e3]
+- Updated dependencies [eb6ea3e]
+- Updated dependencies [71b0233]
+- Updated dependencies [0186a7a]
+- Updated dependencies [4fd5010]
+- Updated dependencies [2ab64f4]
+- Updated dependencies [3f9d1bb]
+- Updated dependencies [867bc9d]
+- Updated dependencies [8b651fe]
+- Updated dependencies [b79e697]
+- Updated dependencies [c1314be]
+- Updated dependencies [767c934]
+- Updated dependencies [b854e42]
+- Updated dependencies [c13b6c7]
+- Updated dependencies [e6d80bb]
+- Updated dependencies [d9a5ffe]
+- Updated dependencies [a15bcc2]
+- Updated dependencies [719ac3b]
+- Updated dependencies [d1b4bd9]
+- Updated dependencies [83bea0b]
+- Updated dependencies [9a01df4]
+- Updated dependencies [d92f4ce]
+- Updated dependencies [1d2125e]
+- Updated dependencies [fc794d7]
+- Updated dependencies [0cf8414]
+- Updated dependencies [fe0e92d]
+- Updated dependencies [20324e7]
+- Updated dependencies [6b028b6]
+- Updated dependencies [c1255e4]
+- Updated dependencies [318921d]
+- Updated dependencies [92adef0]
+- Updated dependencies [7e2d989]
+- Updated dependencies [d62cc57]
+- Updated dependencies [ae415ff]
+- Updated dependencies [204bbb7]
+- Updated dependencies [8a60280]
+- Updated dependencies [2b8f4b7]
+- Updated dependencies [a7bf719]
+- Updated dependencies [9ea7170]
+- Updated dependencies [187d67e]
+- Updated dependencies [aff91d1]
+- Updated dependencies [03d5a5c]
+- Updated dependencies [a28094e]
+- Updated dependencies [b4fc242]
+- Updated dependencies [033a643]
+- Updated dependencies [c41c1e2]
+- Updated dependencies [bfe589e]
+- Updated dependencies [6cc8f36]
+- Updated dependencies [f42c8c6]
+- Updated dependencies [9cd79f3]
+- Updated dependencies [7a625f6]
+- Updated dependencies [d689267]
+- Updated dependencies [49ca4fb]
+- Updated dependencies [0e63275]
+- Updated dependencies [4944ecf]
+- Updated dependencies [d9ac2a3]
+- Updated dependencies [4e5d611]
+- Updated dependencies [2dbc550]
+- Updated dependencies [2dbc550]
+- Updated dependencies [7405040]
+- Updated dependencies [04fac88]
+- Updated dependencies [b40a129]
+- Updated dependencies [5256cee]
+- Updated dependencies [6c0de3b]
+- Updated dependencies [f297b5d]
+- Updated dependencies [caf581b]
+- Updated dependencies [02e29d4]
+- Updated dependencies [7de0078]
+- Updated dependencies [ff3673f]
+- Updated dependencies [d7236a2]
+- Updated dependencies [1e1088b]
+- Updated dependencies [9e2ee05]
+- Updated dependencies [3734573]
+- Updated dependencies [1c57f29]
+- Updated dependencies [2e7263b]
+- Updated dependencies [801e6ab]
+- Updated dependencies [f510d32]
+- Updated dependencies [48c0094]
+- Updated dependencies [7a60491]
+- Updated dependencies [6649e1f]
+- Updated dependencies [3570c2a]
+- Updated dependencies [d125074]
+- Updated dependencies [8afaf3d]
+- Updated dependencies [2d729a4]
+- Updated dependencies [85be413]
+- Updated dependencies [fa21507]
+- Updated dependencies [79055dd]
+- Updated dependencies [e7b36e1]
+- Updated dependencies [a61b3a5]
+- Updated dependencies [4dc14bf]
+- Updated dependencies [3328fe3]
+- Updated dependencies [a64dc64]
+- Updated dependencies [ea8ea88]
+- Updated dependencies [5599183]
+- Updated dependencies [e2cad8d]
+- Updated dependencies [93bc657]
+- Updated dependencies [5e0cfe8]
+- Updated dependencies [9919fdd]
+  - @fragno-dev/db@0.5.0
+  - @fragno-dev/core@0.2.3
+
 ## 2.0.2
 
 ### Patch Changes
