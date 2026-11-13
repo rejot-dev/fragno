@@ -1,6 +1,6 @@
 {
   "name": "@fragno-dev/forms",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": false,
   "description": "Form builder fragment",
   "keywords": [
