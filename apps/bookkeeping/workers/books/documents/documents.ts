@@ -4,11 +4,11 @@ import { defineFragment, instantiate } from "@fragno-dev/core";
 import {
   withDatabase,
   type FragnoPublicConfigWithDatabase,
-  type TxResult,
   type TypedUnitOfWork,
 } from "@fragno-dev/db";
 import type { createLedgerFragment } from "@fragno-dev/ledger";
 
+import { bookingEntry, booksSource, type SourceDocument } from "../sources";
 import {
   documentsSchema,
   type Dismissal,
@@ -21,9 +21,6 @@ import {
 type LedgerServices = ReturnType<typeof createLedgerFragment>["services"];
 type PostEntryInput = Parameters<LedgerServices["postEntry"]>[0];
 type ReverseEntryInput = Parameters<LedgerServices["reverseEntry"]>[0];
-type Result<T> = T extends TxResult<infer TResult, infer _TRetrieved> ? TResult : never;
-type SourceDocument = Result<ReturnType<LedgerServices["getSourceDocuments"]>>[number];
-type SourceEntry = SourceDocument["entries"][number];
 
 /** The ledger kind of the source documents that documents are. */
 export const DOCUMENT_SOURCE_KIND = "document";
@@ -88,29 +85,11 @@ export type DocumentView = NewDocument & {
 
 type DocumentRow = Omit<DocumentView, "source" | "state"> & { dismissal: Dismissal | null };
 
-/**
- * Whether an entry books its document: an entry recording it does, its reversal undoes that, and
- * reversing the reversal books it again. A reversal records its entry's source document, so the
- * whole chain is among the source document's entries.
- */
-function booksDocument(entry: SourceEntry, source: SourceDocument): boolean {
-  let books = true;
-  let current = entry;
-  while (current.reversesEntryId !== null) {
-    const reversed = current.reversesEntryId;
-    books = !books;
-    current = source.entries.find((candidate) => candidate.id === reversed)!;
-  }
-  return books;
-}
-
 function documentState(dismissal: Dismissal | null, source: SourceDocument | null): DocumentState {
   if (dismissal !== null) {
     return { status: "dismissed", ...dismissal };
   }
-  const inEffect = source?.entries.find(
-    (entry) => entry.reversedByEntryId === null && booksDocument(entry, source),
-  );
+  const inEffect = bookingEntry(source);
   return inEffect ? { status: "booked", entryId: inEffect.id } : { status: "to-book" };
 }
 
@@ -334,7 +313,7 @@ const documentsFragmentDefinition = defineFragment("documents")
             if (!document || !entry) {
               throw new DocumentError("DOCUMENT_NOT_FOUND");
             }
-            if (booksDocument(entry, source)) {
+            if (booksSource(entry, source)) {
               return;
             }
             assertToBook(documentState(document.dismissal, source));
