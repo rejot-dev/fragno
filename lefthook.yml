@@ -13,6 +13,7 @@ pre-commit:
         scripts/format-files.mjs --staged; exit $code'
     - name: "backoffice static content: update generated files"
       run: pnpm --filter @fragno-apps/backoffice-rr run static:fix
+      glob: "apps/backoffice/**"
     - name: "backoffice context graph: check staged generated file"
       run: pnpm backoffice:context:check-staged
     - name: "changeset status: validate frontmatter"
