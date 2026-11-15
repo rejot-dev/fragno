@@ -45,6 +45,8 @@ export const accountView = z.object({
   currency: z.string().nullable(),
   active: z.boolean(),
   dimensionRules: z.record(z.string(), z.enum(dimensionRequirements)),
+  /** The kinds of source document whose entries post to the account; null: any. */
+  sourceKinds: z.array(z.string()).nullable(),
 });
 
 export const journalView = z.object({

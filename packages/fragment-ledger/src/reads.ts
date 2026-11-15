@@ -115,6 +115,7 @@ export const readServices = {
           currency: account.currencyRow?.id.valueOf() ?? null,
           active: account.active,
           dimensionRules: account.dimensionRules,
+          sourceKinds: account.sourceKinds,
         })),
       )
       .build();

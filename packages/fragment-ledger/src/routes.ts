@@ -224,6 +224,7 @@ export const ledgerRoutesFactory = defineRoutes(ledgerFragmentDefinition).create
         normalSide: z.enum(sides),
         currency: z.string().nullable(),
         dimensionRules,
+        sourceKinds: z.array(code).min(1).nullable(),
       }),
       outputSchema: created,
       errorCodes: ledgerErrorCodes,

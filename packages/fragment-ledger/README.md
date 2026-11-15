@@ -30,8 +30,10 @@ before they write, and nothing else writes:
   functional currency has one amount; a foreign line carries both its amount and its functional
   amount.
 - **Accounts** accept lines while active and, when they have a currency, only in that currency.
-  Their dimension rules make a dimension required or forbidden. Classification, normal side, and
-  currency never change, so posted history keeps its meaning.
+  Their dimension rules make a dimension required or forbidden. An account may name the kinds of
+  source document whose entries post to it, e.g. only bank transactions, so every line on it records
+  one. Classification, normal side, currency, and source kinds never change, so posted history keeps
+  its meaning.
 - **Control accounts.** Receivable and payable accounts take only lines that are open items of a
   party account posting to them; other accounts take none.
 - **Calendar.** Fiscal years follow each other without gaps, and a year's periods partition it, so a
