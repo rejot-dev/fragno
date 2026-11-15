@@ -259,6 +259,12 @@ export const ledgerSchema = schema("ledger", (s) => {
           .addColumn("creditMinor", column("bigint"))
           .createIndex("idx_balance_period_account", ["periodId", "accountId"], { unique: true });
       })
+      // The kinds of source document whose entries post to the account; null: any. Set when the
+      // account is created and never changed, so every line on it records one of them, e.g. a
+      // bank account whose lines all book bank transactions.
+      .alterTable("account", (t) =>
+        t.addColumn("sourceKinds", jsonColumn<string[] | null>().nullable()),
+      )
   );
 });
 

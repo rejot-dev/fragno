@@ -317,4 +317,44 @@ describe("posting", () => {
       // Alice paid 50.00 of an invoice that no longer stands: the books owe it back to her.
       assert.equal(await ledger.outstanding("r1", 1), 5000n);
     }));
+
+  test("an account limited to kinds of source document takes only entries recording them", () =>
+    ledgerScenario(async (ledger) => {
+      await ledger.createAccount("statement-bank", {
+        code: "1200",
+        classification: { type: "asset", role: "ordinary" },
+        normalSide: "debit",
+        currency: null,
+        dimensionRules: {},
+        sourceKinds: ["bank_transaction"],
+      });
+      const payment = (kind: string, source?: { type: "existing"; id: string }) => ({
+        name: kind,
+        journal: "cashbook",
+        kind,
+        source,
+        lines: [debit("statement-bank", 500n), credit("revenue", 500n)],
+      });
+
+      await ledger.refuses(() => ledger.post(payment("manual_journal")), "ACCOUNT_SOURCE_REFUSED");
+      await ledger.post({ ...payment("bank_transaction"), source: { type: "new", id: "tx-1" } });
+      await ledger.post({
+        name: "invoice",
+        journal: "sales",
+        lines: sale(),
+        source: { type: "new", id: "inv-1" },
+      });
+      await ledger.refuses(
+        () => ledger.post({ ...payment("x", { type: "existing", id: "inv-1" }), name: "y" }),
+        "ACCOUNT_SOURCE_REFUSED",
+      );
+      // Reversing, and booking the transaction again, record it too.
+      await ledger.reverse("r1", "bank_transaction");
+      await ledger.post({ ...payment("again", { type: "existing", id: "tx-1" }) });
+
+      expect((await ledger.accounts()).find((account) => account.code === "1200")).toMatchObject({
+        sourceKinds: ["bank_transaction"],
+      });
+      expect(await ledger.trialBalance("p1")).toMatchObject({ "1200": [1000n, 500n] });
+    }));
 });

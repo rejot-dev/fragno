@@ -125,7 +125,7 @@ export const postingServices = {
             b.whereIndex("primary", (eb) => eb("id", "=", input.journalId)),
           )
           .findFirst("sourceDocument", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", input.source.id)).select(["id"]),
+            b.whereIndex("primary", (eb) => eb("id", "=", input.source.id)).select(["id", "kind"]),
           )
           .findFirst("entry", (b) =>
             b
@@ -191,6 +191,8 @@ export const postingServices = {
               "An entry settles each open item at most once.",
             );
           }
+          const sourceKind =
+            input.source.type === "new" ? input.source.kind : (sourceDocument?.kind ?? null);
 
           const lines = input.lines.map((line): RecordedLine => {
             const account = accounts.find((row) => row.id.externalId === line.accountId);
@@ -228,6 +230,17 @@ export const postingServices = {
               throw new LedgerError(
                 "ACCOUNT_CURRENCY_MISMATCH",
                 `Account ${account.code} does not accept ${line.currency}.`,
+              );
+            }
+            // An existing source document that is missing is refused when it is recorded.
+            if (
+              account.sourceKinds !== null &&
+              sourceKind !== null &&
+              !account.sourceKinds.includes(sourceKind)
+            ) {
+              throw new LedgerError(
+                "ACCOUNT_SOURCE_REFUSED",
+                `Account ${account.code} takes only entries recording a ${account.sourceKinds.join(" or ")}.`,
               );
             }
 

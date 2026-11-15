@@ -32,6 +32,8 @@ type Posting = {
   reference?: string;
   /** The source document by ID: an existing one, or a new one; by default a new one. */
   source?: { type: "new" | "existing"; id: string };
+  /** The kind of a new source document; `manual_journal` by default. */
+  kind?: string;
 };
 
 type LedgerRoutes = ReturnType<typeof createLedgerFragment>["callRoute"];
@@ -154,7 +156,12 @@ class LedgerScenario {
       );
     }
 
-    const ordinary = { normalSide: "debit", currency: null, dimensionRules: {} } as const;
+    const ordinary = {
+      normalSide: "debit",
+      currency: null,
+      dimensionRules: {},
+      sourceKinds: null,
+    } as const;
     await this.createAccount("ar", {
       ...ordinary,
       code: "1300",
@@ -281,7 +288,7 @@ class LedgerScenario {
               : {
                   type: "new",
                   id: posting.source?.id ?? crypto.randomUUID(),
-                  kind: "manual_journal",
+                  kind: posting.kind ?? "manual_journal",
                   documentDate: date,
                   description: posting.name,
                 },

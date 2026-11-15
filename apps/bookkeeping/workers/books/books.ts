@@ -81,7 +81,12 @@ export class Books extends DurableObject<CloudflareEnv> {
         }),
         ...DEFAULT_JOURNALS.map((journal) => services.createJournal(journal)),
         ...DEFAULT_ACCOUNTS.map((account) =>
-          services.createAccount({ ...account, currency: null, dimensionRules: {} }),
+          services.createAccount({
+            ...account,
+            currency: null,
+            dimensionRules: {},
+            sourceKinds: null,
+          }),
         ),
       ]);
     } catch (error) {
@@ -153,8 +158,13 @@ export class Books extends DurableObject<CloudflareEnv> {
     return attempt(this.ledger.callServices(() => this.ledger.services.transitionPeriod(input)));
   }
 
-  createAccount(input: Input<"createAccount">) {
-    return attempt(this.ledger.callServices(() => this.ledger.services.createAccount(input)));
+  /** Creates an account any entry posts to; bank accounts' own come with them. */
+  createAccount(input: Omit<Input<"createAccount">, "sourceKinds">) {
+    return attempt(
+      this.ledger.callServices(() =>
+        this.ledger.services.createAccount({ ...input, sourceKinds: null }),
+      ),
+    );
   }
 
   updateAccount(input: Input<"updateAccount">) {

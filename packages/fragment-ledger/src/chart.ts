@@ -19,11 +19,16 @@ export type CreateAccountInput = {
   /** Null: the account accepts postings in any currency. */
   currency: string | null;
   dimensionRules: DimensionRules;
+  /**
+   * The kinds of source document whose entries post to the account, never changed; null: any.
+   * Not empty.
+   */
+  sourceKinds: string[] | null;
 };
 
 /**
- * What can change about an account. Its classification, normal side, and currency never do, so
- * posted history keeps its meaning; replace a wrong account with a new one.
+ * What can change about an account. Its classification, normal side, currency, and source kinds
+ * never do, so posted history keeps its meaning; replace a wrong account with a new one.
  */
 export type UpdateAccountInput = {
   accountId: string;
@@ -76,6 +81,7 @@ export const chartServices = {
           currency: currency?.id ?? null,
           active: true,
           dimensionRules: input.dimensionRules,
+          sourceKinds: input.sourceKinds,
         });
         return { id: id.valueOf() };
       })
