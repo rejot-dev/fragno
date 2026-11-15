@@ -6,6 +6,10 @@ import {
   piAgentActivityByEventType,
   readPiAgentEvent,
 } from "@/fragno/backoffice-capabilities/capabilities/pi";
+import {
+  SANDBOX_KEY_PATH,
+  SANDBOX_LIFECYCLE_EVENT_TYPES,
+} from "@/fragno/backoffice-capabilities/capabilities/sandbox";
 import { readIntegrationConnectionStateChange } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import {
   INTEGRATION_CONNECTION_KEY_PATH,
@@ -18,8 +22,9 @@ import type { AutomationInternalHooks } from "./internal-hooks";
 import { automationFragmentSchema, type EventFoldReplayPass } from "./schema";
 
 /**
- * Ingestion keeps `pi` events and `integrations` connection events in their states, by the agent or
- * connection they name, but events stored before it did were never kept. The replay reads every
+ * Ingestion keeps `pi` events, `integrations` connection events, and `sandbox` lifecycle events in
+ * their states, by the agent, connection, or sandbox they name, but events stored before it did were
+ * never kept. The replay reads every
  * stored event of those types, one page per pass, in a chain of `internalReplayEventFold` hooks,
  * and keeps each key's latest. It also reads again the events ingestion kept, which a state
  * compares as any event, so it needs no cutover.
@@ -27,8 +32,8 @@ import { automationFragmentSchema, type EventFoldReplayPass } from "./schema";
 
 /**
  * The `event_fold_replay` row's ID; its `next` pass is null once the replay read every type. A new
- * ID replays again: this one keeps `pi` events in their states, which scopes replayed before did
- * not.
+ * ID replays again: this one keeps `pi` and `sandbox` events in their states, which scopes replayed
+ * before did not.
  */
 export const EVENT_FOLD_REPLAY_ID = "stored-events:agent-state";
 
@@ -78,6 +83,12 @@ function connectionState(event: StoredEvent): ReplayedState {
   return { key: change.connectionId, payload };
 }
 
+/** Sandbox payloads have always named their sandbox. */
+function sandboxState(event: StoredEvent): ReplayedState {
+  const { sandboxId } = event.payload;
+  return typeof sandboxId === "string" ? { key: sandboxId, payload: event.payload } : null;
+}
+
 /**
  * Every type the replay reads, in order, with its key path and its events' states; deleting their
  * events waits for it.
@@ -94,6 +105,12 @@ const REPLAYED_TYPES = [
     eventType,
     keyPath: INTEGRATION_CONNECTION_KEY_PATH,
     stateOf: connectionState,
+  })),
+  ...SANDBOX_LIFECYCLE_EVENT_TYPES.map((eventType) => ({
+    source: "sandbox",
+    eventType,
+    keyPath: SANDBOX_KEY_PATH,
+    stateOf: sandboxState,
   })),
 ];
 

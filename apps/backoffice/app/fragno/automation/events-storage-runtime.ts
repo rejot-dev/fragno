@@ -146,7 +146,7 @@ export const createAutomationEventServices = (
         .mutate(({ uow, retrieveResult: [page, replay] }) => {
           if (REPLAYED_EVENT_SOURCES.has(input.source) && !(replay?.next === null)) {
             throw new Error(
-              `Events from ${input.source} are not yet kept in agent and connection states and cannot be deleted.`,
+              `Events from ${input.source} are not yet kept in their states and cannot be deleted.`,
             );
           }
           const deletable = page.items.filter((event) => isDeletableEvent(event, input));
