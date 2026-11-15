@@ -1,7 +1,7 @@
 import { z } from "zod";
 
+import { askBookkeeper } from "../books/bookkeeper.server";
 import { requireBooksSubmission } from "../books/books.server";
-import { askBookkeeper } from "../documents/bookkeeper.server";
 import { DOCUMENT_MAX_SIZE, readUploadForm, uploadDocument } from "../documents/documents.server";
 import type { Route } from "./+types/documents";
 import type { BooksAgentAnswer } from "./agent";
@@ -34,6 +34,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     return answer(uploaded.error);
   }
   // A request that was not sent shows on the document's page, to ask again.
-  await askBookkeeper(context, (await context.books.getDocument(documentId))!, "first");
+  const document = (await context.books.getDocument(documentId))!;
+  await askBookkeeper(context, [{ kind: "document", document }], "first");
   return answer(null);
 }

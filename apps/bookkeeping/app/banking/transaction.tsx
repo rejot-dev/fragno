@@ -1,6 +1,7 @@
 import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
 import { Input } from "@fragno-private/design-system/controls/input";
 import { Select } from "@fragno-private/design-system/controls/select";
+import { Callout } from "@fragno-private/design-system/feedback/callout";
 import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
 import {
@@ -14,11 +15,12 @@ import {
 } from "@fragno-private/design-system/layout/surface-panel";
 import { Form, Link, redirect, useNavigation, useOutletContext } from "react-router";
 
-import type { TransactionView } from "../../workers/books/banking/banking";
 import { describeTransaction } from "../../workers/books/banking/detail";
 import { formatIban } from "../../workers/books/banking/iban";
-import type { Books } from "../../workers/books/books";
+import type { TransactionBooking } from "../../workers/books/banking/schema";
 import { decimalAmount, formatAmount, parseAmount } from "../../workers/books/money";
+import { ASK, BookkeeperProposal, ProposedLines } from "../books/bookkeeper-proposal";
+import { askBookkeeper, withBookkeeperProgress } from "../books/bookkeeper.server";
 import {
   bankAccountPath,
   booksPath,
@@ -31,6 +33,7 @@ import { requireBooks, requireBooksSubmission, type FormResult } from "../books/
 import { FormError } from "../books/forms";
 import type { BooksOutletContext } from "../books/layout";
 import type { Route } from "./+types/transaction";
+import { settleableItems, suggestPayment } from "./matching.server";
 import { SignedAmount, transactionEntries, TransactionStatus } from "./transactions";
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -42,8 +45,6 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 type Context = Awaited<ReturnType<typeof requireBooks>>;
-type Described = Awaited<ReturnType<Books["describe"]>>;
-type OpenItem = Awaited<ReturnType<Books["listOpenItems"]>>[number];
 
 async function requireTransaction(context: Context, transactionId: string) {
   const transaction = await context.books.getTransaction(transactionId);
@@ -53,148 +54,32 @@ async function requireTransaction(context: Context, transactionId: string) {
   return transaction;
 }
 
-/** A name as compared with another: lowercase letters and digits, without legal forms. */
-function comparable(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/\b(b\.?v\.?|n\.?v\.?|v\.?o\.?f\.?|ltd|inc|gmbh|llc)\b/gu, "")
-    .replace(/[^a-z0-9]/gu, "");
-}
-
 /**
- * The customers and suppliers the transaction is likely with: those its counterparty's IBAN paid
- * or was paid by before, then those named like it. Customers come first for money in, suppliers
- * for money out.
- */
-function suggestPartyAccounts(
-  transaction: TransactionView,
-  books: Described,
-  learned: readonly string[],
-): string[] {
-  const names =
-    transaction.detail.type === "entry"
-      ? transaction.detail.parts.flatMap((part) =>
-          part.name === null ? [] : comparable(part.name),
-        )
-      : [];
-  const named = books.parties.filter((party) => {
-    const name = comparable(party.name);
-    return (
-      name.length >= 3 &&
-      names.some(
-        (candidate) =>
-          candidate.length >= 3 && (candidate.includes(name) || name.includes(candidate)),
-      )
-    );
-  });
-  const role = transaction.amountMinor > 0n ? "customer" : "supplier";
-  const byRole = named
-    .flatMap((party) => party.accounts)
-    .sort((a, b) => Number(b.role === role) - Number(a.role === role))
-    .map((account) => account.id);
-  const exists = new Set(books.parties.flatMap((party) => party.accounts.map(({ id }) => id)));
-  return [...new Set([...learned.filter((id) => exists.has(id)), ...byRole])];
-}
-
-/**
- * Whether `text` names `reference` whole: not as part of a longer one, as `INV-10` holds `INV-1`.
- * Case and runs of spaces do not count.
- */
-function names(text: string, reference: string): boolean {
-  const said = text.toUpperCase().replace(/\s+/gu, " ");
-  const wanted = reference.toUpperCase().replace(/\s+/gu, " ").trim();
-  const alphanumeric = (character: string | undefined) =>
-    character !== undefined && /[\p{L}\p{N}]/u.test(character);
-  for (let at = said.indexOf(wanted); at !== -1; at = said.indexOf(wanted, at + 1)) {
-    if (!alphanumeric(said[at - 1]) && !alphanumeric(said[at + wanted.length])) {
-      return wanted !== "";
-    }
-  }
-  return false;
-}
-
-/** The side of the open items a payment settles: invoices for money in, bills for money out. */
-function settledSide(transaction: { amountMinor: bigint }): "debit" | "credit" {
-  return transaction.amountMinor > 0n ? "debit" : "credit";
-}
-
-/**
- * The open items the transaction settles to start with, with how much of each: those whose
- * reference its description names, else the first owing exactly its amount; each for what it has
- * outstanding, within the transaction's amount.
- */
-function preselect(transaction: TransactionView, items: OpenItem[]): Map<string, bigint> {
-  const { detail } = transaction;
-  const said =
-    detail.type === "entry"
-      ? [...detail.parts.map((part) => part.remittance), detail.information].join(" ")
-      : "";
-  const amount = transaction.amountMinor > 0n ? transaction.amountMinor : -transaction.amountMinor;
-  const named = items.filter(
-    (item) => item.entry.reference !== null && names(said, item.entry.reference),
-  );
-  const exact = items.find((item) => item.outstandingMinor === amount);
-  const chosen = named.length > 0 ? named : exact ? [exact] : [];
-  const amounts = new Map<string, bigint>();
-  let left = amount;
-  for (const item of chosen) {
-    const settled = item.outstandingMinor < left ? item.outstandingMinor : left;
-    if (settled > 0n) {
-      amounts.set(item.id, settled);
-      left -= settled;
-    }
-  }
-  return amounts;
-}
-
-/** The open items of `partyAccountId` the transaction can settle: in its currency, on the other side. */
-async function settleableItems(
-  context: Context,
-  transaction: TransactionView,
-  partyAccountId: string,
-) {
-  const items = await context.books.listOpenItems({ partyAccountId });
-  return items.filter(
-    (item) =>
-      item.outstandingMinor > 0n &&
-      item.side === settledSide(transaction) &&
-      item.currency === transaction.bankAccount.currency,
-  );
-}
-
-/**
- * The transaction, and while it is to book, the customers and suppliers it is likely with and the
- * open items of the one chosen, `?party=` or the likeliest, it can settle.
+ * The transaction, how far the bookkeeping agent got with a request still unanswered, and while it
+ * is to book, how the payment form starts, with the customer or supplier `?party=` chooses.
  */
 export async function loader({ request, params }: Route.LoaderArgs) {
   const context = await requireBooks(request, params);
-  const transaction = await requireTransaction(context, params.transactionId);
-  if (transaction.state.status !== "to-book") {
-    return { transaction, suggested: [], partyAccountId: null, items: [], preselected: {} };
-  }
-  const { detail } = transaction;
-  const ibans =
-    detail.type === "entry" ? [...new Set(detail.parts.flatMap((part) => part.iban ?? []))] : [];
-  const [books, learned] = await Promise.all([
-    context.books.describe(),
-    ibans.length === 1 ? context.books.counterpartiesOf(ibans[0]) : [],
-  ]);
-  const suggested = suggestPartyAccounts(transaction, books, learned);
-  const partyAccounts = new Set(
-    books.parties.flatMap((party) => party.accounts.map(({ id }) => id)),
+  const { subject: transaction, progress } = await withBookkeeperProgress(context, () =>
+    requireTransaction(context, params.transactionId),
   );
-  const asked = new URL(request.url).searchParams.get("party");
-  const partyAccountId =
-    asked !== null && partyAccounts.has(asked) ? asked : (suggested[0] ?? null);
-  const items =
-    partyAccountId === null ? [] : await settleableItems(context, transaction, partyAccountId);
-  return {
+  if (transaction.state.status !== "to-book") {
+    return {
+      transaction,
+      progress,
+      suggested: [],
+      partyAccountId: null,
+      items: [],
+      preselected: {},
+    };
+  }
+  const suggestion = await suggestPayment(
+    context,
     transaction,
-    suggested,
-    partyAccountId,
-    items,
-    preselected: Object.fromEntries(preselect(transaction, items)),
-  };
+    await context.books.describe(),
+    new URL(request.url).searchParams.get("party"),
+  );
+  return { transaction, progress, ...suggestion };
 }
 
 export function headers() {
@@ -205,12 +90,22 @@ const SETTLE = "settle";
 
 /**
  * Books the transaction as a payment by or to a customer or supplier, settling the open items
- * chosen for the amounts given; what it paid beyond them stays open on their account.
+ * chosen for the amounts given, and what it paid beyond them stays open on their account; or asks
+ * the bookkeeping agent, again, to propose how to book it.
  */
 export async function action({ request, params }: Route.ActionArgs): Promise<FormResult> {
   const context = await requireBooksSubmission(request, params, "keep");
   const transaction = await requireTransaction(context, params.transactionId);
   const form = await request.formData();
+  if (form.get("intent") === ASK) {
+    const description = describeTransaction(transaction.detail);
+    const asked = await askBookkeeper(
+      context,
+      [{ kind: "transaction", transaction: { id: transaction.id, description } }],
+      "again",
+    );
+    return { intent: ASK, error: asked.ok ? null : asked.error };
+  }
   const refuse = (error: string) => ({ intent: SETTLE, error });
   const partyAccountId = form.get("partyAccountId");
   const books = await context.books.describe();
@@ -289,8 +184,9 @@ export default function TransactionPage({ loaderData, actionData }: Route.Compon
   const context = useOutletContext<BooksOutletContext>();
   const { books, base } = context;
   const navigation = useNavigation();
-  const { transaction, suggested, partyAccountId, items, preselected } = loaderData;
-  const { detail, bankAccount, state } = transaction;
+  const { transaction, progress, suggested, partyAccountId, items, preselected } = loaderData;
+  const { detail, bankAccount, state, proposal } = transaction;
+  const booking = proposal?.status === "proposed" ? proposal.booking : null;
   const index = indexBooks(books);
   const digits = index.minorUnitDigits(bankAccount.currency);
   const entries = transactionEntries(transaction.source, context);
@@ -321,10 +217,10 @@ export default function TransactionPage({ loaderData, actionData }: Route.Compon
         actions={
           state.status === "to-book" ? (
             <ButtonLink
-              variant="secondary"
+              variant={booking?.type === "entry" ? "solid" : "secondary"}
               to={`${base}/entries/new?transaction=${transaction.id}`}
             >
-              Book with an entry
+              {booking?.type === "entry" ? "Review and book" : "Book with an entry"}
             </ButtonLink>
           ) : null
         }
@@ -433,6 +329,25 @@ export default function TransactionPage({ loaderData, actionData }: Route.Compon
           </SurfaceTable>
         </SurfaceSection>
       )}
+      {state.status === "to-book" ? (
+        <BookkeeperProposal
+          subject="transaction"
+          proposal={proposal}
+          progress={progress}
+          proposed={
+            proposal?.status === "proposed" ? (
+              <ProposedBooking
+                booking={proposal.booking}
+                note={proposal.note}
+                amountMinor={transaction.amountMinor}
+                items={items}
+                context={context}
+              />
+            ) : null
+          }
+          result={actionData}
+        />
+      ) : null}
       {state.status === "to-book" && detail.type === "entry" ? (
         <SurfaceSection
           title={
@@ -544,5 +459,70 @@ export default function TransactionPage({ loaderData, actionData }: Route.Compon
         </SurfaceSection>
       ) : null}
     </>
+  );
+}
+
+/**
+ * What the bookkeeping agent proposes for the transaction: a payment, which the payment form starts
+ * from, settling `items` the form lists; or the lines of an entry, which Review and book fills the
+ * new entry in from.
+ */
+function ProposedBooking({
+  booking,
+  note,
+  amountMinor,
+  items,
+  context,
+}: {
+  booking: TransactionBooking;
+  note: string;
+  amountMinor: bigint;
+  items: { id: string; entry: { journalId: string; entryNumber: number } }[];
+  context: BooksOutletContext;
+}) {
+  const index = indexBooks(context.books);
+  if (booking.type === "entry") {
+    return (
+      <>
+        <SurfacePanelBody>
+          <div className="space-y-3">
+            <Callout tone="info" title="Proposed entry">
+              {note}
+            </Callout>
+            <p className="text-sm text-[var(--bo-muted)]">
+              {booking.description}
+              {booking.reference === null ? "" : ` · ${booking.reference}`}, with the bank
+              account&apos;s line. Review and book fills the new entry in from it.
+            </p>
+          </div>
+        </SurfacePanelBody>
+        <ProposedLines lines={booking.lines} context={context} />
+      </>
+    );
+  }
+  const partyAccount = index.partyAccounts.get(booking.partyAccountId);
+  const settled = booking.settles.map((settlement) => {
+    const item = items.find((candidate) => candidate.id === settlement.openItemId);
+    const journal = item && index.journals.get(item.entry.journalId);
+    return `${journal ? `${journal.code} ${item.entry.entryNumber}` : "an open item settled since"} for ${settlement.amount}`;
+  });
+  return (
+    <SurfacePanelBody>
+      <div className="space-y-3">
+        <Callout tone="info" title="Proposed payment">
+          {note}
+        </Callout>
+        <p className="text-sm text-pretty text-[var(--bo-muted)]">
+          A payment {amountMinor > 0n ? "from" : "to"}{" "}
+          {partyAccount
+            ? `${partyAccount.party.name} (${partyAccount.code})`
+            : "a customer or supplier the books no longer have"}
+          {settled.length === 0
+            ? ", settling nothing they have open yet"
+            : `, settling ${settled.join(", ")}`}
+          . The payment form below starts from it.
+        </p>
+      </div>
+    </SurfacePanelBody>
   );
 }

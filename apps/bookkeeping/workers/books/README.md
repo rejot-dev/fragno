@@ -11,11 +11,11 @@ ledger's services, in the same transaction; `sources.ts` tells from a source doc
 which one books it. The proposals fragment in `proposals/` records the bookkeeping agent's proposals
 for booking what is to book, from the request to the answer, under the ID of the source document
 that would book it, and the generation of the client's management they are asked under; documents
-record theirs through it, in their own transaction, which refuses requests and answers about one
-that is not to book. The ledger's refusals return as `Outcome` values, because errors crossing
-Durable Object RPC keep only their message. Opening the books (`open`) sets the functional currency
-(`currencies.ts`) and, in the same transaction, this calendar year's monthly periods
-(`fiscal-years.ts`) and the default journals and chart of accounts (`default-books.ts`).
+and bank transactions record theirs through it, in their own transaction, which refuses requests and
+answers about one that is not to book. The ledger's refusals return as `Outcome` values, because
+errors crossing Durable Object RPC keep only their message. Opening the books (`open`) sets the
+functional currency (`currencies.ts`) and, in the same transaction, this calendar year's monthly
+periods (`fiscal-years.ts`) and the default journals and chart of accounts (`default-books.ts`).
 
 The SQL files below are the reference design the ledger fragment was built from, and the design of
 the areas not built yet. `schema.ts` concatenates them in dependency order for their tests; no

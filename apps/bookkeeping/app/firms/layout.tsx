@@ -1,6 +1,6 @@
 import { Outlet, useLocation } from "react-router";
 
-import { setUpFirmAgent } from "../documents/bookkeeper.server";
+import { setUpFirmAgent } from "../books/bookkeeper.server";
 import { requireOrganization } from "../organizations/access.server";
 import { organizationPath } from "../organizations/paths";
 import { highestRole, ROLE_LABELS } from "../organizations/roles";

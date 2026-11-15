@@ -13,12 +13,12 @@ import {
 import { Form, Link, redirect, useNavigation, useOutletContext } from "react-router";
 import { z } from "zod";
 
+import { askBookkeeper } from "../books/bookkeeper.server";
 import { booksPath, documentPath, formatDate } from "../books/books";
 import { requireBooks, requireBooksSubmission, type FormResult } from "../books/books.server";
 import { FormError } from "../books/forms";
 import type { BooksOutletContext } from "../books/layout";
 import type { Route } from "./+types/documents";
-import { askBookkeeper } from "./bookkeeper.server";
 import { DOCUMENT_MAX_SIZE, readUploadForm, uploadDocument } from "./documents.server";
 import { DocumentStatus } from "./status";
 
@@ -73,7 +73,8 @@ export async function action({ request, params }: Route.ActionArgs): Promise<For
     return { intent: UPLOAD, error: uploaded.error };
   }
   // A request that was not sent shows on the document's page, to ask again.
-  await askBookkeeper(context, (await context.books.getDocument(documentId))!, "first");
+  const document = (await context.books.getDocument(documentId))!;
+  await askBookkeeper(context, [{ kind: "document", document }], "first");
   throw redirect(documentPath(booksPath(params), documentId));
 }
 

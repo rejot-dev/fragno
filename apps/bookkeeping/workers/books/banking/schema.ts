@@ -1,5 +1,6 @@
 import { column, idColumn, referenceColumn, schema, type Column } from "@fragno-dev/db/schema";
 
+import type { ProposedLine } from "../proposals/schema";
 import type { TransactionDetail } from "./detail";
 
 /**
@@ -7,6 +8,25 @@ import type { TransactionDetail } from "./detail";
  * in minor units as a string of digits, as JSON holds no bigints.
  */
 export type StatementEnd = { endDate: string; closingBalanceMinor: string };
+
+/**
+ * How the bookkeeping agent proposes to book a bank transaction, naming the books' records by ID,
+ * with amounts as decimals: as a payment by or to a customer or supplier, settling their open
+ * items; or with an entry's lines besides the bank account's, which the books add when booking.
+ */
+export type TransactionBooking =
+  | {
+      type: "payment";
+      partyAccountId: string;
+      settles: { openItemId: string; amount: string }[];
+    }
+  | {
+      type: "entry";
+      journalId: string;
+      reference: string | null;
+      description: string;
+      lines: ProposedLine[];
+    };
 
 function jsonColumn<T>() {
   return column("json") as unknown as Column<"json", T, T>;

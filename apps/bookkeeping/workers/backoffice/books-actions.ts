@@ -8,11 +8,14 @@ import { organizationRoleSchema } from "@fragno-dev/backoffice-api/v0/organizati
 import { accountTypes, dimensionRequirements, partyRoles, sides } from "@fragno-dev/ledger/schema";
 import { z } from "zod";
 
+import type { DescribedTransaction } from "../books/banking/banking";
+import type { TransactionBooking } from "../books/banking/schema";
 import type { Books, Outcome } from "../books/books";
 import { DOCUMENT_MEDIA_TYPES } from "../books/documents/schema";
 import { dayAfter, PERIOD_LENGTHS, periodEndDates, today } from "../books/fiscal-years";
 import { decimalAmount, parseAmount } from "../books/money";
 import { CONTROL_ROLES, usualControlAccount } from "../books/parties";
+import type { ProposedLine } from "../books/proposals/schema";
 import type { Administration } from "../directory/directory";
 import {
   canManage,
@@ -22,7 +25,7 @@ import {
 import { exchangeForScope, isBackofficeUnavailable } from "./client";
 import { releaseDocument, sharedDocumentKey } from "./document-shares";
 import { followManager } from "./management";
-import { documentRequestPrefix } from "./review-requests";
+import { requestPrefix, type ProposalSubject } from "./proposal-requests";
 
 /**
  * The actions Backoffice agents keep an administration's books with. They run in the
@@ -69,22 +72,22 @@ const administrationInput = z
   );
 
 /**
- * Who answers a request for a proposal for a document: the bookkeeping agent, which Bookkeeping
- * prompts as its installation so that it can answer such requests and nothing else, answers the
- * request asking it; a person answers whether asked or not.
+ * Who answers a request for the agent's proposal for a document or a bank transaction: the
+ * bookkeeping agent, which Bookkeeping prompts as its installation so that it can answer such
+ * requests and nothing else, answers the request asking it; a person answers whether asked or not.
  */
 type Answerer =
   | { kind: "bookkeeping-agent"; administrationId: string }
   | { kind: "person"; person: Person };
 
 /**
- * The request an answer about `documentId` is to, and who gave it. The agent's must be one about
- * the document, so an ID it shortened or garbled is refused as one it can fix, not as a request
+ * The request an answer about `subject` is to, and who gave it. The agent's must be one about the
+ * subject, so an ID it shortened or garbled is refused as one it can fix, not as a request
  * answered or asked again since, which it is to give up on.
  */
 function answering(
   answerer: Answerer,
-  documentId: string,
+  subject: ProposalSubject,
   request: string | null,
 ): { request: string | null; by: string } {
   switch (answerer.kind) {
@@ -94,10 +97,10 @@ function answering(
       if (request === null) {
         refuse("Give the ID of the request you answer as `request`: the request names it.");
       }
-      const prefix = documentRequestPrefix(answerer.administrationId, documentId);
+      const prefix = requestPrefix(answerer.administrationId, subject);
       if (!request.startsWith(prefix)) {
         refuse(
-          `${request} is no request about this document: give \`request\` whole, as the request names it, beginning ${prefix}.`,
+          `${request} is no request about this ${subject.kind === "document" ? "document" : "bank transaction"}: give \`request\` whole, as the request names it, beginning ${prefix}.`,
         );
       }
       return { request, by: "the bookkeeping agent" };
@@ -110,7 +113,7 @@ const requestInput = z
   .string()
   .min(1)
   .nullable()
-  .describe("The ID of the request asking you about the document; null when nobody asked you.");
+  .describe("The ID of the request asking you; null when nobody asked you.");
 
 /** Answers the action with `status` and a message Backoffice shows the agent. */
 class ActionFailure extends Error {
@@ -137,8 +140,8 @@ function settled<T>(outcome: Outcome<T>): T {
 /**
  * Who may run an action: `read` anyone Backoffice signs for; `consult`, which asks the firm keeping
  * the books and changes nothing in them, anyone in the administration's own project; `answer`,
- * which answers a request for a proposal for a document and posts nothing, people and the firm's
- * bookkeeping agent; `keep` people; and `set-up` owners and admins.
+ * which answers a request for a proposal for a document or a bank transaction and posts nothing,
+ * people and the firm's bookkeeping agent; `keep` people; and `set-up` owners and admins.
  */
 type BooksAction = { declaration: AppAction } & (
   | {
@@ -151,7 +154,7 @@ type BooksAction = { declaration: AppAction } & (
     }
   | {
       access: "answer";
-      run(books: BooksStub, input: unknown, answerer: Answerer): Promise<{ document: string }>;
+      run(books: BooksStub, input: unknown, answerer: Answerer): Promise<Answered>;
     }
   | {
       access: "keep" | "set-up";
@@ -219,8 +222,11 @@ function consultAction<TInput extends z.ZodObject, TOutput extends z.ZodType>(
   };
 }
 
-/** An action answering a request for a proposal, which says which document it answered about. */
-function answerAction<TInput extends z.ZodObject, TOutput extends z.ZodType<{ document: string }>>(
+/** What an answer action answered about: a document, or a bank transaction. */
+type Answered = { document: string } | { transaction: string };
+
+/** An action answering a request for a proposal, which says what it answered about. */
+function answerAction<TInput extends z.ZodObject, TOutput extends z.ZodType<Answered>>(
   definition: ActionDefinition<TInput, TOutput> & {
     run(books: BooksStub, input: z.output<TInput>, answerer: Answerer): Promise<z.input<TOutput>>;
   },
@@ -506,6 +512,37 @@ function ledgerLinesOf(
   });
 }
 
+/**
+ * A proposal's lines as the new-entry form takes them, from the ledger's lines of `input`: amounts
+ * as decimals, and due dates only where the agent gave them.
+ */
+function proposedLinesOf(
+  lines: PostingLine[],
+  input: z.output<typeof entryLineInput>[],
+  index: Index,
+  functionalDigits: number,
+): ProposedLine[] {
+  return lines.map((line, position) => ({
+    accountId: line.accountId,
+    description: line.description,
+    side: line.side,
+    amount: decimalAmount(line.amountMinor, index.minorUnitDigits(line.currency)),
+    currency: line.currency,
+    functionalAmount: decimalAmount(line.functionalAmountMinor, functionalDigits),
+    partyAccountId: line.openItem?.partyAccountId ?? null,
+    dueDate: input[position].dueDate,
+    dimensionValueIds: line.dimensionValueIds,
+  }));
+}
+
+/** Refuses a proposal's lines on accounts that take no new lines. */
+function refuseInactive(lines: z.output<typeof entryLineInput>[], index: Index) {
+  const inactive = lines.find((line) => !index.account(line.account).active);
+  if (inactive) {
+    refuse(`Account ${inactive.account} is inactive and takes no new lines.`);
+  }
+}
+
 /** The document `id`, or the refusal an agent can act on. */
 async function requireDocument(books: BooksStub, id: string) {
   return (await books.getDocument(id)) ?? refuse(`The books have no document ${id}.`);
@@ -564,6 +601,139 @@ async function documentOutputOf(
     documentDate: source?.documentDate ?? null,
     proposal: document.proposal?.status ?? null,
   };
+}
+
+/** The bank account `id`, or the refusal an agent can act on. */
+async function requireBankAccount(books: BooksStub, id: string) {
+  return (await books.getBankAccount(id)) ?? refuse(`The books have no bank account ${id}.`);
+}
+
+/** The bank transaction `id`, or the refusal an agent can act on. */
+async function requireTransaction(books: BooksStub, id: string) {
+  return (await books.getTransaction(id)) ?? refuse(`The books have no bank transaction ${id}.`);
+}
+
+const bankAccountOutput = z.object({
+  id: z.string(),
+  iban: z.string(),
+  name: z.string(),
+  currency: z.string(),
+  account: z
+    .string()
+    .describe("The code of its ledger account, which only its transactions post to."),
+  journal: z.string().describe("The code of the journal its transactions are booked in."),
+});
+
+const transactionOutput = z.object({
+  id: z.string(),
+  bookingDate: z.iso.date().describe("When the bank booked it: its entry posts on this date."),
+  amount: z
+    .string()
+    .describe("In the bank account's currency: positive for money in, negative for money out."),
+  kind: z
+    .enum(["payment", "opening-balance"])
+    .describe(
+      "A payment in or out of the account, or the balance its first imported statement opened with.",
+    ),
+  valueDate: z.iso.date().nullable(),
+  information: z.string().describe("What the bank says the transaction is."),
+  parts: z
+    .array(
+      z.object({
+        name: z.string().nullable().describe("The counterparty; null for the bank's own costs."),
+        iban: z.string().nullable(),
+        remittance: z.string().describe("The payment's description, e.g. an invoice number."),
+        endToEndId: z.string().nullable(),
+      }),
+    )
+    .describe("The payments it is: one, or several when the bank booked a batch as one."),
+  status: z.enum(["to-book", "booked"]),
+  bookedIn: z
+    .object({ journal: z.string(), number: z.number().int() })
+    .nullable()
+    .describe("The entry booking it, while it is booked."),
+  proposal: z
+    .enum(["requested", "proposed", "declined", "withdrawn"])
+    .nullable()
+    .describe(
+      "Whether the bookkeeping agent was asked about it, proposed how to book it, or proposed nothing, or whether the request was withdrawn unanswered.",
+    ),
+});
+
+function transactionOutputOf(
+  transaction: DescribedTransaction,
+  digits: number,
+  index: Index,
+): z.input<typeof transactionOutput> {
+  const { state, source, detail } = transaction;
+  const booking =
+    state.status === "booked" ? source!.entries.find((entry) => entry.id === state.entryId)! : null;
+  const amount = decimalAmount(
+    transaction.amountMinor < 0n ? -transaction.amountMinor : transaction.amountMinor,
+    digits,
+  );
+  return {
+    id: transaction.id,
+    bookingDate: transaction.bookingDate,
+    amount: transaction.amountMinor < 0n ? `-${amount}` : amount,
+    kind: detail.type === "entry" ? "payment" : "opening-balance",
+    valueDate: detail.type === "entry" ? detail.valueDate : null,
+    information: detail.type === "entry" ? detail.information : "",
+    parts: detail.type === "entry" ? detail.parts : [],
+    status: state.status,
+    bookedIn: booking && {
+      journal: index.journalCode(booking.journalId),
+      number: booking.entryNumber,
+    },
+    proposal: transaction.proposal?.status ?? null,
+  };
+}
+
+/**
+ * The open items `settles` names, settled by a payment of `transaction` for the amounts given: of
+ * the customer's or supplier's account, in the bank account's currency, on the side the payment
+ * settles, each within what it has outstanding, and together within the payment.
+ */
+function settlementsOf(
+  settles: { item: string; amount: string }[],
+  transaction: { amountMinor: bigint },
+  items: Awaited<ReturnType<Books["listOpenItems"]>>,
+  currency: string,
+  digits: number,
+): { openItemId: string; amount: string }[] {
+  const side = transaction.amountMinor > 0n ? "debit" : "credit";
+  const paid = transaction.amountMinor > 0n ? transaction.amountMinor : -transaction.amountMinor;
+  let totalMinor = 0n;
+  const settled = settles.map((settlement) => {
+    const item = items.find((candidate) => candidate.id === settlement.item);
+    if (!item || item.outstandingMinor === 0n) {
+      refuse(
+        `${settlement.item} is no open item of theirs with something outstanding: parties.open-items lists them.`,
+      );
+    }
+    if (item.side !== side || item.currency !== currency) {
+      refuse(
+        `Open item ${item.id} is no ${side === "debit" ? "invoice" : "bill"} in ${currency}, which this payment settles.`,
+      );
+    }
+    const amountMinor = minorUnits(settlement.amount, digits, "the amount to settle");
+    if (amountMinor === 0n || amountMinor > item.outstandingMinor) {
+      refuse(
+        `Settle open item ${item.id} for more than 0 and at most what is outstanding, ${decimalAmount(item.outstandingMinor, digits)}.`,
+      );
+    }
+    totalMinor += amountMinor;
+    return { openItemId: item.id, amount: decimalAmount(amountMinor, digits) };
+  });
+  if (new Set(settles.map((settlement) => settlement.item)).size !== settles.length) {
+    refuse("Settle each open item once.");
+  }
+  if (totalMinor > paid) {
+    refuse(
+      `The settlements come to ${decimalAmount(totalMinor, digits)}, more than the payment's ${decimalAmount(paid, digits)}.`,
+    );
+  }
+  return settled;
 }
 
 /** An account's amount in a report, on the side it normally carries. */
@@ -913,6 +1083,10 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
           journal: z.string(),
           entry: z.number().int(),
           postingDate: z.iso.date(),
+          reference: z
+            .string()
+            .nullable()
+            .describe("The entry's reference, e.g. the invoice number a payment names."),
           description: z.string(),
           dueDate: z.iso.date(),
           side: z.enum(sides),
@@ -945,6 +1119,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
             journal: index.journalCode(item.entry.journalId),
             entry: item.entry.entryNumber,
             postingDate: item.entry.postingDate,
+            reference: item.entry.reference,
             description: item.entry.description,
             dueDate: item.dueDate,
             side: item.side,
@@ -1214,6 +1389,121 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     },
   }),
 
+  readAction({
+    id: "bank.accounts.list",
+    label: "List bank accounts",
+    description:
+      "The books' bank accounts: each one's IBAN, the ledger account and journal its transactions are booked to, and where its last imported statement left it.",
+    input: z.strictObject({}),
+    output: z.object({
+      accounts: z.array(
+        bankAccountOutput.extend({
+          lastStatement: z
+            .object({ endDate: z.iso.date(), closingBalance: z.string() })
+            .nullable()
+            .describe("Null until a statement is imported."),
+        }),
+      ),
+    }),
+    async run(books) {
+      const [described, accounts] = await Promise.all([books.describe(), books.listBankAccounts()]);
+      const index = indexBooks(described);
+      return {
+        accounts: accounts.map((account) => ({
+          id: account.id,
+          iban: account.iban,
+          name: account.name,
+          currency: account.currency,
+          account: account.ledgerAccountCode,
+          journal: index.journalCode(account.journalId),
+          lastStatement: account.lastStatement && {
+            endDate: account.lastStatement.endDate,
+            closingBalance: decimalAmount(
+              account.lastStatement.closingBalanceMinor,
+              index.minorUnitDigits(account.currency),
+            ),
+          },
+        })),
+      };
+    },
+  }),
+
+  readAction({
+    id: "bank.transactions.list",
+    label: "List a bank account's transactions",
+    description:
+      "A bank account's transactions, latest first, 50 at a time: those still to book, or all of them, as bank.transactions.get describes them. Pass the returned cursor to read the next page.",
+    input: z.strictObject({
+      bankAccount: z.string().min(1).describe("The bank account's ID, from bank.accounts.list."),
+      status: z.enum(["to-book", "all"]),
+      cursor,
+    }),
+    output: z.object({
+      transactions: z.array(transactionOutput),
+      cursor: z.string().nullable().describe("Null on the last page."),
+    }),
+    async run(books, input) {
+      const [described, account] = await Promise.all([
+        books.describe(),
+        requireBankAccount(books, input.bankAccount),
+      ]);
+      const index = indexBooks(described);
+      const page = await books.listTransactions({
+        bankAccountId: account.id,
+        toBook: input.status === "to-book",
+        cursor: input.cursor,
+      });
+      const digits = index.minorUnitDigits(account.currency);
+      return {
+        transactions: page.items.map((item) => transactionOutputOf(item, digits, index)),
+        cursor: page.cursor,
+      };
+    },
+  }),
+
+  readAction({
+    id: "bank.transactions.get",
+    label: "Describe a bank transaction",
+    description:
+      "A bank transaction, as its bank's statement gives it: when and how much moved, who paid or was paid and the description they gave, and whether it is to book or booked; with its bank account, and the customers and suppliers its counterparty's IBAN paid or was paid by before.",
+    input: z.strictObject({ transaction: z.string().min(1).describe("The transaction's ID.") }),
+    output: transactionOutput.extend({
+      bankAccount: bankAccountOutput,
+      knownParties: z
+        .array(z.object({ role: z.enum(partyRoles), code: z.string(), name: z.string() }))
+        .describe("Booked as the counterparty's before, by its IBAN."),
+    }),
+    async run(books, input) {
+      const [described, transaction] = await Promise.all([
+        books.describe(),
+        requireTransaction(books, input.transaction),
+      ]);
+      const index = indexBooks(described);
+      const { bankAccount, detail } = transaction;
+      const ibans =
+        detail.type === "entry"
+          ? [...new Set(detail.parts.flatMap((part) => part.iban ?? []))]
+          : [];
+      const learned: string[] = ibans.length === 1 ? await books.counterpartiesOf(ibans[0]) : [];
+      return {
+        ...transactionOutputOf(transaction, index.minorUnitDigits(bankAccount.currency), index),
+        bankAccount: {
+          id: bankAccount.id,
+          iban: bankAccount.iban,
+          name: bankAccount.name,
+          currency: bankAccount.currency,
+          account: bankAccount.ledgerAccountCode,
+          journal: index.journalCode(bankAccount.journalId),
+        },
+        knownParties: described.parties.flatMap((party) =>
+          party.accounts
+            .filter((account) => learned.includes(account.id))
+            .map((account) => ({ role: account.role, code: account.code, name: party.name })),
+        ),
+      };
+    },
+  }),
+
   writeAction("keep", {
     id: "entries.post",
     label: "Post an entry",
@@ -1422,15 +1712,16 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     }),
     output: z.object({ document: z.string(), proposal: z.literal("proposed") }),
     async run(books, input, answerer) {
-      const { request, by } = answering(answerer, input.document, input.request);
+      const { request, by } = answering(
+        answerer,
+        { kind: "document", id: input.document },
+        input.request,
+      );
       const described = await books.describe();
       const index = indexBooks(described);
       const journal = index.journal(input.entry.journal);
       const lines = ledgerLinesOf(input.entry, index, described);
-      const inactive = input.entry.lines.find((line) => !index.account(line.account).active);
-      if (inactive) {
-        refuse(`Account ${inactive.account} is inactive and takes no new lines.`);
-      }
+      refuseInactive(input.entry.lines, index);
       // Only bank accounts take entries of some source documents only.
       const banked = input.entry.lines.find(
         (line) => index.account(line.account).sourceKinds !== null,
@@ -1462,17 +1753,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
               documentDate: input.documentDate,
               reference: input.entry.reference,
               description: input.entry.description,
-              lines: lines.map((line, position) => ({
-                accountId: line.accountId,
-                description: line.description,
-                side: line.side,
-                amount: decimalAmount(line.amountMinor, index.minorUnitDigits(line.currency)),
-                currency: line.currency,
-                functionalAmount: decimalAmount(line.functionalAmountMinor, functionalDigits),
-                partyAccountId: line.openItem?.partyAccountId ?? null,
-                dueDate: input.entry.lines[position].dueDate,
-                dimensionValueIds: line.dimensionValueIds,
-              })),
+              lines: proposedLinesOf(lines, input.entry.lines, index, functionalDigits),
             },
             note: input.note,
             by,
@@ -1496,7 +1777,11 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     }),
     output: z.object({ document: z.string(), proposal: z.literal("declined") }),
     async run(books, input, answerer) {
-      const { request, by } = answering(answerer, input.document, input.request);
+      const { request, by } = answering(
+        answerer,
+        { kind: "document", id: input.document },
+        input.request,
+      );
       await requireDocument(books, input.document);
       settled(
         await books.answerDocumentRequest({
@@ -1511,6 +1796,174 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
         }),
       );
       return { document: input.document, proposal: "declined" as const };
+    },
+  }),
+
+  answerAction({
+    id: "bank.transactions.propose",
+    label: "Propose a bank transaction's booking",
+    description:
+      "Proposes how to book a bank transaction to book, for a person to review and book: it posts nothing. Propose a payment by or to a customer or supplier, settling the open items it pays (parties.open-items lists them); or an entry's lines besides the bank account's, which Bookkeeping adds when booking: on the transaction's booking date, for its amount, so your lines must balance it. An answer to a request counts only while the transaction awaits it; one to no request replaces the earlier answer.",
+    input: z.strictObject({
+      transaction: z.string().min(1).describe("The transaction's ID."),
+      request: requestInput,
+      booking: z.discriminatedUnion("type", [
+        z.strictObject({
+          type: z.literal("payment"),
+          role: z.enum(partyRoles),
+          code: z.string().trim().min(1).max(20).describe("The customer's or supplier's code."),
+          settles: z
+            .array(
+              z.strictObject({
+                item: z.string().min(1).describe("The open item's ID, from parties.open-items."),
+                amount: decimal.describe("How much of it the payment settles."),
+              }),
+            )
+            .describe(
+              "The open items it pays: invoices for money in, bills for money out. Empty when it pays none yet, as an advance; what it pays beyond them stays open on their account.",
+            ),
+        }),
+        z.strictObject({
+          type: z.literal("entry"),
+          journal: z.string().trim().min(1).max(20).describe("The journal's code."),
+          reference: z
+            .string()
+            .trim()
+            .min(1)
+            .max(100)
+            .nullable()
+            .describe("Unique in the journal; null for none."),
+          description: z.string().trim().min(1).max(500),
+          lines: z
+            .array(entryLineInput)
+            .min(1)
+            .describe("Every line but the bank account's, e.g. bank costs on an expense account."),
+        }),
+      ]),
+      note: z
+        .string()
+        .trim()
+        .min(1)
+        .max(2000)
+        .describe(
+          "For the person reviewing: what the transaction is, how you chose the booking, and what to check.",
+        ),
+    }),
+    output: z.object({ transaction: z.string(), proposal: z.literal("proposed") }),
+    async run(books, input, answerer) {
+      const { request, by } = answering(
+        answerer,
+        { kind: "transaction", id: input.transaction },
+        input.request,
+      );
+      const [described, transaction] = await Promise.all([
+        books.describe(),
+        requireTransaction(books, input.transaction),
+      ]);
+      const index = indexBooks(described);
+      const { booking } = input;
+      let proposed: TransactionBooking;
+      if (booking.type === "payment") {
+        if (transaction.detail.type === "opening-balance") {
+          refuse(
+            "An opening balance is no payment: propose an entry booking it against the balances it opened with.",
+          );
+        }
+        const partyAccount = index.partyAccount(booking.role, booking.code);
+        const { currency } = transaction.bankAccount;
+        proposed = {
+          type: "payment",
+          partyAccountId: partyAccount.id,
+          settles: settlementsOf(
+            booking.settles,
+            transaction,
+            await books.listOpenItems({ partyAccountId: partyAccount.id }),
+            currency,
+            index.minorUnitDigits(currency),
+          ),
+        };
+      } else {
+        const journal = index.journal(booking.journal);
+        const entry = { ...booking, postingDate: transaction.bookingDate };
+        const lines = ledgerLinesOf(entry, index, described);
+        refuseInactive(booking.lines, index);
+        // Only bank accounts take entries of some source documents only.
+        const banked = booking.lines.find(
+          (line) => index.account(line.account).sourceKinds !== null,
+        );
+        if (banked) {
+          refuse(
+            `Account ${banked.account} is a bank account: Bookkeeping adds the line on the transaction's own bank account, so propose only the other lines.`,
+          );
+        }
+        const functionalDigits = index.minorUnitDigits(described.functionalCurrency);
+        // What the lines move, debits less credits, and the bank's line moves the other way.
+        const movedMinor = lines.reduce(
+          (sum, line) =>
+            sum +
+            (line.side === "debit" ? line.functionalAmountMinor : -line.functionalAmountMinor),
+          0n,
+        );
+        if (movedMinor !== -transaction.amountMinor) {
+          const amount = decimalAmount(
+            transaction.amountMinor < 0n ? -transaction.amountMinor : transaction.amountMinor,
+            functionalDigits,
+          );
+          refuse(
+            `The lines do not balance the bank account's line, a ${transaction.amountMinor > 0n ? "debit" : "credit"} of ${amount}: together they must come to a ${transaction.amountMinor > 0n ? "credit" : "debit"} of ${amount}.`,
+          );
+        }
+        proposed = {
+          type: "entry",
+          journalId: journal.id,
+          reference: booking.reference,
+          description: booking.description,
+          lines: proposedLinesOf(lines, booking.lines, index, functionalDigits),
+        };
+      }
+      settled(
+        await books.answerTransactionRequest({
+          transactionId: transaction.id,
+          request,
+          answer: {
+            status: "proposed",
+            booking: proposed,
+            note: input.note,
+            by,
+            at: new Date().toISOString(),
+          },
+        }),
+      );
+      return { transaction: transaction.id, proposal: "proposed" as const };
+    },
+  }),
+
+  answerAction({
+    id: "bank.transactions.decline",
+    label: "Propose no booking for a bank transaction",
+    description:
+      "Says why you propose no booking for a bank transaction to book, such as one the books lack what it needs for, so a person books it themselves. An answer to a request counts only while the transaction awaits it; one to no request replaces the earlier answer.",
+    input: z.strictObject({
+      transaction: z.string().min(1).describe("The transaction's ID."),
+      request: requestInput,
+      reason: z.string().trim().min(1).max(2000).describe("Why, for the person who books it."),
+    }),
+    output: z.object({ transaction: z.string(), proposal: z.literal("declined") }),
+    async run(books, input, answerer) {
+      const { request, by } = answering(
+        answerer,
+        { kind: "transaction", id: input.transaction },
+        input.request,
+      );
+      const transaction = await requireTransaction(books, input.transaction);
+      settled(
+        await books.answerTransactionRequest({
+          transactionId: transaction.id,
+          request,
+          answer: { status: "declined", reason: input.reason, by, at: new Date().toISOString() },
+        }),
+      );
+      return { transaction: transaction.id, proposal: "declined" as const };
     },
   }),
 
@@ -1713,7 +2166,7 @@ export function isBooksAction(actionId: string): boolean {
 }
 
 const FIRM_AGENT_KEEPS_NOTHING =
-  "A firm's bookkeeping agent reads its clients' books and proposes documents' entries; people change them, in their client's project.";
+  "A firm's bookkeeping agent reads its clients' books and proposes how to book their documents and bank transactions; people change them, in their client's project.";
 
 /**
  * The administration a call keeps the books of, and where it runs: the administration's own
@@ -1770,15 +2223,19 @@ async function administrationOf(
 }
 
 /**
- * Answers a request for a proposal, then revokes the document's shares: the firm's agent is done
- * with its file. Should that fail, the document's page revokes them when it shows the answer.
+ * Answers a request for a proposal, then revokes the shares of a document it answered about: the
+ * firm's agent is done with its file. Should that fail, the document's page revokes them when it
+ * shows the answer.
  */
 async function answerThenRelease(
   env: CloudflareEnv,
   administration: Administration,
-  answer: () => Promise<{ document: string }>,
-): Promise<{ document: string }> {
+  answer: () => Promise<Answered>,
+): Promise<Answered> {
   const answered = await answer();
+  if (!("document" in answered)) {
+    return answered;
+  }
   try {
     await releaseDocument(env, administration, answered.document);
   } catch (error) {
@@ -1820,7 +2277,7 @@ export async function runBooksAction(
       if (action.access !== "answer" || workplace.kind !== "firm-agent") {
         throw new ActionFailure(
           403,
-          "Automations without a person behind them read the books: people change them, and the firm's bookkeeping agent proposes documents' entries.",
+          "Automations without a person behind them read the books: people change them, and the firm's bookkeeping agent proposes how to book documents and bank transactions.",
         );
       }
       return Response.json(

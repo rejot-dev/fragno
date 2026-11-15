@@ -11,7 +11,7 @@ import {
   BANK_TRANSACTION_SOURCE_KIND,
   BankingError,
   createBankingFragment,
-  transactionState,
+  describedTransaction,
   type BankingErrorCode,
 } from "./banking/banking";
 import type { Statement } from "./banking/camt053";
@@ -79,7 +79,10 @@ export class Books extends DurableObject<CloudflareEnv> {
       { databaseAdapter },
       { ledger: this.ledger.services, proposals: this.proposals.services },
     );
-    this.banking = createBankingFragment({ databaseAdapter }, { ledger: this.ledger.services });
+    this.banking = createBankingFragment(
+      { databaseAdapter },
+      { ledger: this.ledger.services, proposals: this.proposals.services },
+    );
     void ctx.blockConcurrencyWhile(async () => {
       await migrate(this.ledger);
       await migrate(this.proposals);
@@ -406,20 +409,27 @@ export class Books extends DurableObject<CloudflareEnv> {
     const page = await this.banking.callServices(() =>
       this.banking.services.listTransactions(input),
     );
-    const sources = await this.ledger.callServices(() =>
-      this.ledger.services.getSourceDocuments({ ids: page.items.map((item) => item.id) }),
-    );
+    const ids = page.items.map((item) => item.id);
+    const [sources, proposals] = await this.ledger.callServices(() => [
+      this.ledger.services.getSourceDocuments({ ids }),
+      this.proposals.services.getProposals({ ids }),
+    ]);
     return {
       cursor: page.cursor,
-      items: page.items.map((transaction) => {
-        const source = sources.find((row) => row.id === transaction.id) ?? null;
-        return { ...transaction, source, state: transactionState(source) };
-      }),
+      items: page.items.map((transaction) => describedTransaction(transaction, sources, proposals)),
     };
   }
 
   getTransaction(id: string) {
     return this.banking.callServices(() => this.banking.services.getTransaction(id));
+  }
+
+  requestTransactionProposal(input: Parameters<Banking["services"]["requestProposal"]>[0]) {
+    return attempt(this.banking.callServices(() => this.banking.services.requestProposal(input)));
+  }
+
+  answerTransactionRequest(input: Parameters<Banking["services"]["answerRequest"]>[0]) {
+    return attempt(this.banking.callServices(() => this.banking.services.answerRequest(input)));
   }
 
   /**

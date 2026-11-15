@@ -1,7 +1,7 @@
 import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import { Link } from "react-router";
 
-import type { TransactionState } from "../../workers/books/banking/banking";
+import type { DescribedTransaction } from "../../workers/books/banking/banking";
 import { formatAmount } from "../../workers/books/money";
 import type { SourceDocument } from "../../workers/books/sources";
 import { entryPath, indexBooks } from "../books/books";
@@ -31,15 +31,25 @@ export function transactionEntries(source: SourceDocument | null, context: Books
   });
 }
 
-/** Whether a transaction is to book, or booked by an entry it links to. */
+/**
+ * Whether a transaction is to book, with a booking the bookkeeping agent proposes or not; or booked
+ * by an entry it links to.
+ */
 export function TransactionStatus({
   transaction,
   context,
 }: {
-  transaction: { source: SourceDocument | null; state: TransactionState };
+  transaction: Pick<DescribedTransaction, "source" | "state" | "proposal">;
   context: BooksOutletContext;
 }) {
-  const { state } = transaction;
+  const { state, proposal } = transaction;
+  if (state.status === "to-book" && proposal?.status === "proposed") {
+    return (
+      <BackofficeStatusLight tone="info">
+        {proposal.booking.type === "payment" ? "Payment proposed" : "Entry proposed"}
+      </BackofficeStatusLight>
+    );
+  }
   if (state.status === "to-book") {
     return <BackofficeStatusLight tone="waiting">To book</BackofficeStatusLight>;
   }

@@ -1,9 +1,11 @@
 import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import { Callout } from "@fragno-private/design-system/feedback/callout";
 import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import { PageHeading } from "@fragno-private/design-system/layout/page-heading";
 import {
   SurfaceCard,
   SurfaceFacts,
+  SurfacePanelBody,
   SurfaceSection,
   SurfaceTable,
   SurfaceTableRow,
@@ -11,7 +13,12 @@ import {
 import { Link, useOutletContext } from "react-router";
 import { z } from "zod";
 
-import type { DocumentView } from "../../workers/books/documents/documents";
+import { ASK, BookkeeperProposal, ProposedLines } from "../books/bookkeeper-proposal";
+import {
+  askBookkeeper,
+  releaseDocumentIfDone,
+  withBookkeeperProgress,
+} from "../books/bookkeeper.server";
 import { formatDate } from "../books/books";
 import {
   formResult,
@@ -23,14 +30,7 @@ import {
 import { FormDialog } from "../books/forms";
 import type { BooksOutletContext } from "../books/layout";
 import type { Route } from "./+types/document";
-import {
-  askBookkeeper,
-  readBookkeeperProgress,
-  releaseDocumentIfDone,
-  type BookkeeperProgress,
-} from "./bookkeeper.server";
 import { DocumentPreview } from "./preview";
-import { ASK, BookkeeperProposal } from "./review";
 import { documentEntries, DocumentStatus } from "./status";
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -48,32 +48,19 @@ async function requireDocument(
   return document;
 }
 
-/** The document, and how far the bookkeeping agent got with a request still unanswered. */
-async function documentWithProgress(
-  context: Awaited<ReturnType<typeof requireBooks>>,
-  documentId: string,
-): Promise<{ document: DocumentView; progress: BookkeeperProgress | null }> {
-  const document = await requireDocument(context, documentId);
-  const { proposal } = document;
-  if (document.state.status !== "to-book" || proposal?.status !== "requested") {
-    await releaseDocumentIfDone(context, document);
-    return { document, progress: null };
-  }
-  const progress = await readBookkeeperProgress(context, proposal.requestId);
-  if (["queued", "running", "unknown"].includes(progress.status)) {
-    return { document, progress };
-  }
-  // The agent answers before its turn ends, so a turn that ended may have answered since.
-  const reread = await requireDocument(context, documentId);
-  if (reread.proposal?.status === "requested" && reread.proposal.requestId === proposal.requestId) {
-    return { document: reread, progress };
-  }
-  return await documentWithProgress(context, documentId);
-}
-
+/**
+ * The document, and how far the bookkeeping agent got with a request still unanswered. The shares
+ * of a document whose request was answered, or that is booked or dismissed, are revoked.
+ */
 export async function loader({ request, params }: Route.LoaderArgs) {
   const context = await requireBooks(request, params);
-  return await documentWithProgress(context, params.documentId);
+  const { subject: document, progress } = await withBookkeeperProgress(context, () =>
+    requireDocument(context, params.documentId),
+  );
+  if (progress === null) {
+    await releaseDocumentIfDone(context, document);
+  }
+  return { document, progress };
 }
 
 export function headers() {
@@ -93,11 +80,8 @@ export async function action({ request, params }: Route.ActionArgs): Promise<For
     return parsed.refusal;
   }
   if (parsed.data.intent === ASK) {
-    const asked = await askBookkeeper(
-      context,
-      await requireDocument(context, params.documentId),
-      "again",
-    );
+    const document = await requireDocument(context, params.documentId);
+    const asked = await askBookkeeper(context, [{ kind: "document", document }], "again");
     return { intent: ASK, error: asked.ok ? null : asked.error };
   }
   return formResult(
@@ -243,9 +227,32 @@ export default function DocumentPage({ loaderData, actionData }: Route.Component
       )}
       {state.status === "to-book" ? (
         <BookkeeperProposal
-          document={document}
+          subject="document"
+          proposal={document.proposal}
           progress={progress}
-          context={context}
+          proposed={
+            document.proposal?.status === "proposed" ? (
+              <>
+                <SurfacePanelBody>
+                  <div className="space-y-3">
+                    <Callout tone="info" title="Proposed entry">
+                      {document.proposal.note}
+                    </Callout>
+                    <p className="text-sm text-[var(--bo-muted)]">
+                      {document.proposal.booking.description}
+                      {document.proposal.booking.reference === null
+                        ? ""
+                        : ` · ${document.proposal.booking.reference}`}{" "}
+                      · posted {formatDate(document.proposal.booking.postingDate)}, document dated{" "}
+                      {formatDate(document.proposal.booking.documentDate)}. Review and book fills
+                      the new entry in from it.
+                    </p>
+                  </div>
+                </SurfacePanelBody>
+                <ProposedLines lines={document.proposal.booking.lines} context={context} />
+              </>
+            ) : null
+          }
           result={actionData}
         />
       ) : null}

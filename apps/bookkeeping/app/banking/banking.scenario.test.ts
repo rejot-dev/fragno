@@ -18,10 +18,16 @@ import type { BankAccountView, TransactionView } from "../../workers/books/banki
 import type { BooksOutletContext } from "../books/layout";
 
 const BOOKS = "/w/analytical-engines/a/analytical-engines";
+/** The firm keeping Analytical Engines' books, and the project of its bookkeeping agent. */
+const FIRM = "lovelace-co";
+const FIRM_AGENT = "Bookkeeping agent";
 const YEAR = new Date().getUTCFullYear();
 
 type Books = BooksOutletContext["books"];
-type Listed = Pick<TransactionView, "id" | "bookingDate" | "amountMinor" | "detail" | "state">;
+type Listed = Pick<
+  TransactionView,
+  "id" | "bookingDate" | "amountMinor" | "detail" | "state" | "proposal"
+>;
 
 /** Ada's practice keeps the books of Analytical Engines, which she has just opened. */
 async function openBooks(scenario: BookkeepingScenario) {
@@ -33,6 +39,21 @@ async function openBooks(scenario: BookkeepingScenario) {
 async function readBooks(browser: ScenarioBrowser): Promise<Books> {
   const page = await browser.navigate(`${BOOKS}/settings`);
   return (page.loaderData["books/layout"] as { books: Books }).books;
+}
+
+/**
+ * The firm's bookkeeping agent, which Bookkeeping prompts as its installation in the firm's agent
+ * project; its calls name the administration whose books they keep.
+ */
+async function firmAgent(scenario: BookkeepingScenario, browser: ScenarioBrowser) {
+  const page = await browser.navigate(`${BOOKS}/settings`);
+  const { administration } = page.loaderData["books/layout"] as { administration: { id: string } };
+  const agent = scenario.agent("installation", { organization: FIRM, project: FIRM_AGENT });
+  return {
+    administration,
+    call: async (actionId: string, input: Record<string, unknown>) =>
+      await agent.call(actionId, { administration: administration.id, ...input }),
+  };
 }
 
 function find<T extends { code: string; id: string }>(rows: T[], code: string): T {
@@ -73,6 +94,11 @@ async function importStatements(
   return page.actionData;
 }
 
+/** The IDs of `count` transactions an import brought. */
+function ids(count: number) {
+  return Array.from({ length: count }, () => expect.any(String));
+}
+
 async function bankAccount(browser: ScenarioBrowser, bankAccountId: string, show = "to-book") {
   const page = await browser.navigate(`${BOOKS}/bank/${bankAccountId}?show=${show}`);
   return page.loaderData["banking/account"] as {
@@ -93,6 +119,7 @@ async function transactionPage(browser: ScenarioBrowser, transactionId: string, 
   );
   return page.loaderData["banking/transaction"] as {
     transaction: TransactionView;
+    progress: { status: string } | null;
     suggested: string[];
     partyAccountId: string | null;
     items: { id: string; entry: { reference: string | null }; outstandingMinor: bigint }[];
@@ -264,13 +291,13 @@ test("statements are imported once, oldest first, each continuing the one before
 
     expect(await importStatements(charles, current, [march])).toMatchObject({
       error: null,
-      imported: { imported: 1, skipped: 0, transactions: 4 },
+      imported: { imported: 1, skipped: 0, transactionIds: ids(4) },
     });
     expect(await importStatements(charles, current, [april, march])).toMatchObject({
-      imported: { imported: 1, skipped: 1, transactions: 1 },
+      imported: { imported: 1, skipped: 1, transactionIds: ids(1) },
     });
     expect(await importStatements(charles, current, [march])).toMatchObject({
-      imported: { imported: 0, skipped: 1, transactions: 0 },
+      imported: { imported: 0, skipped: 1, transactionIds: [] },
     });
     // Once imported, a statement is what it said then.
     expect(
@@ -496,6 +523,264 @@ test("payments are booked against what they pay, until the bank account adds up 
     expect((await toBook(ada, current)).map((transaction) => transaction.id)).toEqual([byron.id]);
     page = await transactionPage(ada, byron.id);
     expect(page.items.map((item) => item.outstandingMinor)).toEqual([12_100n]);
+  });
+});
+
+test("importing asks the bookkeeping agent how to book what the books cannot match, and members book its proposals", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    await addParty(ada, { name: "Lady Byron", role: "customer", code: "C001" });
+    // The workshop is not named as the bank names Babbage Instruments.
+    await addParty(ada, { name: "Charles's workshop", role: "supplier", code: "S001" });
+    const books = await readBooks(ada);
+    await post(ada, books, {
+      journal: "SAL",
+      date: `${YEAR}-03-01`,
+      description: "Invoice 1",
+      reference: "INV-1",
+      lines: [
+        { account: "1300", debit: "121.00", party: "C001" },
+        { account: "8000", credit: "100.00" },
+        { account: "1700", credit: "21.00" },
+      ],
+    });
+    await post(ada, books, {
+      journal: "PUR",
+      date: `${YEAR}-03-02`,
+      description: "Brass gears",
+      reference: "PO-77",
+      lines: [
+        { account: "7000", debit: "900.00" },
+        { account: "1600", credit: "900.00", party: "S001" },
+      ],
+    });
+    const current = await addCurrentAccount(ada);
+
+    // Lady Byron's payment names the invoice it pays in full, and the opening balance is what the
+    // books held before, which the bank does not say: the agent is asked about the other two, each
+    // in a subagent of its own.
+    expect(await importStatements(ada, current, [marchStatement(YEAR)])).toMatchObject({
+      error: null,
+      asked: { ok: true, count: 2 },
+    });
+    const [opening, byron, babbage, costs] = await toBook(ada, current);
+    const agent = await firmAgent(scenario, ada);
+    const prefix = (transactionId: string) =>
+      `transaction:${agent.administration.id}:${transactionId}:`;
+    const prompts = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
+    expect(prompts).toMatchObject([
+      { agentName: "bookkeeper", requestId: `${prefix(babbage.id)}import`, subagent: true },
+      { agentName: "bookkeeper", requestId: `${prefix(costs.id)}import`, subagent: true },
+    ]);
+    expect(prompts[0].content).toContain("bank.transactions.get");
+    const [babbageRequest, costsRequest] = prompts.map((prompt) => prompt.requestId);
+    expect(await transactionPage(ada, costs.id)).toMatchObject({
+      transaction: { proposal: { status: "requested", requestId: costsRequest } },
+      progress: { status: "queued" },
+    });
+
+    expect(await agent.call("bank.transactions.get", { transaction: babbage.id })).toMatchObject({
+      status: 200,
+      body: {
+        bookingDate: `${YEAR}-03-20`,
+        amount: `-${(INVOICE.totalCents / 100).toFixed(2)}`,
+        kind: "payment",
+        parts: [{ name: INVOICE.supplier.name, remittance: INVOICE.number }],
+        status: "to-book",
+        proposal: "requested",
+        bankAccount: { id: current, account: "1000", journal: "BNK" },
+        knownParties: [],
+      },
+    });
+    const listed = await agent.call("bank.transactions.list", {
+      bankAccount: current,
+      status: "to-book",
+      cursor: null,
+    });
+    expect(listed).toMatchObject({ status: 200, body: { cursor: null } });
+    expect((listed.body as { transactions: unknown[] }).transactions).toHaveLength(4);
+
+    // The bank costs: every line but the bank account's, which the books add, balancing it.
+    const costsEntry = (
+      lines: { account: string; side: "debit" | "credit"; amount: string }[],
+    ) => ({
+      transaction: costs.id,
+      request: costsRequest,
+      booking: {
+        type: "entry",
+        journal: "BNK",
+        reference: null,
+        description: "Bank costs, March",
+        lines: lines.map((line) => ({
+          ...line,
+          currency: null,
+          functionalAmount: null,
+          description: "",
+          party: null,
+          dueDate: null,
+          dimensions: {},
+        })),
+      },
+      note: "The bank's monthly costs.",
+    });
+    expect(
+      await agent.call(
+        "bank.transactions.propose",
+        costsEntry([{ account: "4000", side: "debit", amount: "10.00" }]),
+      ),
+    ).toEqual({
+      status: 422,
+      body: {
+        message:
+          "The lines do not balance the bank account's line, a credit of 12.50: together they must come to a debit of 12.50.",
+      },
+    });
+    expect(
+      await agent.call(
+        "bank.transactions.propose",
+        costsEntry([
+          { account: "4000", side: "debit", amount: "25.00" },
+          { account: "1000", side: "credit", amount: "12.50" },
+        ]),
+      ),
+    ).toMatchObject({
+      status: 422,
+      body: {
+        message:
+          "Account 1000 is a bank account: Bookkeeping adds the line on the transaction's own bank account, so propose only the other lines.",
+      },
+    });
+    // The agent answers each transaction's own request.
+    expect(
+      await agent.call("bank.transactions.propose", {
+        ...costsEntry([{ account: "4000", side: "debit", amount: "12.50" }]),
+        request: babbageRequest,
+      }),
+    ).toMatchObject({
+      status: 422,
+      body: {
+        message: `${babbageRequest} is no request about this bank transaction: give \`request\` whole, as the request names it, beginning ${prefix(costs.id)}.`,
+      },
+    });
+    expect(
+      await agent.call(
+        "bank.transactions.propose",
+        costsEntry([{ account: "4000", side: "debit", amount: "12.50" }]),
+      ),
+    ).toEqual({ status: 200, body: { transaction: costs.id, proposal: "proposed" } });
+
+    // Babbage Instruments is the workshop: the payment settles part of its open bill.
+    const { body: openItems } = await agent.call("parties.open-items", {
+      role: "supplier",
+      code: "S001",
+    });
+    const [bill] = (openItems as { items: { id: string; reference: string | null }[] }).items;
+    expect(bill).toMatchObject({ reference: "PO-77" });
+    const { body: customerItems } = await agent.call("parties.open-items", {
+      role: "customer",
+      code: "C001",
+    });
+    const [invoice] = (customerItems as { items: { id: string }[] }).items;
+    const payment = (settles: { item: string; amount: string }[]) => ({
+      transaction: babbage.id,
+      request: babbageRequest,
+      booking: { type: "payment", role: "supplier", code: "S001", settles },
+      note: "Babbage Instruments trades as Charles's workshop: this pays most of PO-77.",
+    });
+    expect(
+      await agent.call(
+        "bank.transactions.propose",
+        payment([{ item: invoice.id, amount: "1.00" }]),
+      ),
+    ).toMatchObject({
+      status: 422,
+      body: {
+        message: `${invoice.id} is no open item of theirs with something outstanding: parties.open-items lists them.`,
+      },
+    });
+    expect(
+      await agent.call("bank.transactions.propose", payment([{ item: bill.id, amount: "900.00" }])),
+    ).toMatchObject({
+      status: 422,
+      body: {
+        message: `The settlements come to 900.00, more than the payment's ${(INVOICE.totalCents / 100).toFixed(2)}.`,
+      },
+    });
+    const paid = (INVOICE.totalCents / 100).toFixed(2);
+    expect(
+      await agent.call("bank.transactions.propose", payment([{ item: bill.id, amount: paid }])),
+    ).toEqual({ status: 200, body: { transaction: babbage.id, proposal: "proposed" } });
+
+    // The payment form starts from the proposal, and Ada books it as proposed.
+    const page = await transactionPage(ada, babbage.id);
+    const workshop = find(
+      books.parties.flatMap((party) => party.accounts),
+      "S001",
+    ).id;
+    expect(page).toMatchObject({
+      transaction: { proposal: { status: "proposed", by: "the bookkeeping agent" } },
+      partyAccountId: workshop,
+      preselected: { [bill.id]: BigInt(INVOICE.totalCents) },
+    });
+    await ada.submit(`${BOOKS}/bank/transactions/${babbage.id}`, {
+      partyAccountId: workshop,
+      settle: bill.id,
+      [`amount.${bill.id}`]: paid,
+    });
+
+    // Review and book fills the new entry in from the proposed lines, which Ada posts.
+    const form = await ada.navigate(`${BOOKS}/entries/new?transaction=${costs.id}`);
+    expect(form.loaderData["books/new-entry"]).toMatchObject({
+      transaction: {
+        proposal: {
+          status: "proposed",
+          booking: { type: "entry", lines: [{ side: "debit", amount: "12.50" }] },
+        },
+      },
+    });
+    await post(
+      ada,
+      books,
+      {
+        journal: "BNK",
+        date: `${YEAR}-03-31`,
+        description: "Bank costs, March",
+        reference: "",
+        lines: [{ account: "4000", debit: "12.50" }],
+      },
+      costs.id,
+    );
+
+    // A booked transaction takes no more answers, even a person's, which answer no request.
+    const adaAgent = scenario.agent(
+      { email: "ada@example.test" },
+      { organization: "analytical-engines", project: "Analytical Engines" },
+    );
+    expect(
+      await adaAgent.call("bank.transactions.decline", {
+        transaction: costs.id,
+        request: null,
+        reason: "Not sure.",
+      }),
+    ).toEqual({
+      status: 422,
+      body: { message: "This bank transaction is booked. Reverse its entry first." },
+    });
+
+    // A member asks about the opening balance themselves. Lady Byron's payment waits for a member
+    // to book it as the payment form suggests.
+    await ada.submit(`${BOOKS}/bank/transactions/${opening.id}`, { intent: "ask" });
+    const asked = scenario.backoffice.prompts(FIRM, FIRM_AGENT).at(-1)!;
+    assert(asked.requestId.startsWith(prefix(opening.id)), asked.requestId);
+    expect(
+      (await toBook(ada, current)).map((transaction) => [
+        transaction.id,
+        transaction.proposal?.status ?? null,
+      ]),
+    ).toEqual([
+      [opening.id, "requested"],
+      [byron.id, null],
+    ]);
   });
 });
 
