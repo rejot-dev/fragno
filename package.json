@@ -27,6 +27,7 @@
     "lint:fix:root": "node scripts/run-package-quality.mjs lint:fix --root",
     "clean": "find . -type d \\( -name dist -o -name node_modules -o -name .turbo -o -name .next -o -name .output -o -name .nuxt -o -name .react-router -o -name .open-next -o -name .source -o -name .svelte-kit -o -name .tanstack \\) -prune -exec rm -rf {} + -o -name tsconfig.tsbuildinfo -o -name coverage.json -exec rm -f {} +",
     "clean:install": "pnpm run clean && pnpm install",
+    "cache:prune": "node scripts/prune-turbo-cache.mjs",
     "build": "turbo run build",
     "build:pi": "turbo run build --filter='./.pi/**'",
     "build:fast": "turbo run build --output-logs=errors-only --filter='...[main...HEAD]' --filter='./packages/**'",
