@@ -156,7 +156,7 @@ type AutomationWorkflowsServiceBase = WorkflowsFragmentServices;
 type AutomationWorkflowsInstanceStatus = InstanceStatus;
 export type AutomationWorkflowsService = Pick<
   AutomationWorkflowsServiceBase,
-  "createInstance" | "getInstanceStatus" | "sendEvent"
+  "restartOrCreateInstance" | "getInstanceStatus" | "sendEvent"
 > & {
   getInstanceStatusBatch?: (
     workflowName: string,
@@ -269,6 +269,15 @@ type CommitRouteDispatch = <TResult, TRetrieveSuccessResult = TResult>(
   effect: (() => TxResult<TResult, TRetrieveSuccessResult>) | null,
 ) => Promise<void>;
 
+/**
+ * Commits a route's effect with the outcome that what the effect read names, such as whether the
+ * workflow run it starts exists already.
+ */
+type CompleteRouteDispatch = <TResult, TRead>(
+  effect: () => TxResult<TResult, TRead>,
+  outcomeOf: (read: TRead) => AutomationRouteDispatchOutcome,
+) => Promise<void>;
+
 type RouteExecutionContext = {
   event: AutomationEvent;
   route: AutomationRouteDefinition;
@@ -360,12 +369,14 @@ const handleStartWorkflowRouteAction = async ({
   routingKey,
   workflows,
   commitDispatch,
+  completeDispatch,
   config,
   linkedUserId,
   ownerScope,
 }: RouteExecutionContext & {
   action: AutomationStartWorkflowAction;
   config: Pick<AutomationFragmentConfig, "readAutomationSource">;
+  completeDispatch: CompleteRouteDispatch;
 }) => {
   const acting = routeActionExecution({
     authority: action.authority,
@@ -405,18 +416,26 @@ const handleStartWorkflowRouteAction = async ({
     replyTo: null,
   });
 
-  await commitDispatch(
-    {
-      kind: "workflow_started",
-      workflowName: workflowInput.workflowName,
-      instanceId: workflowInput.instanceId,
-    },
+  // An instance ID can name a run per thing, such as one per incident, so a run that exists
+  // already, running or finished, stays as it is and the route skips.
+  await completeDispatch(
     () =>
-      workflows.createInstance(workflowInput.workflowName, {
+      workflows.restartOrCreateInstance(workflowInput.workflowName, {
         id: workflowInput.instanceId,
-        params: workflowInput.params,
-        remoteWorkflowName: workflowInput.remoteWorkflowName,
+        create: {
+          params: workflowInput.params,
+          remoteWorkflowName: workflowInput.remoteWorkflowName,
+        },
+        restart: null,
       }),
+    ([existing]) =>
+      existing
+        ? { kind: "skipped", reason: "workflow_instance_exists" }
+        : {
+            kind: "workflow_started",
+            workflowName: workflowInput.workflowName,
+            instanceId: workflowInput.instanceId,
+          },
   );
 };
 
@@ -1096,6 +1115,21 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                   : this.handlerTx().withServiceCalls(() => [effect(), record()] as const)
               ).execute();
             };
+            const completeDispatch: CompleteRouteDispatch = async (effect, outcomeOf) => {
+              await this.handlerTx()
+                .withServiceCalls(
+                  () =>
+                    [
+                      services.completeRouteDispatch({
+                        ...subject,
+                        effect,
+                        outcomeOf,
+                        failedAttempts: this.attempts,
+                      }),
+                    ] as const,
+                )
+                .execute();
+            };
             const context = {
               event,
               route,
@@ -1109,7 +1143,12 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             const action = route.action;
             switch (action.kind) {
               case "start_workflow":
-                await handleStartWorkflowRouteAction({ ...context, action, config });
+                await handleStartWorkflowRouteAction({
+                  ...context,
+                  action,
+                  config,
+                  completeDispatch,
+                });
                 break;
 
               case "send_workflow_event":

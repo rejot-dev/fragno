@@ -28,7 +28,7 @@ const actors = {
 } as const;
 
 const noOpWorkflows = {
-  createInstance: async () => ({}),
+  restartOrCreateInstance: async () => ({}),
   getInstanceStatus: async () => [],
   sendEvent: async () => ({}),
 } as unknown as AutomationWorkflowsService;

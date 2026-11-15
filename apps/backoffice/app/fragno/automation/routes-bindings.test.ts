@@ -33,7 +33,7 @@ const createAutomation = async (
     workflows:
       options.workflows ??
       ({
-        createInstance: async () => ({}),
+        restartOrCreateInstance: async () => ({}),
         getInstanceStatus: async () => [],
         getLiveInstanceState: async () => ({}),
         restoreInstanceState: async () => ({}),
@@ -560,16 +560,16 @@ describe("automation routes /routes", () => {
   test("start workflow routes use the fixed automation workflow host", async () => {
     const starts: Array<{
       workflowName: string;
-      input: { id: string; remoteWorkflowName?: string };
+      input: { id: string; create: { remoteWorkflowName?: string } };
     }> = [];
     fragment = await createAutomation({
       workflowFiles: {
         "/workspace/automations/custom-start.workflow.js": `export default defineWorkflow({ name: "custom-start" }, async (event) => event.payload);`,
       },
       workflows: {
-        createInstance: async (
+        restartOrCreateInstance: async (
           workflowName: string,
-          input: { id: string; remoteWorkflowName?: string },
+          input: { id: string; create: { remoteWorkflowName?: string } },
         ) => {
           starts.push({ workflowName, input });
           return {};
@@ -625,7 +625,7 @@ describe("automation routes /routes", () => {
         workflowName: "codemode-script",
         input: expect.objectContaining({
           id: "custom-start-thing-1",
-          remoteWorkflowName: "custom-start",
+          create: expect.objectContaining({ remoteWorkflowName: "custom-start" }),
         }),
       },
     ]);
@@ -639,7 +639,7 @@ describe("automation routes /routes", () => {
     }> = [];
     fragment = await createAutomation({
       workflows: {
-        createInstance: async () => ({}),
+        restartOrCreateInstance: async () => ({}),
         getInstanceStatus: async () => [],
         sendEvent: async (
           workflowName: string,

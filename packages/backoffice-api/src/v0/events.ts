@@ -180,16 +180,19 @@ export const automationEventListResultSchema = z.lazy(() =>
 /**
  * Why a matched route did nothing. `no_linked_external_sender`: a linked-user route only acts for
  * an external sender linked to a user, and the event had none. `workflow_instance_unresolved`: the
- * route's target instance id rendered empty. `caused_by_notified_agent`: the agent's own turns
- * produced the event, and notifying it would let the agent wake itself. `caused_by_notified_app`:
- * the app caused the event, even through a reclassifying or forwarding route, and notifying it
- * could let the app answer each notification with another. `app_not_installed`: the app is not installed, or its
+ * route's target instance id rendered empty. `workflow_instance_exists`: a run with the instance id
+ * the route rendered exists already, running or finished, so the route left it as it is.
+ * `caused_by_notified_agent`: the agent's own turns produced the event, and notifying it would let
+ * the agent wake itself. `caused_by_notified_app`: the app caused the event, even through a
+ * reclassifying or forwarding route, and notifying it could let the app answer each notification
+ * with another. `app_not_installed`: the app is not installed, or its
  * installation does not reach the event's scope. `app_cannot_read_events`: the installation lacks
  * `events.read`, so the app could not read the event it would be told about.
  */
 export type AutomationRouteDispatchSkipReason =
   | "no_linked_external_sender"
   | "workflow_instance_unresolved"
+  | "workflow_instance_exists"
   | "caused_by_notified_agent"
   | "caused_by_notified_app"
   | "app_not_installed"
@@ -262,6 +265,7 @@ const automationRouteDispatchOutcomeSchema: z.ZodType<AutomationRouteDispatchOut
       reason: z.enum([
         "no_linked_external_sender",
         "workflow_instance_unresolved",
+        "workflow_instance_exists",
         "caused_by_notified_agent",
         "caused_by_notified_app",
         "app_not_installed",

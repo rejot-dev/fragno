@@ -100,7 +100,7 @@ const createAutomationFragmentForEventRuntimeTest = (idSeed: string) =>
     },
     {
       workflows: {
-        createInstance: async () => ({}),
+        restartOrCreateInstance: async () => ({}),
         getInstanceStatus: async () => [],
         sendEvent: async () => ({}),
       } as unknown as AutomationWorkflowsService,
