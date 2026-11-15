@@ -69,9 +69,9 @@ const administrationInput = z
   );
 
 /**
- * Who answers a document's review: the bookkeeping agent, which Bookkeeping prompts as its
- * installation so that it can answer reviews and nothing else, answers the request asking it; a
- * person answers whether asked or not.
+ * Who answers a request for a proposal for a document: the bookkeeping agent, which Bookkeeping
+ * prompts as its installation so that it can answer such requests and nothing else, answers the
+ * request asking it; a person answers whether asked or not.
  */
 type Answerer =
   | { kind: "bookkeeping-agent"; administrationId: string }
@@ -136,9 +136,9 @@ function settled<T>(outcome: Outcome<T>): T {
 
 /**
  * Who may run an action: `read` anyone Backoffice signs for; `consult`, which asks the firm keeping
- * the books and changes nothing in them, anyone in the administration's own project; `review`,
- * which answers a document's review and posts nothing, people and the firm's bookkeeping agent;
- * `keep` people; and `set-up` owners and admins.
+ * the books and changes nothing in them, anyone in the administration's own project; `answer`,
+ * which answers a request for a proposal for a document and posts nothing, people and the firm's
+ * bookkeeping agent; `keep` people; and `set-up` owners and admins.
  */
 type BooksAction = { declaration: AppAction } & (
   | {
@@ -150,7 +150,7 @@ type BooksAction = { declaration: AppAction } & (
       run(env: CloudflareEnv, input: unknown, administration: Administration): Promise<unknown>;
     }
   | {
-      access: "review";
+      access: "answer";
       run(books: BooksStub, input: unknown, answerer: Answerer): Promise<{ document: string }>;
     }
   | {
@@ -219,15 +219,15 @@ function consultAction<TInput extends z.ZodObject, TOutput extends z.ZodType>(
   };
 }
 
-/** An action answering a document's review, which says which document it answered. */
-function reviewAction<TInput extends z.ZodObject, TOutput extends z.ZodType<{ document: string }>>(
+/** An action answering a request for a proposal, which says which document it answered about. */
+function answerAction<TInput extends z.ZodObject, TOutput extends z.ZodType<{ document: string }>>(
   definition: ActionDefinition<TInput, TOutput> & {
     run(books: BooksStub, input: z.output<TInput>, answerer: Answerer): Promise<z.input<TOutput>>;
   },
 ): BooksAction {
   return {
     declaration: declare(definition),
-    access: "review",
+    access: "answer",
     run: async (books, input, answerer) =>
       definition.output.parse(
         await definition.run(books, parse(definition.input, input), answerer),
@@ -531,7 +531,7 @@ const documentOutput = z.object({
     .date()
     .nullable()
     .describe("The date it was first booked with, which booking it again keeps."),
-  review: z
+  proposal: z
     .enum(["requested", "proposed", "declined", "withdrawn"])
     .nullable()
     .describe(
@@ -562,7 +562,7 @@ async function documentOutputOf(
       number: booking.entryNumber,
     },
     documentDate: source?.documentDate ?? null,
-    review: document.review?.status ?? null,
+    proposal: document.proposal?.status ?? null,
   };
 }
 
@@ -1399,7 +1399,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     },
   }),
 
-  reviewAction({
+  answerAction({
     id: "documents.propose",
     label: "Propose a document's entry",
     description:
@@ -1420,7 +1420,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
           "For the person reviewing: what the document is, how you chose the accounts, and what to check, such as a supplier the books lack.",
         ),
     }),
-    output: z.object({ document: z.string(), review: z.literal("proposed") }),
+    output: z.object({ document: z.string(), proposal: z.literal("proposed") }),
     async run(books, input, answerer) {
       const { request, by } = answering(answerer, input.document, input.request);
       const described = await books.describe();
@@ -1451,12 +1451,12 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
         );
       }
       settled(
-        await books.answerReview({
+        await books.answerDocumentRequest({
           documentId: input.document,
           request,
           answer: {
             status: "proposed",
-            entry: {
+            booking: {
               journalId: journal.id,
               postingDate: input.entry.postingDate,
               documentDate: input.documentDate,
@@ -1480,11 +1480,11 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
           },
         }),
       );
-      return { document: input.document, review: "proposed" as const };
+      return { document: input.document, proposal: "proposed" as const };
     },
   }),
 
-  reviewAction({
+  answerAction({
     id: "documents.decline",
     label: "Propose no entry for a document",
     description:
@@ -1494,12 +1494,12 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
       request: requestInput,
       reason: z.string().trim().min(1).max(2000).describe("Why, for the person who books it."),
     }),
-    output: z.object({ document: z.string(), review: z.literal("declined") }),
+    output: z.object({ document: z.string(), proposal: z.literal("declined") }),
     async run(books, input, answerer) {
       const { request, by } = answering(answerer, input.document, input.request);
       await requireDocument(books, input.document);
       settled(
-        await books.answerReview({
+        await books.answerDocumentRequest({
           documentId: input.document,
           request,
           answer: {
@@ -1510,7 +1510,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
           },
         }),
       );
-      return { document: input.document, review: "declined" as const };
+      return { document: input.document, proposal: "declined" as const };
     },
   }),
 
@@ -1750,7 +1750,7 @@ async function administrationOf(
       "This Backoffice project is not an administration in Bookkeeping.",
     );
   }
-  if (claims.actor.kind !== "installation" || (access !== "read" && access !== "review")) {
+  if (claims.actor.kind !== "installation" || (access !== "read" && access !== "answer")) {
     throw new ActionFailure(403, FIRM_AGENT_KEEPS_NOTHING);
   }
   if (named === undefined) {
@@ -1770,8 +1770,8 @@ async function administrationOf(
 }
 
 /**
- * Answers a document's review, then revokes the document's shares: the firm's agent is done with
- * its file. Should that fail, the document's page revokes them when it shows the answer.
+ * Answers a request for a proposal, then revokes the document's shares: the firm's agent is done
+ * with its file. Should that fail, the document's page revokes them when it shows the answer.
  */
 async function answerThenRelease(
   env: CloudflareEnv,
@@ -1782,7 +1782,7 @@ async function answerThenRelease(
   try {
     await releaseDocument(env, administration, answered.document);
   } catch (error) {
-    console.warn("Bookkeeping could not revoke a reviewed document's shares.", error);
+    console.warn("Bookkeeping could not revoke an answered document's shares.", error);
   }
   return answered;
 }
@@ -1790,8 +1790,8 @@ async function answerThenRelease(
 /**
  * Runs a books action Backoffice signed, on the books of the administration `administrationOf`
  * finds. Reads are for anyone Backoffice signs for, and so is asking the firm, from the
- * administration's own project; answering a document's review also for the
- * firm's bookkeeping agent, which calls as Bookkeeping's installation in the firm's agent project;
+ * administration's own project; answering a request for a proposal also for the firm's
+ * bookkeeping agent, which calls as Bookkeeping's installation in the firm's agent project;
  * changing the books is for people whose membership Bookkeeping confirms, and setting them up for
  * owners and admins. Bookkeeping prompts the client's own agent as its installation too, in the
  * administration's project, where the installation reads.
@@ -1817,7 +1817,7 @@ export async function runBooksAction(
       return Response.json(await action.run(env, actionInput, administration));
     }
     if (claims.actor.kind === "installation") {
-      if (action.access !== "review" || workplace.kind !== "firm-agent") {
+      if (action.access !== "answer" || workplace.kind !== "firm-agent") {
         throw new ActionFailure(
           403,
           "Automations without a person behind them read the books: people change them, and the firm's bookkeeping agent proposes documents' entries.",
@@ -1838,7 +1838,7 @@ export async function runBooksAction(
     }
     // Entries and settlements show they were made through Backoffice, e.g. by the person's agent.
     const viaBackoffice = { name: `${person.name} via Backoffice` };
-    if (action.access === "review") {
+    if (action.access === "answer") {
       return Response.json(
         await answerThenRelease(env, administration, () =>
           action.run(books, actionInput, { kind: "person", person: viaBackoffice }),

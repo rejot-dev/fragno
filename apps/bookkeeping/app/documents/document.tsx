@@ -30,7 +30,7 @@ import {
   type BookkeeperProgress,
 } from "./bookkeeper.server";
 import { DocumentPreview } from "./preview";
-import { ASK, BookkeeperReview } from "./review";
+import { ASK, BookkeeperProposal } from "./review";
 import { documentEntries, DocumentStatus } from "./status";
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -54,18 +54,18 @@ async function documentWithProgress(
   documentId: string,
 ): Promise<{ document: DocumentView; progress: BookkeeperProgress | null }> {
   const document = await requireDocument(context, documentId);
-  const { review } = document;
-  if (document.state.status !== "to-book" || review?.status !== "requested") {
+  const { proposal } = document;
+  if (document.state.status !== "to-book" || proposal?.status !== "requested") {
     await releaseDocumentIfDone(context, document);
     return { document, progress: null };
   }
-  const progress = await readBookkeeperProgress(context, review.requestId);
+  const progress = await readBookkeeperProgress(context, proposal.requestId);
   if (["queued", "running", "unknown"].includes(progress.status)) {
     return { document, progress };
   }
   // The agent answers before its turn ends, so a turn that ended may have answered since.
   const reread = await requireDocument(context, documentId);
-  if (reread.review?.status === "requested" && reread.review.requestId === review.requestId) {
+  if (reread.proposal?.status === "requested" && reread.proposal.requestId === proposal.requestId) {
     return { document: reread, progress };
   }
   return await documentWithProgress(context, documentId);
@@ -155,7 +155,7 @@ export default function DocumentPage({ loaderData, actionData }: Route.Component
                 {null}
               </FormDialog>
               <ButtonLink variant="solid" to={`${base}/entries/new?document=${document.id}`}>
-                {document.review?.status === "proposed"
+                {document.proposal?.status === "proposed"
                   ? "Review and book"
                   : entries.length === 0
                     ? "Book"
@@ -242,7 +242,7 @@ export default function DocumentPage({ loaderData, actionData }: Route.Component
         </SurfaceSection>
       )}
       {state.status === "to-book" ? (
-        <BookkeeperReview
+        <BookkeeperProposal
           document={document}
           progress={progress}
           context={context}

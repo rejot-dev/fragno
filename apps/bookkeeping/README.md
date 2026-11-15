@@ -276,16 +276,16 @@ closing entries.
 Only people close and lock periods, on the settings page. Changing the books needs a person: calls
 Backoffice makes as the installation, for automations such as the agents Bookkeeping prompts, only
 read, and in a firm's agent project, where the [bookkeeping agent](#the-bookkeeping-agent) works,
-also answer documents' reviews, which posts nothing. The [books' assistant](#asking-about-the-books)
-in the administration's project only reads, and asks the firm (`firm.ask`), which changes nothing in
-the books. In a firm's agent project only the installation's calls are taken: people keep their
-clients' books in the clients' projects. The person must have signed in to Bookkeeping, which names
-them on the entries and settlements their agent makes ("Ada Lovelace via Backoffice"). Their roles
-are confirmed as the pages confirm them: a membership Backoffice confirmed within the last minute is
-trusted, otherwise Bookkeeping asks Backoffice again with their stored authorization. An entry's
-reference, such as an invoice number, is unique in its journal, so an agent posting again after a
-lost answer cannot post twice. The ledger's refusals answer HTTP 422 with its message, which
-Backoffice passes to the agent.
+also answer requests for proposals for documents, which posts nothing. The
+[books' assistant](#asking-about-the-books) in the administration's project only reads, and asks the
+firm (`firm.ask`), which changes nothing in the books. In a firm's agent project only the
+installation's calls are taken: people keep their clients' books in the clients' projects. The
+person must have signed in to Bookkeeping, which names them on the entries and settlements their
+agent makes ("Ada Lovelace via Backoffice"). Their roles are confirmed as the pages confirm them: a
+membership Backoffice confirmed within the last minute is trusted, otherwise Bookkeeping asks
+Backoffice again with their stored authorization. An entry's reference, such as an invoice number,
+is unique in its journal, so an agent posting again after a lost answer cannot post twice. The
+ledger's refusals answer HTTP 422 with its message, which Backoffice passes to the agent.
 
 After changing the actions, run `pnpm backoffice:connect` to register them.
 
@@ -419,8 +419,8 @@ project with the firm's agent project (`shares.create`), which reads them read-o
 under `/shared/document-<hash>/` (`shares.accept`); asking again reuses the share that stands. A
 document's ID is unique only in its administration, and the firm's agent serves all its clients, so
 the share's name hashes the administration's ID with the document's, and the prompt's request ID
-names both. Answering the review revokes the share, as does the document's page when it shows a
-document whose review was answered, or that was booked or dismissed, so the firm reads a client's
+names both. Answering the request revokes the share, as does the document's page when it shows a
+document whose request was answered, or that was booked or dismissed, so the firm reads a client's
 file only while it is asked about it. Each request records that the file may be shared, and a
 revocation records that it is not, so revoking asks Backoffice only while the file may be shared. A
 request asked while a revocation runs may reuse the share it revokes, so a revocation that finds a
@@ -428,7 +428,7 @@ request awaiting an answer shares the file again. An answer may also come while 
 shared for its request, before the share exists, so sharing records the file shared again
 afterwards, and revokes it again, without asking the agent, when the request no longer awaits an
 answer. Bookkeeping asks as its installation, not as the person, so the agent's calls to Bookkeeping
-arrive as the installation's: they read the books and answer reviews (`documents.propose` and
+arrive as the installation's: they read the books and answer requests (`documents.propose` and
 `documents.decline`), and every other change is refused, whatever a document tells the agent. The
 agent comes from the `bookkeeper-agent` [package](#agent-packages) installed in the firm's project,
 which grants it `upload.read`, `models.extract`, `integrations.read` (to read the actions' input
@@ -449,12 +449,14 @@ the documents list marks documents with a proposal. A proposal is checked agains
 made, and again by the ledger when booked: it puts no line on a bank account, which `books.describe`
 marks `bank`, as the bank's transaction books the payment.
 
-Each document records its review: asked, under a request ID; the proposed entry; or the reason it
-proposes none. The request is recorded before the agent is set up and asked, so one that never
-reached it shows. While it is unanswered the document's page asks Backoffice where it stands with
-`pi.prompt.get`: waiting, running, failed with the reason, finished without an answer, or never
-received; or that Backoffice cannot say, e.g. while it cannot be reached. For a request the agent
-received, it also lists the steps of the agent's work so far, from the subagent's
+Each document has the agent's proposal (`workers/books/proposals`, a fragment that keeps them for
+anything to book): asked, under a request ID; the proposed entry; or the reason it proposes none. It
+is the latest word on the document, not a history, and no approval: people book as they see fit, and
+the proposal only fills in the form. The request is recorded before the agent is set up and asked,
+so one that never reached it shows. While it is unanswered the document's page asks Backoffice where
+it stands with `pi.prompt.get`: waiting, running, failed with the reason, finished without an
+answer, or never received; or that Backoffice cannot say, e.g. while it cannot be reached. For a
+request the agent received, it also lists the steps of the agent's work so far, from the subagent's
 `pi.agent.activity`: Bookkeeping's own actions it ran, its reads of the file with `models.extract`,
 and its other work, as work. What that work was stays on the server: it follows the firm's skills
 and instructions, which are the firm's, not the client's. The agent answers before its turn ends, so
@@ -468,9 +470,9 @@ answer must name a request about the document, whose IDs all begin
 `document:<administration ID>:<document ID>:`: one that does not, as when the agent shortened the
 ID, is refused with how to give it, rather than as a request answered since, which the agent stops
 at. A person's agent may answer without a request, replacing any answer. The upload asks under one
-request ID, and only while the document has no review, so sending it again, even twice at once, asks
-once and never undoes an answer. Booking or dismissing a document ends its review: the agent's
-actions refuse documents that are not to book.
+request ID, and only while the document has no proposal, so sending it again, even twice at once,
+asks once and never undoes an answer. Booking or dismissing a document ends its proposal's requests:
+the agent's actions refuse documents that are not to book.
 
 ### Bank accounts
 
@@ -542,9 +544,10 @@ agent's newest compaction, load a page at a time through `ask/history`, which re
 `pi.agent.history` as the person too.
 
 The chat shows the agent's work as Bookkeeping's steps, such as "Read an account's lines 1000", not
-its code: `app/books/agent-steps.ts` names them for the chat and for a document's review alike. The
-agent links what it names with relative links by code, such as `accounts/1000` or `entries/SAL/3`,
-which `app/ask/books-links.ts` resolves to the pages before Streamdown's hardening would block them.
+its code: `app/books/agent-steps.ts` names them for the chat and for the agent's work on a proposal
+alike. The agent links what it names with relative links by code, such as `accounts/1000` or
+`entries/SAL/3`, which `app/ask/books-links.ts` resolves to the pages before Streamdown's hardening
+would block them.
 
 Files attached to a message are uploaded through `ask/documents` as the books' documents when it is
 sent, and Bookkeeping asks the firm's bookkeeping agent about each, as for uploads on the documents

@@ -617,7 +617,7 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     expect(prompt.content).toContain(agent.administration.id);
     expect(prompt.content).toContain(sharedFile);
     expect(await readDocument(ada, id)).toMatchObject({
-      review: { status: "requested", requestId: prompt.requestId, by: "Ada Lovelace" },
+      proposal: { status: "requested", requestId: prompt.requestId, by: "Ada Lovelace" },
     });
     expect(await readProgress(ada, id)).toEqual({
       requestId: prompt.requestId,
@@ -708,8 +708,8 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     });
     expect(JSON.stringify(running.loaderData)).not.toMatch(/secret/u);
 
-    // Bookkeeping prompts the agent as its installation, so its calls change nothing but reviews,
-    // whatever a document tells it.
+    // Bookkeeping prompts the agent as its installation, so its calls change nothing but its
+    // answers, whatever a document tells it.
     expect(
       await agent.call("entries.post", proposal(id, null, INVOICE_TOTAL, INVOICE_TOTAL).entry),
     ).toEqual({
@@ -726,7 +726,7 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
         mediaType: "application/pdf",
         status: "to-book",
         bookedIn: null,
-        review: "requested",
+        proposal: "requested",
       }),
     });
     // An agent that shortens the request's ID is told how to give it, not that the request is over.
@@ -740,7 +740,7 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       },
     });
     expect(await readDocument(ada, id)).toMatchObject({
-      review: { status: "requested", requestId: prompt.requestId },
+      proposal: { status: "requested", requestId: prompt.requestId },
     });
     expect(
       await agent.call(
@@ -762,13 +762,13 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
         ),
       ).toEqual({
         status: 200,
-        body: { document: id, review: "proposed" },
+        body: { document: id, proposal: "proposed" },
       });
       scenario.backoffice.settlePrompt(prompt.requestId, { status: "completed", answer: null });
     });
     const answered = await ada.navigate(`${BOOKS}/documents/${id}`);
     expect(answered.loaderData["documents/document"]).toMatchObject({
-      document: { review: { status: "proposed" } },
+      document: { proposal: { status: "proposed" } },
       progress: null,
     });
     // Having answered, the agent no longer reads the document's file.
@@ -779,9 +779,9 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
 
     const { books } = await readBooks(ada);
     const document = await readDocument(ada, id);
-    expect(document.review).toEqual({
+    expect(document.proposal).toEqual({
       status: "proposed",
-      entry: {
+      booking: {
         journalId: find(books.journals, "PUR").id,
         postingDate: `${YEAR}-03-02`,
         documentDate: INVOICE.invoiceDate,
@@ -800,10 +800,10 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     // The new-entry form starts from the proposal, and Ada books it as proposed.
     const form = await ada.navigate(`${BOOKS}/entries/new?document=${id}`);
     expect(form.loaderData["books/new-entry"]).toMatchObject({
-      document: { review: { status: "proposed" } },
+      document: { proposal: { status: "proposed" } },
     });
-    assert(document.review?.status === "proposed");
-    const { entry } = document.review;
+    assert(document.proposal?.status === "proposed");
+    const { booking: entry } = document.proposal;
     const booked = await book(ada, id, {
       journalId: entry.journalId,
       postingDate: entry.postingDate,
@@ -825,12 +825,13 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       state: { status: "booked" },
       source: { documentDate: INVOICE.invoiceDate, entries: [{ entryNumber: 1 }] },
     });
-    // A booked document takes no more proposals.
+    // A booked document takes no more proposals, even one answering no request.
+    const adaAgent = scenario.agent(
+      { email: "ada@example.test" },
+      { organization: CLIENT, project: ADMINISTRATION },
+    );
     expect(
-      await agent.call(
-        "documents.propose",
-        proposal(id, prompt.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
-      ),
+      await adaAgent.call("documents.propose", proposal(id, null, INVOICE_TOTAL, INVOICE_TOTAL)),
     ).toEqual({
       status: 422,
       body: { message: "This document is booked. Reverse its entry first." },
@@ -853,8 +854,7 @@ test("the agent's answer counts only while the document awaits the request it an
     const notAwaited = {
       status: 422,
       body: {
-        message:
-          "This request no longer awaits an answer: the document was answered, or asked about again, since.",
+        message: "This request no longer awaits an answer: it was answered, or asked again, since.",
       },
     };
 
@@ -870,7 +870,7 @@ test("the agent's answer counts only while the document awaits the request it an
         "documents.propose",
         proposal(id, second.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
       ),
-    ).toEqual({ status: 200, body: { document: id, review: "proposed" } });
+    ).toEqual({ status: 200, body: { document: id, proposal: "proposed" } });
     // Answering stopped sharing the file, so a subagent still reading it can no longer, and may
     // decline: neither request awaits an answer now, and the agent answers no request but its own.
     const late = { document: id, reason: "I cannot read the file." };
@@ -887,7 +887,7 @@ test("the agent's answer counts only while the document awaits the request it an
       },
     });
     expect(await readDocument(ada, id)).toMatchObject({
-      review: { status: "proposed", by: "the bookkeeping agent" },
+      proposal: { status: "proposed", by: "the bookkeeping agent" },
     });
 
     // A person answers whether asked or not, replacing the agent's answer. Its file is shared with
@@ -903,9 +903,9 @@ test("the agent's answer counts only while the document awaits the request it an
         request: null,
         reason: "A duplicate of invoice 6.",
       }),
-    ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+    ).toEqual({ status: 200, body: { document: id, proposal: "declined" } });
     expect(await readDocument(ada, id)).toMatchObject({
-      review: { status: "declined", by: "Ada Lovelace via Backoffice" },
+      proposal: { status: "declined", by: "Ada Lovelace via Backoffice" },
     });
     expect(scenario.backoffice.operationCount("shares.list")).toBe(asked);
   });
@@ -970,7 +970,7 @@ test("a document's page revokes the shares answering could not, then asks Backof
         "documents.propose",
         proposal(id, prompt.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
       ),
-    ).toEqual({ status: 200, body: { document: id, review: "proposed" } });
+    ).toEqual({ status: 200, body: { document: id, proposal: "proposed" } });
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toHaveLength(1);
 
     // The page showing the answer revokes them, and records that the file is shared no more, so
@@ -1001,14 +1001,14 @@ test("a share made but not accepted for a request answered meanwhile is revoked"
           request: null,
           reason: "A duplicate of invoice 6.",
         }),
-      ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+      ).toEqual({ status: 200, body: { document: id, proposal: "declined" } });
     });
     scenario.backoffice.failNextRequest("shares.accept");
     await upload(ada, invoiceFixture, id);
 
     expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
     expect(await readDocument(ada, id)).toMatchObject({
-      review: { status: "declined" },
+      proposal: { status: "declined" },
       shared: false,
     });
   });
@@ -1030,9 +1030,9 @@ test("revoking after an answer shares the file again for a newer request", async
         "documents.propose",
         proposal(id, prompt.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
       ),
-    ).toEqual({ status: 200, body: { document: id, review: "proposed" } });
+    ).toEqual({ status: 200, body: { document: id, proposal: "proposed" } });
     expect(await readDocument(ada, id)).toMatchObject({
-      review: { status: "requested" },
+      proposal: { status: "requested" },
       shared: true,
     });
     // The revocation saw her request awaiting an answer and shared the file again.
@@ -1061,7 +1061,7 @@ test("a share made for a request answered meanwhile is revoked again", async () 
             request: second.requestId,
             reason: "This is a price list.",
           }),
-        ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+        ).toEqual({ status: 200, body: { document: id, proposal: "declined" } });
       });
     });
     expect(
@@ -1069,13 +1069,13 @@ test("a share made for a request answered meanwhile is revoked again", async () 
         "documents.propose",
         proposal(id, first.requestId, INVOICE_TOTAL, INVOICE_TOTAL),
       ),
-    ).toEqual({ status: 200, body: { document: id, review: "proposed" } });
+    ).toEqual({ status: 200, body: { document: id, proposal: "proposed" } });
 
     // The share made for the answered request does not outlive it.
     expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
     expect(await readDocument(ada, id)).toMatchObject({
-      review: { status: "declined" },
+      proposal: { status: "declined" },
       shared: false,
     });
   });
@@ -1097,7 +1097,7 @@ test("a request answered by a person while it is shared is neither left shared n
           request: null,
           reason: "A duplicate of invoice 6.",
         }),
-      ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+      ).toEqual({ status: 200, body: { document: id, proposal: "declined" } });
     });
     await upload(ada, invoiceFixture, id);
 
@@ -1107,7 +1107,7 @@ test("a request answered by a person while it is shared is neither left shared n
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
     expect(scenario.backoffice.prompts(FIRM, FIRM_AGENT)).toEqual([]);
     expect(await readDocument(ada, id)).toMatchObject({
-      review: { status: "declined", by: "Ada Lovelace via Backoffice" },
+      proposal: { status: "declined", by: "Ada Lovelace via Backoffice" },
       shared: false,
     });
   });
@@ -1150,9 +1150,9 @@ test("ending a client's management withdraws what its firm's agent was asked, an
     // the document no more, and the page says why it will not answer.
     scenario.backoffice.admin.setManager(CLIENT, null);
     scenario.advanceTime(61_000);
-    expect(await readDocument(charles, id)).toMatchObject({ review: WITHDRAWN, shared: false });
+    expect(await readDocument(charles, id)).toMatchObject({ proposal: WITHDRAWN, shared: false });
     expect(await readDocument(charles, answered)).toMatchObject({
-      review: { status: "declined", reason: "This is a price list." },
+      proposal: { status: "declined", reason: "This is a price list." },
     });
     expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
@@ -1196,7 +1196,7 @@ test("a firm's dashboard withdraws what it asked about a client it no longer man
     }
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
     for (const id of ids) {
-      expect(await readDocument(charles, id)).toMatchObject({ review: WITHDRAWN, shared: false });
+      expect(await readDocument(charles, id)).toMatchObject({ proposal: WITHDRAWN, shared: false });
     }
   });
 });
@@ -1214,7 +1214,7 @@ test("ending management revokes an answered document's shares that answering cou
         request: prompt.requestId,
         reason: "This is a price list.",
       }),
-    ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+    ).toEqual({ status: 200, body: { document: id, proposal: "declined" } });
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toHaveLength(1);
 
     // Nobody opens the document's page, but the firm's dashboard learns that management ended.
@@ -1289,7 +1289,7 @@ test("a withdrawal that failed is retried, though the client has no member of it
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
     expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
     expect(await scenario.env.BOOKS.getByName(administration.id).getDocument(id)).toMatchObject({
-      review: WITHDRAWN,
+      proposal: WITHDRAWN,
       shared: false,
     });
   });
@@ -1324,9 +1324,9 @@ test("moving a client to another firm withdraws only what the former firm was as
     await scenario.runDueAlarms();
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
     expect(scenario.backoffice.mountedShares(second, FIRM_AGENT)).toHaveLength(1);
-    expect(await readDocument(charles, asked)).toMatchObject({ review: WITHDRAWN });
+    expect(await readDocument(charles, asked)).toMatchObject({ proposal: WITHDRAWN });
     expect(await readDocument(charles, id)).toMatchObject({
-      review: { status: "requested", requestId: prompt.requestId },
+      proposal: { status: "requested", requestId: prompt.requestId },
     });
     const secondAgent = scenario.agent("installation", {
       organization: second,
@@ -1347,7 +1347,7 @@ test("a request read under the former firm is not sent once its requests were wi
     const charles = await inviteCharles(scenario, ada);
     // Charles's upload read the firm, then management ends, and the firm's dashboard withdraws its
     // requests, before his request is recorded.
-    scenario.beforeNextCall("BOOKS", "requestReview", async () => {
+    scenario.beforeNextCall("BOOKS", "requestDocumentProposal", async () => {
       scenario.backoffice.admin.setManager(CLIENT, null);
       await ada.navigate(firmPath);
     });
@@ -1355,7 +1355,7 @@ test("a request read under the former firm is not sent once its requests were wi
     expect(scenario.backoffice.prompts(FIRM, FIRM_AGENT)).toEqual([]);
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
     expect(scenario.backoffice.standingShares(CLIENT, ADMINISTRATION)).toEqual([]);
-    expect(await readDocument(charles, id)).toMatchObject({ review: null });
+    expect(await readDocument(charles, id)).toMatchObject({ proposal: null });
   });
 });
 
@@ -1429,8 +1429,8 @@ test("a request the agent never received, or failed, is asked again from the doc
     scenario.backoffice.failNextRequest("pi.prompt.submit");
     const id = await uploaded(ada, pdf("Babbage Instruments, invoice 10"));
     expect(scenario.backoffice.prompts(FIRM, FIRM_AGENT)).toEqual([]);
-    const { review } = await readDocument(ada, id);
-    assert(review?.status === "requested");
+    const { proposal: lost } = await readDocument(ada, id);
+    assert(lost?.status === "requested");
     expect(await readProgress(ada, id)).toEqual({ status: "lost" });
     // While Backoffice cannot be reached, the page shows the document and that it cannot say.
     scenario.backoffice.setReachable(false);
@@ -1452,7 +1452,7 @@ test("a request the agent never received, or failed, is asked again from the doc
     });
     const [first, ...more] = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
     expect(more).toEqual([]);
-    expect(first.requestId).not.toBe(review.requestId);
+    expect(first.requestId).not.toBe(lost.requestId);
     scenario.backoffice.settlePrompt(first.requestId, {
       status: "failed",
       reason: "The model is unavailable.",
@@ -1478,11 +1478,11 @@ test("a request the agent never received, or failed, is asked again from the doc
         request: second.requestId,
         reason: "This is a price list.",
       }),
-    ).toEqual({ status: 200, body: { document: id, review: "declined" } });
+    ).toEqual({ status: 200, body: { document: id, proposal: "declined" } });
     // Having answered, the agent no longer reads the document's file.
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
     expect(await readDocument(ada, id)).toMatchObject({
-      review: { status: "declined", reason: "This is a price list." },
+      proposal: { status: "declined", reason: "This is a price list." },
     });
     // Asking after the answer shares the file again, under the name the revoked share held.
     await ada.submit(`${BOOKS}/documents/${id}`, ask);

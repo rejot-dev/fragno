@@ -5,7 +5,7 @@ import type { DocumentView } from "../../workers/books/documents/documents";
 import { entryPath, indexBooks } from "../books/books";
 import type { BooksOutletContext } from "../books/layout";
 
-type Document = Pick<DocumentView, "source" | "state" | "review">;
+type Document = Pick<DocumentView, "source" | "state" | "proposal">;
 
 /** The entries recording a document, named by their journal's code, e.g. `PUR 3`. */
 export function documentEntries(document: Document, context: BooksOutletContext) {
@@ -33,7 +33,7 @@ export function DocumentStatus({
   context: BooksOutletContext;
 }) {
   const { state } = document;
-  if (state.status === "to-book" && document.review?.status === "proposed") {
+  if (state.status === "to-book" && document.proposal?.status === "proposed") {
     return <BackofficeStatusLight tone="info">Entry proposed</BackofficeStatusLight>;
   }
   if (state.status === "to-book") {
