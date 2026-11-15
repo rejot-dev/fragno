@@ -140,7 +140,7 @@ function parseLines(
         const valueId = field(`dimension.${dimension.id}`);
         return valueId === "" || valueId === "none" ? [] : [valueId];
       }),
-      openItem: partyAccountId === "" ? null : { partyAccountId, dueDate },
+      openItem: partyAccountId === "" ? null : { partyAccountId, dueDate, settles: [] },
     });
   }
   if (lines.length < 2) {

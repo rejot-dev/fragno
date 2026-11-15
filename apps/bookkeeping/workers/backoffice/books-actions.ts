@@ -500,6 +500,7 @@ function ledgerLinesOf(
           : {
               partyAccountId: index.partyAccount(partyRole, line.party).id,
               dueDate: line.dueDate ?? input.postingDate,
+              settles: [],
             },
     };
   });

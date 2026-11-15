@@ -19,6 +19,8 @@ type Line = {
   party?: string;
   dueDate?: string;
   dimensions?: string[];
+  /** Open items the line settles, as an entry's name and line number, with the amount. */
+  settles?: { item: readonly [entry: string, line: number]; amount: bigint }[];
 };
 
 type Posting = {
@@ -283,18 +285,29 @@ class LedgerScenario {
                   documentDate: date,
                   description: posting.name,
                 },
-          lines: posting.lines.map((line) => ({
-            accountId: this.id(line.account),
-            side: line.side,
-            currency: line.currency ?? "EUR",
-            amountMinor: String(line.amount),
-            functionalAmountMinor: String(line.functionalAmount ?? line.amount),
-            description: "",
-            dimensionValueIds: (line.dimensions ?? []).map((dimension) => this.id(dimension)),
-            openItem: line.party
-              ? { partyAccountId: this.id(line.party), dueDate: line.dueDate ?? "2026-02-10" }
-              : null,
-          })),
+          lines: await Promise.all(
+            posting.lines.map(async (line) => ({
+              accountId: this.id(line.account),
+              side: line.side,
+              currency: line.currency ?? "EUR",
+              amountMinor: String(line.amount),
+              functionalAmountMinor: String(line.functionalAmount ?? line.amount),
+              description: "",
+              dimensionValueIds: (line.dimensions ?? []).map((dimension) => this.id(dimension)),
+              openItem: line.party
+                ? {
+                    partyAccountId: this.id(line.party),
+                    dueDate: line.dueDate ?? "2026-02-10",
+                    settles: await Promise.all(
+                      (line.settles ?? []).map(async (settlement) => ({
+                        openItemId: await this.openItemId(...settlement.item),
+                        amountMinor: String(settlement.amount),
+                      })),
+                    ),
+                  }
+                : null,
+            })),
+          ),
         },
       }),
     );
