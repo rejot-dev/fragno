@@ -1,4 +1,4 @@
-import { assert, expect, test } from "vitest";
+import { afterEach, assert, expect, test, vi } from "vitest";
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,8 +25,15 @@ import {
 
 import registerCloudflareMcpCommand from "./index.js";
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 test("Cloudflare stays opt-in and native codemode discovers and calls its MCP servers", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pi-cloudflare-mcp-"));
+  // The MCP extension reads mcp.json, credentials, and its log from the global agent directory, not
+  // the session's, so servers configured on this machine would otherwise join the scenario.
+  vi.stubEnv("PI_CODING_AGENT_DIR", directory);
   const counters = new Map<string, number>();
   const createTransport: McpTransportFactory = (entry) => {
     const { client, server } = createInMemoryTransportPair();
