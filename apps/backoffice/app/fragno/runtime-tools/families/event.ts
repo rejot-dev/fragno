@@ -82,8 +82,11 @@ function formatRouteDispatch(route: AutomationEventRouteDispatch): string {
       return `${name}: retrying after ${attempts(route.failedAttempts)}, last error: ${route.error}`;
     case "failed":
       return `${name}: failed for good after ${attempts(route.failedAttempts)}: ${route.error}`;
-    case "completed":
-      return `${name}: completed, ${route.outcome.kind}${route.failedAttempts > 0 ? ` after ${attempts(route.failedAttempts)}` : ""}`;
+    case "completed": {
+      const { outcome } = route;
+      const did = outcome.kind === "skipped" ? `skipped, ${outcome.reason}` : outcome.kind;
+      return `${name}: completed, ${did}${route.failedAttempts > 0 ? ` after ${attempts(route.failedAttempts)}` : ""}`;
+    }
   }
   throw new Error("Unsupported automation route dispatch status.");
 }

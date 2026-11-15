@@ -252,6 +252,7 @@ const DISPATCH_STATUS: Record<AutomationRouteDispatchState["status"], CausalFlam
 const SKIP_REASON_LABEL: Record<AutomationRouteDispatchSkipReason, string> = {
   no_linked_external_sender: "No external sender linked to a user",
   workflow_instance_unresolved: "No workflow run matched the route's target",
+  workflow_instance_exists: "A run with this ID exists already",
   caused_by_notified_agent: "The agent's own turns caused the event",
   caused_by_notified_app: "The app caused the event",
   app_not_installed: "The app is not installed here",

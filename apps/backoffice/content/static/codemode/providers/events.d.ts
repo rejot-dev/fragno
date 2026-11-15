@@ -655,6 +655,7 @@ type EventsListOutput = {
                       reason:
                         | "no_linked_external_sender"
                         | "workflow_instance_unresolved"
+                        | "workflow_instance_exists"
                         | "caused_by_notified_agent"
                         | "caused_by_notified_app"
                         | "app_not_installed"
@@ -1077,6 +1078,7 @@ type EventsGetOutput = {
                     reason:
                       | "no_linked_external_sender"
                       | "workflow_instance_unresolved"
+                      | "workflow_instance_exists"
                       | "caused_by_notified_agent"
                       | "caused_by_notified_app"
                       | "app_not_installed"
@@ -1210,6 +1212,7 @@ type EventsRoutesListOutput = {
                 reason:
                   | "no_linked_external_sender"
                   | "workflow_instance_unresolved"
+                  | "workflow_instance_exists"
                   | "caused_by_notified_agent"
                   | "caused_by_notified_app"
                   | "app_not_installed"
@@ -1361,6 +1364,7 @@ type EventsRoutesRetryOutput =
             reason:
               | "no_linked_external_sender"
               | "workflow_instance_unresolved"
+              | "workflow_instance_exists"
               | "caused_by_notified_agent"
               | "caused_by_notified_app"
               | "app_not_installed"

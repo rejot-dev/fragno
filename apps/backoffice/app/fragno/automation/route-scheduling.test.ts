@@ -17,13 +17,13 @@ const scheduledAction = {
 
 const createAutomation = async ({
   now,
-  createInstance,
+  restartOrCreateInstance,
 }: {
   now: () => Date;
-  createInstance?: ReturnType<typeof vi.fn>;
+  restartOrCreateInstance?: ReturnType<typeof vi.fn>;
 }) => {
   const workflows = {
-    createInstance: createInstance ?? vi.fn(async () => ({})),
+    restartOrCreateInstance: restartOrCreateInstance ?? vi.fn(async () => ({})),
     getInstanceStatus: async () => [],
     sendEvent: async () => ({}),
   } as unknown as AutomationWorkflowsService;
@@ -52,13 +52,13 @@ const createAutomation = async ({
 };
 
 let databaseTime: Date;
-let createInstance: ReturnType<typeof vi.fn>;
+let restartOrCreateInstance: ReturnType<typeof vi.fn>;
 let fragment: Awaited<ReturnType<typeof createAutomation>>;
 
 beforeEach(async () => {
   databaseTime = new Date("2040-01-01T00:00:00.000Z");
-  createInstance = vi.fn(async () => ({}));
-  fragment = await createAutomation({ now: () => databaseTime, createInstance });
+  restartOrCreateInstance = vi.fn(async () => ({}));
+  fragment = await createAutomation({ now: () => databaseTime, restartOrCreateInstance });
 });
 
 describe("scheduled automation route triggers", () => {
@@ -124,7 +124,7 @@ describe("scheduled automation route triggers", () => {
     databaseTime = new Date("2040-01-01T00:01:30.000Z");
     await drainDurableHooks(fragment);
 
-    expect(createInstance).toHaveBeenCalledTimes(1);
+    expect(restartOrCreateInstance).toHaveBeenCalledTimes(1);
     const route = await fragment.callRoute("GET", "/routes/:routeId", {
       pathParams: { routeId: "heartbeat" },
     });
@@ -195,7 +195,7 @@ describe("scheduled automation route triggers", () => {
 
     databaseTime = new Date("2040-01-01T00:02:00.000Z");
     await drainDurableHooks(fragment);
-    expect(createInstance).toHaveBeenCalledTimes(1);
+    expect(restartOrCreateInstance).toHaveBeenCalledTimes(1);
 
     await fragment.callRoute("PATCH", "/routes/:routeId", {
       pathParams: { routeId: "one-time-reminder" },
@@ -212,7 +212,7 @@ describe("scheduled automation route triggers", () => {
     });
     assert(route.type === "json");
     expect(route.data.nextOccurrenceAt).toBeNull();
-    expect(createInstance).toHaveBeenCalledTimes(1);
+    expect(restartOrCreateInstance).toHaveBeenCalledTimes(1);
   });
 
   test("rejects cron cadences without a possible occurrence", async () => {
@@ -264,11 +264,11 @@ describe("scheduled automation route triggers", () => {
 
     databaseTime = new Date("2040-01-01T00:02:00.000Z");
     await drainDurableHooks(fragment);
-    expect(createInstance).not.toHaveBeenCalled();
+    expect(restartOrCreateInstance).not.toHaveBeenCalled();
 
     databaseTime = new Date("2040-01-01T00:06:00.000Z");
     await drainDurableHooks(fragment);
-    expect(createInstance).toHaveBeenCalledTimes(1);
+    expect(restartOrCreateInstance).toHaveBeenCalledTimes(1);
   });
 
   test("a retried manual dispatch does not ingest the event twice", async () => {
@@ -356,7 +356,7 @@ describe("scheduled automation route triggers", () => {
     });
     await drainDurableHooks(fragment);
 
-    expect(createInstance).toHaveBeenCalledTimes(1);
+    expect(restartOrCreateInstance).toHaveBeenCalledTimes(1);
     const events = await fragment.callRoute("GET", "/events");
     assert(events.type === "json");
     expect(events.data.events).toHaveLength(1);

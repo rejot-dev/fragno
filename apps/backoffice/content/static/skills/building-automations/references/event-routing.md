@@ -234,12 +234,13 @@ Follow each outcome to the work it names:
   event lives in its target scope.
 - `skipped`: the route chose not to act, for the `reason` given. `workflow_instance_unresolved`: the
   route's target rendered no workflow run, such as a `stored_instance_id` key with nothing stored
-  under it yet. `no_linked_external_sender`: the route acts for the event's external sender, who is
-  not linked to a Backoffice user. `caused_by_notified_agent`: the agent's own turns caused the
-  event, and an agent is never notified of those. `caused_by_notified_app`: the app caused the
-  event, and an app is never notified of those. `app_not_installed`: the app is not installed, or
-  its installation does not reach the scope. `app_cannot_read_events`: the installation lacks
-  `events.read`.
+  under it yet. `workflow_instance_exists`: a run with the instance ID the route rendered exists
+  already, running or finished, and stays as it is. `no_linked_external_sender`: the route acts for
+  the event's external sender, who is not linked to a Backoffice user. `caused_by_notified_agent`:
+  the agent's own turns caused the event, and an agent is never notified of those.
+  `caused_by_notified_app`: the app caused the event, and an app is never notified of those.
+  `app_not_installed`: the app is not installed, or its installation does not reach the scope.
+  `app_cannot_read_events`: the installation lacks `events.read`.
 
 Report ingestion and downstream execution separately, including failures, pending work, and any
 missing evidence.

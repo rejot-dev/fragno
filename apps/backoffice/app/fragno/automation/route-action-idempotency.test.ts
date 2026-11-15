@@ -80,7 +80,7 @@ const workflowDefinition = defineRemoteWorkflow({ name: CODEMODE_WORKFLOW }, asy
 }));
 
 const noOpWorkflows = {
-  createInstance: async () => ({}),
+  restartOrCreateInstance: async () => ({}),
   getInstanceStatus: async () => [],
   sendEvent: async () => ({}),
 } as unknown as AutomationWorkflowsService;

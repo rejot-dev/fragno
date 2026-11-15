@@ -323,4 +323,42 @@ export const createAutomationRouteDispatchServices = (
         })
         .build();
     },
+    /**
+     * Acts for a route and completes it in one transaction, with the outcome that what the action
+     * read names, such as whether the workflow run it starts exists already.
+     */
+    completeRouteDispatch<TResult, TRead>({
+      effect,
+      outcomeOf,
+      failedAttempts,
+      ...subject
+    }: RouteDispatchSubject & {
+      effect: () => TxResult<TResult, TRead>;
+      outcomeOf: (read: TRead) => AutomationRouteDispatchOutcome;
+      failedAttempts: number;
+    }) {
+      return this.serviceTx(automationFragmentSchema)
+        .withServiceCalls(() => [effect()] as const)
+        .retrieve((uow) =>
+          uow.findFirst("automation_route_dispatch", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "=", subjectDispatchId(subject))),
+          ),
+        )
+        .mutate(({ uow, retrieveResult: [row], serviceIntermediateResult: [read] }) => {
+          if (!row) {
+            throw new Error(
+              `Automation route ${subject.route.id} has no dispatch for event ${subject.event.id}.`,
+            );
+          }
+          // A replayed route keeps the state it settled with first, as `updateRouteDispatch` does.
+          if (isRouteDispatchSettled(readRouteDispatchState(row))) {
+            return;
+          }
+          const state = { status: "completed", outcome: outcomeOf(read), failedAttempts } as const;
+          uow.update("automation_route_dispatch", row.id, (b) =>
+            b.set(routeDispatchStateColumns(state)).check(),
+          );
+        })
+        .build();
+    },
   });
