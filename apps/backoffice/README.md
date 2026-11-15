@@ -93,8 +93,10 @@ builds, development servers, and local previews do not initialize the browser SD
 backend also captures server outcomes, exceptions, and Pi Durable Object generation metadata; Node
 never installs a backend analytics client.
 
-Provide these public values in the Cloudflare **build environment**, or in a git-ignored `.env` file
-beside `package.json` (see `.env.example`):
+Provide these public values in a git-ignored `.env` file beside `package.json` (see `.env.example`),
+or export them, which takes precedence. Only the `deploy:*` scripts load `.env` for their build;
+other builds ignore it, since Turbo shares builds between machines and a build must depend only on
+what its cache key hashes:
 
 - `VITE_POSTHOG_PROJECT_TOKEN`: the project's public client token, not a personal API key.
 - `VITE_POSTHOG_HOST`: the ingestion host, currently `https://eu.i.posthog.com`.
@@ -102,7 +104,7 @@ beside `package.json` (see `.env.example`):
 
 These values are embedded at build time; setting Worker runtime secrets does not configure the
 browser SDK. Changes require rebuilding the frontend, and Turbo includes these values in its build
-cache key.
+cache key, so a build without them never satisfies a deploy with them.
 
 The initial integration captures pageviews, identifies authenticated users by their stable user ID,
 resets identity after sign-out, and records browser exceptions. Six explicit product events cover
