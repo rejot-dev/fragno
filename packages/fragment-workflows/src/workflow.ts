@@ -218,9 +218,10 @@ export type WorkflowRestartOrCreateOptions<TParams = unknown> = {
     params?: TParams;
     remoteWorkflowName?: string;
   };
+  /** When an existing instance restarts; null leaves every existing instance unchanged. */
   restart: {
     precondition: WorkflowRestartPrecondition;
-  };
+  } | null;
 };
 
 export type WorkflowRestartOrCreateInstanceResult<TOutput = unknown> =

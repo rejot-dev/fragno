@@ -526,9 +526,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
       ) {
         getWorkflowEntry(workflowName);
 
-        const { id: instanceId } = options;
-        const restartableStatuses = new Set(options.restart.precondition.status.in);
-        const requiredRunGeneration = options.restart.precondition.runGeneration?.equals;
+        const { id: instanceId, restart } = options;
+        const restartableStatuses = new Set(restart?.precondition.status.in);
+        const requiredRunGeneration = restart?.precondition.runGeneration?.equals;
         const instanceRef = buildScopedInstanceRowId(workflowName, instanceId);
 
         return this.serviceTx(workflowsSchema)

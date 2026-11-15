@@ -706,6 +706,41 @@ describe("Workflows Fragment Services", () => {
     });
   });
 
+  test("restartOrCreateInstance should leave a finished instance unchanged without a restart", async () => {
+    const uow = db.createUnitOfWork("create-finished-instance").forSchema(workflowsSchema);
+    uow.create("workflow_instance", {
+      id: buildScopedInstanceRowId("demo-workflow", "restart-or-create-never"),
+      instanceId: "restart-or-create-never",
+      workflowName: "demo-workflow",
+      status: "complete",
+      params: { source: "original" },
+      startedAt: new Date("2026-01-01T00:00:00.000Z"),
+      completedAt: new Date("2026-01-01T00:00:01.000Z"),
+      output: { old: true },
+      errorName: null,
+      errorMessage: null,
+    });
+    assert((await uow.executeMutations()).success);
+
+    const result = await runService<{
+      action: string;
+      observedStatus: string;
+      details: { status: string; runGeneration: number };
+    }>(() =>
+      fragment.services.restartOrCreateInstance("demo-workflow", {
+        id: "restart-or-create-never",
+        create: { params: { source: "ignored" } },
+        restart: null,
+      }),
+    );
+
+    expect(result).toMatchObject({
+      action: "unchanged",
+      observedStatus: "complete",
+      details: { status: "complete", runGeneration: 1 },
+    });
+  });
+
   test("restartOrCreateInstance should leave a matching status unchanged when runGeneration does not match", async () => {
     const instanceRef = buildScopedInstanceRowId(
       "demo-workflow",
