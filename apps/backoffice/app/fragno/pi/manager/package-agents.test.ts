@@ -34,6 +34,7 @@ const telegram: PiAgentDefinitionCreate = {
   thinkingLevel: "low",
   permissions: ["*"],
   instructions: "Keep answers short.",
+  skills: [],
 };
 
 async function piManager() {

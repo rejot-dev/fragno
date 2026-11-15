@@ -1,4 +1,8 @@
-import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import type {
+  PiAgentConfig,
+  PiAgentSkill,
+  PiAgentSkillReload,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
@@ -42,10 +46,14 @@ export type BackofficeAgentTurnContext = {
   execution: BackofficeExecutionContext;
   /** The agent definition's instructions, as read when the turn was admitted. */
   instructions: string;
+  /** The skills the agent's last reload found, as read when the turn was admitted. */
+  skills: PiAgentSkill[] | null;
   /** Null when the runtime has no Worker Loader; codemode-backed extensions fail closed. */
   codemode: CodemodeRunner | null;
   /** Checks live permissions; persisted actors carry identity, not grants. */
   authorize: () => Promise<void>;
+  /** Offers the agent its skills as the files are now, from its next turn; see `pi.agent.reload`. */
+  reloadSkills: (context: Context) => Promise<PiAgentSkillReload>;
   /** `toolCallId` names the tool call that uses it; null outside one, such as in a prompt section. */
   toolContext: (
     invocationId: string,
@@ -120,6 +128,17 @@ export function createBackofficeAgentContext(input: {
       });
     }
 
+    // Like running the turn, reloading is the submitter's act, which the definition does not narrow.
+    async function reloadSkills(context: Context) {
+      return await createPiManagerRuntime({
+        runtime,
+        kernel,
+        execution: submitterExecution,
+        caller: { kind: "none" },
+        context,
+      }).reloadAgent({ agentName: config.agentName });
+    }
+
     function toolContext(
       invocationId: string,
       toolCallId: string | null,
@@ -158,6 +177,7 @@ export function createBackofficeAgentContext(input: {
     return {
       execution,
       instructions: turn.agent.instructions,
+      skills: turn.agent.skills,
       codemode: runtime.codemodeExecutor
         ? codemodeRunnerFor(
             kernel.scoped("CODEMODE", config.scope, runtime.objects.codemode).commands,
@@ -165,6 +185,7 @@ export function createBackofficeAgentContext(input: {
           )
         : null,
       authorize,
+      reloadSkills,
       toolContext,
     };
   }

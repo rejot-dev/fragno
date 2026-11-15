@@ -403,6 +403,16 @@ describe("runtime tool reference generation", () => {
           bashOptions: ["agent"],
         },
         {
+          id: "pi.agent.reload",
+          namespace: "pi",
+          codemodeProvider: "pi",
+          codemodeTool: "reloadAgent",
+          inputType: "PiReloadAgentInput",
+          outputType: "PiReloadAgentOutput",
+          bashCommand: "pi.agent.reload",
+          bashOptions: ["agent"],
+        },
+        {
           id: "pi.prompt.submit",
           namespace: "pi",
           codemodeProvider: "pi",

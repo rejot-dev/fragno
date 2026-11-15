@@ -450,6 +450,8 @@ export async function resetPiManagerAgent(
   const { callRoute, execution } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("POST", "/agents/:agentName/reset", {
     pathParams: { agentName },
+    // Middleware overwrites the provenance with the authenticated caller's before validation.
+    body: { provenance: callerProvenance(execution) },
   });
   if (response.type === "empty") {
     captureBackofficeServerEvent(context, {

@@ -1,5 +1,9 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-import type { PiAgentConfig, PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
+import type {
+  PiAgentConfig,
+  PiAgentDefinition,
+  PiAgentSkill,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import type { PiAgentQueueEntry } from "@fragno-dev/backoffice-api/v0/pi";
 import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -14,6 +18,7 @@ import {
   builtInPiAgentDefinition,
   piPromptModel,
   type PiAgentAdmission,
+  type PiAgentAdmissionDefinition,
 } from "@/fragno/pi/agent/agent-definitions";
 import {
   PI_INTERNAL_REQUEST_ID_PREFIX,
@@ -271,12 +276,13 @@ function changeAgentQueue(uow: PiAgentQueueUow, agent: { id: FragnoId }, paused:
 }
 
 /**
- * An agent's definition and provisioning, its dispatched turn, what waits, and the steers that have
+ * An agent's definition, the skills its last reload found, and its provisioning, its dispatched turn, what waits, and the steers that have
  * not settled.
  */
 function findAgentQueue(uow: PiAgentQueueUow, agentName: string) {
   return uow
     .findFirst("agent_definition", (b) => b.whereIndex("primary", (eb) => eb("id", "=", agentName)))
+    .findFirst("agent_skills", (b) => b.whereIndex("primary", (eb) => eb("id", "=", agentName)))
     .findFirst("agent", (b) => b.whereIndex("primary", (eb) => eb("id", "=", agentName)))
     .find("agent_queue_item", (b) =>
       b
@@ -437,7 +443,7 @@ function startNextTurn(
   queue: PiAgentQueueWrites,
   input: {
     agent: PiAgentConfig;
-    definition: PiAgentDefinition | null;
+    definition: PiAgentAdmissionDefinition | null;
     availableModels: readonly PiAvailableModel[];
     queued: readonly PiAgentTurnRow[];
     arriving: (PiAgentArrivingItem & { input: PiAgentTurnInput }) | null;
@@ -524,7 +530,7 @@ function placeQueueItem(
     item: PiAgentQueueItem & { input: PiAgentTurnInput } & PiAgentQueueSender;
     turn: PiAgentTurn;
     steering: PiAgentSteer | null;
-    definition: PiAgentDefinition | null;
+    definition: PiAgentAdmissionDefinition | null;
     availableModels: readonly PiAvailableModel[];
     dispatched: (PiAgentQueueItem & { state: PiAgentQueueItemState }) | undefined;
     busy: boolean;
@@ -592,7 +598,7 @@ function startSubagents(
   input: {
     agent: PiAgentConfig;
     paused: boolean;
-    definition: PiAgentDefinition | null;
+    definition: PiAgentAdmissionDefinition | null;
     availableModels: readonly PiAvailableModel[];
     running: number;
     queued: readonly PiAgentQueueRow[];
@@ -681,7 +687,7 @@ function startResumedQueue(
   queue: PiAgentQueueWrites,
   input: {
     agent: PiAgentConfig;
-    definition: PiAgentDefinition | null;
+    definition: PiAgentAdmissionDefinition | null;
     availableModels: readonly PiAvailableModel[];
     dispatched: readonly PiAgentQueueRow[];
     steered: readonly PiAgentQueueRow[];
@@ -747,8 +753,10 @@ export function piAgentQueueServices(
   function definitionOf(
     agentName: string,
     row: Parameters<typeof definitionFromRow>[0] | null,
-  ): PiAgentDefinition | null {
-    return builtInPiAgentDefinition(agentName) ?? (row ? definitionFromRow(row) : null);
+    skillsRow: { skills: PiAgentSkill[] } | null,
+  ): PiAgentAdmissionDefinition | null {
+    const definition = builtInPiAgentDefinition(agentName) ?? (row ? definitionFromRow(row) : null);
+    return definition && { ...definition, reloadedSkills: skillsRow?.skills ?? null };
   }
 
   return defineService({
@@ -788,7 +796,15 @@ export function piAgentQueueServices(
         .mutate(
           ({
             uow,
-            retrieveResult: [definitionRow, agent, dispatchedItems, queued, steered, submitted],
+            retrieveResult: [
+              definitionRow,
+              skillsRow,
+              agent,
+              dispatchedItems,
+              queued,
+              steered,
+              submitted,
+            ],
           }):
             | Extract<PiAgentAdmission, { type: "error" }>
             | Extract<ReturnType<typeof piPromptModel>, { type: "error" }>
@@ -820,7 +836,7 @@ export function piAgentQueueServices(
               return { type: "limited", message: input.allowance.message };
             }
             const [dispatched] = dispatchedItems.filter(isRootItem);
-            const definition = definitionOf(agentName, definitionRow);
+            const definition = definitionOf(agentName, definitionRow, skillsRow);
             // A subagent's conversation is new, so a built-in agent's starts on its default model.
             const provisioned = Boolean(agent) && !input.subagent;
             const chosen = definition
@@ -977,7 +993,15 @@ export function piAgentQueueServices(
         .mutate(
           ({
             uow,
-            retrieveResult: [definitionRow, agent, dispatchedItems, queued, steered, submitted],
+            retrieveResult: [
+              definitionRow,
+              skillsRow,
+              agent,
+              dispatchedItems,
+              queued,
+              steered,
+              submitted,
+            ],
           }):
             | Extract<PiAgentAdmission, { type: "error" }>
             | { type: "not-started" }
@@ -993,7 +1017,7 @@ export function piAgentQueueServices(
                 queue: waitingQueue(agent.id.version, agent.paused, queued),
               };
             }
-            const definition = definitionOf(agentName, definitionRow);
+            const definition = definitionOf(agentName, definitionRow, skillsRow);
             const admitted = admitPiAgentTurn(
               definition,
               agentName,
@@ -1063,7 +1087,7 @@ export function piAgentQueueServices(
         .mutate(
           ({
             uow,
-            retrieveResult: [definitionRow, agent, dispatched, queued, steered, settled],
+            retrieveResult: [definitionRow, skillsRow, agent, dispatched, queued, steered, settled],
           }): { handovers: PiAgentHandover[]; queue: PiAgentWaitingQueue } | null => {
             if (!agent) {
               return null;
@@ -1089,7 +1113,7 @@ export function piAgentQueueServices(
                 event: piAgentNotificationEvent(input.ended),
               });
             }
-            const definition = definitionOf(agentName, definitionRow);
+            const definition = definitionOf(agentName, definitionRow, skillsRow);
             const advanced = (() => {
               if (isSubagentItem(settled)) {
                 queue.update(settled, { status: "settled", turnRequestId: settled.requestId });
@@ -1198,7 +1222,7 @@ export function piAgentQueueServices(
         .mutate(
           ({
             uow,
-            retrieveResult: [definitionRow, agent, dispatched, , steered],
+            retrieveResult: [definitionRow, skillsRow, agent, dispatched, , steered],
           }):
             | Extract<PiAgentAdmission, { type: "error" }>
             | { type: "not-started" }
@@ -1218,7 +1242,7 @@ export function piAgentQueueServices(
             }
             // Compaction runs on the conversation's model, which a turn without a choice keeps.
             const admitted = admitPiAgentTurn(
-              definitionOf(agentName, definitionRow),
+              definitionOf(agentName, definitionRow, skillsRow),
               agentName,
               input.provenance,
               input.availableModels,
@@ -1259,7 +1283,7 @@ export function piAgentQueueServices(
     pauseAgentQueue: function (agentName: string, provenance: PiAgentTurnProvenance) {
       return this.serviceTx(piAgentDirectorySchema)
         .retrieve((uow) => findAgentQueue(uow, agentName))
-        .mutate(({ uow, retrieveResult: [, agent, , queued] }): PiAgentWaitingQueue | null => {
+        .mutate(({ uow, retrieveResult: [, , agent, , queued] }): PiAgentWaitingQueue | null => {
           if (!agent) {
             return null;
           }
@@ -1284,7 +1308,7 @@ export function piAgentQueueServices(
         .mutate(
           ({
             uow,
-            retrieveResult: [definitionRow, agent, dispatched, queued, steered],
+            retrieveResult: [definitionRow, skillsRow, agent, dispatched, queued, steered],
           }): { handovers: PiAgentHandover[]; queue: PiAgentWaitingQueue } | null => {
             if (!agent) {
               return null;
@@ -1305,7 +1329,7 @@ export function piAgentQueueServices(
             ]);
             const started = startResumedQueue(queue, {
               agent: agentConfig(agentName),
-              definition: definitionOf(agentName, definitionRow),
+              definition: definitionOf(agentName, definitionRow, skillsRow),
               availableModels: input.availableModels,
               dispatched,
               steered,
@@ -1393,7 +1417,7 @@ export function piAgentQueueServices(
     getWaitingQueue: function (agentName: string) {
       return this.serviceTx(piAgentDirectorySchema)
         .retrieve((uow) => findAgentQueue(uow, agentName))
-        .transformRetrieve(([, agent, , queued]) =>
+        .transformRetrieve(([, , agent, , queued]) =>
           waitingQueue(agent?.id.version ?? 0, agent?.paused ?? false, queued),
         )
         .build();

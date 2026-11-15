@@ -151,6 +151,7 @@ function seededTurn(config: PiAgentConfig): PiAgentTurn {
       model: { provider: "faux", modelId: "faux-1", thinkingLevel: "low" },
       instructions: "",
       permissions: [...allBackofficePermissionRequirements],
+      skills: null,
     },
   };
 }

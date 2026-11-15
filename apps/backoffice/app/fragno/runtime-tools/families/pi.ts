@@ -47,6 +47,9 @@ const parseAgentBackfillEvents = defineCliArgsParser<Record<string, never>>(
 const parseAgentGet = defineCliArgsParser<PiManagerAgentInput>("pi.agent.get", {
   agentName: { option: "agent", required: true },
 });
+const parseAgentReload = defineCliArgsParser<PiManagerAgentInput>("pi.agent.reload", {
+  agentName: { option: "agent", required: true },
+});
 const parsePromptSubmit = defineCliArgsParser<PiManagerSubmitPromptInput>("pi.prompt.submit", {
   agentName: { option: "agent", required: true },
   content: { required: true },
@@ -245,6 +248,36 @@ const agentGetTool = defineBackofficeRuntimeTool({
         examples: ["pi.agent.get --agent assistant --format json"],
       },
       parse: parseAgentGet,
+      format: (data) => ({ data }),
+    },
+  },
+});
+
+const agentReloadTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.reload"),
+  namespace: "pi",
+  name: "reloadAgent",
+  execute: async (input, context: PiToolContext) => {
+    return await requirePiManagerRuntime(context.runtimes.pi).reloadAgent(input);
+  },
+  adapters: {
+    bash: {
+      command: "pi.agent.reload",
+      help: {
+        summary:
+          "pi.agent.reload offers an agent its skills as the SKILL.md files are now, from its next turn.",
+        options: [
+          {
+            name: "agent",
+            required: true,
+            valueRequired: true,
+            valueName: "agent-name",
+            description: "Agent name",
+          },
+        ],
+        examples: ["pi.agent.reload --agent assistant"],
+      },
+      parse: parseAgentReload,
       format: (data) => ({ data }),
     },
   },
@@ -755,6 +788,7 @@ export const piRuntimeTools = [
   agentCreateTool,
   agentUpdateTool,
   agentDeleteTool,
+  agentReloadTool,
   promptSubmitTool,
   promptGetTool,
   agentStopTool,

@@ -175,6 +175,8 @@ const agentDefinitionSchema = z.object({
     steward: piAgentDefinitionSchema._zod.innerType.shape.steward.optional(),
     // Events recorded before agents chose an effort lack one; their agents ran at low.
     thinkingLevel: piAgentDefinitionSchema._zod.innerType.shape.thinkingLevel.default("low"),
+    // Events recorded before agents named skill folders lack them; their agents named none.
+    skills: piAgentDefinitionSchema._zod.innerType.shape.skills.default([]),
   }),
 });
 

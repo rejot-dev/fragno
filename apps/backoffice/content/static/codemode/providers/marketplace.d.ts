@@ -407,6 +407,8 @@ type MarketplaceViewOutput = {
       thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
       permissions: string[];
       instructions: string;
+      /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
+      skills: string[];
       agentName: string;
     }[];
     version: string;

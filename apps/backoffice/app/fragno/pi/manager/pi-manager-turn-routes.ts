@@ -14,6 +14,7 @@ import { defineRoutes } from "@fragno-dev/core";
 import type { HookHandlerTx } from "@fragno-dev/db";
 
 import { checkUsageLimits } from "@/fragno/billing/usage-billing";
+import { piAgentTurnOf } from "@/fragno/pi/agent/agent-definitions";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import {
   isPiInternalRequestId,
@@ -376,16 +377,26 @@ export const piManagerTurnRoutes = defineRoutes(piManagerDefinition).create(
       defineRoute({
         method: "POST",
         path: "/agents/:agentName/reset",
+        inputSchema: z.object({ provenance: turnProvenanceSchema }),
         errorCodes: ["AGENT_NOT_STARTED"],
-        handler: async function ({ pathParams }, { empty, error }) {
-          const { config: agent } = await this.handlerTx()
+        handler: async function ({ pathParams, input }, { empty, error }) {
+          const { provenance } = await input.valid();
+          const { definition, config: agent } = await this.handlerTx()
             .withServiceCalls(() => [services.getAgent(pathParams.agentName)])
             .transform(({ serviceResult: [agent] }) => agent)
             .execute();
           if (!agent) {
             return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
           }
-          await config.agent(agent).reset(agent);
+          // The clear reloads a defined agent's skills as whoever asked for it; a deleted agent's
+          // conversation clears without.
+          await config
+            .agent(agent)
+            .reset(
+              agent,
+              definition &&
+                piAgentTurnOf({ ...definition, reloadedSkills: null }, provenance, null),
+            );
           return empty(204);
         },
       }),

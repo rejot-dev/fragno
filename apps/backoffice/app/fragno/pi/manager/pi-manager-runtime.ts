@@ -8,6 +8,7 @@ import {
   type PiManagerAgent,
   type PiAgentHistoryPage,
   type PiAgentMessagePage,
+  type PiAgentSkillReload,
   type PiManagerAgentDirectory,
   type PiPromptReceipt,
   type PiPromptStatus,
@@ -37,7 +38,9 @@ import {
 } from "@/backoffice-runtime/operation-error";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { installedAppIdOfActors } from "@/fragno/app-installations/authority";
+import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import type { PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
+import { reloadBackofficePiSkills } from "@/fragno/pi/extensions/backoffice/skills";
 
 import { backfillPiAgentEvents, type PiAgentBackfilledEvent } from "./pi-agent-change-events";
 
@@ -126,6 +129,8 @@ export type PiManagerRuntime = {
   createAgent(input: PiAgentDefinitionCreate): Promise<PiAgentCreated>;
   updateAgent(input: PiAgentDefinitionCreate): Promise<PiAgentDefinition>;
   deleteAgent(input: PiManagerAgentInput): Promise<void>;
+  /** Offers the agent its skills as the files are now, from its next turn; see `pi.agent.reload`. */
+  reloadAgent(input: PiManagerAgentInput): Promise<PiAgentSkillReload>;
   submitPrompt(input: PiManagerSubmitPromptInput): Promise<PiPromptReceipt>;
   /** Where a submitted prompt stands; null when the agent never received it. */
   getPrompt(input: PiManagerPromptInput): Promise<PiPromptStatus | null>;
@@ -255,6 +260,20 @@ export function createPiManagerRuntime(input: {
     },
     async deleteAgent({ agentName }) {
       await request(agentRoute(agentName), null, "DELETE");
+    },
+    // The manager has no files, so the caller reads the skills with its own authority.
+    async reloadAgent({ agentName }) {
+      const agent = await request<PiManagerAgent>(agentRoute(agentName), null);
+      const reload = await reloadBackofficePiSkills(
+        createRuntimeStateBackend({
+          runtime: input.runtime,
+          kernel: input.kernel,
+          execution: input.execution,
+        }),
+        agent.skills,
+      );
+      await request(`${agentRoute(agentName)}/skills`, { skills: reload.skills }, "PUT");
+      return reload;
     },
     async submitPrompt({
       agentName,

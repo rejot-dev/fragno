@@ -1,3 +1,5 @@
+import type { PiAgentSkill } from "@fragno-dev/backoffice-api/v0/pi";
+
 import { STATIC_FILE_CONTENT } from "@/files/content/static";
 import { renderCodemodeSystemPrompt } from "@/fragno/codemode/codemode-dts";
 import {
@@ -9,12 +11,6 @@ import { loadBackofficePiSkills } from "./skills";
 
 const PI_SYSTEM_PROMPT = STATIC_FILE_CONTENT["SYSTEM.md"];
 
-type BackofficePiSkill = {
-  name: string;
-  description: string;
-  filePath: string;
-};
-
 function escapePiSkillXml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -24,7 +20,7 @@ function escapePiSkillXml(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function formatPiSkillsForSystemPrompt(skills: readonly BackofficePiSkill[]): string {
+function formatPiSkillsForSystemPrompt(skills: readonly PiAgentSkill[]): string {
   if (skills.length === 0) {
     return "";
   }
@@ -40,26 +36,27 @@ function formatPiSkillsForSystemPrompt(skills: readonly BackofficePiSkill[]): st
     lines.push("  <skill>");
     lines.push(`    <name>${escapePiSkillXml(skill.name)}</name>`);
     lines.push(`    <description>${escapePiSkillXml(skill.description)}</description>`);
-    lines.push(`    <location>${escapePiSkillXml(skill.filePath)}</location>`);
+    lines.push(`    <location>${escapePiSkillXml(skill.location)}</location>`);
     lines.push("  </skill>");
   }
   lines.push("</available_skills>");
   return lines.join("\n");
 }
 
-/** Builds the Backoffice prompt section from the current scope's skills and declarations. */
+/**
+ * Builds the Backoffice prompt section from the skills the turn's agent was reloaded with, and the
+ * scope's declarations. A turn whose reload failed finds its skills as the files are now.
+ */
 export async function buildBackofficePiSystemPrompt(options: {
   runtimeToolContext: PiRuntimeToolContext;
+  skills: readonly PiAgentSkill[] | null;
 }): Promise<string> {
   const state = requirePiStateBackend(options.runtimeToolContext);
-  const skillRegistry = await loadBackofficePiSkills(state);
-  const skills = Object.values(skillRegistry)
-    .filter((skill) => !skill.disableModelInvocation)
-    .map((skill) => ({
-      name: skill.name,
-      description: skill.description,
-      filePath: skill.location,
-    }));
+  const skills =
+    options.skills ??
+    Object.values(await loadBackofficePiSkills(state))
+      .filter((skill) => !skill.disableModelInvocation)
+      .map(({ name, description, location }) => ({ name, description, location }));
   const baseSystemPrompt = [PI_SYSTEM_PROMPT, formatPiSkillsForSystemPrompt(skills)]
     .filter((part) => part.trim().length > 0)
     .join("\n\n");

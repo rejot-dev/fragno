@@ -407,6 +407,35 @@ export class PiObject extends RpcTarget implements PiAgent {
     }
   }
 
+  /**
+   * Reloads the agent's skills as `turn`'s submitter, for the turns after it: where its context
+   * starts over, at a compaction or clear, and for a turn admitted without any. Returns the skills
+   * offered from then on; null when the reload failed, which keeps those offered before and fails
+   * nothing.
+   */
+  async #reloadSkills(opened: OpenPiAgent, turn: PiAgentTurn) {
+    try {
+      return (await opened.reloadSkills(turn, BACKGROUND_CONTEXT)).skills;
+    } catch (error) {
+      this.#dependencies.report(error, this.#provisioned?.config ?? null);
+      return null;
+    }
+  }
+
+  /**
+   * A turn admitted without skills belongs to an agent never reloaded, or whose definition changed
+   * since, so it reloads them first. One whose reload fails finds skills as the files are now.
+   */
+  async #withSkills(opened: OpenPiAgent, turn: PiAgentTurn): Promise<PiAgentTurn> {
+    if (turn.agent.skills !== null) {
+      return turn;
+    }
+    return {
+      ...turn,
+      agent: { ...turn.agent, skills: await this.#reloadSkills(opened, turn) },
+    };
+  }
+
   /** Whether a stop came after the queue handed over work at `revision`. */
   async #fenced(revision: number): Promise<boolean> {
     const fence = await this.#state.storage.get<number>(STOP_FENCE_KEY);
@@ -420,7 +449,7 @@ export class PiObject extends RpcTarget implements PiAgent {
     rawPrompt: PiAgentPrompt,
   ) {
     const prompt = piAgentPromptSchema.parse(rawPrompt);
-    const turn = piAgentTurnSchema.parse(rawTurn);
+    const admitted = piAgentTurnSchema.parse(rawTurn);
     if (await this.#fenced(revision)) {
       return;
     }
@@ -438,6 +467,7 @@ export class PiObject extends RpcTarget implements PiAgent {
         await this.#markSubagentStarted(harness, prompt.requestId);
         return;
       }
+      const turn = await this.#withSkills(opened, admitted);
       await recordPiAgentTurn(harness, conversation.id, prompt.requestId, turn, BACKGROUND_CONTEXT);
       try {
         const chosen = turn.agent.model;
@@ -575,13 +605,13 @@ export class PiObject extends RpcTarget implements PiAgent {
     rawWork: PiAgentWork,
   ) {
     const work = piAgentWorkSchema.parse(rawWork);
-    const turn = piAgentTurnSchema.parse(rawTurn);
+    const admitted = piAgentTurnSchema.parse(rawTurn);
     if (await this.#fenced(revision)) {
       return;
     }
     const opened = await this.#requireAgent(config);
     if (work.type === "compaction") {
-      await this.#startQueuedCompaction(opened, revision, turn, work);
+      await this.#startQueuedCompaction(opened, revision, admitted, work);
       return;
     }
     const root = await opened.harness.root(BACKGROUND_CONTEXT);
@@ -589,6 +619,7 @@ export class PiObject extends RpcTarget implements PiAgent {
     if (await opened.storage.submissionByRequest(root.id, work.requestId, BACKGROUND_CONTEXT)) {
       return;
     }
+    const turn = await this.#withSkills(opened, admitted);
     if (work.type === "prompt") {
       // Only a steer that outlived its turn can still be running; Pi queues the prompt behind it.
       await this.#admit(opened, revision, turn, work, null, "followUp");
@@ -646,6 +677,8 @@ export class PiObject extends RpcTarget implements PiAgent {
         if (await this.#fenced(revision)) {
           return null;
         }
+        // Before the compaction settles, which starts the next turn.
+        await this.#reloadSkills(opened, turn);
         const taskId = await root.compact(work.instructions ?? undefined, BACKGROUND_CONTEXT);
         await recordQueuedPiCompaction(
           harness,
@@ -1012,8 +1045,13 @@ export class PiObject extends RpcTarget implements PiAgent {
     }
   }
 
-  async reset(config: PiAgentConfig): Promise<void> {
-    const { harness } = await this.#requireAgent(config);
+  async reset(config: PiAgentConfig, rawTurn: PiAgentTurn | null): Promise<void> {
+    const turn = piAgentTurnSchema.nullable().parse(rawTurn);
+    const opened = await this.#requireAgent(config);
+    const { harness } = opened;
+    if (turn) {
+      await this.#reloadSkills(opened, turn);
+    }
     // A busy conversation queues the reset for its next boundary, which only a running wake reaches.
     await this.#state.storage.setAlarm(this.#nowEpochMs());
     await (await harness.root(BACKGROUND_CONTEXT)).reset(undefined, BACKGROUND_CONTEXT);

@@ -227,8 +227,8 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
       disconnect();
     });
   }
-  async reset(config: PiAgentConfig): Promise<void> {
-    await this.#object.reset(config);
+  async reset(config: PiAgentConfig, turn: PiAgentTurn | null): Promise<void> {
+    await this.#object.reset(config, turn);
   }
   async abort(config: PiAgentConfig, revision: number): Promise<void> {
     await this.#object.abort(config, revision);

@@ -63,6 +63,7 @@ function agentEvent(
     thinkingLevel: "low",
     permissions: [],
     instructions: "Review carefully.",
+    skills: [],
     steward: { kind: "members" },
   };
   return event(id, "pi", eventType, second, {

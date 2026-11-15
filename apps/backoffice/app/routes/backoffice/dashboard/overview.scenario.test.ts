@@ -237,6 +237,7 @@ function piEvent(
     thinkingLevel: "low",
     permissions: [],
     instructions: "Review carefully.",
+    skills: [],
   };
   // The queue each turn's settling left, below the revisions of the queue events that follow.
   const queue = { revision: 0, running: 0, queued: 0, steering: 0 };

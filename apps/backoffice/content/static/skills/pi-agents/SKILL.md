@@ -39,9 +39,10 @@ await pi.createAgent({
   agent, list `namespace.*` or `namespace.permission` entries from the permission catalog. At least
   one grant is required. Prompting the agent requires the prompter's own `pi.modify`.
 - `instructions` is Markdown added to the agent's system prompt, up to 32,768 characters; empty adds
-  none. Every agent is offered the workspace's skills, the `SKILL.md` files in its `skills` folders.
-  For a procedure only this agent follows, write a skill with `disable-model-invocation: true` in
-  its frontmatter, which no agent is offered, and name its path in the instructions.
+  none.
+- `skills` lists up to 16 more folders whose skills the agent is offered, such as a share's
+  `/shared/<name>/skills`; omitted is none. Naming a folder trusts everyone who can write to it. See
+  Skills below.
 - An agent's `steward` says who may change it: `members` for agents defined this way, a `package`
   for agents a Marketplace package declares, as `/static/skills/marketplace-publishing/SKILL.md`
   shows, and `backoffice` for built-in agents.
@@ -58,6 +59,26 @@ turn uses it. Read the current definition with `pi.getAgent` first so you only c
 to. `pi.deleteAgent({ agentName })` removes the definition but keeps the conversation: defining the
 name again resumes it. Only members' agents change this way: a package's agents change when the
 package is installed again and go when it is uninstalled, and built-in agents never change.
+
+## Skills
+
+Every agent is offered `/static/skills`, the `SKILL.md` files in the workspace's `skills` folders,
+and those in the folders its definition's `skills` names. Of skills with the same name, the
+workspace's wins over a named folder's, which wins over `/static`'s. For a procedure only this agent
+follows, write a skill with `disable-model-invocation: true` in its frontmatter, which no agent is
+offered, and name its path in the instructions.
+
+An agent is offered each skill's name and description as of its last reload, and reads the body from
+the file when it uses the skill, so bodies are always current. A new skill, a changed name or
+description, or a removed skill reaches the agent only after a reload:
+
+- `pi.reloadAgent({ agentName })` reloads now, from the agent's next turn. It returns the skills the
+  agent is offered and `problems`: files it could not read, skills another of the same name
+  replaced, and named folders it could not find, such as a share accepted under another name.
+- A compaction or a clear reloads the agent's skills too, and so does the first turn of a new agent,
+  or of one whose definition changed.
+
+After writing or changing a skill an agent should use, reload that agent, yourself included.
 
 ## How permissions work
 

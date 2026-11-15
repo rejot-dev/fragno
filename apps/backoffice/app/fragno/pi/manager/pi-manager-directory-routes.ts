@@ -3,6 +3,7 @@ import {
   piAgentDefinitionCreateSchema,
   piAgentDefinitionSchema,
   piAgentDefinitionUpdateSchema,
+  piAgentSkillSchema,
   piManagerAgentDirectorySchema,
   piManagerAgentSchema,
 } from "@fragno-dev/backoffice-api/v0/pi";
@@ -125,6 +126,23 @@ export const piManagerDirectoryRoutes = defineRoutes(piManagerDefinition).create
         }
         return replaced
           ? json(replaced)
+          : error({ code: "AGENT_NOT_FOUND", message: "Pi agent is not defined." }, 404);
+      },
+    }),
+    // The caller reads the skills, as the manager has no files; it is trusted as it is to prompt.
+    defineRoute({
+      method: "PUT",
+      path: "/agents/:agentName/skills",
+      inputSchema: z.object({ skills: z.array(piAgentSkillSchema).max(256) }),
+      errorCodes: ["AGENT_NOT_FOUND"],
+      handler: async function ({ pathParams, input }, { empty, error }) {
+        const { skills } = await input.valid();
+        const replaced = await this.handlerTx()
+          .withServiceCalls(() => [services.replaceAgentSkills(pathParams.agentName, skills)])
+          .transform(({ serviceResult: [replaced] }) => replaced)
+          .execute();
+        return replaced
+          ? empty(204)
           : error({ code: "AGENT_NOT_FOUND", message: "Pi agent is not defined." }, 404);
       },
     }),
