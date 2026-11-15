@@ -1,5 +1,6 @@
 import { afterAll, assert, beforeAll, expect, test, vi } from "vitest";
 
+import type { AutomationStartWorkflowExistingRun } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
@@ -91,77 +92,113 @@ async function routeLine(ctx: BackofficeScenarioContext, eventId: string) {
   return got.stdout.split("\nroutes\n")[1]?.trim();
 }
 
-test("a route starts one triage per incident and skips reports of one that has a run", async () => {
-  await runBackofficeScenario(
-    defineBackofficeScenario({
-      objects: scenarioObjects,
-      env: { codemode: createCodemodeNodeExecutor(codemodeServer) },
-      name: "incident triage keyed by incident",
-      files: backofficeFiles.custom({
-        workspace: {
-          "automations/triage.workflow.js": `export default defineWorkflow({ name: "triage" }, async (event, step) => {
+/** A triage per incident, which runs until the incident is resolved. */
+function triageScenario(
+  name: string,
+  existingRun: AutomationStartWorkflowExistingRun,
+  steps: Parameters<typeof defineBackofficeScenario>[0]["steps"],
+) {
+  return defineBackofficeScenario({
+    objects: scenarioObjects,
+    env: { codemode: createCodemodeNodeExecutor(codemodeServer) },
+    name,
+    files: backofficeFiles.custom({
+      workspace: {
+        "automations/triage.workflow.js": `export default defineWorkflow({ name: "triage" }, async (event, step) => {
   await step.waitForEvent("resolved", { type: "resolved" });
 });`,
+      },
+    }),
+    setup: ({ given }) => [
+      given.organization.exists({ id: orgId, name: "Ada Labs" }),
+      given.router.route({
+        orgId,
+        id: "triage",
+        name: "Triage incidents",
+        enabled: true,
+        priority: 10,
+        trigger: {
+          kind: "event",
+          source: "pagerduty",
+          eventType: "incident.opened",
+          matcher: null,
+        },
+        action: {
+          kind: "start_workflow",
+          authority: { kind: "organization-automation", grants: [] },
+          workflowScriptPath: "/workspace/automations/triage.workflow.js",
+          instanceIdTemplate: "triage-${event.payload.incidentId}",
+          existingRun,
         },
       }),
-      setup: ({ given }) => [
-        given.organization.exists({ id: orgId, name: "Ada Labs" }),
-        given.router.route({
-          orgId,
-          id: "triage",
-          name: "Triage incidents",
-          enabled: true,
-          priority: 10,
-          trigger: {
-            kind: "event",
-            source: "pagerduty",
-            eventType: "incident.opened",
-            matcher: null,
-          },
-          action: {
-            kind: "start_workflow",
-            authority: { kind: "organization-automation", grants: [] },
-            workflowScriptPath: "/workspace/automations/triage.workflow.js",
-            instanceIdTemplate: "triage-${event.payload.incidentId}",
-          },
-        }),
-      ],
-      steps: ({ when, then }) => [
-        when.automation.ingestEvent(incidentOpened("opened-1", "INC-1")),
-        when.automation.ingestEvent(incidentOpened("opened-2", "INC-1")),
-        when.automation.ingestEvent(incidentOpened("opened-3", "INC-2")),
-        then.assert("a second report of a running incident skips", async (ctx) => {
-          assert.equal(
-            await routeLine(ctx, "opened-1"),
-            "triage (Triage incidents): completed, workflow_started",
-          );
-          assert.equal(
-            await routeLine(ctx, "opened-2"),
-            "triage (Triage incidents): completed, skipped, workflow_instance_exists",
-          );
-          assert.equal(
-            await routeLine(ctx, "opened-3"),
-            "triage (Triage incidents): completed, workflow_started",
-          );
-        }),
-        then.workflow.instance({ instanceId: "triage-INC-1", status: "waiting" }),
-        when.workflow.sendEvent({
-          orgId,
-          instanceId: "triage-INC-1",
-          type: "resolved",
-          payload: {},
-        }),
-        then.workflow.instance({ instanceId: "triage-INC-1", status: "complete" }),
-        when.automation.ingestEvent(incidentOpened("reopened-1", "INC-1")),
-        then.assert("a finished triage stays finished", async (ctx) => {
-          assert.equal(
-            await routeLine(ctx, "reopened-1"),
-            "triage (Triage incidents): completed, skipped, workflow_instance_exists",
-          );
-        }),
-        then.workflow.instance({ instanceId: "triage-INC-1", status: "complete" }),
-        then.hooks.noFailed({ orgId }),
-      ],
-    }),
+    ],
+    steps,
+  });
+}
+
+test("a route starts one triage per incident and skips reports of one that has a run", async () => {
+  await runBackofficeScenario(
+    triageScenario("incident triage keyed by incident", "keep", ({ when, then }) => [
+      when.automation.ingestEvent(incidentOpened("opened-1", "INC-1")),
+      when.automation.ingestEvent(incidentOpened("opened-2", "INC-1")),
+      when.automation.ingestEvent(incidentOpened("opened-3", "INC-2")),
+      then.assert("a second report of a running incident skips", async (ctx) => {
+        assert.equal(
+          await routeLine(ctx, "opened-1"),
+          "triage (Triage incidents): completed, workflow_started",
+        );
+        assert.equal(
+          await routeLine(ctx, "opened-2"),
+          "triage (Triage incidents): completed, skipped, workflow_instance_exists",
+        );
+        assert.equal(
+          await routeLine(ctx, "opened-3"),
+          "triage (Triage incidents): completed, workflow_started",
+        );
+      }),
+      then.workflow.instance({ instanceId: "triage-INC-1", status: "waiting" }),
+      when.workflow.sendEvent({
+        orgId,
+        instanceId: "triage-INC-1",
+        type: "resolved",
+        payload: {},
+      }),
+      then.workflow.instance({ instanceId: "triage-INC-1", status: "complete" }),
+      when.automation.ingestEvent(incidentOpened("reopened-1", "INC-1")),
+      then.assert("a finished triage stays finished", async (ctx) => {
+        assert.equal(
+          await routeLine(ctx, "reopened-1"),
+          "triage (Triage incidents): completed, skipped, workflow_instance_exists",
+        );
+      }),
+      then.workflow.instance({ instanceId: "triage-INC-1", status: "complete" }),
+      then.hooks.noFailed({ orgId }),
+    ]),
+  );
+});
+
+test("a route that restarts finished runs triages a reopened incident again", async () => {
+  await runBackofficeScenario(
+    triageScenario("reopened incidents triaged again", "restart_finished", ({ when, then }) => [
+      when.automation.ingestEvent(incidentOpened("opened-1", "INC-1")),
+      when.automation.ingestEvent(incidentOpened("opened-2", "INC-1")),
+      then.assert("a report while the triage runs skips", async (ctx) => {
+        assert.equal(
+          await routeLine(ctx, "opened-2"),
+          "triage (Triage incidents): completed, skipped, workflow_instance_exists",
+        );
+      }),
+      when.workflow.sendEvent({ orgId, instanceId: "triage-INC-1", type: "resolved", payload: {} }),
+      then.workflow.instance({ instanceId: "triage-INC-1", status: "complete" }),
+      when.automation.ingestEvent(incidentOpened("reopened-1", "INC-1")),
+      then.assert("a reopened incident starts its triage again", async (ctx) => {
+        assert.equal(
+          await routeLine(ctx, "reopened-1"),
+          "triage (Triage incidents): completed, workflow_started",
+        );
+      }),
+      then.workflow.instance({ instanceId: "triage-INC-1", status: "waiting" }),
+      then.hooks.noFailed({ orgId }),
+    ]),
   );
 });
