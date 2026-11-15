@@ -117,10 +117,13 @@ function runCli(args: string[], output: "inherit" | "capture") {
   return result.stdout;
 }
 
-/** Runs codemode in a scope, e.g. `system`; the CLI exits non-zero when the code throws. */
+/**
+ * Runs codemode in a scope, e.g. `system`; the CLI exits non-zero when the code throws. It prints
+ * strings verbatim, so the code must return JSON that is not a string.
+ */
 function execIn<T>(scope: string, baseUrl: string, code: string, result: z.ZodType<T>): T {
   const stdout = runCli(["exec", scope, code, "--base-url", baseUrl], "capture");
-  return z.object({ result }).parse(JSON.parse(stdout)).result;
+  return result.parse(JSON.parse(stdout));
 }
 
 function execSystem<T>(baseUrl: string, code: string, result: z.ZodType<T>): T {
