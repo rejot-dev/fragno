@@ -10,6 +10,7 @@ import {
   AutomationEventDefinitionValidationError,
   buildAutomationEventDefinitionId,
 } from "./event-definitions";
+import { compareEventOrder } from "./event-order";
 import type {
   AutomationHookUnitOfWork,
   AutomationInternalHooks,
@@ -89,19 +90,17 @@ export function assertEventKeyPathFitsExample(definition: {
   }
 }
 
-/**
- * Whether the event occurred after the one the state holds. Providers deliver late, so the time it
- * occurred decides, and then the time it was stored.
- */
+/** Whether the event comes after the one the state holds, in `compareEventOrder`'s order. */
 export function occurredAfter(
   event: { id: string; occurredAt: Date; createdAt: Date },
   state: { eventId: string; occurredAt: Date; storedAt: Date },
 ) {
-  const order =
-    event.occurredAt.getTime() - state.occurredAt.getTime() ||
-    event.createdAt.getTime() - state.storedAt.getTime() ||
-    event.id.localeCompare(state.eventId);
-  return order > 0;
+  return (
+    compareEventOrder(
+      { eventId: event.id, occurredAt: event.occurredAt, storedAt: event.createdAt },
+      state,
+    ) > 0
+  );
 }
 
 /**

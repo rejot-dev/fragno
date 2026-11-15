@@ -656,7 +656,7 @@ export function readIntegrationConnections(
 
 /**
  * The state changes a connection's events reported, newest first. Of changes made in the same
- * instant, the first applied comes first, as it is the one `integrationConnectionsOfStates` keeps.
+ * instant, the one stored later comes first, as states keep it.
  */
 export function readIntegrationConnectionHistory(
   reader: LofiSqliteReader,
@@ -669,7 +669,7 @@ export function readIntegrationConnectionHistory(
     since: 0,
     subject: { field: "connectionId", id: connectionId },
   }).flatMap((event) => readIntegrationConnectionStateChange(event) ?? []);
-  return changes.sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
+  return changes.reverse();
 }
 
 /** The connections that are not disconnected, by service and then connection ID. */
