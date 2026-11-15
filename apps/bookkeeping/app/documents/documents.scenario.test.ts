@@ -716,7 +716,7 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       status: 403,
       body: {
         message:
-          "A firm's bookkeeping agent reads its clients' books and proposes documents' entries; people change them, in their client's project.",
+          "A firm's bookkeeping agent reads its clients' books and proposes how to book their documents and bank transactions; people change them, in their client's project.",
       },
     });
     expect(await agent.call("documents.get", { document: id })).toEqual({

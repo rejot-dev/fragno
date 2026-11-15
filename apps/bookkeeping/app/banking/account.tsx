@@ -20,25 +20,26 @@ import { parseCamt053 } from "../../workers/books/banking/camt053";
 import { describeTransaction } from "../../workers/books/banking/detail";
 import { formatIban } from "../../workers/books/banking/iban";
 import { AccountName } from "../books/amounts";
+import { askBookkeeper } from "../books/bookkeeper.server";
 import { bankAccountPath, formatDate, indexBooks, transactionPath } from "../books/books";
 import { requireBooks, requireBooksSubmission } from "../books/books.server";
 import { FormError } from "../books/forms";
 import type { BooksOutletContext } from "../books/layout";
 import { DOCUMENT_MAX_SIZE, readUploadForm } from "../documents/documents.server";
 import type { Route } from "./+types/account";
+import { settlesWhole, suggestPayment } from "./matching.server";
 import { SignedAmount, TransactionStatus } from "./transactions";
 
 export function meta({ loaderData }: Route.MetaArgs) {
   return [{ title: `${loaderData?.bankAccount.name ?? "Bank account"} · Bookkeeping` }];
 }
 
+type Context = Awaited<ReturnType<typeof requireBooks>>;
+
 /** Which of the account's transactions the page lists: those to book, or all of them. */
 const SHOWS = ["to-book", "all"] as const;
 
-async function requireBankAccount(
-  context: Awaited<ReturnType<typeof requireBooks>>,
-  bankAccountId: string,
-) {
+async function requireBankAccount(context: Context, bankAccountId: string) {
   const bankAccount = await context.books.getBankAccount(bankAccountId);
   if (!bankAccount) {
     throw new Response("This bank account does not exist.", { status: 404 });
@@ -76,16 +77,48 @@ const importSchema = z.object({
   file: z.instanceof(File, { message: "Choose a statement file to import." }),
 });
 
-type ImportAnswer = { intent: string; error: string | null; imported: ImportResult | null };
+/** How many imported transactions the bookkeeping agent was asked about, or why it was not. */
+type Asked = { ok: true; count: number } | { ok: false; error: string };
+
+type ImportAnswer =
+  | { intent: string; error: string; imported: null; asked: null }
+  | { intent: string; error: null; imported: ImportResult; asked: Asked };
 
 /**
- * Imports the statements of a CAMT.053 file, continuing the last one imported. Importing a file
- * again imports only the statements it has that were not imported before.
+ * Asks the bookkeeping agent how to book the imported transactions that the payment form, as it
+ * starts, does not book whole as settling what they pay. Opening balances are left to people: they
+ * are what the books held before, which the bank does not say.
+ */
+async function askAboutImported(context: Context, transactionIds: string[]): Promise<Asked> {
+  const books = await context.books.describe();
+  const subjects = [];
+  for (const id of transactionIds) {
+    // Imported in the same import: it exists.
+    const transaction = (await context.books.getTransaction(id))!;
+    if (transaction.detail.type === "opening-balance") {
+      continue;
+    }
+    if (settlesWhole(transaction, await suggestPayment(context, transaction, books, null))) {
+      continue;
+    }
+    subjects.push({
+      kind: "transaction" as const,
+      transaction: { id, description: describeTransaction(transaction.detail) },
+    });
+  }
+  const asked = await askBookkeeper(context, subjects, "first");
+  return asked.ok ? { ok: true, count: subjects.length } : asked;
+}
+
+/**
+ * Imports the statements of a CAMT.053 file, continuing the last one imported, and asks the
+ * bookkeeping agent about the new transactions people cannot book as they are suggested. Importing
+ * a file again imports only the statements it has that were not imported before.
  */
 export async function action({ request, params }: Route.ActionArgs): Promise<ImportAnswer> {
   const context = await requireBooksSubmission(request, params, "keep");
   const bankAccount = await requireBankAccount(context, params.bankAccountId);
-  const refuse = (error: string) => ({ intent: IMPORT, error, imported: null });
+  const refuse = (error: string) => ({ intent: IMPORT, error, imported: null, asked: null });
   const form = await readUploadForm(request);
   if (form === null) {
     return refuse(`Import files of at most ${DOCUMENT_MAX_SIZE}.`);
@@ -107,9 +140,15 @@ export async function action({ request, params }: Route.ActionArgs): Promise<Imp
     statements: parsed.statements,
     importedBy: context.user.name,
   });
-  return outcome.ok
-    ? { intent: IMPORT, error: null, imported: outcome.value }
-    : refuse(outcome.message);
+  if (!outcome.ok) {
+    return refuse(outcome.message);
+  }
+  return {
+    intent: IMPORT,
+    error: null,
+    imported: outcome.value,
+    asked: await askAboutImported(context, outcome.value.transactionIds),
+  };
 }
 
 const COLUMNS = [
@@ -134,7 +173,7 @@ export default function BankAccountPage({ loaderData, actionData }: Route.Compon
     (account) => account.code === bankAccount.ledgerAccountCode,
   )!;
   const accountPath = bankAccountPath(base, bankAccount.id);
-  const imported = actionData?.intent === IMPORT ? actionData.imported : null;
+  const answer = actionData?.intent === IMPORT && actionData.error === null ? actionData : null;
   return (
     <>
       <PageHeading
@@ -200,14 +239,19 @@ export default function BankAccountPage({ loaderData, actionData }: Route.Compon
               </Button>
             </div>
             <FormError result={actionData} intent={IMPORT} />
-            {imported === null ? null : (
+            {answer === null ? null : (
               <p role="status" className="text-sm text-pretty text-[var(--bo-muted)]">
-                {imported.imported === 0
+                {answer.imported.imported === 0
                   ? "Nothing new: every statement in the file was imported before."
-                  : `Imported ${plural(imported.imported, "statement", "statements")} with ${plural(imported.transactions, "transaction", "transactions")} to book.`}
-                {imported.imported > 0 && imported.skipped > 0
-                  ? ` ${plural(imported.skipped, "statement was", "statements were")} imported before.`
+                  : `Imported ${plural(answer.imported.imported, "statement", "statements")} with ${plural(answer.imported.transactionIds.length, "transaction", "transactions")} to book.`}
+                {answer.imported.imported > 0 && answer.imported.skipped > 0
+                  ? ` ${plural(answer.imported.skipped, "statement was", "statements were")} imported before.`
                   : ""}
+                {!answer.asked.ok
+                  ? ` The bookkeeping agent was not asked about them: ${answer.asked.error}`
+                  : answer.asked.count > 0
+                    ? ` Asked the bookkeeping agent how to book ${answer.asked.count} of them.`
+                    : ""}
               </p>
             )}
           </SurfacePanelBody>

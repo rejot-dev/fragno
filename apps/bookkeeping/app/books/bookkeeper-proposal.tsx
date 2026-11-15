@@ -8,20 +8,37 @@ import {
   SurfaceTable,
   SurfaceTableRow,
 } from "@fragno-private/design-system/layout/surface-panel";
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Form, useNavigation, useRevalidator } from "react-router";
 
-import type { DocumentView } from "../../workers/books/documents/documents";
-import type { ProposedEntry } from "../../workers/books/documents/schema";
-import { agentStepLine, type AgentStep } from "../books/agent-steps";
-import { accountLabel, formatDate, indexBooks } from "../books/books";
-import type { FormResult } from "../books/books.server";
-import { FormError } from "../books/forms";
-import type { BooksOutletContext } from "../books/layout";
+import type { ProposedLine, AgentProposal } from "../../workers/books/proposals/schema";
+import { agentStepLine, type AgentStep } from "./agent-steps";
 import type { BookkeeperProgress } from "./bookkeeper.server";
+import { accountLabel, formatDate, indexBooks } from "./books";
+import type { FormResult } from "./books.server";
+import { FormError } from "./forms";
+import type { BooksOutletContext } from "./layout";
 
-/** The intent of the form asking the bookkeeping agent about the document. */
+/** The intent of the form asking the bookkeeping agent about what the page shows. */
 export const ASK = "ask";
+
+/** How the panel speaks of what it is about, and of what the agent proposes for it. */
+const WORDING = {
+  document: {
+    reads: "reads the document in Backoffice and proposes the entry booking it",
+    reading: "Reading the document",
+    proposal: "an entry",
+    none: "The agent proposes no entry",
+  },
+  transaction: {
+    reads: "reads the bank transaction and proposes how to book it",
+    reading: "Reading the bank transaction",
+    proposal: "a booking",
+    none: "The agent proposes no booking",
+  },
+} as const;
+
+type Subject = keyof typeof WORDING;
 
 // Nothing tells Bookkeeping when the agent's turn ends, so the page asks again until it has.
 const PROGRESS_POLL_INTERVAL_MS = 5_000;
@@ -56,7 +73,10 @@ const LINE_COLUMNS = [
 ] as const;
 
 /** What a request still waiting for its answer says, by where the agent stands with it. */
-function requestState(progress: BookkeeperProgress): {
+function requestState(
+  progress: BookkeeperProgress,
+  subject: Subject,
+): {
   tone: Tone;
   label: string;
   detail: string | null;
@@ -66,13 +86,12 @@ function requestState(progress: BookkeeperProgress): {
     case "queued":
       return { tone: "waiting", label: "Waiting for the agent", detail: null, askAgain: false };
     case "running":
-      return { tone: "live", label: "Reading the document", detail: null, askAgain: false };
+      return { tone: "live", label: WORDING[subject].reading, detail: null, askAgain: false };
     case "completed":
       return {
         tone: "failed",
         label: "The agent proposed nothing",
-        detail:
-          "It finished without proposing an entry or saying why. The firm keeping these books can read what it did in its Bookkeeping agent's conversation in Backoffice.",
+        detail: `It finished without proposing ${WORDING[subject].proposal} or saying why. The firm keeping these books can read what it did in its Bookkeeping agent's conversation in Backoffice.`,
         askAgain: true,
       };
     case "failed":
@@ -130,12 +149,19 @@ function BookkeeperSteps({ steps }: { steps: AgentStep[] }) {
   );
 }
 
-function ProposedLines({ entry, context }: { entry: ProposedEntry; context: BooksOutletContext }) {
+/** The lines of an entry the bookkeeping agent proposes. */
+export function ProposedLines({
+  lines,
+  context,
+}: {
+  lines: ProposedLine[];
+  context: BooksOutletContext;
+}) {
   const { books } = context;
   const index = indexBooks(books);
   return (
     <SurfaceTable columns={LINE_COLUMNS}>
-      {entry.lines.map((line, position) => {
+      {lines.map((line, position) => {
         const account = index.accounts.get(line.accountId);
         const partyAccount =
           line.partyAccountId === null ? null : index.partyAccounts.get(line.partyAccountId);
@@ -171,22 +197,24 @@ function ProposedLines({ entry, context }: { entry: ProposedEntry; context: Book
 }
 
 /**
- * What the bookkeeping agent made of a document to book: whether it was asked and how far it got,
- * the entry it proposes, or why it proposes none; and asking it (again).
+ * What the bookkeeping agent made of a document or a bank transaction to book: whether it was asked
+ * and how far it got, what it proposes, which the page renders as `proposed`, or why it proposes
+ * nothing; and asking it (again).
  */
 export function BookkeeperProposal({
-  document,
+  subject,
+  proposal,
   progress,
-  context,
+  proposed,
   result,
 }: {
-  document: Pick<DocumentView, "proposal">;
+  subject: Subject;
+  proposal: AgentProposal<unknown> | null;
   progress: BookkeeperProgress | null;
-  context: BooksOutletContext;
+  proposed: ReactNode;
   result: FormResult | undefined;
 }) {
   const navigation = useNavigation();
-  const { proposal } = document;
   usePollWhile(
     proposal?.status === "requested" &&
       (progress?.status === "queued" || progress?.status === "running"),
@@ -205,14 +233,13 @@ export function BookkeeperProposal({
   if (proposal === null) {
     body = (
       <p className="text-sm text-[var(--bo-muted)]">
-        The bookkeeping agent reads the document in Backoffice and proposes the entry booking it,
-        for you to review.
+        The bookkeeping agent {WORDING[subject].reads}, for you to review.
       </p>
     );
     actions = ask("Ask the agent");
   } else if (proposal.status === "requested") {
     // Read when the page loads, for every request still waiting.
-    const state = requestState(progress!);
+    const state = requestState(progress!, subject);
     const steps = "steps" in progress! ? progress.steps : [];
     body = (
       <div className="space-y-2">
@@ -233,36 +260,23 @@ export function BookkeeperProposal({
     actions = ask("Ask again");
   } else if (proposal.status === "declined") {
     body = (
-      <Callout tone="waiting" title="The agent proposes no entry">
+      <Callout tone="waiting" title={WORDING[subject].none}>
         {proposal.reason}
       </Callout>
     );
     actions = ask("Ask again");
   } else {
-    body = (
-      <div className="space-y-3">
-        <Callout tone="info" title="Proposed entry">
-          {proposal.note}
-        </Callout>
-        <p className="text-sm text-[var(--bo-muted)]">
-          {proposal.booking.description}
-          {proposal.booking.reference === null ? "" : ` · ${proposal.booking.reference}`} · posted{" "}
-          {formatDate(proposal.booking.postingDate)}, document dated{" "}
-          {formatDate(proposal.booking.documentDate)}. Review and book fills the new entry in from
-          it.
-        </p>
-      </div>
-    );
     actions = ask("Ask again");
   }
+  const asking = result?.intent === ASK && result.error !== null;
   return (
     <SurfaceSection title="Bookkeeping agent" meta={answered} actions={actions}>
-      <SurfacePanelBody>
-        {body}
-        <FormError result={result} intent={ASK} />
-      </SurfacePanelBody>
-      {proposal?.status === "proposed" ? (
-        <ProposedLines entry={proposal.booking} context={context} />
+      {/* What the agent proposes renders panels of its own, such as a table of lines. */}
+      {body === undefined ? proposed : <SurfacePanelBody>{body}</SurfacePanelBody>}
+      {asking ? (
+        <SurfacePanelBody>
+          <FormError result={result} intent={ASK} />
+        </SurfacePanelBody>
       ) : null}
     </SurfaceSection>
   );

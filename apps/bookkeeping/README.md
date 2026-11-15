@@ -266,17 +266,17 @@ totals: the profit and loss over a range of a fiscal year's periods, and the bal
 period's end, with every earlier fiscal year and their results in equity, since the books carry no
 closing entries.
 
-| Access                       | Actions                                                                                                                                                                                                                                                              |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Anyone Backoffice signs for  | `books.describe`, `entries.list`, `entries.get`, `accounts.lines`, `reports.trial-balance`, `reports.profit-and-loss`, `reports.balance-sheet`, `parties.list`, `parties.open-items`, `documents.list`, `documents.get`; in the administration's project, `firm.ask` |
-| Members and the firm's agent | `documents.propose`, `documents.decline`                                                                                                                                                                                                                             |
-| Members                      | `entries.post`, `entries.reverse`, `parties.create`, `settlements.create`, `settlements.reverse`                                                                                                                                                                     |
-| Owners and admins            | `accounts.create`, `accounts.update`, `journals.create`, `dimensions.create`, `dimension-values.create`, `currencies.add`, `fiscal-years.open`, `periods.reopen`                                                                                                     |
+| Access                       | Actions                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anyone Backoffice signs for  | `books.describe`, `entries.list`, `entries.get`, `accounts.lines`, `reports.trial-balance`, `reports.profit-and-loss`, `reports.balance-sheet`, `parties.list`, `parties.open-items`, `documents.list`, `documents.get`, `bank.accounts.list`, `bank.transactions.list`, `bank.transactions.get`; in the administration's project, `firm.ask` |
+| Members and the firm's agent | `documents.propose`, `documents.decline`, `bank.transactions.propose`, `bank.transactions.decline`                                                                                                                                                                                                                                            |
+| Members                      | `entries.post`, `entries.reverse`, `parties.create`, `settlements.create`, `settlements.reverse`                                                                                                                                                                                                                                              |
+| Owners and admins            | `accounts.create`, `accounts.update`, `journals.create`, `dimensions.create`, `dimension-values.create`, `currencies.add`, `fiscal-years.open`, `periods.reopen`                                                                                                                                                                              |
 
 Only people close and lock periods, on the settings page. Changing the books needs a person: calls
 Backoffice makes as the installation, for automations such as the agents Bookkeeping prompts, only
 read, and in a firm's agent project, where the [bookkeeping agent](#the-bookkeeping-agent) works,
-also answer requests for proposals for documents, which posts nothing. The
+also answer requests for proposals for documents and bank transactions, which posts nothing. The
 [books' assistant](#asking-about-the-books) in the administration's project only reads, and asks the
 firm (`firm.ask`), which changes nothing in the books. In a firm's agent project only the
 installation's calls are taken: people keep their clients' books in the clients' projects. The
@@ -428,14 +428,15 @@ request awaiting an answer shares the file again. An answer may also come while 
 shared for its request, before the share exists, so sharing records the file shared again
 afterwards, and revokes it again, without asking the agent, when the request no longer awaits an
 answer. Bookkeeping asks as its installation, not as the person, so the agent's calls to Bookkeeping
-arrive as the installation's: they read the books and answer requests (`documents.propose` and
-`documents.decline`), and every other change is refused, whatever a document tells the agent. The
-agent comes from the `bookkeeper-agent` [package](#agent-packages) installed in the firm's project,
-which grants it `upload.read`, `models.extract`, `integrations.read` (to read the actions' input
-schemas), and `integrations.execute`. Bookkeeping submits the prompt, naming the administration and
-where the file is shared, with `pi.prompt.submit` as a `subagent`: each document runs in a new
-conversation of the agent, beside the others, so documents uploaded together are read side by side
-and no document sees another's text. Backoffice bills the turn to the firm.
+arrive as the installation's: they read the books and answer requests (`documents.propose`,
+`documents.decline`, and their `bank.transactions` counterparts), and every other change is refused,
+whatever a document or a bank transaction tells the agent. The agent comes from the
+`bookkeeper-agent` [package](#agent-packages) installed in the firm's project, which grants it
+`upload.read`, `models.extract`, `integrations.read` (to read the actions' input schemas), and
+`integrations.execute`. Bookkeeping submits the prompt, naming the administration and where the file
+is shared, with `pi.prompt.submit` as a `subagent`: each document runs in a new conversation of the
+agent, beside the others, so documents uploaded together are read side by side and no document sees
+another's text. Backoffice bills the turn to the firm.
 
 How the agent books a document is the `bookkeeping` skill its package installs at
 `/workspace/bookkeeping/skills/bookkeeping/SKILL.md`, which its instructions tell it to read and
@@ -448,6 +449,15 @@ proposal and the agent's note, and **Review and book** opens the new-entry form 
 the documents list marks documents with a proposal. A proposal is checked against the books when
 made, and again by the ledger when booked: it puts no line on a bank account, which `books.describe`
 marks `bank`, as the bank's transaction books the payment.
+
+The agent proposes how to book bank transactions too ([Bank accounts](#bank-accounts)), by the same
+skill: it reads one with `bank.transactions.get`, and answers with `bank.transactions.propose` or
+`bank.transactions.decline`. Nothing is shared for it: the actions give the transaction, and the
+request IDs begin `transaction:<administration ID>:<transaction ID>:`. The agent's proposals for
+both live in the proposals fragment, `workers/books/proposals`, whose withdrawals, when the firm
+changes, cover both; the document's or transaction's own fragment refuses a request or answer about
+one that is not to book, in the same transaction. Its page asks, shows progress, and asks again as a
+document's does (`app/books/bookkeeper-proposal.tsx`, `app/books/bookkeeper.server.ts`).
 
 Each document has the agent's proposal (`workers/books/proposals`, a fragment that keeps them for
 anything to book): asked, under a request ID; the proposed entry; or the reason it proposes none. It
@@ -520,6 +530,16 @@ theirs, when it paid one counterparty. A transaction is booked once: reversing i
 book again, and reversing that reversal books it again, so it is refused unless the transaction is
 to book. Each transaction records whether it is booked, beside the ledger's entries and in the same
 transaction, so those to book list by index. An entry's page links to the transaction it books.
+
+An import asks the firm's [bookkeeping agent](#the-bookkeeping-agent) how to book each new
+transaction that the payment form, as it starts, does not book whole as settling what it pays
+(`app/banking/matching.server.ts`), in a subagent of its own, under request ID `…:import`, once.
+Opening balances are left to people: the bank does not say what the books held before. The agent
+proposes a payment, by or to a customer or supplier and settling which of their open items for how
+much, each within what it has outstanding and together within the payment, which the payment form
+then starts from; or an entry's lines besides the bank's, which must balance it and put nothing on a
+bank account, and which **Review and book** fills the new-entry form in from. The list marks
+transactions with a proposal, and a transaction's page asks the agent, again or for the first time.
 
 ### Asking about the books
 

@@ -12,9 +12,9 @@ import { z } from "zod";
 
 import { describeTransaction } from "../../workers/books/banking/detail";
 import type { Books } from "../../workers/books/books";
-import type { ProposedEntry } from "../../workers/books/documents/schema";
 import { today } from "../../workers/books/fiscal-years";
 import { decimalAmount, formatAmount, parseAmount } from "../../workers/books/money";
+import type { ProposedLine } from "../../workers/books/proposals/schema";
 import { DocumentPreview } from "../documents/preview";
 import type { Route } from "./+types/new-entry";
 import {
@@ -277,7 +277,10 @@ type LineState = {
 };
 
 /** The form's lines, filled in from the bookkeeping agent's proposal. */
-function linesFromProposal(proposal: ProposedEntry, functionalCurrency: string): LineState[] {
+function linesFromProposal(
+  proposal: { lines: ProposedLine[] },
+  functionalCurrency: string,
+): LineState[] {
   return proposal.lines.map((line, key) => ({
     key,
     accountId: line.accountId,
@@ -298,8 +301,15 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
   const { books, base } = useOutletContext<BooksOutletContext>();
   const navigation = useNavigation();
   const { document, transaction } = loaderData;
-  // Booking a document the bookkeeping agent proposed an entry for starts from its proposal.
-  const proposal = document?.proposal?.status === "proposed" ? document.proposal.booking : null;
+  // Booking a document or a bank transaction the bookkeeping agent proposed an entry for starts
+  // from its proposal.
+  const documentProposal =
+    document?.proposal?.status === "proposed" ? document.proposal.booking : null;
+  const transactionProposal =
+    transaction?.proposal?.status === "proposed" && transaction.proposal.booking.type === "entry"
+      ? transaction.proposal.booking
+      : null;
+  const proposal = documentProposal ?? transactionProposal;
   const index = indexBooks(books);
   // A bank transaction's entry has the line of its bank account, which the form shows but does
   // not submit: the books add it.
@@ -383,7 +393,7 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                     className="w-full"
                     type="date"
                     name="documentDate"
-                    defaultValue={proposal?.documentDate}
+                    defaultValue={documentProposal?.documentDate}
                     required
                   />
                 </Field>
@@ -395,7 +405,15 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
             </div>
           )}
           {transaction === null ? null : (
-            <input type="hidden" name="transactionId" value={transaction.id} />
+            <>
+              <input type="hidden" name="transactionId" value={transaction.id} />
+              {transactionProposal === null ? null : (
+                <p className="mb-4 text-sm text-pretty text-[var(--bo-muted)]">
+                  Filled in from the bookkeeping agent&apos;s proposal. Check it against the bank
+                  transaction before posting.
+                </p>
+              )}
+            </>
           )}
           <div className="grid gap-4 md:grid-cols-[14rem_11rem_11rem_1fr]">
             <Field label="Journal">
@@ -421,7 +439,7 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                   className="w-full"
                   type="date"
                   name="postingDate"
-                  defaultValue={proposal?.postingDate ?? loaderData.today}
+                  defaultValue={documentProposal?.postingDate ?? loaderData.today}
                   required
                 />
               ) : (

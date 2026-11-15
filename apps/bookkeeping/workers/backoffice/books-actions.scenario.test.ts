@@ -43,7 +43,7 @@ async function practiceWithBooks(scenario: BookkeepingScenario) {
 }
 
 const READS_ONLY =
-  "Automations without a person behind them read the books: people change them, and the firm's bookkeeping agent proposes documents' entries.";
+  "Automations without a person behind them read the books: people change them, and the firm's bookkeeping agent proposes how to book documents and bank transactions.";
 
 test("an entry's lines, as an agent reads them, post unchanged", async () => {
   await runBookkeepingScenario(async (scenario) => {
@@ -622,7 +622,7 @@ test("a firm's bookkeeping agent reads only its clients' books and answers reque
       status: 403,
       body: {
         message:
-          "A firm's bookkeeping agent reads its clients' books and proposes documents' entries; people change them, in their client's project.",
+          "A firm's bookkeeping agent reads its clients' books and proposes how to book their documents and bank transactions; people change them, in their client's project.",
       },
     };
 

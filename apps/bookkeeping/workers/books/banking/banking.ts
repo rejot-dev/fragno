@@ -8,12 +8,15 @@ import {
 } from "@fragno-dev/db";
 import type { createLedgerFragment } from "@fragno-dev/ledger";
 
+import type { createProposalsFragment } from "../proposals/proposals";
+import type { AgentProposal, ProposalAnswer, ProposalRequest } from "../proposals/schema";
 import { bookingEntry, booksSource, type SourceDocument } from "../sources";
 import type { Statement } from "./camt053";
 import type { TransactionDetail } from "./detail";
-import { bankingSchema, type StatementEnd } from "./schema";
+import { bankingSchema, type StatementEnd, type TransactionBooking } from "./schema";
 
 type LedgerServices = ReturnType<typeof createLedgerFragment>["services"];
+type ProposalsServices = ReturnType<typeof createProposalsFragment>["services"];
 type PostEntryInput = Parameters<LedgerServices["postEntry"]>[0];
 type ReverseEntryInput = Parameters<LedgerServices["reverseEntry"]>[0];
 type BankingUnitOfWork = TypedUnitOfWork<typeof bankingSchema>;
@@ -71,23 +74,66 @@ export type TransactionRow = {
 /** Where a transaction stands: booked while an entry booking it is in effect. */
 export type TransactionState = { status: "to-book" } | { status: "booked"; entryId: string };
 
-export type TransactionView = TransactionRow & {
-  bankAccount: BankAccountView;
-  statement: { id: string; reference: string };
+/** What the bookkeeping agent made of a bank transaction. */
+export type TransactionProposal = AgentProposal<TransactionBooking>;
+
+/** A transaction with what the ledger records of it, and the bookkeeping agent's proposal. */
+export type DescribedTransaction = TransactionRow & {
   /** The ledger's source document, once an entry recorded it, with every entry recording it. */
   source: SourceDocument | null;
   state: TransactionState;
+  proposal: TransactionProposal | null;
 };
 
-export type ImportResult = { imported: number; skipped: number; transactions: number };
+export type TransactionView = DescribedTransaction & {
+  bankAccount: BankAccountView;
+  statement: { id: string; reference: string };
+};
+
+/** What an import added: its statements, and the IDs of the transactions they brought to book. */
+export type ImportResult = { imported: number; skipped: number; transactionIds: string[] };
 
 /** A statement to import, with a hash of what it says. */
 export type FingerprintedStatement = Statement & { fingerprint: string };
 
 /** A transaction's state, as the entries recording it say. */
-export function transactionState(source: SourceDocument | null): TransactionState {
+function transactionState(source: SourceDocument | null): TransactionState {
   const entry = bookingEntry(source);
   return entry === null ? { status: "to-book" } : { status: "booked", entryId: entry.id };
+}
+
+/** A transaction with what the ledger and the proposals fragment, read for many, record of it. */
+export function describedTransaction(
+  row: TransactionRow,
+  sources: SourceDocument[],
+  proposals: { id: string; proposal: AgentProposal<unknown> }[],
+): DescribedTransaction {
+  const source = sources.find((candidate) => candidate.id === row.id) ?? null;
+  // Only answers about a transaction are recorded under its ID, and they propose its booking.
+  const proposal = proposals.find((candidate) => candidate.id === row.id)?.proposal ?? null;
+  return {
+    ...row,
+    source,
+    state: transactionState(source),
+    proposal: proposal as TransactionProposal | null,
+  };
+}
+
+/** The transaction a request or answer is about, refused unless it is to book. */
+function subjectToBook<TTransaction>(
+  transaction: TTransaction | null,
+  source: SourceDocument | null,
+): TTransaction {
+  if (!transaction) {
+    throw new BankingError("TRANSACTION_NOT_FOUND", "This bank transaction does not exist.");
+  }
+  if (transactionState(source).status === "booked") {
+    throw new BankingError(
+      "TRANSACTION_BOOKED",
+      "This bank transaction is booked. Reverse its entry first.",
+    );
+  }
+  return transaction;
 }
 
 function bankAccountView(row: {
@@ -203,7 +249,7 @@ function recordStatement(
   account: { id: FragnoId },
   planned: { statement: FingerprintedStatement; openingBalance: boolean },
   importedBy: string,
-): number {
+): string[] {
   const { statement } = planned;
   const statementId = uow.create(
     "statement",
@@ -241,24 +287,27 @@ function recordStatement(
       detail: { type: "opening-balance" },
     });
   }
-  for (const transaction of transactions) {
-    uow.create("transaction", {
-      ...transaction,
-      bankAccountId: account.id,
-      statementId,
-      booked: false,
-    });
-  }
-  return transactions.length;
+  return transactions.map((transaction) =>
+    uow
+      .create("transaction", {
+        ...transaction,
+        bankAccountId: account.id,
+        statementId,
+        booked: false,
+      })
+      .valueOf(),
+  );
 }
 
 /**
  * The bank accounts of an administration's books and their banks' statements, booked through its
- * ledger in the same transaction, so a bank transaction is booked by the rules of both.
+ * ledger in the same transaction, so a bank transaction is booked by the rules of both. The agent
+ * proposes how to book only transactions to book.
  */
 const bankingFragmentDefinition = defineFragment("banking")
   .extend(withDatabase(bankingSchema))
   .usesService<"ledger", LedgerServices>("ledger")
+  .usesService<"proposals", ProposalsServices>("proposals")
   .providesBaseService(({ defineService, serviceDeps }) =>
     defineService({
       /**
@@ -378,10 +427,9 @@ const bankingFragmentDefinition = defineFragment("banking")
               input.statements,
               new Map(imported.map((statement) => [statement.reference, statement.fingerprint])),
             );
-            let transactions = 0;
-            for (const planned of plan) {
-              transactions += recordStatement(uow, account, planned, input.importedBy);
-            }
+            const transactionIds = plan.flatMap((planned) =>
+              recordStatement(uow, account, planned, input.importedBy),
+            );
             if (plan.length > 0 && last !== null) {
               uow.update("bankAccount", account.id, (b) =>
                 b
@@ -394,7 +442,7 @@ const bankingFragmentDefinition = defineFragment("banking")
                   .check(),
               );
             }
-            return { imported: plan.length, skipped, transactions };
+            return { imported: plan.length, skipped, transactionIds };
           })
           .build();
       },
@@ -439,7 +487,13 @@ const bankingFragmentDefinition = defineFragment("banking")
 
       getTransaction: function (id: string) {
         return this.serviceTx(bankingSchema)
-          .withServiceCalls(() => [serviceDeps.ledger.getSourceDocuments({ ids: [id] })] as const)
+          .withServiceCalls(
+            () =>
+              [
+                serviceDeps.ledger.getSourceDocuments({ ids: [id] }),
+                serviceDeps.proposals.getProposals({ ids: [id] }),
+              ] as const,
+          )
           .retrieve((uow) =>
             uow.findFirst("transaction", (b) =>
               b
@@ -454,21 +508,18 @@ const bankingFragmentDefinition = defineFragment("banking")
                 ),
             ),
           )
-          .transformRetrieve(([transaction], [sources]): TransactionView | null => {
+          .transformRetrieve(([transaction], [sources, proposals]): TransactionView | null => {
             if (!transaction) {
               return null;
             }
-            const source = sources[0] ?? null;
             return {
-              ...transactionRow(transaction),
+              ...describedTransaction(transactionRow(transaction), sources, proposals),
               // References always resolve: every joined row is referenced by a foreign key.
               bankAccount: bankAccountView(transaction.bankAccount!),
               statement: {
                 id: transaction.statement!.id.valueOf(),
                 reference: transaction.statement!.reference,
               },
-              source,
-              state: transactionState(source),
             };
           })
           .build();
@@ -616,6 +667,60 @@ const bankingFragmentDefinition = defineFragment("banking")
           .build();
       },
 
+      /** Records that the bookkeeping agent was asked about a transaction to book. */
+      requestProposal: function (input: {
+        transactionId: string;
+        request: ProposalRequest;
+        first: boolean;
+      }) {
+        const { transactionId, request, first } = input;
+        return this.serviceTx(bankingSchema)
+          .withServiceCalls(
+            () =>
+              [
+                serviceDeps.ledger.getSourceDocuments({ ids: [transactionId] }),
+                serviceDeps.proposals.requestProposal({ subjectId: transactionId, request, first }),
+              ] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("transaction", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", transactionId)),
+            ),
+          )
+          .transformRetrieve(([transaction], [sources]) =>
+            subjectToBook(transaction, sources[0] ?? null),
+          )
+          .transform(({ serviceResult: [, proposal] }) => proposal as TransactionProposal)
+          .build();
+      },
+
+      /** Records an answer to a request about a transaction, as the proposals fragment does. */
+      answerRequest: function (input: {
+        transactionId: string;
+        request: string | null;
+        answer: ProposalAnswer<TransactionBooking>;
+      }) {
+        const { transactionId, request, answer } = input;
+        return this.serviceTx(bankingSchema)
+          .withServiceCalls(
+            () =>
+              [
+                serviceDeps.ledger.getSourceDocuments({ ids: [transactionId] }),
+                serviceDeps.proposals.answerRequest({ subjectId: transactionId, request, answer }),
+              ] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("transaction", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", transactionId)),
+            ),
+          )
+          .transformRetrieve(([transaction], [sources]) =>
+            subjectToBook(transaction, sources[0] ?? null),
+          )
+          .transform(() => answer)
+          .build();
+      },
+
       /** The customers and suppliers an IBAN paid or was paid by, by party account ID. */
       counterpartiesOf: function (iban: string) {
         return this.serviceTx(bankingSchema)
@@ -679,7 +784,7 @@ function assertBooksTransaction(
 
 export function createBankingFragment(
   options: FragnoPublicConfigWithDatabase,
-  services: { ledger: LedgerServices },
+  services: { ledger: LedgerServices; proposals: ProposalsServices },
 ) {
   return instantiate(bankingFragmentDefinition)
     .withConfig({})
