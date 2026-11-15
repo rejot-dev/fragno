@@ -1,0 +1,689 @@
+import type { FragnoId } from "@fragno-dev/db/schema";
+
+import { defineFragment, instantiate } from "@fragno-dev/core";
+import {
+  withDatabase,
+  type FragnoPublicConfigWithDatabase,
+  type TypedUnitOfWork,
+} from "@fragno-dev/db";
+import type { createLedgerFragment } from "@fragno-dev/ledger";
+
+import { bookingEntry, booksSource, type SourceDocument } from "../sources";
+import type { Statement } from "./camt053";
+import type { TransactionDetail } from "./detail";
+import { bankingSchema, type StatementEnd } from "./schema";
+
+type LedgerServices = ReturnType<typeof createLedgerFragment>["services"];
+type PostEntryInput = Parameters<LedgerServices["postEntry"]>[0];
+type ReverseEntryInput = Parameters<LedgerServices["reverseEntry"]>[0];
+type BankingUnitOfWork = TypedUnitOfWork<typeof bankingSchema>;
+
+/** The ledger kind of the source documents that bank transactions are. */
+export const BANK_TRANSACTION_SOURCE_KIND = "bank_transaction";
+
+const PAGE_SIZE = 50;
+
+const bankingErrorCodes = [
+  "BANK_ACCOUNT_NOT_FOUND",
+  "BANK_ACCOUNT_TAKEN",
+  "BANK_ACCOUNT_DIMENSIONS",
+  "BANK_JOURNAL_NOT_FOUND",
+  "STATEMENT_ACCOUNT_MISMATCH",
+  "STATEMENT_CHANGED",
+  "STATEMENT_UNBALANCED",
+  "STATEMENT_OUT_OF_ORDER",
+  "STATEMENT_GAP",
+  "TRANSACTION_NOT_FOUND",
+  "TRANSACTION_BOOKED",
+  "TRANSACTION_ENTRY_INVALID",
+] as const;
+
+export type BankingErrorCode = (typeof bankingErrorCodes)[number];
+
+/** Thrown by services when an operation does not fit the bank's facts; aborts the transaction. */
+export class BankingError extends Error {
+  readonly code: BankingErrorCode;
+
+  constructor(code: BankingErrorCode, message: string) {
+    super(message);
+    this.name = "BankingError";
+    this.code = code;
+  }
+}
+
+export type BankAccountView = {
+  id: string;
+  iban: string;
+  name: string;
+  currency: string;
+  ledgerAccountCode: string;
+  journalId: string;
+  lastStatement: { endDate: string; closingBalanceMinor: bigint } | null;
+};
+
+export type TransactionRow = {
+  id: string;
+  bookingDate: string;
+  amountMinor: bigint;
+  detail: TransactionDetail;
+};
+
+/** Where a transaction stands: booked while an entry booking it is in effect. */
+export type TransactionState = { status: "to-book" } | { status: "booked"; entryId: string };
+
+export type TransactionView = TransactionRow & {
+  bankAccount: BankAccountView;
+  statement: { id: string; reference: string };
+  /** The ledger's source document, once an entry recorded it, with every entry recording it. */
+  source: SourceDocument | null;
+  state: TransactionState;
+};
+
+export type ImportResult = { imported: number; skipped: number; transactions: number };
+
+/** A statement to import, with a hash of what it says. */
+export type FingerprintedStatement = Statement & { fingerprint: string };
+
+/** A transaction's state, as the entries recording it say. */
+export function transactionState(source: SourceDocument | null): TransactionState {
+  const entry = bookingEntry(source);
+  return entry === null ? { status: "to-book" } : { status: "booked", entryId: entry.id };
+}
+
+function bankAccountView(row: {
+  id: FragnoId;
+  iban: string;
+  name: string;
+  currency: string;
+  ledgerAccountCode: string;
+  journalId: string;
+  lastStatement: StatementEnd | null;
+}): BankAccountView {
+  return {
+    id: row.id.valueOf(),
+    iban: row.iban,
+    name: row.name,
+    currency: row.currency,
+    ledgerAccountCode: row.ledgerAccountCode,
+    journalId: row.journalId,
+    lastStatement:
+      row.lastStatement === null
+        ? null
+        : {
+            endDate: row.lastStatement.endDate,
+            closingBalanceMinor: BigInt(row.lastStatement.closingBalanceMinor),
+          },
+  };
+}
+
+function transactionRow(row: {
+  id: FragnoId;
+  bookingDate: string;
+  amountMinor: bigint;
+  detail: TransactionDetail;
+}): TransactionRow {
+  return {
+    id: row.id.valueOf(),
+    bookingDate: row.bookingDate,
+    amountMinor: row.amountMinor,
+    detail: row.detail,
+  };
+}
+
+/**
+ * The statements of a file to import, oldest first, after `last`, the account's last imported
+ * statement: each must add up, end no earlier than the one before, and open with its closing
+ * balance. Statements imported before, `imported` by their bank's ID with their fingerprints, are
+ * skipped; one saying something else than when it was imported is refused, as an import cannot be
+ * undone.
+ */
+function planImport(
+  account: { iban: string; currency: string; lastStatement: StatementEnd | null },
+  statements: FingerprintedStatement[],
+  imported: ReadonlyMap<string, string>,
+) {
+  const ordered = statements
+    .filter(
+      (statement, position) =>
+        statements.findIndex((other) => other.reference === statement.reference) === position,
+    )
+    .sort((a, b) => a.endDate.localeCompare(b.endDate) || a.startDate.localeCompare(b.startDate));
+  let last =
+    account.lastStatement === null
+      ? null
+      : {
+          endDate: account.lastStatement.endDate,
+          closingBalanceMinor: BigInt(account.lastStatement.closingBalanceMinor),
+        };
+  const plan: { statement: FingerprintedStatement; openingBalance: boolean }[] = [];
+  for (const statement of ordered) {
+    const fingerprint = imported.get(statement.reference);
+    if (fingerprint !== undefined && fingerprint !== statement.fingerprint) {
+      throw new BankingError(
+        "STATEMENT_CHANGED",
+        `Statement ${statement.reference} says something else than when it was imported.`,
+      );
+    }
+    if (fingerprint !== undefined) {
+      continue;
+    }
+    if (statement.iban !== account.iban || statement.currency !== account.currency) {
+      throw new BankingError(
+        "STATEMENT_ACCOUNT_MISMATCH",
+        `Statement ${statement.reference} is of ${statement.iban} in ${statement.currency}, not of this bank account.`,
+      );
+    }
+    const moved = statement.entries.reduce((total, entry) => total + entry.amountMinor, 0n);
+    if (statement.openingBalanceMinor + moved !== statement.closingBalanceMinor) {
+      throw new BankingError(
+        "STATEMENT_UNBALANCED",
+        `Statement ${statement.reference}'s entries do not add up from its opening to its closing balance.`,
+      );
+    }
+    if (last !== null && statement.endDate < last.endDate) {
+      throw new BankingError(
+        "STATEMENT_OUT_OF_ORDER",
+        `Statement ${statement.reference} ends before the last imported statement: import statements oldest first.`,
+      );
+    }
+    if (last !== null && statement.openingBalanceMinor !== last.closingBalanceMinor) {
+      throw new BankingError(
+        "STATEMENT_GAP",
+        `Statement ${statement.reference} does not open with the closing balance of the statement before it: import the statements between them first.`,
+      );
+    }
+    plan.push({ statement, openingBalance: last === null });
+    last = { endDate: statement.endDate, closingBalanceMinor: statement.closingBalanceMinor };
+  }
+  return { plan, last, skipped: ordered.length - plan.length };
+}
+
+function recordStatement(
+  uow: BankingUnitOfWork,
+  account: { id: FragnoId },
+  planned: { statement: FingerprintedStatement; openingBalance: boolean },
+  importedBy: string,
+): number {
+  const { statement } = planned;
+  const statementId = uow.create(
+    "statement",
+    {
+      bankAccountId: account.id,
+      reference: statement.reference,
+      startDate: statement.startDate,
+      endDate: statement.endDate,
+      openingBalanceMinor: statement.openingBalanceMinor,
+      closingBalanceMinor: statement.closingBalanceMinor,
+      fingerprint: statement.fingerprint,
+      importedAt: uow.now(),
+      importedBy,
+    },
+    // A concurrent import of the same file imported it: retrying reads it and skips it.
+    { retryOnUniqueConflict: () => true },
+  );
+  const transactions: { bookingDate: string; amountMinor: bigint; detail: TransactionDetail }[] =
+    statement.entries.map((entry) => ({
+      bookingDate: entry.bookingDate,
+      amountMinor: entry.amountMinor,
+      detail: {
+        type: "entry",
+        bankReference: entry.bankReference,
+        valueDate: entry.valueDate,
+        information: entry.information,
+        parts: entry.parts,
+      },
+    }));
+  // The balance before the account's first statement is booked once, like its transactions.
+  if (planned.openingBalance && statement.openingBalanceMinor !== 0n) {
+    transactions.unshift({
+      bookingDate: statement.startDate,
+      amountMinor: statement.openingBalanceMinor,
+      detail: { type: "opening-balance" },
+    });
+  }
+  for (const transaction of transactions) {
+    uow.create("transaction", {
+      ...transaction,
+      bankAccountId: account.id,
+      statementId,
+      booked: false,
+    });
+  }
+  return transactions.length;
+}
+
+/**
+ * The bank accounts of an administration's books and their banks' statements, booked through its
+ * ledger in the same transaction, so a bank transaction is booked by the rules of both.
+ */
+const bankingFragmentDefinition = defineFragment("banking")
+  .extend(withDatabase(bankingSchema))
+  .usesService<"ledger", LedgerServices>("ledger")
+  .providesBaseService(({ defineService, serviceDeps }) =>
+    defineService({
+      /**
+       * Adds a bank account with the ledger account it books to, which takes only entries booking
+       * its transactions, in the books' currency.
+       */
+      addBankAccount: function (input: {
+        iban: string;
+        name: string;
+        currency: string;
+        ledgerAccountCode: string;
+        journalId: string;
+      }) {
+        return this.serviceTx(bankingSchema)
+          .withServiceCalls(
+            () =>
+              [
+                serviceDeps.ledger.createAccount({
+                  code: input.ledgerAccountCode,
+                  name: input.name,
+                  classification: { type: "asset", role: "ordinary" },
+                  normalSide: "debit",
+                  currency: input.currency,
+                  dimensionRules: {},
+                  sourceKinds: [BANK_TRANSACTION_SOURCE_KIND],
+                }),
+                serviceDeps.ledger.listJournals(),
+              ] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("bankAccount", (b) =>
+              b.whereIndex("idx_bank_account_iban", (eb) => eb("iban", "=", input.iban)),
+            ),
+          )
+          .mutate(
+            ({ uow, retrieveResult: [existing], serviceIntermediateResult: [, journals] }) => {
+              // The ledger never deletes journals, so one that exists now always will.
+              if (!journals.some((journal) => journal.id === input.journalId)) {
+                throw new BankingError(
+                  "BANK_JOURNAL_NOT_FOUND",
+                  "Choose one of the books' journals to book the account's transactions in.",
+                );
+              }
+              if (existing) {
+                throw new BankingError(
+                  "BANK_ACCOUNT_TAKEN",
+                  "The books already have a bank account with this IBAN.",
+                );
+              }
+              const id = uow.create(
+                "bankAccount",
+                { ...input, lastStatement: null },
+                // Another addition of the same IBAN: retrying reads it and refuses.
+                { retryOnUniqueConflict: () => true },
+              );
+              return { id: id.valueOf() };
+            },
+          )
+          .build();
+      },
+
+      listBankAccounts: function () {
+        return this.serviceTx(bankingSchema)
+          .retrieve((uow) =>
+            uow.find("bankAccount", (b) =>
+              b.whereIndex("idx_bank_account_iban").orderByIndex("idx_bank_account_iban", "asc"),
+            ),
+          )
+          .transformRetrieve(([accounts]) => accounts.map(bankAccountView))
+          .build();
+      },
+
+      getBankAccount: function (id: string) {
+        return this.serviceTx(bankingSchema)
+          .retrieve((uow) =>
+            uow.findFirst("bankAccount", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id))),
+          )
+          .transformRetrieve(([account]) => (account ? bankAccountView(account) : null))
+          .build();
+      },
+
+      /**
+       * Imports a file's statements of a bank account, oldest first, each with its transactions,
+       * continuing the last statement imported; statements imported before are skipped, so
+       * importing a file again imports nothing. The account's first statement also records the
+       * balance it opened with, to book once.
+       */
+      importStatements: function (input: {
+        bankAccountId: string;
+        statements: FingerprintedStatement[];
+        importedBy: string;
+      }) {
+        const references = input.statements.map((statement) => statement.reference);
+        return this.serviceTx(bankingSchema)
+          .retrieve((uow) =>
+            uow
+              .findFirst("bankAccount", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", input.bankAccountId)),
+              )
+              .find("statement", (b) =>
+                b
+                  .whereIndex("idx_statement_reference", (eb) =>
+                    eb.and(
+                      eb("bankAccountId", "=", input.bankAccountId),
+                      eb("reference", "in", references),
+                    ),
+                  )
+                  .select(["reference", "fingerprint"]),
+              ),
+          )
+          .mutate(({ uow, retrieveResult: [account, imported] }): ImportResult => {
+            if (!account) {
+              throw new BankingError("BANK_ACCOUNT_NOT_FOUND", "This bank account does not exist.");
+            }
+            const { plan, last, skipped } = planImport(
+              account,
+              input.statements,
+              new Map(imported.map((statement) => [statement.reference, statement.fingerprint])),
+            );
+            let transactions = 0;
+            for (const planned of plan) {
+              transactions += recordStatement(uow, account, planned, input.importedBy);
+            }
+            if (plan.length > 0 && last !== null) {
+              uow.update("bankAccount", account.id, (b) =>
+                b
+                  .set({
+                    lastStatement: {
+                      endDate: last.endDate,
+                      closingBalanceMinor: last.closingBalanceMinor.toString(),
+                    },
+                  })
+                  .check(),
+              );
+            }
+            return { imported: plan.length, skipped, transactions };
+          })
+          .build();
+      },
+
+      /**
+       * A page of a bank account's transactions, latest first: those to book, or all of them;
+       * without what the ledger records of them.
+       */
+      listTransactions: function (input: {
+        bankAccountId: string;
+        toBook: boolean;
+        cursor: string | null;
+      }) {
+        return this.serviceTx(bankingSchema)
+          .retrieve((uow) =>
+            uow.findWithCursor("transaction", (b) => {
+              const page = input.toBook
+                ? b
+                    .whereIndex("idx_transaction_account_booked_date", (eb) =>
+                      eb.and(
+                        eb("bankAccountId", "=", input.bankAccountId),
+                        eb("booked", "=", false),
+                      ),
+                    )
+                    .orderByIndex("idx_transaction_account_booked_date", "desc")
+                    .pageSize(PAGE_SIZE)
+                : b
+                    .whereIndex("idx_transaction_account_date", (eb) =>
+                      eb("bankAccountId", "=", input.bankAccountId),
+                    )
+                    .orderByIndex("idx_transaction_account_date", "desc")
+                    .pageSize(PAGE_SIZE);
+              return input.cursor ? page.after(input.cursor) : page;
+            }),
+          )
+          .transformRetrieve(([page]) => ({
+            cursor: page.hasNextPage ? (page.cursor?.encode() ?? null) : null,
+            items: page.items.map(transactionRow),
+          }))
+          .build();
+      },
+
+      getTransaction: function (id: string) {
+        return this.serviceTx(bankingSchema)
+          .withServiceCalls(() => [serviceDeps.ledger.getSourceDocuments({ ids: [id] })] as const)
+          .retrieve((uow) =>
+            uow.findFirst("transaction", (b) =>
+              b
+                .whereIndex("primary", (eb) => eb("id", "=", id))
+                .joinOne("bankAccount", "bankAccount", (account) =>
+                  account.onIndex("primary", (eb) => eb("id", "=", eb.parent("bankAccountId"))),
+                )
+                .joinOne("statement", "statement", (statement) =>
+                  statement
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("statementId")))
+                    .select(["id", "reference"]),
+                ),
+            ),
+          )
+          .transformRetrieve(([transaction], [sources]): TransactionView | null => {
+            if (!transaction) {
+              return null;
+            }
+            const source = sources[0] ?? null;
+            return {
+              ...transactionRow(transaction),
+              // References always resolve: every joined row is referenced by a foreign key.
+              bankAccount: bankAccountView(transaction.bankAccount!),
+              statement: {
+                id: transaction.statement!.id.valueOf(),
+                reference: transaction.statement!.reference,
+              },
+              source,
+              state: transactionState(source),
+            };
+          })
+          .build();
+      },
+
+      /**
+       * Posts an entry booking a transaction: its first, which creates its source document, or one
+       * after every earlier entry was reversed. The entry posts on the transaction's booking date,
+       * and on bank accounts only to the transaction's own, by its amount, so the ledger's bank
+       * account adds up to the bank's statements. The customers and suppliers it books to are
+       * learned as the counterparty's, by its IBAN.
+       */
+      bookTransaction: function (input: {
+        transactionId: string;
+        source: { type: "new"; documentDate: string; description: string } | { type: "existing" };
+        entry: Omit<PostEntryInput, "source">;
+      }) {
+        const { transactionId, entry } = input;
+        const partyAccountIds = [
+          ...new Set(entry.lines.flatMap((line) => line.openItem?.partyAccountId ?? [])),
+        ];
+        return this.serviceTx(bankingSchema)
+          .withServiceCalls(
+            () =>
+              [
+                serviceDeps.ledger.getSourceDocuments({ ids: [transactionId] }),
+                serviceDeps.ledger.listAccounts(),
+                serviceDeps.ledger.postEntry({
+                  ...entry,
+                  source:
+                    input.source.type === "new"
+                      ? {
+                          ...input.source,
+                          type: "new",
+                          id: transactionId,
+                          kind: BANK_TRANSACTION_SOURCE_KIND,
+                        }
+                      : { type: "existing", id: transactionId },
+                }),
+              ] as const,
+          )
+          .retrieve((uow) =>
+            uow
+              .findFirst("transaction", (b) =>
+                b.whereIndex("primary", (eb) => eb("id", "=", transactionId)),
+              )
+              .find("bankAccount", (b) => b.whereIndex("primary"))
+              .find("counterparty", (b) =>
+                b.whereIndex("idx_counterparty_party", (eb) =>
+                  eb("partyAccountId", "in", partyAccountIds),
+                ),
+              ),
+          )
+          .mutate(
+            ({
+              uow,
+              retrieveResult: [transaction, bankAccounts, counterparties],
+              serviceIntermediateResult: [sources, accounts],
+            }) => {
+              if (!transaction) {
+                throw new BankingError(
+                  "TRANSACTION_NOT_FOUND",
+                  "This bank transaction does not exist.",
+                );
+              }
+              if (transactionState(sources[0] ?? null).status === "booked") {
+                throw new BankingError(
+                  "TRANSACTION_BOOKED",
+                  "This bank transaction is booked. Reverse its entry first.",
+                );
+              }
+              assertBooksTransaction(entry, transaction, bankAccounts, accounts);
+              uow.update("transaction", transaction.id, (b) => b.set({ booked: true }).check());
+
+              // Learned only from a single counterparty: a batch's parties are not each IBAN's.
+              const { detail } = transaction;
+              const ibans =
+                detail.type === "entry" ? [...new Set(detail.parts.map((part) => part.iban))] : [];
+              const iban = ibans.length === 1 ? ibans[0] : null;
+              if (iban === null) {
+                return;
+              }
+              for (const partyAccountId of partyAccountIds) {
+                const known = counterparties.some(
+                  (row) => row.iban === iban && row.partyAccountId === partyAccountId,
+                );
+                if (!known) {
+                  // A concurrent booking learned it: retrying reads it.
+                  uow.create(
+                    "counterparty",
+                    { iban, partyAccountId },
+                    { retryOnUniqueConflict: () => true },
+                  );
+                }
+              }
+            },
+          )
+          .transform(({ serviceResult: [, , posted] }) => posted)
+          .build();
+      },
+
+      /**
+       * Reverses an entry recording the transaction. Reversing a reversal books the transaction
+       * again, so it is refused like booking: unless the transaction is to book.
+       */
+      reverseTransactionEntry: function (input: {
+        transactionId: string;
+        reversal: ReverseEntryInput;
+      }) {
+        const { transactionId, reversal } = input;
+        return this.serviceTx(bankingSchema)
+          .withServiceCalls(
+            () =>
+              [
+                serviceDeps.ledger.getSourceDocuments({ ids: [transactionId] }),
+                serviceDeps.ledger.reverseEntry(reversal),
+              ] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("transaction", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", transactionId)),
+            ),
+          )
+          .mutate(
+            ({ uow, retrieveResult: [transaction], serviceIntermediateResult: [sources] }) => {
+              const source = sources[0];
+              const entry = source?.entries.find((candidate) => candidate.id === reversal.entryId);
+              if (!transaction || !entry) {
+                throw new BankingError(
+                  "TRANSACTION_NOT_FOUND",
+                  "This bank transaction does not exist.",
+                );
+              }
+              const booking = booksSource(entry, source);
+              if (!booking && transactionState(source).status === "booked") {
+                throw new BankingError(
+                  "TRANSACTION_BOOKED",
+                  "This bank transaction is booked. Reverse its entry first.",
+                );
+              }
+              uow.update("transaction", transaction.id, (b) => b.set({ booked: !booking }).check());
+            },
+          )
+          .transform(({ serviceResult: [, reversed] }) => reversed)
+          .build();
+      },
+
+      /** The customers and suppliers an IBAN paid or was paid by, by party account ID. */
+      counterpartiesOf: function (iban: string) {
+        return this.serviceTx(bankingSchema)
+          .retrieve((uow) =>
+            uow.find("counterparty", (b) =>
+              b.whereIndex("idx_counterparty_iban", (eb) => eb("iban", "=", iban)),
+            ),
+          )
+          .transformRetrieve(([rows]) => rows.map((row) => row.partyAccountId))
+          .build();
+      },
+    }),
+  )
+  .build();
+
+/**
+ * Refuses an entry that does not book `transaction` as it moved its bank account: on its booking
+ * date, with its amount on its bank account's ledger account, and nothing on other bank accounts.
+ */
+function assertBooksTransaction(
+  entry: Omit<PostEntryInput, "source">,
+  transaction: { bookingDate: string; amountMinor: bigint; bankAccountId: { internalId: bigint } },
+  bankAccounts: { id: FragnoId; ledgerAccountCode: string }[],
+  accounts: { id: string; code: string }[],
+) {
+  // Bank accounts' ledger accounts are created with them, so every code resolves.
+  const ledgerAccountOf = (code: string) => accounts.find((account) => account.code === code)!;
+  const own = bankAccounts.find(
+    (account) => account.id.internalId === transaction.bankAccountId.internalId,
+  )!;
+  const ownLedgerAccount = ledgerAccountOf(own.ledgerAccountCode);
+  const bankLedgerAccountIds = new Set(
+    bankAccounts.map((account) => ledgerAccountOf(account.ledgerAccountCode).id),
+  );
+  if (entry.postingDate !== transaction.bookingDate) {
+    throw new BankingError(
+      "TRANSACTION_ENTRY_INVALID",
+      `Book a bank transaction on the date the bank booked it, ${transaction.bookingDate}.`,
+    );
+  }
+  let movedMinor = 0n;
+  for (const line of entry.lines) {
+    if (!bankLedgerAccountIds.has(line.accountId)) {
+      continue;
+    }
+    if (line.accountId !== ownLedgerAccount.id) {
+      throw new BankingError(
+        "TRANSACTION_ENTRY_INVALID",
+        "A bank transaction is booked on its own bank account only: book transfers between bank accounts through an account in between.",
+      );
+    }
+    movedMinor += line.side === "debit" ? line.amountMinor : -line.amountMinor;
+  }
+  if (movedMinor !== transaction.amountMinor) {
+    throw new BankingError(
+      "TRANSACTION_ENTRY_INVALID",
+      `Book the transaction's amount on its bank account, ${ownLedgerAccount.code}.`,
+    );
+  }
+}
+
+export function createBankingFragment(
+  options: FragnoPublicConfigWithDatabase,
+  services: { ledger: LedgerServices },
+) {
+  return instantiate(bankingFragmentDefinition)
+    .withConfig({})
+    .withOptions(options)
+    .withServices(services)
+    .build();
+}

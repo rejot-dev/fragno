@@ -125,7 +125,7 @@ function purchaseForm(books: Books, journal: string, amount: string, date: strin
     reference: "",
     description: "Difference engine parts",
     ...line(0, "4000", "debit"),
-    ...line(1, "1000", "credit"),
+    ...line(1, "1090", "credit"),
   };
 }
 
@@ -187,7 +187,11 @@ test("a member uploads an invoice, books it from its page, and the entry links b
     expect(document.state).toEqual({ status: "booked", entryId: document.source?.entries[0].id });
     const entry = await ada.navigate(`${BOOKS}/entries/PUR/1`);
     expect(entry.loaderData["books/entry"]).toMatchObject({
-      document: { id, filename: "babbage invoice #7.pdf" },
+      source: {
+        label: "Document",
+        name: "babbage invoice #7.pdf",
+        path: `${BOOKS}/documents/${id}`,
+      },
     });
     expect(await listDocuments(ada)).toMatchObject([{ id, state: { status: "booked" } }]);
   });
@@ -260,7 +264,7 @@ test("a document is booked once; reversing its entry lets it be booked again, an
             openItem: null,
           },
           {
-            accountId: find(books.accounts, "1000").id,
+            accountId: find(books.accounts, "1090").id,
             side: "credit",
             currency: "EUR",
             amountMinor: 100n,
@@ -564,7 +568,7 @@ function proposal(id: string, request: string | null, debit: string, credit: str
       postingDate: `${YEAR}-03-02`,
       reference: INVOICE.number,
       description: `${INVOICE.supplier.name}, invoice ${INVOICE.number}`,
-      lines: [proposedLine("4000", "debit", debit), proposedLine("1000", "credit", credit)],
+      lines: [proposedLine("4000", "debit", debit), proposedLine("1090", "credit", credit)],
     },
     note: "A purchase of engine parts, paid from the bank as earlier ones were.",
   };
@@ -785,7 +789,7 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
         description: `${INVOICE.supplier.name}, invoice ${INVOICE.number}`,
         lines: [
           expect.objectContaining({ accountId: find(books.accounts, "4000").id, side: "debit" }),
-          expect.objectContaining({ accountId: find(books.accounts, "1000").id, side: "credit" }),
+          expect.objectContaining({ accountId: find(books.accounts, "1090").id, side: "credit" }),
         ],
       },
       note: "A purchase of engine parts, paid from the bank as earlier ones were.",

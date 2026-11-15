@@ -145,7 +145,8 @@ export default function AccountPage({ loaderData, actionData, params }: Route.Co
                   />
                 </Field>
               </div>
-              {books.dimensions.length > 0 ? (
+              {/* A bank account's lines come from its bank, which names no dimension values. */}
+              {books.dimensions.length > 0 && account.sourceKinds === null ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   {books.dimensions.map((dimension) => (
                     <Field key={dimension.id} label={dimension.name}>

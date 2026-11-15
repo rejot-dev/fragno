@@ -1,6 +1,3 @@
-import bankAccounts from "./banking/bank-accounts.sql?raw";
-import bankReconciliation from "./banking/reconciliation.sql?raw";
-import bankStatements from "./banking/statements.sql?raw";
 import budgets from "./budgeting/budgets.sql?raw";
 import classification from "./classification/classification.sql?raw";
 import invoices from "./invoicing/invoices.sql?raw";
@@ -31,9 +28,6 @@ export const bookkeepingSchema = [
   classification,
   paymentTerms,
   invoices,
-  bankAccounts,
-  bankStatements,
-  bankReconciliation,
   budgets,
   vatCodes,
   vatLineFacts,

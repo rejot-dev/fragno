@@ -10,13 +10,21 @@ import { useState } from "react";
 import { Form, redirect, useNavigation, useOutletContext } from "react-router";
 import { z } from "zod";
 
+import { describeTransaction } from "../../workers/books/banking/detail";
 import type { Books } from "../../workers/books/books";
 import type { ProposedEntry } from "../../workers/books/documents/schema";
 import { today } from "../../workers/books/fiscal-years";
-import { formatAmount, parseAmount } from "../../workers/books/money";
+import { decimalAmount, formatAmount, parseAmount } from "../../workers/books/money";
 import { DocumentPreview } from "../documents/preview";
 import type { Route } from "./+types/new-entry";
-import { accountLabel, booksPath, documentPath, formatDate, indexBooks } from "./books";
+import {
+  accountLabel,
+  booksPath,
+  documentPath,
+  formatDate,
+  indexBooks,
+  transactionPath,
+} from "./books";
 import { requireBooks, requireBooksSubmission, type FormResult } from "./books.server";
 import { FormError } from "./forms";
 import type { BooksOutletContext } from "./layout";
@@ -44,15 +52,42 @@ async function requireDocumentToBook(
   return document;
 }
 
-/** A new entry, or with `?document=`, the entry booking that document. */
+/**
+ * The bank transaction `transactionId` names, to book with the entry: one to book, else its page,
+ * which shows its entry.
+ */
+async function requireTransactionToBook(
+  context: Awaited<ReturnType<typeof requireBooks>>,
+  params: Route.LoaderArgs["params"],
+  transactionId: string,
+) {
+  const transaction = await context.books.getTransaction(transactionId);
+  if (!transaction) {
+    throw new Response("This bank transaction does not exist.", { status: 404 });
+  }
+  if (transaction.state.status !== "to-book") {
+    throw redirect(transactionPath(booksPath(params), transactionId));
+  }
+  return transaction;
+}
+
+/**
+ * A new entry; with `?document=`, the entry booking that document; with `?transaction=`, the one
+ * booking that bank transaction.
+ */
 export async function loader({ request, params }: Route.LoaderArgs) {
   const context = await requireBooks(request, params);
   const url = new URL(request.url);
   const documentId = url.searchParams.get("document");
+  const transactionId = url.searchParams.get("transaction");
   return {
     journalId: url.searchParams.get("journal"),
     today: today(),
     document: documentId === null ? null : await requireDocumentToBook(context, params, documentId),
+    transaction:
+      transactionId === null
+        ? null
+        : await requireTransactionToBook(context, params, transactionId),
   };
 }
 
@@ -81,13 +116,14 @@ type Description = Awaited<ReturnType<Books["describe"]>>;
 type PostingLine = Parameters<Books["postEntry"]>[0]["lines"][number];
 
 /**
- * The lines of a submitted entry. Fields are named `lines.<n>.<field>`; rows the person left
- * empty are skipped. Returns the first problem as a message instead.
+ * The lines of a submitted entry, at least `minimum`. Fields are named `lines.<n>.<field>`; rows
+ * the person left empty are skipped. Returns the first problem as a message instead.
  */
 function parseLines(
   form: Record<string, string>,
   books: Description,
   postingDate: string,
+  minimum: number,
 ): PostingLine[] | string {
   const digits = new Map(books.currencies.map((row) => [row.code, row.minorUnitDigits]));
   const rows = Object.keys(form)
@@ -143,8 +179,8 @@ function parseLines(
       openItem: partyAccountId === "" ? null : { partyAccountId, dueDate, settles: [] },
     });
   }
-  if (lines.length < 2) {
-    return "An entry needs at least two lines.";
+  if (lines.length < minimum) {
+    return minimum === 1 ? "Add a line besides the bank's." : "An entry needs at least two lines.";
   }
   return lines;
 }
@@ -152,7 +188,8 @@ function parseLines(
 /**
  * Posts the entry to its journal; the ledger checks it balances and follows its accounts' rules.
  * An entry booking a document records it as its source: dated as the document is the first time,
- * as it was then after a reversal.
+ * as it was then after a reversal. An entry booking a bank transaction has its bank account's
+ * line besides the lines submitted.
  */
 export async function action({ request, params }: Route.ActionArgs): Promise<FormResult> {
   const context = await requireBooksSubmission(request, params, "keep");
@@ -167,9 +204,25 @@ export async function action({ request, params }: Route.ActionArgs): Promise<For
     return { intent: INTENT, error: header.error.issues[0]?.message ?? "Check the form." };
   }
   const { journalId, postingDate, description, reference } = header.data;
-  const lines = parseLines(form, await books.describe(), postingDate);
+  const banked = form.transactionId !== undefined;
+  const lines = parseLines(form, await books.describe(), postingDate, banked ? 1 : 2);
   if (typeof lines === "string") {
     return { intent: INTENT, error: lines };
+  }
+  if (form.transactionId !== undefined) {
+    const transaction = await requireTransactionToBook(context, params, form.transactionId);
+    const outcome = await books.bookTransaction({
+      transactionId: transaction.id,
+      journalId,
+      description,
+      reference,
+      postedBy: user.name,
+      lines,
+    });
+    if (!outcome.ok) {
+      return { intent: INTENT, error: outcome.message };
+    }
+    throw redirect(transactionPath(booksPath(params), transaction.id));
   }
   const entry = { journalId, postingDate, description, reference, postedBy: user.name, lines };
   if (form.documentId === undefined) {
@@ -244,10 +297,23 @@ function linesFromProposal(proposal: ProposedEntry, functionalCurrency: string):
 export default function NewEntryPage({ loaderData, actionData }: Route.ComponentProps) {
   const { books, base } = useOutletContext<BooksOutletContext>();
   const navigation = useNavigation();
-  const { document } = loaderData;
+  const { document, transaction } = loaderData;
   // Booking a document the bookkeeping agent proposed an entry for starts from its proposal.
   const proposal = document?.review?.status === "proposed" ? document.review.entry : null;
   const index = indexBooks(books);
+  // A bank transaction's entry has the line of its bank account, which the form shows but does
+  // not submit: the books add it.
+  const bankLine =
+    transaction === null
+      ? null
+      : {
+          account: books.accounts.find(
+            (account) => account.code === transaction.bankAccount.ledgerAccountCode,
+          )!,
+          side: transaction.amountMinor > 0n ? ("debit" as const) : ("credit" as const),
+          amountMinor:
+            transaction.amountMinor > 0n ? transaction.amountMinor : -transaction.amountMinor,
+        };
   const blank = (key: number): LineState => ({
     key,
     accountId: "",
@@ -257,11 +323,20 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
     functionalAmount: "",
     initial: { description: "", partyAccountId: null, dueDate: "", dimensionValueIds: [] },
   });
-  const [lines, setLines] = useState<LineState[]>(() =>
-    proposal === null
-      ? [blank(0), blank(1)]
-      : linesFromProposal(proposal, books.functionalCurrency),
-  );
+  const [lines, setLines] = useState<LineState[]>(() => {
+    if (proposal !== null) {
+      return linesFromProposal(proposal, books.functionalCurrency);
+    }
+    if (bankLine !== null) {
+      // The other side of the bank's line, to give an account.
+      const amount = decimalAmount(
+        bankLine.amountMinor,
+        index.minorUnitDigits(books.functionalCurrency),
+      );
+      return [{ ...blank(0), [bankLine.side === "debit" ? "credit" : "debit"]: amount }];
+    }
+    return [blank(0), blank(1)];
+  });
   const update = (key: number, change: Partial<LineState>) => {
     setLines((current) =>
       current.map((line) => (line.key === key ? { ...line, ...change } : line)),
@@ -273,8 +348,17 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
     const text = line.currency === books.functionalCurrency ? line[side] : line.functionalAmount;
     return line[side] === "" ? 0n : (parseAmount(text, functionalDigits) ?? 0n);
   };
-  const debits = lines.reduce((sum, line) => sum + functionalAmount(line, "debit"), 0n);
-  const credits = lines.reduce((sum, line) => sum + functionalAmount(line, "credit"), 0n);
+  const bankMinor = (side: "debit" | "credit") =>
+    bankLine?.side === side ? bankLine.amountMinor : 0n;
+  const debits = lines.reduce(
+    (sum, line) => sum + functionalAmount(line, "debit"),
+    bankMinor("debit"),
+  );
+  const credits = lines.reduce(
+    (sum, line) => sum + functionalAmount(line, "credit"),
+    bankMinor("credit"),
+  );
+  const minimumLines = bankLine === null ? 2 : 1;
   const activeAccounts = books.accounts.filter((account) => account.active);
   const difference = debits - credits;
   const grid =
@@ -310,6 +394,9 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
               )}
             </div>
           )}
+          {transaction === null ? null : (
+            <input type="hidden" name="transactionId" value={transaction.id} />
+          )}
           <div className="grid gap-4 md:grid-cols-[14rem_11rem_11rem_1fr]">
             <Field label="Journal">
               <Select
@@ -319,19 +406,34 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                   value: journal.id,
                 }))}
                 defaultValue={
-                  proposal?.journalId ?? loaderData.journalId ?? books.journals[0]?.id ?? null
+                  proposal?.journalId ??
+                  transaction?.bankAccount.journalId ??
+                  loaderData.journalId ??
+                  books.journals[0]?.id ??
+                  null
                 }
                 required
               />
             </Field>
             <Field label="Date">
-              <Input
-                className="w-full"
-                type="date"
-                name="postingDate"
-                defaultValue={proposal?.postingDate ?? loaderData.today}
-                required
-              />
+              {transaction === null ? (
+                <Input
+                  className="w-full"
+                  type="date"
+                  name="postingDate"
+                  defaultValue={proposal?.postingDate ?? loaderData.today}
+                  required
+                />
+              ) : (
+                // A bank transaction is booked on the date the bank booked it.
+                <Input
+                  className="w-full"
+                  type="date"
+                  name="postingDate"
+                  value={transaction.bookingDate}
+                  readOnly
+                />
+              )}
             </Field>
             <Field label="Reference">
               <Input
@@ -345,7 +447,10 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
               <Input
                 className="w-full"
                 name="description"
-                defaultValue={proposal?.description}
+                defaultValue={
+                  proposal?.description ??
+                  (transaction === null ? undefined : describeTransaction(transaction.detail))
+                }
                 required
               />
             </Field>
@@ -363,6 +468,28 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
             <span className="text-right">Credit</span>
             <span />
           </div>
+          {bankLine === null ? null : (
+            <div
+              className={`${grid} border-b border-[var(--bo-border)] py-2 text-sm`}
+              aria-label="The bank's line"
+            >
+              <span className="px-3">{accountLabel(bankLine.account)}</span>
+              <span className="px-3 text-[var(--bo-muted)]">
+                As the bank booked it, {formatDate(transaction!.bookingDate)}
+              </span>
+              <span className="px-3 text-right tabular-nums">
+                {bankLine.side === "debit"
+                  ? formatAmount(bankLine.amountMinor, functionalDigits)
+                  : ""}
+              </span>
+              <span className="px-3 text-right tabular-nums">
+                {bankLine.side === "credit"
+                  ? formatAmount(bankLine.amountMinor, functionalDigits)
+                  : ""}
+              </span>
+              <span />
+            </div>
+          )}
           {lines.map((line, position) => {
             const account = index.accounts.get(line.accountId);
             const label = `Line ${position + 1}`;
@@ -422,7 +549,7 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
                   />
                   <IconButton
                     label={`Remove ${label.toLowerCase()}`}
-                    disabled={lines.length <= 2}
+                    disabled={lines.length <= minimumLines}
                     onClick={() => {
                       setLines((current) => current.filter((row) => row.key !== line.key));
                     }}
@@ -561,12 +688,22 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
           <div className="flex items-center gap-2">
             <ButtonLink
               variant="ghost"
-              to={document === null ? base : documentPath(base, document.id)}
+              to={
+                document !== null
+                  ? documentPath(base, document.id)
+                  : transaction !== null
+                    ? transactionPath(base, transaction.id)
+                    : base
+              }
             >
               Cancel
             </ButtonLink>
             <Button type="submit" variant="solid" disabled={navigation.state !== "idle"}>
-              {document === null ? "Post entry" : "Book document"}
+              {document !== null
+                ? "Book document"
+                : transaction !== null
+                  ? "Book transaction"
+                  : "Post entry"}
             </Button>
           </div>
         </div>
@@ -576,6 +713,19 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
       </Form>
     </SurfaceCard>
   );
+  if (transaction !== null) {
+    return (
+      <>
+        <PageHeading
+          eyebrow={books.name}
+          title="Book bank transaction"
+          meta={`${transaction.bankAccount.name}, ${formatDate(transaction.bookingDate)}`}
+          actions={null}
+        />
+        {form}
+      </>
+    );
+  }
   if (document === null) {
     return (
       <>

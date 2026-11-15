@@ -361,6 +361,8 @@ refusals as form errors:
 | `/entries/:journal/:entryNumber`       | One entry, named by its journal's code, e.g. `/entries/SAL/3`, and reversing it                   |
 | `/entries/new`                         | Posting an entry: its lines, with a customer or supplier, currency, and dimension values          |
 | `/documents`, `/documents/:documentId` | Uploading documents and listing them; one document, its proposed entry, booking it, or dismissing |
+| `/bank`, `/bank/:bankAccountId`        | The bank accounts and adding one; one's statements imported, and its transactions to book         |
+| `/bank/transactions/:transactionId`    | One bank transaction, booking it as a payment that settles open items, and the entries booking it |
 | `/accounts`, `/accounts/:accountId`    | The chart of accounts and adding to it; an account's lines, and renaming or deactivating it       |
 | `/trial-balance`                       | Each account's totals for the fiscal year through a period; `?period=` picks it                   |
 | `/parties`, `/parties/:partyAccountId` | Customers and suppliers; one's open items, settling them against each other, and undoing that     |
@@ -444,7 +446,8 @@ answers with `documents.propose`, an entry as `entries.post` takes it that must 
 `documents.decline` and why. It cannot post: people review proposals. The document's page shows the
 proposal and the agent's note, and **Review and book** opens the new-entry form filled in from it;
 the documents list marks documents with a proposal. A proposal is checked against the books when
-made, and again by the ledger when booked.
+made, and again by the ledger when booked: it puts no line on a bank account, which `books.describe`
+marks `bank`, as the bank's transaction books the payment.
 
 Each document records its review: asked, under a request ID; the proposed entry; or the reason it
 proposes none. The request is recorded before the agent is set up and asked, so one that never
@@ -468,6 +471,53 @@ at. A person's agent may answer without a request, replacing any answer. The upl
 request ID, and only while the document has no review, so sending it again, even twice at once, asks
 once and never undoes an answer. Booking or dismissing a document ends its review: the agent's
 actions refuse documents that are not to book.
+
+### Bank accounts
+
+Owners and admins add the administration's bank accounts at `/bank`, each with its IBAN, the code of
+its ledger account, and the journal its transactions are booked in (`workers/books/banking`, a
+Fragno fragment beside the documents'). Adding one creates its ledger account, in the books'
+functional currency, which takes only the entries booking its transactions: the ledger refuses every
+other entry with a line on it, a document's included. Its balance in the ledger is then the bank's
+once every transaction is booked, so booking a transaction is all reconciling takes. Its lines come
+from the bank, which names no dimension values, so it takes no dimension rules; the journal chosen
+must be one of the books'. A document paid by bank is booked on its supplier's or customer's
+account, which the payment then settles; one with neither, such as a receipt, on
+`1090 Payments to match`, which new books start with in place of a bank account.
+
+Members import a bank account's statements on its page from a CAMT.053 file, as Dutch banks export
+it (`camt053.ts`, any version). An import refuses a file that is not a complete XML document, as one
+cut short could still add up; a date that is no day of the calendar; a file of another account; a
+statement whose entries do not add up from its opening to its closing balance, one ending before the
+last imported, and one that does not open with the closing balance of the statement before it, so a
+missing statement shows instead of the books drifting from the bank. It imports a file's statements
+oldest first, in one transaction: all of them or none. Statements are known by the bank's ID, so
+importing a file again skips the statements imported before, and refuses one whose ID was imported
+saying something else, compared by a SHA-256 hash of the statement as read, as an import cannot be
+undone; the account records the last one's end and closing balance with a version check, so two
+imports at once cannot both continue it. Each booked entry of a statement is one transaction, of one
+payment or a batch of several, with the counterparty's name and IBAN and the payment's description
+from each; pending entries are left out. The account's first statement also records the balance it
+opened with, as a transaction to book once, e.g. against equity. `scenario/fixtures/statement.xml`
+is March 2026's statement of Analytical Engines' account, which pays the invoice in `invoice.pdf`,
+to import by hand.
+
+The page lists the transactions to book, or all of them, latest first. A transaction's page books it
+as a payment from or to a customer or supplier: Bookkeeping suggests those the counterparty's IBAN
+paid or was paid by before, then those named like the counterparty, and of the one chosen, the open
+items on the other side whose reference the payment's description names whole, so `INV-10` names no
+`INV-1`, else the one it pays exactly. Booking posts, in one transaction, the bank's line and one on
+their account that settles the items chosen, by the amounts given, as it posts (the ledger's
+settling lines); what it paid beyond them stays open on their account. Anything else, such as bank
+costs or the opening balance, is booked with **Book with an entry**: the new-entry form with the
+bank's line, which the books add to the lines submitted. Either way the entry posts on the date the
+bank booked the transaction, and the books refuse one that moves the bank account's ledger account
+by any other amount or posts to another bank account; a transfer between two goes through an account
+in between. Booking a transaction to a customer or supplier records its counterparty's IBAN as
+theirs, when it paid one counterparty. A transaction is booked once: reversing its entry makes it to
+book again, and reversing that reversal books it again, so it is refused unless the transaction is
+to book. Each transaction records whether it is booked, beside the ledger's entries and in the same
+transaction, so those to book list by index. An entry's page links to the transaction it books.
 
 ### Asking about the books
 
@@ -519,27 +569,28 @@ administration is created, and administrations from before a storage change do n
 feature: a page sits with its server code and scenario tests, and each Durable Object has its own
 folder with its migrations.
 
-| Path                  | Holds                                                                    |
-| --------------------- | ------------------------------------------------------------------------ |
-| `app/auth`            | the session, the auth client, and signing in and out                     |
-| `app/public`          | pages outside the areas: home, login, help, name, account                |
-| `app/shell`           | the frame every area shares, its modes, and the places someone can go    |
-| `app/organizations`   | `/start`, access confirmation, and provisioning firms and clients        |
-| `app/operator`        | the operator's area: every firm, creating firms, and the operators       |
-| `app/firms`           | a firm's area: its clients, creating clients, and its members            |
-| `app/clients`         | a client's workspace: its administrations and its members                |
-| `app/administrations` | creating an administration                                               |
-| `app/books`           | an administration's books: journal, accounts, reports, parties, setup    |
-| `app/documents`       | an administration's documents: uploading, booking, and their files       |
-| `app/ask`             | asking an administration's assistant about its books                     |
-| `app/members`         | a firm's or client's team: members, invitations, and inviting            |
-| `app/invitations`     | inviting someone, and accepting an invitation                            |
-| `workers/worker.ts`   | the Worker's `fetch` entry, which exports the Durable Objects            |
-| `workers/auth`        | the `Auth` object                                                        |
-| `workers/directory`   | the `Directory` object                                                   |
-| `workers/backoffice`  | Backoffice's API client and the actions Backoffice calls, books ones too |
-| `workers/books`       | the `Books` object, the books it opens, its documents, the reference SQL |
-| `scenario/`           | the scenario test harness                                                |
+| Path                  | Holds                                                                     |
+| --------------------- | ------------------------------------------------------------------------- |
+| `app/auth`            | the session, the auth client, and signing in and out                      |
+| `app/public`          | pages outside the areas: home, login, help, name, account                 |
+| `app/shell`           | the frame every area shares, its modes, and the places someone can go     |
+| `app/organizations`   | `/start`, access confirmation, and provisioning firms and clients         |
+| `app/operator`        | the operator's area: every firm, creating firms, and the operators        |
+| `app/firms`           | a firm's area: its clients, creating clients, and its members             |
+| `app/clients`         | a client's workspace: its administrations and its members                 |
+| `app/administrations` | creating an administration                                                |
+| `app/books`           | an administration's books: journal, accounts, reports, parties, setup     |
+| `app/documents`       | an administration's documents: uploading, booking, and their files        |
+| `app/banking`         | an administration's bank accounts: importing statements, booking payments |
+| `app/ask`             | asking an administration's assistant about its books                      |
+| `app/members`         | a firm's or client's team: members, invitations, and inviting             |
+| `app/invitations`     | inviting someone, and accepting an invitation                             |
+| `workers/worker.ts`   | the Worker's `fetch` entry, which exports the Durable Objects             |
+| `workers/auth`        | the `Auth` object                                                         |
+| `workers/directory`   | the `Directory` object                                                    |
+| `workers/backoffice`  | Backoffice's API client and the actions Backoffice calls, books ones too  |
+| `workers/books`       | the `Books` object, the books it opens, its documents, the reference SQL  |
+| `scenario/`           | the scenario test harness                                                 |
 
 ## Checks
 
@@ -568,6 +619,9 @@ Scenario tests (`*.scenario.test.ts`) run Bookkeeping's pages and Durable Object
   `scenario/fixtures/invoice.ts` renders it and exports `INVOICE`, what it says, to compare an
   extraction with; after changing it, `pnpm fixtures:generate` writes the PDF again, byte for byte
   the same when nothing changed.
+- `scenario/fixtures/statement.ts` renders bank statements of Analytical Engines' account as
+  CAMT.053 files; `marchStatement(year)` pays the invoice. `pnpm fixtures:generate` writes 2026's as
+  `statement.xml`.
 
 ## Deployment
 

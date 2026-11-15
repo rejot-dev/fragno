@@ -7,6 +7,15 @@ import { DurableObject } from "cloudflare:workers";
 import { migrate } from "@fragno-dev/db";
 import { createLedgerFragment } from "@fragno-dev/ledger";
 
+import {
+  BANK_TRANSACTION_SOURCE_KIND,
+  BankingError,
+  createBankingFragment,
+  transactionState,
+  type BankingErrorCode,
+} from "./banking/banking";
+import type { Statement } from "./banking/camt053";
+import { describeTransaction } from "./banking/detail";
 import { FUNCTIONAL_CURRENCIES, type FunctionalCurrency } from "./currencies";
 import { DEFAULT_ACCOUNTS, DEFAULT_JOURNALS } from "./default-books";
 import {
@@ -23,6 +32,8 @@ type Ledger = ReturnType<typeof createLedgerFragment>;
 type LedgerServices = Ledger["services"];
 type Input<TOperation extends keyof LedgerServices> = Parameters<LedgerServices[TOperation]>[0];
 type Documents = ReturnType<typeof createDocumentsFragment>;
+type Banking = ReturnType<typeof createBankingFragment>;
+type PostingLine = Input<"postEntry">["lines"][number];
 
 /**
  * What a ledger operation produced, or why the ledger refused it. Refusals are values because
@@ -31,28 +42,32 @@ type Documents = ReturnType<typeof createDocumentsFragment>;
  */
 export type Outcome<T> =
   | { ok: true; value: T }
-  | { ok: false; code: LedgerErrorCode | DocumentErrorCode; message: string };
+  | { ok: false; code: LedgerErrorCode | DocumentErrorCode | BankingErrorCode; message: string };
 
 /**
- * One administration's books: the ledger fragment and the documents booked through it, on the
- * object's own SQLite database, named by the administration's ID.
+ * One administration's books: the ledger fragment, and the documents and bank transactions booked
+ * through it, on the object's own SQLite database, named by the administration's ID.
  */
 export class Books extends DurableObject<CloudflareEnv> {
   private readonly ledger: Ledger;
   private readonly documents: Documents;
+  private readonly banking: Banking;
 
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
     super(ctx, env);
-    // One adapter, so a document is booked in the same transaction as its entry.
+    // One adapter, so a document or a bank transaction is booked in the same transaction as its
+    // entry.
     const databaseAdapter = new SqlAdapter({
       dialect: new DurableObjectDialect({ ctx, queryInstrumentation: null }),
       driverConfig: new CloudflareDurableObjectsDriverConfig(),
     });
     this.ledger = createLedgerFragment({ databaseAdapter });
     this.documents = createDocumentsFragment({ databaseAdapter }, { ledger: this.ledger.services });
+    this.banking = createBankingFragment({ databaseAdapter }, { ledger: this.ledger.services });
     void ctx.blockConcurrencyWhile(async () => {
       await migrate(this.ledger);
       await migrate(this.documents);
+      await migrate(this.banking);
     });
   }
 
@@ -167,8 +182,21 @@ export class Books extends DurableObject<CloudflareEnv> {
     );
   }
 
-  updateAccount(input: Input<"updateAccount">) {
-    return attempt(this.ledger.callServices(() => this.ledger.services.updateAccount(input)));
+  /**
+   * Renames an account, (de)activates it, or changes its dimension rules. A bank account's takes
+   * none: its line comes from the bank, which names no dimension values.
+   */
+  async updateAccount(input: Input<"updateAccount">) {
+    const accounts = await this.ledger.callServices(() => this.ledger.services.listAccounts());
+    // Only bank accounts take entries of some source documents only, which never changes.
+    const bank = accounts.find((account) => account.id === input.accountId)?.sourceKinds;
+    if (bank && Object.keys(input.dimensionRules).length > 0) {
+      return refused(
+        "BANK_ACCOUNT_DIMENSIONS",
+        "A bank account's lines come from its bank, which gives them no dimension values: its account takes no dimension rules.",
+      );
+    }
+    return await attempt(this.ledger.callServices(() => this.ledger.services.updateAccount(input)));
   }
 
   createJournal(input: Input<"createJournal">) {
@@ -194,8 +222,8 @@ export class Books extends DurableObject<CloudflareEnv> {
   }
 
   /**
-   * Reverses an entry, read with its source document. A document's entries are reversed by the
-   * documents' rules too, as reversing a reversal books the document again.
+   * Reverses an entry, read with its source document. A document's and a bank transaction's
+   * entries are reversed by their rules too, as reversing a reversal books them again.
    */
   reverseEntry(input: Input<"reverseEntry"> & { sourceDocument: { id: string; kind: string } }) {
     const { sourceDocument, ...reversal } = input;
@@ -203,6 +231,16 @@ export class Books extends DurableObject<CloudflareEnv> {
       return attempt(
         this.documents.callServices(() =>
           this.documents.services.reverseDocumentEntry({ documentId: sourceDocument.id, reversal }),
+        ),
+      );
+    }
+    if (sourceDocument.kind === BANK_TRANSACTION_SOURCE_KIND) {
+      return attempt(
+        this.banking.callServices(() =>
+          this.banking.services.reverseTransactionEntry({
+            transactionId: sourceDocument.id,
+            reversal,
+          }),
         ),
       );
     }
@@ -276,13 +314,162 @@ export class Books extends DurableObject<CloudflareEnv> {
       this.documents.callServices(() => this.documents.services.dismissDocument(input)),
     );
   }
+
+  /**
+   * Adds a bank account in the books' currency, with the ledger account of `ledgerAccountCode`
+   * that books it.
+   */
+  async addBankAccount(input: {
+    iban: string;
+    name: string;
+    ledgerAccountCode: string;
+    journalId: string;
+  }) {
+    const { functionalCurrency } = await this.ledger.callServices(() =>
+      this.ledger.services.getLedger(),
+    );
+    return await attempt(
+      this.banking.callServices(() =>
+        this.banking.services.addBankAccount({ ...input, currency: functionalCurrency }),
+      ),
+    );
+  }
+
+  listBankAccounts() {
+    return this.banking.callServices(() => this.banking.services.listBankAccounts());
+  }
+
+  getBankAccount(id: string) {
+    return this.banking.callServices(() => this.banking.services.getBankAccount(id));
+  }
+
+  /** Imports statements of a bank account, each with a hash of what it says. */
+  async importStatements(input: {
+    bankAccountId: string;
+    statements: Statement[];
+    importedBy: string;
+  }) {
+    const statements = await Promise.all(
+      input.statements.map(async (statement) => ({
+        ...statement,
+        fingerprint: await fingerprint(statement),
+      })),
+    );
+    return await attempt(
+      this.banking.callServices(() =>
+        this.banking.services.importStatements({ ...input, statements }),
+      ),
+    );
+  }
+
+  /** A page of a bank account's transactions, latest first, with what the ledger records of each. */
+  async listTransactions(input: { bankAccountId: string; toBook: boolean; cursor: string | null }) {
+    const page = await this.banking.callServices(() =>
+      this.banking.services.listTransactions(input),
+    );
+    const sources = await this.ledger.callServices(() =>
+      this.ledger.services.getSourceDocuments({ ids: page.items.map((item) => item.id) }),
+    );
+    return {
+      cursor: page.cursor,
+      items: page.items.map((transaction) => {
+        const source = sources.find((row) => row.id === transaction.id) ?? null;
+        return { ...transaction, source, state: transactionState(source) };
+      }),
+    };
+  }
+
+  getTransaction(id: string) {
+    return this.banking.callServices(() => this.banking.services.getTransaction(id));
+  }
+
+  /**
+   * Books a bank transaction with `lines`, the entry's lines besides its bank account's: this adds
+   * the line of the transaction's amount on its bank account, on the date the bank booked it.
+   */
+  async bookTransaction(input: {
+    transactionId: string;
+    journalId: string;
+    description: string;
+    reference: string | null;
+    postedBy: string;
+    lines: PostingLine[];
+  }) {
+    const { transactionId, lines, ...entry } = input;
+    const [transaction, accounts] = await Promise.all([
+      this.getTransaction(transactionId),
+      this.ledger.callServices(() => this.ledger.services.listAccounts()),
+    ]);
+    if (transaction === null) {
+      return refused("TRANSACTION_NOT_FOUND", "This bank transaction does not exist.");
+    }
+    const { bankAccount, amountMinor } = transaction;
+    // A bank account's ledger account is created with it.
+    const ledgerAccount = accounts.find((row) => row.code === bankAccount.ledgerAccountCode)!;
+    const bankLine: PostingLine = {
+      accountId: ledgerAccount.id,
+      side: amountMinor > 0n ? "debit" : "credit",
+      currency: bankAccount.currency,
+      amountMinor: amountMinor > 0n ? amountMinor : -amountMinor,
+      functionalAmountMinor: amountMinor > 0n ? amountMinor : -amountMinor,
+      description: "",
+      dimensionValueIds: [],
+      openItem: null,
+    };
+    return await attempt(
+      this.banking.callServices(() =>
+        this.banking.services.bookTransaction({
+          transactionId,
+          source:
+            transaction.source === null
+              ? {
+                  type: "new",
+                  documentDate: transaction.bookingDate,
+                  description: describeTransaction(transaction.detail),
+                }
+              : { type: "existing" },
+          entry: { ...entry, postingDate: transaction.bookingDate, lines: [bankLine, ...lines] },
+        }),
+      ),
+    );
+  }
+
+  counterpartiesOf(iban: string) {
+    return this.banking.callServices(() => this.banking.services.counterpartiesOf(iban));
+  }
+}
+
+/** The SHA-256 of a statement as read, in hex: the parser reads every field in a fixed order. */
+async function fingerprint(statement: Statement): Promise<string> {
+  const text = JSON.stringify(statement, (_, value: unknown) =>
+    typeof value === "bigint" ? value.toString() : value,
+  );
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function refused(code: BankingErrorCode, message: string): Outcome<never> {
+  return { ok: false, code, message };
 }
 
 async function attempt<T>(operation: Promise<T>): Promise<Outcome<T>> {
   try {
     return { ok: true, value: await operation };
   } catch (error) {
-    if (error instanceof LedgerError || error instanceof DocumentError) {
+    if (error instanceof LedgerError && error.code === "ACCOUNT_SOURCE_REFUSED") {
+      // Only bank accounts take entries of some source documents only.
+      return {
+        ok: false,
+        code: error.code,
+        message:
+          "Bank accounts take only the entries booking their bank transactions: book what is owed here, and its payment from the bank transaction.",
+      };
+    }
+    if (
+      error instanceof LedgerError ||
+      error instanceof DocumentError ||
+      error instanceof BankingError
+    ) {
       return { ok: false, code: error.code, message: error.message };
     }
     throw error;

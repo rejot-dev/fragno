@@ -29,6 +29,8 @@
     "@fragno-private/backoffice-ui": "workspace:*",
     "@fragno-private/design-system": "workspace:*",
     "better-auth": "1.7.1",
+    "fast-xml-parser": "^5.11.2",
+    "fast-xml-validator": "^1.4.4",
     "isbot": "^5.1.32",
     "kysely": "^0.28.17",
     "react": "catalog:",

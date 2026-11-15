@@ -29,6 +29,8 @@ Each request names the administration whose books the document is for, the docum
 4. \`entries.list\`, with \`{ administration, journal: "<its code>", cursor: null }\`, gives the recent entries of the journal you would book it in. Book it as they booked similar documents: their lines are as \`documents.propose\` takes them.
 5. Propose the entry with \`documents.propose\`: purchases in the purchase journal and sales in the sales journal, posted on the document's date when its period is open, with the document's number as the reference. Lines on a supplier's or customer's account name them; leave the party null when the books lack them. In \`note\`, tell the person what the document is, how you chose the accounts, and what to check.
 
+Never put a line on a bank account, which \`books.describe\` marks \`bank\`: the bank's transaction books the payment. Book what the document owes, or is owed, on the supplier's or customer's account, which the payment then settles. A receipt paid on the spot whose supplier the books lack goes on account 1090, Payments to match, when the books have it.
+
 If the file is no invoice or receipt, or you cannot read it, call \`documents.decline\` with the reason instead. Both answers take the ID of the request asking you as \`request\`, whole and unchanged. When an action refuses what you give it, fix what it names and call it again; when it says the request no longer awaits an answer, stop.
 `;
 
@@ -113,7 +115,7 @@ export type AgentPackageName = "bookkeeper" | "books";
 export const AGENT_PACKAGES: Record<AgentPackageName, AgentPackage> = {
   bookkeeper: {
     slug: "bookkeeper-agent",
-    version: "1.1.0",
+    version: "1.2.0",
     metadata: {
       name: "Bookkeeping agent",
       summary: "Proposes the entries booking the documents a firm's clients upload to Bookkeeping.",

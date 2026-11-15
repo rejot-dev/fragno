@@ -13,6 +13,7 @@ export function booksNavigation(base: string, pathname: string): NavigationItem[
       active: pathname === base || at("/entries"),
     },
     { label: "Documents", to: `${base}/documents`, icon: "inbox", active: at("/documents") },
+    { label: "Bank", to: `${base}/bank`, icon: "credit-card", active: at("/bank") },
     { label: "Accounts", to: `${base}/accounts`, icon: "list", active: at("/accounts") },
     {
       label: "Trial balance",
