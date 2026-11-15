@@ -20,6 +20,15 @@ const sandboxPayloadSchema = z.object({
   error: z.object({ message: z.string().trim().min(1) }).optional(),
 });
 
+/** Each sandbox's latest lifecycle event of each type is kept as its state. */
+export const SANDBOX_KEY_PATH = "$.sandboxId";
+
+export const SANDBOX_LIFECYCLE_EVENT_TYPES = [
+  "instance.ready",
+  "instance.stopped",
+  "instance.failed",
+] as const;
+
 const sandboxSubjectSchema = z.object({
   scope: backofficeContextScopeSchema,
   sandboxId: z.string().trim().min(1),
@@ -55,6 +64,7 @@ export const sandboxCapability: BackofficeCapability = {
       {
         source: "sandbox",
         eventType: "instance.ready",
+        keyPath: SANDBOX_KEY_PATH,
         label: "Sandbox ready",
         description: "Fires after a sandbox reaches running status and can execute commands.",
         payloadSchema: sandboxPayloadSchema,
@@ -68,6 +78,7 @@ export const sandboxCapability: BackofficeCapability = {
       {
         source: "sandbox",
         eventType: "instance.stopped",
+        keyPath: SANDBOX_KEY_PATH,
         label: "Sandbox stopped",
         description: "Fires after a sandbox is stopped and reconciled.",
         payloadSchema: sandboxPayloadSchema,
@@ -76,6 +87,7 @@ export const sandboxCapability: BackofficeCapability = {
       {
         source: "sandbox",
         eventType: "instance.failed",
+        keyPath: SANDBOX_KEY_PATH,
         label: "Sandbox failed",
         description: "Fires after a sandbox lifecycle operation records an error.",
         payloadSchema: sandboxPayloadSchema,

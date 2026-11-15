@@ -136,11 +136,11 @@ waiting runs it reads anyway, and pages read them through a SQL view (see Pages)
 
 Events stored before the backend kept them in states are kept by a replay
 (`../automation/event-fold-replay.ts`), which each Automations object starts the first time it
-starts with it: a chain of hooks keeps every stored `pi` and connection event in its state, a page
-at a time, reading the agent or connection off the subjects of events whose payloads did not name
-it. A state takes an event only when it occurred later, so the replay also reads the events
-ingestion kept, with no cutover. `deleteEventsOfType` refuses `pi` and `integrations` events until
-it finishes.
+starts with it: a chain of hooks keeps every stored `pi`, connection, and `sandbox` lifecycle event
+in its state, a page at a time, reading the agent or connection off the subjects of events whose
+payloads did not name it. A state takes an event only when it occurred later, so the replay also
+reads the events ingestion kept, with no cutover. `deleteEventsOfType` refuses `pi`, `integrations`,
+and `sandbox` events until it finishes.
 
 ## Pages
 

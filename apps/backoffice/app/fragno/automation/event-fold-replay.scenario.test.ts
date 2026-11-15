@@ -102,6 +102,17 @@ function connectionEvent(
   });
 }
 
+function sandboxEvent(id: string, state: "ready" | "stopped", sandboxId: string, second: number) {
+  return event(id, "sandbox", `instance.${state}`, second, {
+    payload: {
+      sandboxId,
+      provider: "cloudflare",
+      status: state === "ready" ? "running" : "stopped",
+    },
+    subject: { scope, sandboxId },
+  });
+}
+
 /** Counts the `pi` events a deletion would take, which it refuses until the replay kept them. */
 async function countDeletablePiEvents(ctx: BackofficeScenarioContext) {
   const { scanned } = await ctx.runtime.objects.automations.for(scope).commands.deleteEventsOfType({
@@ -224,57 +235,69 @@ test("the replay keeps stored events in their states as ingestion did, and keepi
             connectionEvent("billing-back", "ready", "api#billing", 3),
             connectionEvent("agensi-ready", "ready", "mcp#agensi", 1),
             connectionEvent("agensi-gone", "disconnected", "mcp#agensi", 2),
+            sandboxEvent("dev-ready", "ready", "dev", 1),
+            sandboxEvent("dev-stopped", "stopped", "dev", 2),
           ].map((stored) => when.automation.ingestEvent(stored)),
           runner.drain(),
-          then.assert("ingestion kept each agent and connection event's state", async (ctx) => {
-            kept = await stateRows(directory);
-            const [states] = Object.values(kept).filter((rows) => rows.length > 0);
-            expect(states).toMatchObject([
-              { eventType: "agent.created", key: "drafter", eventId: "drafter-created" },
-              { eventType: "agent.created", key: "reviewer", eventId: "reviewer-created" },
-              { eventType: "agent.deleted", key: "drafter", eventId: "drafter-deleted" },
-              { eventType: "agent.stopped", key: "reviewer", eventId: "reviewer-stopped" },
-              { eventType: "agent.updated", key: "reviewer", eventId: "reviewer-updated" },
-              { eventType: "connection.disconnected", key: "mcp#agensi", eventId: "agensi-gone" },
-              { eventType: "connection.ready", key: "api#billing", eventId: "billing-back" },
-              { eventType: "connection.ready", key: "mcp#agensi", eventId: "agensi-ready" },
-              {
-                eventType: "connection.unavailable",
-                key: "api#billing",
-                eventId: "billing-down",
-                payload: {
-                  connectionId: "api#billing",
-                  service: "api",
-                  name: "api#billing",
-                  authMethod: null,
+          then.assert(
+            "ingestion kept each agent, connection, and sandbox event's state",
+            async (ctx) => {
+              kept = await stateRows(directory);
+              const [states] = Object.values(kept).filter((rows) => rows.length > 0);
+              expect(states).toMatchObject([
+                { eventType: "agent.created", key: "drafter", eventId: "drafter-created" },
+                { eventType: "agent.created", key: "reviewer", eventId: "reviewer-created" },
+                { eventType: "agent.deleted", key: "drafter", eventId: "drafter-deleted" },
+                { eventType: "agent.stopped", key: "reviewer", eventId: "reviewer-stopped" },
+                { eventType: "agent.updated", key: "reviewer", eventId: "reviewer-updated" },
+                { eventType: "connection.disconnected", key: "mcp#agensi", eventId: "agensi-gone" },
+                { eventType: "connection.ready", key: "api#billing", eventId: "billing-back" },
+                { eventType: "connection.ready", key: "mcp#agensi", eventId: "agensi-ready" },
+                {
+                  eventType: "connection.unavailable",
+                  key: "api#billing",
+                  eventId: "billing-down",
+                  payload: {
+                    connectionId: "api#billing",
+                    service: "api",
+                    name: "api#billing",
+                    authMethod: null,
+                  },
                 },
-              },
-              { eventType: "queue.added", key: "reviewer", eventId: "r2-added" },
-              { eventType: "queue.dispatched", key: "reviewer", eventId: "r1-dispatched" },
-              { eventType: "turn.aborted", key: "reviewer", eventId: "r1-aborted" },
-              { eventType: "turn.started", key: "drafter", eventId: "r3-started" },
-              { eventType: "turn.started", key: "reviewer", eventId: "r1-started" },
-            ]);
-            // The drafter is deleted; the reviewer is stopped with the prompt it held back waiting,
-            // as the highest revision says.
-            expect(
-              await queryAutomationReplica(
-                ctx.lofi.automations.forOrg(orgId),
-                `SELECT agentName, latestKind, answering, paused, queued, steering, activity
+                {
+                  eventType: "instance.ready",
+                  key: "dev",
+                  keyPath: "$.sandboxId",
+                  eventId: "dev-ready",
+                },
+                { eventType: "instance.stopped", key: "dev", eventId: "dev-stopped" },
+                { eventType: "queue.added", key: "reviewer", eventId: "r2-added" },
+                { eventType: "queue.dispatched", key: "reviewer", eventId: "r1-dispatched" },
+                { eventType: "turn.aborted", key: "reviewer", eventId: "r1-aborted" },
+                { eventType: "turn.started", key: "drafter", eventId: "r3-started" },
+                { eventType: "turn.started", key: "reviewer", eventId: "r1-started" },
+              ]);
+              // The drafter is deleted; the reviewer is stopped with the prompt it held back waiting,
+              // as the highest revision says.
+              expect(
+                await queryAutomationReplica(
+                  ctx.lofi.automations.forOrg(orgId),
+                  `SELECT agentName, latestKind, answering, paused, queued, steering, activity
                  FROM agents WHERE agentName IN ('drafter', 'reviewer')`,
-              ),
-            ).toEqual([
-              {
-                agentName: "reviewer",
-                latestKind: "cut-off",
-                answering: 0,
-                paused: 1,
-                queued: 1,
-                steering: 0,
-                activity: "Stopped",
-              },
-            ]);
-          }),
+                ),
+              ).toEqual([
+                {
+                  agentName: "reviewer",
+                  latestKind: "cut-off",
+                  answering: 0,
+                  paused: 1,
+                  queued: 1,
+                  steering: 0,
+                  activity: "Stopped",
+                },
+              ]);
+            },
+          ),
           then.assert("the replay starts again on the kept states", async () => {
             await deleteRows(directory, ["event_fold_replay"]);
           }),
@@ -292,7 +315,7 @@ test("the replay keeps stored events in their states as ingestion did, and keepi
               });
               await deleteRows(directory, ["automation_event_state", "event_fold_replay"]);
               await expect(countDeletablePiEvents(ctx)).rejects.toThrow(
-                "not yet kept in agent and connection states",
+                "not yet kept in their states",
               );
             },
           ),
