@@ -158,6 +158,8 @@ function amountViews<TAmount extends z.ZodType>(amount: TAmount) {
       postingDate: calendarDate,
       /** The line's description, else the entry's. */
       description: z.string(),
+      /** The entry's reference, e.g. an invoice number. */
+      reference: z.string().nullable(),
     }),
     side,
     currency: z.string(),

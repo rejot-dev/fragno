@@ -303,7 +303,7 @@ export const readServices = {
                 .joinOne("entry", "entry", (entry) =>
                   entry
                     .onIndex("primary", (eb) => eb("id", "=", eb.parent("entryId")))
-                    .select(["id", "entryNumber", "postingDate", "description"])
+                    .select(["id", "entryNumber", "postingDate", "description", "reference"])
                     .joinOne("journal", "journal", (journal) =>
                       journal
                         .onIndex("primary", (eb) => eb("id", "=", eb.parent("journalId")))
@@ -356,6 +356,7 @@ export const readServices = {
               entryNumber: entry.entryNumber,
               postingDate: entry.postingDate,
               description: line.description || entry.description,
+              reference: entry.reference,
             },
             side: item.side,
             currency: item.currencyRow!.id.valueOf(),
