@@ -2,42 +2,33 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "dependsOn": ["$TURBO_EXTENDS$", "static:generate"],
       "outputs": ["$TURBO_EXTENDS$", "!build/**/.dev.vars", "!dist/**/.dev.vars"],
       "env": ["VITE_POSTHOG_PROJECT_TOKEN", "VITE_POSTHOG_HOST", "VITE_POSTHOG_APP_ORIGIN"]
     },
-    "build:node": {
-      "dependsOn": ["$TURBO_EXTENDS$", "static:generate"]
-    },
-    "static:generate": {
+    "static:check": {
       "dependsOn": ["^build"],
-      "outputs": [
-        "content/static/terminal/terminal-spec.json",
-        "content/static/codemode/system.d.ts",
-        "content/static/codemode/providers/**",
-        "content/static/skills/generating-backoffice-uis/CATALOG.md"
-      ]
+      "outputs": []
     },
     "test": {
-      "dependsOn": ["^build", "static:generate"],
+      "dependsOn": ["^build"],
       "outputs": ["node_modules/.vite/vitest/*/dependencies.json"]
     },
     "test:changed": {
-      "dependsOn": ["^build", "static:generate"]
+      "dependsOn": ["^build"]
     },
     "test:cloudflare": {
-      "dependsOn": ["^build", "static:generate"],
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "test:bridge": {
-      "dependsOn": ["^build", "static:generate"]
+      "dependsOn": ["^build"]
     },
     "test:watch": {
-      "dependsOn": ["^build", "static:generate"],
+      "dependsOn": ["^build"],
       "interruptible": true
     },
     "test:coverage": {
-      "dependsOn": ["^build", "static:generate"],
+      "dependsOn": ["^build"],
       "outputs": ["coverage/**"]
     },
     "types:generate": {
