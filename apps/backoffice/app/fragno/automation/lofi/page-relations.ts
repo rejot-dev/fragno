@@ -18,6 +18,7 @@ import {
   INTEGRATIONS_EVENT_SOURCE,
 } from "@/fragno/runtime-tools/families/integrations/integration-events";
 
+import { EVENT_ORDER_SQL } from "../event-order";
 import { automationFragmentSchema } from "../schema";
 import { AUTOMATION_REPLICA_SCHEMAS } from "./replica-schemas";
 
@@ -283,9 +284,9 @@ function connectionsSql() {
       SELECT "key" AS "connectionId", "payload" ->> '$.service' AS "service", "eventType",
         "eventId", "occurredAt", "payload" ->> '$.name' AS "name",
         "payload" ->> '$.authMethod' AS "authMethod",
-        row_number() OVER (PARTITION BY "key" ORDER BY "occurredAt" DESC, "storedAt") AS "latest",
+        row_number() OVER (PARTITION BY "key" ORDER BY ${EVENT_ORDER_SQL}) AS "latest",
         row_number() OVER (
-          PARTITION BY "key", "payload" ->> '$.name' IS NULL ORDER BY "occurredAt" DESC, "storedAt"
+          PARTITION BY "key", "payload" ->> '$.name' IS NULL ORDER BY ${EVENT_ORDER_SQL}
         ) AS "labeled"
       FROM ${automationTable("automation_event_state")}
       WHERE "source" = ${sqlString(INTEGRATIONS_EVENT_SOURCE)} AND "eventType" IN (${eventTypes})

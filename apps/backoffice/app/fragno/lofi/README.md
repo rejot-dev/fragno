@@ -276,13 +276,14 @@ download the outbox again.
 - **The replay can settle ties unlike ingestion.** It folds a type's events at a time, in the order
   an agent's lifecycle runs, and folds again the events ingestion folded. Of an agent's two changes
   in the same millisecond, ingestion keeps the later stored and the replay the later step, so an
-  agent deleted and recreated in one millisecond reads as deleted after the replay; of a
-  connection's, ingestion keeps the first stored and the replay the first by type. The replay runs
+  agent deleted and recreated in one millisecond reads as deleted after the replay. The replay runs
   once per scope, and saving the agent again, or `pi.agent.backfillEvents`, restores it.
-- **Ties break by storage order.** Of two changes to a connection in the same millisecond, the
-  backend keeps the first it stores; of two changes to an agent, the last. Origins that occurred in
-  the same millisecond list newest ID first. A run's steps, events, and emissions with the same
-  `createdAt` order by the replica's internal id, which follows the order the backend wrote them in.
+- **Ties break by storage order.** Of two events in the same millisecond, states and the reads that
+  merge them keep the one stored later, and of two stored in the same millisecond the higher ID
+  (`compareEventOrder` in `../automation/event-order.ts`, which the SQL views state again); of two
+  changes to an agent, the fold keeps the last it stores. Origins that occurred in the same
+  millisecond list newest ID first. A run's steps, events, and emissions with the same `createdAt`
+  order by the replica's internal id, which follows the order the backend wrote them in.
 - **Busy tables rerun most views.** A batch reruns, in the leader and for every tab, each open view
   that reads a table it wrote. Most batches write `automation_event` or the workflow tables, which
   the overview's ten queries, the graph's three, an opened run's four, the Events list's four and

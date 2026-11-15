@@ -1,3 +1,5 @@
+import { compareEventOrder } from "@/fragno/automation/event-order";
+
 import {
   connectionEventStates,
   readIntegrationConnectionEvent,
@@ -81,11 +83,7 @@ export function integrationConnectionsOfStates(
   states: readonly IntegrationConnectionEventState[],
 ): IntegrationConnectionRecord[] {
   const connections = new Map<string, IntegrationConnectionFold>();
-  const inOrder = [...states].sort(
-    (left, right) =>
-      left.occurredAt.getTime() - right.occurredAt.getTime() ||
-      left.storedAt.getTime() - right.storedAt.getTime(),
-  );
+  const inOrder = [...states].sort(compareEventOrder);
   for (const state of inOrder) {
     const change = connectionChangeOfState(state);
     if (change) {
@@ -150,31 +148,23 @@ export type IntegrationConnectionRecord = {
 
 /**
  * A connection as its changes so far leave it: the state of its latest change, and the label of its
- * latest labeled change, with when that change happened.
+ * latest labeled change.
  */
 type IntegrationConnectionFold = {
   latest: IntegrationConnectionStateChange;
   label: IntegrationConnectionLabel | null;
-  labelAt: Date | null;
 };
 
 /**
- * Applies one change to what the connection's earlier changes left. Disconnections carry no label,
- * so a removed connection keeps the name it had. Of changes made in the same instant, the first
- * applied wins.
+ * Applies one change to what the connection's earlier changes left, in `compareEventOrder`'s order,
+ * so each change is the latest. Disconnections carry no label, so a removed connection keeps the
+ * name it had.
  */
 function applyIntegrationConnectionChange(
   current: IntegrationConnectionFold | null,
   change: IntegrationConnectionStateChange,
 ): IntegrationConnectionFold {
-  const relabels =
-    change.label !== null && (current?.labelAt == null || change.occurredAt > current.labelAt);
-  return {
-    latest:
-      current === null || change.occurredAt > current.latest.occurredAt ? change : current.latest,
-    label: relabels ? change.label : (current?.label ?? null),
-    labelAt: relabels ? change.occurredAt : (current?.labelAt ?? null),
-  };
+  return { latest: change, label: change.label ?? current?.label ?? null };
 }
 
 function integrationConnectionRecord({
