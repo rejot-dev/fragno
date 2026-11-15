@@ -173,7 +173,8 @@ test("a folder one organization shares opens read-only in the other once it acce
           assert.equal(everywhere.shared, undefined);
           expect(everywhere.upload.results).toEqual([]);
 
-          // A shared SKILL.md never becomes one of the firm's skills.
+          // A shared SKILL.md becomes one of the firm's skills only through an agent definition that
+          // names its folder.
           assert.notProperty(await loadBackofficePiSkills(firm.state), "planted");
 
           await expect(client.call("shares.list", {})).resolves.toMatchObject({
