@@ -320,7 +320,8 @@ test("people's agents keep the books through Backoffice, within what the person 
         message: READS_ONLY,
       },
     });
-    // Nor answer a document's review: that is the firm's bookkeeping agent's, in its own project.
+    // Nor answer a request about a document: that is the firm's bookkeeping agent's, in its own
+    // project.
     expect(
       await automation.call("documents.decline", {
         document: "document-1",
@@ -606,7 +607,7 @@ test("actions reach only the books of the administration Backoffice signed the c
   });
 });
 
-test("a firm's bookkeeping agent reads only its clients' books and answers their reviews", async () => {
+test("a firm's bookkeeping agent reads only its clients' books and answers requests for proposals", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { grace, ada, clientPath } = await scenario.practice();
     const books = await scenario.openAdministration(ada, clientPath, "Analytical Engines");

@@ -174,21 +174,21 @@ function ProposedLines({ entry, context }: { entry: ProposedEntry; context: Book
  * What the bookkeeping agent made of a document to book: whether it was asked and how far it got,
  * the entry it proposes, or why it proposes none; and asking it (again).
  */
-export function BookkeeperReview({
+export function BookkeeperProposal({
   document,
   progress,
   context,
   result,
 }: {
-  document: Pick<DocumentView, "review">;
+  document: Pick<DocumentView, "proposal">;
   progress: BookkeeperProgress | null;
   context: BooksOutletContext;
   result: FormResult | undefined;
 }) {
   const navigation = useNavigation();
-  const { review } = document;
+  const { proposal } = document;
   usePollWhile(
-    review?.status === "requested" &&
+    proposal?.status === "requested" &&
       (progress?.status === "queued" || progress?.status === "running"),
   );
   const ask = (label: string) => (
@@ -199,10 +199,10 @@ export function BookkeeperReview({
       </Button>
     </Form>
   );
-  const answered = review === null ? null : formatDate(review.at.slice(0, 10));
+  const answered = proposal === null ? null : formatDate(proposal.at.slice(0, 10));
   let body;
   let actions = null;
-  if (review === null) {
+  if (proposal === null) {
     body = (
       <p className="text-sm text-[var(--bo-muted)]">
         The bookkeeping agent reads the document in Backoffice and proposes the entry booking it,
@@ -210,7 +210,7 @@ export function BookkeeperReview({
       </p>
     );
     actions = ask("Ask the agent");
-  } else if (review.status === "requested") {
+  } else if (proposal.status === "requested") {
     // Read when the page loads, for every request still waiting.
     const state = requestState(progress!);
     const steps = "steps" in progress! ? progress.steps : [];
@@ -224,17 +224,17 @@ export function BookkeeperReview({
       </div>
     );
     actions = state.askAgain ? ask("Ask again") : null;
-  } else if (review.status === "withdrawn") {
+  } else if (proposal.status === "withdrawn") {
     body = (
       <Callout tone="waiting" title="The request was withdrawn">
-        {review.reason}
+        {proposal.reason}
       </Callout>
     );
     actions = ask("Ask again");
-  } else if (review.status === "declined") {
+  } else if (proposal.status === "declined") {
     body = (
       <Callout tone="waiting" title="The agent proposes no entry">
-        {review.reason}
+        {proposal.reason}
       </Callout>
     );
     actions = ask("Ask again");
@@ -242,13 +242,14 @@ export function BookkeeperReview({
     body = (
       <div className="space-y-3">
         <Callout tone="info" title="Proposed entry">
-          {review.note}
+          {proposal.note}
         </Callout>
         <p className="text-sm text-[var(--bo-muted)]">
-          {review.entry.description}
-          {review.entry.reference === null ? "" : ` · ${review.entry.reference}`} · posted{" "}
-          {formatDate(review.entry.postingDate)}, document dated{" "}
-          {formatDate(review.entry.documentDate)}. Review and book fills the new entry in from it.
+          {proposal.booking.description}
+          {proposal.booking.reference === null ? "" : ` · ${proposal.booking.reference}`} · posted{" "}
+          {formatDate(proposal.booking.postingDate)}, document dated{" "}
+          {formatDate(proposal.booking.documentDate)}. Review and book fills the new entry in from
+          it.
         </p>
       </div>
     );
@@ -260,8 +261,8 @@ export function BookkeeperReview({
         {body}
         <FormError result={result} intent={ASK} />
       </SurfacePanelBody>
-      {review?.status === "proposed" ? (
-        <ProposedLines entry={review.entry} context={context} />
+      {proposal?.status === "proposed" ? (
+        <ProposedLines entry={proposal.booking} context={context} />
       ) : null}
     </SurfaceSection>
   );

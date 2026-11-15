@@ -27,12 +27,18 @@ import {
   type NewDocument,
 } from "./documents/documents";
 import { periodEndDates, today } from "./fiscal-years";
+import {
+  createProposalsFragment,
+  ProposalError,
+  type ProposalErrorCode,
+} from "./proposals/proposals";
 
 type Ledger = ReturnType<typeof createLedgerFragment>;
 type LedgerServices = Ledger["services"];
 type Input<TOperation extends keyof LedgerServices> = Parameters<LedgerServices[TOperation]>[0];
 type Documents = ReturnType<typeof createDocumentsFragment>;
 type Banking = ReturnType<typeof createBankingFragment>;
+type Proposals = ReturnType<typeof createProposalsFragment>;
 type PostingLine = Input<"postEntry">["lines"][number];
 
 /**
@@ -42,14 +48,20 @@ type PostingLine = Input<"postEntry">["lines"][number];
  */
 export type Outcome<T> =
   | { ok: true; value: T }
-  | { ok: false; code: LedgerErrorCode | DocumentErrorCode | BankingErrorCode; message: string };
+  | {
+      ok: false;
+      code: LedgerErrorCode | DocumentErrorCode | BankingErrorCode | ProposalErrorCode;
+      message: string;
+    };
 
 /**
- * One administration's books: the ledger fragment, and the documents and bank transactions booked
- * through it, on the object's own SQLite database, named by the administration's ID.
+ * One administration's books: the ledger fragment, the documents and bank transactions booked
+ * through it, and the bookkeeping agent's proposals for booking them, on the object's own SQLite
+ * database, named by the administration's ID.
  */
 export class Books extends DurableObject<CloudflareEnv> {
   private readonly ledger: Ledger;
+  private readonly proposals: Proposals;
   private readonly documents: Documents;
   private readonly banking: Banking;
 
@@ -62,10 +74,15 @@ export class Books extends DurableObject<CloudflareEnv> {
       driverConfig: new CloudflareDurableObjectsDriverConfig(),
     });
     this.ledger = createLedgerFragment({ databaseAdapter });
-    this.documents = createDocumentsFragment({ databaseAdapter }, { ledger: this.ledger.services });
+    this.proposals = createProposalsFragment({ databaseAdapter });
+    this.documents = createDocumentsFragment(
+      { databaseAdapter },
+      { ledger: this.ledger.services, proposals: this.proposals.services },
+    );
     this.banking = createBankingFragment({ databaseAdapter }, { ledger: this.ledger.services });
     void ctx.blockConcurrencyWhile(async () => {
       await migrate(this.ledger);
+      await migrate(this.proposals);
       await migrate(this.documents);
       await migrate(this.banking);
     });
@@ -266,13 +283,19 @@ export class Books extends DurableObject<CloudflareEnv> {
     const page = await this.documents.callServices(() =>
       this.documents.services.listDocuments(input),
     );
-    const sources = await this.ledger.callServices(() =>
-      this.ledger.services.getSourceDocuments({ ids: page.items.map((document) => document.id) }),
-    );
+    const ids = page.items.map((document) => document.id);
+    const [sources, proposals] = await this.ledger.callServices(() => [
+      this.ledger.services.getSourceDocuments({ ids }),
+      this.proposals.services.getProposals({ ids }),
+    ]);
     return {
       cursor: page.cursor,
       items: page.items.map((document) =>
-        describeDocument(document, sources.find((source) => source.id === document.id) ?? null),
+        describeDocument(
+          document,
+          sources.find((source) => source.id === document.id) ?? null,
+          proposals,
+        ),
       ),
     };
   }
@@ -285,12 +308,14 @@ export class Books extends DurableObject<CloudflareEnv> {
     return attempt(this.documents.callServices(() => this.documents.services.bookDocument(input)));
   }
 
-  requestReview(input: Parameters<Documents["services"]["requestReview"]>[0]) {
-    return attempt(this.documents.callServices(() => this.documents.services.requestReview(input)));
+  requestDocumentProposal(input: Parameters<Documents["services"]["requestProposal"]>[0]) {
+    return attempt(
+      this.documents.callServices(() => this.documents.services.requestProposal(input)),
+    );
   }
 
-  answerReview(input: Parameters<Documents["services"]["answerReview"]>[0]) {
-    return attempt(this.documents.callServices(() => this.documents.services.answerReview(input)));
+  answerDocumentRequest(input: Parameters<Documents["services"]["answerRequest"]>[0]) {
+    return attempt(this.documents.callServices(() => this.documents.services.answerRequest(input)));
   }
 
   recordSharesRevoked(input: { documentId: string }) {
@@ -299,9 +324,23 @@ export class Books extends DurableObject<CloudflareEnv> {
     );
   }
 
-  withdrawRequests(input: Parameters<Documents["services"]["withdrawRequests"]>[0]) {
+  /**
+   * Withdraws the requests asked before the client's management reached `generation`, as the
+   * proposals fragment withdraws them. Returns the IDs of the documents whose files may still be
+   * shared, read with the withdrawal: a request records its file shared, and nothing records it
+   * unshared while it awaits.
+   */
+  withdrawRequests(input: { reason: string; generation: number }) {
     return attempt(
-      this.documents.callServices(() => this.documents.services.withdrawRequests(input)),
+      this.documents
+        .callServices(
+          () =>
+            [
+              this.proposals.services.withdrawRequests(input),
+              this.documents.services.listSharedDocuments(),
+            ] as const,
+        )
+        .then(([, shared]) => shared),
     );
   }
 
@@ -468,7 +507,8 @@ async function attempt<T>(operation: Promise<T>): Promise<Outcome<T>> {
     if (
       error instanceof LedgerError ||
       error instanceof DocumentError ||
-      error instanceof BankingError
+      error instanceof BankingError ||
+      error instanceof ProposalError
     ) {
       return { ok: false, code: error.code, message: error.message };
     }

@@ -1,24 +1,19 @@
-import type { FragnoId } from "@fragno-dev/db/schema";
-
 import { defineFragment, instantiate } from "@fragno-dev/core";
-import {
-  withDatabase,
-  type FragnoPublicConfigWithDatabase,
-  type TypedUnitOfWork,
-} from "@fragno-dev/db";
+import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/db";
 import type { createLedgerFragment } from "@fragno-dev/ledger";
 
+import type { createProposalsFragment } from "../proposals/proposals";
+import type { AgentProposal, ProposalAnswer, ProposalRequest } from "../proposals/schema";
 import { bookingEntry, booksSource, type SourceDocument } from "../sources";
 import {
   documentsSchema,
   type Dismissal,
   type DocumentMediaType,
-  type Review,
-  type ReviewAnswer,
-  type ReviewRequest,
+  type ProposedEntry,
 } from "./schema";
 
 type LedgerServices = ReturnType<typeof createLedgerFragment>["services"];
+type ProposalsServices = ReturnType<typeof createProposalsFragment>["services"];
 type PostEntryInput = Parameters<LedgerServices["postEntry"]>[0];
 type ReverseEntryInput = Parameters<LedgerServices["reverseEntry"]>[0];
 
@@ -27,17 +22,11 @@ export const DOCUMENT_SOURCE_KIND = "document";
 
 const PAGE_SIZE = 50;
 
-/** The ID of the `management` table's one row. */
-const MANAGEMENT = "management";
-
 const documentErrorMessages = {
   DOCUMENT_NOT_FOUND: "This document does not exist.",
   DOCUMENT_ID_TAKEN: "Another file was uploaded with this form. Upload it again.",
   DOCUMENT_BOOKED: "This document is booked. Reverse its entry first.",
   DOCUMENT_DISMISSED: "This document was dismissed.",
-  REQUEST_NOT_AWAITED:
-    "This request no longer awaits an answer: the document was answered, or asked about again, since.",
-  MANAGEMENT_CHANGED: "The firm keeping these books changed while asking. Ask again.",
 } as const;
 
 export type DocumentErrorCode = keyof typeof documentErrorMessages;
@@ -73,9 +62,12 @@ export type DocumentState =
   | { status: "booked"; entryId: string }
   | ({ status: "dismissed" } & Dismissal);
 
+/** What the bookkeeping agent made of a document: it proposes entries. */
+export type DocumentProposal = AgentProposal<ProposedEntry>;
+
 export type DocumentView = NewDocument & {
   uploadedAt: Date;
-  review: Review | null;
+  proposal: DocumentProposal | null;
   /** Whether its file may still be shared with a firm's bookkeeping agent. */
   shared: boolean;
   /** The ledger's source document, once an entry recorded it, with every entry recording it. */
@@ -83,7 +75,9 @@ export type DocumentView = NewDocument & {
   state: DocumentState;
 };
 
-type DocumentRow = Omit<DocumentView, "source" | "state"> & { dismissal: Dismissal | null };
+type DocumentRow = Omit<DocumentView, "proposal" | "source" | "state"> & {
+  dismissal: Dismissal | null;
+};
 
 function documentState(dismissal: Dismissal | null, source: SourceDocument | null): DocumentState {
   if (dismissal !== null) {
@@ -93,36 +87,23 @@ function documentState(dismissal: Dismissal | null, source: SourceDocument | nul
   return inEffect ? { status: "booked", entryId: inEffect.id } : { status: "to-book" };
 }
 
-/** The request a document to book awaits an answer to, if any. */
-function awaitedRequest(
-  document: { dismissal: Dismissal | null; review: Review | null },
-  source: SourceDocument | null,
-): string | null {
-  const { review } = document;
-  return review?.status === "requested" &&
-    documentState(document.dismissal, source).status === "to-book"
-    ? review.requestId
-    : null;
+/** The proposal for a document, of the proposals read for it. */
+function proposalOf(
+  proposals: { id: string; proposal: AgentProposal<unknown> }[],
+): DocumentProposal | null {
+  // Only answers about a document are recorded under its ID, and they propose entries.
+  return (proposals[0]?.proposal as DocumentProposal | undefined) ?? null;
 }
 
-/**
- * Records the latest generation of the client's management the books heard of. Every request and
- * withdrawal writes it, even unchanged, so the two conflict and one retries instead of passing each
- * other: a request recorded meanwhile would be missed by the withdrawal, or recorded after it.
- */
-function recordLatestGeneration(
-  uow: TypedUnitOfWork<typeof documentsSchema>,
-  management: { id: FragnoId; generation: number } | null,
-  generation: number,
-) {
-  if (management === null) {
-    // Another request or withdrawal created it: retrying reads it.
-    uow.create("management", { id: MANAGEMENT, generation }, { retryOnUniqueConflict: () => true });
-    return;
-  }
-  uow.update("management", management.id, (b) =>
-    b.set({ generation: Math.max(generation, management.generation) }).check(),
-  );
+/** The request a document to book awaits an answer to, if any. */
+function awaitedRequest(
+  dismissal: Dismissal | null,
+  source: SourceDocument | null,
+  proposal: DocumentProposal | null,
+): string | null {
+  return proposal?.status === "requested" && documentState(dismissal, source).status === "to-book"
+    ? proposal.requestId
+    : null;
 }
 
 /** Refuses booking a document that is booked or dismissed. */
@@ -135,10 +116,31 @@ function assertToBook(state: DocumentState) {
   }
 }
 
-/** A document with what the ledger records of it. */
-export function describeDocument(row: DocumentRow, source: SourceDocument | null): DocumentView {
+/** The document a request or answer is about, refused unless it is to book. */
+function subjectToBook<TDocument extends { dismissal: Dismissal | null }>(
+  document: TDocument | null,
+  source: SourceDocument | null,
+): TDocument {
+  if (!document) {
+    throw new DocumentError("DOCUMENT_NOT_FOUND");
+  }
+  assertToBook(documentState(document.dismissal, source));
+  return document;
+}
+
+/** A document with what the ledger records of it, and the bookkeeping agent's proposal. */
+export function describeDocument(
+  row: DocumentRow,
+  source: SourceDocument | null,
+  proposals: { id: string; proposal: AgentProposal<unknown> }[],
+): DocumentView {
   const { dismissal, ...document } = row;
-  return { ...document, source, state: documentState(dismissal, source) };
+  return {
+    ...document,
+    proposal: proposalOf(proposals.filter((proposal) => proposal.id === row.id)),
+    source,
+    state: documentState(dismissal, source),
+  };
 }
 
 function toRow(document: {
@@ -151,7 +153,6 @@ function toRow(document: {
   uploadedAt: Date;
   uploadedBy: string;
   dismissal: Dismissal | null;
-  review: Review | null;
   shared: boolean;
 }): DocumentRow {
   return {
@@ -164,18 +165,19 @@ function toRow(document: {
     uploadedAt: document.uploadedAt,
     uploadedBy: document.uploadedBy,
     dismissal: document.dismissal,
-    review: document.review,
     shared: document.shared,
   };
 }
 
 /**
  * Documents uploaded to an administration's books, booked through its ledger in the same
- * transaction, so a document is booked and dismissed by the rules of both.
+ * transaction, so a document is booked and dismissed by the rules of both. The agent proposes how
+ * to book only documents to book.
  */
 const documentsFragmentDefinition = defineFragment("documents")
   .extend(withDatabase(documentsSchema))
   .usesService<"ledger", LedgerServices>("ledger")
+  .usesService<"proposals", ProposalsServices>("proposals")
   .providesBaseService(({ defineService, serviceDeps }) =>
     defineService({
       /**
@@ -203,7 +205,6 @@ const documentsFragmentDefinition = defineFragment("documents")
                 uploadedAt: uow.now(),
                 bookings: 0,
                 dismissal: null,
-                review: null,
                 shared: false,
               },
               // A concurrent upload recorded it: retrying reads it and compares the files. Its ID is
@@ -215,7 +216,7 @@ const documentsFragmentDefinition = defineFragment("documents")
           .build();
       },
 
-      /** A page of documents, newest first, without what the ledger records of them. */
+      /** A page of documents, newest first, without the ledger's records of them, or proposals. */
       listDocuments: function (input: { cursor: string | null }) {
         return this.serviceTx(documentsSchema)
           .retrieve((uow) =>
@@ -236,12 +237,18 @@ const documentsFragmentDefinition = defineFragment("documents")
 
       getDocument: function (id: string) {
         return this.serviceTx(documentsSchema)
-          .withServiceCalls(() => [serviceDeps.ledger.getSourceDocuments({ ids: [id] })] as const)
+          .withServiceCalls(
+            () =>
+              [
+                serviceDeps.ledger.getSourceDocuments({ ids: [id] }),
+                serviceDeps.proposals.getProposals({ ids: [id] }),
+              ] as const,
+          )
           .retrieve((uow) =>
             uow.findFirst("document", (b) => b.whereIndex("primary", (eb) => eb("id", "=", id))),
           )
-          .transformRetrieve(([document], [sources]): DocumentView | null =>
-            document ? describeDocument(toRow(document), sources[0] ?? null) : null,
+          .transformRetrieve(([document], [sources, proposals]): DocumentView | null =>
+            document ? describeDocument(toRow(document), sources[0] ?? null, proposals) : null,
           )
           .build();
       },
@@ -326,140 +333,76 @@ const documentsFragmentDefinition = defineFragment("documents")
       },
 
       /**
-       * Records that the bookkeeping agent was asked to review a document to book, and that its file
-       * may be shared with it, under `generation` of the client's management, read before. Asking
-       * again replaces an earlier answer, and recording a request again does nothing; with `first`,
-       * so does a request for a document that has a review. Returns the review in effect.
+       * Records that the bookkeeping agent was asked to propose how to book a document to book, as
+       * the proposals fragment records requests, and that its file may be shared with it. Returns
+       * the proposal in effect.
        */
-      requestReview: function (input: {
+      requestProposal: function (input: {
         documentId: string;
-        request: ReviewRequest;
+        request: ProposalRequest;
         first: boolean;
-        generation: number;
       }) {
-        const { documentId, request, first, generation } = input;
+        const { documentId, request, first } = input;
         return this.serviceTx(documentsSchema)
           .withServiceCalls(
-            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
-          )
-          .retrieve((uow) =>
-            uow
-              .findFirst("document", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
-              )
-              .findFirst("management", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", MANAGEMENT)),
-              ),
-          )
-          .mutate(
-            ({
-              uow,
-              retrieveResult: [document, management],
-              serviceIntermediateResult: [sources],
-            }) => {
-              if (!document) {
-                throw new DocumentError("DOCUMENT_NOT_FOUND");
-              }
-              assertToBook(documentState(document.dismissal, sources[0] ?? null));
-              // The firm read under an earlier generation may be one whose requests were withdrawn
-              // already, which would leave this one with it.
-              if (management && generation < management.generation) {
-                throw new DocumentError("MANAGEMENT_CHANGED");
-              }
-              recordLatestGeneration(uow, management, generation);
-              const current = document.review;
-              if (
-                current !== null &&
-                (first ||
-                  (current.status === "requested" && current.requestId === request.requestId))
-              ) {
-                return current;
-              }
-              uow.update("document", document.id, (b) =>
-                b.set({ review: request, shared: true, requestGeneration: generation }).check(),
-              );
-              return request;
-            },
-          )
-          .build();
-      },
-
-      /**
-       * Records an answer to a document's review. An answer to `request` counts only while the
-       * document awaits that request's answer, so a request asked again, or answered, takes no
-       * late answer to it; an answer to no request replaces any review.
-       */
-      answerReview: function (input: {
-        documentId: string;
-        request: string | null;
-        answer: ReviewAnswer;
-      }) {
-        const { documentId, request, answer } = input;
-        return this.serviceTx(documentsSchema)
-          .withServiceCalls(
-            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
+            () =>
+              [
+                serviceDeps.ledger.getSourceDocuments({ ids: [documentId] }),
+                serviceDeps.proposals.requestProposal({ subjectId: documentId, request, first }),
+              ] as const,
           )
           .retrieve((uow) =>
             uow.findFirst("document", (b) =>
               b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
             ),
           )
-          .mutate(({ uow, retrieveResult: [document], serviceIntermediateResult: [sources] }) => {
-            if (!document) {
-              throw new DocumentError("DOCUMENT_NOT_FOUND");
-            }
-            assertToBook(documentState(document.dismissal, sources[0] ?? null));
-            const current = document.review;
-            if (
-              request !== null &&
-              !(current?.status === "requested" && current.requestId === request)
-            ) {
-              throw new DocumentError("REQUEST_NOT_AWAITED");
-            }
-            uow.update("document", document.id, (b) => b.set({ review: answer }).check());
-            return answer;
-          })
+          .transformRetrieve(([document], [sources]) => subjectToBook(document, sources[0] ?? null))
+          .mutate(
+            ({ uow, retrieveResult: document, serviceIntermediateResult: [, { recorded }] }) => {
+              if (recorded) {
+                uow.update("document", document.id, (b) => b.set({ shared: true }).check());
+              }
+            },
+          )
+          .transform(({ serviceResult: [, proposal] }) => proposal as DocumentProposal)
+          .build();
+      },
+
+      /** Records an answer to a request about a document, as the proposals fragment does. */
+      answerRequest: function (input: {
+        documentId: string;
+        request: string | null;
+        answer: ProposalAnswer<ProposedEntry>;
+      }) {
+        const { documentId, request, answer } = input;
+        return this.serviceTx(documentsSchema)
+          .withServiceCalls(
+            () =>
+              [
+                serviceDeps.ledger.getSourceDocuments({ ids: [documentId] }),
+                serviceDeps.proposals.answerRequest({ subjectId: documentId, request, answer }),
+              ] as const,
+          )
+          .retrieve((uow) =>
+            uow.findFirst("document", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
+            ),
+          )
+          .transformRetrieve(([document], [sources]) => subjectToBook(document, sources[0] ?? null))
+          .transform(() => answer)
           .build();
       },
 
       /**
-       * Withdraws the requests awaiting an answer that were asked before the client's management
-       * reached `generation`, so no answer to them counts, and refuses requests asked under earlier
-       * generations from now on. Returns the IDs of the documents whose files may still be shared:
-       * every one whose file a request shared and no revocation since recorded unshared.
+       * The IDs of the documents whose files may still be shared: every one whose file a request
+       * shared and no revocation since recorded unshared.
        */
-      withdrawRequests: function (input: { reason: string; generation: number }) {
-        const { generation } = input;
+      listSharedDocuments: function () {
         return this.serviceTx(documentsSchema)
-          .retrieve((uow) =>
-            uow
-              .find("document", (b) => b.whereIndex("primary"))
-              .findFirst("management", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "=", MANAGEMENT)),
-              ),
+          .retrieve((uow) => uow.find("document", (b) => b.whereIndex("primary")))
+          .transformRetrieve(([documents]) =>
+            documents.filter(({ shared }) => shared).map(({ id }) => id.valueOf()),
           )
-          .mutate(({ uow, retrieveResult: [documents, management] }) => {
-            recordLatestGeneration(uow, management, generation);
-            const requested = documents.filter(
-              ({ review, requestGeneration }) =>
-                review?.status === "requested" && requestGeneration < generation,
-            );
-            for (const document of requested) {
-              uow.update("document", document.id, (b) =>
-                b
-                  .set({
-                    review: {
-                      status: "withdrawn",
-                      reason: input.reason,
-                      at: new Date().toISOString(),
-                    },
-                  })
-                  .check(),
-              );
-            }
-            // A request records its file shared, and nothing records it unshared while it awaits.
-            return documents.filter(({ shared }) => shared).map(({ id }) => id.valueOf());
-          })
           .build();
       },
 
@@ -472,23 +415,37 @@ const documentsFragmentDefinition = defineFragment("documents")
         const { documentId } = input;
         return this.serviceTx(documentsSchema)
           .withServiceCalls(
-            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
+            () =>
+              [
+                serviceDeps.ledger.getSourceDocuments({ ids: [documentId] }),
+                serviceDeps.proposals.getProposals({ ids: [documentId] }),
+              ] as const,
           )
           .retrieve((uow) =>
             uow.findFirst("document", (b) =>
               b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
             ),
           )
-          .mutate(({ uow, retrieveResult: [document], serviceIntermediateResult: [sources] }) => {
-            if (!document) {
-              throw new DocumentError("DOCUMENT_NOT_FOUND");
-            }
-            const awaited = awaitedRequest(document, sources[0] ?? null);
-            if (awaited === null) {
-              uow.update("document", document.id, (b) => b.set({ shared: false }).check());
-            }
-            return awaited;
-          })
+          .mutate(
+            ({
+              uow,
+              retrieveResult: [document],
+              serviceIntermediateResult: [sources, proposals],
+            }) => {
+              if (!document) {
+                throw new DocumentError("DOCUMENT_NOT_FOUND");
+              }
+              const awaited = awaitedRequest(
+                document.dismissal,
+                sources[0] ?? null,
+                proposalOf(proposals),
+              );
+              if (awaited === null) {
+                uow.update("document", document.id, (b) => b.set({ shared: false }).check());
+              }
+              return awaited;
+            },
+          )
           .build();
       },
 
@@ -501,20 +458,35 @@ const documentsFragmentDefinition = defineFragment("documents")
         const { documentId, requestId } = input;
         return this.serviceTx(documentsSchema)
           .withServiceCalls(
-            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
+            () =>
+              [
+                serviceDeps.ledger.getSourceDocuments({ ids: [documentId] }),
+                serviceDeps.proposals.getProposals({ ids: [documentId] }),
+              ] as const,
           )
           .retrieve((uow) =>
             uow.findFirst("document", (b) =>
               b.whereIndex("primary", (eb) => eb("id", "=", documentId)),
             ),
           )
-          .mutate(({ uow, retrieveResult: [document], serviceIntermediateResult: [sources] }) => {
-            if (!document) {
-              throw new DocumentError("DOCUMENT_NOT_FOUND");
-            }
-            uow.update("document", document.id, (b) => b.set({ shared: true }).check());
-            return awaitedRequest(document, sources[0] ?? null) === requestId;
-          })
+          .mutate(
+            ({
+              uow,
+              retrieveResult: [document],
+              serviceIntermediateResult: [sources, proposals],
+            }) => {
+              if (!document) {
+                throw new DocumentError("DOCUMENT_NOT_FOUND");
+              }
+              uow.update("document", document.id, (b) => b.set({ shared: true }).check());
+              const awaited = awaitedRequest(
+                document.dismissal,
+                sources[0] ?? null,
+                proposalOf(proposals),
+              );
+              return awaited === requestId;
+            },
+          )
           .build();
       },
 
@@ -553,7 +525,7 @@ const documentsFragmentDefinition = defineFragment("documents")
 
 export function createDocumentsFragment(
   options: FragnoPublicConfigWithDatabase,
-  services: { ledger: LedgerServices },
+  services: { ledger: LedgerServices; proposals: ProposalsServices },
 ) {
   return instantiate(documentsFragmentDefinition)
     .withConfig({})

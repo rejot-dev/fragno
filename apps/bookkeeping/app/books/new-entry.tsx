@@ -299,7 +299,7 @@ export default function NewEntryPage({ loaderData, actionData }: Route.Component
   const navigation = useNavigation();
   const { document, transaction } = loaderData;
   // Booking a document the bookkeeping agent proposed an entry for starts from its proposal.
-  const proposal = document?.review?.status === "proposed" ? document.review.entry : null;
+  const proposal = document?.proposal?.status === "proposed" ? document.proposal.booking : null;
   const index = indexBooks(books);
   // A bank transaction's entry has the line of its bank account, which the form shows but does
   // not submit: the books add it.

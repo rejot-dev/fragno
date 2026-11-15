@@ -63,8 +63,9 @@ export async function setUpFirmAgent(context: OrganizationContext): Promise<void
  * Bookkeeping's installation in the administration's project, which shares the document, and in
  * the agent project of the firm keeping its books, which holds the agent. Bookkeeping prompts the
  * agent as its installation, not as the person, so the agent's calls to Bookkeeping can answer
- * reviews and change nothing else, whatever a document tells it. `firmId` is the firm the request
- * was recorded with, read once, so the request never reaches a firm it was not recorded for.
+ * requests for proposals and change nothing else, whatever a document tells it. `firmId` is the
+ * firm the request was recorded with, read once, so the request never reaches a firm it was not
+ * recorded for.
  */
 async function connectToAgent(
   context: BooksContext,
@@ -119,7 +120,7 @@ async function connectToAgent(
 
 /**
  * Asks the bookkeeping agent to propose the entry booking `document`. The upload asks `first`:
- * under one request ID, and only while the document has no review, so sending it again never asks
+ * under one request ID, and only while the document has no proposal, so sending it again never asks
  * twice; asking `again` sends a new request. The request is recorded first, so one that never
  * reached the agent, e.g. because Backoffice could not set it up, shows on the document's page to
  * ask again. Returns why it was not sent instead.
@@ -136,24 +137,24 @@ export async function askBookkeeper(
   if (management === null) {
     return { ok: false, error: "These books belong to no client Bookkeeping knows." };
   }
-  const recorded = await context.books.requestReview({
+  const recorded = await context.books.requestDocumentProposal({
     documentId: document.id,
     request: {
       status: "requested",
       requestId,
+      generation: management.generation,
       by: context.user.name,
       at: new Date().toISOString(),
     },
     first: ask === "first",
-    generation: management.generation,
   });
   if (!recorded.ok) {
     return { ok: false, error: recorded.message };
   }
-  const review = recorded.value;
+  const proposal = recorded.value;
   // Another request or an answer came first. Sending this request again is safe: Backoffice
   // queues a request ID once.
-  if (review.status !== "requested" || review.requestId !== requestId) {
+  if (proposal.status !== "requested" || proposal.requestId !== requestId) {
     return { ok: true };
   }
   try {
@@ -255,7 +256,7 @@ export async function readBookkeeperProgress(
 }
 
 /**
- * Revokes the shares of a document the agent no longer needs: its review was answered, or it is
+ * Revokes the shares of a document the agent no longer needs: its proposal was answered, or it is
  * booked or dismissed, which its page shows next. Answering revokes them already; this catches
  * what that could not.
  */
@@ -263,8 +264,8 @@ export async function releaseDocumentIfDone(
   context: BooksContext,
   document: DocumentView,
 ): Promise<void> {
-  const { review } = document;
-  if (review?.status === "requested" && document.state.status === "to-book") {
+  const { proposal } = document;
+  if (proposal?.status === "requested" && document.state.status === "to-book") {
     return;
   }
   try {
