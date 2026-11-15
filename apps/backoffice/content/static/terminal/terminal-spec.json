@@ -3535,6 +3535,52 @@
     ]
   },
   {
+    "command": "events.state.get",
+    "summary": "events.state.get gets the state of an event type's keys: each key's latest event.",
+    "options": [
+      {
+        "name": "source",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "source",
+        "description": "Automation event source."
+      },
+      {
+        "name": "event-type",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "event-type",
+        "description": "Automation event type."
+      },
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "Key whose state to get; repeat for each, up to 50."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "events.routes.retry",
     "summary": "events.routes.retry runs a route that failed for good on a stored event again, as the route was when the event matched it, with the route's current permissions.",
     "options": [

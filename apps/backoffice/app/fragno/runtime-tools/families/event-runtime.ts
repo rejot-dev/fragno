@@ -7,6 +7,7 @@ import {
   automationEventRoutesListResultSchema,
   automationEventRouteDispatchSchema,
   automationEventStateDeleteResultSchema,
+  automationEventStateGetResultSchema,
   automationEventStateListResultSchema,
   automationEventParentOf,
 } from "@fragno-dev/backoffice-api/v0/events";
@@ -161,6 +162,16 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
         `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
       );
     },
+    getEventStates: async (input) => {
+      const response = await callRoute("POST", "/event-state/get", { body: input });
+      if (response.type === "json") {
+        return automationEventStateGetResultSchema.parse(response.data);
+      }
+      throw new BackofficeOperationError(
+        backofficeOperationErrorKindForStatus(response.status),
+        `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
+      );
+    },
     deleteEventState: async (input) => {
       const response = await callRoute("POST", "/event-state/delete", { body: input });
       if (response.type === "json") {
@@ -291,6 +302,9 @@ export function createUnavailableEventRuntime(
       throw new Error(message);
     },
     listEventState: async () => {
+      throw new Error(message);
+    },
+    getEventStates: async () => {
       throw new Error(message);
     },
     deleteEventState: async () => {

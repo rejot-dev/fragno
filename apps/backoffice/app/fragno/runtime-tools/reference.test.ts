@@ -190,6 +190,16 @@ describe("runtime tool reference generation", () => {
           bashOptions: ["source", "event-type", "limit", "cursor"],
         },
         {
+          id: "events.state.get",
+          namespace: "events",
+          codemodeProvider: "events",
+          codemodeTool: "stateGet",
+          inputType: "EventsStateGetInput",
+          outputType: "EventsStateGetOutput",
+          bashCommand: "events.state.get",
+          bashOptions: ["source", "event-type", "key"],
+        },
+        {
           id: "events.routes.retry",
           namespace: "events",
           codemodeProvider: "events",

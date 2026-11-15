@@ -145,6 +145,20 @@ test("a keyed type keeps each key's latest event as its state, which agents tidy
               { key: "BOLT", keyPath: "$.sku", eventId: "bolts-80", qty: 80 },
               { key: "WASHER", keyPath: "$.sku", eventId: "washers-300", qty: 300 },
             ]);
+            // An agent looks keys up, and a key without state is left out.
+            expect(
+              await agent(
+                ctx,
+                `async () => {
+                const { states } = await events.stateGet({
+                  source: "warehouse",
+                  eventType: "stock.changed",
+                  keys: ["WASHER", "MISSING"],
+                });
+                return states.map((state) => [state.key, state.eventId, state.payload.qty]);
+              }`,
+              ),
+            ).toEqual([["WASHER", "washers-300", 300]]);
           }),
           then.assert("a changed key path leaves the state read with the old one", async (ctx) => {
             // Stored under the old key path; its state is kept only after the path changed.
