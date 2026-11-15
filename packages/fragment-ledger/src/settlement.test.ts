@@ -68,4 +68,105 @@ describe("settlement", () => {
         "ALLOCATION_NOTHING_OUTSTANDING",
       );
     }));
+
+  test("a line settles its party's open items as it posts, within what they and it have outstanding", () =>
+    ledgerScenario(async (ledger) => {
+      await ledger.post({ name: "inv-1", journal: "sales", lines: sale(12100n) });
+      await ledger.post({ name: "inv-2", journal: "sales", lines: sale(5000n) });
+      await ledger.post({ name: "bob-inv", journal: "sales", lines: sale(800n, "bob-c") });
+      const receipt = (settles: Settles, amount = 20000n) => ({
+        name: "x",
+        journal: "cashbook",
+        lines: [debit("bank", amount), credit("ar", amount, { party: "alice-c", settles })],
+      });
+
+      await ledger.refuses(
+        () => ledger.post(receipt([{ item: ["inv-1", 1], amount: 12101n }])),
+        "ALLOCATION_EXCEEDS_OUTSTANDING",
+      );
+      await ledger.refuses(
+        () =>
+          ledger.post(
+            receipt(
+              [
+                { item: ["inv-1", 1], amount: 12100n },
+                { item: ["inv-2", 1], amount: 5000n },
+              ],
+              17000n,
+            ),
+          ),
+        "ALLOCATION_EXCEEDS_OUTSTANDING",
+      );
+      await ledger.refuses(
+        () => ledger.post(receipt([{ item: ["bob-inv", 1], amount: 800n }])),
+        "ALLOCATION_ITEMS_MISMATCH",
+      );
+      await ledger.refuses(
+        () => ledger.post(receipt([{ item: ["inv-1", 1], amount: 0n }])),
+        "ALLOCATION_AMOUNT_ZERO",
+      );
+      await ledger.refuses(
+        () =>
+          ledger.post({
+            name: "x",
+            journal: "cashbook",
+            lines: [
+              debit("bank", 200n),
+              credit("ar", 100n, {
+                party: "alice-c",
+                settles: [{ item: ["inv-1", 1], amount: 100n }],
+              }),
+              credit("ar", 100n, {
+                party: "alice-c",
+                settles: [{ item: ["inv-1", 1], amount: 100n }],
+              }),
+            ],
+          }),
+        "OPEN_ITEM_SETTLED_TWICE",
+      );
+
+      // One payment of both invoices, with 29.00 paid too much.
+      await ledger.post({
+        ...receipt([
+          { item: ["inv-1", 1], amount: 12100n },
+          { item: ["inv-2", 1], amount: 5000n },
+        ]),
+        name: "receipt",
+      });
+      await ledger.refuses(
+        () =>
+          ledger.post({
+            name: "x",
+            journal: "cashbook",
+            lines: [
+              debit("bank", 100n),
+              credit("ar", 100n, {
+                party: "alice-c",
+                settles: [{ item: ["receipt", 2], amount: 100n }],
+              }),
+            ],
+          }),
+        "ALLOCATION_SIDES_INVALID",
+      );
+
+      assert.equal(await ledger.outstanding("inv-1", 1), 0n);
+      assert.equal(await ledger.outstanding("inv-2", 1), 0n);
+      assert.equal(await ledger.outstanding("receipt", 2), 2900n);
+      const [, , payment] = await ledger.openItems("alice-c");
+      expect(payment.allocations).toMatchObject([
+        { debitItemId: await ledger.openItemId("inv-1", 1), amountMinor: "12100", reversed: false },
+        { debitItemId: await ledger.openItemId("inv-2", 1), amountMinor: "5000", reversed: false },
+      ]);
+
+      // Reversing the payment leaves what it paid owed again, on its mirror.
+      await ledger.reverse("r1", "receipt");
+      assert.equal(await ledger.outstanding("receipt", 2), 0n);
+      assert.equal(await ledger.outstanding("r1", 2), 17100n);
+    }));
 });
+
+type Settles = { item: readonly [entry: string, line: number]; amount: bigint }[];
+
+function sale(amount: bigint, party = "alice-c") {
+  return [debit("ar", amount, { party }), credit("revenue", amount)];
+}

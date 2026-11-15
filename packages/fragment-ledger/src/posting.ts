@@ -25,8 +25,19 @@ export type PostingLine = {
   /** At most one value per dimension. */
   dimensionValueIds: string[];
   /** Required on control accounts, whose lines are open items of a party; refused elsewhere. */
-  openItem: { partyAccountId: string; dueDate: CalendarDate } | null;
+  openItem: {
+    partyAccountId: string;
+    dueDate: CalendarDate;
+    /**
+     * Open items of the same party account, currency, and opposite side that the line settles as
+     * it posts, e.g. the invoices a payment pays. Together at most the line's amount.
+     */
+    settles: Settlement[];
+  } | null;
 };
+
+/** Part of an open item that a posted line settles, in the item's currency. */
+export type Settlement = { openItemId: string; amountMinor: bigint };
 
 export type PostEntryInput = {
   journalId: string;
@@ -73,9 +84,17 @@ type RecordedLine = {
   openItem: {
     partyAccountId: Reference;
     dueDate: CalendarDate;
-    /** The item a reversal's open item settles: the one it mirrors. */
-    settles: { id: FragnoId; outstandingMinor: bigint } | null;
+    /** The items it settles, e.g. the one a reversal's open item mirrors. */
+    settles: { id: FragnoId; outstandingMinor: bigint; amountMinor: bigint }[];
   } | null;
+};
+
+type SettledItem = {
+  id: FragnoId;
+  partyAccountId: FragnoReference;
+  side: Side;
+  currency: FragnoReference;
+  outstandingMinor: bigint;
 };
 
 type PostingPeriod = {
@@ -94,6 +113,9 @@ export const postingServices = {
     const valueIds = distinct(input.lines.flatMap((line) => line.dimensionValueIds));
     const partyAccountIds = distinct(
       input.lines.flatMap((line) => (line.openItem ? [line.openItem.partyAccountId] : [])),
+    );
+    const settledItemIds = input.lines.flatMap((line) =>
+      line.openItem ? line.openItem.settles.map((settlement) => settlement.openItemId) : [],
     );
     return this.serviceTx(ledgerSchema)
       .retrieve((uow) =>
@@ -129,6 +151,9 @@ export const postingServices = {
           )
           .find("partyAccount", (b) =>
             b.whereIndex("primary", (eb) => eb("id", "in", partyAccountIds)),
+          )
+          .find("openItem", (b) =>
+            b.whereIndex("primary", (eb) => eb("id", "in", distinct(settledItemIds))),
           ),
       )
       .mutate(
@@ -144,6 +169,7 @@ export const postingServices = {
             currencies,
             values,
             partyAccounts,
+            settledItems,
           ],
         }) => {
           if (!ledger) {
@@ -159,6 +185,12 @@ export const postingServices = {
             );
           }
           const postingPeriod = assertOpenPeriod(period, input.postingDate);
+          if (new Set(settledItemIds).size !== settledItemIds.length) {
+            throw new LedgerError(
+              "OPEN_ITEM_SETTLED_TWICE",
+              "An entry settles each open item at most once.",
+            );
+          }
 
           const lines = input.lines.map((line): RecordedLine => {
             const account = accounts.find((row) => row.id.externalId === line.accountId);
@@ -207,7 +239,12 @@ export const postingServices = {
               functionalAmountMinor: line.functionalAmountMinor,
               description: line.description,
               dimensions: resolveDimensions(account, line.dimensionValueIds, values),
-              openItem: resolveOpenItem(account, line.openItem, partyAccounts),
+              openItem: resolveOpenItem(
+                { account, side: line.side, currency: currency.id, amountMinor: line.amountMinor },
+                line.openItem,
+                partyAccounts,
+                settledItems,
+              ),
             };
           });
 
@@ -318,7 +355,16 @@ export const postingServices = {
             openItem: line.openItem && {
               partyAccountId: line.openItem.partyAccountId,
               dueDate: line.openItem.dueDate,
-              settles: { id: line.openItem.id, outstandingMinor: line.openItem.outstandingMinor },
+              settles:
+                line.openItem.outstandingMinor === 0n
+                  ? []
+                  : [
+                      {
+                        id: line.openItem.id,
+                        outstandingMinor: line.openItem.outstandingMinor,
+                        amountMinor: line.openItem.outstandingMinor,
+                      },
+                    ],
             },
           })),
         });
@@ -379,13 +425,22 @@ function resolveDimensions(
 
 /**
  * The open item a line is: lines on control accounts are open items of a party account that
- * posts to that control account, and no other line is.
+ * posts to that control account, and no other line is. The items it settles are the party
+ * account's, in the line's currency and on the other side, each within what it has outstanding
+ * and together within the line's amount.
  */
 function resolveOpenItem(
-  account: { id: FragnoId; code: string; role: AccountRole },
+  line: {
+    account: { id: FragnoId; code: string; role: AccountRole };
+    side: Side;
+    currency: FragnoId;
+    amountMinor: bigint;
+  },
   openItem: PostingLine["openItem"],
   partyAccounts: { id: FragnoId; code: string; controlAccountId: FragnoReference }[],
+  settledItems: SettledItem[],
 ): RecordedLine["openItem"] {
+  const { account } = line;
   if (account.role === "ordinary") {
     if (openItem) {
       throw new LedgerError(
@@ -414,7 +469,51 @@ function resolveOpenItem(
       `Party account ${partyAccount.code} posts to another control account.`,
     );
   }
-  return { partyAccountId: partyAccount.id, dueDate: openItem.dueDate, settles: null };
+  const settles = openItem.settles.map((settlement) => {
+    const item = settledItems.find((row) => row.id.externalId === settlement.openItemId);
+    if (!item) {
+      throw new LedgerError(
+        "OPEN_ITEM_NOT_FOUND",
+        `Open item ${settlement.openItemId} does not exist.`,
+      );
+    }
+    if (item.side === line.side) {
+      throw new LedgerError(
+        "ALLOCATION_SIDES_INVALID",
+        "A line settles open items on the other side.",
+      );
+    }
+    if (!sameRow(item.partyAccountId, partyAccount.id) || !sameRow(item.currency, line.currency)) {
+      throw new LedgerError(
+        "ALLOCATION_ITEMS_MISMATCH",
+        "A line settles open items of its party account and currency.",
+      );
+    }
+    assertAmountInRange(settlement.amountMinor);
+    if (settlement.amountMinor === 0n) {
+      throw new LedgerError("ALLOCATION_AMOUNT_ZERO", "A settlement needs an amount.");
+    }
+    if (settlement.amountMinor > item.outstandingMinor) {
+      throw new LedgerError(
+        "ALLOCATION_EXCEEDS_OUTSTANDING",
+        "The settlement exceeds the item's outstanding amount.",
+      );
+    }
+    return {
+      id: item.id,
+      outstandingMinor: item.outstandingMinor,
+      amountMinor: settlement.amountMinor,
+    };
+  });
+  if (
+    settles.reduce((total, settlement) => total + settlement.amountMinor, 0n) > line.amountMinor
+  ) {
+    throw new LedgerError(
+      "ALLOCATION_EXCEEDS_OUTSTANDING",
+      "A line settles at most its own amount.",
+    );
+  }
+  return { partyAccountId: partyAccount.id, dueDate: openItem.dueDate, settles };
 }
 
 /** The entry's source document: created when new, which its ID must not be yet; else the one read. */
@@ -531,7 +630,10 @@ function recordEntry(
     }
     if (line.openItem) {
       const { settles } = line.openItem;
-      const settledMinor = settles === null ? 0n : settles.outstandingMinor;
+      const settledMinor = settles.reduce(
+        (total, settlement) => total + settlement.amountMinor,
+        0n,
+      );
       const openItemId = uow.create("openItem", {
         lineId,
         partyAccountId: line.openItem.partyAccountId,
@@ -540,12 +642,14 @@ function recordEntry(
         dueDate: line.openItem.dueDate,
         outstandingMinor: line.amountMinor - settledMinor,
       });
-      if (settles !== null && settledMinor > 0n) {
-        uow.update("openItem", settles.id, (b) => b.set({ outstandingMinor: 0n }).check());
+      for (const settlement of settles) {
+        uow.update("openItem", settlement.id, (b) =>
+          b.set({ outstandingMinor: settlement.outstandingMinor - settlement.amountMinor }).check(),
+        );
         uow.create("allocation", {
-          debitItemId: line.side === "debit" ? openItemId : settles.id,
-          creditItemId: line.side === "debit" ? settles.id : openItemId,
-          amountMinor: settledMinor,
+          debitItemId: line.side === "debit" ? openItemId : settlement.id,
+          creditItemId: line.side === "debit" ? settlement.id : openItemId,
+          amountMinor: settlement.amountMinor,
           allocatedAt: uow.now(),
           allocatedBy: entry.postedBy,
         });

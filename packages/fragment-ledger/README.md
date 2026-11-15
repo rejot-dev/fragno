@@ -40,7 +40,9 @@ before they write, and nothing else writes:
   no party behind.
 - **Settlement** allocates a debit open item against a credit one of the same party account and
   currency, within both outstanding amounts; without an amount it settles all both have outstanding.
-  Allocations are append-only; a reversal undoes one.
+  A line can also settle open items as it posts, such as the invoices a payment pays: items of its
+  party account and currency on the other side, each within what it has outstanding, together within
+  the line's amount, and each once per entry. Allocations are append-only; a reversal undoes one.
 
 Rules that span rows use optimistic concurrency: the journal's last entry number, open items'
 outstanding amounts, and balances are updated with version checks, and posting checks the versions

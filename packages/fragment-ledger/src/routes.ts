@@ -46,7 +46,13 @@ const postingLine = z.object({
   functionalAmountMinor: minorUnits,
   description: z.string(),
   dimensionValueIds: z.array(z.string()),
-  openItem: z.object({ partyAccountId: z.string(), dueDate: calendarDate }).nullable(),
+  openItem: z
+    .object({
+      partyAccountId: z.string(),
+      dueDate: calendarDate,
+      settles: z.array(z.object({ openItemId: z.string(), amountMinor: minorUnits })),
+    })
+    .nullable(),
 });
 
 const postedEntry = z.object({
@@ -482,6 +488,13 @@ export const ledgerRoutesFactory = defineRoutes(ledgerFragmentDefinition).create
           ...line,
           amountMinor: BigInt(line.amountMinor),
           functionalAmountMinor: BigInt(line.functionalAmountMinor),
+          openItem: line.openItem && {
+            ...line.openItem,
+            settles: line.openItem.settles.map((settlement) => ({
+              openItemId: settlement.openItemId,
+              amountMinor: BigInt(settlement.amountMinor),
+            })),
+          },
         }));
         try {
           const [entry] = await this.handlerTx()
