@@ -35,6 +35,10 @@ async function createExpectedBackofficeStaticFiles() {
     configFile: false,
     appType: "custom",
     server: { middlewareMode: true },
+    // Generation loads modules for SSR only, so it needs no dependency pre-bundling. A cache of its
+    // own keeps it from replacing the dev server's pre-bundled dependencies, which share the root.
+    cacheDir: resolve(BACKOFFICE_DIRECTORY, "node_modules/.vite/static-generate"),
+    optimizeDeps: { noDiscovery: true },
     resolve: {
       alias: {
         "@": resolve(BACKOFFICE_DIRECTORY, "app"),
@@ -121,21 +125,17 @@ function formatBackofficeStaticPaths(paths: readonly string[]) {
   return paths.map((path) => `  - ${relative(BACKOFFICE_DIRECTORY, path)}`).join("\n");
 }
 
-async function checkBackofficeStaticFiles(expectedFiles: ReadonlyMap<string, string>) {
-  const stalePaths = await findStaleBackofficeStaticPaths(expectedFiles);
-  if (stalePaths.length === 0) {
-    return;
-  }
-
-  throw new Error(
-    `Backoffice static file check failed. Run 'pnpm static:generate' in apps/backoffice.\n${formatBackofficeStaticPaths(stalePaths)}`,
-  );
-}
-
-async function writeBackofficeStaticFiles(expectedFiles: ReadonlyMap<string, string>) {
-  await rm(resolve(CODEMODE_STATIC_DIRECTORY, "providers"), { recursive: true, force: true });
-
-  for (const [path, content] of expectedFiles) {
+// Writes only what changed, so file watchers such as a running dev server see real changes only.
+async function updateBackofficeStaticFiles(
+  expectedFiles: ReadonlyMap<string, string>,
+  stalePaths: readonly string[],
+) {
+  for (const path of stalePaths) {
+    const content = expectedFiles.get(path);
+    if (content === undefined) {
+      await rm(path);
+      continue;
+    }
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, content, "utf8");
   }
@@ -149,24 +149,23 @@ async function main() {
   }
 
   const expectedFiles = await createExpectedBackofficeStaticFiles();
+  const stalePaths = await findStaleBackofficeStaticPaths(expectedFiles);
   if (check) {
-    await checkBackofficeStaticFiles(expectedFiles);
+    if (stalePaths.length > 0) {
+      throw new Error(
+        `Backoffice static file check failed. Run 'pnpm static:generate' in apps/backoffice.\n${formatBackofficeStaticPaths(stalePaths)}`,
+      );
+    }
     return;
   }
-  if (fix) {
-    const stalePaths = await findStaleBackofficeStaticPaths(expectedFiles);
-    if (stalePaths.length === 0) {
-      return;
-    }
 
-    await writeBackofficeStaticFiles(expectedFiles);
+  await updateBackofficeStaticFiles(expectedFiles, stalePaths);
+  if (fix && stalePaths.length > 0) {
     console.error(
       `Updated stale Backoffice static files. Review and stage these changes:\n${formatBackofficeStaticPaths(stalePaths)}`,
     );
     process.exitCode = 1;
-    return;
   }
-  await writeBackofficeStaticFiles(expectedFiles);
 }
 
 await main();
