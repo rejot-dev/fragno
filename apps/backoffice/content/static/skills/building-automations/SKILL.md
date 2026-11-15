@@ -3,8 +3,9 @@ name: building-automations
 description:
   "Automate persistent Backoffice behavior from events or schedules. Use when the user explicitly
   asks to create or change an automation, event-triggered route, scheduled route, or saved workflow
-  that should run later, when a page or automation needs a connected service's data kept current, or
-  when the user asks why an automation did not act on an event or to retry one that failed."
+  that should run later, when a page or automation needs a connected service's data kept current,
+  when work runs once per thing, such as triaging each incident, or when the user asks why an
+  automation did not act on an event or to retry one that failed."
 ---
 
 # Building Automations
@@ -50,6 +51,9 @@ reclassifies the event, or forwards it to another scope.
      `start_workflow` whose run fires an event per changed record. Read
      `/static/skills/building-automations/references/syncing-external-data.md`.
    - New work: `start_workflow`.
+   - Work that lasts while a thing is open, such as triaging each incident: a **keyed run**, a
+     `start_workflow` whose instance ID names the thing. Read
+     `/static/skills/building-automations/references/keyed-runs.md`.
    - Resume waiting work: `send_workflow_event`.
    - Domain event classification: `reclassify_event`.
    - Cross-scope delivery: `forward_event`.

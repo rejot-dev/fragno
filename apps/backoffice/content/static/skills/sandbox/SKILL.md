@@ -11,7 +11,11 @@ Treat a sandbox as a leased environment: **acquire → execute → release**. St
 its workspace, and starting the same id again resumes it with files, installed packages, and
 repositories intact. Every organization, project, and personal scope has its own sandboxes; the
 `sandbox` provider manages the current scope's, and `context.org(orgId).sandbox` another's. The
-`sandbox` provider is available only when the deployment exposes the Sandbox capability.
+`sandbox` provider is available only when the deployment exposes the Sandbox capability. Each
+sandbox's lifecycle events, `instance.ready`, `instance.stopped`, and `instance.failed` from the
+source `sandbox`, are kept as event state by sandbox id, for pages and automations; a sandbox per
+incident or ticket belongs in a keyed run
+(`/static/skills/building-automations/references/keyed-runs.md`).
 
 ## Required process
 
