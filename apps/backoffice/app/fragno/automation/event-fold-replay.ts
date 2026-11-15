@@ -1,54 +1,122 @@
 import { decodeCursor, type DatabaseHandlerTx, type DatabaseServiceContext } from "@fragno-dev/db";
 
 import {
-  readIntegrationConnectionStateChange,
-  type IntegrationConnectionStateChange,
-} from "@/fragno/runtime-tools/families/integrations/integration-connections";
+  PI_AGENT_KEY_PATH,
+  PI_AUTOMATION_SOURCE,
+  piAgentActivityByEventType,
+  readPiAgentEvent,
+} from "@/fragno/backoffice-capabilities/capabilities/pi";
+import { readIntegrationConnectionStateChange } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import {
   INTEGRATION_CONNECTION_KEY_PATH,
   integrationConnectionEvents,
   type IntegrationConnectionStatePayload,
 } from "@/fragno/runtime-tools/families/integrations/integration-events";
 
-import {
-  FOLDED_EVENT_TYPES,
-  foldProjectedEvents,
-  projectedEventKeys,
-  projectedEventOf,
-} from "./event-projections";
 import { occurredAfter, STATE_INDEX, writeEventState } from "./event-state";
 import type { AutomationInternalHooks } from "./internal-hooks";
 import { automationFragmentSchema, type EventFoldReplayPass } from "./schema";
 
 /**
- * Ingestion folds `pi` events into agents as it stores them, and keeps `integrations` connection
- * events in their states, but events stored before it did were never folded or kept. The replay
- * reads every stored event of those types, one page per pass, in a chain of
- * `internalReplayEventFold` hooks. It also reads again the events ingestion handled, which changes
- * nothing but ties (see `foldProjectedEvents`), so it needs no cutover.
+ * Ingestion keeps `pi` events and `integrations` connection events in their states, by the agent or
+ * connection they name, but events stored before it did were never kept. The replay reads every
+ * stored event of those types, one page per pass, in a chain of `internalReplayEventFold` hooks,
+ * and keeps each key's latest. It also reads again the events ingestion kept, which a state
+ * compares as any event, so it needs no cutover.
  */
 
 /**
  * The `event_fold_replay` row's ID; its `next` pass is null once the replay read every type. A new
- * ID replays again: this one keeps connection events in their states, which scopes replayed before
- * did not.
+ * ID replays again: this one keeps `pi` events in their states, which scopes replayed before did
+ * not.
  */
-export const EVENT_FOLD_REPLAY_ID = "stored-events:connection-state";
+export const EVENT_FOLD_REPLAY_ID = "stored-events:agent-state";
 
-/** Every type the replay reads, in order; deleting their events waits for it. */
-export const REPLAYED_EVENT_TYPES: readonly { source: string; eventType: string }[] = [
-  ...FOLDED_EVENT_TYPES,
-  ...integrationConnectionEvents.map(({ source, eventType }) => ({ source, eventType })),
+/** A stored event's key and the payload its state holds; null for an event no state keeps. */
+type ReplayedState = { key: string; payload: Record<string, unknown> } | null;
+
+type StoredEvent = {
+  id: string;
+  source: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  subject: unknown;
+  occurredAt: Date;
+};
+
+/**
+ * Events stored before their payloads named their agent take it from their subject. Definitions
+ * read as `readPiAgentEvent` completes them, as those of old events lack fields.
+ */
+function piAgentState(event: StoredEvent): ReplayedState {
+  const read = readPiAgentEvent(event);
+  if (!read) {
+    return null;
+  }
+  const { agentName } = read;
+  return {
+    key: agentName,
+    payload: {
+      ...event.payload,
+      agentName,
+      ...("definition" in read ? { definition: read.definition } : {}),
+    },
+  };
+}
+
+/** Events stored before their payloads named their connection take it from their subject. */
+function connectionState(event: StoredEvent): ReplayedState {
+  const change = readIntegrationConnectionStateChange(event);
+  if (!change) {
+    return null;
+  }
+  const payload: IntegrationConnectionStatePayload = {
+    connectionId: change.connectionId,
+    service: change.service,
+    ...change.label,
+  };
+  return { key: change.connectionId, payload };
+}
+
+/**
+ * Every type the replay reads, in order, with its key path and its events' states; deleting their
+ * events waits for it.
+ */
+const REPLAYED_TYPES = [
+  ...Object.keys(piAgentActivityByEventType).map((eventType) => ({
+    source: PI_AUTOMATION_SOURCE,
+    eventType,
+    keyPath: PI_AGENT_KEY_PATH,
+    stateOf: piAgentState,
+  })),
+  ...integrationConnectionEvents.map(({ source, eventType }) => ({
+    source,
+    eventType,
+    keyPath: INTEGRATION_CONNECTION_KEY_PATH,
+    stateOf: connectionState,
+  })),
 ];
+
+export const REPLAYED_EVENT_TYPES: readonly { source: string; eventType: string }[] =
+  REPLAYED_TYPES.map(({ source, eventType }) => ({ source, eventType }));
 
 const EVENTS_OF_TYPE_INDEX = "idx_automation_event_source_type_occurredAt";
 
-/** A page's rows are read in one `in` list per table, which stays well below SQLite's limits. */
-const EVENTS_REPLAYED_PER_PASS = 100;
+/**
+ * A page's states are read in one `in` list of its keys, besides the type's source and event type,
+ * and Durable Object SQLite binds at most 100 parameters per statement.
+ */
+const EVENTS_REPLAYED_PER_PASS = 50;
+
+function replayedTypeOf(pass: Pick<EventFoldReplayPass, "source" | "eventType">) {
+  return REPLAYED_TYPES.findIndex(
+    ({ source, eventType }) => source === pass.source && eventType === pass.eventType,
+  );
+}
 
 function firstPassOfType(typeIndex: number): EventFoldReplayPass | null {
-  const type = REPLAYED_EVENT_TYPES[typeIndex];
-  return type ? { ...type, cursor: null } : null;
+  const type = REPLAYED_TYPES[typeIndex];
+  return type ? { source: type.source, eventType: type.eventType, cursor: null } : null;
 }
 
 /** The type's next page, or else the next type's first. */
@@ -56,11 +124,7 @@ function passAfter(pass: EventFoldReplayPass, cursor: string | null) {
   if (cursor !== null) {
     return { ...pass, cursor };
   }
-  return firstPassOfType(
-    REPLAYED_EVENT_TYPES.findIndex(
-      ({ source, eventType }) => source === pass.source && eventType === pass.eventType,
-    ) + 1,
-  );
+  return firstPassOfType(replayedTypeOf(pass) + 1);
 }
 
 function samePass(stored: EventFoldReplayPass | null, pass: EventFoldReplayPass) {
@@ -72,36 +136,42 @@ function samePass(stored: EventFoldReplayPass | null, pass: EventFoldReplayPass)
   );
 }
 
-/** Of a page of one type's events, each connection's latest change; empty for other types. */
-function latestConnectionChanges(
-  events: readonly (Parameters<typeof readIntegrationConnectionStateChange>[0] & {
-    createdAt: Date;
-  })[],
+/** Of a page of one type's events, each key's latest, with the payload its state holds. */
+function latestStates(
+  events: readonly (StoredEvent & { createdAt: Date })[],
+  stateOf: (event: StoredEvent) => ReplayedState,
 ) {
-  const latest = new Map<string, { change: IntegrationConnectionStateChange; createdAt: Date }>();
+  const latest = new Map<
+    string,
+    { id: string; payload: Record<string, unknown>; occurredAt: Date; createdAt: Date }
+  >();
   for (const event of events) {
-    const change = readIntegrationConnectionStateChange(event);
-    const kept = change && latest.get(change.connectionId);
-    if (change && (!kept || occurredAfter(event, { ...kept.change, storedAt: kept.createdAt }))) {
-      latest.set(change.connectionId, { change, createdAt: event.createdAt });
+    const state = stateOf(event);
+    const kept = state && latest.get(state.key);
+    if (
+      state &&
+      (!kept ||
+        occurredAfter(event, {
+          eventId: kept.id,
+          occurredAt: kept.occurredAt,
+          storedAt: kept.createdAt,
+        }))
+    ) {
+      latest.set(state.key, {
+        id: event.id,
+        payload: state.payload,
+        occurredAt: event.occurredAt,
+        createdAt: event.createdAt,
+      });
     }
   }
   return latest;
 }
 
 /**
- * What the change's state holds. Events stored before their payloads named the connection take it
- * from their subject.
- */
-function connectionStatePayload(
-  change: IntegrationConnectionStateChange,
-): IntegrationConnectionStatePayload {
-  return { connectionId: change.connectionId, service: change.service, ...change.label };
-}
-
-/**
- * Folds the pass's page and queues the next pass. The replay row names the pass it expects, and
- * moves on with the page's fold, so a hook that runs again after its page committed does nothing.
+ * Keeps the pass's page in its states and queues the next pass. The replay row names the pass it
+ * expects, and moves on with the page's states, so a hook that runs again after its page committed
+ * does nothing.
  * Types with no events left are passed over in the same run, so a scope with few events finishes
  * in few.
  */
@@ -142,47 +212,32 @@ export async function replayEventFold(
       continue;
     }
 
-    const stored = events.map((event) => ({
-      ...event,
-      id: event.id.externalId,
-      subject: event.subject ?? null,
-    }));
-    const projected = stored.map(projectedEventOf);
-    const keys = projectedEventKeys(projected);
-    const connections = latestConnectionChanges(stored);
+    const { keyPath, stateOf } = REPLAYED_TYPES[replayedTypeOf(current)];
+    const latest = latestStates(
+      events.map((event) => ({
+        ...event,
+        id: event.id.externalId,
+        subject: event.subject ?? null,
+      })),
+      stateOf,
+    );
     await handlerTx({ name: "automations.replayEventFold" })
       .retrieve(({ forSchema }) =>
-        forSchema(automationFragmentSchema)
-          .find("pi_agent", (b) => b.whereIndex("primary", (eb) => eb("id", "in", keys.agents)))
-          .find("pi_agent_request", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "in", keys.requests)),
-          )
-          .find("automation_event_state", (b) =>
-            b.whereIndex(STATE_INDEX, (eb) =>
-              eb.and(
-                eb("source", "=", current.source),
-                eb("eventType", "=", current.eventType),
-                eb("key", "in", [...connections.keys()]),
-              ),
+        forSchema(automationFragmentSchema).find("automation_event_state", (b) =>
+          b.whereIndex(STATE_INDEX, (eb) =>
+            eb.and(
+              eb("source", "=", current.source),
+              eb("eventType", "=", current.eventType),
+              eb("key", "in", [...latest.keys()]),
             ),
           ),
+        ),
       )
-      .mutate(({ forSchema, retrieveResult: [agentRows, requestRows, stateRows] }) => {
+      .mutate(({ forSchema, retrieveResult: [stateRows] }) => {
         const uow = forSchema(automationFragmentSchema);
-        foldProjectedEvents(uow, projected, { agentRows, requestRows });
         const states = new Map(stateRows.map((state) => [state.key, state]));
-        for (const [key, { change, createdAt }] of connections) {
-          writeEventState(
-            uow,
-            { ...current, key, keyPath: INTEGRATION_CONNECTION_KEY_PATH },
-            {
-              id: change.eventId,
-              payload: connectionStatePayload(change),
-              occurredAt: change.occurredAt,
-              createdAt,
-            },
-            states.get(key) ?? null,
-          );
+        for (const [key, event] of latest) {
+          writeEventState(uow, { ...current, key, keyPath }, event, states.get(key) ?? null);
         }
         uow.update("event_fold_replay", replay.id, (b) => b.set({ next }).check());
         if (next !== null) {

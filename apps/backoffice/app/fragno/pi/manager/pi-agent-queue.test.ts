@@ -92,6 +92,8 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
   // The latest queue each agent was shown, as the agent object keeps it.
   const published = new Map<string, PiAgentWaitingQueue>();
   const replies: Reply[] = [];
+  // The `pi` events the manager's hooks record.
+  const recorded: AutomationEvent[] = [];
   // What the agent knows of each subagent, as `awaitSubagents` reads it.
   const subagents = new Map<string, string>();
   function receive(handover: Handover) {
@@ -212,7 +214,18 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
     supportedAvailableModels: async () => AVAILABLE_MODELS,
     // Queue tests record no usage, so nothing limits their prompts.
     billing: () => ({ kind: "system" as const }),
-    automations: null,
+    automations: {
+      ingestEvent: async (event: AutomationEvent) => {
+        recorded.push(event);
+        return {
+          accepted: true,
+          eventId: event.id,
+          scope: event.scope,
+          source: event.source,
+          eventType: event.eventType,
+        };
+      },
+    },
     notifyAgent: async ({
       agent,
       provenance,
@@ -251,7 +264,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
   }
 
   /** The event a real agent records for an answered turn and reports with its settlement. */
-  function completedTurn(agentName: string, requestId: string): AutomationEvent {
+  function completedTurn(agentName: string, requestId: string, endedAt: string): AutomationEvent {
     return {
       id: `pi:${agentName}:ended:${requestId}`,
       scope,
@@ -259,7 +272,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       source: "pi",
       eventType: "turn.completed",
       payload: { answerEntryId: 7 },
-      occurredAt: "2026-01-01T00:00:00.000Z",
+      occurredAt: endedAt,
       actors: provenance("ada").actors,
       subject: { scope, agentName, requestId },
       causation: { kind: "origin" },
@@ -339,11 +352,11 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
         ...queue.items.map(({ type, requestId }) => `${type} ${requestId}`),
       ];
     },
-    async settle(requestId: string, agentName = "assistant") {
+    async settle(requestId: string, agentName = "assistant", endedAt = "2026-01-01T00:00:00.000Z") {
       await reportPiAgentTurnSettled(fragment, config, {
         agentName,
         requestId,
-        ended: completedTurn(agentName, requestId),
+        ended: completedTurn(agentName, requestId, endedAt),
         compact: false,
       });
     },
@@ -352,9 +365,28 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       await reportPiAgentTurnSettled(fragment, config, {
         agentName: "assistant",
         requestId,
-        ended: completedTurn("assistant", requestId),
+        ended: completedTurn("assistant", requestId, "2026-01-01T00:00:00.000Z"),
         compact: true,
       });
+    },
+    /**
+     * The queue the `agents` view reads: each type keeps its latest event as its state, and of
+     * those the highest revision counts.
+     */
+    recordedQueue() {
+      const states = new Map<string, AutomationEvent>();
+      for (const event of recorded) {
+        const kept = states.get(event.eventType);
+        // Of two events of one instant, the one recorded later wins, as states keep it.
+        if (!kept || Date.parse(event.occurredAt) >= Date.parse(kept.occurredAt)) {
+          states.set(event.eventType, event);
+        }
+      }
+      return [...states.values()]
+        .flatMap(({ payload }) =>
+          "queue" in payload ? [payload.queue as { revision: number }] : [],
+        )
+        .reduce((latest, queue) => (queue.revision > latest.revision ? queue : latest));
     },
     async submission(requestId: string, agentName = "assistant") {
       const response = await fragment.callRoute("GET", "/agents/:agentName/prompts/:requestId", {
@@ -633,7 +665,7 @@ test("an agent of another scope hears how the prompts it asked about end, settle
         source: "pi",
         eventType: "queue.dropped",
         subject: { scope: ORG_SCOPE, agentName: "clerk", requestId: "doomed" },
-        payload: { reason: "Pi agent 'clerk' is not defined." },
+        payload: { agentName: "clerk", reason: "Pi agent 'clerk' is not defined." },
       }),
     },
   ]);
@@ -694,6 +726,23 @@ test("subagents run beside the agent's own turns, a few at a time, and wait whil
   await drainDurableHooks(queue.fragment);
   expect(queue.turns()).toContain("subagent doc-7");
   assert(queue.subagents.get("doc-7") === "started");
+  // The agent's own turn and the four subagents left run, however many ended between them.
+  expect(queue.recordedQueue()).toMatchObject({ running: 5, queued: 0, steering: 0 });
+});
+
+test("a subagent that ended first but settles last leaves the counts its settling left", async () => {
+  const queue = await piManagerQueue();
+  for (const requestId of ["early", "late"]) {
+    await queue.receipt({ requestId, subagent: true });
+  }
+  await drainDurableHooks(queue.fragment);
+  expect(queue.recordedQueue()).toMatchObject({ running: 2 });
+  // The subagent that ended later is reported first.
+  await queue.settle("late", "assistant", "2026-01-01T00:00:02.000Z");
+  await drainDurableHooks(queue.fragment);
+  await queue.settle("early", "assistant", "2026-01-01T00:00:01.000Z");
+  await drainDurableHooks(queue.fragment);
+  expect(queue.recordedQueue()).toMatchObject({ running: 0, queued: 0, steering: 0 });
 });
 
 test("an agent knows of each subagent from when it is queued until it starts or is dropped", async () => {

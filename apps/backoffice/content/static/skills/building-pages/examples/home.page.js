@@ -140,7 +140,7 @@ export default page.define({ title: "Home" }, ({ sql, now, intervals, bucket }) 
     agent AS (
       SELECT *, CASE WHEN paused THEN ' · paused' ELSE '' END AS pausedLabel FROM agents
     )
-    SELECT agent.agentName, agent.displayName AS name,
+    SELECT agent.agentName,
       agent.definition ->> '$.description' AS description, agent.activity, agent.latestKind,
       agent.latestAt,
       CASE
@@ -158,7 +158,6 @@ export default page.define({ title: "Home" }, ({ sql, now, intervals, bucket }) 
     ORDER BY agent.latestAt IS NULL, agent.latestAt DESC, agent.builtIn DESC, agent.agentName
   `.columns({
     agentName: "string",
-    name: "string",
     description: "string",
     activity: "string",
     latestKind: "string?",
@@ -302,20 +301,23 @@ export default page.define({ title: "Home" }, ({ sql, now, intervals, bucket }) 
           ui.rowList(
             { empty: "No agents in this scope." },
             ui.each(agents, (agent) =>
-              ui.listRow({ title: agent.name, detail: agent.activity, icon: "message-square" }, [
-                ui.when(
-                  ui.is(agent.queue),
-                  ui.badge({ label: agent.queue, tone: agent.queueTone }),
-                ),
-                ui.relativeTime({ time: agent.latestAt }),
-                ui.sparkBars({
-                  label: "Turns per hour",
-                  rows: agent.hourly,
-                  axis: { field: "hour", intervals: hours },
-                  value: "turns",
-                }),
-                ui.number({ value: agent.turns, format: "integer", tone: "muted" }),
-              ]),
+              ui.listRow(
+                { title: agent.agentName, detail: agent.activity, icon: "message-square" },
+                [
+                  ui.when(
+                    ui.is(agent.queue),
+                    ui.badge({ label: agent.queue, tone: agent.queueTone }),
+                  ),
+                  ui.relativeTime({ time: agent.latestAt }),
+                  ui.sparkBars({
+                    label: "Turns per hour",
+                    rows: agent.hourly,
+                    axis: { field: "hour", intervals: hours },
+                    value: "turns",
+                  }),
+                  ui.number({ value: agent.turns, format: "integer", tone: "muted" }),
+                ],
+              ),
             ),
           ),
         ],

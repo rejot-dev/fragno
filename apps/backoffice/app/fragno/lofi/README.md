@@ -91,7 +91,7 @@ Codemode installer run it starts with `readWorkflowRuns`, one run by workflow an
 
 Agents (`routes/backoffice/agents/`) and the agent drawer read the scope's agents, with the turns
 each ended per hour of the last day, through `readPiAgentDirectory` (`agents-replica.ts`), over the
-`pi_agent` table and the `pi` events that ended turns. An agent's conversation stays on the
+states of the `pi` events and the `pi` events that ended turns. An agent's conversation stays on the
 pi-manager stream; it reads from the replica only which of the Codemode runs it started have
 recorded a step (`readStartedCodemodeRuns`), to open them in its workspace, and the opened run
 (`readWorkflowRuns`). These render before the replica opens, so they take it from
@@ -114,32 +114,33 @@ and streams them to the menu, so no page opens a database for it.
 Views shared between routes take the `LofiSqliteClient` of the replica their route opened, so no
 route opens a second copy of the scope's history.
 
-What Backoffice derives from events, the backend keeps in tables of the Automations schema, which
-the replica mirrors like any other (`../automation/event-projections.ts`). Storing an event folds it
-into the rows it changes, in the transaction that stores it: the rows' IDs come from the event, so
-the transaction reads them in the same round trip as its other reads.
+Agents and connections need no tables of their own. Each `pi` event type keys on `$.agentName` and
+each connection event type on `$.connectionId`, so `automation_event_state` keeps each type's latest
+event per agent and per connection, and reads put them together from those states:
 
-- `pi_agent` and `pi_agent_request`, by `applyPiAgentEvent` (`../pi/agent/pi-agent-records.ts`). An
-  agent's counts of running, queued, and steering requests change by what each event did to its
-  request, so a request's row keeps what its earlier events recorded.
+- An agent (`piAgentsOfStates` in `../pi/agent/pi-agent-records.ts`) takes its definition from its
+  latest definition change, `paused` from its latest stop or resume, and its latest activity from
+  the latest of all. Its counts of running turns and of queued and steering work are the queue's of
+  the highest revision any state carries: the agent's manager knows its queue as it changes it, so
+  its `queue.*` and turn-end events carry the counts their change leaves. They occur when the
+  manager made the change, not when the agent ended a turn: subagents end in any order, and a type's
+  latest event must carry its highest revision.
+- A connection (`integrationConnectionsOfStates` in
+  `../runtime-tools/families/integrations/integration-connections.ts`) takes its state from its
+  latest event, and its label from the latest labeled one.
 
-Connections need no table of their own: each connection event type has a key path, so
-`automation_event_state` keeps each type's latest event per connection, and reads put a connection
-together from those states (`integrationConnectionsOfStates` in
-`../runtime-tools/families/integrations/integration-connections.ts`).
+Because the states outlive the events, a browser that downloads the outbox after events were deleted
+still reads every agent and connection, and the replica keeps no local projections. Workflow waits
+are not stored: they follow from runs and steps, which change, so the overview derives them from the
+waiting runs it reads anyway, and pages read them through a SQL view (see Pages).
 
-Because the rows and states outlive the events, a browser that downloads the outbox after events
-were deleted still reads every agent and connection, and the replica keeps no local projections.
-Workflow waits are not stored: they follow from runs and steps, which change, so the overview
-derives them from the waiting runs it reads anyway, and pages read them through a SQL view (see
-Pages).
-
-Events stored before the backend folded them are folded by a replay
+Events stored before the backend kept them in states are kept by a replay
 (`../automation/event-fold-replay.ts`), which each Automations object starts the first time it
-starts with it: a chain of hooks folds every stored event of the types the fold reads, a page at a
-time. Folding an event again changes nothing but ties, so the replay also folds the events ingestion
-folded, with no cutover. `deleteEventsOfType` refuses `pi` and `integrations` events until it
-finishes.
+starts with it: a chain of hooks keeps every stored `pi` and connection event in its state, a page
+at a time, reading the agent or connection off the subjects of events whose payloads did not name
+it. A state takes an event only when it occurred later, so the replay also reads the events
+ingestion kept, with no cutover. `deleteEventsOfType` refuses `pi` and `integrations` events until
+it finishes.
 
 ## Pages
 
@@ -273,17 +274,22 @@ download the outbox again.
   scope's outbox. In the production fixture of Oct 23 that is 16,104 entries and 316 MB, 91% of it
   the bodies of GitHub `webhook.received` events stored before Backoffice stopped storing them.
   Stripping those from the outbox is planned separately.
-- **The replay can settle ties unlike ingestion.** It folds a type's events at a time, in the order
-  an agent's lifecycle runs, and folds again the events ingestion folded. Of an agent's two changes
-  in the same millisecond, ingestion keeps the later stored and the replay the later step, so an
-  agent deleted and recreated in one millisecond reads as deleted after the replay. The replay runs
-  once per scope, and saving the agent again, or `pi.agent.backfillEvents`, restores it.
+- **Agents stored before their events carried counts read as holding nothing.** Their queue's next
+  change records its counts. Until then a stopped agent's waiting work does not show.
+- **A late queue event can hide a newer count.** A state keeps one event per type and agent, by when
+  it occurred, not by queue revision. When two queue changes of one type occur in the same
+  millisecond and the older is stored later, as a retried delivery can be, the agent's counts read
+  the older until its queue next changes.
+- **Any event of a type changes its state.** An agent with `events.emit` can fire `pi` and
+  `integrations` events, and an event naming an agent or connection in its payload changes what the
+  views show of it until the next real event: an agent's definition and counts, or a connection's
+  state and name. Turns, calls, and definitions stay the manager's and the sources'.
 - **Ties break by storage order.** Of two events in the same millisecond, states and the reads that
   merge them keep the one stored later, and of two stored in the same millisecond the higher ID
-  (`compareEventOrder` in `../automation/event-order.ts`, which the SQL views state again); of two
-  changes to an agent, the fold keeps the last it stores. Origins that occurred in the same
-  millisecond list newest ID first. A run's steps, events, and emissions with the same `createdAt`
-  order by the replica's internal id, which follows the order the backend wrote them in.
+  (`compareEventOrder` in `../automation/event-order.ts`, which the SQL views state again). Origins
+  that occurred in the same millisecond list newest ID first. A run's steps, events, and emissions
+  with the same `createdAt` order by the replica's internal id, which follows the order the backend
+  wrote them in.
 - **Busy tables rerun most views.** A batch reruns, in the leader and for every tab, each open view
   that reads a table it wrote. Most batches write `automation_event` or the workflow tables, which
   the overview's ten queries, the graph's three, an opened run's four, the Events list's four and

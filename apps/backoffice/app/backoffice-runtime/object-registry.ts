@@ -140,7 +140,6 @@ import type {
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import type { AutomationRouteAuthorityLookup } from "@/fragno/automation/authority";
-import type { RecordedPiAgentDefinition } from "@/fragno/automation/event-projections";
 import type {
   AutomationEventSource,
   AutomationEventSourceInput,
@@ -241,6 +240,7 @@ import type {
   PiAgentSettledTurn,
   PiAgentViewerAuthorization,
 } from "@/fragno/pi/agent/pi-agent-contract";
+import type { RecordedPiAgentDefinition } from "@/fragno/pi/agent/pi-agent-records";
 import type {
   PiClassificationRequest,
   PiImageGenerationRequest,

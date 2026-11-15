@@ -377,12 +377,10 @@ export const automationFragmentSchema = schema("automations", (s) => {
             column("timestamp").defaultTo((b) => b.now()),
           ),
       )
-      // What the scope's `pi` and `integrations` events record, folded as each event is stored, so
-      // agents and connections outlive the events that recorded them. Written only through
-      // `event-projections`.
-      // Keyed by agent name: every agent with events, as `PiAgentState` records it, and the name
-      // people read. `definition` is null after a deletion; the definition columns are all null
-      // without a definition event.
+      // What the scope's `pi` and `integrations` events recorded, folded as each event was stored,
+      // until their states kept it; dropped below.
+      // Keyed by agent name: every agent with events, and the name people read. `definition` is
+      // null after a deletion; the definition columns are all null without a definition event.
       .addTable("pi_agent", (t) =>
         t
           .addColumn("id", idColumn())
@@ -398,7 +396,7 @@ export const automationFragmentSchema = schema("automations", (s) => {
           .addColumn("queued", column("integer"))
           .addColumn("steering", column("integer")),
       )
-      // Keyed by `piAgentRequestKey`, so an agent's counts change by what one event did.
+      // Keyed by agent name and request ID, so an agent's counts changed by what one event did.
       .addTable("pi_agent_request", (t) =>
         t
           .addColumn("id", idColumn())
@@ -486,5 +484,8 @@ export const automationFragmentSchema = schema("automations", (s) => {
       .dropTable("integration_connection_change")
       // Connections are read from the states of their events.
       .dropTable("integration_connection")
+      // Agents are read from the states of their events.
+      .dropTable("pi_agent")
+      .dropTable("pi_agent_request")
   );
 });

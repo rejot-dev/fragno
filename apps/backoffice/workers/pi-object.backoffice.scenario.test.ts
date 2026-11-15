@@ -1117,6 +1117,7 @@ test("an agent's backfill records agent events as the agent's turn, keeping its 
               eventType: "agent.created",
               occurredAt: new Date(runtime.now()).toISOString(),
               payload: {
+                agentName: "ghost",
                 definition: {
                   agentName: "ghost",
                   description: "Gone already.",
@@ -3107,7 +3108,7 @@ test("an agent hears back from same-named agents it prompts in two scopes and re
                   /^id="[^"]+" source="pi" type="turn.completed" /u,
                 ),
                 subject: { scope, agentName: "assistant", requestId: "task-1" },
-                payload: { answerEntryId: expect.any(Number) },
+                payload: { agentName: "assistant", answerEntryId: expect.any(Number) },
               })),
             ),
           );

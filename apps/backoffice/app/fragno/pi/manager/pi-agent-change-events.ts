@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type {
@@ -13,6 +14,7 @@ import {
   PI_AUTOMATION_SOURCE,
   PI_QUEUE_AUTOMATION_EVENTS,
   piAgentEventSubject,
+  type PiAgentQueueCounts,
 } from "@/fragno/backoffice-capabilities/capabilities/pi";
 
 import type { PiAgentChange, PiAgentQueueChange } from "./pi-agent-queue";
@@ -46,7 +48,10 @@ export function piAgentChangeEvent({
     source: PI_AUTOMATION_SOURCE,
     eventType: PI_AGENT_AUTOMATION_EVENTS[change.kind].eventType,
     occurredAt: occurredAt.toISOString(),
-    payload: "definition" in change ? { definition: change.definition } : {},
+    payload: {
+      agentName: change.agentName,
+      ...("definition" in change ? { definition: change.definition } : {}),
+    },
     actors: change.provenance.actors,
     subject: piAgentEventSubject(scope, change.agentName),
     causation: { kind: "origin" },
@@ -66,7 +71,7 @@ export function piAgentQueueEvent({
   occurredAt: Date;
   change: PiAgentQueueChange;
 }): AutomationEvent {
-  const { agentName, requestId, provenance } = change;
+  const { agentName, requestId, provenance, queue } = change;
   return {
     id,
     scope,
@@ -75,16 +80,59 @@ export function piAgentQueueEvent({
     source: PI_AUTOMATION_SOURCE,
     eventType: PI_QUEUE_AUTOMATION_EVENTS[change.kind].eventType,
     occurredAt: occurredAt.toISOString(),
-    payload:
-      change.kind === "added"
+    payload: {
+      agentName,
+      queue,
+      ...(change.kind === "added"
         ? { type: change.type }
         : change.kind === "dispatched"
           ? { turnRequestId: change.turnRequestId }
-          : { reason: change.reason },
+          : { reason: change.reason }),
+    },
     actors: provenance.actors,
     subject: { ...piAgentEventSubject(scope, agentName), requestId },
     causation: { kind: "origin" },
   };
+}
+
+/**
+ * What tells a prompt's sender that the queue dropped it, shaped as the `queue.dropped` event; a
+ * notification, not a recorded event, so it carries no queue.
+ */
+export function piAgentDroppedReply({
+  id,
+  scope,
+  occurredAt,
+  dropped,
+}: {
+  id: string;
+  scope: BackofficeContextScope;
+  occurredAt: Date;
+  dropped: { agentName: string; requestId: string; reason: string };
+}): PiAgentNotification["event"] {
+  const { agentName, requestId, reason } = dropped;
+  return {
+    id,
+    source: PI_AUTOMATION_SOURCE,
+    eventType: PI_QUEUE_AUTOMATION_EVENTS.dropped.eventType,
+    occurredAt: occurredAt.toISOString(),
+    payload: { agentName, reason },
+    subject: { ...piAgentEventSubject(scope, agentName), requestId },
+  };
+}
+
+/**
+ * The `turn.*` event recording how a turn ended, as its agent reported it, with the queue its
+ * settling left: the agent knows the turn, and only the queue its counts. It occurred when the
+ * queue settled it, as `queue.*` events do: subagents end in any order, so the turn that ended
+ * first may settle last, and a type's latest event must carry its highest revision.
+ */
+export function piAgentTurnEndEvent(
+  event: AutomationEvent,
+  queue: PiAgentQueueCounts,
+  settledAt: Date,
+): AutomationEvent {
+  return { ...event, occurredAt: settledAt.toISOString(), payload: { ...event.payload, queue } };
 }
 
 /**

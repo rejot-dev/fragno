@@ -89,7 +89,7 @@ function piAgentTurnEvent(
     scopeRestriction: turn.scopeRestriction,
     source: PI_AUTOMATION_SOURCE,
     eventType,
-    payload,
+    payload: { agentName: config.agentName, ...payload },
     occurredAt: occurredAt.toISOString(),
     actors: agent.turn(turn).execution.actors,
     subject: { ...piAgentEventSubject(scope, config.agentName), requestId },
@@ -97,7 +97,7 @@ function piAgentTurnEvent(
   };
 }
 
-/** Records that the turn answered, as a real agent does; for fakes that answer without Pi. */
+/** That the turn answered, as a real agent reports it; for fakes that answer without Pi. */
 export function piAgentTurnCompletedEvent(
   config: PiAgentConfig,
   agent: BackofficeAgentContext,
@@ -120,10 +120,11 @@ function changesSubmission(publication: CommitPublication) {
 }
 
 /**
- * Records each turn's start and end as `pi` Automations events and tells the agent's manager every
- * turn that settled, then forgets it. Pi starts and settles submissions in commits Backoffice
- * cannot join, so a report follows each commit that does. A turn's start is recorded before its
- * end, also when the turn settles before its start was reported, and recording it again records
+ * Records each turn's start as a `pi` Automations event and tells the agent's manager every turn
+ * that settled, with the event of how it ended, then forgets it. The manager records that event,
+ * with the queue the turn's settling leaves. Pi starts and settles submissions in commits
+ * Backoffice cannot join, so a report follows each commit that does. A turn's start is recorded
+ * also when the turn settles before its start was reported, and recording it again records
  * nothing. Compactions the queue dispatched are reported to the manager once they end. A report
  * dies with the object, so callers that must not lose one, like the agent alarm, call the returned
  * function again.
@@ -158,8 +159,9 @@ export function startReportingPiAgentTurns(input: {
   async function reportTurn(reportable: ReportablePiAgentTurn, context: Context) {
     const { requestId, started, settlement } = reportable;
     const startedEvent = started ? turnEvent(reportable, STARTED_TURN_EVENT) : null;
+    const startedEvents = startedEvent ? [startedEvent] : [];
     if (!settlement) {
-      await recordTurnEvents(startedEvent ? [startedEvent] : []);
+      await recordTurnEvents(startedEvents);
       return;
     }
     const endedTurn = settledTurnEventOf(settlement);
@@ -169,7 +171,7 @@ export function startReportingPiAgentTurns(input: {
       reportable.conversationId === ROOT_CONVERSATION_ID && (await input.compactionDue(context));
     // Both reports are idempotent, and an unrecordable event must not stop the agent's queue.
     const [recorded, advanced] = await Promise.allSettled([
-      recordTurnEvents([...(startedEvent ? [startedEvent] : []), ...(ended ? [ended] : [])]),
+      recordTurnEvents(startedEvents),
       manager.reportSettledTurn({ agentName: config.agentName, requestId, ended, compact }),
     ]);
     for (const report of [recorded, advanced]) {

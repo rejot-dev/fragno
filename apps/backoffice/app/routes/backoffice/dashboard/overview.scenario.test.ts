@@ -1,4 +1,4 @@
-import { afterAll, assert, beforeAll, describe, test, vi } from "vitest";
+import { afterAll, assert, beforeAll, describe, expect, test, vi } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -238,13 +238,15 @@ function piEvent(
     permissions: [],
     instructions: "Review carefully.",
   };
+  // The queue each turn's settling left, below the revisions of the queue events that follow.
+  const queue = { revision: 0, running: 0, queued: 0, steering: 0 };
   const payloads: Record<PiEventType, Record<string, unknown>> = {
-    "turn.completed": { answerEntryId: 1 },
-    "turn.aborted": {},
-    "agent.created": { definition },
-    "agent.updated": { definition },
-    "agent.deleted": { definition },
-    "agent.stopped": {},
+    "turn.completed": { agentName, queue, answerEntryId: 1 },
+    "turn.aborted": { agentName, queue },
+    "agent.created": { agentName, definition },
+    "agent.updated": { agentName, definition },
+    "agent.deleted": { agentName, definition },
+    "agent.stopped": { agentName },
   };
   const isTurn = eventType.startsWith("turn.");
   return event(id, "pi", eventType, at, {
@@ -266,7 +268,7 @@ function requestEvent(
   payload: Record<string, unknown>,
 ) {
   return event(id, "pi", eventType, at, {
-    payload,
+    payload: { agentName: "assistant", ...payload },
     subject: {
       scope: { kind: "org", orgId, jurisdiction: null },
       agentName: "assistant",
@@ -1482,18 +1484,26 @@ describe("dashboard", () => {
           when.automation.ingestEvent(
             piEvent("cut-off", "turn.aborted", "assistant", minuteBefore),
           ),
-          // A steer Pi placed in its turn no longer waits; work queued while stopped does.
+          // The queue's highest revision stands: the taken turn runs, its steer settled, and
+          // work queued while stopped waits.
           when.automation.ingestEvent(
-            requestEvent("steer-added", "queue.added", "steer", minuteBefore, { type: "steer" }),
+            requestEvent("steer-added", "queue.added", "steer", minuteBefore, {
+              queue: { revision: 1, running: 1, queued: 0, steering: 1 },
+              type: "steer",
+            }),
           ),
           when.automation.ingestEvent(
             requestEvent("steer-started", "turn.started", "steer", minuteBefore, {}),
           ),
           when.automation.ingestEvent(
-            requestEvent("taken-added", "queue.added", "taken", minuteBefore, { type: "prompt" }),
+            requestEvent("taken-added", "queue.added", "taken", minuteBefore, {
+              queue: { revision: 2, running: 1, queued: 1, steering: 1 },
+              type: "prompt",
+            }),
           ),
           when.automation.ingestEvent(
             requestEvent("taken-dispatched", "queue.dispatched", "taken", minuteBefore, {
+              queue: { revision: 3, running: 1, queued: 0, steering: 0 },
               turnRequestId: "taken",
             }),
           ),
@@ -1501,6 +1511,7 @@ describe("dashboard", () => {
           when.automation.ingestEvent(piEvent("stop", "agent.stopped", "assistant", minuteBefore)),
           when.automation.ingestEvent(
             requestEvent("waiting-added", "queue.added", "waiting", twoDaysLater, {
+              queue: { revision: 4, running: 1, queued: 1, steering: 0 },
               type: "notification",
             }),
           ),
@@ -1528,6 +1539,59 @@ describe("dashboard", () => {
               "assistant (built in): Answering, 1 queued, paused; turns 2",
               "reviewer: Definition updated, 0 queued; turns none",
             ]);
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("an agent deleted and defined in one instant reads alike in the directory, the backfill, and pages", async () => {
+    const start = Date.now();
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "an agent's definition changes tie",
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ then }) => [
+          then.assert("the deletion and the creation are stored in one instant", async (ctx) => {
+            const { commands } = ctx.runtime.objects.automations.for(scope);
+            // Their IDs break the tie, not the order they were stored or are read in: the
+            // deletion's sorts last, so it stands though it was stored first.
+            vi.useFakeTimers({ toFake: ["Date"], now: start });
+            try {
+              await commands.ingestEvent(
+                piEvent("tie-b-deleted", "agent.deleted", "drafter", start),
+              );
+              await commands.ingestEvent(
+                piEvent("tie-a-created", "agent.created", "drafter", start),
+              );
+            } finally {
+              vi.useRealTimers();
+            }
+            await ctx.runtime.drain();
+          }),
+          then.assert("every read keeps the deletion", async (ctx) => {
+            const replica = ctx.lofi.automations.forOrg(orgId);
+            await replica.drain();
+            const states = await queryAutomationReplica(
+              replica,
+              `SELECT DISTINCT occurredAt, storedAt FROM event_state WHERE key = 'drafter'`,
+            );
+            assert(states.length === 1, "both states occurred and were stored in one instant");
+            expect(
+              (await readAgentDirectory(ctx)).filter((agent) => agent.startsWith("drafter")),
+            ).toEqual([]);
+            expect(
+              await ctx.runtime.objects.automations
+                .for(scope)
+                .commands.listRecordedPiAgentDefinitions(),
+            ).toEqual([{ agentName: "drafter", definition: null, eventId: "tie-b-deleted" }]);
+            expect(
+              await queryAutomationReplica(
+                replica,
+                `SELECT agentName FROM agents WHERE agentName = 'drafter'`,
+              ),
+            ).toEqual([]);
           }),
         ],
       }),
