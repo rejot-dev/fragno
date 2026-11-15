@@ -18,12 +18,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # setup-node caches the pnpm store, so it needs pnpm installed first.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version-file: ".node-version"
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -44,12 +46,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # setup-node caches the pnpm store, so it needs pnpm installed first.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version-file: ".node-version"
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+          cache: pnpm
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
