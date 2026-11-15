@@ -9,7 +9,7 @@ import type {
   PiAgentWatchFrame,
   PiPromptStatus,
 } from "@fragno-dev/backoffice-api/v0/pi";
-import { piThinkingLevelSchema } from "@fragno-dev/backoffice-api/v0/pi";
+import { piAgentSkillSchema, piThinkingLevelSchema } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   piAgentNotificationSchema,
   type PiAgentNotification,
@@ -182,6 +182,10 @@ export const piAgentTurnSchema = z.object({
       .nullable(),
     instructions: z.string(),
     permissions: z.array(backofficePermissionRequirementSchema),
+    // The skills the agent's last reload found. Null when it has none, as a new or updated agent,
+    // which the turn reloads before it starts; it stays null only when that reload fails, or for
+    // turns recorded before reloads, which find skills as they are when the prompt is prepared.
+    skills: z.array(piAgentSkillSchema).nullable().default(null),
   }),
 });
 export type PiAgentTurn = z.infer<typeof piAgentTurnSchema>;
@@ -373,9 +377,10 @@ export type PiAgent = {
   getCompaction(config: PiAgentConfig, taskId: number): Promise<PiAgentCompactionStatus | null>;
   /**
    * Starts a new, empty context; earlier entries stay in history. A running turn ends at its next
-   * boundary, where the reset lands.
+   * boundary, where the reset lands. Reloads the agent's skills as `turn`, who asked for it; null
+   * for a deleted agent, which has none to reload.
    */
-  reset(config: PiAgentConfig): Promise<void>;
+  reset(config: PiAgentConfig, turn: PiAgentTurn | null): Promise<void>;
   /**
    * Stops the agent's turn and subagents, and fences the queue revision `revision` that paused
    * it: work handed over at an earlier revision is refused from then on, so a handover still on

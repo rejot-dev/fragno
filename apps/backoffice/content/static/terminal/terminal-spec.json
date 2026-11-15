@@ -4408,6 +4408,38 @@
     ]
   },
   {
+    "command": "pi.agent.reload",
+    "summary": "pi.agent.reload offers an agent its skills as the SKILL.md files are now, from its next turn.",
+    "options": [
+      {
+        "name": "agent",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "agent-name",
+        "description": "Agent name"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "pi.prompt.submit",
     "summary": "pi.prompt.submit admits durable agent work without waiting for completion.",
     "options": [

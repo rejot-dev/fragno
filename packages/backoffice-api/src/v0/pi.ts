@@ -62,6 +62,36 @@ const piAgentPermissionGrantSchema = z.lazy(() =>
     }),
 );
 
+/** A folder an agent loads skills from, besides `/static/skills` and `/workspace`'s `skills` folders. */
+const piAgentSkillFolderSchema = z.lazy(() =>
+  z
+    .string()
+    .regex(/^\/[^*?[\]{}]*[^/]$/, "Expected an absolute folder path without wildcards.")
+    .refine((path) => !path.split("/").includes(".."), "Expected a path without '..'."),
+);
+
+/**
+ * A skill an agent is offered, from its `SKILL.md`'s frontmatter as of the agent's last reload. The
+ * agent reads the body from `location` when it uses the skill, so bodies are always current.
+ */
+export const piAgentSkillSchema = z.lazy(() =>
+  z.object({
+    name: z.string().min(1),
+    description: z.string().min(1),
+    location: z.string().regex(/^\/.*\/SKILL\.md$/),
+  }),
+);
+export type PiAgentSkill = z.infer<typeof piAgentSkillSchema>;
+
+/** What a reload offers the agent from then on, and the `SKILL.md` files it could not offer. */
+export const piAgentSkillReloadSchema = z.lazy(() =>
+  z.object({
+    skills: z.array(piAgentSkillSchema),
+    problems: z.array(z.object({ path: z.string(), message: z.string() })),
+  }),
+);
+export type PiAgentSkillReload = z.infer<typeof piAgentSkillReloadSchema>;
+
 const piAgentDefinitionFieldsSchema = z.lazy(() =>
   z.object({
     description: z.string().trim().min(1),
@@ -79,6 +109,16 @@ const piAgentDefinitionFieldsSchema = z.lazy(() =>
     permissions: z.array(piAgentPermissionGrantSchema),
     /** Markdown guidance added to the agent's system prompt; empty adds none. */
     instructions: z.string().max(PI_AGENT_INSTRUCTIONS_MAX_LENGTH),
+    /**
+     * Folders whose skills the agent is offered after its next reload, such as a share's. Naming a
+     * folder trusts everyone who can write to it.
+     */
+    skills: z
+      .array(piAgentSkillFolderSchema)
+      .max(16)
+      .describe(
+        "Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it.",
+      ),
   }),
 );
 
@@ -108,6 +148,7 @@ export type PiAgentDefinition = z.infer<typeof piAgentDefinitionSchema>;
 export const piAgentDefinitionUpdateSchema = z.lazy(() =>
   piAgentDefinitionFieldsSchema._zod.innerType.extend({
     thinkingLevel: piThinkingLevelSchema.default("low"),
+    skills: piAgentDefinitionFieldsSchema._zod.innerType.shape.skills.default([]),
     permissions: piAgentDefinitionFieldsSchema._zod.innerType.shape.permissions.min(
       1,
       'Grant at least one permission; use ["*"] to let the agent do whatever its prompter may.',
@@ -547,6 +588,13 @@ export const piOperations = {
     permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: activityInputSchema,
     output: piAgentActivitySchema,
+  },
+  "pi.agent.reload": {
+    description:
+      "Reload the skills an agent is offered, by the agent's name: read the frontmatter of every SKILL.md under /static/skills, the skills folders of /workspace, and the folders its definition names, and offer those from its next turn. Until then a new or edited skill is not offered, though an edited one's body is read as it is now. Returns the skills it offers and the files it could not read.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read, BACKOFFICE_PERMISSION.pi.modify],
+    input: agentInputSchema,
+    output: piAgentSkillReloadSchema,
   },
   "pi.agent.watchTicket": {
     description:

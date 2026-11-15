@@ -1,6 +1,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
-import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentConfig, PiAgentSkillReload } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { Context } from "@earendil-works/chord";
@@ -37,6 +37,7 @@ import {
   type BackofficeAgentContext,
 } from "./backoffice-agent-context";
 import { estimatePiContextTokens } from "./context-usage";
+import type { PiAgentTurn } from "./pi-agent-contract";
 import { piConversationOfSession } from "./pi-agent-subagents";
 import { startReportingPiAgentTurns } from "./pi-agent-turn-events";
 import { readActivePiAgentTurn } from "./pi-agent-turns";
@@ -62,6 +63,8 @@ export type OpenPiAgent = {
   awaitSubagentsTool: ToolRegistration;
   /** Reports the turns started and settled since the last report to Automations and the manager. */
   reportTurns: (context: Context) => Promise<void>;
+  /** Reloads the agent's skills as `turn`'s submitter; see `pi.agent.reload`. */
+  reloadSkills: (turn: PiAgentTurn, context: Context) => Promise<PiAgentSkillReload>;
 };
 
 /** Production agents use credential-backed providers and Pi's default run policy. */
@@ -288,5 +291,12 @@ export async function openPiAgentHarness(input: {
     await harness.close(BACKGROUND_CONTEXT);
     throw cause;
   }
-  return { harness, storage, billing, awaitSubagentsTool, reportTurns };
+  return {
+    harness,
+    storage,
+    billing,
+    awaitSubagentsTool,
+    reportTurns,
+    reloadSkills: (turn, context) => agent.turn(turn).reloadSkills(context),
+  };
 }

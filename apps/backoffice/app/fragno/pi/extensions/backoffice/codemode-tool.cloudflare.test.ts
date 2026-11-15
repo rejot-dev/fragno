@@ -970,11 +970,13 @@ const createCodemodeTool = async ({
   const turn = {
     execution: createPiSystemFileContext().execution,
     instructions: "",
+    skills: null,
     codemode: codemodeRunnerFor(
       createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
       createBackofficeSystemExecution({ kind: "system" }),
     ),
     authorize: async () => undefined,
+    reloadSkills: async () => ({ skills: [], problems: [] }),
     toolContext: () => runtimeToolContext,
   };
   const tool = createPiCodemodeTool({

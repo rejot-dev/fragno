@@ -58,6 +58,7 @@ function executionTool(ctx: BackofficeScenarioContext, execution: BackofficeExec
           model: { provider: "test", modelId: "test", thinkingLevel: "low" },
           instructions: "",
           permissions: [...allBackofficePermissionRequirements],
+          skills: null,
         },
       }),
     }),

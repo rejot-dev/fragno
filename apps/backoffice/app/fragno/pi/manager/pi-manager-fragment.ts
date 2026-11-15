@@ -91,11 +91,14 @@ export function createPiManagerFragment(
         actors: requestContext.execution.actors,
         scopeRestriction: backofficeExecutionScopeRestriction(requestContext.execution),
       };
-      // Agent changes are recorded as events attributed to whoever made them.
+      // Agent changes are recorded as events attributed to whoever made them, and a clear reloads
+      // the agent's skills as whoever asked for it.
       if (
         changesDefinitions ||
         (method === "POST" &&
-          (path === "/agents/:agentName/stop" || path === "/agents/:agentName/resume"))
+          (path === "/agents/:agentName/stop" ||
+            path === "/agents/:agentName/resume" ||
+            path === "/agents/:agentName/reset"))
       ) {
         const body = requestState.body;
         requestState.setBody({

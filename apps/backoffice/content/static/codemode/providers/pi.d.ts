@@ -51,6 +51,11 @@ type PiCodemodeProvider = {
    */
   deleteAgent(input: PiDeleteAgentInput): Promise<PiDeleteAgentOutput>;
   /**
+   * Reload the skills an agent is offered, by the agent's name: read the frontmatter of every SKILL.md under /static/skills, the skills folders of /workspace, and the folders its definition names, and offer those from its next turn. Until then a new or edited skill is not offered, though an edited one's body is read as it is now. Returns the skills it offers and the files it could not read.
+   * Requires `pi.read` and `pi.modify`.
+   */
+  reloadAgent(input: PiReloadAgentInput): Promise<PiReloadAgentOutput>;
+  /**
    * Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed, turn.failed, turn.aborted, or queue.dropped event, each with the request ID in its subject. With `subagent`, the prompt runs in a new conversation of the agent instead of its own, and ends with it. With `notifyWhenDone`, that event is also delivered to the calling agent as a notification; read the answer with `pi.getPrompt` in the prompted agent's scope. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.
    * Requires `pi.modify`.
    */
@@ -99,6 +104,8 @@ type PiListAgentsOutput = {
     thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
     permissions: string[];
     instructions: string;
+    /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
+    skills: string[];
     agentName: string;
     steward: PiAgentSteward;
   }[];
@@ -112,6 +119,8 @@ type PiGetAgentOutput = {
   thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   permissions: string[];
   instructions: string;
+  /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
+  skills: string[];
   agentName: string;
   steward: PiAgentSteward;
   provisioned: boolean;
@@ -316,6 +325,8 @@ type PiCreateAgentInput = {
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   permissions: string[];
   instructions: string;
+  /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
+  skills?: string[];
   agentName: string;
 };
 type PiCreateAgentOutput = {
@@ -324,6 +335,8 @@ type PiCreateAgentOutput = {
   thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   permissions: string[];
   instructions: string;
+  /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
+  skills: string[];
   agentName: string;
   steward: PiAgentSteward;
   /** The model the agent runs, as provider/modelId: its `model`, or the preferred available model when `model` is null. Null when that model is not available. */
@@ -335,6 +348,8 @@ type PiUpdateAgentInput = {
   thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   permissions: string[];
   instructions: string;
+  /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
+  skills?: string[];
   agentName: string;
 };
 type PiUpdateAgentOutput = {
@@ -343,6 +358,8 @@ type PiUpdateAgentOutput = {
   thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
   permissions: string[];
   instructions: string;
+  /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
+  skills: string[];
   agentName: string;
   steward: PiAgentSteward;
 };
@@ -351,6 +368,20 @@ type PiDeleteAgentInput = {
 };
 type PiDeleteAgentOutput = {
   deleted: true;
+};
+type PiReloadAgentInput = {
+  agentName: string;
+};
+type PiReloadAgentOutput = {
+  skills: {
+    name: string;
+    description: string;
+    location: string;
+  }[];
+  problems: {
+    path: string;
+    message: string;
+  }[];
 };
 type PiSubmitPromptInput = {
   agentName: string;

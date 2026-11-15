@@ -2,6 +2,7 @@ import type { AutomationSteward } from "@fragno-dev/backoffice-api/v0/automation
 import type {
   PiAgentConfig,
   PiAgentDefinition,
+  PiAgentSkill,
   PiThinkingLevel,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
@@ -124,6 +125,14 @@ export const piAgentDirectorySchema = schema("pi_manager", (s) =>
     // Definitions written before they chose an effort ran at low.
     .alterTable("agent_definition", (t) =>
       t.addColumn("thinkingLevel", column("string").defaultTo("low")),
+    )
+    // Folders the agent loads skills from besides the defaults; null for definitions written
+    // before agents named any.
+    .alterTable("agent_definition", (t) => t.addColumn("skills", jsonColumn<string[]>().nullable()))
+    // The skills each agent is offered, by agent name, as of its last reload. A built-in agent has
+    // no definition row, so the cache is a table of its own.
+    .addTable("agent_skills", (t) =>
+      t.addColumn("id", idColumn()).addColumn("skills", jsonColumn<PiAgentSkill[]>()),
     ),
 );
 
@@ -134,6 +143,7 @@ export type AgentDefinitionRow = {
   thinkingLevel: string;
   permissions: string[];
   instructions: string;
+  skills: string[] | null;
   managedBy: LegacyMarketplaceManagedBy | null;
   steward: AutomationSteward | null;
 };
@@ -147,6 +157,7 @@ export function definitionFromRow(row: AgentDefinitionRow): PiAgentDefinition {
     thinkingLevel: row.thinkingLevel as PiThinkingLevel,
     permissions: row.permissions,
     instructions: row.instructions,
+    skills: row.skills ?? [],
     steward: row.steward ?? { kind: "members" },
   };
 }

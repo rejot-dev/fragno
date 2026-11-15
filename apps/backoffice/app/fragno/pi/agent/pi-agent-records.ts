@@ -59,7 +59,8 @@ export type RecordedPiAgentDefinition = {
  * and turn-end events the queue their change left, except those stored before events carried it.
  */
 type PiAgentStatePayload =
-  | { agentName: string; definition: PiAgentDefinition }
+  // States stored before definitions named skill folders lack them; their agents named none.
+  | { agentName: string; definition: Omit<PiAgentDefinition, "skills"> & { skills?: string[] } }
   | { agentName: string; queue: PiAgentQueueCounts }
   | { agentName: string };
 
@@ -122,9 +123,14 @@ function piAgentStatesByName(states: readonly PiAgentEventState[]) {
 
 /** The definition a definition change's state records; null for a deletion. */
 function definitionOfState(state: PiAgentEventState): PiAgentDefinition | null {
-  return piAgentActivityByEventType[state.eventType] !== "deleted" && "definition" in state.payload
-    ? state.payload.definition
-    : null;
+  if (
+    piAgentActivityByEventType[state.eventType] === "deleted" ||
+    !("definition" in state.payload)
+  ) {
+    return null;
+  }
+  const { skills = [], ...definition } = state.payload.definition;
+  return { ...definition, skills };
 }
 
 /**

@@ -127,7 +127,7 @@ async function request(
   execution: BackofficeExecutionContext,
   route: string,
   body: unknown,
-  method: "GET" | "POST" | "PUT" = body === null ? "GET" : "POST",
+  method: "GET" | "POST" | "PUT" | "DELETE" = body === null ? "GET" : "POST",
 ) {
   return await runtime.objects.piManager.for(execution.scope).http.fetchAuthorized(
     new Request(`https://pi-manager.test/api/pi-manager${route}`, {
@@ -1125,6 +1125,7 @@ test("an agent's backfill records agent events as the agent's turn, keeping its 
                   thinkingLevel: "low",
                   permissions: ["*"],
                   instructions: "",
+                  skills: [],
                 },
               },
               actors: execution.actors,
@@ -1883,6 +1884,241 @@ test("subagents an app starts each answer one task in a conversation of their ow
         ),
         // A subagent runs as whoever started it, narrowed by the agent's definition.
         then.store.missing({ orgId: "org-1", key: "reader/result" }),
+      ],
+    }),
+  );
+});
+
+test("an agent is offered the skills of its last reload and reads their bodies as they are now", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "agent-skills" },
+  });
+  const housePath = "/workspace/playbook/house-style/SKILL.md";
+  const skill = (name: string, description: string, body: string) =>
+    `---\nname: ${name}\ndescription: ${description}\n---\n${body}`;
+  // The system prompt of each prompt's first request.
+  const offered = new Map<string, string>();
+  const respond: FauxResponseStep = (context) => {
+    const task = lastUserText(context);
+    // Later turns of the conversation see earlier turns' tool results, so only a request that
+    // answers a tool call is a turn's second.
+    if (context.messages.at(-1)?.role === "toolResult") {
+      return fauxAssistantMessage(JSON.stringify(toolResults(context).at(-1)?.details));
+    }
+    offered.set(task, getCurrentSystemPrompt(context.messages));
+    return task.startsWith("Read")
+      ? fauxAssistantMessage(
+          [
+            fauxToolCall("codemode", {
+              code: `async () => await state.readFile({ path: "${housePath}" })`,
+            }),
+          ],
+          { stopReason: "toolUse" },
+        )
+      : fauxAssistantMessage("Done.");
+  };
+  async function tools(runtime: InMemoryBackofficeRuntime) {
+    const context = createRouteBackedRuntimeContext({
+      emitter: { kind: "caller" },
+      runtime: runtime.services,
+      kernel: new BackofficeKernel(runtime.services),
+      execution,
+    });
+    assert(context.stateBackend);
+    const { bash } = await createInteractiveBashHost({
+      context: { ...context, stateBackend: context.stateBackend },
+    });
+    return { state: context.stateBackend, bash };
+  }
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi agent skills",
+      options: { drain: false },
+      objects: { ...scenarioObjects, ...scriptedAgents(Array.from({ length: 8 }, () => respond)) },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [
+        given.organization.exists({ id: "org-1" }),
+        // A folder only the writer's definition names, as a partner's share would be.
+        given.codemode.writeFile({
+          orgId: "org-1",
+          path: housePath,
+          content: skill("house-style", "Partner house style, version one", "Write plainly."),
+        }),
+        given.codemode.writeFile({
+          orgId: "org-1",
+          path: "/workspace/skills/brief/SKILL.md",
+          content: skill("brief", "Client brief", "Mind the brief."),
+        }),
+        given.codemode.writeFile({
+          orgId: "org-1",
+          path: "/workspace/skills/broken/SKILL.md",
+          content: "No frontmatter.",
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert(
+          "a reload finds the agent's skills and what it cannot read",
+          async ({ runtime }) => {
+            for (const [agentName, skills] of [
+              ["writer", ["/workspace/playbook", "/shared/partner-playbook/skills"]],
+              ["reader", []],
+            ] as const) {
+              const defined = await request(runtime, execution, "/agents", {
+                agentName,
+                description: "Writes for clients.",
+                model: null,
+                permissions: ["*"],
+                instructions: "",
+                skills,
+              });
+              assert.equal(defined.status, 201, await defined.clone().text());
+            }
+            const { bash } = await tools(runtime);
+            const reloaded = await bash.exec("pi.agent.reload --agent writer --format json");
+            assert.equal(reloaded.exitCode, 0, reloaded.stderr);
+            const { skills, problems } = JSON.parse(reloaded.stdout) as {
+              skills: { name: string; description: string; location: string }[];
+              problems: { path: string }[];
+            };
+            expect(skills).toEqual(
+              expect.arrayContaining([
+                {
+                  name: "house-style",
+                  description: "Partner house style, version one",
+                  location: housePath,
+                },
+                {
+                  name: "brief",
+                  description: "Client brief",
+                  location: "/workspace/skills/brief/SKILL.md",
+                },
+              ]),
+            );
+            assert(skills.some(({ location }) => location.startsWith("/static/skills/")));
+            // The share the definition names was never accepted here.
+            expect(problems).toEqual([
+              { path: "/shared/partner-playbook/skills", message: "Folder not found." },
+              { path: "/workspace/skills/broken/SKILL.md", message: expect.any(String) },
+            ]);
+          },
+        ),
+        then.assert(
+          "after edits, the reloaded agent keeps its offer but reads the current body",
+          async ({ runtime }) => {
+            const { state } = await tools(runtime);
+            await state.writeFile(
+              housePath,
+              skill("house-style", "Partner house style, version two", "Write warmly."),
+            );
+            await state.writeFile(
+              "/workspace/skills/late/SKILL.md",
+              skill("late", "A skill written after the reload", "Late."),
+            );
+            await prompt(runtime, execution, {
+              agentName: "writer",
+              requestId: "read",
+              content: "Read the house style.",
+            });
+            await prompt(runtime, execution, {
+              agentName: "reader",
+              requestId: "plain",
+              content: "Write without reloading.",
+            });
+            await runtime.drain();
+            const writer = offered.get("Read the house style.") ?? "";
+            expect(writer).toContain("Partner house style, version one");
+            expect(writer).not.toContain("new house style");
+            expect(writer).not.toContain("A skill written after the reload");
+            expect(await submission(runtime, execution, "read", "writer")).toMatchObject({
+              status: "completed",
+              answer: expect.stringContaining("Write warmly."),
+            });
+            // An agent's first turn reloads its skills, without the writer's folder.
+            const reader = offered.get("Write without reloading.") ?? "";
+            expect(reader).toContain("A skill written after the reload");
+            expect(reader).not.toContain(housePath);
+          },
+        ),
+        then.assert("later turns keep the skills the first turn reloaded", async ({ runtime }) => {
+          const { state } = await tools(runtime);
+          await state.writeFile(
+            "/workspace/skills/later/SKILL.md",
+            skill("later", "A skill written after the first turn", "Later."),
+          );
+          await prompt(runtime, execution, {
+            agentName: "reader",
+            requestId: "plain-again",
+            content: "Write again without reloading.",
+          });
+          await runtime.drain();
+          expect(offered.get("Write again without reloading.")).not.toContain(
+            "A skill written after the first turn",
+          );
+        }),
+        then.assert(
+          "a clear reloads the agent's skills for the turns after it",
+          async ({ runtime }) => {
+            const cleared = await request(runtime, execution, "/agents/writer/reset", {});
+            assert.equal(cleared.status, 204, await cleared.clone().text());
+            await prompt(runtime, execution, {
+              agentName: "writer",
+              requestId: "again",
+              content: "Write again.",
+            });
+            await runtime.drain();
+            const writer = offered.get("Write again.") ?? "";
+            expect(writer).toContain("Partner house style, version two");
+            expect(writer).toContain("A skill written after the reload");
+          },
+        ),
+        then.assert("an updated definition reloads from the next turn", async ({ runtime }) => {
+          const updated = await request(
+            runtime,
+            execution,
+            "/agents/reader",
+            {
+              description: "Writes for clients.",
+              model: null,
+              permissions: ["*"],
+              instructions: "",
+              skills: ["/workspace/playbook"],
+            },
+            "PUT",
+          );
+          assert.equal(updated.status, 200, await updated.clone().text());
+          await prompt(runtime, execution, {
+            agentName: "reader",
+            requestId: "updated",
+            content: "Write as the updated reader.",
+          });
+          await runtime.drain();
+          const reader = offered.get("Write as the updated reader.") ?? "";
+          expect(reader).toContain(housePath);
+          expect(reader).toContain("A skill written after the first turn");
+        }),
+        then.assert(
+          "an agent defined again under a deleted one's name is not offered its skills",
+          async ({ runtime }) => {
+            const deleted = await request(runtime, execution, "/agents/writer", {}, "DELETE");
+            assert.equal(deleted.status, 204, await deleted.clone().text());
+            const defined = await request(runtime, execution, "/agents", {
+              agentName: "writer",
+              description: "Writes for clients.",
+              model: null,
+              permissions: ["*"],
+              instructions: "",
+            });
+            assert.equal(defined.status, 201, await defined.clone().text());
+            await prompt(runtime, execution, {
+              agentName: "writer",
+              requestId: "redefined",
+              content: "Write as the new writer.",
+            });
+            await runtime.drain();
+            expect(offered.get("Write as the new writer.")).not.toContain(housePath);
+          },
+        ),
       ],
     }),
   );

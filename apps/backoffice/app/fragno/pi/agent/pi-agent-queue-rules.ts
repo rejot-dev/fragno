@@ -1,6 +1,4 @@
-import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
-
-import { admitPiAgentTurn } from "./agent-definitions";
+import { admitPiAgentTurn, type PiAgentAdmissionDefinition } from "./agent-definitions";
 import type { PiAgentModelChoice, PiAgentTurn, PiAvailableModel } from "./pi-agent-contract";
 
 /** Who asks for a turn: its actors and scope restriction, which its authority derives from. */
@@ -45,7 +43,7 @@ export function nextPiAgentQueueTurn<
   },
 >(
   queued: readonly TItem[],
-  definition: PiAgentDefinition | null,
+  definition: PiAgentAdmissionDefinition | null,
   agentName: string,
   availableModels: readonly PiAvailableModel[],
 ):

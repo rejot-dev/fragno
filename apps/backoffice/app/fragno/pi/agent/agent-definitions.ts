@@ -2,6 +2,7 @@ import {
   piAgentPermissionGrantRequirements,
   piThinkingLevelSchema,
   type PiAgentDefinition,
+  type PiAgentSkill,
   type PiThinkingLevel,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
@@ -20,6 +21,7 @@ export const BUILT_IN_PI_AGENT_DEFINITIONS: readonly PiAgentDefinition[] = [
     thinkingLevel: "medium",
     permissions: ["*"],
     instructions: "",
+    skills: [],
     steward: { kind: "backoffice" },
   },
 ];
@@ -169,6 +171,14 @@ function resolvePiAgentModel(
     : { type: "unavailable" };
 }
 
+/**
+ * An agent's definition and the skills its last reload found, which its turns are offered; null
+ * for a new agent or one updated since, whose next turn reloads them.
+ */
+export type PiAgentAdmissionDefinition = PiAgentDefinition & {
+  reloadedSkills: PiAgentSkill[] | null;
+};
+
 export type PiAgentAdmission =
   | { type: "turn"; turn: PiAgentTurn }
   | {
@@ -183,7 +193,7 @@ export type PiAgentAdmission =
  * prompt chose, if any.
  */
 export function admitPiAgentTurn(
-  definition: PiAgentDefinition | null,
+  definition: PiAgentAdmissionDefinition | null,
   agentName: string,
   provenance: Pick<PiAgentTurn, "actors" | "scopeRestriction">,
   availableModels: readonly PiAvailableModel[],
@@ -209,15 +219,25 @@ export function admitPiAgentTurn(
         : "No configured Pi model is available.",
     };
   }
+  return { type: "turn", turn: piAgentTurnOf(definition, provenance, model.model) };
+}
+
+/**
+ * A turn under `definition` as it is now. Work that calls no model, such as a clear, needs no
+ * admission: it names no model and keeps the conversation's.
+ */
+export function piAgentTurnOf(
+  definition: PiAgentAdmissionDefinition,
+  provenance: Pick<PiAgentTurn, "actors" | "scopeRestriction">,
+  model: PiAgentModelChoice | null,
+): PiAgentTurn {
   return {
-    type: "turn",
-    turn: {
-      ...provenance,
-      agent: {
-        model: model.model,
-        instructions: definition.instructions,
-        permissions: expandPiAgentPermissions(definition.permissions),
-      },
+    ...provenance,
+    agent: {
+      model,
+      instructions: definition.instructions,
+      permissions: expandPiAgentPermissions(definition.permissions),
+      skills: definition.reloadedSkills,
     },
   };
 }

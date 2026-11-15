@@ -556,6 +556,7 @@ test("waiting prompts run under the definition as it is when their turn starts, 
     description: "Answers in turn.",
     model: null,
     thinkingLevel: "low" as const,
+    skills: [],
     permissions: ["*"],
   };
   const created = await queue.fragment.callRoute("POST", "/agents", {
@@ -608,6 +609,7 @@ test("an agent of another scope hears how the prompts it asked about end, settle
       description: "Answers in turn.",
       model: null,
       thinkingLevel: "low",
+      skills: [],
       permissions: ["*"],
       instructions: "Answer.",
       provenance: queue.provenance("ada"),
@@ -751,6 +753,7 @@ test("an agent knows of each subagent from when it is queued until it starts or 
     description: "Checks documents.",
     model: null,
     thinkingLevel: "low" as const,
+    skills: [],
     permissions: ["*"],
   };
   const created = await queue.fragment.callRoute("POST", "/agents", {

@@ -1145,6 +1145,7 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
     thinkingLevel: "low",
     permissions: ["*"],
     instructions: "Review carefully.",
+    skills: [],
   };
   const { agentName: _agentName, ...fields } = reviewer;
   const revised = { ...reviewer, description: "Reviews and approves changes." };
@@ -1531,6 +1532,7 @@ test("a backfill records what the agent events lack, once, so they list the defi
     thinkingLevel: "low",
     permissions: ["*"],
     instructions: "Work carefully.",
+    skills: [],
   });
 
   /** An event that disagrees with the directory, as one recorded before the agent changed. */

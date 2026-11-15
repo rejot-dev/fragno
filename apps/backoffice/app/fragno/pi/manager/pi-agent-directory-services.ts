@@ -5,6 +5,7 @@ import {
   type PiAgentConfig,
   type PiAgentDefinition,
   type PiAgentDefinitionCreate,
+  type PiAgentSkill,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
@@ -143,6 +144,34 @@ export function piAgentDirectoryServices(
         })
         .build();
     },
+    /**
+     * Replaces the skills an agent is offered from its next turn with a reload's; false when no
+     * agent has the name.
+     */
+    replaceAgentSkills: function (agentName: string, skills: PiAgentSkill[]) {
+      return this.serviceTx(piAgentDirectorySchema)
+        .retrieve((uow) =>
+          uow
+            .findFirst("agent_definition", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", agentName)),
+            )
+            .findFirst("agent_skills", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", agentName)),
+            ),
+        )
+        .mutate(({ uow, retrieveResult: [definition, cached] }): boolean => {
+          if (!builtInPiAgentDefinition(agentName) && !definition) {
+            return false;
+          }
+          if (cached) {
+            uow.update("agent_skills", cached.id, (b) => b.set({ skills }).check());
+          } else {
+            uow.create("agent_skills", { id: agentName, skills });
+          }
+          return true;
+        })
+        .build();
+    },
     /** Defines a members' agent; null when the name is taken. */
     createAgentDefinition: function (
       definition: PiAgentDefinitionCreate,
@@ -182,11 +211,15 @@ export function piAgentDirectoryServices(
     ) {
       return this.serviceTx(piAgentDirectorySchema)
         .retrieve((uow) =>
-          uow.findFirst("agent_definition", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", definition.agentName)),
-          ),
+          uow
+            .findFirst("agent_definition", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", definition.agentName)),
+            )
+            .findFirst("agent_skills", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", definition.agentName)),
+            ),
         )
-        .mutate(({ uow, retrieveResult: [existing] }): PiAgentDefinition | null => {
+        .mutate(({ uow, retrieveResult: [existing, cached] }): PiAgentDefinition | null => {
           assertNotBuiltIn(definition.agentName);
           if (!existing) {
             return null;
@@ -199,6 +232,10 @@ export function piAgentDirectoryServices(
           uow.update("agent_definition", existing.id, (b) =>
             b.set({ ...fields, managedBy: null }).check(),
           );
+          // Its next turn reloads its skills, from the folders the definition names now.
+          if (cached) {
+            uow.delete("agent_skills", cached.id, (b) => b.check());
+          }
           uow.triggerHook("recordAgentChange", {
             kind: "updated",
             agentName,
@@ -217,11 +254,15 @@ export function piAgentDirectoryServices(
     ) {
       return this.serviceTx(piAgentDirectorySchema)
         .retrieve((uow) =>
-          uow.findFirst("agent_definition", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", agentName)),
-          ),
+          uow
+            .findFirst("agent_definition", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", agentName)),
+            )
+            .findFirst("agent_skills", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", agentName)),
+            ),
         )
-        .mutate(({ uow, retrieveResult: [existing] }) => {
+        .mutate(({ uow, retrieveResult: [existing, cached] }) => {
           assertNotBuiltIn(agentName);
           if (existing) {
             assertStewardWrite({
@@ -234,6 +275,10 @@ export function piAgentDirectoryServices(
               adoptsIdentical: false,
             });
             uow.delete("agent_definition", existing.id, (b) => b.check());
+            // An agent defined again under the name starts without the skills this one was offered.
+            if (cached) {
+              uow.delete("agent_skills", cached.id, (b) => b.check());
+            }
             uow.triggerHook("recordAgentChange", {
               kind: "deleted",
               agentName,
@@ -272,8 +317,12 @@ export function piAgentDirectoryServices(
     ) {
       const writer: AutomationSteward = { kind: "package", listingId };
       return this.serviceTx(piAgentDirectorySchema)
-        .retrieve((uow) => uow.find("agent_definition", (b) => b.whereIndex("primary")))
-        .mutate(({ uow, retrieveResult: [rows] }) => {
+        .retrieve((uow) =>
+          uow
+            .find("agent_definition", (b) => b.whereIndex("primary"))
+            .find("agent_skills", (b) => b.whereIndex("primary")),
+        )
+        .mutate(({ uow, retrieveResult: [rows, cachedSkills] }) => {
           const rowsByName = new Map(rows.map((row) => [row.id.valueOf(), row]));
           for (const agent of agents) {
             const declared = { ...agent, steward: writer };
@@ -299,6 +348,11 @@ export function piAgentDirectoryServices(
             uow.update("agent_definition", existing.id, (b) =>
               b.set({ ...fields, managedBy: null }).check(),
             );
+            // Its next turn reloads its skills, from the folders the definition names now.
+            const cached = cachedSkills.find((cache) => cache.id.valueOf() === agentName);
+            if (cached) {
+              uow.delete("agent_skills", cached.id, (b) => b.check());
+            }
             uow.triggerHook("recordAgentChange", {
               kind: "updated",
               agentName,
@@ -313,6 +367,11 @@ export function piAgentDirectoryServices(
               !declaredNames.has(row.id.valueOf())
             ) {
               uow.delete("agent_definition", row.id, (b) => b.check());
+              // An agent defined again under the name starts without the skills this one was offered.
+              const cached = cachedSkills.find((cache) => cache.id.valueOf() === row.id.valueOf());
+              if (cached) {
+                uow.delete("agent_skills", cached.id, (b) => b.check());
+              }
               uow.triggerHook("recordAgentChange", {
                 kind: "deleted",
                 agentName: row.id.valueOf(),
@@ -327,12 +386,21 @@ export function piAgentDirectoryServices(
     /** Deletes a package's agents, returning their names. */
     removePackageAgents: function (listingId: string, provenance: PiAgentTurnProvenance) {
       return this.serviceTx(piAgentDirectorySchema)
-        .retrieve((uow) => uow.find("agent_definition", (b) => b.whereIndex("primary")))
-        .mutate(({ uow, retrieveResult: [rows] }) =>
+        .retrieve((uow) =>
+          uow
+            .find("agent_definition", (b) => b.whereIndex("primary"))
+            .find("agent_skills", (b) => b.whereIndex("primary")),
+        )
+        .mutate(({ uow, retrieveResult: [rows, cachedSkills] }) =>
           rows
             .filter((row) => isStewardedByPackage(row.steward ?? MEMBERS_STEWARD, listingId))
             .map((row) => {
               uow.delete("agent_definition", row.id, (b) => b.check());
+              // An agent defined again under the name starts without the skills this one was offered.
+              const cached = cachedSkills.find((cache) => cache.id.valueOf() === row.id.valueOf());
+              if (cached) {
+                uow.delete("agent_skills", cached.id, (b) => b.check());
+              }
               uow.triggerHook("recordAgentChange", {
                 kind: "deleted",
                 agentName: row.id.valueOf(),

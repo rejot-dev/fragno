@@ -1,3 +1,5 @@
+import type { PiAgentSkillReload } from "@fragno-dev/backoffice-api/v0/pi";
+
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { parseFrontmatter } from "@/lib/frontmatter";
 
@@ -17,7 +19,7 @@ export type BackofficePiSkillDefinition = {
 export type BackofficePiSkillRegistry = Record<string, BackofficePiSkillDefinition>;
 
 type SkillFrontmatter = { name: string; description: string } & Record<string, unknown>;
-type PiSkillState = Pick<BackofficeStateBackend, "glob" | "readFile">;
+type PiSkillState = Pick<BackofficeStateBackend, "glob" | "readFile" | "exists">;
 
 /** Workspace content is optional: runtimes without Upload expose only `/static`. */
 export const isUploadNotConfiguredError = (
@@ -57,31 +59,80 @@ const parseStateSkill = (path: string, content: string): BackofficePiSkillDefini
   };
 };
 
-export const loadBackofficePiSkills = async (
-  state: PiSkillState,
-): Promise<BackofficePiSkillRegistry> => {
-  const staticPaths = await state.glob("/static/skills/**/SKILL.md");
-  let workspacePaths: string[];
+async function globSkills(state: PiSkillState, pattern: string): Promise<string[]> {
   try {
-    workspacePaths = await state.glob("/workspace/**/skills/**/SKILL.md");
+    return await state.glob(pattern);
   } catch (error) {
     if (!isUploadNotConfiguredError(error)) {
       throw error;
     }
-    workspacePaths = [];
+    return [];
   }
+}
 
-  const paths = [...staticPaths, ...workspacePaths];
-  const contents = await Promise.all(paths.map((path) => state.readFile(path)));
-  const skills: BackofficePiSkillRegistry = {};
-  for (const [index, path] of paths.entries()) {
-    try {
-      const skill = parseStateSkill(path, contents[index]);
-      skills[skill.name] = skill;
-    } catch {
-      continue;
+/**
+ * Reads every skill under `/static/skills`, the agent's `folders`, and `/workspace`'s `skills`
+ * folders, by name, with the files and folders it could not read. Of skills sharing a name, the
+ * later wins: a scope's own over a folder's, as it is the more specific, and a folder's over
+ * Backoffice's.
+ */
+async function scanBackofficePiSkills(
+  state: PiSkillState,
+  folders: readonly string[],
+): Promise<{ registry: BackofficePiSkillRegistry; problems: PiAgentSkillReload["problems"] }> {
+  const [staticPaths, folderPaths, workspacePaths] = await Promise.all([
+    globSkills(state, "/static/skills/**/SKILL.md"),
+    Promise.all(folders.map((folder) => globSkills(state, `${folder}/**/SKILL.md`))),
+    globSkills(state, "/workspace/**/skills/**/SKILL.md"),
+  ]);
+  const problems: PiAgentSkillReload["problems"] = [];
+  // A folder the definition names may be a share this scope never accepted, or accepted under
+  // another name; finding no skills there would otherwise look like an empty folder.
+  for (const [index, folder] of folders.entries()) {
+    if (folderPaths[index].length === 0 && !(await state.exists(folder))) {
+      problems.push({ path: folder, message: "Folder not found." });
     }
   }
+  const paths = [...staticPaths, ...folderPaths.flat(), ...workspacePaths];
+  const contents = await Promise.allSettled(paths.map((path) => state.readFile(path)));
+  const registry: BackofficePiSkillRegistry = {};
+  for (const [index, path] of paths.entries()) {
+    const content = contents[index];
+    try {
+      if (content.status === "rejected") {
+        throw content.reason;
+      }
+      const skill = parseStateSkill(path, content.value);
+      const shadowed = registry[skill.name];
+      if (shadowed) {
+        problems.push({
+          path: shadowed.location,
+          message: `Skill '${skill.name}' is offered from ${path} instead.`,
+        });
+      }
+      registry[skill.name] = skill;
+    } catch (error) {
+      problems.push({ path, message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { registry, problems };
+}
 
-  return skills;
-};
+/** The skills an agent finds as the files are now, for a turn whose reload failed. */
+export const loadBackofficePiSkills = async (
+  state: PiSkillState,
+): Promise<BackofficePiSkillRegistry> => (await scanBackofficePiSkills(state, [])).registry;
+
+/** What a reload offers an agent whose definition names `folders`: frontmatter, never bodies. */
+export async function reloadBackofficePiSkills(
+  state: PiSkillState,
+  folders: readonly string[],
+): Promise<PiAgentSkillReload> {
+  const { registry, problems } = await scanBackofficePiSkills(state, folders);
+  return {
+    skills: Object.values(registry)
+      .filter((skill) => !skill.disableModelInvocation)
+      .map(({ name, description, location }) => ({ name, description, location })),
+    problems,
+  };
+}
