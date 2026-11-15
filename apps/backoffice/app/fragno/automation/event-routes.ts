@@ -9,6 +9,8 @@ import {
   automationEventRoutesListResultSchema,
   automationEventStateDeleteInputSchema,
   automationEventStateDeleteResultSchema,
+  automationEventStateGetInputSchema,
+  automationEventStateGetResultSchema,
   automationEventStateListInputSchema,
   automationEventStateListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
@@ -183,6 +185,21 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
           nextCursor: result.cursor?.encode(),
           hasNextPage: result.hasNextPage,
         });
+      },
+    }),
+    defineRoute({
+      method: "POST",
+      path: "/event-state/get",
+      inputSchema: automationEventStateGetInputSchema,
+      outputSchema: automationEventStateGetResultSchema,
+      handler: async function ({ input }, { json }) {
+        const payload = await input.valid();
+        return json(
+          await this.handlerTx()
+            .withServiceCalls(() => [services.getEventStates(payload)] as const)
+            .transform(({ serviceResult: [result] }) => result)
+            .execute(),
+        );
       },
     }),
     defineRoute({

@@ -22,6 +22,7 @@ describe("event runtime tools", () => {
       "events.routes.list",
       "events.routes.retry",
       "events.state.list",
+      "events.state.get",
       "events.state.delete",
     ]);
   });
@@ -46,6 +47,7 @@ describe("event runtime tools", () => {
       "events.get",
       "events.routes.list",
       "events.state.list",
+      "events.state.get",
       "events.routes.retry",
       "events.state.delete",
     ]);

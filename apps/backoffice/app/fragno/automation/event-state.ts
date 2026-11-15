@@ -1,6 +1,7 @@
 import type {
   AutomationEventState,
   AutomationEventStateDeleteResult,
+  AutomationEventStateGetResult,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type { FragnoId } from "@fragno-dev/db/schema";
 
@@ -234,6 +235,35 @@ export const createEventStateServices = (
           cursor: page.cursor,
           hasNextPage: page.hasNextPage,
         }))
+        .build();
+    },
+    /** The states of a type's keys that have one, by key. */
+    getEventStates({
+      source,
+      eventType,
+      keys,
+    }: {
+      source: string;
+      eventType: string;
+      keys: readonly string[];
+    }) {
+      return this.serviceTx(automationFragmentSchema)
+        .retrieve((uow) =>
+          uow.find("automation_event_state", (b) =>
+            b
+              .whereIndex(STATE_INDEX, (eb) =>
+                eb.and(
+                  eb("source", "=", source),
+                  eb("eventType", "=", eventType),
+                  eb("key", "in", [...keys]),
+                ),
+              )
+              .orderByIndex(STATE_INDEX, "asc"),
+          ),
+        )
+        .transformRetrieve(
+          ([states]): AutomationEventStateGetResult => ({ states: states.map(eventStateOfRow) }),
+        )
         .build();
     },
     /** Deletes the states of a type's keys; the events stay. */

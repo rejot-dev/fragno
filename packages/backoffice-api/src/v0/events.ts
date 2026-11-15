@@ -476,6 +476,28 @@ export const automationEventStateListResultSchema = z.lazy(() =>
 
 export type AutomationEventStateListResult = z.infer<typeof automationEventStateListResultSchema>;
 
+export const automationEventStateGetInputSchema = z.lazy(() =>
+  z.object({
+    source: z.string().trim().min(1),
+    eventType: z.string().trim().min(1),
+    // Durable Object SQLite binds at most 100 parameters per statement, and reading the keys'
+    // states binds each key besides the type.
+    keys: z.array(z.string().min(1)).min(1).max(50),
+  }),
+);
+
+export type AutomationEventStateGetInput = z.infer<typeof automationEventStateGetInputSchema>;
+
+export const automationEventStateGetResultSchema = z.lazy(() =>
+  z.object({
+    states: z
+      .array(automationEventStateSchema)
+      .describe("The states of the keys that have one, ordered by key; the others are left out."),
+  }),
+);
+
+export type AutomationEventStateGetResult = z.infer<typeof automationEventStateGetResultSchema>;
+
 export const automationEventStateDeleteInputSchema = z.lazy(() =>
   z.object({
     source: z.string().trim().min(1),
@@ -602,6 +624,13 @@ export const eventsOperations = {
     permissions: [BACKOFFICE_PERMISSION.events.read],
     input: automationEventStateListInputSchema,
     output: automationEventStateListResultSchema,
+  },
+  "events.state.get": {
+    description:
+      "Get the state of up to 50 keys of an event type: each key's latest event, as the event_state relation holds it, such as whether one incident's triage is running. Keys without state are left out.",
+    permissions: [BACKOFFICE_PERMISSION.events.read],
+    input: automationEventStateGetInputSchema,
+    output: automationEventStateGetResultSchema,
   },
   "events.state.delete": {
     description:

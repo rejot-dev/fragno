@@ -26,6 +26,11 @@ type EventsCodemodeProvider = {
    */
   stateList(input: EventsStateListInput): Promise<EventsStateListOutput>;
   /**
+   * Get the state of up to 50 keys of an event type: each key's latest event, as the event_state relation holds it, such as whether one incident's triage is running. Keys without state are left out.
+   * Requires `events.read`.
+   */
+  stateGet(input: EventsStateGetInput): Promise<EventsStateGetOutput>;
+  /**
    * Retry a route that failed for good on a stored event, with a fresh set of attempts. The route acts as it was when the event matched it, with the route's current permissions, so retry after fixing what it depends on, such as a missing workflow run or permission; changes to the route's action apply only to new events. Returns the route, now pending, or null when the event did not match it.
    * Requires `router.modify`.
    */
@@ -1244,6 +1249,25 @@ type EventsStateListOutput = {
   }[];
   nextCursor?: string;
   hasNextPage: boolean;
+};
+type EventsStateGetInput = {
+  source: string;
+  eventType: string;
+  keys: string[];
+};
+type EventsStateGetOutput = {
+  /** The states of the keys that have one, ordered by key; the others are left out. */
+  states: {
+    key: string;
+    /** The key path the key was read with. One other than the type's keyPath now is left from before the key path changed. */
+    keyPath: string;
+    eventId: string;
+    payload: {
+      [key: string]: unknown;
+    };
+    occurredAt: string;
+    storedAt: string;
+  }[];
 };
 type EventsRoutesRetryInput = {
   eventId: string;
