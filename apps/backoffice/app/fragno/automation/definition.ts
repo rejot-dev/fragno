@@ -362,6 +362,9 @@ function routeActionExecution({
   };
 }
 
+/** The runs a `restart_finished` route starts again. */
+const FINISHED_RUN_STATUSES = ["complete", "errored", "terminated"] as const;
+
 const handleStartWorkflowRouteAction = async ({
   action,
   event,
@@ -417,7 +420,8 @@ const handleStartWorkflowRouteAction = async ({
   });
 
   // An instance ID can name a run per thing, such as one per incident, so a run that exists
-  // already, running or finished, stays as it is and the route skips.
+  // already stays as it is and the route skips, unless the route restarts finished runs.
+  const restartsFinished = action.existingRun === "restart_finished";
   await completeDispatch(
     () =>
       workflows.restartOrCreateInstance(workflowInput.workflowName, {
@@ -426,10 +430,13 @@ const handleStartWorkflowRouteAction = async ({
           params: workflowInput.params,
           remoteWorkflowName: workflowInput.remoteWorkflowName,
         },
-        restart: null,
+        restart: restartsFinished
+          ? { precondition: { status: { in: FINISHED_RUN_STATUSES } } }
+          : null,
       }),
     ([existing]) =>
-      existing
+      existing &&
+      !(restartsFinished && (FINISHED_RUN_STATUSES as readonly string[]).includes(existing.status))
         ? { kind: "skipped", reason: "workflow_instance_exists" }
         : {
             kind: "workflow_started",

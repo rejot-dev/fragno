@@ -265,7 +265,15 @@ export type AutomationStartWorkflowAction = {
   authority: AutomationAuthorityMode;
   workflowScriptPath: string;
   instanceIdTemplate: string;
+  /**
+   * What happens when a run with the rendered instance ID exists already. Omitted, or `"keep"`, it
+   * stays as it is and the route skips. `"restart_finished"` starts a finished run (complete,
+   * errored, or terminated) again, replacing its steps and events; a run still going stays.
+   */
+  existingRun?: AutomationStartWorkflowExistingRun;
 };
+
+export type AutomationStartWorkflowExistingRun = "keep" | "restart_finished";
 
 export type AutomationWorkflowEventTarget =
   | { kind: "instance_id"; template: string }
@@ -586,6 +594,12 @@ const automationStartWorkflowActionSchema = z
       authority: automationAuthorityModeSchema,
       workflowScriptPath: z.string().trim().min(1),
       instanceIdTemplate: z.string().trim().min(1),
+      existingRun: z
+        .enum(["keep", "restart_finished"])
+        .optional()
+        .describe(
+          "What happens when a run with the rendered instance ID exists already. Omitted, or keep, it stays as it is and the route skips. restart_finished starts a finished run (complete, errored, or terminated) again, replacing its steps and events; a run still going stays.",
+        ),
     }),
   )
   .meta({ id: "AutomationStartWorkflowAction" }) satisfies z.ZodType<AutomationStartWorkflowAction>;

@@ -15,6 +15,7 @@ const actionDetailLabels = (labelSet: AutomationRouteDetailLabelSet) =>
         workflow: "Workflow",
         script: "Script",
         instanceId: "Instance ID",
+        existingRun: "Existing run",
         runsAs: "Runs as",
         authority: "Authority mode",
         permissions: "Permissions",
@@ -29,6 +30,7 @@ const actionDetailLabels = (labelSet: AutomationRouteDetailLabelSet) =>
         workflow: "workflow",
         script: "script",
         instanceId: "instance",
+        existingRun: "existing run",
         runsAs: "runs as",
         authority: "authority mode",
         permissions: "permissions",
@@ -101,6 +103,13 @@ export const automationRouteActionDetailRows = (
         },
         { label: labels.script, value: action.workflowScriptPath, to: scriptLink ?? undefined },
         { label: labels.instanceId, value: action.instanceIdTemplate },
+        {
+          label: labels.existingRun,
+          value:
+            action.existingRun === "restart_finished"
+              ? "Restart it when finished"
+              : "Keep it, and skip",
+        },
       ];
     case "send_workflow_event":
       return [

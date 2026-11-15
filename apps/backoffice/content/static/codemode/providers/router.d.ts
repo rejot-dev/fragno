@@ -209,6 +209,8 @@ type AutomationStartWorkflowAction = {
   authority: AutomationAuthorityMode;
   workflowScriptPath: string;
   instanceIdTemplate: string;
+  /** What happens when a run with the rendered instance ID exists already. Omitted, or keep, it stays as it is and the route skips. restart_finished starts a finished run (complete, errored, or terminated) again, replacing its steps and events; a run still going stays. */
+  existingRun?: "keep" | "restart_finished";
 };
 type AutomationSendWorkflowEventAction = {
   kind: "send_workflow_event";
