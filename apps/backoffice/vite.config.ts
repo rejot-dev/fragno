@@ -36,30 +36,16 @@ function localPublicBaseUrl(): string | null {
   return parseEnv(readFileSync(localDevVarsPath, "utf8")).DOCS_PUBLIC_BASE_URL || null;
 }
 
-function emitWorkerLocalDevVarsPlugin(): Plugin {
+// The Cloudflare plugin copies local secrets from .dev.vars beside each Worker's output config for
+// `vite preview`. Turbo caches the build output and shares it between machines, so the output must
+// carry no secrets; scripts/run-vite-preview.mjs puts them in place while a preview runs.
+function dropLocalDevVarsPlugin(): Plugin {
   return {
-    name: "emit-worker-local-dev-vars",
+    name: "drop-local-dev-vars",
     apply: "build",
+    enforce: "post",
     generateBundle(_, bundle) {
-      if (!existsSync(localDevVarsPath)) {
-        return;
-      }
-
-      const environmentName = this.environment.name;
-      if (environmentName !== "ssr" && environmentName !== "rejot_backoffice") {
-        return;
-      }
-
-      // Preview resolves .dev.vars beside each generated Wrangler config, not from the source root.
-      // Every Worker gets the whole file so local overrides apply uniformly; the copies stay in
-      // gitignored build output and are never uploaded on deploy.
-      const localDevVars = readFileSync(localDevVarsPath, "utf8");
-      const devVarsAsset = bundle[".dev.vars"];
-      if (devVarsAsset?.type === "asset") {
-        devVarsAsset.source = localDevVars;
-      } else {
-        this.emitFile({ type: "asset", fileName: ".dev.vars", source: localDevVars });
-      }
+      delete bundle[".dev.vars"];
     },
   };
 }
@@ -269,6 +255,9 @@ export default defineConfig(({ command }) => {
       };
 
   return {
+    // Turbo shares builds between machines and hashes VITE_* settings from the process environment
+    // (turbo.json `env`), so builds must not read them from a machine's .env file.
+    envDir: isDevServer ? undefined : false,
     define: {
       "import.meta.env.BACKOFFICE_TARGET": JSON.stringify("cloudflare"),
     },
@@ -312,7 +301,7 @@ export default defineConfig(({ command }) => {
       reactDomStreamingRendererOnlyPlugin(),
       lazyServerRouteModulesPlugin(),
       dropUnloadedServerModulesPlugin(),
-      emitWorkerLocalDevVarsPlugin(),
+      dropLocalDevVarsPlugin(),
       previewServerUrlShortcutPlugin(),
       printPublicBaseUrlPlugin(),
       writeBuildCompleteMarkerPlugin(),

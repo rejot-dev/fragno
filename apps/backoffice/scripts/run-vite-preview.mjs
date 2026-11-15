@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { unwatchFile, watchFile } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const enableContainersFlag = "--containers";
@@ -83,6 +83,36 @@ const configPatches = [
   })),
 ];
 
+// Preview reads each Worker's secrets from a .dev.vars beside its output config. Builds carry none,
+// since Turbo shares them between machines, so the local files are copied in for each run. Every
+// Backoffice Worker gets the whole file so local overrides apply uniformly.
+const devVarsCopies = [
+  ["../.dev.vars", "../build/server/.dev.vars"],
+  ["../.dev.vars", "../dist/rejot_backoffice/.dev.vars"],
+  ["../../cf-sandbox-bridge/.dev.vars", "../dist/cf_sandbox_bridge/.dev.vars"],
+].map(([source, target]) => ({
+  source: new URL(source, import.meta.url),
+  target: new URL(target, import.meta.url),
+}));
+
+async function copyDevVars() {
+  for (const { source, target } of devVarsCopies) {
+    try {
+      await copyFile(source, target);
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
+    }
+  }
+}
+
+async function removeDevVars() {
+  for (const { target } of devVarsCopies) {
+    await rm(target, { force: true });
+  }
+}
+
 // A build replaces the output the preview serves, but the running Workers keep requesting the old
 // asset chunks. vite.config.ts writes this marker once a build has finished, and the preview
 // restarts on the new output.
@@ -135,6 +165,7 @@ try {
       for (const [index, { url }] of configPatches.entries()) {
         await writeFile(url, patchedConfigs[index]);
       }
+      await copyDevVars();
       process.exitCode = (await runViteCommand(previewCommand)).code;
     } finally {
       // A build that ran meanwhile wrote its own configs, which must not be replaced by older ones.
@@ -143,6 +174,7 @@ try {
           await writeFile(url, originalConfigs[index]);
         }
       }
+      await removeDevVars();
     }
   } while (restartRequested && !stopSignal);
 } finally {
