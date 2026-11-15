@@ -213,7 +213,7 @@ from the `events` relation, in the order it was fired.
   leaving out deletions, as below. `fire` throws for an event without the key. To change the key
   path, follow `/static/skills/building-automations/references/event-state.md`.
 - **History:** `events` holds what was fired, for activity such as the latest notes or changes per
-  day. Events are history and may be deleted, so items come from `event_state`.
+  day. Events are history and may be deleted, so items and all-time counts come from `event_state`.
 - **Timing:** a fired event reaches reads within moments, so the page shows a change at once from
   what it sent, then reads again every second until it appears. The source is the site's path: a
   moved site reads none of the events it fired before, and needs its types created again under its

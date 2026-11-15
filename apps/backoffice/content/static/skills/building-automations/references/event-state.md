@@ -3,8 +3,15 @@
 An event type's **state** is what each thing its events are about is now. For a type whose
 definition has a `keyPath`, such as `$.entityId`, each event stored replaces the state of its key: a
 copy of the latest event with that key, kept after the events themselves. Pages and site Workers
-read it from the `event_state` relation; `events.stateList` lists it. Each state names the `keyPath`
-that read its key.
+read it from the `event_state` relation. Agents read named keys with
+`events.stateGet({ source, eventType, keys })`, up to 50 at a time, and a type's every key with
+`events.stateList`, a page at a time. Each state names the `keyPath` that read its key.
+
+State is a **view** of what the type's events said: it follows each event moments after the event is
+stored, and any caller that may fire the type's events, with `events.emit`, changes it. Show things
+from it, and decide from the source that owns the fact, such as whether work is going from its
+workflow run. One run per thing is a keyed run:
+`/static/skills/building-automations/references/keyed-runs.md`.
 
 ## Key paths
 
@@ -18,8 +25,14 @@ that read its key.
   a site Worker's `fire` throw.
 - **Order:** a key's state takes an event only when it occurred later than the one it holds, so a
   late delivery leaves newer state in place.
-- **Removed things:** a state stays until it is deleted. Fire a removal as the thing's latest event,
-  such as `{ action: "delete", todo }`, and leave those out where the state is read.
+- **Lasting:** a key's state stays until it is deleted, however long its events are kept. A type
+  grows a row per thing, such as one per transaction a feed syncs. Fire a removal as the thing's
+  latest event, such as `{ action: "delete", todo }`, leave those out where the state is read, and
+  delete the states that must go, as Delete state describes.
+- **Built-in types:** Backoffice keys its own events. `pi` events key on `$.agentName`, and pages
+  read agents from the `agents` relation; `integrations` connection events key on `$.connectionId`,
+  read from `connections`; `sandbox` `instance.ready`, `instance.stopped`, and `instance.failed` key
+  on `$.sandboxId`, and a sandbox's lifecycle is the latest of its three.
 
 ## Change a key path
 

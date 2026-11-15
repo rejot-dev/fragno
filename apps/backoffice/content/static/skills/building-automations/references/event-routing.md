@@ -223,7 +223,8 @@ when the event does not exist or did not match that route, and fails when the ro
 An empty `routes` means no route matched; compare the event with each route's trigger and matcher.
 Follow each outcome to the work it names:
 
-- `workflow_started`: the run `instanceId` names, with `workflow.getInstance` and
+- `workflow_started`: the run `instanceId` names, started or, under
+  `existingRun: "restart_finished"`, started again, with `workflow.getInstance` and
   `workflow.getHistory`.
 - `workflow_event_sent`: the run that was sent the event. In its `workflow.getHistory`, the event
   with id `<routeId>:<eventId>` names the step that took it; the steps after it are what the event
@@ -235,12 +236,12 @@ Follow each outcome to the work it names:
 - `skipped`: the route chose not to act, for the `reason` given. `workflow_instance_unresolved`: the
   route's target rendered no workflow run, such as a `stored_instance_id` key with nothing stored
   under it yet. `workflow_instance_exists`: a run with the instance ID the route rendered exists
-  already, running or finished, and stays as it is. `no_linked_external_sender`: the route acts for
-  the event's external sender, who is not linked to a Backoffice user. `caused_by_notified_agent`:
-  the agent's own turns caused the event, and an agent is never notified of those.
-  `caused_by_notified_app`: the app caused the event, and an app is never notified of those.
-  `app_not_installed`: the app is not installed, or its installation does not reach the scope.
-  `app_cannot_read_events`: the installation lacks `events.read`.
+  already and stays as it is: it is going, or finished under `existingRun: "keep"`.
+  `no_linked_external_sender`: the route acts for the event's external sender, who is not linked to
+  a Backoffice user. `caused_by_notified_agent`: the agent's own turns caused the event, and an
+  agent is never notified of those. `caused_by_notified_app`: the app caused the event, and an app
+  is never notified of those. `app_not_installed`: the app is not installed, or its installation
+  does not reach the scope. `app_cannot_read_events`: the installation lacks `events.read`.
 
 Report ingestion and downstream execution separately, including failures, pending work, and any
 missing evidence.
