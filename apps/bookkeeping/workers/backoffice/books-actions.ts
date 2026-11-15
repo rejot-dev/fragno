@@ -694,6 +694,11 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
           currency: z.string().nullable().describe("Null: the account takes any currency."),
           active: z.boolean(),
           dimensionRules,
+          bank: z
+            .boolean()
+            .describe(
+              "A bank account's: only the entries booking its bank transactions post to it, never an entry or a document's.",
+            ),
         }),
       ),
       dimensions: z.array(
@@ -744,6 +749,8 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
           currency: account.currency,
           active: account.active,
           dimensionRules: index.rulesByCode(account.dimensionRules),
+          // Only bank accounts take entries of some source documents only.
+          bank: account.sourceKinds !== null,
         })),
         dimensions: described.dimensions.map((dimension) => ({
           code: dimension.code,
@@ -1423,6 +1430,15 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
       const inactive = input.entry.lines.find((line) => !index.account(line.account).active);
       if (inactive) {
         refuse(`Account ${inactive.account} is inactive and takes no new lines.`);
+      }
+      // Only bank accounts take entries of some source documents only.
+      const banked = input.entry.lines.find(
+        (line) => index.account(line.account).sourceKinds !== null,
+      );
+      if (banked) {
+        refuse(
+          `Account ${banked.account} is a bank account, which only its bank transactions post to: book what the document owes on the supplier's or customer's account instead, and its payment is booked from the bank.`,
+        );
       }
       const functionalDigits = index.minorUnitDigits(described.functionalCurrency);
       const total = (side: "debit" | "credit") =>

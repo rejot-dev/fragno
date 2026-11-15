@@ -17,7 +17,8 @@ type DefaultAccount = {
 
 /**
  * A small chart of accounts to start from, numbered so related accounts sort together: balance
- * sheet accounts first, then expenses, then revenue. Businesses add the accounts they need.
+ * sheet accounts first, then expenses, then revenue. Businesses add the accounts they need, and
+ * their bank accounts.
  */
 export const DEFAULT_ACCOUNTS: readonly DefaultAccount[] = [
   {
@@ -26,9 +27,11 @@ export const DEFAULT_ACCOUNTS: readonly DefaultAccount[] = [
     classification: { type: "equity", role: "ordinary" },
     normalSide: "credit",
   },
+  // Bank accounts come with their own ledger accounts. Payments booked from a document before
+  // their bank transaction, such as a receipt without a supplier, wait here for it.
   {
-    code: "1000",
-    name: "Bank",
+    code: "1090",
+    name: "Payments to match",
     classification: { type: "asset", role: "ordinary" },
     normalSide: "debit",
   },

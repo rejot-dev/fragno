@@ -12,11 +12,20 @@ import {
 import { Link, redirect, useOutletContext } from "react-router";
 import { z } from "zod";
 
+import { BANK_TRANSACTION_SOURCE_KIND } from "../../workers/books/banking/banking";
+import { describeTransaction } from "../../workers/books/banking/detail";
 import { DOCUMENT_SOURCE_KIND } from "../../workers/books/documents/documents";
 import { today } from "../../workers/books/fiscal-years";
 import { formatAmount } from "../../workers/books/money";
 import type { Route } from "./+types/entry";
-import { booksPath, documentPath, entryPath, formatDate, indexBooks } from "./books";
+import {
+  booksPath,
+  documentPath,
+  entryPath,
+  formatDate,
+  indexBooks,
+  transactionPath,
+} from "./books";
 import { formResult, parseForm, requireBooks, requireBooksSubmission } from "./books.server";
 import { LINE_COLUMNS, lineCells } from "./entry-lines";
 import { FormDialog } from "./forms";
@@ -44,18 +53,46 @@ async function requireEntry(
   return { journal, entry };
 }
 
-/** The entry, and the document it books, when its source document is one. */
+/**
+ * What an entry books, when its source document is one of the books' documents or bank
+ * transactions: its kind, its name, and its page.
+ */
+async function bookedSource(
+  context: Awaited<ReturnType<typeof requireBooks>>,
+  params: Route.LoaderArgs["params"],
+  source: { id: string; kind: string },
+) {
+  if (source.kind === DOCUMENT_SOURCE_KIND) {
+    const document = await context.books.getDocument(source.id);
+    return (
+      document && {
+        label: "Document",
+        name: document.filename,
+        path: documentPath(booksPath(params), document.id),
+      }
+    );
+  }
+  if (source.kind === BANK_TRANSACTION_SOURCE_KIND) {
+    const transaction = await context.books.getTransaction(source.id);
+    return (
+      transaction && {
+        label: "Bank transaction",
+        name: describeTransaction(transaction.detail),
+        path: transactionPath(booksPath(params), transaction.id),
+      }
+    );
+  }
+  return null;
+}
+
+/** The entry, and the document or bank transaction it books, when its source document is one. */
 export async function loader({ request, params }: Route.LoaderArgs) {
   const context = await requireBooks(request, params);
   const { journal, entry } = await requireEntry(context, params);
-  const document =
-    entry.sourceDocument.kind === DOCUMENT_SOURCE_KIND
-      ? await context.books.getDocument(entry.sourceDocument.id)
-      : null;
   return {
     journalId: journal.id,
     entry,
-    document: document && { id: document.id, filename: document.filename },
+    source: await bookedSource(context, params, entry.sourceDocument),
     today: today(),
   };
 }
@@ -148,18 +185,15 @@ export default function EntryPage({ loaderData, actionData }: Route.ComponentPro
             { key: "date", label: "Date", value: formatDate(entry.postingDate) },
             { key: "reference", label: "Reference", value: entry.reference ?? "None" },
             { key: "posted", label: "Posted by", value: entry.postedBy },
-            ...(loaderData.document === null
+            ...(loaderData.source === null
               ? []
               : [
                   {
-                    key: "document",
-                    label: "Document",
+                    key: "source",
+                    label: loaderData.source.label,
                     value: (
-                      <Link
-                        to={documentPath(base, loaderData.document.id)}
-                        className="hover:underline"
-                      >
-                        {loaderData.document.filename}
+                      <Link to={loaderData.source.path} className="hover:underline">
+                        {loaderData.source.name}
                       </Link>
                     ),
                   },

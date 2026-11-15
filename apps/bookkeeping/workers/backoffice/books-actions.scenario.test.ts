@@ -171,7 +171,7 @@ test("people's agents keep the books through Backoffice, within what the person 
       postingDate: `${year}-03-20`,
       reference: null,
       description: "Payment invoice 1",
-      lines: [line("1000", "debit", "121.00"), line("1300", "credit", "121.00", "C001")],
+      lines: [line("1090", "debit", "121.00"), line("1300", "credit", "121.00", "C001")],
     });
     const items = (
       await charlesAgent.call("parties.open-items", { role: "customer", code: "C001" })
@@ -240,7 +240,7 @@ test("people's agents keep the books through Backoffice, within what the person 
       reference: null,
       description: "Revaluation of dollars",
       lines: [
-        { ...line("1000", "debit", dollars), currency: "USD", functionalAmount: euros },
+        { ...line("1090", "debit", dollars), currency: "USD", functionalAmount: euros },
         line("8000", "credit", euros),
       ],
     });
@@ -258,7 +258,7 @@ test("people's agents keep the books through Backoffice, within what the person 
         ...invoice,
         reference: "INV-2",
         lines: [
-          line("1000", "debit", "90071992547409.93"),
+          line("1090", "debit", "90071992547409.93"),
           line("8000", "credit", "90071992547409.93"),
         ],
       }),
@@ -290,7 +290,7 @@ test("people's agents keep the books through Backoffice, within what the person 
       description: "Rent April",
       lines: [
         { ...line("4100", "debit", "500"), dimensions: { CC: "LAB" } },
-        line("1000", "credit", "500"),
+        line("1090", "credit", "500"),
       ],
     };
     expect(await charlesAgent.call("entries.post", rentPaid)).toEqual({
@@ -362,7 +362,7 @@ test("an agent reads the profit and loss, the balance sheet, who owes what, and 
     };
     // This year: capital, and a sale on credit due at the end of January.
     await post("GEN", `${year}-01-02`, [
-      line("1000", "debit", "500"),
+      line("1090", "debit", "500"),
       line("0500", "credit", "500"),
     ]);
     await post("SAL", `${year}-01-10`, [
@@ -372,13 +372,13 @@ test("an agent reads the profit and loss, the balance sheet, who owes what, and 
     ]);
     // Next year: an expense paid in January, a purchase on credit in February, and a cash sale
     // in March.
-    await post("BNK", `${next}-01-15`, [line("4000", "debit", "30"), line("1000", "credit", "30")]);
+    await post("BNK", `${next}-01-15`, [line("4000", "debit", "30"), line("1090", "credit", "30")]);
     await post("PUR", `${next}-02-10`, [
       line("4000", "debit", "50"),
       line("1600", "credit", "50", "S001", `${year + 2}-01-01`),
     ]);
     await post("BNK", `${next}-03-10`, [
-      line("1000", "debit", "200"),
+      line("1090", "debit", "200"),
       line("8000", "credit", "200"),
     ]);
 
@@ -411,7 +411,7 @@ test("an agent reads the profit and loss, the balance sheet, who owes what, and 
         currency: "EUR",
         at: `${next}-03-31`,
         assets: [
-          { code: "1000", name: "Bank", amount: "670.00" },
+          { code: "1090", name: "Payments to match", amount: "670.00" },
           { code: "1300", name: "Accounts receivable", amount: "121.00" },
         ],
         liabilities: [
@@ -494,7 +494,7 @@ test("a report reads the books at one moment, whatever is posted while it reads 
         postingDate: `${year}-01-10`,
         reference: null,
         description: "A sale posted late",
-        lines: [line("1000", "debit", "100"), line("8000", "credit", "100")],
+        lines: [line("1090", "debit", "100"), line("8000", "credit", "100")],
       });
       assert.equal(posted.status, 200, JSON.stringify(posted));
       sales += 1;
@@ -541,7 +541,7 @@ test("actions reach only the books of the administration Backoffice signed the c
       postingDate: `${year}-03-10`,
       reference: null,
       description: "Capital",
-      lines: [line("1000", "debit", "1000"), line("0500", "credit", "1000")],
+      lines: [line("1090", "debit", "1000"), line("0500", "credit", "1000")],
     };
 
     await analytical.call("entries.post", entry);
@@ -643,7 +643,7 @@ test("a firm's bookkeeping agent reads only its clients' books and answers their
         postingDate: `${year}-03-10`,
         reference: null,
         description: "Capital",
-        lines: [line("1000", "debit", "1000"), line("0500", "credit", "1000")],
+        lines: [line("1090", "debit", "1000"), line("0500", "credit", "1000")],
       }),
     ).toEqual(keepsNothing);
     // People keep their client's books in its own project, even the firm's owner.

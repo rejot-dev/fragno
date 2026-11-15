@@ -64,6 +64,16 @@ export function documentPath(base: string, documentId: string): string {
   return `${base}/documents/${documentId}`;
 }
 
+/** A bank account's page, with its statements' transactions. */
+export function bankAccountPath(base: string, bankAccountId: string): string {
+  return `${base}/bank/${bankAccountId}`;
+}
+
+/** A bank transaction's page. */
+export function transactionPath(base: string, transactionId: string): string {
+  return `${base}/bank/transactions/${transactionId}`;
+}
+
 /** `Code Name`, as accounts are named in lists and choices. */
 export function accountLabel(account: { code: string; name: string }): string {
   return `${account.code} ${account.name}`;

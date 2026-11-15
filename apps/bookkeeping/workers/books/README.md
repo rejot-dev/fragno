@@ -5,12 +5,13 @@ Isolation, backup, export and deletion are per database, so no table carries an 
 column.
 
 `Books` runs the ledger fragment (`@fragno-dev/ledger`) on the object's database and exposes its
-operations as RPC methods. The documents fragment in `documents/` runs on the same database adapter
-and books documents through the ledger's services, in the same transaction. The ledger's refusals
-return as `Outcome` values, because errors crossing Durable Object RPC keep only their message.
-Opening the books (`open`) sets the functional currency (`currencies.ts`) and, in the same
-transaction, this calendar year's monthly periods (`fiscal-years.ts`) and the default journals and
-chart of accounts (`default-books.ts`).
+operations as RPC methods. The documents fragment in `documents/` and the banking fragment in
+`banking/` run on the same database adapter and book documents and bank transactions through the
+ledger's services, in the same transaction; `sources.ts` tells from a source document's entries
+which one books it. The ledger's refusals return as `Outcome` values, because errors crossing
+Durable Object RPC keep only their message. Opening the books (`open`) sets the functional currency
+(`currencies.ts`) and, in the same transaction, this calendar year's monthly periods
+(`fiscal-years.ts`) and the default journals and chart of accounts (`default-books.ts`).
 
 The SQL files below are the reference design the ledger fragment was built from, and the design of
 the areas not built yet. `schema.ts` concatenates them in dependency order for their tests; no
@@ -21,11 +22,11 @@ Durable Object applies them.
 | `ledger`         | calendar, currencies, accounts, journals, dimensions, parties, source documents, journal entries and lines, settlement allocations and open items |
 | `classification` | reporting schemes (e.g. RGS) and account mappings                                                                                                 |
 | `invoicing`      | payment terms, sales and purchase invoices (net amounts)                                                                                          |
-| `banking`        | bank accounts, their ledger accounts, imported statements, reconciliation                                                                         |
 | `budgeting`      | budget scenarios and lines                                                                                                                        |
 | `vat`            | VAT codes and dated rates, line facts, VAT on invoices, box mappings, filed returns                                                               |
 
-Each directory holds its SQL files and the tests and test helpers for them.
+Each directory holds its SQL files and the tests and test helpers for them. Banking, built as the
+banking fragment, has no SQL design left: a bank transaction is reconciled by the entry booking it.
 
 ## Conventions
 
@@ -39,11 +40,11 @@ Each directory holds its SQL files and the tests and test helpers for them.
     `BEFORE UPDATE OF status ON journal_entry WHEN OLD.status = 'draft' AND NEW.status = 'posted'`
   - issuing: the same on `invoice`
   - sealing dimension sets: `BEFORE INSERT ON dimension_set_value` when the area references the set
-  - designating accounts: banking and VAT freeze the ledger accounts they designate
+  - designating accounts: VAT freezes the ledger accounts it designates
 - Areas register their source kinds by inserting into `source_kind`.
 
-The ledger itself knows only `ordinary`, `receivable` and `payable` accounts. An account is a bank
-account because `bank_ledger_account` links it, and a VAT account because a `vat_code` posts to it.
+The ledger itself knows only `ordinary`, `receivable` and `payable` accounts. An account is a VAT
+account because a `vat_code` posts to it.
 
 Copies of data across tables exist only where the source is immutable and an insert trigger checks
 the copy: `settlement_allocation` copies party account and currency from its lines, and

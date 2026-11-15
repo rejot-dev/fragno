@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <BkToCstmrStmt>
+    <GrpHdr>
+      <MsgId>2026-03</MsgId>
+      <CreDtTm>2026-03-31T23:59:59</CreDtTm>
+    </GrpHdr>
+    <Stmt>
+      <Id>2026-03</Id>
+      <CreDtTm>2026-03-31T23:59:59</CreDtTm>
+      <FrToDt>
+        <FrDtTm>2026-03-01T00:00:00</FrDtTm>
+        <ToDtTm>2026-03-31T23:59:59</ToDtTm>
+      </FrToDt>
+      <Acct>
+        <Id><IBAN>NL20INGB0001234567</IBAN></Id>
+        <Ccy>EUR</Ccy>
+      </Acct>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>OPBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">5000.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-03-01</Dt></Dt>
+      </Bal>
+      <Bal>
+        <Tp><CdOrPrtry><Cd>CLBD</Cd></CdOrPrtry></Tp>
+        <Amt Ccy="EUR">4331.53</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Dt><Dt>2026-03-31</Dt></Dt>
+      </Bal>
+      <Ntry>
+        <Amt Ccy="EUR">121.00</Amt>
+        <CdtDbtInd>CRDT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-03-05</Dt></BookgDt>
+        <ValDt><Dt>2026-03-05</Dt></ValDt>
+        <AcctSvcrRef>20260305-001</AcctSvcrRef>
+        <BkTxCd><Prtry><Cd>N541</Cd><Issr>ABNAMRO</Issr></Prtry></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>NOTPROVIDED</EndToEndId></Refs>
+            <RltdPties>
+              <Dbtr><Nm>Lady Byron</Nm></Dbtr>
+              <DbtrAcct><Id><IBAN>NL44RABO0123456789</IBAN></Id></DbtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>Payment INV-1</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+        <AddtlNtryInf>SEPA Overboeking</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">776.97</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-03-20</Dt></BookgDt>
+        <ValDt><Dt>2026-03-20</Dt></ValDt>
+        <AcctSvcrRef>20260320-001</AcctSvcrRef>
+        <BkTxCd><Prtry><Cd>N544</Cd><Issr>ABNAMRO</Issr></Prtry></BkTxCd>
+        <NtryDtls>
+          <TxDtls>
+            <Refs><EndToEndId>NOTPROVIDED</EndToEndId></Refs>
+            <RltdPties>
+              <Cdtr><Nm>Babbage Instruments B.V.</Nm></Cdtr>
+              <CdtrAcct><Id><IBAN>NL91ABNA0417164300</IBAN></Id></CdtrAcct>
+            </RltdPties>
+            <RmtInf><Ustrd>INV-2026-0042</Ustrd></RmtInf>
+          </TxDtls>
+        </NtryDtls>
+        <AddtlNtryInf>SEPA Overboeking</AddtlNtryInf>
+      </Ntry>
+      <Ntry>
+        <Amt Ccy="EUR">12.50</Amt>
+        <CdtDbtInd>DBIT</CdtDbtInd>
+        <Sts>BOOK</Sts>
+        <BookgDt><Dt>2026-03-31</Dt></BookgDt>
+        <ValDt><Dt>2026-03-31</Dt></ValDt>
+        <AcctSvcrRef>20260331-001</AcctSvcrRef>
+        <BkTxCd><Prtry><Cd>N544</Cd><Issr>ABNAMRO</Issr></Prtry></BkTxCd>
+        <AddtlNtryInf>Kosten zakelijk betalingsverkeer</AddtlNtryInf>
+      </Ntry>
+    </Stmt>
+  </BkToCstmrStmt>
+</Document>

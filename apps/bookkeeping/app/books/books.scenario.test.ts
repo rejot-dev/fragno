@@ -138,7 +138,7 @@ test("new books open ready to post: this year's periods, journals, and a chart o
     );
     expect(books.accounts.map((account) => `${account.code} ${account.role}`)).toEqual([
       "0500 ordinary",
-      "1000 ordinary",
+      "1090 ordinary",
       "1300 receivable",
       "1500 ordinary",
       "1600 payable",
@@ -230,7 +230,7 @@ test("a sale and its payment are posted, settled against each other, and add up 
         date: `${year}-03-20`,
         description: "Payment invoice 1",
         lines: [
-          { account: "1000", debit: "121.00" },
+          { account: "1090", debit: "121.00" },
           { account: "1300", credit: "121.00", party: "C001" },
         ],
       }),
@@ -276,7 +276,7 @@ test("a sale and its payment are posted, settled against each other, and add up 
 
     const march = books.fiscalYears[0].periods[2].id;
     expect(await trialBalance(ada, march)).toEqual({
-      "1000": [12100n, 0n],
+      "1090": [12100n, 0n],
       "1300": [12100n, 12100n],
       "1700": [0n, 2100n],
       "8000": [0n, 10000n],
@@ -408,7 +408,7 @@ test("owners and admins set the books up; every member keeps them", async () => 
       entryForm(books, { journal: "PUR", date, description: "Rent", lines });
     const rentLines: EntryLine[] = [
       { account: "4100", debit: "500", dimensions: { CC: "LAB" } },
-      { account: "1000", credit: "550", currency: "USD", functionalAmount: "500" },
+      { account: "1090", credit: "550", currency: "USD", functionalAmount: "500" },
     ];
     expect(
       await charles.submit(
