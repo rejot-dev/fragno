@@ -1,24 +1,12 @@
-import type { PiAgentDefinition } from "@fragno-dev/backoffice-api/v0/pi";
-import type { FragnoId } from "@fragno-dev/db/schema";
-
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import {
   PI_AGENT_AUTOMATION_EVENTS,
   PI_AUTOMATION_SOURCE,
-  PI_QUEUE_AUTOMATION_EVENTS,
-  PI_TURN_AUTOMATION_EVENTS,
-  readPiAgentEvent,
-  type PiAgentActivityKind,
-  type PiAgentEvent,
 } from "@/fragno/backoffice-capabilities/capabilities/pi";
-import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import {
-  applyPiAgentEvent,
-  piAgentEventRequestId,
-  piAgentRequestKey,
-  type PiAgentRequestState,
-  type PiAgentState,
+  recordedPiAgentDefinitionsOfStates,
+  type PiAgentEventState,
 } from "@/fragno/pi/agent/pi-agent-records";
 import {
   integrationConnectionsOfStates,
@@ -30,257 +18,15 @@ import {
 } from "@/fragno/runtime-tools/families/integrations/integration-events";
 
 import { STATE_INDEX } from "./event-state";
-import type { AutomationHookUnitOfWork } from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
 
 type EventProjectionServiceContext = DatabaseServiceContext<Record<string, never>>;
 
-/** An event as it is stored, which is all the fold reads of it. */
-type StoredEvent = {
-  id: string;
-  source: string;
-  eventType: string;
-  payload: unknown;
-  subject: unknown;
-  occurredAt: Date;
-};
-
-/**
- * Every event type the fold reads, in the order a replay folds them: an agent's events as its
- * lifecycle runs, so of events in the same instant the later step wins, which is usually the one
- * stored later.
- */
-export const FOLDED_EVENT_TYPES: readonly { source: string; eventType: string }[] = [
-  PI_AGENT_AUTOMATION_EVENTS.created,
-  PI_AGENT_AUTOMATION_EVENTS.updated,
-  PI_AGENT_AUTOMATION_EVENTS.deleted,
-  PI_AGENT_AUTOMATION_EVENTS.stopped,
-  PI_AGENT_AUTOMATION_EVENTS.resumed,
-  PI_QUEUE_AUTOMATION_EVENTS.added,
-  PI_QUEUE_AUTOMATION_EVENTS.dispatched,
-  PI_QUEUE_AUTOMATION_EVENTS.dropped,
-  PI_TURN_AUTOMATION_EVENTS.started,
-  PI_TURN_AUTOMATION_EVENTS.completed,
-  PI_TURN_AUTOMATION_EVENTS.aborted,
-  PI_TURN_AUTOMATION_EVENTS.failed,
-].map(({ eventType }) => ({ source: PI_AUTOMATION_SOURCE, eventType }));
-
-/** What a stored event records of an agent, read before its rows are. */
-type ProjectedEvent =
-  | {
-      kind: "pi";
-      id: string;
-      occurredAt: Date;
-      read: PiAgentEvent;
-      requestKey: string | null;
-    }
-  | { kind: "none" };
-
-export function projectedEventOf(event: StoredEvent): ProjectedEvent {
-  const read = readPiAgentEvent(event);
-  if (read) {
-    const requestId = piAgentEventRequestId(read);
-    return {
-      kind: "pi",
-      id: event.id,
-      occurredAt: event.occurredAt,
-      read,
-      requestKey: requestId === null ? null : piAgentRequestKey(read.agentName, requestId),
-    };
-  }
-  return { kind: "none" };
-}
-
-/** The IDs of the rows the events change, by table; empty for the tables they leave alone. */
-export function projectedEventKeys(events: readonly ProjectedEvent[]) {
-  const keys = {
-    agents: new Set<string>(),
-    requests: new Set<string>(),
-  };
-  for (const event of events) {
-    if (event.kind === "pi") {
-      keys.agents.add(event.read.agentName);
-      if (event.requestKey !== null) {
-        keys.requests.add(event.requestKey);
-      }
-    }
-  }
-  return {
-    agents: [...keys.agents],
-    requests: [...keys.requests],
-  };
-}
-
-type PiAgentRow = {
-  id: FragnoId;
-  latestKind: string;
-  latestAt: Date;
-  definition: PiAgentDefinition | null;
-  definitionAt: Date | null;
-  definitionEventId: string | null;
-  paused: boolean | null;
-  pauseAt: Date | null;
-  running: number;
-  queued: number;
-  steering: number;
-};
-
-type PiAgentRequestRow = PiAgentRequestState & { id: FragnoId };
-
-/** The rows `projectedEventKeys` names, as the transaction that folds the events read them. */
-type ProjectedRows = {
-  agentRows: readonly PiAgentRow[];
-  requestRows: readonly PiAgentRequestRow[];
-};
-
-/**
- * Folds stored events, in order, into the rows they change, and writes each row once. Ingestion
- * folds each event as it stores it; the replay folds events stored before ingestion did, and those
- * stored since, again. Folding an event again changes nothing but ties: requests record what
- * happened to them, not how often, and agents keep their latest changes by when they happened. Of
- * an agent's changes in the same instant the one folded last wins, so the replay, which folds by
- * type, can settle such a tie unlike ingestion did. Events about one agent can be folded
- * concurrently: updates check the row's version, and creating a row another transaction created
- * meanwhile retries, so the loser folds into the winner's row.
- */
-export function foldProjectedEvents(
-  uow: AutomationHookUnitOfWork,
-  events: readonly ProjectedEvent[],
-  rows: ProjectedRows,
-) {
-  const agents = new Map(rows.agentRows.map((row) => [row.id.externalId, piAgentState(row)]));
-  const requests = new Map<string, PiAgentRequestState>(
-    rows.requestRows.map(({ id, ...request }) => [id.externalId, request]),
-  );
-  for (const event of events) {
-    switch (event.kind) {
-      case "pi": {
-        const applied = applyPiAgentEvent(
-          agents.get(event.read.agentName) ?? null,
-          event.requestKey === null ? null : (requests.get(event.requestKey) ?? null),
-          event.read,
-          event,
-        );
-        agents.set(event.read.agentName, applied.agent);
-        if (event.requestKey !== null && applied.request) {
-          requests.set(event.requestKey, applied.request);
-        }
-        break;
-      }
-      case "none":
-        break;
-    }
-  }
-
-  const agentRows = new Map(rows.agentRows.map((row) => [row.id.externalId, row]));
-  for (const [agentName, agent] of agents) {
-    const row = agentRows.get(agentName);
-    if (row) {
-      updateChangedColumns(uow, "pi_agent", row, piAgentColumns(agent));
-    } else {
-      uow.create(
-        "pi_agent",
-        { id: agentName, displayName: formatPiAgentName(agentName), ...piAgentColumns(agent) },
-        { retryOnUniqueConflict: () => true },
-      );
-    }
-  }
-  const requestRows = new Map(rows.requestRows.map((row) => [row.id.externalId, row]));
-  for (const [requestKey, request] of requests) {
-    const row = requestRows.get(requestKey);
-    if (row) {
-      updateChangedColumns(uow, "pi_agent_request", row, request);
-    } else {
-      uow.create(
-        "pi_agent_request",
-        { id: requestKey, ...request },
-        { retryOnUniqueConflict: () => true },
-      );
-    }
-  }
-}
-
-/**
- * Updates the row's columns whose value the event changed, and no others: the outbox replicates
- * every column an update sets, and most agent events change a count, not the definition. When
- * nothing changed, only checks the row's version: a concurrent change still retries the event, and
- * the outbox gets no entry.
- */
-function updateChangedColumns(
-  uow: AutomationHookUnitOfWork,
-  table: "pi_agent" | "pi_agent_request",
-  row: { id: FragnoId } & Record<string, unknown>,
-  columns: Record<string, unknown>,
-) {
-  const changed = Object.fromEntries(
-    Object.entries(columns).filter(([name, value]) => !sameColumnValue(row[name], value)),
-  );
-  if (Object.keys(changed).length === 0) {
-    uow.check(table, row.id);
-    return;
-  }
-  uow.update(table, row.id, (b) => b.set(changed as never).check());
-}
-
-function sameColumnValue(stored: unknown, value: unknown) {
-  // Most events leave the definition as they read it, so its JSON need not be compared.
-  if (stored === value) {
-    return true;
-  }
-  if (stored instanceof Date && value instanceof Date) {
-    return stored.getTime() === value.getTime();
-  }
-  // JSON columns; a reordered object reads as changed, which only writes it again.
-  if (typeof stored === "object" && stored !== null) {
-    return JSON.stringify(stored) === JSON.stringify(value);
-  }
-  return stored === value;
-}
-
-/** Only `projectStoredEvent` writes agent rows, from `PiAgentState`. */
-export function piAgentState(row: Omit<PiAgentRow, "id">): PiAgentState {
-  return {
-    latest: { kind: row.latestKind as PiAgentActivityKind, occurredAt: row.latestAt },
-    definition:
-      row.definitionAt === null || row.definitionEventId === null
-        ? null
-        : {
-            definition: row.definition,
-            occurredAt: row.definitionAt,
-            eventId: row.definitionEventId,
-          },
-    pause:
-      row.paused === null || row.pauseAt === null
-        ? null
-        : { paused: row.paused, occurredAt: row.pauseAt },
-    running: row.running,
-    queued: row.queued,
-    steering: row.steering,
-  };
-}
-
-function piAgentColumns(agent: PiAgentState) {
-  return {
-    latestKind: agent.latest.kind,
-    latestAt: agent.latest.occurredAt,
-    definition: agent.definition?.definition ?? null,
-    definitionAt: agent.definition?.occurredAt ?? null,
-    definitionEventId: agent.definition?.eventId ?? null,
-    paused: agent.pause?.paused ?? null,
-    pauseAt: agent.pause?.occurredAt ?? null,
-    running: agent.running,
-    queued: agent.queued,
-    steering: agent.steering,
-  };
-}
-
-/** An agent's latest definition change; `definition` is null when it deleted the agent. */
-export type RecordedPiAgentDefinition = {
-  agentName: string;
-  definition: PiAgentDefinition | null;
-  /** The event that recorded the change. */
-  eventId: string;
-};
+const PI_AGENT_DEFINITION_EVENT_TYPES = [
+  PI_AGENT_AUTOMATION_EVENTS.created.eventType,
+  PI_AGENT_AUTOMATION_EVENTS.updated.eventType,
+  PI_AGENT_AUTOMATION_EVENTS.deleted.eventType,
+];
 
 export const createEventProjectionServices = (
   defineService: <TService>(
@@ -288,15 +34,23 @@ export const createEventProjectionServices = (
   ) => TService,
 ) =>
   defineService({
-    /** Every agent a definition event recorded. A scope keeps few agents. */
+    /** Every agent a definition event recorded, from its events' states. A scope keeps few. */
     listRecordedPiAgentDefinitions() {
       return this.serviceTx(automationFragmentSchema)
-        .retrieve((uow) => uow.find("pi_agent", (b) => b.whereIndex("primary")))
-        .transformRetrieve(([rows]) =>
-          rows.flatMap(({ id, definition, definitionEventId }): RecordedPiAgentDefinition[] =>
-            definitionEventId === null
-              ? []
-              : [{ agentName: id.externalId, definition, eventId: definitionEventId }],
+        .retrieve((uow) =>
+          uow.find("automation_event_state", (b) =>
+            b.whereIndex(STATE_INDEX, (eb) =>
+              eb.and(
+                eb("source", "=", PI_AUTOMATION_SOURCE),
+                eb("eventType", "in", PI_AGENT_DEFINITION_EVENT_TYPES),
+              ),
+            ),
+          ),
+        )
+        .transformRetrieve(([states]) =>
+          recordedPiAgentDefinitionsOfStates(
+            // Only agent events of these types, which name their agent, keep these.
+            states as unknown as PiAgentEventState[],
           ),
         )
         .build();

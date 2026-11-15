@@ -6,8 +6,12 @@ import {
 } from "@fragno-dev/lofi/sqlite";
 import { workflowsSchema } from "@fragno-dev/workflows/schema";
 
+import {
+  PI_AGENT_AUTOMATION_EVENTS,
+  PI_AUTOMATION_SOURCE,
+  piAgentActivityByEventType,
+} from "@/fragno/backoffice-capabilities/capabilities/pi";
 import { BUILT_IN_PI_AGENT_DEFINITIONS } from "@/fragno/pi/agent/agent-definitions";
-import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import { PI_AGENT_ACTIVITY } from "@/fragno/pi/agent/pi-agent-records";
 import {
   integrationConnectionKindLabels,
@@ -241,12 +245,59 @@ function sqlString(value: string) {
 function agentsSql() {
   const builtIns = BUILT_IN_PI_AGENT_DEFINITIONS.map(
     (definition) =>
-      `(${sqlString(definition.agentName)}, ${sqlString(JSON.stringify(definition))}, ${sqlString(formatPiAgentName(definition.agentName))})`,
+      `(${sqlString(definition.agentName)}, ${sqlString(JSON.stringify(definition))})`,
   ).join(", ");
-  const latestActivity = Object.entries(PI_AGENT_ACTIVITY.latest)
-    .map(([kind, label]) => `WHEN ${sqlString(kind)} THEN ${sqlString(label)}`)
-    .join(" ");
-  return `WITH "builtIn"("agentName", "definition", "displayName") AS (VALUES ${builtIns})
+  const cases = (entries: Record<string, string>) =>
+    Object.entries(entries)
+      .map(([value, result]) => `WHEN ${sqlString(value)} THEN ${sqlString(result)}`)
+      .join(" ");
+  const eventTypes = Object.keys(piAgentActivityByEventType).map(sqlString).join(", ");
+  const aspects = cases({
+    [PI_AGENT_AUTOMATION_EVENTS.created.eventType]: "definition",
+    [PI_AGENT_AUTOMATION_EVENTS.updated.eventType]: "definition",
+    [PI_AGENT_AUTOMATION_EVENTS.deleted.eventType]: "definition",
+    [PI_AGENT_AUTOMATION_EVENTS.stopped.eventType]: "pause",
+    [PI_AGENT_AUTOMATION_EVENTS.resumed.eventType]: "pause",
+  });
+  const later = `ORDER BY ${EVENT_ORDER_SQL}`;
+  // Of the states of an agent's events: the latest, the latest definition change and stop or
+  // resume, and the queue of the highest revision, as `piAgentsOfStates` reads them.
+  return `WITH "builtIn"("agentName", "definition") AS (VALUES ${builtIns}),
+    "state" AS (
+      SELECT "payload" ->> '$.agentName' AS "agentName", "eventType", "payload", "occurredAt",
+        row_number() OVER (PARTITION BY "payload" ->> '$.agentName' ${later}) AS "latest",
+        row_number() OVER (
+          PARTITION BY "payload" ->> '$.agentName', CASE "eventType" ${aspects} END ${later}
+        ) AS "latestOfAspect",
+        CASE "eventType" ${aspects} END AS "aspect",
+        row_number() OVER (
+          PARTITION BY "payload" ->> '$.agentName', "payload" ->> '$.queue' IS NULL
+          ORDER BY "payload" ->> '$.queue.revision' DESC
+        ) AS "latestQueue"
+      FROM ${automationTable("automation_event_state")}
+      WHERE "source" = ${sqlString(PI_AUTOMATION_SOURCE)} AND "eventType" IN (${eventTypes})
+    ),
+    "agent" AS (
+      SELECT "latest"."agentName",
+        CASE "latest"."eventType" ${cases(piAgentActivityByEventType)} END AS "latestKind",
+        "latest"."occurredAt" AS "latestAt",
+        CASE WHEN "definition"."eventType" = ${sqlString(PI_AGENT_AUTOMATION_EVENTS.deleted.eventType)}
+          THEN NULL ELSE "definition"."payload" -> '$.definition' END AS "definition",
+        coalesce("pause"."eventType" = ${sqlString(PI_AGENT_AUTOMATION_EVENTS.stopped.eventType)}, 0)
+          AS "paused",
+        coalesce("queue"."payload" ->> '$.queue.running', 0) AS "running",
+        coalesce("queue"."payload" ->> '$.queue.queued', 0) AS "queued",
+        coalesce("queue"."payload" ->> '$.queue.steering', 0) AS "steering"
+      FROM "state" AS "latest"
+      LEFT JOIN "state" AS "definition" ON "definition"."agentName" = "latest"."agentName"
+        AND "definition"."aspect" = 'definition' AND "definition"."latestOfAspect" = 1
+      LEFT JOIN "state" AS "pause" ON "pause"."agentName" = "latest"."agentName"
+        AND "pause"."aspect" = 'pause' AND "pause"."latestOfAspect" = 1
+      LEFT JOIN "state" AS "queue" ON "queue"."agentName" = "latest"."agentName"
+        AND "queue"."payload" ->> '$.queue' IS NOT NULL AND "queue"."latestQueue" = 1
+      WHERE "latest"."latest" = 1
+    ),
+    "names" AS (SELECT "agentName" FROM "agent" UNION SELECT "agentName" FROM "builtIn")
     SELECT "names"."agentName",
       coalesce("agent"."definition", "builtIn"."definition") AS "definition",
       "agent"."definition" IS NULL AS "builtIn",
@@ -255,16 +306,14 @@ function agentsSql() {
       coalesce("agent"."queued", 0) AS "queued",
       coalesce("agent"."steering", 0) AS "steering",
       coalesce("agent"."paused", 0) AS "paused",
-      coalesce("agent"."displayName", "builtIn"."displayName") AS "displayName",
       CASE
         WHEN "agent"."latestKind" IS NULL THEN ${sqlString(PI_AGENT_ACTIVITY.none)}
         WHEN "agent"."running" > 0 THEN ${sqlString(PI_AGENT_ACTIVITY.answering)}
         WHEN "agent"."paused" THEN ${sqlString(PI_AGENT_ACTIVITY.stopped)}
-        ELSE CASE "agent"."latestKind" ${latestActivity} END
+        ELSE CASE "agent"."latestKind" ${cases(PI_AGENT_ACTIVITY.latest)} END
       END AS "activity"
-    FROM (SELECT "id" AS "agentName" FROM ${automationTable("pi_agent")}
-      UNION SELECT "agentName" FROM "builtIn") AS "names"
-    LEFT JOIN ${automationTable("pi_agent")} AS "agent" ON "agent"."id" = "names"."agentName"
+    FROM "names"
+    LEFT JOIN "agent" ON "agent"."agentName" = "names"."agentName"
     LEFT JOIN "builtIn" ON "builtIn"."agentName" = "names"."agentName"
     WHERE coalesce("agent"."definition", "builtIn"."definition") IS NOT NULL`;
 }
@@ -419,7 +468,7 @@ const QUERY_RELATIONS: (PageRelation & { sql: string })[] = [
   {
     name: "agents",
     description:
-      "Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and steward.",
+      "Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. activity is what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and steward.",
     sql: agentsSql(),
     columns: [
       { name: "agentName", type: "text", nullable: false },
@@ -431,7 +480,6 @@ const QUERY_RELATIONS: (PageRelation & { sql: string })[] = [
       { name: "queued", type: "integer", nullable: false },
       { name: "steering", type: "integer", nullable: false },
       { name: "paused", type: "boolean", nullable: false },
-      { name: "displayName", type: "text", nullable: false },
       { name: "activity", type: "text", nullable: false },
     ],
   },

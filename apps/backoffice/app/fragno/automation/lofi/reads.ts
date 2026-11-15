@@ -15,12 +15,13 @@ import { workflowsSchema } from "@fragno-dev/workflows/schema";
 import {
   PI_AUTOMATION_SOURCE,
   PI_TURN_AUTOMATION_EVENTS,
+  piAgentActivityByEventType,
   readPiAgentEvent,
 } from "@/fragno/backoffice-capabilities/capabilities/pi";
-import { BUILT_IN_PI_AGENT_DEFINITIONS } from "@/fragno/pi/agent/agent-definitions";
 import {
-  piAgentRecord,
+  piAgentsOfStates,
   piAgentTurnEndedBy,
+  type PiAgentEventState,
   type PiAgentRecord,
   type PiAgentTurnRecord,
 } from "@/fragno/pi/agent/pi-agent-records";
@@ -44,7 +45,6 @@ import {
 import type { OrchestrationForward } from "@/routes/backoffice/dashboard/orchestration-graph";
 
 import { CODEMODE_WORKFLOW } from "../engine/codemode-invocation";
-import { piAgentState } from "../event-projections";
 import { forwardAcceptLetsIn, forwardNeedsAccept } from "../forward-accepts";
 import { automationRouteSteward, type StoredAutomationRouteMetadata } from "../route-records";
 import { automationFragmentSchema } from "../schema";
@@ -537,44 +537,25 @@ export function readLatestEventsOfType(
   });
 }
 
-/**
- * The scope's agents: built-in agents, and those their events define. The most recently active
- * come first; agents without activity keep built-in agents first, then go by name.
- */
+/** The scope's agents, as `piAgentsOfStates` orders them, from their events' states. */
 export function readPiAgents(reader: LofiSqliteReader): PiAgentRecord[] {
-  const agent = automationFragmentSchema.tables.pi_agent.columns;
-  const rows = reader.query({
-    sql: `SELECT "id" AS "agentName", "latestKind", "latestAt", "definition", "definitionAt",
-            "definitionEventId", "paused", "pauseAt", "running", "queued", "steering"
-          FROM ${automationTable("pi_agent")}`,
-    params: [],
+  const state = automationFragmentSchema.tables.automation_event_state.columns;
+  const eventTypes = Object.keys(piAgentActivityByEventType);
+  const states = reader.query({
+    sql: `SELECT "eventType", "eventId", "payload", "occurredAt", "storedAt"
+          FROM ${automationTable("automation_event_state")}
+          WHERE "source" = ? AND "eventType" IN (${eventTypes.map(() => "?").join(", ")})`,
+    params: [PI_AUTOMATION_SOURCE, ...eventTypes],
     columns: {
-      agentName: "text",
-      latestKind: agent.latestKind,
-      latestAt: agent.latestAt,
-      definition: agent.definition,
-      definitionAt: agent.definitionAt,
-      definitionEventId: agent.definitionEventId,
-      paused: agent.paused,
-      pauseAt: agent.pauseAt,
-      running: agent.running,
-      queued: agent.queued,
-      steering: agent.steering,
+      eventType: state.eventType,
+      eventId: state.eventId,
+      payload: state.payload,
+      occurredAt: state.occurredAt,
+      storedAt: state.storedAt,
     },
   });
-  const states = new Map(rows.map(({ agentName, ...row }) => [agentName, piAgentState(row)]));
-  const names = new Set([
-    ...BUILT_IN_PI_AGENT_DEFINITIONS.map(({ agentName }) => agentName),
-    ...states.keys(),
-  ]);
-  return [...names]
-    .flatMap((agentName) => piAgentRecord(agentName, states.get(agentName) ?? null) ?? [])
-    .sort(
-      (left, right) =>
-        (right.latestAt?.getTime() ?? -Infinity) - (left.latestAt?.getTime() ?? -Infinity) ||
-        Number(right.builtIn) - Number(left.builtIn) ||
-        (left.agentName < right.agentName ? -1 : left.agentName > right.agentName ? 1 : 0),
-    );
+  // Only agent events of these types, which name their agent, keep these states.
+  return piAgentsOfStates(states as PiAgentEventState[]);
 }
 
 const TURN_ENDED_EVENT_TYPES = [

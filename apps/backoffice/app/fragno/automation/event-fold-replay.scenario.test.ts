@@ -17,6 +17,7 @@ vi.mock("cloudflare:workers", () => workers);
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 
+import { queryAutomationReplica } from "./lofi/testing";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -27,8 +28,6 @@ const orgId = "org-1";
 const scope = { kind: "org", orgId, jurisdiction: null } as const;
 const start = Date.parse("2026-01-01T00:00:00.000Z");
 const at = (second: number) => start + second * 1000;
-
-const FOLDED_TABLES = ["pi_agent", "pi_agent_request"];
 
 function event(
   id: string,
@@ -64,23 +63,24 @@ function agentEvent(
     thinkingLevel: "low",
     permissions: [],
     instructions: "Review carefully.",
+    steward: { kind: "members" },
   };
   return event(id, "pi", eventType, second, {
-    payload: eventType === "agent.stopped" ? {} : { definition },
+    payload: eventType === "agent.stopped" ? { agentName } : { agentName, definition },
     subject: { scope, agentName },
   });
 }
 
 function requestEvent(
   id: string,
-  eventType: "queue.added" | "queue.dispatched" | "turn.started" | "turn.completed",
+  eventType: "queue.added" | "queue.dispatched" | "turn.started" | "turn.aborted",
   agentName: string,
   requestId: string,
   second: number,
   payload: Record<string, unknown>,
 ) {
   return event(id, "pi", eventType, second, {
-    payload,
+    payload: { agentName, ...payload },
     subject: { scope, agentName, requestId },
   });
 }
@@ -102,11 +102,11 @@ function connectionEvent(
   });
 }
 
-/** Counts the `pi` events a deletion would take, which it refuses until the replay folded them. */
+/** Counts the `pi` events a deletion would take, which it refuses until the replay kept them. */
 async function countDeletablePiEvents(ctx: BackofficeScenarioContext) {
   const { scanned } = await ctx.runtime.objects.automations.for(scope).commands.deleteEventsOfType({
     source: "pi",
-    eventType: "turn.completed",
+    eventType: "turn.aborted",
     occurredBefore: new Date(at(60)),
     storedBefore: new Date(at(60)),
     payloadFilter: null,
@@ -120,8 +120,8 @@ async function countDeletablePiEvents(ctx: BackofficeScenarioContext) {
 const automationsTable = (name: string) => `"${name}_automations"`;
 
 /**
- * Runs `use` on each Automations object's database. Only the database shows the folded rows, and
- * only it can lose them, as databases did before ingestion folded events.
+ * Runs `use` on each Automations object's database. Only the database shows the kept states, and
+ * only it can lose them, as databases did before ingestion kept events in them.
  */
 async function eachAutomationsDatabase<T>(
   directory: string,
@@ -142,22 +142,6 @@ async function eachAutomationsDatabase<T>(
   return results;
 }
 
-/** The folded tables' rows by ID, without the bookkeeping columns each write changes. */
-function foldedRows(directory: string) {
-  return eachAutomationsDatabase(directory, (database) =>
-    Object.fromEntries(
-      FOLDED_TABLES.map((name) => [
-        name,
-        (
-          database.prepare(`SELECT * FROM ${automationsTable(name)} ORDER BY id`).all() as object[]
-        ).map((row) =>
-          Object.fromEntries(Object.entries(row).filter(([column]) => !column.startsWith("_"))),
-        ),
-      ]),
-    ),
-  );
-}
-
 /** The kept states, without the row IDs each write picks. */
 function stateRows(directory: string) {
   return eachAutomationsDatabase(directory, (database) =>
@@ -172,19 +156,27 @@ function stateRows(directory: string) {
   );
 }
 
-/** Connection events stored before their payloads named the connection held only its label. */
-function storeConnectionEventsAsBefore(directory: string) {
-  return eachAutomationsDatabase(
-    directory,
-    (database) =>
-      database
-        .prepare(
-          `UPDATE ${automationsTable("automation_event")}
-           SET "payload" = json_remove("payload", '$.connectionId', '$.service')
-           WHERE "source" = 'integrations' AND "payload" ->> '$.connectionId' IS NOT NULL`,
-        )
-        .run().changes,
-  );
+/**
+ * Events stored before their payloads named what they are about: connection events held only its
+ * label, and agent events neither the agent nor its queue.
+ */
+function storeEventsAsBefore(directory: string) {
+  return eachAutomationsDatabase(directory, (database) => ({
+    integrations: database
+      .prepare(
+        `UPDATE ${automationsTable("automation_event")}
+         SET "payload" = json_remove("payload", '$.connectionId', '$.service')
+         WHERE "source" = 'integrations' AND "payload" ->> '$.connectionId' IS NOT NULL`,
+      )
+      .run().changes,
+    pi: database
+      .prepare(
+        `UPDATE ${automationsTable("automation_event")}
+         SET "payload" = json_remove("payload", '$.agentName', '$.queue')
+         WHERE "source" = 'pi' AND "payload" ->> '$.agentName' IS NOT NULL`,
+      )
+      .run().changes,
+  }));
 }
 
 function deleteRows(directory: string, tables: readonly string[]) {
@@ -195,32 +187,34 @@ function deleteRows(directory: string, tables: readonly string[]) {
   });
 }
 
-test("the replay folds stored events as ingestion did, and folding them again changes nothing", async () => {
+test("the replay keeps stored events in their states as ingestion did, and keeping them again changes nothing", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-event-fold-replay-"));
-  let folded: Awaited<ReturnType<typeof foldedRows>> = {};
   let kept: Awaited<ReturnType<typeof stateRows>> = {};
   try {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: allLocalObjects,
-        name: "events stored before ingestion folded them",
+        name: "events stored before ingestion kept their states",
         options: { sqliteDataDirectory: directory },
         setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
         steps: ({ when, then, runner }) => [
           ...[
             agentEvent("reviewer-created", "agent.created", "reviewer", 1),
             agentEvent("reviewer-updated", "agent.updated", "reviewer", 2),
-            requestEvent("r1-added", "queue.added", "reviewer", "r1", 3, { type: "prompt" }),
-            // Taken from the queue as the turn starts, in the same instant.
-            requestEvent("r1-dispatched", "queue.dispatched", "reviewer", "r1", 4, {
+            // Started at once, and stopped while it ran, so the next prompt waits.
+            requestEvent("r1-dispatched", "queue.dispatched", "reviewer", "r1", 3, {
+              queue: { revision: 1, running: 1, queued: 0, steering: 0 },
               turnRequestId: "r1",
             }),
-            requestEvent("r1-started", "turn.started", "reviewer", "r1", 4, {}),
-            requestEvent("r1-completed", "turn.completed", "reviewer", "r1", 5, {
-              answerEntryId: 1,
+            requestEvent("r1-started", "turn.started", "reviewer", "r1", 3, {}),
+            agentEvent("reviewer-stopped", "agent.stopped", "reviewer", 4),
+            requestEvent("r2-added", "queue.added", "reviewer", "r2", 5, {
+              queue: { revision: 3, running: 1, queued: 1, steering: 0 },
+              type: "prompt",
             }),
-            requestEvent("r2-added", "queue.added", "reviewer", "r2", 6, { type: "steer" }),
-            agentEvent("reviewer-stopped", "agent.stopped", "reviewer", 7),
+            requestEvent("r1-aborted", "turn.aborted", "reviewer", "r1", 6, {
+              queue: { revision: 4, running: 0, queued: 1, steering: 0 },
+            }),
             agentEvent("drafter-created", "agent.created", "drafter", 1),
             // Stored after the deletion that happened later.
             agentEvent("drafter-deleted", "agent.deleted", "drafter", 3),
@@ -232,66 +226,94 @@ test("the replay folds stored events as ingestion did, and folding them again ch
             connectionEvent("agensi-gone", "disconnected", "mcp#agensi", 2),
           ].map((stored) => when.automation.ingestEvent(stored)),
           runner.drain(),
-          then.assert(
-            "ingestion folded each agent event and kept each connection event's state",
-            async () => {
-              folded = await foldedRows(directory);
-              const [org] = Object.values(folded).filter((tables) => tables.pi_agent.length > 0);
-              expect(org).toMatchObject({
-                pi_agent: [
-                  { id: "drafter", definition: null, running: 1 },
-                  { id: "reviewer", latestKind: "stopped", paused: 1, running: 0, steering: 1 },
-                ],
-              });
-              kept = await stateRows(directory);
-              const [states] = Object.values(kept).filter((rows) => rows.length > 0);
-              expect(states).toMatchObject([
-                { eventType: "connection.disconnected", key: "mcp#agensi", eventId: "agensi-gone" },
-                { eventType: "connection.ready", key: "api#billing", eventId: "billing-back" },
-                { eventType: "connection.ready", key: "mcp#agensi", eventId: "agensi-ready" },
-                {
-                  eventType: "connection.unavailable",
-                  key: "api#billing",
-                  eventId: "billing-down",
-                  payload: {
-                    connectionId: "api#billing",
-                    service: "api",
-                    name: "api#billing",
-                    authMethod: null,
-                  },
+          then.assert("ingestion kept each agent and connection event's state", async (ctx) => {
+            kept = await stateRows(directory);
+            const [states] = Object.values(kept).filter((rows) => rows.length > 0);
+            expect(states).toMatchObject([
+              { eventType: "agent.created", key: "drafter", eventId: "drafter-created" },
+              { eventType: "agent.created", key: "reviewer", eventId: "reviewer-created" },
+              { eventType: "agent.deleted", key: "drafter", eventId: "drafter-deleted" },
+              { eventType: "agent.stopped", key: "reviewer", eventId: "reviewer-stopped" },
+              { eventType: "agent.updated", key: "reviewer", eventId: "reviewer-updated" },
+              { eventType: "connection.disconnected", key: "mcp#agensi", eventId: "agensi-gone" },
+              { eventType: "connection.ready", key: "api#billing", eventId: "billing-back" },
+              { eventType: "connection.ready", key: "mcp#agensi", eventId: "agensi-ready" },
+              {
+                eventType: "connection.unavailable",
+                key: "api#billing",
+                eventId: "billing-down",
+                payload: {
+                  connectionId: "api#billing",
+                  service: "api",
+                  name: "api#billing",
+                  authMethod: null,
                 },
-              ]);
-            },
-          ),
-          then.assert("the replay starts again on the folded rows", async () => {
+              },
+              { eventType: "queue.added", key: "reviewer", eventId: "r2-added" },
+              { eventType: "queue.dispatched", key: "reviewer", eventId: "r1-dispatched" },
+              { eventType: "turn.aborted", key: "reviewer", eventId: "r1-aborted" },
+              { eventType: "turn.started", key: "drafter", eventId: "r3-started" },
+              { eventType: "turn.started", key: "reviewer", eventId: "r1-started" },
+            ]);
+            // The drafter is deleted; the reviewer is stopped with the prompt it held back waiting,
+            // as the highest revision says.
+            expect(
+              await queryAutomationReplica(
+                ctx.lofi.automations.forOrg(orgId),
+                `SELECT agentName, latestKind, answering, paused, queued, steering, activity
+                 FROM agents WHERE agentName IN ('drafter', 'reviewer')`,
+              ),
+            ).toEqual([
+              {
+                agentName: "reviewer",
+                latestKind: "cut-off",
+                answering: 0,
+                paused: 1,
+                queued: 1,
+                steering: 0,
+                activity: "Stopped",
+              },
+            ]);
+          }),
+          then.assert("the replay starts again on the kept states", async () => {
             await deleteRows(directory, ["event_fold_replay"]);
           }),
           runner.restartObject({ binding: "AUTOMATIONS", scope }),
           runner.drain(),
-          then.assert("reading every event again leaves each row as it was", async () => {
-            expect(await foldedRows(directory)).toEqual(folded);
+          then.assert("reading every event again leaves each state as it was", async () => {
             expect(await stateRows(directory)).toEqual(kept);
           }),
           then.assert(
-            "the rows are gone, as before ingestion folded and kept events, and no event they hold is deleted",
+            "the states are gone, as before ingestion kept events in them, and no event they hold is deleted",
             async (ctx) => {
-              const rewritten = await storeConnectionEventsAsBefore(directory);
-              assert(Object.values(rewritten).reduce((total, count) => total + count) === 5);
-              await deleteRows(directory, [
-                ...FOLDED_TABLES,
-                "automation_event_state",
-                "event_fold_replay",
-              ]);
-              await expect(countDeletablePiEvents(ctx)).rejects.toThrow("not yet folded");
+              expect(Object.values(await storeEventsAsBefore(directory))).toContainEqual({
+                integrations: 5,
+                pi: 10,
+              });
+              await deleteRows(directory, ["automation_event_state", "event_fold_replay"]);
+              await expect(countDeletablePiEvents(ctx)).rejects.toThrow(
+                "not yet kept in agent and connection states",
+              );
             },
           ),
           runner.restartObject({ binding: "AUTOMATIONS", scope }),
           runner.drain(),
           then.assert(
-            "the replay folds and keeps every stored event into the same rows, reading connections off their subjects",
+            "the replay keeps every stored event in the same states, reading agents and connections off their subjects",
             async (ctx) => {
-              expect(await foldedRows(directory)).toEqual(folded);
-              expect(await stateRows(directory)).toEqual(kept);
+              // Events stored before they carried the queue leave it out; their agents read as
+              // holding nothing until the queue next changes.
+              expect(await stateRows(directory)).toEqual(
+                Object.fromEntries(
+                  Object.entries(kept).map(([file, rows]) => [
+                    file,
+                    rows.map((row) => {
+                      const { queue: _queue, ...payload } = row.payload as Record<string, unknown>;
+                      return { ...row, payload };
+                    }),
+                  ]),
+                ),
+              );
               assert((await countDeletablePiEvents(ctx)) === 1);
             },
           ),

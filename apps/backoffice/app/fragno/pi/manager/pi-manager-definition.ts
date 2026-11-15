@@ -8,13 +8,17 @@ import { withDatabase } from "@fragno-dev/db";
 import type { AutomationsCommands } from "@/backoffice-runtime/object-registry";
 import type { UsageBilling } from "@/fragno/billing/usage-billing";
 import {
-  piAgentNotificationEvent,
   type PiAgent,
   type PiAgentAddress,
   type PiAvailableModel,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
-import { piAgentChangeEvent, piAgentQueueEvent } from "./pi-agent-change-events";
+import {
+  piAgentChangeEvent,
+  piAgentDroppedReply,
+  piAgentQueueEvent,
+  piAgentTurnEndEvent,
+} from "./pi-agent-change-events";
 import { piAgentDirectoryServices } from "./pi-agent-directory-services";
 import { handOverPiAgentWork, piAgentQueueServices, type PiManagerHooks } from "./pi-agent-queue";
 import { piAgentDirectorySchema, type PiAgentTurnProvenance } from "./pi-manager-schema";
@@ -67,6 +71,11 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
         { propagationContext: this.capturePropagationContext() },
       );
     }),
+    recordTurnEnd: defineHook(async function ({ event, queue }): Promise<void> {
+      await config.automations?.ingestEvent(piAgentTurnEndEvent(event, queue, this.createdAt), {
+        propagationContext: this.capturePropagationContext(),
+      });
+    }),
     redispatchAgentQueue: defineHook(async function ({ agentName }): Promise<void> {
       const handovers = await this.handlerTx()
         .withServiceCalls(() => [services.getUnsettledHandovers(agentName)] as const)
@@ -96,14 +105,12 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
       const event =
         ending.type === "settled"
           ? { ...ending.event, id }
-          : piAgentNotificationEvent(
-              piAgentQueueEvent({
-                id,
-                scope: config.scope,
-                occurredAt: this.createdAt,
-                change: { kind: "dropped", ...ending, provenance },
-              }),
-            );
+          : piAgentDroppedReply({
+              id,
+              scope: config.scope,
+              occurredAt: this.createdAt,
+              dropped: ending,
+            });
       await config.notifyAgent({ agent: replyTo, provenance, event });
     }),
     deliverModelUsage: defineHook(async function (usage): Promise<void> {

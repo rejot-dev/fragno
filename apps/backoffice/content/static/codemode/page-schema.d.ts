@@ -221,7 +221,7 @@ type PageRelations = {
     displayName: string;
     kindLabel: string;
   };
-  /** Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. displayName is the name people read and activity what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and steward. */
+  /** Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. activity is what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and steward. */
   agents: {
     agentName: string;
     definition: PageSqlJson;
@@ -232,7 +232,6 @@ type PageRelations = {
     queued: number;
     steering: number;
     paused: PageSqlBoolean;
-    displayName: string;
     activity: string;
   };
   /** Event types waiting runs wait for, one row each; runId is the run's id. interfaceStepKey names the completed step whose interface asks a person to answer, or is null. */

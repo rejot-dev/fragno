@@ -4595,8 +4595,8 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
         runtime,
         implementation,
         agent: fakePi
-          ? // Like a real agent, the fake records and reports each turn it settles, which it does
-            // on receipt.
+          ? // Like a real agent, the fake reports each turn it settles to its manager, which records
+            // it; it settles them on receipt.
             () => {
               const { turns } = fakePi;
               async function settled(config: PiAgentConfig, requestId: string) {
@@ -4614,11 +4614,6 @@ const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBac
                       new Date(nowEpochMs()),
                     )
                   : null;
-                if (ended && runtime.config.bindings.automations) {
-                  await runtime.objects.automations
-                    .for(config.scope)
-                    .commands.ingestEvent(ended, { propagationContext: null });
-                }
                 await runtime.objects.piManager.for(config.scope).commands.reportSettledTurn({
                   agentName: config.agentName,
                   requestId,

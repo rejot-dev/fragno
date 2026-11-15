@@ -13,8 +13,8 @@ const EVENTS_OF_TYPE_PAGE_SIZE = 100;
 export const EVENTS_BY_TIME_INDEX = "idx_automation_event_occurredAt_id";
 
 /**
- * Sources whose events ingestion folds into agents and keeps in connection states. Events stored
- * before it did are the only record of what they did until `event-fold-replay` reads them too.
+ * Sources whose events ingestion keeps in agent and connection states. Events stored before it did
+ * are the only record of what they did until `event-fold-replay` reads them too.
  */
 const REPLAYED_EVENT_SOURCES: ReadonlySet<string> = new Set(
   REPLAYED_EVENT_TYPES.map(({ source }) => source),
@@ -146,7 +146,7 @@ export const createAutomationEventServices = (
         .mutate(({ uow, retrieveResult: [page, replay] }) => {
           if (REPLAYED_EVENT_SOURCES.has(input.source) && !(replay?.next === null)) {
             throw new Error(
-              `Events from ${input.source} are not yet folded into agents and connections and cannot be deleted.`,
+              `Events from ${input.source} are not yet kept in agent and connection states and cannot be deleted.`,
             );
           }
           const deletable = page.items.filter((event) => isDeletableEvent(event, input));

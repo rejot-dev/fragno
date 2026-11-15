@@ -75,12 +75,7 @@ import {
 } from "./event-definitions";
 import { createAutomationEventDefinitionServices } from "./event-definitions-storage-runtime";
 import { createEventFoldReplayServices, replayEventFold } from "./event-fold-replay";
-import {
-  createEventProjectionServices,
-  foldProjectedEvents,
-  projectedEventKeys,
-  projectedEventOf,
-} from "./event-projections";
+import { createEventProjectionServices } from "./event-projections";
 import { createAutomationEventSourceServices } from "./event-sources-storage-runtime";
 import {
   createEventStateServices,
@@ -900,14 +895,6 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
           getAutomationEventIdentity(event),
         ],
       ) {
-        const projected = [
-          projectedEventOf({
-            ...event,
-            subject: event.subject ?? null,
-            occurredAt: new Date(event.occurredAt),
-          }),
-        ];
-        const keys = projectedEventKeys(projected);
         return this.serviceTx(automationFragmentSchema, { name: "automations.ingestEvent" })
           .retrieve((uow) =>
             uow
@@ -920,46 +907,32 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                 b.whereIndex("primary", (eb) => eb("id", "=", event.id)),
               )
               // Only forwards need them, but a scope keeps few, and the read shares this round trip.
-              .find("automation_forward_accept", (b) => b.whereIndex("primary"))
-              // The rows the event's fold changes, if any; an empty list reads nothing.
-              .find("pi_agent", (b) => b.whereIndex("primary", (eb) => eb("id", "in", keys.agents)))
-              .find("pi_agent_request", (b) =>
-                b.whereIndex("primary", (eb) => eb("id", "in", keys.requests)),
-              ),
+              .find("automation_forward_accept", (b) => b.whereIndex("primary")),
           )
-          .mutate(
-            ({
-              uow,
-              retrieveResult: [storedDefinition, existingEvent, acceptRows, agentRows, requestRows],
-            }) => {
-              if (existingEvent) {
-                return true;
-              }
-              const { causation } = event;
-              if (
-                causation.kind === "forward" &&
-                forwardNeedsAccept(causation.from.scope, config.ownerScope) &&
-                !forwardAccepted(acceptRows.map(forwardAcceptFromRow), event, causation.from.scope)
-              ) {
-                return false;
-              }
-              const builtInDefinition = builtInEventDefinitionsById.get(
-                buildAutomationEventDefinitionId(event.source, event.eventType),
-              );
-              const definition = builtInDefinition ?? storedDefinition;
-              validateAutomationEventPayload({ event, definition });
-              ingestAutomationEvent(uow as AutomationHookUnitOfWork, event, {
-                reclassificationChain,
-                storedPayload: builtInDefinition?.storedPayload ?? null,
-                stateKey: requireEventKey(event, definition?.keyPath ?? null),
-              });
-              foldProjectedEvents(uow as AutomationHookUnitOfWork, projected, {
-                agentRows,
-                requestRows,
-              });
+          .mutate(({ uow, retrieveResult: [storedDefinition, existingEvent, acceptRows] }) => {
+            if (existingEvent) {
               return true;
-            },
-          )
+            }
+            const { causation } = event;
+            if (
+              causation.kind === "forward" &&
+              forwardNeedsAccept(causation.from.scope, config.ownerScope) &&
+              !forwardAccepted(acceptRows.map(forwardAcceptFromRow), event, causation.from.scope)
+            ) {
+              return false;
+            }
+            const builtInDefinition = builtInEventDefinitionsById.get(
+              buildAutomationEventDefinitionId(event.source, event.eventType),
+            );
+            const definition = builtInDefinition ?? storedDefinition;
+            validateAutomationEventPayload({ event, definition });
+            ingestAutomationEvent(uow as AutomationHookUnitOfWork, event, {
+              reclassificationChain,
+              storedPayload: builtInDefinition?.storedPayload ?? null,
+              stateKey: requireEventKey(event, definition?.keyPath ?? null),
+            });
+            return true;
+          })
           .transform(({ mutateResult: accepted }) => buildIngestResult(event, accepted))
           .build();
       },

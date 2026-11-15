@@ -9,6 +9,9 @@ import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/back
 
 export const PI_AUTOMATION_SOURCE = "pi" as const;
 
+/** Every `pi` event names its agent, so each type's state keeps each agent's latest event. */
+export const PI_AGENT_KEY_PATH = "$.agentName";
+
 // Steering joins a running turn, so the steered prompt settles with that turn's answer.
 const turnNote =
   "Fires once per prompt request ID. Steering prompts that joined a running turn settle with it.";
@@ -23,17 +26,17 @@ export const PI_TURN_AUTOMATION_EVENTS = {
   completed: {
     eventType: "turn.completed",
     label: "Agent turn completed",
-    description: `Fires after an agent answers a prompt. ${turnNote}`,
+    description: `Fires after an agent answers a prompt, with the agent's queue as the turn leaves it. ${turnNote}`,
   },
   aborted: {
     eventType: "turn.aborted",
     label: "Agent turn aborted",
-    description: `Fires after stopping an agent cuts off a turn before it answered; agent.stopped records who stopped it. ${turnNote}`,
+    description: `Fires after stopping an agent cuts off a turn before it answered, with the agent's queue as the turn leaves it; agent.stopped records who stopped it. ${turnNote}`,
   },
   failed: {
     eventType: "turn.failed",
     label: "Agent turn failed",
-    description: `Fires after a prompt ends unanswered for any reason but a stop, such as a model error. ${turnNote}`,
+    description: `Fires after a prompt ends unanswered for any reason but a stop, such as a model error, with the agent's queue as the turn leaves it. ${turnNote}`,
   },
 } as const;
 
@@ -43,13 +46,13 @@ export const PI_QUEUE_AUTOMATION_EVENTS = {
     eventType: "queue.added",
     label: "Agent work queued",
     description:
-      "Fires when work starts waiting for an agent: a prompt or notification in its queue, behind its running turn or while it is stopped, a steer for the running turn's next tool boundary, or a subagent while the agent runs as many as it may at once or is stopped. queue.dispatched or queue.dropped ends a queued item's wait, and turn.started a steer's. Work that starts at once never waits.",
+      "Fires when work starts waiting for an agent: a prompt or notification in its queue, behind its running turn or while it is stopped, a steer for the running turn's next tool boundary, or a subagent while the agent runs as many as it may at once or is stopped. queue.dispatched or queue.dropped ends a queued item's wait, and turn.started a steer's. Work that starts at once never waits. Every queue event carries the agent's queue as the change leaves it.",
   },
   dispatched: {
     eventType: "queue.dispatched",
     label: "Queued agent work dispatched",
     description:
-      "Fires when queued work leaves the queue for a turn; notifications handled together name the turn's request ID.",
+      "Fires when work leaves the queue for a turn, also work that starts at once without waiting; notifications handled together name the turn's request ID.",
   },
   dropped: {
     eventType: "queue.dropped",
@@ -91,7 +94,45 @@ export const PI_AGENT_AUTOMATION_EVENTS = {
   },
 } as const;
 
+const agentPayloadShape = { agentName: z.string().trim().min(1) };
+
+/**
+ * The agent's queue as the change leaves it, which the agent's manager knows as it changes it.
+ * `revision` orders the counts of an agent's changes; the highest is the queue now.
+ */
+const queueCountsSchema = z
+  .object({
+    revision: z.number().int().nonnegative(),
+    running: z
+      .number()
+      .int()
+      .nonnegative()
+      .describe("Turns running: the agent's conversation's and each subagent's."),
+    queued: z
+      .number()
+      .int()
+      .nonnegative()
+      .describe("Work waiting for a turn or a subagent's slot."),
+    steering: z
+      .number()
+      .int()
+      .nonnegative()
+      .describe("Steers handed to the running turn that have not settled with it."),
+  })
+  .describe("The agent's queue as the change leaves it; the highest revision is the queue now.");
+
+export type PiAgentQueueCounts = z.infer<typeof queueCountsSchema>;
+
+const queuePayloadShape = { ...agentPayloadShape, queue: queueCountsSchema };
+
+const exampleQueue = { revision: 4, running: 1, queued: 1, steering: 0 };
+
+const turnStartedPayloadSchema = z.object(agentPayloadShape);
+
+const turnAbortedPayloadSchema = z.object(queuePayloadShape);
+
 const turnCompletedPayloadSchema = z.object({
+  ...queuePayloadShape,
   answerEntryId: z
     .number()
     .int()
@@ -102,10 +143,12 @@ const turnCompletedPayloadSchema = z.object({
 });
 
 const turnFailedPayloadSchema = z.object({
+  ...queuePayloadShape,
   reason: z.string().describe("Why Pi left the prompt unanswered, such as model_error."),
 });
 
-const queueAddedPayloadSchema = z.object({
+// Read from stored events too, whose payloads named neither the agent nor its queue before.
+const queueAddedTypeSchema = z.object({
   type: z
     .enum(["prompt", "notification", "steer", "subagent"])
     .describe(
@@ -114,14 +157,19 @@ const queueAddedPayloadSchema = z.object({
 });
 
 const queueDispatchedPayloadSchema = z.object({
+  ...queuePayloadShape,
   turnRequestId: z.string().describe("The request ID of the turn that took the work."),
 });
 
 const queueDroppedPayloadSchema = z.object({
+  ...queuePayloadShape,
   reason: z.string().describe("Why the queued work can no longer run."),
 });
 
-const agentDefinitionPayloadSchema = z.object({
+const agentPausePayloadSchema = z.object(agentPayloadShape);
+
+// Read from stored events too, whose payloads did not name the agent before.
+const agentDefinitionSchema = z.object({
   definition: piAgentDefinitionSchema._zod.innerType.extend({
     // Events recorded before agents had stewards lack one; their agents were members'.
     steward: piAgentDefinitionSchema._zod.innerType.shape.steward.optional(),
@@ -129,6 +177,10 @@ const agentDefinitionPayloadSchema = z.object({
     thinkingLevel: piAgentDefinitionSchema._zod.innerType.shape.thinkingLevel.default("low"),
   }),
 });
+
+const queueAddedPayloadSchema = queueAddedTypeSchema.extend(queuePayloadShape);
+
+const agentDefinitionPayloadSchema = agentDefinitionSchema.extend(agentPayloadShape);
 
 const agentSubjectSchema = z.object({
   scope: backofficeContextScopeSchema,
@@ -151,8 +203,8 @@ export function piAgentEventSubject(
   return { scope, agentName };
 }
 
-/** What happened to an agent, by the `pi` event that records it. */
-const agentActivityByEventType = {
+/** What happened to an agent, by the `pi` event that records it: every `pi` event type. */
+export const piAgentActivityByEventType = {
   [PI_TURN_AUTOMATION_EVENTS.started.eventType]: "started",
   [PI_TURN_AUTOMATION_EVENTS.completed.eventType]: "answered",
   [PI_TURN_AUTOMATION_EVENTS.aborted.eventType]: "cut-off",
@@ -168,7 +220,7 @@ const agentActivityByEventType = {
 } as const;
 
 export type PiAgentActivityKind =
-  (typeof agentActivityByEventType)[keyof typeof agentActivityByEventType];
+  (typeof piAgentActivityByEventType)[keyof typeof piAgentActivityByEventType];
 
 type PiAgentRequestKind = "started" | "answered" | "cut-off" | "failed" | "dispatched" | "dropped";
 
@@ -190,14 +242,15 @@ export function readPiAgentEvent(event: {
 }): PiAgentEvent | null {
   if (
     event.source !== PI_AUTOMATION_SOURCE ||
-    !Object.hasOwn(agentActivityByEventType, event.eventType)
+    !Object.hasOwn(piAgentActivityByEventType, event.eventType)
   ) {
     return null;
   }
-  const kind = agentActivityByEventType[event.eventType as keyof typeof agentActivityByEventType];
+  const kind =
+    piAgentActivityByEventType[event.eventType as keyof typeof piAgentActivityByEventType];
   if (kind === "created" || kind === "updated" || kind === "deleted") {
     const subject = agentSubjectSchema.safeParse(event.subject);
-    const payload = agentDefinitionPayloadSchema.safeParse(event.payload);
+    const payload = agentDefinitionSchema.safeParse(event.payload);
     if (!subject.success || !payload.success) {
       return null;
     }
@@ -214,7 +267,7 @@ export function readPiAgentEvent(event: {
   }
   const { agentName, requestId } = subject.data;
   if (kind === "queued") {
-    const payload = queueAddedPayloadSchema.safeParse(event.payload);
+    const payload = queueAddedTypeSchema.safeParse(event.payload);
     return payload.success
       ? { agentName, kind, requestId, steer: payload.data.type === "steer" }
       : null;
@@ -254,65 +307,78 @@ export const piCapability: BackofficeCapability = {
       {
         source: PI_AUTOMATION_SOURCE,
         ...PI_TURN_AUTOMATION_EVENTS.started,
-        payloadSchema: z.object({}),
+        payloadSchema: turnStartedPayloadSchema,
         subjectSchema: requestSubjectSchema,
-        example: {},
+        keyPath: PI_AGENT_KEY_PATH,
+        example: { agentName: "reviewer" },
       },
       {
         source: PI_AUTOMATION_SOURCE,
         ...PI_TURN_AUTOMATION_EVENTS.completed,
         payloadSchema: turnCompletedPayloadSchema,
         subjectSchema: requestSubjectSchema,
-        example: { answerEntryId: 12 },
+        keyPath: PI_AGENT_KEY_PATH,
+        example: { agentName: "reviewer", queue: exampleQueue, answerEntryId: 12 },
       },
       {
         source: PI_AUTOMATION_SOURCE,
         ...PI_TURN_AUTOMATION_EVENTS.aborted,
-        payloadSchema: z.object({}),
+        payloadSchema: turnAbortedPayloadSchema,
         subjectSchema: requestSubjectSchema,
-        example: {},
+        keyPath: PI_AGENT_KEY_PATH,
+        example: { agentName: "reviewer", queue: exampleQueue },
       },
       {
         source: PI_AUTOMATION_SOURCE,
         ...PI_TURN_AUTOMATION_EVENTS.failed,
         payloadSchema: turnFailedPayloadSchema,
         subjectSchema: requestSubjectSchema,
-        example: { reason: "model_error" },
+        keyPath: PI_AGENT_KEY_PATH,
+        example: { agentName: "reviewer", queue: exampleQueue, reason: "model_error" },
       },
       {
         source: PI_AUTOMATION_SOURCE,
         ...PI_QUEUE_AUTOMATION_EVENTS.added,
         payloadSchema: queueAddedPayloadSchema,
         subjectSchema: requestSubjectSchema,
-        example: { type: "prompt" },
+        keyPath: PI_AGENT_KEY_PATH,
+        example: { agentName: "reviewer", queue: exampleQueue, type: "prompt" },
       },
       {
         source: PI_AUTOMATION_SOURCE,
         ...PI_QUEUE_AUTOMATION_EVENTS.dispatched,
         payloadSchema: queueDispatchedPayloadSchema,
         subjectSchema: requestSubjectSchema,
-        example: { turnRequestId: "prompt-1" },
+        keyPath: PI_AGENT_KEY_PATH,
+        example: { agentName: "reviewer", queue: exampleQueue, turnRequestId: "prompt-1" },
       },
       {
         source: PI_AUTOMATION_SOURCE,
         ...PI_QUEUE_AUTOMATION_EVENTS.dropped,
         payloadSchema: queueDroppedPayloadSchema,
         subjectSchema: requestSubjectSchema,
-        example: { reason: "Pi agent 'reviewer' is not defined." },
+        keyPath: PI_AGENT_KEY_PATH,
+        example: {
+          agentName: "reviewer",
+          queue: exampleQueue,
+          reason: "Pi agent 'reviewer' is not defined.",
+        },
       },
       ...(["created", "updated", "deleted"] as const).map((kind) => ({
         source: PI_AUTOMATION_SOURCE,
         ...PI_AGENT_AUTOMATION_EVENTS[kind],
         payloadSchema: agentDefinitionPayloadSchema,
         subjectSchema: agentSubjectSchema,
-        example: { definition: exampleDefinition },
+        keyPath: PI_AGENT_KEY_PATH,
+        example: { agentName: "reviewer", definition: exampleDefinition },
       })),
       ...(["stopped", "resumed"] as const).map((kind) => ({
         source: PI_AUTOMATION_SOURCE,
         ...PI_AGENT_AUTOMATION_EVENTS[kind],
-        payloadSchema: z.object({}),
+        payloadSchema: agentPausePayloadSchema,
         subjectSchema: agentSubjectSchema,
-        example: {},
+        keyPath: PI_AGENT_KEY_PATH,
+        example: { agentName: "reviewer" },
       })),
     ],
   },

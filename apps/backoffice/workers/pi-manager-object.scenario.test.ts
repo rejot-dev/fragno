@@ -814,7 +814,10 @@ test("a prompt whose agent is deleted while it waits is dropped, and its submiss
           // The queue records the work leaving it, so nothing reads as still waiting.
           expect(
             (await automationEvents(runtime, scope))
-              .filter((event) => event.eventType.startsWith("queue."))
+              .filter(
+                (event) =>
+                  event.eventType.startsWith("queue.") && event.subject?.requestId === "second",
+              )
               .map(({ eventType, subject, payload }) => ({ eventType, subject, payload }))
               .sort((left, right) => left.eventType.localeCompare(right.eventType)),
           ).toEqual([
@@ -825,7 +828,11 @@ test("a prompt whose agent is deleted while it waits is dropped, and its submiss
                 agentName: "clerk",
                 requestId: "second",
               },
-              payload: { type: "prompt" },
+              payload: {
+                agentName: "clerk",
+                queue: { revision: 1, running: 1, queued: 1, steering: 0 },
+                type: "prompt",
+              },
             },
             {
               eventType: "queue.dropped",
@@ -834,7 +841,11 @@ test("a prompt whose agent is deleted while it waits is dropped, and its submiss
                 agentName: "clerk",
                 requestId: "second",
               },
-              payload: { reason: "Pi agent 'clerk' is not defined." },
+              payload: {
+                agentName: "clerk",
+                queue: { revision: 2, running: 0, queued: 0, steering: 0 },
+                reason: "Pi agent 'clerk' is not defined.",
+              },
             },
           ]);
         }),
@@ -1196,6 +1207,7 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
             "agent.updated: Reviews changes.",
           ]);
           expect(events.find((event) => event.eventType === "agent.deleted")?.payload).toEqual({
+            agentName: "reviewer",
             definition: { ...revised, steward: { kind: "members" } },
           });
           for (const event of events) {
@@ -1248,14 +1260,28 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
               (await piEvents(runtime, "agent.")).filter(
                 (event) => event.eventType === "agent.stopped",
               ),
-            ).toEqual([expect.objectContaining({ payload: {}, subject, actors: ada.actors })]);
+            ).toEqual([
+              expect.objectContaining({
+                payload: { agentName: "assistant" },
+                subject,
+                actors: ada.actors,
+              }),
+            ]);
             const turnEvents = await piEvents(runtime, "turn.");
             expect(turnEvents.sort((left, right) => left.id.localeCompare(right.id))).toEqual(
               ["turn.aborted", "turn.started"].map((eventType) =>
                 expect.objectContaining({
                   id: `pi:assistant:${eventType === "turn.started" ? "started" : "ended"}:cut-off`,
                   eventType,
-                  payload: {},
+                  // The queue's prompt dispatched the turn, the stop paused it, and the abort
+                  // settled it, leaving nothing.
+                  payload:
+                    eventType === "turn.started"
+                      ? { agentName: "assistant" }
+                      : {
+                          agentName: "assistant",
+                          queue: { revision: 2, running: 0, queued: 0, steering: 0 },
+                        },
                   subject: { ...subject, requestId: "cut-off" },
                   actors: expect.objectContaining({ principal: grace.actors.principal }),
                 }),
@@ -1290,6 +1316,14 @@ test("an agent's turns and queue are recorded as they move, so its events say wh
     return (await automationEvents(runtime, scope))
       .filter((event) => event.source === "pi" && event.subject?.requestId === requestId)
       .sort((left, right) => order.indexOf(left.eventType) - order.indexOf(right.eventType));
+  }
+
+  /** What each of a request's events says of it, without the queue `assistantState` reads. */
+  async function requestChanges(runtime: InMemoryBackofficeRuntime, requestId: string) {
+    return (await requestEvents(runtime, requestId)).map(({ eventType, payload }) => {
+      const { queue: _queue, ...change } = payload;
+      return { eventType, payload: change };
+    });
   }
 
   /** What the agent page reads of the assistant from the synchronized events. */
@@ -1415,18 +1449,14 @@ test("an agent's turns and queue are recorded as they move, so its events say wh
               queued: 1,
               steering: 0,
             });
+            // The first prompt started at once, so it never waited.
             expect((await requestEvents(runtime, "first")).map((event) => event.eventType)).toEqual(
-              ["turn.started", "turn.aborted"],
+              ["queue.dispatched", "turn.started", "turn.aborted"],
             );
             // The stop cut off the steer while it waited, so it ends without starting.
-            expect(
-              (await requestEvents(runtime, "steer")).map(({ eventType, payload }) => ({
-                eventType,
-                payload,
-              })),
-            ).toEqual([
-              { eventType: "queue.added", payload: { type: "steer" } },
-              { eventType: "turn.aborted", payload: {} },
+            expect(await requestChanges(runtime, "steer")).toEqual([
+              { eventType: "queue.added", payload: { agentName: "assistant", type: "steer" } },
+              { eventType: "turn.aborted", payload: { agentName: "assistant" } },
             ]);
           },
         ),
@@ -1442,16 +1472,17 @@ test("an agent's turns and queue are recorded as they move, so its events say wh
             queued: 0,
             steering: 0,
           });
-          expect(
-            (await requestEvents(runtime, "second")).map(({ eventType, payload }) => ({
-              eventType,
-              payload,
-            })),
-          ).toEqual([
-            { eventType: "queue.added", payload: { type: "prompt" } },
-            { eventType: "queue.dispatched", payload: { turnRequestId: "second" } },
-            { eventType: "turn.started", payload: {} },
-            { eventType: "turn.completed", payload: { answerEntryId: expect.any(Number) } },
+          expect(await requestChanges(runtime, "second")).toEqual([
+            { eventType: "queue.added", payload: { agentName: "assistant", type: "prompt" } },
+            {
+              eventType: "queue.dispatched",
+              payload: { agentName: "assistant", turnRequestId: "second" },
+            },
+            { eventType: "turn.started", payload: { agentName: "assistant" } },
+            {
+              eventType: "turn.completed",
+              payload: { agentName: "assistant", answerEntryId: expect.any(Number) },
+            },
           ]);
           const resumedEvents = (await automationEvents(runtime, scope)).filter(
             (event) => event.eventType === "agent.resumed",
@@ -1473,14 +1504,16 @@ test("an agent's turns and queue are recorded as they move, so its events say wh
             queued: 0,
             steering: 0,
           });
-          expect(
-            (await requestEvents(runtime, "third")).map(({ eventType, payload }) => ({
-              eventType,
-              payload,
-            })),
-          ).toEqual([
-            { eventType: "turn.started", payload: {} },
-            { eventType: "turn.failed", payload: { reason: "model_error" } },
+          expect(await requestChanges(runtime, "third")).toEqual([
+            {
+              eventType: "queue.dispatched",
+              payload: { agentName: "assistant", turnRequestId: "third" },
+            },
+            { eventType: "turn.started", payload: { agentName: "assistant" } },
+            {
+              eventType: "turn.failed",
+              payload: { agentName: "assistant", reason: "model_error" },
+            },
           ]);
         }),
       ],
@@ -1509,7 +1542,7 @@ test("a backfill records what the agent events lack, once, so they list the defi
       source: "pi",
       eventType,
       occurredAt: new Date().toISOString(),
-      payload: { definition: definition(agentName, description) },
+      payload: { agentName, definition: definition(agentName, description) },
       actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
       subject: { scope, agentName },
       causation: { kind: "origin" as const },
@@ -1542,6 +1575,8 @@ test("a backfill records what the agent events lack, once, so they list the defi
               staleEvent("agent.deleted", "drafter", "Drafts replies."),
             );
             await automations.ingestEvent(staleEvent("agent.created", "ghost", "Gone already."));
+            // The backfill reads the events' states, which their hooks keep.
+            await runtime.drain();
 
             const backfill = async () =>
               (
@@ -1592,7 +1627,14 @@ test("a backfill records what the agent events lack, once, so they list the defi
 
 test("a turn whose event cannot be recorded stays pending without holding back later turns", async () => {
   const scope: BackofficeContextScope = { kind: "org", orgId: "report-org", jurisdiction: null };
-  const unrecordable = new Set(["pi:assistant:ended:first"]);
+  // The agent records each turn's start; its manager records how the turn ended.
+  const unrecordable = new Set(["pi:assistant:started:first"]);
+  async function turnStarts(runtime: InMemoryBackofficeRuntime) {
+    return (await automationEvents(runtime, scope))
+      .filter((event) => event.source === "pi" && event.eventType === "turn.started")
+      .map((event) => event.id)
+      .sort((left, right) => left.localeCompare(right));
+  }
   await runBackofficeScenario(
     defineBackofficeScenario({
       name: "Pi turn events after a failed report",
@@ -1655,9 +1697,7 @@ test("a turn whose event cannot be recorded stays pending without holding back l
             // The alarm fails while a turn is unrecorded, which keeps its heartbeat to retry.
             await expect(runtime.drain()).rejects.toThrow("alarms failed");
           }
-          expect((await piTurnEvents(runtime, scope)).map((event) => event.id)).toEqual([
-            "pi:assistant:ended:second",
-          ]);
+          expect(await turnStarts(runtime)).toEqual(["pi:assistant:started:second"]);
         }),
         then.assert("the next report records the turn once it can", async ({ runtime }) => {
           unrecordable.clear();
@@ -1667,14 +1707,10 @@ test("a turn whose event cannot be recorded stays pending without holding back l
           });
           assert.equal(submitted.status, 202, await submitted.clone().text());
           await runtime.drain();
-          expect(
-            (await piTurnEvents(runtime, scope))
-              .map((event) => event.id)
-              .sort((left, right) => left.localeCompare(right)),
-          ).toEqual([
-            "pi:assistant:ended:first",
-            "pi:assistant:ended:second",
-            "pi:assistant:ended:third",
+          expect(await turnStarts(runtime)).toEqual([
+            "pi:assistant:started:first",
+            "pi:assistant:started:second",
+            "pi:assistant:started:third",
           ]);
         }),
         then.assert(
