@@ -181,8 +181,8 @@ for large files. See [Release](apps/backoffice/README.md#release) in the applica
   [`backoffice-apps` skill](.agents/skills/backoffice-apps/SKILL.md) explains the integration.
 - **The HTTP API** is defined in [`@fragno-dev/backoffice-api`](packages/backoffice-api), with an
   OpenAPI document.
-- **The CLI** in [`apps/backoffice-cli`](apps/backoffice-cli) signs in through the device flow, runs
-  code in a workspace, and moves files.
+- **The CLI** in [`apps/leyway-cli`](apps/leyway-cli) signs in through the device flow, runs code in
+  a workspace, and moves files.
 - **Marketplace packages** bundle workflows, routes, and agents. See the
   [built-in packages](apps/backoffice/content/marketplace) for examples.
 
@@ -193,7 +193,7 @@ for large files. See [Release](apps/backoffice/README.md#release) in the applica
 | [`apps/backoffice`](apps/backoffice)                               | The Leyway application                                 |
 | [`apps/cf-sandbox-bridge`](apps/cf-sandbox-bridge)                 | Code execution and sandboxed computers                 |
 | [`apps/bookkeeping`](apps/bookkeeping)                             | An accounting app built on Leyway                      |
-| [`apps/backoffice-cli`](apps/backoffice-cli)                       | The command-line client                                |
+| [`apps/leyway-cli`](apps/leyway-cli)                               | The command-line client                                |
 | [`packages-private/design-system`](packages-private/design-system) | UI components and their Storybook                      |
 | [`packages`](packages)                                             | Fragno, and the Fragno libraries Leyway's features use |
 

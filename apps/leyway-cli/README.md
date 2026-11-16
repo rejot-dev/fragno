@@ -1,0 +1,45 @@
+# Leyway CLI
+
+The officially supported command-line client for a Leyway server.
+
+From the repository root:
+
+```bash
+pnpm leyway --help
+pnpm leyway login --open
+pnpm leyway scopes
+```
+
+The CLI discovers local Leyway servers, authenticates through the OAuth device flow, manages
+scope-specific credentials, fetches codemode declarations, runs scoped JavaScript or shell commands,
+and transfers files between the local filesystem and scoped Leyway filesystems. It can also listen
+to the scoped Automations mutation stream as newline-delimited JSON, reconnecting with the last
+observed versionstamp when the server rotates the stream. Uploads target `/workspace`; downloads
+also support read-only paths such as `/static`. `leyway system` prints to stdout by default. When
+given an output path, it creates a new owner-only file and refuses to overwrite an existing path.
+
+Run `leyway scopes` to print the exact scope arguments available to the authenticated user.
+Organization scope arguments always use the organization **slug**, never its internal ID:
+
+```text
+org:<organization-slug>
+user:<user-id>
+app:<owner>:<app-id>
+project:<owner>:<project-id>
+```
+
+An `<owner>` is `org:<organization-slug>` or `user:<user-id>`; a project's owner may also be an app,
+e.g. `project:app:org:<organization-slug>:<app-id>:<project-id>`.
+
+For an organization with the slug `acme`, commands look like:
+
+```bash
+leyway listen org:acme
+leyway listen org:acme --after-versionstamp 000000000000000000000000
+leyway upload org:acme ./report.pdf /workspace/reports/report.pdf
+leyway download org:acme /workspace/reports/report.pdf ./report.pdf
+leyway download org:acme /static/SYSTEM.md ./SYSTEM.md
+```
+
+Set `LEYWAY_URL` to select a server, `LEYWAY_AUTH_FILE` to override credential storage, or
+`LEYWAY_OPEN_BROWSER=1` to open the device authorization page during login.

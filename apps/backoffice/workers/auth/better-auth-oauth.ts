@@ -10,7 +10,7 @@ import {
   type OAuthClientAdministrativeResponse,
 } from "@better-auth/oauth-provider";
 
-import type { BackofficeCliOAuthConfig } from "@/fragno/auth/contracts";
+import type { LeywayCliOAuthConfig } from "@/fragno/auth/contracts";
 import {
   BACKOFFICE_CLIENT_CREDENTIALS_SCOPES,
   BACKOFFICE_OAUTH_SCOPES,
@@ -31,7 +31,7 @@ import type { BackofficeOAuthExecutionPolicy } from "./backoffice-execution-toke
 import { enforceBackofficeOAuthTokenResponseConsent } from "./better-auth-oauth-consent";
 
 const BACKOFFICE_CODEMODE_OAUTH_SOFTWARE_ID = "fragno-backoffice-codemode";
-const BACKOFFICE_CODEMODE_OAUTH_CLIENT_NAME = "Leyway Codemode";
+const BACKOFFICE_CODEMODE_OAUTH_CLIENT_NAME = "Leyway CLI";
 const BACKOFFICE_CODEMODE_OAUTH_BOOTSTRAP_SUBJECT = "fragno-backoffice-oauth-bootstrap";
 const BACKOFFICE_CODEMODE_OAUTH_SCOPES = ["openid", "offline_access", "backoffice"] as const;
 const BACKOFFICE_CODEMODE_OAUTH_SCOPE = BACKOFFICE_CODEMODE_OAUTH_SCOPES.join(" ");
@@ -149,6 +149,16 @@ async function ensureBackofficeCodemodeOAuthClient(
     ],
   });
   if (existingClient) {
+    // The name is shown to people approving the CLI, so a client created under an earlier name
+    // takes the current one.
+    if (existingClient.name !== BACKOFFICE_CODEMODE_OAUTH_CLIENT_NAME) {
+      await adapter.update<StoreOAuthClient>({
+        model: "oauthClient",
+        where: [{ field: "clientId", value: existingClient.clientId }],
+        update: { name: BACKOFFICE_CODEMODE_OAUTH_CLIENT_NAME },
+      });
+      return { ...existingClient, name: BACKOFFICE_CODEMODE_OAUTH_CLIENT_NAME };
+    }
     return existingClient;
   }
 
@@ -543,10 +553,10 @@ export async function initializeBackofficeOAuthResource(
   await ensureBackofficeOAuthResource((await getAuthContext(auth)).adapter, baseURL);
 }
 
-export async function getBackofficeCliOAuthConfig(
+export async function getLeywayCliOAuthConfig(
   auth: BetterAuthInstance,
   input: { requestUrl: string },
-): Promise<BackofficeCliOAuthConfig> {
+): Promise<LeywayCliOAuthConfig> {
   const baseURL = new URL(input.requestUrl).origin;
   const { client } = await loadBackofficeCodemodeOAuth(auth, baseURL);
   return {

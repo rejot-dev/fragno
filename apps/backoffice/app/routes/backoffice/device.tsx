@@ -48,7 +48,7 @@ async function loadBackofficeDeviceAuthorization(
 
   await requireBackofficeBrowserSession({ request, context, url });
 
-  const config = await getAuthDurableObject(context).commands.getBackofficeCliOAuthConfig({
+  const config = await getAuthDurableObject(context).commands.getLeywayCliOAuthConfig({
     requestUrl: request.url,
   });
   const deviceResponse = await callBetterAuth(
@@ -70,7 +70,7 @@ async function loadBackofficeDeviceAuthorization(
   }
 
   return {
-    clientName: "Leyway Codemode",
+    clientName: "Leyway CLI",
     userCode: userCode.data,
     scopes: deviceAuthorization.data.scope.split(/\s+/).filter(Boolean),
   };

@@ -6,6 +6,7 @@ import { dirname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
+
 import {
   backofficeErrorMessage,
   connectToBackoffice,
@@ -25,32 +26,32 @@ import {
 import { consumeAutomationOutboxStream } from "./automation-outbox-stream.js";
 import { writeBackofficeSystemPrompt } from "./system-prompt-output.js";
 
-const configuredBaseUrl = process.env["BACKOFFICE_URL"]?.replace(/\/$/, "") ?? null;
+const configuredBaseUrl = process.env["LEYWAY_URL"]?.replace(/\/$/, "") ?? null;
 const packageJsonPath = new URL("../package.json", import.meta.url);
 const cliVersion = JSON.parse(readFileSync(fileURLToPath(packageJsonPath), "utf8")).version;
 
 function usage(exitCode = 1): never {
   const output = exitCode === 0 ? console.log : console.error;
-  output(`Backoffice CLI
+  output(`Leyway CLI
 
-Connect to Fragno Backoffice and run authenticated codemode operations.
+Connect to Leyway and run authenticated codemode operations.
 
 Usage:
-  backoffice <command> [options]
+  leyway <command> [options]
 
 Commands:
   login                  Reuse stored authentication or sign in through the browser
   scopes                 Print scopes available to the authenticated user
-  probe                  Print the selected Backoffice server URL
+  probe                  Print the selected Leyway server URL
   doctor                 Verify authentication, SYSTEM.md, and read-only execution
   system [scope] [file]  Print SYSTEM.md or create an owner-only output file
   listen <scope>         Listen to the scoped Automations NDJSON mutation stream
   exec <scope> <code>    Execute a JavaScript codemode function
   bash <scope> <command> Execute a shell command in the scoped runtime
   upload <scope> <local-file> <workspace-path>
-                         Upload a local file into Backoffice /workspace
-  download <scope> <backoffice-path> <local-file>
-                         Download a Backoffice file locally
+                         Upload a local file into Leyway /workspace
+  download <scope> <leyway-path> <local-file>
+                         Download a Leyway file locally
 
 Scope syntax:
   system
@@ -63,7 +64,7 @@ Scope syntax:
   also be an app, e.g. project:app:org:<organization-slug>:<app-id>:<project-id>.
 
   Organization scopes always use the slug after org:, never the internal organization ID.
-  Run 'backoffice scopes' to print the exact values available to you.
+  Run 'leyway scopes' to print the exact values available to you.
 
 Login options:
   --open                 Open the browser when device authorization is required
@@ -84,25 +85,25 @@ Exec and bash options:
   bash prints the combined output and exits with the command's exit code.
 
 Global options:
-  --base-url URL         Select a Backoffice server instead of auto-discovery
+  --base-url URL         Select a Leyway server instead of auto-discovery
   -h, --help             Show this help
   -v, --version          Show the CLI version
 
 Examples:
-  backoffice login --open
-  backoffice scopes
-  backoffice doctor
-  backoffice system org:acme ./SYSTEM.md
-  backoffice listen org:acme
-  backoffice exec org:acme 'async () => await state.readdir({ path: "/" })'
-  backoffice bash org:acme --cwd /workspace 'find . -maxdepth 2'
-  backoffice upload org:acme ./report.pdf /workspace/reports/report.pdf
-  backoffice download org:acme /workspace/reports/report.pdf ./report.pdf
+  leyway login --open
+  leyway scopes
+  leyway doctor
+  leyway system org:acme ./SYSTEM.md
+  leyway listen org:acme
+  leyway exec org:acme 'async () => await state.readdir({ path: "/" })'
+  leyway bash org:acme --cwd /workspace 'find . -maxdepth 2'
+  leyway upload org:acme ./report.pdf /workspace/reports/report.pdf
+  leyway download org:acme /workspace/reports/report.pdf ./report.pdf
 
 Environment:
-  BACKOFFICE_URL          Default Backoffice server URL
-  BACKOFFICE_AUTH_FILE    Override the credential file location
-  BACKOFFICE_OPEN_BROWSER Open the browser during login when set to 1
+  LEYWAY_URL              Default Leyway server URL
+  LEYWAY_AUTH_FILE        Override the credential file location
+  LEYWAY_OPEN_BROWSER     Open the browser during login when set to 1
 `);
   process.exit(exitCode);
 }
@@ -180,7 +181,7 @@ async function resolveCliBaseUrl(requestedBaseUrl: string | null | undefined): P
 }
 
 async function login(args: string[]): Promise<void> {
-  const openBrowser = takeFlag(args, "--open") || process.env["BACKOFFICE_OPEN_BROWSER"] === "1";
+  const openBrowser = takeFlag(args, "--open") || process.env["LEYWAY_OPEN_BROWSER"] === "1";
   const forceLogin = takeFlag(args, "--force");
   const requestedBaseUrl = getFlag(args, "--base-url", configuredBaseUrl);
   if (args.length > 0) {
@@ -217,7 +218,7 @@ async function printAvailableScopes(args: string[]): Promise<void> {
   const scopes = await listBackofficeAvailableScopesForServer({ baseUrl });
   const argumentWidth = Math.max(...scopes.map((scope) => scope.argument.length));
 
-  console.log("Available Backoffice scopes:");
+  console.log("Available Leyway scopes:");
   for (const scope of scopes) {
     const defaultLabel = scope.isDefault ? " (default)" : "";
     console.log(`  ${scope.argument.padEnd(argumentWidth)}  ${scope.label}${defaultLabel}`);
@@ -462,7 +463,7 @@ async function execBash(args: string[]): Promise<void> {
   process.exitCode = result.exitCode;
 }
 
-export async function runBackofficeCli(argv = process.argv.slice(2)): Promise<void> {
+export async function runLeywayCli(argv = process.argv.slice(2)): Promise<void> {
   const [command, ...args] = argv;
   try {
     if (!command || command === "help" || command === "--help" || command === "-h") {
@@ -499,11 +500,11 @@ export async function runBackofficeCli(argv = process.argv.slice(2)): Promise<vo
       usage();
     }
   } catch (error) {
-    console.error(`Backoffice CLI error: ${backofficeErrorMessage(error)}`);
+    console.error(`Leyway CLI error: ${backofficeErrorMessage(error)}`);
     process.exitCode = 1;
   }
 }
 
 if (import.meta.main) {
-  await runBackofficeCli();
+  await runLeywayCli();
 }

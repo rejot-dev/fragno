@@ -14,9 +14,9 @@
 
 ## Register once; repair explicitly
 
-Run administration through the Backoffice CLI in **System scope as a global administrator**.
-`admin.*` commands belong to Backoffice's runtime, not the host shell or the public v0 API. Creating
-the setup script is separate from permission to run it against a deployment.
+Run administration through the Leyway CLI in **System scope as a global administrator**. `admin.*`
+commands belong to Backoffice's runtime, not the host shell or the public v0 API. Creating the setup
+script is separate from permission to run it against a deployment.
 
 Provision a dedicated confidential client, using authorization code + S256 PKCE,
 `client_secret_basic`, and the scopes `openid profile email offline_access backoffice`. Enable
@@ -54,8 +54,8 @@ The script owns convergence on the declaration above:
    a connection ID its agents call or its packages' listing IDs; then that constant is the slug.
    Derive callback, action, and first-party branding URLs from those origins. Import action
    declarations from the handler's canonical definition.
-2. Build the Backoffice CLI, then use its `login` and `exec system` flow against the selected
-   Backoffice origin. Parse structured command results and stop on a failed subprocess.
+2. Build the Leyway CLI, then use its `login` and `exec system` flow against the selected Backoffice
+   origin. Parse structured command results and stop on a failed subprocess.
 3. Find the stored OAuth client, following list cursors. Create it only when absent; otherwise
    repair its callback, scopes, and client-credentials setting. Preserve an existing secret;
    recovering a missing secret requires deliberate rotation by the client's owning administrator.

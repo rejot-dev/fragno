@@ -135,9 +135,9 @@ One-time setup, as a Backoffice global administrator, from the repository root:
 pnpm --dir apps/bookkeeping backoffice:connect
 ```
 
-The script signs in through the Backoffice CLI, creates Bookkeeping's OAuth client (or repairs the
-one in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with
-`org.read`; `upload.read` and `upload.modify` (for [documents](#documents)); `packages.install`,
+The script signs in through the Leyway CLI, creates Bookkeeping's OAuth client (or repairs the one
+in `.dev.vars`: callback URL, scopes, and client credentials), registers the app with `org.read`;
+`upload.read` and `upload.modify` (for [documents](#documents)); `packages.install`,
 `packages.read`, `pi.modify`, `pi.read`, `models.extract`, `integrations.read`, and
 `integrations.execute` (for the [agents](#agent-packages)); and the actions declared in
 `workers/backoffice/actions.ts`; publishes the [agents' packages](#agent-packages) in Bookkeeping's

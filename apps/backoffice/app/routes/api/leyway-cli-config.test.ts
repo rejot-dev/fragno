@@ -1,13 +1,13 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { getAuthDurableObject, getBackofficeCliOAuthConfig } = vi.hoisted(() => ({
+const { getAuthDurableObject, getLeywayCliOAuthConfig } = vi.hoisted(() => ({
   getAuthDurableObject: vi.fn(),
-  getBackofficeCliOAuthConfig: vi.fn(),
+  getLeywayCliOAuthConfig: vi.fn(),
 }));
 
 vi.mock("@/worker-runtime/durable-objects", () => ({ getAuthDurableObject }));
 
-import { loader } from "./backoffice-cli-config";
+import { loader } from "./leyway-cli-config";
 
 const context = {} as never;
 const config = {
@@ -20,12 +20,12 @@ const config = {
 
 beforeEach(() => {
   getAuthDurableObject.mockReset();
-  getBackofficeCliOAuthConfig.mockReset();
-  getBackofficeCliOAuthConfig.mockResolvedValue(config);
-  getAuthDurableObject.mockReturnValue({ commands: { getBackofficeCliOAuthConfig } });
+  getLeywayCliOAuthConfig.mockReset();
+  getLeywayCliOAuthConfig.mockResolvedValue(config);
+  getAuthDurableObject.mockReturnValue({ commands: { getLeywayCliOAuthConfig } });
 });
 
-describe("Backoffice CLI OAuth configuration route", () => {
+describe("Leyway CLI OAuth configuration route", () => {
   test("publishes the first-party client configuration without a session", async () => {
     const request = new Request("https://backoffice.example/api/backoffice/cli-config");
 
@@ -34,6 +34,6 @@ describe("Backoffice CLI OAuth configuration route", () => {
     assert(response.status === 200);
     assert.equal(response.headers.get("cache-control"), "no-store");
     expect(await response.json()).toEqual(config);
-    expect(getBackofficeCliOAuthConfig).toHaveBeenCalledWith({ requestUrl: request.url });
+    expect(getLeywayCliOAuthConfig).toHaveBeenCalledWith({ requestUrl: request.url });
   });
 });

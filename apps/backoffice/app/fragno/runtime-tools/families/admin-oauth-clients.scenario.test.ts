@@ -474,7 +474,7 @@ describe("admin OAuth client SQLite scenarios", () => {
               }
               const cli = await ctx.runtime.objects.auth
                 .singleton()
-                .commands.getBackofficeCliOAuthConfig({ requestUrl: "https://backoffice.example" });
+                .commands.getLeywayCliOAuthConfig({ requestUrl: "https://backoffice.example" });
               expected.push(cli.clientId);
               const tools = createBackofficeToolContext(oauthAdminContext(ctx, "admin-1"));
               const catalog = await executeBackofficeRuntimeTool(
@@ -851,7 +851,7 @@ describe("admin OAuth client SQLite scenarios", () => {
                 new Request("http://localhost/api/auth/get-session"),
               );
               assert.equal(await anonymous.json(), null);
-              const cli = await auth.commands.getBackofficeCliOAuthConfig({
+              const cli = await auth.commands.getLeywayCliOAuthConfig({
                 requestUrl: "https://backoffice.example",
               });
               assert.notEqual(cli.clientId, ctx.vars.clientId);
@@ -1073,7 +1073,7 @@ describe("admin OAuth client SQLite scenarios", () => {
                 }),
               );
               assert.equal(new Set(results).size, 3);
-              const cli = await auth.commands.getBackofficeCliOAuthConfig({
+              const cli = await auth.commands.getLeywayCliOAuthConfig({
                 requestUrl: "http://localhost",
               });
               expect(results).not.toContain(cli.clientId);

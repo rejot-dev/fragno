@@ -49,7 +49,7 @@ type AuthTestObject = Awaited<
   ? TObject
   : never;
 
-type OAuthConfig = Awaited<ReturnType<AuthTestObject["commands"]["getBackofficeCliOAuthConfig"]>>;
+type OAuthConfig = Awaited<ReturnType<AuthTestObject["commands"]["getLeywayCliOAuthConfig"]>>;
 
 type SignedUpUser = {
   runtime: Awaited<ReturnType<typeof createInMemoryBackofficeRuntime>>;
@@ -123,7 +123,7 @@ async function signUpUser(): Promise<SignedUpUser> {
     assert.fail(await organizationResponse.text());
   }
   const organizationId = ((await organizationResponse.json()) as { id: string }).id;
-  const config = await auth.commands.getBackofficeCliOAuthConfig({
+  const config = await auth.commands.getLeywayCliOAuthConfig({
     requestUrl: `${baseUrl}/api/config`,
   });
   return { runtime, auth, user: result.user, sessionCookie, organizationId, config };

@@ -81,8 +81,9 @@ export default function AuthorizedApplications({
           <SurfacePanelBody>
             <div className="max-w-3xl space-y-2 text-sm text-pretty text-[var(--bo-muted)]">
               <p>
-                These are your personal OAuth authorizations, including Codemode device approval.
-                They are separate from organization app installations and permission grants.
+                These are your personal OAuth authorizations, including devices you signed in, such
+                as the Leyway CLI. They are separate from organization app installations and
+                permission grants.
               </p>
               <p className="text-xs text-[var(--bo-muted-2)]">
                 Revoking removes the authorization and this client&apos;s refresh and stored access
@@ -97,7 +98,7 @@ export default function AuthorizedApplications({
             <BackofficeSystemState
               tone="empty"
               title="You have no authorized applications."
-              description="Applications you approve, such as Codemode, appear here."
+              description="Applications you approve, such as the Leyway CLI, appear here."
               flush
             />
           ) : (

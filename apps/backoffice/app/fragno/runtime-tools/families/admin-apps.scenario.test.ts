@@ -502,7 +502,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
               );
               const cli = await ctx.runtime.objects.auth
                 .singleton()
-                .commands.getBackofficeCliOAuthConfig({ requestUrl: "https://backoffice.test" });
+                .commands.getLeywayCliOAuthConfig({ requestUrl: "https://backoffice.test" });
               for (const requestedPermissions of [
                 [...permissions, ...permissions],
                 [{ namespace: "events", permission: "invalid" }],

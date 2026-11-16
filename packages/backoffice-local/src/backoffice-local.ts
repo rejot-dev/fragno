@@ -27,8 +27,8 @@ import {
 } from "./backoffice-server-url.js";
 import { openBackofficeVerificationUrl } from "./browser-verification.js";
 
-/** Slug-backed scope syntax accepted by Backoffice CLI commands and public routes. */
-export type BackofficeCliScope = BackofficePublicScope;
+/** Slug-backed scope syntax accepted by Leyway CLI commands and public routes. */
+export type LeywayCliScope = BackofficePublicScope;
 
 type OAuthCredential = {
   clientId: string;
@@ -49,7 +49,7 @@ type StoredAuthState = {
   backoffice: BackofficeCredential;
 };
 
-type BackofficeCliOAuthConfig = {
+type LeywayCliOAuthConfig = {
   clientId: string;
   scope: string;
   deviceAuthorizationEndpoint: string;
@@ -116,7 +116,7 @@ function responseMessage(body: unknown): string {
   }
   return typeof body === "string" ? body : JSON.stringify(body);
 }
-const configuredBaseUrl = process.env["BACKOFFICE_URL"]?.replace(/\/$/, "") ?? null;
+const configuredBaseUrl = process.env["LEYWAY_URL"]?.replace(/\/$/, "") ?? null;
 const authFile = resolveBackofficeAuthFile();
 const oauthDeviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code";
 const credentialRefreshLeewayMs = 30_000;
@@ -132,21 +132,21 @@ class BackofficeTokenExchangeError extends Error {
 }
 
 export function resolveBackofficeAuthFile(): string {
-  const configured = process.env["BACKOFFICE_AUTH_FILE"]?.trim();
+  const configured = process.env["LEYWAY_AUTH_FILE"]?.trim();
   if (configured) {
     return resolve(
       configured.startsWith("~/") ? `${homedir()}/${configured.slice(2)}` : configured,
     );
   }
   const stateHome = process.env["XDG_STATE_HOME"]?.trim() || resolve(homedir(), ".local/state");
-  return resolve(stateHome, "fragno/backoffice-cli/auth.json");
+  return resolve(stateHome, "leyway-cli/auth.json");
 }
 
 function isBackofficeContextScope(value: unknown): value is BackofficeContextScope {
   return backofficeContextScopeSchema.safeParse(value).success;
 }
 
-export function parseBackofficeScope(segment: string): BackofficeCliScope {
+export function parseBackofficeScope(segment: string): LeywayCliScope {
   try {
     return parseBackofficeScopeSegment(segment, backofficePublicScopeCodec);
   } catch (error) {
@@ -376,9 +376,9 @@ export async function probeBackofficeServer({
   return selected;
 }
 
-function parseBackofficeCliOAuthConfig(value: unknown, baseUrl: string): BackofficeCliOAuthConfig {
+function parseLeywayCliOAuthConfig(value: unknown, baseUrl: string): LeywayCliOAuthConfig {
   if (!value || typeof value !== "object") {
-    throw new Error("Backoffice CLI OAuth configuration has an invalid response shape.");
+    throw new Error("Leyway CLI OAuth configuration has an invalid response shape.");
   }
   const config = value as Record<string, unknown>;
   if (
@@ -388,7 +388,7 @@ function parseBackofficeCliOAuthConfig(value: unknown, baseUrl: string): Backoff
     typeof config["tokenEndpoint"] !== "string" ||
     typeof config["verificationUri"] !== "string"
   ) {
-    throw new Error("Backoffice CLI OAuth configuration has an invalid response shape.");
+    throw new Error("Leyway CLI OAuth configuration has an invalid response shape.");
   }
 
   return {
@@ -412,10 +412,10 @@ function parseBackofficeCliOAuthConfig(value: unknown, baseUrl: string): Backoff
   };
 }
 
-async function registerOrLoadOAuthClient(baseUrl: string): Promise<BackofficeCliOAuthConfig> {
+async function registerOrLoadOAuthClient(baseUrl: string): Promise<LeywayCliOAuthConfig> {
   const response = await fetchBackofficeWithoutRedirect(`${baseUrl}/api/backoffice/cli-config`, {});
-  return parseBackofficeCliOAuthConfig(
-    await assertOk(response, "Load Backoffice CLI OAuth configuration"),
+  return parseLeywayCliOAuthConfig(
+    await assertOk(response, "Load Leyway CLI OAuth configuration"),
     baseUrl,
   );
 }
@@ -436,7 +436,7 @@ function isDeviceCodeResponse(value: unknown): value is DeviceCodeResponse {
 }
 
 async function requestDeviceCode(
-  config: BackofficeCliOAuthConfig,
+  config: LeywayCliOAuthConfig,
   baseUrl: string,
 ): Promise<DeviceCodeResponse> {
   const body = new URLSearchParams({
@@ -488,7 +488,7 @@ function parseOAuthTokenResponse(
 }
 
 async function pollForOAuthToken(
-  config: BackofficeCliOAuthConfig,
+  config: LeywayCliOAuthConfig,
   deviceCode: DeviceCodeResponse,
   baseUrl: string,
 ): Promise<OAuthToken> {
@@ -542,7 +542,7 @@ function isCredentialUnexpired(expiresAt: string): boolean {
 
 async function refreshOAuthAccessToken(
   auth: StoredAuthState,
-  config: BackofficeCliOAuthConfig,
+  config: LeywayCliOAuthConfig,
 ): Promise<StoredAuthState> {
   const response = await fetchBackofficeWithoutRedirect(config.tokenEndpoint, {
     method: "POST",
@@ -558,7 +558,7 @@ async function refreshOAuthAccessToken(
     const body = await readJsonResponse(response);
     throw new BackofficeTokenExchangeError(
       response.status,
-      `OAuth token refresh failed (${response.status}): ${responseMessage(body)}. Run backoffice login again.`,
+      `OAuth token refresh failed (${response.status}): ${responseMessage(body)}. Run leyway login again.`,
     );
   }
 
@@ -621,11 +621,11 @@ async function exchangeOAuthTokenForBackofficeJwt(
 
 async function ensureOAuthAccessToken(
   baseUrl: string,
-): Promise<{ auth: StoredAuthState; config: BackofficeCliOAuthConfig }> {
+): Promise<{ auth: StoredAuthState; config: LeywayCliOAuthConfig }> {
   const config = await registerOrLoadOAuthClient(baseUrl);
   let auth = await readAuth();
   if (!auth || auth.baseUrl !== baseUrl || auth.oauth.clientId !== config.clientId) {
-    throw new Error(`No OAuth credential is stored for ${baseUrl}. Run backoffice login.`);
+    throw new Error(`No OAuth credential is stored for ${baseUrl}. Run leyway login.`);
   }
   if (!isCredentialUnexpired(auth.oauth.accessTokenExpiresAt)) {
     auth = await refreshOAuthAccessToken(auth, config);
@@ -641,7 +641,7 @@ async function ensureBackofficeJwtForScope({
   baseUrl: string;
   scope: BackofficeContextScope | null;
   forceExchange?: boolean;
-}): Promise<{ auth: StoredAuthState; config: BackofficeCliOAuthConfig }> {
+}): Promise<{ auth: StoredAuthState; config: LeywayCliOAuthConfig }> {
   let { auth, config } = await ensureOAuthAccessToken(baseUrl);
   const cachedScopeMatches =
     scope === null || backofficeContextScopesEqual(auth.backoffice.scope, scope);
@@ -732,7 +732,7 @@ async function ensureAuthenticatedState(
   return { auth, me: current.body };
 }
 
-function formatBackofficeScopeArgument(scope: BackofficeCliScope): string {
+function formatBackofficeScopeArgument(scope: LeywayCliScope): string {
   return formatBackofficeScopeSegment(scope, backofficePublicScopeCodec);
 }
 
@@ -769,7 +769,7 @@ export function getBackofficeLoginSummary({ baseUrl, me }: { baseUrl: string; me
 
 function resolveBackofficeContextScope(
   me: BackofficeMe,
-  scope: BackofficeCliScope,
+  scope: LeywayCliScope,
 ): BackofficeContextScope {
   if (scope.kind === "system") {
     if (me.user.role !== "admin") {
@@ -791,7 +791,7 @@ function resolveBackofficeContextScope(
       )?.organization;
       if (!organization) {
         throw new Error(
-          `Organization slug '${orgSlug}' is not available to the authenticated user. Run 'backoffice scopes' to list available organization slugs; org:* never accepts an internal organization ID.`,
+          `Organization slug '${orgSlug}' is not available to the authenticated user. Run 'leyway scopes' to list available organization slugs; org:* never accepts an internal organization ID.`,
         );
       }
       return { orgId: organization.id, jurisdiction: organization.jurisdiction };
@@ -808,7 +808,7 @@ function resolveBackofficeContextScope(
 
 async function authedFetch(
   pathForScope: (scope: BackofficeContextScope) => string,
-  scope: BackofficeCliScope,
+  scope: LeywayCliScope,
   options: AuthedFetchOptions = {},
 ): Promise<Response> {
   const { baseUrl: requestedBaseUrl, ...fetchOptions } = options;
@@ -846,7 +846,7 @@ async function authedFetch(
   return await fetchWithAuth(auth);
 }
 
-export function resolveDefaultBackofficeScope(me: BackofficeMe): BackofficeCliScope {
+export function resolveDefaultBackofficeScope(me: BackofficeMe): LeywayCliScope {
   const membership =
     me.organizations.find(({ organization }) => organization.id === me.activeOrganizationId) ??
     me.organizations[0];
@@ -943,7 +943,7 @@ export async function connectToBackoffice(options: {
 
 export async function resolveBackofficeDefaultScopeForServer(options: {
   baseUrl: string;
-}): Promise<BackofficeCliScope> {
+}): Promise<LeywayCliScope> {
   const session = await ensureAuthenticatedState(options.baseUrl);
   return resolveDefaultBackofficeScope(session.me);
 }
@@ -958,7 +958,7 @@ export async function listBackofficeAvailableScopesForServer(options: {
 
 export async function fetchBackofficeSystemPrompt(options: {
   baseUrl: string;
-  scope?: BackofficeCliScope;
+  scope?: LeywayCliScope;
 }): Promise<string> {
   const session = await ensureAuthenticatedState(options.baseUrl);
   const scope = options.scope ?? resolveDefaultBackofficeScope(session.me);
@@ -976,7 +976,7 @@ export async function fetchBackofficeSystemPrompt(options: {
 /** Opens the authenticated protocol-1 framed NDJSON stream for one scoped Automations runtime. */
 export async function openBackofficeAutomationsStream(options: {
   baseUrl: string;
-  scope: BackofficeCliScope;
+  scope: LeywayCliScope;
   afterVersionstamp?: string;
   signal?: AbortSignal;
 }): Promise<ReadableStream<Uint8Array>> {
@@ -1000,7 +1000,7 @@ export async function openBackofficeAutomationsStream(options: {
 
 export async function executeBackofficeCodemode(options: {
   baseUrl: string;
-  scope: BackofficeCliScope;
+  scope: LeywayCliScope;
   code: string;
   dependencies?: Record<string, string>;
   timeout?: number;
@@ -1034,7 +1034,7 @@ function requireSafeBackofficeWorkspaceFileKey(fileKey: string): string {
   return normalized;
 }
 
-function requireBackofficeWorkspaceScope(scope: BackofficeCliScope): void {
+function requireBackofficeWorkspaceScope(scope: LeywayCliScope): void {
   if (scope.kind === "system") {
     throw new Error("Backoffice system scope does not have a /workspace filesystem.");
   }
@@ -1043,7 +1043,7 @@ function requireBackofficeWorkspaceScope(scope: BackofficeCliScope): void {
 /** Downloads bytes from an absolute path in the selected Backoffice filesystem. */
 export async function downloadBackofficeFile(options: {
   baseUrl: string;
-  scope: BackofficeCliScope;
+  scope: LeywayCliScope;
   path: string;
   signal?: AbortSignal;
 }): Promise<Uint8Array> {
@@ -1099,7 +1099,7 @@ export async function downloadBackofficeFile(options: {
 /** Uploads bytes into the persistent Backoffice workspace for the selected scope. */
 export async function uploadBackofficeWorkspaceFile(options: {
   baseUrl: string;
-  scope: BackofficeCliScope;
+  scope: LeywayCliScope;
   fileKey: string;
   content: ReadableStream<Uint8Array>;
   sizeBytes: number;
@@ -1130,7 +1130,7 @@ export async function uploadBackofficeWorkspaceFile(options: {
 
 export async function executeBackofficeBash(options: {
   baseUrl: string;
-  scope: BackofficeCliScope;
+  scope: LeywayCliScope;
   command: string;
   cwd?: string;
   timeout?: number;
