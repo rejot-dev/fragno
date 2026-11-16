@@ -95,6 +95,34 @@ describe("sorted-array index", () => {
     expect(descending).toEqual(["d", "c", "b"]);
   });
 
+  it("narrows scans to a key prefix within cursor bounds, in either direction", () => {
+    const index = new SortedArrayIndex<string>(compareValue);
+
+    index.insert(["a", 1], "a1");
+    index.insert(["b", 1], "b1");
+    index.insert(["b", 2], "b2");
+    index.insert(["b", 3], "b3");
+    index.insert(["c", 1], "c1");
+
+    const scan = (options: Parameters<typeof index.scan>[0]) =>
+      index.scan(options).map((entry) => entry.value);
+
+    expect(scan({ prefix: ["b"] })).toEqual(["b1", "b2", "b3"]);
+    expect(scan({ prefix: ["b"], direction: "desc" })).toEqual(["b3", "b2", "b1"]);
+    expect(scan({ prefix: ["b", 2] })).toEqual(["b2"]);
+    expect(scan({ prefix: ["bb"] })).toEqual([]);
+    expect(scan({ prefix: ["b"], start: ["b", 1], startInclusive: false })).toEqual(["b2", "b3"]);
+    expect(scan({ prefix: ["b"], end: ["b", 3], endInclusive: false, direction: "desc" })).toEqual([
+      "b2",
+      "b1",
+    ]);
+    expect(scan({ prefix: ["b"], start: ["a", 0], end: ["c", 9], endInclusive: true })).toEqual([
+      "b1",
+      "b2",
+      "b3",
+    ]);
+  });
+
   it("respects scan limits", () => {
     const index = new SortedArrayIndex<string>(compareValue);
 

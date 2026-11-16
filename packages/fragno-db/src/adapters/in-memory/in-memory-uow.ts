@@ -47,7 +47,7 @@ import type { AnySchema, AnyTable } from "../../schema/create";
 import { FragnoId, FragnoReference, getTableRelations } from "../../schema/create";
 import { SQLocalDriverConfig } from "../generic-sql/driver-config";
 import { snapshotInMemoryColumnValue } from "./column-value";
-import { evaluateCondition } from "./condition-evaluator";
+import { evaluateCondition, indexEqualityPrefix } from "./condition-evaluator";
 import type { ResolvedInMemoryAdapterOptions } from "./options";
 import { buildQueryTreeRowRaw, type ResolveQueryTreeChildStore } from "./query-tree";
 import { resolveReferenceSubqueries } from "./reference-resolution";
@@ -470,8 +470,6 @@ const findRows = (
     }
   }
 
-  const entries = orderIndex.index.scan(scanOptions);
-
   const whereResult = op.options.queryTree
     ? op.options.queryTree.where
     : op.options.where
@@ -483,6 +481,21 @@ const findRows = (
   }
 
   const condition = whereResult === true ? undefined : whereResult;
+  // SQL databases seek to the rows an index's leading equalities select; scanning the whole index
+  // instead made every query cost the size of its table.
+  const prefix = condition
+    ? indexEqualityPrefix(
+        condition,
+        table,
+        orderIndex.definition.columnNames,
+        namespaceStore,
+        resolver,
+        now,
+      )
+    : [];
+  const entries = orderIndex.index.scan(
+    prefix.length > 0 ? { ...scanOptions, prefix } : scanOptions,
+  );
   const results: InMemoryRow[] = [];
 
   for (const entry of entries) {

@@ -71,23 +71,77 @@ const resolveComparisonValue = (
     return { value: row[columnName], column: value };
   }
 
+  return {
+    value: resolveLiteralValue(value, column, table, namespaceStore, resolver, now),
+    column,
+  };
+};
+
+const resolveLiteralValue = (
+  value: unknown,
+  column: AnyColumn,
+  table: AnyTable,
+  namespaceStore?: InMemoryNamespaceStore,
+  resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
+): unknown => {
   if (isDbNow(value)) {
     const base = now();
     const offsetMs = getDbNowOffsetMs(value);
-    return {
-      value: offsetMs === 0 ? base : new Date(base.getTime() + offsetMs),
-      column,
-    };
+    return offsetMs === 0 ? base : new Date(base.getTime() + offsetMs);
   }
 
   if (column.role === "reference") {
-    return {
-      value: resolveReferenceValue(value, column, table, namespaceStore, resolver),
-      column,
-    };
+    return resolveReferenceValue(value, column, table, namespaceStore, resolver);
   }
 
-  return { value: resolveFragnoIdValue(value, column), column };
+  return resolveFragnoIdValue(value, column);
+};
+
+/**
+ * The leading key values of an index that every row matching `condition` has: the values its
+ * top-level `=` comparisons fix, normalized as `evaluateCondition` compares them.
+ */
+export const indexEqualityPrefix = (
+  condition: Condition,
+  table: AnyTable,
+  indexColumnNames: readonly string[],
+  namespaceStore: InMemoryNamespaceStore,
+  resolver?: NamingResolver,
+  now: () => Date = () => new Date(),
+): unknown[] => {
+  const fixedValues = new Map<string, unknown>();
+  const collect = (item: Condition) => {
+    if (item.type === "and") {
+      item.items.forEach(collect);
+      return;
+    }
+    // A column of another table, such as a join's, says nothing about this table's rows.
+    if (
+      item.type !== "compare" ||
+      item.operator !== "=" ||
+      item.b instanceof Column ||
+      table.columns[item.a.name] !== item.a
+    ) {
+      return;
+    }
+    const value = resolveLiteralValue(item.b, item.a, table, namespaceStore, resolver, now);
+    if (isNullish(value)) {
+      return;
+    }
+    const columnName = resolver ? resolver.getColumnName(table.name, item.a.name) : item.a.name;
+    fixedValues.set(columnName, normalizeIndexValue(value, item.a));
+  };
+  collect(condition);
+
+  const prefix: unknown[] = [];
+  for (const columnName of indexColumnNames) {
+    if (!fixedValues.has(columnName)) {
+      break;
+    }
+    prefix.push(fixedValues.get(columnName));
+  }
+  return prefix;
 };
 
 const normalizeLikeValue = (value: unknown, column: AnyColumn): string | null => {
