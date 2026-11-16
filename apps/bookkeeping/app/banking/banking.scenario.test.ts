@@ -310,11 +310,39 @@ test("statements are imported once, oldest first, each continuing the one before
     ).toMatchObject({
       error: `Statement ${YEAR}-03-again ends before the last imported statement: import statements oldest first.`,
     });
+    // A statement covering days imported before is refused, even where the movements it repeats
+    // add up to nothing, so it opens with the last closing balance and its own closing adds up.
+    const repeated = (reference: string, amountCents: number) => ({
+      reference,
+      bookingDate: `${YEAR}-04-25`,
+      amountCents,
+      counterparty: { name: "A. I. King", iban: "NL44RABO0123456789" },
+      remittance: "Advance",
+      information: "SEPA Overboeking",
+    });
+    const overlapping = nextStatement(
+      april,
+      { id: `${YEAR}-04-25`, startDate: `${YEAR}-04-25`, endDate: `${YEAR}-05-10` },
+      [repeated(`${YEAR}0425-001`, 3_000), repeated(`${YEAR}0425-002`, -3_000)],
+    );
+    expect(await importStatements(charles, current, [overlapping])).toMatchObject({
+      error: `Statement ${YEAR}-04-25 starts on ${YEAR}-04-25, a day the statements imported before cover: export statements starting after ${YEAR}-04-30, so no movement is imported twice.`,
+    });
+    // Banks such as ING give no period, and open with the balance before it, dated April's last
+    // day: May follows April all the same.
+    const mayWithoutPeriod = renderCamt053([may])
+      .replace(/<FrToDt>[\s\S]*?<\/FrToDt>\s*/u, "")
+      .replace("<Cd>OPBD</Cd>", "<Cd>PRCD</Cd>")
+      .replace(`<Dt><Dt>${YEAR}-05-01</Dt></Dt>`, `<Dt><Dt>${YEAR}-04-30</Dt></Dt>`);
+    expect(await importStatements(charles, current, mayWithoutPeriod)).toMatchObject({
+      error: null,
+      imported: { imported: 1, skipped: 0 },
+    });
 
     const { bankAccount: imported } = await bankAccount(charles, current);
     expect(imported.lastStatement).toEqual({
-      endDate: `${YEAR}-04-30`,
-      closingBalanceMinor: BigInt(closingCents(april)),
+      endDate: `${YEAR}-05-31`,
+      closingBalanceMinor: BigInt(closingCents(may)),
     });
     // The balance the first statement opened with is booked once, like a transaction.
     expect(

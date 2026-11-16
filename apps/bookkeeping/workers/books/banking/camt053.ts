@@ -38,7 +38,9 @@ export type Statement = {
   reference: string;
   iban: string;
   currency: string;
+  /** The first day it covers. */
   startDate: string;
+  /** The last day it covers. */
   endDate: string;
   openingBalanceMinor: bigint;
   closingBalanceMinor: bigint;
@@ -158,9 +160,14 @@ function readStatement(
           .map((details) => readPart(details, amountMinor > 0n ? "Dbtr" : "Cdtr")),
       };
     });
+  // A PRCD balance is the previous period's closing balance, dated that period's last day.
+  const openingStart =
+    openingDate !== undefined && balanceType(opening) === "PRCD"
+      ? dayAfter(openingDate)
+      : openingDate;
   const startDate =
     dateOf({ Dt: period?.FrDtTm }, reference) ??
-    openingDate ??
+    openingStart ??
     entries[0]?.bookingDate ??
     fail(`Statement ${reference} has no dates.`);
   const endDate =
@@ -244,6 +251,10 @@ function dateOf(element: Node | undefined, reference: string): string | undefine
     fail(`Statement ${reference} has an impossible date, ${value}.`);
   }
   return `${year}-${month}-${day}`;
+}
+
+function dayAfter(date: string): string {
+  return new Date(Date.parse(date) + 86_400_000).toISOString().slice(0, 10);
 }
 
 function node(value: unknown, name: string): Node | undefined {
