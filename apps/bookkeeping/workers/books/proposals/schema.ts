@@ -4,14 +4,31 @@ import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
  * The bookkeeping agent's proposal for something to book, from being asked to its answer: asked
  * under `requestId` and not answered yet, a `booking` it proposes, or why it proposes none.
  * Asking again replaces its answer. Times are ISO timestamps; `by` names the person the agent acted
- * for. A request is asked under a `generation` of the client's management, as the Directory
- * counts them.
+ * for. A request is asked of the agent of `firmId`, under a `generation` of the client's management,
+ * as the Directory counts them. It is `announced` once the books told the firm of it: a
+ * transaction's as it is asked, a document's once its file is shared with the firm.
  */
 export type ProposalRequest = {
   status: "requested";
   requestId: string;
   generation: number;
+  firmId: string;
+  announced: boolean;
   by: string;
+  at: string;
+};
+
+/**
+ * A change to a request the firm was told of, which the books tell the firm in turn: the request,
+ * with `prompt`, what its agent is asked, or how it ended. Its subject has one at a time, so the
+ * firm keeps each subject's latest as what it is to do.
+ */
+export type RequestChange = {
+  subjectId: string;
+  requestId: string;
+  firmId: string;
+  status: "requested" | "proposed" | "declined" | "withdrawn";
+  prompt: string | null;
   at: string;
 };
 

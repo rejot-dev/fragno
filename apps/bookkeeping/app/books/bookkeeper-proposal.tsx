@@ -96,12 +96,28 @@ function requestState(
       };
     case "failed":
       return { tone: "failed", label: "The agent failed", detail: progress.reason, askAgain: true };
-    case "lost":
+    case "unsent":
       return {
         tone: "failed",
         label: "The agent was never asked",
         detail:
-          "Backoffice did not receive the request, or could not set up the agent. Asking again says why.",
+          "Bookkeeping could not hand the request to the firm's agent. Asking again says why.",
+        askAgain: true,
+      };
+    case "sending":
+      return { tone: "waiting", label: "Asking the agent", detail: null, askAgain: false };
+    case "undelivered":
+      return {
+        tone: "failed",
+        label: "The agent was never asked",
+        detail: `Backoffice did not take the request: ${progress.reason}`,
+        askAgain: true,
+      };
+    case "waiting":
+      return {
+        tone: "waiting",
+        label: "Waiting for the agent",
+        detail: "The firm's bookkeeping agent starts on the requests it is given in turn.",
         askAgain: true,
       };
     case "unknown":
@@ -217,7 +233,7 @@ export function BookkeeperProposal({
   const navigation = useNavigation();
   usePollWhile(
     proposal?.status === "requested" &&
-      (progress?.status === "queued" || progress?.status === "running"),
+      ["sending", "waiting", "queued", "running"].includes(progress?.status ?? ""),
   );
   const ask = (label: string) => (
     <Form method="post">

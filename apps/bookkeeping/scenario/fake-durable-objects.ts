@@ -251,10 +251,17 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
   readonly #beforeNextCall = new Map<string, () => Promise<void>>();
   /** What happens once `remaining` more calls reached the binding's objects, before the next. */
   #afterCalls: { remaining: number; happen: () => Promise<void> } | null = null;
+  /** Whether an object's alarm due once a call to it ends fires before the call returns. */
+  readonly #runDueAlarmsAfterCalls: boolean;
 
-  constructor(objectClass: DurableObjectClass<TObject, TEnv>, env: TEnv) {
+  constructor(
+    objectClass: DurableObjectClass<TObject, TEnv>,
+    env: TEnv,
+    options: { runDueAlarmsAfterCalls: boolean } = { runDueAlarmsAfterCalls: false },
+  ) {
     this.#objectClass = objectClass;
     this.#env = env;
+    this.#runDueAlarmsAfterCalls = options.runDueAlarmsAfterCalls;
   }
 
   getByName(name: string): TObject {
@@ -346,10 +353,21 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
     }
   }
 
-  #stub({ state, object }: { state: FakeDurableObjectState; object: TObject }): TObject {
+  /** Fires the object's alarm if it is due, as the runtime does once it is. */
+  async #runDueAlarm(entry: { state: FakeDurableObjectState; object: TObject }): Promise<void> {
+    if (entry.state.dueAlarm(Date.now()) === null) {
+      return;
+    }
+    entry.state.clearAlarm();
+    await (entry.object as { alarm(): Promise<void> }).alarm();
+  }
+
+  #stub(entry: { state: FakeDurableObjectState; object: TObject }): TObject {
+    const { state, object } = entry;
     const failing = this.#failing;
     const beforeNextCall = this.#beforeNextCall;
     const takeAfterCalls = () => this.#takeAfterCalls();
+    const runDueAlarm = this.#runDueAlarmsAfterCalls ? () => this.#runDueAlarm(entry) : null;
     return new Proxy(object, {
       get(target, property) {
         // RPC reaches an object's methods by name, whatever its class declares.
@@ -378,6 +396,7 @@ export class FakeDurableObjectNamespace<TObject extends object, TEnv> {
               target,
               isFetch ? args : args.map((arg) => structuredClone(arg)),
             );
+            await runDueAlarm?.();
             return isFetch ? result : structuredClone(result);
           } catch (error) {
             throw rpcError(error);

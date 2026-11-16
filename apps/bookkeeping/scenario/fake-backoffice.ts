@@ -12,7 +12,10 @@ import {
   BACKOFFICE_TOKEN_ISSUER,
   type AppActionTokenClaims,
 } from "@fragno-dev/backoffice-api/v0/app-actions";
-import { marketplacePackageDeclarationSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
+import {
+  marketplacePackageDeclarationSchema,
+  type MarketplacePackageDeclaration,
+} from "@fragno-dev/backoffice-api/v0/marketplace";
 import type {
   OrganizationAccessRecord,
   OrganizationMembershipRecord,
@@ -110,8 +113,23 @@ type InstallRun = {
   version: string;
   outcome: { error: string | null } | null;
 };
-/** Who a credential acts as: a user who authorized Bookkeeping, or Bookkeeping itself. */
-type Principal = { kind: "user"; userId: string } | { kind: "app" };
+/**
+ * Who a credential acts as: a user who authorized Bookkeeping, or Bookkeeping itself; or the
+ * automation route whose work this is, such as an agent turn a route's notification started.
+ */
+type Principal =
+  | { kind: "user"; userId: string }
+  | { kind: "app" }
+  | { kind: "route"; routeId: string };
+/** An event an app fired into a workspace, by the workspace's key. */
+type StoredEvent = {
+  scope: string;
+  id: string;
+  source: string;
+  eventType: string;
+  payload: Record<string, unknown>;
+  occurredAt: string;
+};
 
 class ApiError extends Error {
   readonly code: BackofficeApiErrorCode;
@@ -177,15 +195,30 @@ export class FakeBackoffice {
   >();
   /** What each download URL reads, by its token: whatever the blob holds when it is read. */
   readonly #downloads = new Map<string, string>();
-  /** The agents each release in Bookkeeping's Marketplace defines, by listing ID and version. */
-  readonly #appPackages = new Map<string, readonly PiAgentDefinitionCreate[]>();
+  /** Bookkeeping's app ID, which names the source of the events it fires. */
+  readonly appId = "bookkeeping-app";
+  /**
+   * What each release in Bookkeeping's Marketplace declares, by listing ID and version: its agents,
+   * routes, event definitions, and the permissions its installer approves.
+   */
+  readonly #appPackages = new Map<string, MarketplacePackageDeclaration>();
   /** Each release's files, which never change once published. */
   readonly #appPackageFiles = new Map<string, Record<string, string>>();
   /**
    * The packages installed in each workspace, by scope and listing ID, with the run that installed
    * them, which completes at once unless installs are held.
    */
-  readonly #installations = new Map<string, { version: string; workflowInstanceId: string }>();
+  readonly #installations = new Map<
+    string,
+    { version: string; workflowInstanceId: string; declaration: MarketplacePackageDeclaration }
+  >();
+  /** Events fired into workspaces, in the order they arrived. */
+  readonly #events: StoredEvent[] = [];
+  /**
+   * Each event type's state in a workspace, for types defined with a key path: each key's latest
+   * event, by workspace, source, event type, and key.
+   */
+  readonly #eventStates = new Map<string, StoredEvent>();
   /** Install runs, by workflow instance ID. */
   readonly #installRuns = new Map<string, InstallRun>();
   /** Whether install runs wait for `finishInstalls`, and the runs waiting, in the order started. */
@@ -218,6 +251,8 @@ export class FakeBackoffice {
   readonly #failNextResponse = new Set<string>();
   /** Operations whose next request is lost before it reaches Backoffice. */
   readonly #failNextRequest = new Set<string>();
+  /** Operations every request for fails before reaching Backoffice, until restored. */
+  readonly #failingRequests = new Set<string>();
   /** How many requests for each scoped operation reached Backoffice. */
   readonly #operationCounts = new Map<string, number>();
   /** What happens elsewhere while Backoffice works on the next request for an operation. */
@@ -342,6 +377,17 @@ export class FakeBackoffice {
   }
 
   /**
+   * Every request for `operationId` fails as a network failure does, before Backoffice sees it,
+   * until the returned function is called.
+   */
+  failRequests(operationId: string): () => void {
+    this.#failingRequests.add(operationId);
+    return () => {
+      this.#failingRequests.delete(operationId);
+    };
+  }
+
+  /**
    * `happen` runs while Backoffice works on the next request for `operationId`, before it answers,
    * e.g. an agent answering while Bookkeeping asks how far it got.
    */
@@ -361,6 +407,95 @@ export class FakeBackoffice {
   #provisioned(scope: string, agentName: string): boolean {
     return this.#prompts.some(
       (prompt) => prompt.scope === scope && prompt.agentName === agentName && !prompt.subagent,
+    );
+  }
+
+  /** The declarations of the packages installed in a workspace, by its key. */
+  #declarationsIn(scope: string): MarketplacePackageDeclaration[] {
+    return [...this.#installations].flatMap(([key, { declaration }]) =>
+      key.startsWith(scope) ? [declaration] : [],
+    );
+  }
+
+  /** Keeps the event as its key's latest, when an installed package defines its type with a key path. */
+  #keepEventState(event: StoredEvent): void {
+    const definition = this.#declarationsIn(event.scope)
+      .flatMap(({ eventDefinitions }) => eventDefinitions)
+      .find(({ source, eventType }) => source === event.source && eventType === event.eventType);
+    if (!definition?.keyPath) {
+      return;
+    }
+    const stateKey = String(readPath(event.payload, definition.keyPath));
+    const id = `${event.scope}|${event.source}|${event.eventType}|${stateKey}`;
+    const latest = this.#eventStates.get(id);
+    if (!latest || latest.occurredAt <= event.occurredAt) {
+      this.#eventStates.set(id, event);
+    }
+  }
+
+  /**
+   * Runs the installed packages' routes the event matches. The fake knows one action, notifying an
+   * agent whose conversation started, which Bookkeeping's agent answers as its instructions say: it
+   * starts a subagent, as the route, for each request its event type's state lists as awaiting an
+   * answer and that none was started for.
+   */
+  #routeEvent(event: StoredEvent): void {
+    for (const route of this.#declarationsIn(event.scope).flatMap(({ routes }) => routes)) {
+      const { trigger, action } = route;
+      if (
+        trigger.kind !== "event" ||
+        trigger.source !== event.source ||
+        trigger.eventType !== event.eventType ||
+        action.kind !== "notify_agent" ||
+        (trigger.matcher !== null && !matches(trigger.matcher, event)) ||
+        // As in Backoffice, a notification reaches only an agent whose conversation started.
+        !this.#provisioned(event.scope, action.agentName)
+      ) {
+        continue;
+      }
+      const prefix = `${event.scope}|${event.source}|${event.eventType}|`;
+      for (const [id, state] of this.#eventStates) {
+        const { status, requestId, prompt } = state.payload;
+        if (
+          !id.startsWith(prefix) ||
+          status !== "requested" ||
+          typeof requestId !== "string" ||
+          typeof prompt !== "string" ||
+          this.#prompts.some(
+            (existing) =>
+              existing.scope === event.scope &&
+              existing.agentName === action.agentName &&
+              existing.requestId === requestId,
+          )
+        ) {
+          continue;
+        }
+        this.#prompts.push({
+          scope: event.scope,
+          agentName: action.agentName,
+          requestId,
+          content: prompt,
+          subagent: true,
+          whenBusy: null,
+          whenPaused: null,
+          prompter: { kind: "route", routeId: route.id },
+          status: { requestId, status: "queued" },
+          activity: { tools: [], omitted: 0 },
+        });
+      }
+    }
+  }
+
+  /**
+   * An event type's state in one of the organization's projects: each key's latest event's
+   * payload, by key.
+   */
+  eventStates(slug: string, project: string, eventType: string): Map<string, unknown> {
+    const prefix = `${this.#projectFileKey(slug, project, "")}|app:${this.appId}|${eventType}|`;
+    return new Map(
+      [...this.#eventStates]
+        .filter(([id]) => id.startsWith(prefix))
+        .map(([id, event]) => [id.slice(prefix.length), event.payload]),
     );
   }
 
@@ -408,6 +543,14 @@ export class FakeBackoffice {
       }));
   }
 
+  /**
+   * The prompts subagents of the agents of one of the organization's projects received, oldest
+   * first, as `prompts` gives them: each runs one request.
+   */
+  subagentPrompts(slug: string, project: string): ReturnType<FakeBackoffice["prompts"]> {
+    return this.prompts(slug, project).filter((prompt) => prompt.subagent);
+  }
+
   /** Whether someone stopped one of the agents of a project of the organization, and nobody resumed it. */
   agentStopped(slug: string, project: string, agentName: string): boolean {
     return this.#stoppedAgents.has(this.#projectFileKey(slug, project, agentName));
@@ -447,7 +590,10 @@ export class FakeBackoffice {
   }
 
   #who(principal: Principal): string {
-    return principal.kind === "user" ? this.#users.get(principal.userId)!.email : "installation";
+    if (principal.kind === "user") {
+      return this.#users.get(principal.userId)!.email;
+    }
+    return principal.kind === "route" ? `route ${principal.routeId}` : "installation";
   }
 
   /** The agent gets as far as `status` with the prompt submitted as `requestId`. */
@@ -557,7 +703,7 @@ export class FakeBackoffice {
         throw new Error(`${release} is published with other files.`);
       }
       this.#appPackageFiles.set(release, input.files);
-      this.#appPackages.set(release, declaration.agents);
+      this.#appPackages.set(release, declaration);
     },
     /**
      * A member uninstalls a package from a project, which deletes the agents it defines. As in
@@ -750,7 +896,7 @@ export class FakeBackoffice {
       }
       const operation = /^\/api\/v0\/scopes\/([^/]+)\/([^/]+)$/u.exec(url.pathname);
       if (operation) {
-        if (this.#failNextRequest.delete(operation[2])) {
+        if (this.#failNextRequest.delete(operation[2]) || this.#failingRequests.has(operation[2])) {
           throw new TypeError("fetch failed");
         }
         this.#operationCounts.set(operation[2], this.operationCount(operation[2]) + 1);
@@ -998,10 +1144,11 @@ export class FakeBackoffice {
           if (version === undefined) {
             throw new ApiError("invalid_request", "The fake installs only a named version.");
           }
-          const agents = this.#appPackages.get(`${input.listingId}@${version}`);
-          if (!agents) {
+          const declaration = this.#appPackages.get(`${input.listingId}@${version}`);
+          if (!declaration) {
             throw new ApiError("operation_failed", "Marketplace listing is not published.");
           }
+          const { agents } = declaration;
           const owner = backofficeScopeRootOwner(scope);
           if (owner?.kind !== "org") {
             throw new ApiError("forbidden", "Packages install through an organization.");
@@ -1030,6 +1177,16 @@ export class FakeBackoffice {
           };
           this.#installRuns.set(workflowInstanceId, run);
           const finish = () => {
+            const approved = (permissions: readonly { namespace: string; permission: string }[]) =>
+              permissions.map(({ namespace, permission }) => `${namespace}.${permission}`).sort();
+            if (
+              !isDeepStrictEqual(approved(declaration.permissions), approved(input.permissions))
+            ) {
+              run.outcome = {
+                error: `This release declares the permissions ${approved(declaration.permissions).join(", ")}, but the installation approved ${approved(input.permissions).join(", ")}. Approve exactly the declared permissions to install it.`,
+              };
+              return;
+            }
             const steward = { kind: "package" as const, listingId: input.listingId };
             const taken = agents.find((agent) => {
               const existing = this.#agents.get(key(agent.agentName));
@@ -1048,7 +1205,11 @@ export class FakeBackoffice {
             for (const agent of agents) {
               this.#agents.set(key(agent.agentName), { ...agent, steward });
             }
-            this.#installations.set(key(input.listingId), { version, workflowInstanceId });
+            this.#installations.set(key(input.listingId), {
+              version,
+              workflowInstanceId,
+              declaration,
+            });
             run.outcome = { error: null };
           };
           if (this.#installsHeld) {
@@ -1094,6 +1255,47 @@ export class FakeBackoffice {
                 error: { name: "NonRetryableError", message: run.outcome.error },
               };
         });
+      case "events.fire":
+        return respond("events.fire", body, (input) => {
+          if (principal.kind !== "app") {
+            throw new ApiError("forbidden", "Only Bookkeeping fires events in this fake.");
+          }
+          if (input.targetScope !== undefined) {
+            throw new ApiError("invalid_request", "The fake fires events only where it is asked.");
+          }
+          const source = `app:${this.appId}`;
+          const event: StoredEvent = {
+            scope: key(""),
+            id:
+              input.idempotencyKey === undefined
+                ? crypto.randomUUID()
+                : `${source} ${input.idempotencyKey}`,
+            source,
+            eventType: input.eventType,
+            payload: input.payload ?? {},
+            occurredAt:
+              input.occurredAt === undefined || new Date(input.occurredAt) > new Date()
+                ? new Date().toISOString()
+                : new Date(input.occurredAt).toISOString(),
+          };
+          const receipt = {
+            accepted: true,
+            eventId: event.id,
+            scope,
+            source,
+            eventType: event.eventType,
+          };
+          // As in Backoffice, an event fired again under its key stores nothing more.
+          if (
+            this.#events.some((stored) => stored.scope === event.scope && stored.id === event.id)
+          ) {
+            return receipt;
+          }
+          this.#events.push(event);
+          this.#keepEventState(event);
+          this.#routeEvent(event);
+          return receipt;
+        });
       case "pi.prompt.submit":
         return respond("pi.prompt.submit", body, (input) => {
           const { agentName, requestId, content, subagent, whenBusy, whenPaused } = input;
@@ -1104,8 +1306,15 @@ export class FakeBackoffice {
             this.#stoppedAgents.delete(key(agentName));
           }
           const id = requestId ?? crypto.randomUUID();
-          // A request ID is queued once.
-          if (!this.#prompts.some((prompt) => prompt.requestId === id)) {
+          // An agent queues a request ID once.
+          if (
+            !this.#prompts.some(
+              (prompt) =>
+                prompt.scope === key("") &&
+                prompt.agentName === agentName &&
+                prompt.requestId === id,
+            )
+          ) {
             this.#prompts.push({
               scope: key(""),
               agentName,
@@ -1836,6 +2045,27 @@ function respond<TId extends keyof Operations>(
   }
   const output: unknown = operation.output.parse(run(input.data as never));
   return output === undefined ? new Response(null, { status: 204 }) : Response.json(output);
+}
+
+/** The value at a JSONPath such as `$.payload.status`, as Backoffice's matchers and key paths read it. */
+function readPath(value: unknown, path: string): unknown {
+  let current = value;
+  for (const field of path.split(".").slice(1)) {
+    current =
+      typeof current === "object" && current !== null
+        ? (current as Record<string, unknown>)[field]
+        : undefined;
+  }
+  return current;
+}
+
+/** Whether an event matches a route's matcher; the fake knows equality, which Bookkeeping's route uses. */
+function matches(matcher: unknown, event: StoredEvent): boolean {
+  const { path, op, value } = matcher as { path: string; op: string; value: unknown };
+  if (op !== "eq") {
+    throw new Error(`The fake Backoffice matches only "eq", not ${op}.`);
+  }
+  return readPath({ payload: event.payload }, path) === value;
 }
 
 function bearer(request: Request): string {

@@ -618,13 +618,39 @@ test("importing asks the bookkeeping agent how to book what the books cannot mat
     const agent = await firmAgent(scenario, ada);
     const prefix = (transactionId: string) =>
       `transaction:${agent.administration.id}:${transactionId}:`;
-    const prompts = scenario.backoffice.prompts(FIRM, FIRM_AGENT);
+    // The books tell the firm of both requests, which the agent's own conversation hands out.
+    const prompts = scenario.backoffice.subagentPrompts(FIRM, FIRM_AGENT);
+    const handedOut = {
+      agentName: "bookkeeper",
+      subagent: true,
+      prompter: "route bookkeeping-requests",
+    };
     expect(prompts).toMatchObject([
-      { agentName: "bookkeeper", requestId: `${prefix(babbage.id)}import`, subagent: true },
-      { agentName: "bookkeeper", requestId: `${prefix(costs.id)}import`, subagent: true },
+      { ...handedOut, requestId: `${prefix(babbage.id)}import` },
+      { ...handedOut, requestId: `${prefix(costs.id)}import` },
     ]);
     expect(prompts[0].content).toContain("bank.transactions.get");
+    // Backoffice notifies only an agent whose conversation started, so Bookkeeping started it.
+    expect(
+      scenario.backoffice.prompts(FIRM, FIRM_AGENT).filter((prompt) => !prompt.subagent),
+    ).toMatchObject([
+      { agentName: "bookkeeper", requestId: "bookkeeping:start", prompter: "installation" },
+    ]);
     const [babbageRequest, costsRequest] = prompts.map((prompt) => prompt.requestId);
+    // The firm keeps what its agent is asked as each subject's latest request event.
+    const requested = () =>
+      [...scenario.backoffice.eventStates(FIRM, FIRM_AGENT, "proposal.changed").values()].map(
+        (state) => [
+          (state as { requestId: string }).requestId,
+          (state as { status: string }).status,
+        ],
+      );
+    expect(requested()).toEqual(
+      expect.arrayContaining([
+        [babbageRequest, "requested"],
+        [costsRequest, "requested"],
+      ]),
+    );
     expect(await transactionPage(ada, costs.id)).toMatchObject({
       transaction: { proposal: { status: "requested", requestId: costsRequest } },
       progress: { status: "queued" },
@@ -719,6 +745,12 @@ test("importing asks the bookkeeping agent how to book what the books cannot mat
         costsEntry([{ account: "4000", side: "debit", amount: "12.50" }]),
       ),
     ).toEqual({ status: 200, body: { transaction: costs.id, proposal: "proposed" } });
+    expect(requested()).toEqual(
+      expect.arrayContaining([
+        [babbageRequest, "requested"],
+        [costsRequest, "proposed"],
+      ]),
+    );
 
     // Babbage Instruments is the workshop: the payment settles part of its open bill.
     const { body: openItems } = await agent.call("parties.open-items", {
@@ -821,8 +853,13 @@ test("importing asks the bookkeeping agent how to book what the books cannot mat
     // A member asks about the opening balance themselves. Lady Byron's payment waits for a member
     // to book it as the payment form suggests.
     await ada.submit(`${BOOKS}/bank/transactions/${opening.id}`, { intent: "ask" });
-    const asked = scenario.backoffice.prompts(FIRM, FIRM_AGENT).at(-1)!;
+    const asked = scenario.backoffice.subagentPrompts(FIRM, FIRM_AGENT).at(-1)!;
     assert(asked.requestId.startsWith(prefix(opening.id)), asked.requestId);
+    expect(requested()).toEqual([
+      [babbageRequest, "proposed"],
+      [costsRequest, "proposed"],
+      [asked.requestId, "requested"],
+    ]);
     expect(
       (await toBook(ada, current)).map((transaction) => [
         transaction.id,
@@ -832,6 +869,29 @@ test("importing asks the bookkeeping agent how to book what the books cannot mat
       [opening.id, "requested"],
       [byron.id, null],
     ]);
+
+    // Ada books the opening balance before the agent answers, which withdraws its request: the
+    // firm is told, so its agent is asked about it no more.
+    await post(
+      ada,
+      books,
+      {
+        journal: "BNK",
+        date: opening.bookingDate,
+        description: "Opening balance",
+        reference: "",
+        lines: [{ account: "1090", credit: "5000.00" }],
+      },
+      opening.id,
+    );
+    expect(requested().at(-1)).toEqual([asked.requestId, "withdrawn"]);
+    expect(
+      await agent.call("bank.transactions.decline", {
+        transaction: opening.id,
+        request: asked.requestId,
+        reason: "Not sure.",
+      }),
+    ).toMatchObject({ status: 422 });
   });
 });
 

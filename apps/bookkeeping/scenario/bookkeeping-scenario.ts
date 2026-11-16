@@ -340,7 +340,9 @@ export class BookkeepingScenario {
     const bindings = {
       AUTH: new FakeDurableObjectNamespace(Auth, env),
       DIRECTORY: new FakeDurableObjectNamespace(Directory, env),
-      BOOKS: new FakeDurableObjectNamespace(Books, env),
+      // The books tell firms of requests from their alarm, which Cloudflare runs as soon as it is
+      // due: its delay is nothing a scenario waits for.
+      BOOKS: new FakeDurableObjectNamespace(Books, env, { runDueAlarmsAfterCalls: true }),
     };
     this.#bindings = bindings;
     // The fakes serve the same calls as Cloudflare's namespaces; their types differ.
@@ -357,7 +359,7 @@ export class BookkeepingScenario {
       this.backoffice.admin.publishAppPackage({
         listingId: agentPackageListingId(agentPackage),
         version: agentPackage.version,
-        files: agentPackageFiles(agentPackage),
+        files: agentPackageFiles(agentPackage, this.backoffice.appId),
       });
     }
   }
