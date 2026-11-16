@@ -11,6 +11,7 @@ import { Column } from "../../../schema/create";
 import type { DriverConfig } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { buildDbNowSql } from "./db-now-sql";
+import { bindInList } from "./in-list";
 import type { AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 import {
   buildReferenceArrayWhere,
@@ -128,6 +129,7 @@ export function buildQueryTreeWhere(
             table: childTable,
             eb,
             serializer,
+            driverConfig,
             resolver,
           });
         }
@@ -212,9 +214,17 @@ export function buildQueryTreeWhere(
       case ">":
       case ">=":
       case "in":
+      case "not in":
+        operator = condition.operator;
+        rhs =
+          rightValue instanceof Column
+            ? eb.ref(getColumnSqlName(rightValue, resolver))
+            : Array.isArray(rightValue)
+              ? bindInList(rightValue, driverConfig)
+              : rightValue;
+        break;
       case "is":
       case "is not":
-      case "not in":
         operator = condition.operator;
         rhs =
           rightValue instanceof Column

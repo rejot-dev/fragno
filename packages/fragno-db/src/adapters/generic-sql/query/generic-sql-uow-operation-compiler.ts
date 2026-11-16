@@ -19,6 +19,7 @@ import { createColdKysely } from "../migration/cold-kysely";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { createSQLQueryCompiler } from "./create-sql-query-compiler";
 import { buildCursorCondition } from "./cursor-utils";
+import { bindsListsAsOne } from "./in-list";
 import { QueryTreeSQLCompiler } from "./query-tree-sql-compiler";
 import { SQLQueryCompiler, type AnyKysely } from "./sql-query-compiler";
 
@@ -370,12 +371,15 @@ export class GenericSQLUOWOperationCompiler extends UOWOperationCompiler<Compile
         ? versions[0]
         : null;
     const fixedParameterCount = sharedVersion === null ? 0 : 1;
-    const parametersPerId = op.checkVersion && sharedVersion === null ? 2 : 1;
-    const maxIdsPerStatement = Number.isFinite(this.driverConfig.maxParametersPerQuery)
-      ? Math.floor(
-          (this.driverConfig.maxParametersPerQuery - fixedParameterCount) / parametersPerId,
-        )
-      : op.ids.length;
+    const perRowVersions = op.checkVersion && sharedVersion === null;
+    // Without per-row versions the IDs are one `in` list, which may bind as a single parameter.
+    const parametersPerId = perRowVersions ? 2 : bindsListsAsOne(this.driverConfig) ? 0 : 1;
+    const maxIdsPerStatement =
+      parametersPerId > 0 && Number.isFinite(this.driverConfig.maxParametersPerQuery)
+        ? Math.floor(
+            (this.driverConfig.maxParametersPerQuery - fixedParameterCount) / parametersPerId,
+          )
+        : op.ids.length;
     if (maxIdsPerStatement < 1) {
       throw new Error(
         `Driver ${this.driverConfig.driverType} cannot bind one bulk delete ID with its configured parameter limit.`,

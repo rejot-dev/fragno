@@ -358,7 +358,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
 
     const [compiled] = Array.isArray(result) ? result : result ? [result] : [];
     expect(compiled?.query.sql).toMatchInlineSnapshot(
-      `"delete from "users" where "users"."id" in (?, ?)"`,
+      `"delete from "users" where "users"."id" in (select value from json_each(?))"`,
     );
     expect(compiled?.expectedAffectedRows).toBeNull();
   });
@@ -385,8 +385,25 @@ describe("GenericSQLUOWOperationCompiler", () => {
     assert(compiled?.expectedAffectedRows === 2n);
   });
 
+  test("deletes any number of IDs in one statement on SQLite", () => {
+    const compiler = new GenericSQLUOWOperationCompiler(new CloudflareDurableObjectsDriverConfig());
+    const ids = Array.from({ length: 1_000 }, (_, index) => `user-${index}`);
+
+    const result = compiler.compileDeleteMany({
+      type: "delete-many",
+      schema: testSchema,
+      table: "users",
+      ids,
+      checkVersion: false,
+      omitOutbox: false,
+    });
+
+    assert(result !== null && !Array.isArray(result));
+    expect(result.query.parameters).toEqual([JSON.stringify(ids)]);
+  });
+
   test("chunks bulk deletes for drivers using the shared conservative bind limit", () => {
-    const compiler = new GenericSQLUOWOperationCompiler(driverConfig);
+    const compiler = new GenericSQLUOWOperationCompiler(new NodePostgresDriverConfig());
     const ids = Array.from({ length: 1_000 }, (_, index) => `user-${index}`);
 
     const result = compiler.compileDeleteMany({
@@ -411,7 +428,7 @@ describe("GenericSQLUOWOperationCompiler", () => {
         new FragnoId({
           externalId: `user-${index}`,
           internalId: BigInt(index + 1),
-          version: 0,
+          version: index,
         }),
     );
 
@@ -424,11 +441,11 @@ describe("GenericSQLUOWOperationCompiler", () => {
       omitOutbox: true,
     });
 
+    // Each row's own version binds beside its ID: two parameters a row.
     assert(Array.isArray(result));
     expect(result).toHaveLength(2);
-    expect(result.map((mutation) => mutation.query.parameters.length)).toEqual([100, 2]);
-    expect(result.map((mutation) => mutation.expectedReturnedRows)).toEqual([99, 1]);
-    expect(result[0]?.query.sql).toContain('"_version" = ? and "users"."id" in (');
+    expect(result.map((mutation) => mutation.query.parameters.length)).toEqual([100, 100]);
+    expect(result.map((mutation) => mutation.expectedReturnedRows)).toEqual([50, 50]);
     expect(result[0]?.operation).toMatchObject({ type: "delete-many", ids });
     expect(result[1]?.operation).toBeUndefined();
   });

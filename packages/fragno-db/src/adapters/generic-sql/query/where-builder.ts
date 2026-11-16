@@ -19,6 +19,7 @@ import {
 import type { DriverConfig } from "../driver-config";
 import type { SQLiteStorageMode } from "../sqlite-storage";
 import { buildDbNowSql } from "./db-now-sql";
+import { bindInList } from "./in-list";
 import type { AnyKysely, AnyExpressionBuilder, AnyExpressionWrapper } from "./sql-query-compiler";
 
 /**
@@ -50,13 +51,13 @@ function fullSQLNameWithAlias(
   return fullSQLName(column, resolver);
 }
 
-function buildReferenceExternalIdSubquery(
+/** The internal IDs of the rows `column` references, with the column holding their external IDs. */
+function selectReferencedInternalIds(
   eb: AnyExpressionBuilder,
   table: AnyTable,
   column: AnyColumn,
-  externalIds: string | string[],
   resolver?: NamingResolver,
-): unknown {
+) {
   const foreignKey = getTableForeignKey(table, column.name);
   if (!foreignKey) {
     throw new Error(`Reference column ${column.name} not found in table ${table.name}`);
@@ -73,11 +74,7 @@ function buildReferenceExternalIdSubquery(
     ? resolver.getColumnName(refTable.name, idColumn.name)
     : idColumn.name;
 
-  const query = eb.selectFrom(tableName).select(internalIdColumnName);
-  if (Array.isArray(externalIds)) {
-    return query.where(idColumnName, "in", externalIds);
-  }
-  return query.where(idColumnName, "=", externalIds).limit(1);
+  return { query: eb.selectFrom(tableName).select(internalIdColumnName), idColumnName };
 }
 
 function getExternalReferenceId(value: unknown): string | undefined {
@@ -100,7 +97,8 @@ export function serializeReferenceFilterValue(
 ): unknown {
   const externalId = getExternalReferenceId(value);
   if (externalId !== undefined) {
-    return buildReferenceExternalIdSubquery(eb, table, column, externalId, resolver);
+    const { query, idColumnName } = selectReferencedInternalIds(eb, table, column, resolver);
+    return query.where(idColumnName, "=", externalId).limit(1);
   }
   if (value instanceof FragnoId && value.internalId !== undefined) {
     return serializer.serialize(value.internalId, column);
@@ -162,6 +160,7 @@ export function buildReferenceArrayWhere({
   table,
   eb,
   serializer,
+  driverConfig,
   resolver,
 }: {
   values: unknown[];
@@ -171,6 +170,7 @@ export function buildReferenceArrayWhere({
   table: AnyTable;
   eb: AnyExpressionBuilder;
   serializer: SQLSerializer;
+  driverConfig: DriverConfig;
   resolver?: NamingResolver;
 }): AnyExpressionWrapper {
   if (values.length === 0) {
@@ -192,14 +192,15 @@ export function buildReferenceArrayWhere({
 
   const clauses: AnyExpressionWrapper[] = [];
   if (internalValues.length > 0) {
-    clauses.push(eb(columnSqlName, operator, internalValues));
+    clauses.push(eb(columnSqlName, operator, bindInList(internalValues, driverConfig)));
   }
   if (externalIds.length > 0) {
+    const { query, idColumnName } = selectReferencedInternalIds(eb, table, column, resolver);
     clauses.push(
       eb(
         columnSqlName,
         operator,
-        buildReferenceExternalIdSubquery(eb, table, column, externalIds, resolver),
+        query.where(idColumnName, "in", bindInList(externalIds, driverConfig)),
       ),
     );
   }
@@ -264,6 +265,7 @@ export function buildWhere(
             table,
             eb,
             serializer,
+            driverConfig,
             resolver,
           });
         }
@@ -338,9 +340,17 @@ export function buildWhere(
       case ">":
       case ">=":
       case "in":
+      case "not in":
+        v = op;
+        rhs =
+          val instanceof Column
+            ? eb.ref(fullSQLNameWithAlias(val, resolver, table, tableAlias))
+            : Array.isArray(val)
+              ? bindInList(val, driverConfig)
+              : val;
+        break;
       case "is":
       case "is not":
-      case "not in":
         v = op;
         rhs =
           val instanceof Column

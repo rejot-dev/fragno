@@ -2085,6 +2085,89 @@ export function describeQueryEngineSuite(harness: QueryEngineSuiteHarness): void
       }
     });
 
+    it("filters by in lists longer than a query binds parameters for", async () => {
+      const { adapter, close } = await createContext();
+      try {
+        const create = createSuiteUnitOfWork(adapter, "create-long-in-users");
+        for (const user of [
+          { id: "long-in-alice", name: "Alice", email: "long-in-alice@example.com", age: 20 },
+          { id: "long-in-bob", name: "Bob", email: "long-in-bob@example.com", age: 30 },
+          { id: "long-in-carol", name: "Carol", email: "long-in-carol@example.com", age: 40 },
+        ] as const) {
+          create.create("users", user);
+        }
+        for (const user of ["long-in-alice", "long-in-bob"]) {
+          create.create("posts", {
+            id: `${user}-post`,
+            user_id: user,
+            title: `${user} post`,
+            content: "Long in",
+          });
+        }
+        await create.executeMutations();
+        const [alice] = create.getCreatedIds();
+
+        // More than any supported database binds as separate parameters in one query.
+        const padding = (count: number) => Array.from({ length: count }, (_, i) => `missing-${i}`);
+        // More bytes than Durable Object SQLite holds in one bound value.
+        const longPadding = Array.from({ length: 1_200 }, (_, i) => `${i}-${"x".repeat(2_000)}`);
+        const [byName, notByName, byAge, byUser, joined, byLongNames] = await createSuiteUnitOfWork(
+          adapter,
+          "read-long-in-users",
+        )
+          .find("users", (b) =>
+            b.whereIndex("users_name_idx", (eb) =>
+              eb("name", "in", ["Alice", "Bob", ...padding(1_998)]),
+            ),
+          )
+          .find("users", (b) =>
+            b.whereIndex("users_name_idx", (eb) =>
+              eb("name", "not in", ["Carol", ...padding(1_999)]),
+            ),
+          )
+          .find("users", (b) =>
+            b.whereIndex("users_age_idx", (eb) =>
+              eb("age", "in", [20, 40, ...Array.from({ length: 1_998 }, (_, i) => 1_000 + i)]),
+            ),
+          )
+          .find("posts", (b) =>
+            b.whereIndex("posts_user_idx", (eb) =>
+              eb("user_id", "in", [alice, "long-in-bob", ...padding(1_998)]),
+            ),
+          )
+          .find("users", (b) =>
+            b
+              .whereIndex("users_name_idx", (eb) => eb("name", "=", "Bob"))
+              .joinMany("posts", "posts", (posts) =>
+                posts
+                  .onIndex("posts_title_idx", (eb) =>
+                    eb("title", "in", ["long-in-bob post", ...padding(1_999)]),
+                  )
+                  .select(["title"]),
+              ),
+          )
+          .find("users", (b) =>
+            b.whereIndex("users_name_idx", (eb) => eb("name", "in", ["Bob", ...longPadding])),
+          )
+          .executeRetrieve();
+
+        const names = (rows: { name: string }[]) => rows.map((user) => user.name).sort();
+        expect(names(byLongNames)).toEqual(["Bob"]);
+        expect(names(byName)).toEqual(["Alice", "Bob"]);
+        expect(names(notByName)).toEqual(["Alice", "Bob"]);
+        expect(names(byAge)).toEqual(["Alice", "Carol"]);
+        expect(byUser.map((post) => post.title).sort()).toEqual([
+          "long-in-alice post",
+          "long-in-bob post",
+        ]);
+        expect(joined.map((user) => user.posts.map((post) => post.title))).toEqual([
+          ["long-in-bob post"],
+        ]);
+      } finally {
+        await close?.();
+      }
+    });
+
     it("filters reference columns by external id string, FragnoId, and reference lists", async () => {
       const { adapter, close } = await createContext();
       try {
