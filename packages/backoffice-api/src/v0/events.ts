@@ -480,8 +480,7 @@ export const automationEventStateGetInputSchema = z.lazy(() =>
   z.object({
     source: z.string().trim().min(1),
     eventType: z.string().trim().min(1),
-    // Durable Object SQLite binds at most 100 parameters per statement, and reading the keys'
-    // states binds each key besides the type.
+    // Bounds one call's work and response; callers with more keys make more calls.
     keys: z.array(z.string().min(1)).min(1).max(50),
   }),
 );
@@ -502,8 +501,7 @@ export const automationEventStateDeleteInputSchema = z.lazy(() =>
   z.object({
     source: z.string().trim().min(1),
     eventType: z.string().trim().min(1),
-    // Durable Object SQLite binds at most 100 parameters per statement, and reading the keys'
-    // states binds each key besides the type.
+    // Bounds one call's work and response; callers with more keys make more calls.
     keys: z.array(z.string().min(1)).min(1).max(50),
   }),
 );
