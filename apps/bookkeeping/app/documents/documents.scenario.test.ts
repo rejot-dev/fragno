@@ -617,6 +617,10 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
             requestId: prompt.requestId,
             status: "requested",
             prompt: prompt.content,
+            // The firm's work queue names what it is asked about, and whose books it is in.
+            title: `${INVOICE.number}.pdf`,
+            client: ADMINISTRATION,
+            administration: ADMINISTRATION,
           },
         ],
       ]),
@@ -1571,6 +1575,10 @@ test("a request the agent never received, or failed, is asked again from the doc
       requestId: last.requestId,
       status: "withdrawn",
       prompt: null,
+      // The end of a request names what it was about, as its start did.
+      title: "invoice.pdf",
+      client: ADMINISTRATION,
+      administration: ADMINISTRATION,
     });
     expect(
       await agent.call("documents.propose", proposal(id, last.requestId, "1.00", "1.00")),

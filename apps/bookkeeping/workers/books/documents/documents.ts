@@ -3,7 +3,7 @@ import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/d
 import type { createLedgerFragment } from "@fragno-dev/ledger";
 
 import type { createProposalsFragment } from "../proposals/proposals";
-import type { AgentProposal, ProposalAnswer } from "../proposals/schema";
+import type { AgentProposal, ProposalAnswer, RequestAbout } from "../proposals/schema";
 import { bookingEntry, booksSource, type SourceDocument } from "../sources";
 import {
   documentsSchema,
@@ -345,10 +345,11 @@ const documentsFragmentDefinition = defineFragment("documents")
       requestProposal: function (input: {
         documentId: string;
         requestId: string;
+        about: RequestAbout;
         asked: ProposalAsked;
         first: boolean;
       }) {
-        const { documentId, requestId, asked, first } = input;
+        const { documentId, requestId, about, asked, first } = input;
         return this.serviceTx(documentsSchema)
           .withServiceCalls(
             () =>
@@ -356,7 +357,7 @@ const documentsFragmentDefinition = defineFragment("documents")
                 serviceDeps.ledger.getSourceDocuments({ ids: [documentId] }),
                 // The firm is told once the file is shared with it, which takes Backoffice.
                 serviceDeps.proposals.requestProposals({
-                  requests: [{ subjectId: documentId, requestId, prompt: null }],
+                  requests: [{ subjectId: documentId, requestId, about, prompt: null }],
                   asked,
                   first,
                 }),

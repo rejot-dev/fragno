@@ -300,6 +300,14 @@ project, each a version, a declaration defining one agent, and the files install
 `/workspace/bookkeeping`. `pnpm backoffice:connect` publishes them as
 `app:bookkeeping#bookkeeper-agent` and `app:bookkeeping#books-agent`.
 
+Among `bookkeeper-agent`'s files is `work-queue.page.js` (`workers/backoffice/work-queue-page.ts`),
+a Backoffice page the firm opens from its agent project's dashboard: what Bookkeeping asked the
+agent, across all the firm's clients, and how far the agent got with each request, waiting, queued,
+working on it, failed, or ended without an answer, with what it answered lately. It reads the state
+of Bookkeeping's request events, which name each request's document or transaction, client, and
+administration, and the agent's turn events, which name the request they work on. A request the
+books have not managed to tell the firm of yet is not in the queue; its page in Bookkeeping says so.
+
 The Directory installs each package in its projects with `packages.install`, as Bookkeeping's
 installation, and follows the install with `packages.status`
 (`workers/backoffice/agent-packages.ts`). It records each project's installed version in
