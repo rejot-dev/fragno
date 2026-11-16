@@ -13,9 +13,9 @@ import {
   type BackofficeToolContext,
 } from "../runtime-tools";
 import type { BlobsRuntime } from "./blobs-runtime";
-import { readClassificationImages } from "./models-classification-images";
 import { readExtractionFiles } from "./models-extraction-files";
 import { assertModelsFilesReadable } from "./models-file-bytes";
+import { readModelsImages } from "./models-images";
 
 export type ModelsRuntime = {
   classify(request: PiClassificationRequest): ReturnType<PiManagerCommands["classify"]>;
@@ -57,9 +57,10 @@ const classifyTool = defineBackofficeRuntimeTool({
   execute: async ({ state, images: files, questions }, context: ModelsToolContext) => {
     const models = requireModelsRuntime(context.runtimes.models);
     await assertModelsFilesReadable(context, files);
-    const images = await readClassificationImages(
+    const images = await readModelsImages(
       { state: context.runtimes.state, blobs: context.runtimes.blobs },
       files,
+      "classify",
     );
     const { answers } = await models.classify({ state, images, questions });
     return { answers };

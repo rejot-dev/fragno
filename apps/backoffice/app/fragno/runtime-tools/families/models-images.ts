@@ -11,28 +11,39 @@ import { rasterImageContentType } from "@/lib/raster-image-content-type";
 
 import { modelsFileLabel, readModelsFileBytes, type ModelsFileStores } from "./models-file-bytes";
 
-/** Reads already-authorized images within a shared byte budget, preserving caller order. */
-export async function readClassificationImages(
+/** Each operation that sends images to a model, with its budget and error codes. */
+const IMAGE_READS = {
+  classify: {
+    limits: MODELS_CLASSIFY_IMAGE_LIMITS,
+    tooLarge: "MODELS_CLASSIFY_IMAGE_TOO_LARGE",
+    invalid: "MODELS_CLASSIFY_INVALID_IMAGE",
+  },
+} as const;
+
+/** Reads already-authorized images within the operation's byte budget, preserving caller order. */
+export async function readModelsImages(
   stores: ModelsFileStores,
   files: readonly ModelsFile[],
+  operation: keyof typeof IMAGE_READS,
 ): Promise<ImageContent[]> {
+  const { limits, tooLarge, invalid } = IMAGE_READS[operation];
   const images: ImageContent[] = [];
-  let remainingBytes = MODELS_CLASSIFY_IMAGE_LIMITS.totalBytes;
+  let remainingBytes: number = limits.totalBytes;
   for (const file of files) {
     // Sequential reads bound memory and apply the remaining budget even if a file changes size.
-    const maxBytes = Math.min(MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes, remainingBytes);
+    const maxBytes = Math.min(limits.perImageBytes, remainingBytes);
     const read = await readModelsFileBytes(stores, file, maxBytes);
     if (read.kind === "too-large") {
       throw new BackofficeOperationError(
         "invalid_request",
-        `MODELS_CLASSIFY_IMAGE_TOO_LARGE: ${modelsFileLabel(file)} exceeds the ${maxBytes} bytes left to read; images hold at most ${MODELS_CLASSIFY_IMAGE_LIMITS.perImageBytes} bytes each and ${MODELS_CLASSIFY_IMAGE_LIMITS.totalBytes} together.`,
+        `${tooLarge}: ${modelsFileLabel(file)} exceeds the ${maxBytes} bytes left to read; images hold at most ${limits.perImageBytes} bytes each and ${limits.totalBytes} together.`,
       );
     }
     const mimeType = rasterImageContentType(read.bytes);
     if (mimeType === null || mimeType === "image/gif") {
       throw new BackofficeOperationError(
         "invalid_request",
-        `MODELS_CLASSIFY_INVALID_IMAGE: ${modelsFileLabel(file)} must contain a PNG, JPEG, or WebP image.`,
+        `${invalid}: ${modelsFileLabel(file)} must contain a PNG, JPEG, or WebP image.`,
       );
     }
     remainingBytes -= read.bytes.byteLength;
