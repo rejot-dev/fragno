@@ -14,9 +14,8 @@ import { useClock } from "@/components/backoffice/use-clock";
 import { scopeIdentity } from "@/fragno/automation/forward-accepts";
 import { useAutomationRead, useAutomationReplica } from "@/fragno/automation/lofi/replica";
 import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
-import type { RuntimeToolWorkflowDescriptor } from "@/fragno/runtime-tools/workflow-catalog";
 
-import { workflowOutsideCalls, type WorkflowConnections } from "./orchestration-outside-systems";
+import type { ScopeConnections } from "./orchestration-outside-systems";
 import { projectOrchestrationUniverse, type UniverseReadScope } from "./orchestration-universe";
 import { dashboardBucketStarts } from "./overview";
 import { useScopeOrchestrationGraph } from "./scope-orchestration-graph";
@@ -57,44 +56,23 @@ function unreadRecords(recordErrors: readonly string[]): string | null {
   return recordErrors.length > 0 ? recordErrors.join(", ") : null;
 }
 
-// Shared, so a failed read of connections keeps the calls the same from one render to the next.
-const NO_CONNECTIONS: WorkflowConnections = [];
+// Shared, so a failed read keeps the connections the same from one render to the next.
+const NO_CONNECTIONS: ScopeConnections = [];
 
 /**
- * The outside systems a scope's workflows call, from the scripts their last runs ran, which the
- * replica keeps, with the scope's connections naming the integrations they reach: null until read,
- * and none, with the error, when the scripts could not be read. Connections that could not be read
- * go by their addresses.
+ * A scope's connections, which name the connections its routes grant: null until read, and none,
+ * with the error, when they could not be read, so they go by their addresses.
  */
-function useWorkflowOutsideCalls(
-  replica: LofiSqliteClient | null,
-  catalog: readonly RuntimeToolWorkflowDescriptor[],
-) {
-  const programs = useAutomationRead(replica, "latestWorkflowPrograms", undefined);
+function useScopeConnections(replica: LofiSqliteClient | null) {
   const connections = useAutomationRead(replica, "integrationConnections", undefined);
-  const programsData = programs.status === "ready" ? programs.data : null;
-  const connectionsData =
-    connections.status === "ready"
-      ? connections.data
-      : connections.status === "error"
-        ? NO_CONNECTIONS
-        : null;
-  const failed = programs.status === "error";
-  const calls = useMemo(
-    () =>
-      failed
-        ? []
-        : programsData && connectionsData
-          ? workflowOutsideCalls(programsData, catalog, connectionsData)
-          : null,
-    [programsData, connectionsData, failed, catalog],
-  );
   return {
-    calls,
-    recordErrors: [
-      ...(failed ? ["workflow scripts"] : []),
-      ...(connections.status === "error" ? ["integration connections"] : []),
-    ],
+    connections:
+      connections.status === "ready"
+        ? connections.data
+        : connections.status === "error"
+          ? NO_CONNECTIONS
+          : null,
+    recordErrors: connections.status === "error" ? ["integration connections"] : [],
   };
 }
 
@@ -109,7 +87,6 @@ function ScopeGraphReader({
   label,
   source,
   since,
-  catalog,
   onRead,
 }: {
   scopeId: string;
@@ -117,13 +94,12 @@ function ScopeGraphReader({
   label: string;
   source: AutomationReplicaSource;
   since: number;
-  catalog: readonly RuntimeToolWorkflowDescriptor[];
   onRead: (scopeId: string, read: ScopeRead) => void;
 }) {
   const opened = useAutomationReplica(source, null);
   const read = useScopeOrchestrationGraph(opened.replica, { scope, scopeLabel: label, since });
   const deliveries = useAutomationRead(opened.replica, "recentForwardDeliveries", { since });
-  const outside = useWorkflowOutsideCalls(opened.replica, catalog);
+  const kept = useScopeConnections(opened.replica);
   const error =
     opened.error ??
     (read.status === "error" ? read.message : null) ??
@@ -133,24 +109,24 @@ function ScopeGraphReader({
     opened.caughtUp &&
     read.status === "ready" &&
     deliveries.status === "ready" &&
-    outside.calls !== null;
+    kept.connections !== null;
   const graph = caughtUp ? read.graph : null;
   const routes = caughtUp ? read.inputs.routes : null;
   const delivered = caughtUp ? deliveries.data : null;
-  const calls = caughtUp ? outside.calls : null;
+  const connections = caughtUp ? kept.connections : null;
   // A phrase rather than the list, which is a new array every render.
-  const unread = caughtUp ? unreadRecords([...read.recordErrors, ...outside.recordErrors]) : null;
+  const unread = caughtUp ? unreadRecords([...read.recordErrors, ...kept.recordErrors]) : null;
   const fraction = opened.fraction;
   useEffect(() => {
     onRead(
       scopeId,
       error !== null
         ? { kind: "failed", message: error }
-        : graph && routes && delivered && calls
-          ? { graph, routes, deliveries: delivered, calls, unreadRecords: unread }
+        : graph && routes && delivered && connections
+          ? { graph, routes, deliveries: delivered, connections, unreadRecords: unread }
           : { kind: "loading", fraction },
     );
-  }, [scopeId, graph, routes, delivered, calls, unread, error, fraction, onRead]);
+  }, [scopeId, graph, routes, delivered, connections, unread, error, fraction, onRead]);
   return null;
 }
 
@@ -165,13 +141,10 @@ export function OrganizationUniverse({
   replica,
   selectedScope,
   scopes,
-  runtimeToolCatalog,
 }: {
   replica: LofiSqliteClient;
   selectedScope: BackofficeScopeSelection;
   scopes: OrchestrationUniverseScopes;
-  /** The runtime tools workflows call, which name the outside systems they reach. */
-  runtimeToolCatalog: readonly RuntimeToolWorkflowDescriptor[];
 }) {
   const now = useClock(CLOCK_TICK_MS);
   // The window start only moves when a new bucket begins, so the reads restart rarely.
@@ -186,8 +159,8 @@ export function OrganizationUniverse({
     since,
   });
   const deliveries = useAutomationRead(replica, "recentForwardDeliveries", { since });
-  const outside = useWorkflowOutsideCalls(replica, runtimeToolCatalog);
-  const organizationCalls = outside.calls;
+  const kept = useScopeConnections(replica);
+  const organizationConnections = kept.connections;
   const readScopes = useMemo(() => {
     // The loader describes runtime scopes the person can read, never System.
     const describe = ({ label, source }: UniverseScopeSource) => {
@@ -211,7 +184,7 @@ export function OrganizationUniverse({
   const organizationInputs = organization.status === "ready" ? organization.inputs : null;
   const deliveriesData = deliveries.status === "ready" ? deliveries.data : null;
   const universe = useMemo(() => {
-    if (!organizationGraph || !organizationInputs || !deliveriesData || !organizationCalls) {
+    if (!organizationGraph || !organizationInputs || !deliveriesData || !organizationConnections) {
       return null;
     }
     const readScope = ({
@@ -228,7 +201,7 @@ export function OrganizationUniverse({
         graph: organizationGraph,
         routes: organizationInputs.routes,
         deliveries: deliveriesData,
-        calls: organizationCalls,
+        connections: organizationConnections,
       },
       projects: readScopes.projects.map(readScope),
       viewer: readScopes.viewer && readScope(readScopes.viewer),
@@ -240,7 +213,7 @@ export function OrganizationUniverse({
     organizationGraph,
     organizationInputs,
     deliveriesData,
-    organizationCalls,
+    organizationConnections,
     readScopes,
     scopeReads,
     scopes.memberNames,
@@ -256,7 +229,6 @@ export function OrganizationUniverse({
         label={read.label}
         source={read.source}
         since={since}
-        catalog={runtimeToolCatalog}
         onRead={onScopeRead}
       />
     ),
@@ -286,7 +258,7 @@ export function OrganizationUniverse({
   };
   if (organization.status === "ready") {
     missed(
-      unreadRecords([...organization.recordErrors, ...outside.recordErrors]),
+      unreadRecords([...organization.recordErrors, ...kept.recordErrors]),
       selectedScope.label,
     );
   }

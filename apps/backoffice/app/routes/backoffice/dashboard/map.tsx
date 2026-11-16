@@ -74,7 +74,6 @@ export default function BackofficeDashboardMap({ loaderData }: Route.ComponentPr
                 replica={replica}
                 selectedScope={selectedScope}
                 scopes={universe}
-                runtimeToolCatalog={loaderData.runtimeToolCatalog}
               />
             ) : (
               <ScopeOrchestration replica={replica} loaderData={loaderData} />

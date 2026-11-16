@@ -1,6 +1,12 @@
 import { afterAll, assert, beforeAll, describe, expect, test, vi } from "vitest";
 
+import type {
+  AutomationAuthorityMode,
+  AutomationGrantedConnection,
+  AutomationRouteCreateInput,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
@@ -41,7 +47,6 @@ import {
 } from "@/fragno/automation/scenario";
 import { currentWorkflowWaits } from "@/fragno/automation/workflow-waits";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
-import { runtimeToolWorkflowCatalog } from "@/fragno/runtime-tools/workflow-catalog.server";
 
 import { ApiObject } from "../../../../workers/api-object";
 import { AppInstallationsObject } from "../../../../workers/app-installations-object";
@@ -62,7 +67,6 @@ import { piAgentListings, piAgentQueueStatus } from "../agents/agent-activity";
 import type { AutomationWorkflowRun } from "../automations/script-view/workflow-run-presentation";
 import { projectEventTraceList, type EventTraceSummary } from "./event-traces";
 import { orchestrationInletDetail, projectOrchestrationGraph } from "./orchestration-graph";
-import { workflowOutsideCalls } from "./orchestration-outside-systems";
 import { projectOrchestrationUniverse } from "./orchestration-universe";
 import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
 
@@ -627,7 +631,7 @@ async function readUniverse(
         graph,
         routes: inputs.routes,
         deliveries: await readAutomationReplica(replica, "recentForwardDeliveries", { since }),
-        calls: await readOutsideCalls(replica),
+        connections: await readAutomationReplica(replica, "integrationConnections", undefined),
       },
     };
   };
@@ -640,7 +644,11 @@ async function readUniverse(
       deliveries: await readAutomationReplica(organization.replica, "recentForwardDeliveries", {
         since: organization.since,
       }),
-      calls: await readOutsideCalls(organization.replica),
+      connections: await readAutomationReplica(
+        organization.replica,
+        "integrationConnections",
+        undefined,
+      ),
     },
     projects: await Promise.all(projects.map(readScope)),
     viewer: await readScope(viewer),
@@ -667,7 +675,7 @@ async function readUniverse(
           `${fromScopeId} → ${toScopeId} carrying ${eventId}`,
       ),
     ),
-    // The calls it draws, from workflows on planets to outside systems, which go by their names.
+    // The calls it draws, from workflows on planets to what they may call, which goes by its name.
     calls: sorted(
       layoutUniverse(universe).calls.map(({ scopeId, workflowId, externalId }) => {
         const external = universe.externals.find(({ id }) => id === externalId)!;
@@ -675,18 +683,6 @@ async function readUniverse(
       }),
     ),
   };
-}
-
-/**
- * The outside systems a scope's workflows call, from the scripts their last runs ran, with its
- * connections naming the integrations.
- */
-async function readOutsideCalls(replica: Parameters<typeof readAutomationReplica>[0]) {
-  return workflowOutsideCalls(
-    await readAutomationReplica(replica, "latestWorkflowPrograms", undefined),
-    runtimeToolWorkflowCatalog,
-    await readAutomationReplica(replica, "integrationConnections", undefined),
-  );
 }
 
 /** The Agents directory, one line per agent: its activity and the turns it ended per hour. */
@@ -1265,77 +1261,109 @@ describe("dashboard", () => {
     );
   });
 
-  test("the universe shows the outside systems its workflows called in their last runs", async () => {
-    const path = "/workspace/automations/research-lead.workflow.js";
-    // The calls never run, since no lead asks for them; the script names them all the same. The
-    // CRM is a connection of the organization's, and the lead's own connection is only known as
-    // the workflow runs.
-    const researchLead = `export default defineWorkflow({ name: "research-lead" }, async (event, step) => {
-  await step.do("research", async () => {
-    if (event.payload.deep) {
-      const page = await web.extract({ url: event.payload.url });
-      const verdict = await models.classify({ input: page, labels: ["hot", "cold"] });
-      await integrations.execute({ connectionId: "api#crm", actionId: "notes.create", input: { verdict } });
-      await integrations.execute({ connectionId: event.payload.connection, actionId: "reply", input: {} });
-      return verdict;
-    }
-    return "skipped";
-  });
-});`;
+  test("the universe shows what each workflow's routes let it call outside Backoffice", async () => {
+    const workflow = (name: string) => `/workspace/automations/${name}.workflow.js`;
+    const startRoute = (
+      id: string,
+      workflowName: string,
+      enabled: boolean,
+      authority: AutomationAuthorityMode,
+    ): AutomationRouteCreateInput => ({
+      id,
+      name: id,
+      enabled,
+      priority: 100,
+      trigger: { kind: "event", source: "crm", eventType: id, matcher: null },
+      action: {
+        kind: "start_workflow",
+        authority,
+        workflowScriptPath: workflow(workflowName),
+        instanceIdTemplate: `${id}-\${event.id}`,
+      },
+    });
+    const execute = (...connections: AutomationGrantedConnection[]) => ({
+      namespace: "integrations" as const,
+      permission: "execute" as const,
+      connections,
+    });
     const projects: { scope: BackofficeContextScope; label: string }[] = [];
     const viewer = {
       scope: { kind: "user", userId: "user-1", jurisdiction: null } as const,
       label: "Ada",
     };
+    const calls = async (ctx: BackofficeScenarioContext) =>
+      (await readUniverse(ctx, { projects, viewer, read: false })).calls;
 
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        env: { codemode: createCodemodeNodeExecutor(codemodeServer) },
-        name: "an organization's lead research reaches the web and models",
-        files: backofficeFiles.custom({
-          workspace: { "automations/research-lead.workflow.js": researchLead },
-        }),
+        name: "an organization's workflows reach the web, models, and connections in several scopes",
         setup: ({ given }) => [
           given.organization.exists({ id: orgId, name: "Ada Labs" }),
           given.router.route({
             orgId,
-            id: "research-leads",
-            name: "Research leads",
-            enabled: true,
-            priority: 100,
-            trigger: { kind: "event", source: "crm", eventType: "lead.created", matcher: null },
-            action: {
-              kind: "start_workflow",
-              authority: { kind: "organization-automation", grants: [] },
-              workflowScriptPath: path,
-              instanceIdTemplate: "research-${event.id}",
-            },
+            ...startRoute("research-leads", "research-lead", true, {
+              kind: "organization-automation",
+              grants: [
+                BACKOFFICE_PERMISSION.web.download,
+                BACKOFFICE_PERMISSION.models.classify,
+                execute(
+                  { scope: { kind: "current" }, connectionId: "api#crm" },
+                  { scope: { kind: "project", projectId: "books" }, connectionId: "api#ledger" },
+                ),
+              ],
+            }),
+          }),
+          // Disabled, it grants the workflow nothing, though another route starts it.
+          given.router.route({
+            orgId,
+            ...startRoute("research-leads-again", "research-lead", false, {
+              kind: "organization-automation",
+              grants: [execute({ scope: { kind: "current" }, connectionId: "api#payroll" })],
+            }),
+          }),
+          given.router.route({
+            orgId,
+            ...startRoute("notify-members", "notify-member", true, {
+              kind: "delegated-user",
+              grants: [
+                execute(
+                  { scope: { kind: "user", userId: "user-2" }, connectionId: "api#crm" },
+                  { scope: { kind: "org", orgId: "org-2" }, connectionId: "api#crm" },
+                ),
+              ],
+            }),
+          }),
+          given.router.route({
+            orgId,
+            ...startRoute("chat", "chat", true, { kind: "delegated-user", grants: "inherit" }),
           }),
         ],
         steps: ({ when, then }) => [
-          then.assert("a workflow that never ran calls nothing yet", async (ctx) => {
-            assert.deepEqual(
-              (await readUniverse(ctx, { projects, viewer, read: false })).calls,
-              [],
-            );
-          }),
+          then.assert(
+            "each workflow may call what its enabled routes grant, connections by scope",
+            async (ctx) => {
+              assert.deepEqual(await calls(ctx), [
+                `org:org-1 workflow:${workflow("chat")} → any-connection "Any connection" link`,
+                `org:org-1 workflow:${workflow("chat")} → browser-run "Browser Run" monitor`,
+                `org:org-1 workflow:${workflow("chat")} → models "Models" cpu`,
+                `org:org-1 workflow:${workflow("chat")} → web "Web" globe`,
+                `org:org-1 workflow:${workflow("notify-member")} → connection:org:org-2|api#crm "org:org-2 · crm" code`,
+                `org:org-1 workflow:${workflow("notify-member")} → connection:user:user-2|api#crm "user:user-2 · crm" code`,
+                `org:org-1 workflow:${workflow("research-lead")} → connection:org:org-1|api#crm "crm" code`,
+                `org:org-1 workflow:${workflow("research-lead")} → connection:project:org:org-1:books|api#ledger "project:org:org-1:books · ledger" code`,
+                `org:org-1 workflow:${workflow("research-lead")} → models "Models" cpu`,
+                `org:org-1 workflow:${workflow("research-lead")} → web "Web" globe`,
+              ]);
+            },
+          ),
           when.automation.ingestEvent(
             connectionEvent("crm-ready", "ready", "api#crm", Date.now(), "CRM"),
           ),
-          when.workflow.createInstance({
-            orgId,
-            instanceId: "research-1",
-            path,
-            event: event("lead-1", "crm", "lead.created", Date.now()),
-          }),
-          then.assert("its run names what it calls", async (ctx) => {
-            assert.deepEqual((await readUniverse(ctx, { projects, viewer, read: false })).calls, [
-              `org:org-1 workflow:${path} → connection:api#crm "CRM" code`,
-              `org:org-1 workflow:${path} → integrations "Integrations" link`,
-              `org:org-1 workflow:${path} → models "Models" cpu`,
-              `org:org-1 workflow:${path} → web "Web" globe`,
-            ]);
+          then.assert("the organization's connection goes by its name", async (ctx) => {
+            expect(await calls(ctx)).toContain(
+              `org:org-1 workflow:${workflow("research-lead")} → connection:org:org-1|api#crm "CRM" code`,
+            );
           }),
         ],
       }),

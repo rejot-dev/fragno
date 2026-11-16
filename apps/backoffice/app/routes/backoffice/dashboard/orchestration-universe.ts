@@ -18,18 +18,18 @@ import type {
 import { scopeIdentity } from "@/fragno/automation/forward-accepts";
 
 import { orchestrationEventId, type OrchestrationForward } from "./orchestration-graph";
-import type { WorkflowOutsideCall } from "./orchestration-outside-systems";
+import { grantedOutsideSystems, type ScopeConnections } from "./orchestration-outside-systems";
 
 /** Where a scope's routes forwarded to since the universe's window began. */
 type UniverseDeliveries = readonly { routeId: string; scope: BackofficeContextScope }[];
 
-/** What the universe reads of a scope: its graph, routes, deliveries, and workflows' calls. */
+/** What the universe reads of a scope: its graph, routes, deliveries, and connections. */
 type UniverseScopeRecords = {
   graph: OrchestrationGraph;
   routes: readonly AutomationRouteDefinition[];
   deliveries: UniverseDeliveries;
-  /** The outside systems its workflows call, as their last runs ran them. */
-  calls: readonly WorkflowOutsideCall[];
+  /** The connections it keeps, which name the connections routes grant in it. */
+  connections: ScopeConnections;
 };
 
 /**
@@ -194,7 +194,7 @@ function memberGraph(
  * forwards its routes name or delivered. Other members' planets come from what the organization
  * recorded, so a member shows once they forward something. The person looking shows when their
  * scope and the organization's forward to each other. System, which forwards into every
- * organization, stays out.
+ * organization, stays out. Workflows on read planets reach out to what their routes grant them.
  */
 export function projectOrchestrationUniverse({
   organization,
@@ -219,6 +219,11 @@ export function projectOrchestrationUniverse({
     backofficeScopePathSegment(scope);
   const organizationId = scopeIdentity(organization.scope);
   const viewerId = viewer ? scopeIdentity(viewer.scope) : null;
+  const readScopes = [...projects, ...(viewer ? [viewer] : [])];
+  const scopeLabels = new Map([
+    [organizationId, organization.graph.scopeLabel],
+    ...readScopes.map(({ scope, label }) => [scopeIdentity(scope), label] as const),
+  ]);
   const forwards: UniverseForward[] = [
     ...scopeForwards(organizationId, organization.routes, organization.deliveries),
     ...projects.flatMap(({ scope, read }) =>
@@ -310,33 +315,13 @@ export function projectOrchestrationUniverse({
         ]),
       ).values(),
     ],
-    ...outsideSystems([
-      { scope: organization.scope, read: organization },
-      ...projects,
-      ...(viewer ? [viewer] : []),
-    ]),
-  };
-}
-
-/**
- * The systems that workflows on the universe's planets call, by name, and the calls. A connection
- * two scopes call by the same address shows once, by the name the first of them gives it.
- */
-function outsideSystems(
-  scopes: readonly { scope: BackofficeContextScope; read: UniverseScopeRecords | null }[],
-): Pick<OrchestrationUniverse, "externals" | "calls"> {
-  const scoped = scopes.flatMap(({ scope, read }) =>
-    (read?.calls ?? []).map((call) => ({ scopeId: scopeIdentity(scope), ...call })),
-  );
-  const externals = new Map(
-    scoped.map(({ external }) => [external.id, external] as const).reverse(),
-  );
-  return {
-    externals: [...externals.values()].sort((left, right) => left.label.localeCompare(right.label)),
-    calls: scoped.map(({ scopeId, workflowId, external }) => ({
-      scopeId,
-      workflowId,
-      externalId: external.id,
-    })),
+    ...grantedOutsideSystems({
+      organizationId,
+      scopes: [
+        organization,
+        ...readScopes.flatMap(({ scope, read }) => (read ? [{ scope, ...read }] : [])),
+      ],
+      scopeLabel: (scope) => scopeLabels.get(scopeIdentity(scope)) ?? memberLabel(scope),
+    }),
   };
 }

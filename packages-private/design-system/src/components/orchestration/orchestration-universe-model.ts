@@ -27,10 +27,10 @@ export type OrchestrationUniverseScope = {
  */
 export type OrchestrationForward = { routeId: string; fromScopeId: string; toScopeId: string };
 
-/** A system outside Backoffice that workflows call, such as Telegram or an email provider. */
+/** A system outside Backoffice that workflows may call, such as Telegram or an email provider. */
 export type OrchestrationExternal = { id: string; label: string; icon: IconName };
 
-/** A workflow of one scope that calls an outside system somewhere in its steps. */
+/** A workflow of one scope that may call an outside system, as what starts it grants. */
 export type OrchestrationExternalCall = { scopeId: string; workflowId: string; externalId: string };
 
 export type OrchestrationUniverse = {
