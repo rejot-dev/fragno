@@ -7,6 +7,7 @@ import { instantiate } from "@fragno-dev/core";
 
 import { BetterSQLite3DriverConfig } from "../adapters/generic-sql/driver-config";
 import { SqlAdapter } from "../adapters/generic-sql/generic-sql-adapter";
+import { InMemoryAdapter } from "../adapters/in-memory/in-memory-adapter";
 import type { FragnoPublicConfigWithDatabase } from "../db-fragment-definition-builder";
 import { internalFragmentDef, internalSchema } from "../fragments/internal-fragment";
 import { getRegistryForAdapterSync } from "../internal/adapter-registry";
@@ -1390,6 +1391,70 @@ describe("Hook System", () => {
       expect(pending).toHaveLength(1);
       assert(pending[0]?.error === "Hook 2 failed");
     });
+
+    it.each([
+      ["SQLite", () => internalFragment],
+      [
+        "in-memory",
+        () => {
+          const databaseAdapter = new InMemoryAdapter();
+          return instantiate(internalFragmentDef)
+            .withConfig({ registry: getRegistryForAdapterSync(databaseAdapter) })
+            .withOptions({ databaseAdapter, databaseNamespace: TEST_NS })
+            .build();
+        },
+      ],
+    ] as const)(
+      "should order hooks by creation, even within a millisecond (%s)",
+      async (_adapter, createFragment) => {
+        const fragment = createFragment();
+        const namespace = "test-order";
+        const orders: Array<{ created: number; order: string }> = [];
+        const hooks: HooksMap = {
+          onOrdered: defineDurableHook(function (this: HookContext, payload: unknown) {
+            orders.push({ created: (payload as { created: number }).created, order: this.order });
+          }),
+        };
+
+        // Back-to-back transactions of two hooks each, so several share a millisecond.
+        for (let transaction = 0; transaction < 6; transaction++) {
+          await fragment.inContext(async function () {
+            await this.handlerTx()
+              .mutate(({ forSchema }) => {
+                const uow = forSchema(internalSchema);
+                for (const created of [transaction * 2, transaction * 2 + 1]) {
+                  uow.create("fragno_hooks", {
+                    namespace,
+                    hookName: "onOrdered",
+                    payload: { created },
+                    status: "pending",
+                    attempts: 0,
+                    maxAttempts: 1,
+                    lastAttemptAt: null,
+                    nextRetryAt: null,
+                    error: null,
+                    nonce: `nonce-${created}`,
+                  });
+                }
+              })
+              .execute();
+          });
+        }
+
+        await processHooksToCompletion({
+          hooks,
+          namespace,
+          internalFragment: fragment,
+          handlerTx,
+        });
+
+        expect(orders).toHaveLength(12);
+        const byOrder = orders.toSorted((left, right) => (left.order < right.order ? -1 : 1));
+        expect(byOrder.map(({ created }) => created)).toEqual([
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+        ]);
+      },
+    );
 
     it("should do nothing when no pending events exist", async () => {
       const namespace = "test-no-events";
