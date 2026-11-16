@@ -779,9 +779,13 @@ export const automationRouteSchema: z.ZodType<AutomationRouteDefinition> = z
   )
   .meta({ id: "AutomationRoute" });
 
+/** The longest key an event's state is kept under. */
+export const AUTOMATION_EVENT_KEY_MAX_LENGTH = 512;
+
 export const automationRouteCreateInputSchema = z.lazy(() =>
   z.object({
-    id: z.string().trim().min(1),
+    // A route's id keys the state of its failures.
+    id: z.string().trim().min(1).max(AUTOMATION_EVENT_KEY_MAX_LENGTH),
     name: z.string().trim().min(1),
     enabled: z.boolean().default(true),
     priority: z.number().int().default(1000),

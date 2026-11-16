@@ -1,3 +1,4 @@
+import { AUTOMATION_EVENT_KEY_MAX_LENGTH } from "@fragno-dev/backoffice-api/v0/automation";
 import type {
   AutomationEventState,
   AutomationEventStateDeleteResult,
@@ -27,9 +28,6 @@ import { automationFragmentSchema } from "./schema";
  * the states they no longer want.
  */
 
-/** Long enough for ids and paths, short enough to index. */
-const MAX_EVENT_KEY_LENGTH = 512;
-
 /** Cursors of `listEventState` name this index. */
 export const STATE_INDEX = "idx_automation_event_state_source_type_key";
 
@@ -48,11 +46,13 @@ function eventKeyAt(payload: unknown, keyPath: string): string | null {
       : typeof value === "number" && Number.isFinite(value)
         ? String(value)
         : null;
-  return key !== null && key.length > 0 && key.length <= MAX_EVENT_KEY_LENGTH ? key : null;
+  return key !== null && key.length > 0 && key.length <= AUTOMATION_EVENT_KEY_MAX_LENGTH
+    ? key
+    : null;
 }
 
 function missingKeyMessage(keyPath: string) {
-  return `a string or number of at most ${MAX_EVENT_KEY_LENGTH} characters at its key path ${keyPath}`;
+  return `a string or number of at most ${AUTOMATION_EVENT_KEY_MAX_LENGTH} characters at its key path ${keyPath}`;
 }
 
 /** The key an event is kept under in its type's state, and the key path that read it. */

@@ -414,6 +414,99 @@ test("an agent reads where each route its event matched stands", async () => {
   );
 });
 
+test("a route's latest failure stays in its state until the route is retried on it", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "Route failures kept as state",
+      // The route forwards outside the agent's scope, so it fails for good each time.
+      options: { allowFailedDurableHooks: true },
+      setup: ({ given }) => [
+        given.organization.exists({ id: "org-1", slug: "event-tools", name: "Event tools" }),
+        given.organization.exists({
+          id: "org-2",
+          slug: "elsewhere",
+          name: "Elsewhere",
+          ownerUserId: "user-2",
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert(
+          "retrying the latest failure clears it until the route fails again",
+          async (ctx) => {
+            const scope = { kind: "user", userId: "user-1", jurisdiction: null } as const;
+            const context = createRouteBackedRuntimeContext({
+              emitter: { kind: "caller" },
+              runtime: ctx.runtime.services,
+              kernel: new BackofficeKernel(ctx.runtime.services),
+              execution: createBackofficeSystemExecution(scope),
+            });
+            assert(context.stateBackend);
+            const { bash } = await createInteractiveBashHost({
+              context: { ...context, stateBackend: context.stateBackend },
+            });
+            const route = {
+              id: "forward",
+              name: "Forward to another organization",
+              trigger: { kind: "event", source: "custom", eventType: "check.requested" },
+              action: {
+                kind: "forward_event",
+                targetScope: { kind: "org", orgIdTemplate: "org-2" },
+              },
+            };
+            // A route's id keys its failures' state, so it is no longer than a state's key.
+            const tooLong = await bash.exec(
+              `router.create --json '${JSON.stringify({ ...route, id: "r".repeat(513) })}'`,
+            );
+            assert.notEqual(tooLong.exitCode, 0);
+            const created = await bash.exec(`router.create --json '${JSON.stringify(route)}'`);
+            assert.equal(created.exitCode, 0, created.stderr);
+            async function fire() {
+              const fired = await bash.exec(
+                "events.fire --source custom --event-type check.requested --format json",
+              );
+              assert.equal(fired.exitCode, 0, fired.stderr);
+              await ctx.drain();
+              return (JSON.parse(fired.stdout) as { eventId: string }).eventId;
+            }
+            async function failedOn() {
+              const read = await bash.exec(
+                "events.state.get --source automations --event-type route.failed --key forward --format json",
+              );
+              assert.equal(read.exitCode, 0, read.stderr);
+              const { states } = JSON.parse(read.stdout) as {
+                states: { payload: { event: { id: string } } }[];
+              };
+              return states.map((state) => state.payload.event.id);
+            }
+            async function retry(eventId: string) {
+              const retried = await bash.exec(
+                `events.routes.retry --event ${eventId} --route forward`,
+              );
+              assert.equal(retried.exitCode, 0, retried.stderr);
+            }
+
+            const first = await fire();
+            const second = await fire();
+            expect(await failedOn()).toEqual([second]);
+
+            // Retrying an earlier failure leaves the latest one, until the retry fails later.
+            await retry(first);
+            expect(await failedOn()).toEqual([second]);
+            await ctx.drain();
+            expect(await failedOn()).toEqual([first]);
+
+            await retry(first);
+            expect(await failedOn()).toEqual([]);
+            await ctx.drain();
+            expect(await failedOn()).toEqual([first]);
+          },
+        ),
+      ],
+    }),
+  );
+});
+
 test("an organization takes in what its members forward only while it accepts it", async () => {
   const personal = { kind: "user", userId: "user-1", jurisdiction: null } as const;
   const organization = { kind: "org", orgId: "org-1", jurisdiction: null } as const;

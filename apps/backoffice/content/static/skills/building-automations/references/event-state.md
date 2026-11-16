@@ -32,7 +32,8 @@ workflow run. One run per thing is a keyed run:
 - **Built-in types:** Backoffice keys its own events. `pi` events key on `$.agentName`, and pages
   read agents from the `agents` relation; `integrations` connection events key on `$.connectionId`,
   read from `connections`; `sandbox` `instance.ready`, `instance.stopped`, and `instance.failed` key
-  on `$.sandboxId`, and a sandbox's lifecycle is the latest of its three.
+  on `$.sandboxId`, and a sandbox's lifecycle is the latest of its three; `automations`
+  `route.failed` keys on `$.route.id`, each route's latest failure, as `event-routing.md` describes.
 
 ## Change a key path
 
