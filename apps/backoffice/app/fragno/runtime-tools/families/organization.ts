@@ -115,6 +115,7 @@ const getOrganizationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("org.get"),
   namespace: "org",
   name: "get",
+  activity: { label: "Read organization", target: () => null },
   execute: async (_input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).get(),
   adapters: {
@@ -145,6 +146,7 @@ const updateOrganizationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("org.update"),
   namespace: "org",
   name: "update",
+  activity: { label: "Rename organization", target: (input) => input.name },
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).update(input),
   adapters: {
@@ -175,6 +177,7 @@ const listMembersTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("org.members.list"),
   namespace: "org",
   name: "membersList",
+  activity: { label: "List organization members", target: () => null },
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).listMembers(input),
   adapters: {
@@ -202,6 +205,7 @@ const listInvitationsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("org.invitations.list"),
   namespace: "org",
   name: "invitationsList",
+  activity: { label: "List organization invitations", target: () => null },
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).listInvitations(input),
   adapters: {
@@ -239,6 +243,7 @@ const createInvitationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("org.invitations.create"),
   namespace: "org",
   name: "invitationsCreate",
+  activity: { label: "Invite to organization", target: (input) => input.email },
   execute: async (input, context: OrganizationToolContext) =>
     await getOrganizationRuntime(context.runtimes.org).createInvitation(input),
   adapters: {

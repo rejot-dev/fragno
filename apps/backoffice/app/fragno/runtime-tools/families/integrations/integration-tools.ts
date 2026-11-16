@@ -162,6 +162,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.discover"),
       namespace: "integrations",
       name: "discover",
+      activity: { label: "Discover services", target: () => null },
       execute: async (_input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).discover(),
       adapters: {
@@ -182,6 +183,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.list"),
       namespace: "integrations",
       name: "list",
+      activity: { label: "List connections", target: () => null },
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).list(input),
       adapters: {
@@ -210,6 +212,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.get"),
       namespace: "integrations",
       name: "get",
+      activity: { label: "Inspect connection", target: (input) => input.connectionId },
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).get(input),
@@ -233,6 +236,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.setup"),
       namespace: "integrations",
       name: "setup",
+      activity: { label: "Set up connection", target: (input) => input.connectionId },
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).setup(input),
@@ -265,6 +269,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.reconfigure"),
       namespace: "integrations",
       name: "reconfigure",
+      activity: { label: "Reconfigure connection", target: (input) => input.connectionId },
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).reconfigure(input),
@@ -297,6 +302,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.disconnect"),
       namespace: "integrations",
       name: "disconnect",
+      activity: { label: "Disconnect", target: (input) => input.connectionId },
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).disconnect(input),
@@ -334,6 +340,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.backfillConnectionEvents"),
       namespace: "integrations",
       name: "backfillConnectionEvents",
+      activity: { label: "Record connection states", target: () => null },
       execute: async (_input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).backfillConnectionEvents(),
       adapters: {
@@ -354,6 +361,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.actions"),
       namespace: "integrations",
       name: "actions",
+      activity: { label: "List connection actions", target: (input) => input.connectionId },
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).actions(input),
@@ -378,6 +386,10 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.execute"),
       namespace: "integrations",
       name: "execute",
+      activity: {
+        label: "Run connection action",
+        target: (input) => `${input.actionId} on ${input.connectionId}`,
+      },
       getResource: (input) => ({ connectionId: input.connectionId, actionId: input.actionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).execute(input),
@@ -434,6 +446,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.generateClient"),
       namespace: "integrations",
       name: "generateClient",
+      activity: { label: "Generate connection client", target: (input) => input.out },
       getResource: (input) => ({ connectionId: input.connectionId, path: input.out }),
       execute: async ({ connectionId, out }, context: IntegrationsToolContext) => {
         const integrations = requireIntegrationsRuntime(context);
@@ -485,6 +498,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("integrations.verify"),
       namespace: "integrations",
       name: "verify",
+      activity: { label: "Verify connection", target: (input) => input.connectionId },
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).verify(input),

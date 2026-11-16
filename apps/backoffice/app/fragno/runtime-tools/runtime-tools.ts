@@ -132,6 +132,17 @@ export type BackofficeRuntimeToolReferenceHints = {
   };
 };
 
+/**
+ * How a person reads one call of a tool in an agent's activity, such as "Save file" and the path
+ * it saved. The label is imperative, so it reads the same while the call runs, after it succeeds,
+ * and after it fails.
+ */
+type BackofficeRuntimeToolActivity<TInput> = {
+  label: string;
+  /** The one input value worth showing beside the label; never content, bodies, or credentials. */
+  target(input: TInput): string | null;
+};
+
 export type BackofficeRuntimeTool<
   TInputSchema extends z.ZodType = z.ZodType,
   TOutputSchema extends z.ZodType = z.ZodType,
@@ -143,6 +154,7 @@ export type BackofficeRuntimeTool<
   name: string;
   capabilityId?: BackofficeCapabilityId;
   description: string;
+  activity: BackofficeRuntimeToolActivity<z.output<TInputSchema>>;
   /** Every listed permission is required in the execution's scope. */
   requiredPermissions: readonly BackofficePermissionRequirement[];
   getResource?(input: z.output<TInputSchema>): unknown;

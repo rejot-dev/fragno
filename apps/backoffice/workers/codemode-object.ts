@@ -346,9 +346,9 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
     const recordedHost = observeCodemodeToolCalls(
       host,
       codemodeToolCallObserver(redactedResults, {
-        started: (sequence, call, input) =>
+        started: (sequence, call, summary) =>
           fragment.callServices(() =>
-            fragment.services.startToolCall(runId, sequence, call, input),
+            fragment.services.startToolCall(runId, sequence, call, summary),
           ),
         settled: (callId, outcome) =>
           fragment.callServices(() => fragment.services.settleToolCall(callId, outcome)),

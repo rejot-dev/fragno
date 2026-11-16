@@ -30,6 +30,7 @@ const marketplaceSearchTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("marketplace.search"),
   namespace: "marketplace",
   name: "search",
+  activity: { label: "Search marketplace", target: (input) => input.query },
   execute: async (input, context: MarketplaceToolContext) =>
     await getMarketplaceRuntime(context).search(input),
   adapters: {
@@ -95,6 +96,7 @@ const marketplaceViewTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("marketplace.view"),
   namespace: "marketplace",
   name: "view",
+  activity: { label: "View package", target: (input) => input.listingId },
   execute: async (input, context: MarketplaceToolContext) =>
     await getMarketplaceRuntime(context).view(input),
   adapters: {
@@ -167,6 +169,7 @@ const marketplacePublishTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("marketplace.publish"),
   namespace: "marketplace",
   name: "publish",
+  activity: { label: "Publish package", target: (input) => input.packageRoot },
   execute: async (input, context: MarketplaceToolContext) =>
     await getMarketplaceRuntime(context).publish(input),
   adapters: {
@@ -249,6 +252,7 @@ const marketplaceFeaturedTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("marketplace.featured"),
   namespace: "marketplace",
   name: "featured",
+  activity: { label: "List featured packages", target: () => null },
   execute: async (_input, context: MarketplaceToolContext) =>
     await getMarketplaceRuntime(context).featured(),
   adapters: {

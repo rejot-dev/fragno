@@ -132,6 +132,7 @@ const fireEventTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.fire"),
   namespace: "events",
   name: "fire",
+  activity: { label: "Fire event", target: (input) => `${input.source}/${input.eventType}` },
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).emitEvent(input),
   adapters: {
@@ -191,6 +192,7 @@ const listEventsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.list"),
   namespace: "events",
   name: "list",
+  activity: { label: "List events", target: () => null },
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).listEvents(input),
   adapters: {
@@ -250,6 +252,7 @@ const listEventRoutesTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.routes.list"),
   namespace: "events",
   name: "routesList",
+  activity: { label: "List event routes", target: (input) => input.status },
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).listEventRoutes(input),
   adapters: {
@@ -316,6 +319,7 @@ const getEventTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.get"),
   namespace: "events",
   name: "get",
+  activity: { label: "Read event", target: (input) => input.id },
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).getEvent(input),
   adapters: {
@@ -375,6 +379,7 @@ const retryEventRouteTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.routes.retry"),
   namespace: "events",
   name: "routesRetry",
+  activity: { label: "Retry event route", target: (input) => input.routeId },
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).retryEventRoute(input),
   adapters: {
@@ -422,6 +427,7 @@ const listEventStateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.state.list"),
   namespace: "events",
   name: "stateList",
+  activity: { label: "List event state", target: (input) => `${input.source}/${input.eventType}` },
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).listEventState(input),
   adapters: {
@@ -500,6 +506,7 @@ const getEventStatesTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.state.get"),
   namespace: "events",
   name: "stateGet",
+  activity: { label: "Read event state", target: (input) => `${input.source}/${input.eventType}` },
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).getEventStates(input),
   adapters: {
@@ -554,6 +561,10 @@ const deleteEventStateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.state.delete"),
   namespace: "events",
   name: "stateDelete",
+  activity: {
+    label: "Delete event state",
+    target: (input) => `${input.source}/${input.eventType}`,
+  },
   execute: async (input, context: EventToolContext) =>
     await getEventRuntime(context.runtimes.event).deleteEventState(input),
   adapters: {

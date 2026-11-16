@@ -29,6 +29,10 @@ export const sharesToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("shares.create"),
       namespace: "shares",
       name: "create",
+      activity: {
+        label: "Share files",
+        target: (input) => (input.of.kind === "folder" ? input.of.path : input.of.prefix),
+      },
       getResource: ({ of }) =>
         of.kind === "folder" ? { path: of.path } : { kind: "blobs", prefix: of.prefix },
       execute: async (input, context: SharesToolContext) =>
@@ -38,6 +42,7 @@ export const sharesToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("shares.accept"),
       namespace: "shares",
       name: "accept",
+      activity: { label: "Accept share", target: (input) => input.name ?? null },
       execute: async (input, context: SharesToolContext) => {
         const accepted = await getShareRuntime(context).accept(input);
         // The mount may have been looked up, and missed, earlier in this execution.
@@ -49,12 +54,14 @@ export const sharesToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("shares.list"),
       namespace: "shares",
       name: "list",
+      activity: { label: "List shares", target: () => null },
       execute: async (_input, context: SharesToolContext) => await getShareRuntime(context).list(),
     }),
     defineBackofficeRuntimeTool({
       ...backofficeApiOperationToolFields("shares.revoke"),
       namespace: "shares",
       name: "revoke",
+      activity: { label: "Revoke share", target: (input) => input.shareId },
       execute: async (input, context: SharesToolContext) => {
         await getShareRuntime(context).revoke(input);
         context.runtimes.state?.refreshMetadata();

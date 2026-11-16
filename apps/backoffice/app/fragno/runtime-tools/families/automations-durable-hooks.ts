@@ -90,6 +90,7 @@ const listHooksTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("hooks.list"),
   namespace: "hooks",
   name: "list",
+  activity: { label: "List durable hooks", target: (input) => input.fragment },
   execute: async (input, context: DurableHooksToolContext) =>
     await getDurableHooksRuntime(context.runtimes.durableHooks).listHooks({
       ...input,
@@ -142,6 +143,7 @@ const getHookTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("hooks.get"),
   namespace: "hooks",
   name: "get",
+  activity: { label: "Read durable hook", target: (input) => input.hookId },
   execute: async (input, context: DurableHooksToolContext) =>
     await getDurableHooksRuntime(context.runtimes.durableHooks).getHook({
       ...input,

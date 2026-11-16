@@ -37,6 +37,7 @@ const createAccessCodeTool = defineBackofficeRuntimeTool({
   id: "admin.access-codes.create",
   namespace: "admin",
   name: "accessCodesCreate",
+  activity: { label: "Create access code", target: (input) => input.label },
   description:
     "Create an access code that lets people create their own Backoffice accounts, with GitHub or a password, and return its sign-up link. The code is random, or made from the label with codeSource 'label'.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.accessCodesManage],
@@ -99,6 +100,7 @@ const listAccessCodesTool = defineBackofficeRuntimeTool({
   id: "admin.access-codes.list",
   namespace: "admin",
   name: "accessCodesList",
+  activity: { label: "List access codes", target: () => null },
   description:
     "List access codes for signing up, newest first, with their codes and sign-up links, using cursor pagination.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.accessCodesManage],
@@ -166,6 +168,7 @@ const listAccessCodeRedemptionsTool = defineBackofficeRuntimeTool({
   id: "admin.access-codes.redemptions",
   namespace: "admin",
   name: "accessCodesRedemptions",
+  activity: { label: "List access code sign-ups", target: (input) => input.code },
   description:
     "List the accounts an access code admitted, by email, newest first, using cursor pagination.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.accessCodesManage],
@@ -243,6 +246,7 @@ const revokeAccessCodeTool = defineBackofficeRuntimeTool({
   id: "admin.access-codes.revoke",
   namespace: "admin",
   name: "accessCodesRevoke",
+  activity: { label: "Revoke access code", target: (input) => input.accessCodeId },
   description:
     "Revoke an access code so it creates no more accounts. Accounts it already created stay.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.accessCodesManage],

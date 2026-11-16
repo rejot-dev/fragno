@@ -133,6 +133,7 @@ const storeGetTool = defineAutomationStoreTool({
   ...backofficeApiOperationToolFields("store.get"),
   namespace: "store",
   name: "get",
+  activity: { label: "Read store entry", target: (input) => input.key },
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).get(input),
   adapters: {
@@ -166,6 +167,7 @@ const storeSetTool = defineAutomationStoreTool({
   ...backofficeApiOperationToolFields("store.set"),
   namespace: "store",
   name: "set",
+  activity: { label: "Save store entry", target: (input) => input.key },
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).set(input),
   adapters: {
@@ -224,6 +226,7 @@ const storeListTool = defineAutomationStoreTool({
   ...backofficeApiOperationToolFields("store.list"),
   namespace: "store",
   name: "list",
+  activity: { label: "List store entries", target: (input) => input.prefix ?? null },
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).list(input),
   adapters: {
@@ -263,6 +266,7 @@ const storeDeleteTool = defineAutomationStoreTool({
   ...backofficeApiOperationToolFields("store.delete"),
   namespace: "store",
   name: "delete",
+  activity: { label: "Delete store entry", target: (input) => input.key },
   execute: async (input, context) =>
     await getAutomationStoreRuntime(context.runtimes.automations).delete(input),
   adapters: {

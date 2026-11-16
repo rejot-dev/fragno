@@ -21,6 +21,7 @@ import type {
 } from "@/fragno/runtime-tools/runtime-tools";
 import type { CoreBackofficeToolContext } from "@/fragno/runtime-tools/tool-families";
 
+import { codemodeCallDescriber } from "./codemode-call-subject";
 import {
   codemodeProviderManifest,
   executeCodemodeInObject,
@@ -200,7 +201,10 @@ export const runBackofficeCodemode = async ({
   toolContext,
   onToolCalls,
 }: RunBackofficeCodemodeInput): Promise<BackofficeCodemodeExecuteResult> => {
-  const toolCallLog = createCodemodeToolCallLog(onToolCalls ?? null);
+  const toolCallLog = createCodemodeToolCallLog(
+    codemodeCallDescriber(families),
+    onToolCalls ?? null,
+  );
 
   const state = toolContext.runtimes.state;
   // Without a filesystem, saved-module imports stay unresolved and fail when the code runs.

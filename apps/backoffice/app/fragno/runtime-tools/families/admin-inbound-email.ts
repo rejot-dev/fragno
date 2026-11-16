@@ -12,6 +12,7 @@ const replaceInboundEmailTool = defineBackofficeRuntimeTool({
   id: "admin.inbound-email.replace",
   namespace: "admin",
   name: "inboundEmailReplace",
+  activity: { label: "Replace inbound email address", target: (input) => input.userId },
   description:
     "Give a person a new inbound email address, three random words, such as after their address gets spam. People keep one address for good and cannot replace it themselves. The old address stops receiving at once and is never issued again.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.usersManage],
@@ -54,12 +55,14 @@ const replaceInboundEmailTool = defineBackofficeRuntimeTool({
 function defineInboundEmailSendingTool({
   id,
   name,
+  label,
   suspended,
   description,
   summary,
 }: {
   id: "admin.inbound-email.suspend-sending" | "admin.inbound-email.resume-sending";
   name: string;
+  label: string;
   suspended: boolean;
   description: string;
   summary: string;
@@ -68,6 +71,7 @@ function defineInboundEmailSendingTool({
     id,
     namespace: "admin",
     name,
+    activity: { label, target: (input) => input.userId },
     description,
     requiredPermissions: [BACKOFFICE_PERMISSION.admin.usersManage],
     inputSchema: z.strictObject({ userId: z.string().trim().min(1) }),
@@ -113,6 +117,7 @@ function defineInboundEmailSendingTool({
 const suspendInboundEmailSendingTool = defineInboundEmailSendingTool({
   id: "admin.inbound-email.suspend-sending",
   name: "inboundEmailSuspendSending",
+  label: "Suspend inbound email sending",
   suspended: true,
   description:
     "Stop a person sending from their inbound email address, such as after spam complaints. It still receives. A recipient marking their email as spam does this on its own.",
@@ -122,6 +127,7 @@ const suspendInboundEmailSendingTool = defineInboundEmailSendingTool({
 const resumeInboundEmailSendingTool = defineInboundEmailSendingTool({
   id: "admin.inbound-email.resume-sending",
   name: "inboundEmailResumeSending",
+  label: "Resume inbound email sending",
   suspended: false,
   description:
     "Let a person send from their inbound email address again, after support suspended it or a recipient marked their email as spam.",

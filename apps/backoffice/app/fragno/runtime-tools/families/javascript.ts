@@ -152,6 +152,7 @@ const javaScriptBuildTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("js.build"),
   namespace: "js",
   name: "build",
+  activity: { label: "Build module", target: (input) => input.path },
   execute: async (input, context: JavaScriptToolContext) =>
     await getJavaScriptBuildFile(context)(input),
   adapters: {
@@ -212,6 +213,7 @@ const javaScriptCheckTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("js.check"),
   namespace: "js",
   name: "check",
+  activity: { label: "Check code", target: (input) => input.path },
   execute: async (input, context: JavaScriptToolContext) =>
     await getJavaScriptCheckFile(context)(input),
   adapters: {
@@ -243,6 +245,7 @@ const javaScriptRunTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("js.run"),
   namespace: "js",
   name: "run",
+  activity: { label: "Run script", target: (input) => input.path },
   execute: async (input, context: JavaScriptToolContext) =>
     await getJavaScriptRunFile(context)(input, context),
   adapters: {
@@ -352,6 +355,7 @@ const javaScriptRunsListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("js.runs.list"),
   namespace: "js",
   name: "runsList",
+  activity: { label: "List codemode runs", target: () => null },
   execute: async (input, context: JavaScriptToolContext) =>
     await getJavaScriptRunHistory(context).listRuns(input),
   adapters: {
@@ -394,6 +398,7 @@ const javaScriptRunsGetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("js.runs.get"),
   namespace: "js",
   name: "runsGet",
+  activity: { label: "Read codemode run", target: (input) => input.runId },
   execute: async (input, context: JavaScriptToolContext) =>
     await getJavaScriptRunHistory(context).getRun(input),
   adapters: {

@@ -260,6 +260,7 @@ const workflowInstanceCreateTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.create"),
   namespace: "workflow",
   name: "createInstance",
+  activity: { label: "Start workflow", target: (input) => input.path },
   execute: async (input, context) =>
     await getAutomationWorkflowRuntime(context.runtimes.workflow).createInstance(input),
   reference: {
@@ -316,6 +317,10 @@ const workflowInstanceSendEventTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.send-event"),
   namespace: "workflow",
   name: "sendEvent",
+  activity: {
+    label: "Send workflow event",
+    target: (input) => `${input.type} to ${input.instanceId}`,
+  },
   execute: async (input, context) =>
     await getAutomationWorkflowRuntime(context.runtimes.workflow).sendEvent(input),
   reference: { codemode: { description: "Send an event to a waiting durable workflow instance." } },
@@ -361,6 +366,7 @@ const workflowRetryFailedStepTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.retry-failed-step"),
   namespace: "workflow",
   name: "retryFailedStep",
+  activity: { label: "Retry failed workflow step", target: (input) => input.instanceId },
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).retryFailedStep(input);
   },
@@ -403,6 +409,7 @@ const workflowTerminateInstanceTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.terminate"),
   namespace: "workflow",
   name: "terminateInstance",
+  activity: { label: "Stop workflow run", target: (input) => input.instanceId },
   execute: async (input, context) =>
     await getAutomationWorkflowRuntime(context.runtimes.workflow).terminateInstance(input),
   reference: {
@@ -438,6 +445,7 @@ const workflowListInstancesTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.list"),
   namespace: "workflow",
   name: "listInstances",
+  activity: { label: "List workflow runs", target: () => null },
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).listInstances(input);
   },
@@ -481,6 +489,7 @@ const workflowGetInstanceTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.get"),
   namespace: "workflow",
   name: "getInstance",
+  activity: { label: "Read workflow run", target: (input) => input.instanceId },
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).getInstance(input);
   },
@@ -515,6 +524,7 @@ const workflowShowInstanceTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.show"),
   namespace: "workflow",
   name: "showInstance",
+  activity: { label: "Show workflow run", target: (input) => input.instanceId },
   execute: async (input, context) => {
     const { workflow, workflowRunPresenter } = context.runtimes;
     if (!workflowRunPresenter) {
@@ -539,6 +549,7 @@ const workflowHistoryTool = defineAutomationWorkflowTool({
   ...backofficeApiOperationToolFields("workflow.instances.history"),
   namespace: "workflow",
   name: "getHistory",
+  activity: { label: "Read workflow run history", target: (input) => input.instanceId },
   execute: async (input, context) => {
     return await getAutomationWorkflowRuntime(context.runtimes.workflow).getHistory(input);
   },

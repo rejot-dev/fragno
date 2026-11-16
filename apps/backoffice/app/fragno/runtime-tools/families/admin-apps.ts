@@ -43,6 +43,7 @@ const createAppTool = defineBackofficeRuntimeTool({
   id: "admin.apps.create",
   namespace: "admin",
   name: "appsCreate",
+  activity: { label: "Register app", target: (input) => input.slug },
   description:
     "Register a Backoffice app for an existing Better Auth OAuth client. Does not provision OAuth credentials or install the app.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
@@ -115,6 +116,7 @@ const updateAppActionsTool = defineBackofficeRuntimeTool({
   id: "admin.apps.update-actions",
   namespace: "admin",
   name: "appsUpdateActions",
+  activity: { label: "Update app actions", target: (input) => input.appId },
   description:
     "Replace a registered app's action declaration. A changed declaration gets a new revision; installations approve it before new or changed actions run, unless its changeApproval is automatic.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
@@ -159,6 +161,7 @@ const updateAppPermissionsTool = defineBackofficeRuntimeTool({
   id: "admin.apps.update-permissions",
   namespace: "admin",
   name: "appsUpdatePermissions",
+  activity: { label: "Update app permissions", target: (input) => input.appId },
   description:
     "Replace the permissions a registered app requests. A first-party app's installations follow the new request within a minute. A third-party app's installations keep the grants their owner approved: an added permission applies once an owner grants it (apps.installations.update or the install page), and a removed one stays granted until an owner changes the installation's access.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
@@ -218,6 +221,7 @@ const updateAppTrustTool = defineBackofficeRuntimeTool({
   id: "admin.apps.update-trust",
   namespace: "admin",
   name: "appsUpdateTrust",
+  activity: { label: "Update app trust", target: (input) => input.appId },
   description:
     "Set whether Backoffice operates a registered app. A first-party app is authorized without a consent screen and cannot be revoked by users, is linked to organizations without a permission review, lets anyone sign up through it, has Backoffice's sign-in speak in its name (its branding), and may call the provisioning operations it is granted.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
@@ -264,6 +268,7 @@ const listAppsTool = defineBackofficeRuntimeTool({
   id: "admin.apps.list",
   namespace: "admin",
   name: "appsList",
+  activity: { label: "List registered apps", target: () => null },
   description:
     "List global Backoffice app registrations using cursor pagination. Does not expose OAuth credentials or organization installations.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsRead],

@@ -69,6 +69,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.readFile"),
       namespace: "state",
       name: "readFile",
+      activity: { label: "Read file", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).readFile(path),
     }),
@@ -76,6 +77,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       id: "state.readFileBytes",
       namespace: "state",
       name: "readFileBytes",
+      activity: { label: "Read file", target: (input) => input.path },
       description: "Read a file from codemode state as bytes.",
       requiredPermissions: [BACKOFFICE_PERMISSION.upload.read],
       inputSchema: pathInputSchema,
@@ -87,6 +89,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.writeFile"),
       namespace: "state",
       name: "writeFile",
+      activity: { label: "Save file", target: (input) => input.path },
       execute: async ({ path, content }, context: StateToolContext) => {
         await getStateRuntime(context).writeFile(path, content);
       },
@@ -95,6 +98,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       id: "state.writeFileBytes",
       namespace: "state",
       name: "writeFileBytes",
+      activity: { label: "Save file", target: (input) => input.path },
       description: "Write bytes to mutable codemode state.",
       requiredPermissions: [BACKOFFICE_PERMISSION.upload.modify],
       inputSchema: z.strictObject({
@@ -110,6 +114,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       id: "state.appendFile",
       namespace: "state",
       name: "appendFile",
+      activity: { label: "Append to file", target: (input) => input.path },
       description: "Append text or bytes to a file in mutable codemode state.",
       requiredPermissions: [BACKOFFICE_PERMISSION.upload.modify],
       inputSchema: z.strictObject({
@@ -125,6 +130,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.exists"),
       namespace: "state",
       name: "exists",
+      activity: { label: "Check path exists", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).exists(path),
     }),
@@ -132,6 +138,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.stat"),
       namespace: "state",
       name: "stat",
+      activity: { label: "Read file details", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).stat(path),
     }),
@@ -139,6 +146,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.lstat"),
       namespace: "state",
       name: "lstat",
+      activity: { label: "Read file details", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).lstat(path),
     }),
@@ -146,6 +154,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.mkdir"),
       namespace: "state",
       name: "mkdir",
+      activity: { label: "Create folder", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) => {
         await getStateRuntime(context).mkdir(path);
       },
@@ -154,6 +163,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.readdir"),
       namespace: "state",
       name: "readdir",
+      activity: { label: "List folder", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).readdir(path),
     }),
@@ -161,6 +171,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.readdirWithFileTypes"),
       namespace: "state",
       name: "readdirWithFileTypes",
+      activity: { label: "List folder", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).readdirWithFileTypes(path),
     }),
@@ -168,6 +179,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.rm"),
       namespace: "state",
       name: "rm",
+      activity: { label: "Delete file", target: (input) => input.path },
       execute: async ({ path, options }, context: StateToolContext) => {
         await getStateRuntime(context).rm(path, options);
       },
@@ -176,6 +188,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.cp"),
       namespace: "state",
       name: "cp",
+      activity: { label: "Copy file", target: (input) => `${input.src} → ${input.dest}` },
       execute: async ({ src, dest }, context: StateToolContext) => {
         await getStateRuntime(context).cp(src, dest);
       },
@@ -184,6 +197,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.mv"),
       namespace: "state",
       name: "mv",
+      activity: { label: "Move file", target: (input) => `${input.src} → ${input.dest}` },
       execute: async ({ src, dest }, context: StateToolContext) => {
         await getStateRuntime(context).mv(src, dest);
       },
@@ -192,6 +206,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.realpath"),
       namespace: "state",
       name: "realpath",
+      activity: { label: "Resolve path", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).realpath(path),
     }),
@@ -199,6 +214,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.resolvePath"),
       namespace: "state",
       name: "resolvePath",
+      activity: { label: "Resolve path", target: (input) => input.path },
       execute: async ({ base, path }, context: StateToolContext) =>
         getStateRuntime(context).resolvePath(base, path),
     }),
@@ -206,6 +222,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.glob"),
       namespace: "state",
       name: "glob",
+      activity: { label: "Find files", target: (input) => input.pattern },
       execute: async ({ pattern }, context: StateToolContext) =>
         await getStateRuntime(context).glob(pattern),
     }),
@@ -213,6 +230,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.readJson"),
       namespace: "state",
       name: "readJson",
+      activity: { label: "Read file", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).readJson(path),
     }),
@@ -220,6 +238,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.writeJson"),
       namespace: "state",
       name: "writeJson",
+      activity: { label: "Save file", target: (input) => input.path },
       execute: async ({ path, value, options }, context: StateToolContext) => {
         await getStateRuntime(context).writeJson(path, value, options);
       },
@@ -228,6 +247,10 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.applyEdits"),
       namespace: "state",
       name: "applyEdits",
+      activity: {
+        label: "Edit files",
+        target: (input) => [...new Set(input.edits.map((edit) => edit.path))].join(", "),
+      },
       execute: async ({ edits }, context: StateToolContext) =>
         await getStateRuntime(context).applyEdits(edits),
     }),
@@ -235,6 +258,10 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.searchText"),
       namespace: "state",
       name: "searchText",
+      activity: {
+        label: "Search file",
+        target: (input) => `${JSON.stringify(input.query)} in ${input.path}`,
+      },
       execute: async ({ path, query, options }, context: StateToolContext) =>
         await getStateRuntime(context).searchText(path, query, options),
     }),
@@ -242,6 +269,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.searchFiles"),
       namespace: "state",
       name: "searchFiles",
+      activity: { label: "Search files", target: (input) => input.pattern },
       execute: async ({ pattern, keywords, options }, context: StateToolContext) =>
         await getStateRuntime(context).searchFiles(pattern, keywords, options),
     }),
@@ -249,6 +277,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.hashFile"),
       namespace: "state",
       name: "hashFile",
+      activity: { label: "Hash file", target: (input) => input.path },
       execute: async ({ path, algorithm }, context: StateToolContext) =>
         await getStateRuntime(context).hashFile(path, algorithm),
     }),
@@ -256,6 +285,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.createDownloadLink"),
       namespace: "state",
       name: "createDownloadLink",
+      activity: { label: "Create download link", target: (input) => input.path },
       getResource: ({ path }) => ({ path }),
       execute: async (input, context: StateToolContext) =>
         await getFileLinkRuntime(context).createDownloadLink(input),
@@ -277,6 +307,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.createUploadLink"),
       namespace: "state",
       name: "createUploadLink",
+      activity: { label: "Create upload link", target: (input) => input.path },
       getResource: ({ path }) => ({ path }),
       execute: async (input, context: StateToolContext) =>
         await getFileLinkRuntime(context).createUploadLink(input),

@@ -58,6 +58,7 @@ const getAppTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.get"),
   namespace: "apps",
   name: "get",
+  activity: { label: "Review app", target: (input) => input.appId },
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.getApp(input),
   adapters: {
@@ -107,6 +108,7 @@ const installAppTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.install"),
   namespace: "apps",
   name: "install",
+  activity: { label: "Install app", target: (input) => input.appId },
   execute: async (input, context: AppsToolContext) => {
     const { apps, userId } = requireAppsContext(context);
     return await apps.installApp(input, userId);
@@ -154,6 +156,7 @@ const getInstallationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.installations.get"),
   namespace: "apps",
   name: "getInstallation",
+  activity: { label: "Read app installation", target: (input) => input.appId },
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.getInstallation(input),
   adapters: {
@@ -201,6 +204,7 @@ const listInstallationsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.installations.list"),
   namespace: "apps",
   name: "listInstallations",
+  activity: { label: "List app installations", target: () => null },
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.listInstallations(input),
   adapters: {
@@ -255,6 +259,7 @@ const updateInstallationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.installations.update"),
   namespace: "apps",
   name: "updateInstallation",
+  activity: { label: "Update app installation", target: (input) => input.appId },
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.updateInstallationAccess(input),
   adapters: {
@@ -298,6 +303,7 @@ const approveActionsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.installations.approveActions"),
   namespace: "apps",
   name: "approveInstallationActions",
+  activity: { label: "Approve app actions", target: (input) => input.appId },
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.approveActions(input),
   adapters: {
@@ -328,6 +334,7 @@ const uninstallAppTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.uninstall"),
   namespace: "apps",
   name: "uninstall",
+  activity: { label: "Uninstall app", target: (input) => input.appId },
   execute: async (input, context: AppsToolContext) =>
     await requireAppsContext(context).apps.uninstallApp(input),
   adapters: {

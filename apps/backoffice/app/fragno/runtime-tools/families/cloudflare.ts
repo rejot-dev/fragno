@@ -97,6 +97,10 @@ const browserRunCaptureTool = defineBackofficeRuntimeTool({
   id: "cloudflare.browser-run.capture",
   namespace: "cloudflare",
   name: "browserRunCapture",
+  activity: {
+    label: "Capture page",
+    target: (input) => ("url" in input.input ? input.input.url : null),
+  },
   description: "Capture a page as a PDF or screenshot with Cloudflare Browser Run.",
   requiredPermissions: [BACKOFFICE_PERMISSION.cloudflare.browserRun],
   inputSchema: browserRunCaptureInputSchema,
@@ -165,6 +169,10 @@ const browserRunCrawlTool = defineBackofficeRuntimeTool({
   id: "cloudflare.browser-run.crawl",
   namespace: "cloudflare",
   name: "browserRunCrawl",
+  activity: {
+    label: "Crawl site",
+    target: (input) => (input.action === "start" ? input.input.url : input.jobId),
+  },
   description: "Start, inspect, or cancel a Cloudflare Browser Run crawl job.",
   requiredPermissions: [BACKOFFICE_PERMISSION.cloudflare.browserRun],
   inputSchema: browserRunCrawlActionInputSchema,

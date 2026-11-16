@@ -234,6 +234,7 @@ const verifyUserEmailTool = defineBackofficeRuntimeTool({
   id: "admin.users.verify-email",
   namespace: "admin",
   name: "usersVerifyEmail",
+  activity: { label: "Verify email address", target: (input) => input.email },
   description:
     "Mark a user's email address as verified without sending a verification email, for example on a deployment without email delivery.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.usersManage],
@@ -292,6 +293,7 @@ const createOrganizationTool = defineBackofficeRuntimeTool({
   id: "admin.org.create",
   namespace: "admin",
   name: "orgCreate",
+  activity: { label: "Create organization", target: (input) => input.name },
   description: "Create an organization and assign its owner.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: createOrganizationInputSchema,
@@ -341,6 +343,7 @@ const listOrganizationsTool = defineBackofficeRuntimeTool({
   id: "admin.org.list",
   namespace: "admin",
   name: "orgList",
+  activity: { label: "List organizations", target: () => null },
   description: "List every organization, using cursor pagination.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: directoryPageInputSchema,
@@ -384,6 +387,7 @@ const getOrganizationTool = defineBackofficeRuntimeTool({
   id: "admin.org.get",
   namespace: "admin",
   name: "orgGet",
+  activity: { label: "Read organization", target: (input) => input.organizationSlug },
   description: "Read one organization by slug, with the organization managing it, if any.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: z.strictObject({ organizationSlug: z.string().trim().min(1) }),
@@ -413,6 +417,7 @@ const listOrganizationMembersTool = defineBackofficeRuntimeTool({
   id: "admin.org.members.list",
   namespace: "admin",
   name: "orgMembersList",
+  activity: { label: "List organization members", target: (input) => input.organizationSlug },
   description: "List members of any organization with their roles, using cursor pagination.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: z.lazy(() =>
@@ -463,6 +468,10 @@ const addOrganizationMemberTool = defineBackofficeRuntimeTool({
   id: "admin.org.members.add",
   namespace: "admin",
   name: "orgMembersAdd",
+  activity: {
+    label: "Add organization member",
+    target: (input) => `${input.userEmail} to ${input.organizationSlug}`,
+  },
   description: "Add a user to an organization with explicit roles.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: addOrganizationMemberInputSchema,
@@ -507,6 +516,10 @@ const removeOrganizationMemberTool = defineBackofficeRuntimeTool({
   id: "admin.org.members.remove",
   namespace: "admin",
   name: "orgMembersRemove",
+  activity: {
+    label: "Remove organization member",
+    target: (input) => `${input.userEmail} from ${input.organizationSlug}`,
+  },
   description: "Remove a user from an organization.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
   inputSchema: removeOrganizationMemberInputSchema,
@@ -542,6 +555,10 @@ const setOrganizationManagerTool = defineBackofficeRuntimeTool({
   id: "admin.org.manager.set",
   namespace: "admin",
   name: "orgManagerSet",
+  activity: {
+    label: "Set organization manager",
+    target: (input) => `${input.managingOrganizationSlug} for ${input.organizationSlug}`,
+  },
   description:
     "Let the members of a managing organization, such as an agency, act in an organization: in its workspace, its projects, and, as its owners and admins, its members' personal workspaces. They act with their role in the managing organization, owners as admins, without becoming members. It replaces any previous managing organization and does not chain.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
@@ -582,6 +599,7 @@ const clearOrganizationManagerTool = defineBackofficeRuntimeTool({
   id: "admin.org.manager.clear",
   namespace: "admin",
   name: "orgManagerClear",
+  activity: { label: "Clear organization manager", target: (input) => input.organizationSlug },
   description:
     "End an organization's management: only its own members act in it again, effective for new credentials and deferred work at once.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],

@@ -44,6 +44,7 @@ const buildPageTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("artifacts.pages.build"),
   namespace: "artifacts",
   name: "buildPage",
+  activity: { label: "Build page", target: (input) => input.path },
   getResource: ({ path }: z.output<typeof artifactPageBuildInputSchema>) => ({ path }),
   execute: async ({ path }, context: ArtifactsToolContext) => {
     const loaded = await requireArtifactsRuntime(context).loadPage(path);
@@ -63,6 +64,7 @@ const buildSiteTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("artifacts.sites.build"),
   namespace: "artifacts",
   name: "buildSite",
+  activity: { label: "Build site", target: (input) => input.path },
   getResource: ({ path }: z.output<typeof artifactSiteBuildInputSchema>) => ({ path }),
   execute: async ({ path }, context: ArtifactsToolContext) => {
     const built = await requireArtifactsRuntime(context).buildSite(path);
@@ -82,6 +84,7 @@ const siteDataStatusTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("artifacts.sites.dataStatus"),
   namespace: "artifacts",
   name: "siteDataStatus",
+  activity: { label: "Check site data", target: () => null },
   getResource: () => ({}),
   execute: async (_input, context: ArtifactsToolContext) =>
     await requireArtifactsRuntime(context).siteDataStatus(),
@@ -91,6 +94,7 @@ const siteLogsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("artifacts.sites.logs"),
   namespace: "artifacts",
   name: "siteLogs",
+  activity: { label: "Read site logs", target: (input) => input.path },
   getResource: ({ path }: z.output<typeof artifactSiteLogsInputSchema>) => ({ path }),
   execute: async (input, context: ArtifactsToolContext) => {
     const entries = await requireArtifactsRuntime(context).siteLogs(input);
@@ -102,6 +106,10 @@ const requestSiteTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("artifacts.sites.request"),
   namespace: "artifacts",
   name: "requestSite",
+  activity: {
+    label: "Request site",
+    target: (input) => `${input.method ?? "GET"} ${input.url ?? "/"} on ${input.path}`,
+  },
   getResource: ({ path }: z.output<typeof artifactSiteRequestInputSchema>) => ({ path }),
   execute: async (input, context: ArtifactsToolContext) =>
     await requireArtifactsRuntime(context).requestSite(input),

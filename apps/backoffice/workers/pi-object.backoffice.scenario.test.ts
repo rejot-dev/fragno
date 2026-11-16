@@ -1831,10 +1831,11 @@ test("subagents an app starts each answer one task in a conversation of their ow
                     items: [
                       {
                         subject: {
-                          kind: "call",
+                          kind: "tool",
                           name: "store.set",
                           scope: null,
-                          input: expect.any(String),
+                          label: "Save store entry",
+                          target: "reader/result",
                         },
                         offsetMs: expect.any(Number),
                         status: "failed",
