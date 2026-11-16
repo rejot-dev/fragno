@@ -34,6 +34,7 @@ const bankingErrorCodes = [
   "BANK_JOURNAL_NOT_FOUND",
   "STATEMENT_ACCOUNT_MISMATCH",
   "STATEMENT_CHANGED",
+  "STATEMENT_REPEATED",
   "STATEMENT_UNBALANCED",
   "STATEMENT_OUT_OF_ORDER",
   "STATEMENT_OVERLAP",
@@ -183,18 +184,27 @@ function transactionRow(row: {
  * statement: each must add up, start after the one before ends, and open with its closing balance.
  * Statements imported before, `imported` by their bank's ID with their fingerprints, are skipped;
  * one saying something else than when it was imported is refused, as an import cannot be undone.
+ * A statement the file repeats is imported once, unless its repeats say different things.
  */
 function planImport(
   account: { iban: string; currency: string; lastStatement: StatementEnd | null },
   statements: FingerprintedStatement[],
   imported: ReadonlyMap<string, string>,
 ) {
-  const ordered = statements
-    .filter(
-      (statement, position) =>
-        statements.findIndex((other) => other.reference === statement.reference) === position,
-    )
-    .sort((a, b) => a.endDate.localeCompare(b.endDate) || a.startDate.localeCompare(b.startDate));
+  const byReference = new Map<string, FingerprintedStatement>();
+  for (const statement of statements) {
+    const seen = byReference.get(statement.reference);
+    if (seen !== undefined && seen.fingerprint !== statement.fingerprint) {
+      throw new BankingError(
+        "STATEMENT_REPEATED",
+        `The file holds statement ${statement.reference} twice, saying different things: export it from your bank again.`,
+      );
+    }
+    byReference.set(statement.reference, statement);
+  }
+  const ordered = [...byReference.values()].sort(
+    (a, b) => a.endDate.localeCompare(b.endDate) || a.startDate.localeCompare(b.startDate),
+  );
   let last =
     account.lastStatement === null
       ? null
