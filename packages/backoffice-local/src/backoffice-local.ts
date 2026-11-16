@@ -1,7 +1,6 @@
 import { Buffer } from "node:buffer";
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, posix, resolve } from "node:path";
+import { posix, resolve } from "node:path";
 
 import {
   type BackofficeContextScope,
@@ -19,6 +18,14 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
 
+import {
+  type OAuthCredential,
+  readStoredAuth,
+  refreshStoredOAuth,
+  storeAuth,
+  storeBackofficeCredential,
+  type StoredAuthState,
+} from "./auth-store.js";
 import { backofficeDevServerPorts } from "./backoffice-dev-server-port.js";
 import { backofficeErrorMessage } from "./backoffice-error-message.js";
 import {
@@ -30,25 +37,6 @@ import { openBackofficeVerificationUrl } from "./browser-verification.js";
 
 /** Slug-backed scope syntax accepted by Leyway CLI commands and public routes. */
 export type LeywayCliScope = BackofficePublicScope;
-
-type OAuthCredential = {
-  clientId: string;
-  accessToken: string;
-  accessTokenExpiresAt: string;
-  refreshToken: string;
-};
-
-type BackofficeCredential = {
-  accessToken: string;
-  expiresAt: string;
-  scope: BackofficeContextScope;
-};
-
-type StoredAuthState = {
-  baseUrl: string;
-  oauth: OAuthCredential;
-  backoffice: BackofficeCredential;
-};
 
 type LeywayCliOAuthConfig = {
   clientId: string;
@@ -176,79 +164,6 @@ function backofficeAutomationsStreamPath(
     query.set("afterVersionstamp", afterVersionstamp);
   }
   return `${path}?${query}`;
-}
-
-function isStoredAuthState(value: unknown): value is StoredAuthState {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const auth = value as Record<string, unknown>;
-  if (!auth["oauth"] || typeof auth["oauth"] !== "object") {
-    return false;
-  }
-  if (!auth["backoffice"] || typeof auth["backoffice"] !== "object") {
-    return false;
-  }
-  const oauth = auth["oauth"] as Record<string, unknown>;
-  const backoffice = auth["backoffice"] as Record<string, unknown>;
-  return (
-    typeof auth["baseUrl"] === "string" &&
-    typeof oauth["clientId"] === "string" &&
-    typeof oauth["accessToken"] === "string" &&
-    typeof oauth["accessTokenExpiresAt"] === "string" &&
-    typeof oauth["refreshToken"] === "string" &&
-    typeof backoffice["accessToken"] === "string" &&
-    typeof backoffice["expiresAt"] === "string" &&
-    isBackofficeContextScope(backoffice["scope"])
-  );
-}
-
-async function readAuth(): Promise<StoredAuthState | null> {
-  let text;
-  try {
-    text = await readFile(authFile, "utf8");
-  } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      return null;
-    }
-    throw new Error(
-      `Could not read auth state from ${authFile}: ${backofficeErrorMessage(error)}`,
-      {
-        cause: error,
-      },
-    );
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    throw new Error(
-      `Auth state in ${authFile} is not valid JSON: ${backofficeErrorMessage(error)}`,
-      {
-        cause: error,
-      },
-    );
-  }
-  if (!isStoredAuthState(parsed)) {
-    throw new Error(`Auth state in ${authFile} uses an unsupported format. Remove it and log in.`);
-  }
-  // A scope stored before jurisdictions existed reads back as naming none.
-  return {
-    ...parsed,
-    backoffice: {
-      ...parsed.backoffice,
-      scope: backofficeContextScopeSchema.parse(parsed.backoffice.scope),
-    },
-  };
-}
-
-async function writeAuth(auth: StoredAuthState): Promise<void> {
-  await mkdir(dirname(authFile), { recursive: true });
-  const temporaryAuthFile = `${authFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  await writeFile(temporaryAuthFile, `${JSON.stringify(auth, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporaryAuthFile, authFile);
-  await chmod(authFile, 0o600);
 }
 
 async function readJsonResponse(response: Response): Promise<unknown> {
@@ -541,28 +456,27 @@ async function refreshOAuthAccessToken(
   auth: StoredAuthState,
   config: LeywayCliOAuthConfig,
 ): Promise<StoredAuthState> {
-  const response = await fetchBackofficeWithoutRedirect(config.tokenEndpoint, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: auth.oauth.refreshToken,
-      client_id: config.clientId,
-      resource: auth.baseUrl,
-    }),
+  return await refreshStoredOAuth(authFile, auth, async (oauth) => {
+    const response = await fetchBackofficeWithoutRedirect(config.tokenEndpoint, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        refresh_token: oauth.refreshToken,
+        client_id: config.clientId,
+        resource: auth.baseUrl,
+      }),
+    });
+    if (!response.ok) {
+      const body = await readJsonResponse(response);
+      throw new BackofficeTokenExchangeError(
+        response.status,
+        `OAuth token refresh failed (${response.status}): ${responseMessage(body)}. Run leyway login again.`,
+      );
+    }
+    const token = parseOAuthTokenResponse(await readJsonResponse(response), oauth.refreshToken);
+    return { clientId: oauth.clientId, ...token } satisfies OAuthCredential;
   });
-  if (!response.ok) {
-    const body = await readJsonResponse(response);
-    throw new BackofficeTokenExchangeError(
-      response.status,
-      `OAuth token refresh failed (${response.status}): ${responseMessage(body)}. Run leyway login again.`,
-    );
-  }
-
-  const oauth = parseOAuthTokenResponse(await readJsonResponse(response), auth.oauth.refreshToken);
-  const refreshed = { ...auth, oauth: { clientId: auth.oauth.clientId, ...oauth } };
-  await writeAuth(refreshed);
-  return refreshed;
 }
 
 function isBackofficeExecutionTokenResult(value: unknown): value is BackofficeExecutionTokenResult {
@@ -604,7 +518,7 @@ async function exchangeOAuthTokenForBackofficeJwt(
   if (!isBackofficeExecutionTokenResult(result)) {
     throw new Error("Backoffice token exchange returned an invalid response shape.");
   }
-  const exchanged = {
+  return {
     ...auth,
     backoffice: {
       accessToken: result.accessToken,
@@ -612,16 +526,14 @@ async function exchangeOAuthTokenForBackofficeJwt(
       scope: result.scope,
     },
   };
-  await writeAuth(exchanged);
-  return exchanged;
 }
 
 async function ensureOAuthAccessToken(
   baseUrl: string,
 ): Promise<{ auth: StoredAuthState; config: LeywayCliOAuthConfig }> {
   const config = await registerOrLoadOAuthClient(baseUrl);
-  let auth = await readAuth();
-  if (!auth || auth.baseUrl !== baseUrl || auth.oauth.clientId !== config.clientId) {
+  let auth = await readStoredAuth(authFile, baseUrl);
+  if (!auth || auth.oauth.clientId !== config.clientId) {
     throw new Error(`No OAuth credential is stored for ${baseUrl}. Run leyway login.`);
   }
   if (!isCredentialUnexpired(auth.oauth.accessTokenExpiresAt)) {
@@ -655,6 +567,7 @@ async function ensureBackofficeJwtForScope({
     auth = await refreshOAuthAccessToken(auth, config);
     auth = await exchangeOAuthTokenForBackofficeJwt(auth, scope);
   }
+  await storeBackofficeCredential(authFile, auth);
   return { auth, config };
 }
 
@@ -863,12 +776,8 @@ export async function resumeBackofficeLogin(options: {
 }): Promise<ReturnType<typeof getBackofficeLoginSummary> | null> {
   const baseUrl = await probeBackofficeServer({ print: false, baseUrl: options.baseUrl });
   const config = await registerOrLoadOAuthClient(baseUrl);
-  const storedAuth = await readAuth();
-  if (
-    !storedAuth ||
-    storedAuth.baseUrl !== baseUrl ||
-    storedAuth.oauth.clientId !== config.clientId
-  ) {
+  const storedAuth = await readStoredAuth(authFile, baseUrl);
+  if (!storedAuth || storedAuth.oauth.clientId !== config.clientId) {
     return null;
   }
 
@@ -909,6 +818,7 @@ export async function loginToBackoffice(options: {
     },
   };
   const auth = await exchangeOAuthTokenForBackofficeJwt(initialAuth, null);
+  await storeAuth(authFile, auth);
   const current = await fetchMe(auth);
   if (!current.response.ok || !isMeBody(current.body)) {
     throw new Error(

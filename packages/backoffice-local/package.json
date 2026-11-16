@@ -41,9 +41,10 @@
     "@fragno-private/vitest-config": "workspace:*",
     "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "catalog:",
+    "tsx": "^4.21.0",
     "vitest": "catalog:"
   },
   "engines": {
-    "node": ">=22"
+    "node": "^22.22.0 || >=24.11.0"
   }
 }
