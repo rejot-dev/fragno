@@ -1,14 +1,4 @@
-import { assert, expect, test, vi } from "vitest";
-
-import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+import { assert, expect, test } from "vitest";
 
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -21,6 +11,8 @@ import {
   openNodeSqliteDatabase,
   openNodeSqliteStorage,
 } from "@earendil-works/pi-durable/storage/sqlite/node";
+import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { PostHog } from "posthog-node";
 
 import { defineExtension, GenerationTask, hook } from "@earendil-works/pi-durable";

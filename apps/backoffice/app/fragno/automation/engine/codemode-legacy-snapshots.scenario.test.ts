@@ -1,4 +1,4 @@
-import { test, vi } from "vitest";
+import { test } from "vitest";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
@@ -9,16 +9,6 @@ import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
 import { BillingObject } from "../../../../workers/billing-object";
 import { CodemodeObject } from "../../../../workers/codemode-object";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  },
-  RpcTarget: class MockRpcTarget {},
-  WorkerEntrypoint: class MockWorkerEntrypoint {},
-}));
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 const scenarioObjects = {
   API: (input) => new ApiObject(input),

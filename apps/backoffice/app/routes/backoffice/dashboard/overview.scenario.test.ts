@@ -70,21 +70,6 @@ import { orchestrationInletDetail, projectOrchestrationGraph } from "./orchestra
 import { projectOrchestrationUniverse } from "./orchestration-universe";
 import { dashboardBucketStarts, projectBackofficeDashboard } from "./overview";
 
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-  class MockRpcTarget {}
-  class MockWorkerEntrypoint {}
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: MockRpcTarget,
-    WorkerEntrypoint: MockWorkerEntrypoint,
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
-
 const scenarioObjects = {
   API: (input) => new ApiObject(input),
   APPS: (input) => new AppsObject(input),

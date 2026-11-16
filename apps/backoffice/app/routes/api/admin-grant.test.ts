@@ -1,12 +1,4 @@
-import { afterEach, assert, describe, expect, it, vi } from "vitest";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class MockDurableObject {},
-  RpcTarget: class MockRpcTarget {},
-  WorkerEntrypoint: class MockWorkerEntrypoint {},
-}));
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+import { afterEach, assert, describe, expect, it } from "vitest";
 
 import {
   createInMemoryBackofficeRuntime,

@@ -1,11 +1,4 @@
-import { assert, describe, expect, test, vi } from "vitest";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
+import { assert, describe, expect, test } from "vitest";
 
 import { matchRoutes, type RouteObject } from "react-router";
 

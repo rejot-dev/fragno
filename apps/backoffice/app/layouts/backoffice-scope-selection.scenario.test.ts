@@ -2,13 +2,6 @@ import { assert, expect, test, vi } from "vitest";
 
 import { z } from "zod";
 
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
-
 // Observes project lookups so the scenario can count them per request.
 vi.mock("@/routes/backoffice/automations/project-lookup.server", async (importOriginal) => {
   const actual =

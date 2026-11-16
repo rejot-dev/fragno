@@ -1,16 +1,9 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import type { ProjectPage } from "@fragno-dev/backoffice-api/v0/projects";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { Cursor } from "@fragno-dev/db";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import {
   createBackofficeUserExecution,

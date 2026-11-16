@@ -1,17 +1,10 @@
-import { assert, describe, expect, test, vi } from "vitest";
-
-import { z } from "zod";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
+import { assert, describe, expect, test } from "vitest";
 
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+
+import { z } from "zod";
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import {

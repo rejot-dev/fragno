@@ -1,14 +1,7 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import { marketplaceSearchResultSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { marketplaceListingDetailSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";

@@ -1,4 +1,4 @@
-import { assert, test, vi } from "vitest";
+import { assert, test } from "vitest";
 
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -11,13 +11,6 @@ import express from "express";
 import type { ActionFunctionArgs, ServerBuild } from "react-router";
 
 import { createRequestHandler } from "@react-router/express";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 

@@ -1,12 +1,4 @@
-import { describe, test, vi } from "vitest";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class MockDurableObject {},
-  RpcTarget: class MockRpcTarget {},
-  WorkerEntrypoint: class MockWorkerEntrypoint {},
-}));
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+import { describe, test } from "vitest";
 
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 

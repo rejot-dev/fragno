@@ -1,24 +1,6 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-
-  class MockRpcTarget {}
-  class MockWorkerEntrypoint {}
-
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: MockRpcTarget,
-    WorkerEntrypoint: MockWorkerEntrypoint,
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
-
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { EMAIL_VERIFICATION_TYPE } from "@/fragno/otp";
 import {

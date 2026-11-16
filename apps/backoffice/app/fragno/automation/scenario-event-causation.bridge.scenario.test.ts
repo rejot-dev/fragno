@@ -1,11 +1,4 @@
-import { afterAll, beforeAll, expect, test, vi } from "vitest";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+import { afterAll, beforeAll, expect, test } from "vitest";
 
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";

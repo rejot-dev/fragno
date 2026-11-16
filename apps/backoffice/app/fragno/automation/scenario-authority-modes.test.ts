@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, assert } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import {
   automationActorsSchema,
@@ -12,24 +12,6 @@ import {
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-
-  class MockRpcTarget {}
-  class MockWorkerEntrypoint {}
-
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: MockRpcTarget,
-    WorkerEntrypoint: MockWorkerEntrypoint,
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
-
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
 import { ApiObject } from "../../../workers/api-object";

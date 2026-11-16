@@ -3,6 +3,7 @@ import { assert, describe, expect, test, vi } from "vitest";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { unavailableBackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
 import {
   createBackofficeRequestExecution,
@@ -14,6 +15,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeObjectRegistry } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_REQUIRED_PERMISSION_HEADER } from "@/backoffice-runtime/required-permission-header";
 import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-services";
@@ -29,6 +31,7 @@ import {
   buildMarketplacePackageInstallWorkflowInstanceId,
   MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
 } from "@/fragno/automation/marketplace-package-install-identity";
+import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import {
   createAutomationsRouteCaller,
   createWorkflowsRouteCaller,
@@ -36,31 +39,6 @@ import {
 import { inlineWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-
-  class MockRpcTarget {}
-  class MockWorkerEntrypoint {}
-
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: MockRpcTarget,
-    WorkerEntrypoint: MockWorkerEntrypoint,
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({
-  DurableObject,
-  RpcTarget,
-  WorkerEntrypoint,
-}));
-
-import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
-import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 
 import { AutomationsObject } from "./automations-object";
 import { MarketplaceObject } from "./marketplace-object";

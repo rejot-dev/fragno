@@ -7,13 +7,6 @@ import path from "node:path";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
-
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 

@@ -1,12 +1,5 @@
 import { afterEach, assert, expect, test, vi } from "vitest";
 
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
-
 import {
   ARTIFACT_SITE_DATA_PERMISSIONS,
   type ArtifactSiteDataStatus,

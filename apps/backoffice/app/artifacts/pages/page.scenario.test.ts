@@ -1,4 +1,4 @@
-import { afterAll, assert, beforeAll, describe, test, vi } from "vitest";
+import { afterAll, assert, beforeAll, describe, test } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { CodemodeExecutor } from "@fragno-dev/codemode/execution/codemode-activation-contract";
@@ -39,13 +39,6 @@ import { listPageSources } from "@/routes/backoffice/pages/load.server";
 import { loadPage, type LoadedPage } from "./build.server";
 import { pageFileData } from "./page-files";
 import { checkPageSource } from "./page-source.test-support";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
 
 // Building imports the saved source, which needs a compiler that bundles saved modules.
 let codemodeServer: Awaited<ReturnType<typeof createCodemodeTestServer>>;

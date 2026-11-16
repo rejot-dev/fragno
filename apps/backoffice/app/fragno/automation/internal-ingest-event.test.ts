@@ -1,23 +1,6 @@
-import { describe, test, vi } from "vitest";
+import { describe, test } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-
-  class MockRpcTarget {}
-  class MockWorkerEntrypoint {}
-
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: MockRpcTarget,
-    WorkerEntrypoint: MockWorkerEntrypoint,
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";

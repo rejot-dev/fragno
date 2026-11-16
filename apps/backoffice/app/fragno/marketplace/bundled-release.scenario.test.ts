@@ -1,14 +1,4 @@
-import { assert, expect, test, vi } from "vitest";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
-  class DurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-  class RpcTarget {}
-  class WorkerEntrypoint {}
-  return { DurableObject, RpcTarget, WorkerEntrypoint };
-});
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+import { assert, expect, test } from "vitest";
 
 import {
   createBackofficeSystemExecution,

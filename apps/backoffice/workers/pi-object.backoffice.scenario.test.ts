@@ -1,21 +1,5 @@
 import { assert, expect, test, vi } from "vitest";
 
-import {
-  createAppActionVerifier,
-  type VerifiedAppActionRequest,
-} from "@fragno-dev/backoffice-api/v0/app-actions";
-import type { PiAgentConfig, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
-import { PI_NOTIFICATION_ENTRY_KIND } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
-import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
-
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import os from "node:os";
@@ -36,6 +20,14 @@ import {
   openNodeSqliteDatabase,
   openNodeSqliteStorage,
 } from "@earendil-works/pi-durable/storage/sqlite/node";
+import {
+  createAppActionVerifier,
+  type VerifiedAppActionRequest,
+} from "@fragno-dev/backoffice-api/v0/app-actions";
+import type { PiAgentConfig, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
+import { PI_NOTIFICATION_ENTRY_KIND } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { PostHog } from "posthog-node";
 
 import type { Context, Message } from "@earendil-works/pi-ai";

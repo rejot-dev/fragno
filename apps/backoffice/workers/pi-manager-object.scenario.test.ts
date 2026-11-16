@@ -4,22 +4,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { AutomationRouteCreateInput } from "@fragno-dev/backoffice-api/v0/automation";
-import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
-import type { PiManagerAgent, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
-import {
-  PI_NOTIFICATION_ENTRY_KIND,
-  renderPiNotificationRequest,
-} from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
-import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
-
 import { applyImmutable } from "@earendil-works/chord/delta";
 import { createModels } from "@earendil-works/pi-ai/models";
 import {
@@ -30,6 +14,14 @@ import {
   type FauxResponseStep,
 } from "@earendil-works/pi-ai/providers/faux";
 import { getCurrentSystemPrompt } from "@earendil-works/pi-ai/utils/transcript";
+import type { AutomationRouteCreateInput } from "@fragno-dev/backoffice-api/v0/automation";
+import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
+import type { PiManagerAgent, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
+import {
+  PI_NOTIFICATION_ENTRY_KIND,
+  renderPiNotificationRequest,
+} from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
+import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { Type } from "@earendil-works/pi-ai";
 import {

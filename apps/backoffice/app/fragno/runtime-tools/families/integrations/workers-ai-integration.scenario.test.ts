@@ -1,4 +1,4 @@
-import { assert, expect, test, vi } from "vitest";
+import { assert, expect, test } from "vitest";
 
 import {
   BACKOFFICE_PERMISSION,
@@ -6,13 +6,6 @@ import {
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";

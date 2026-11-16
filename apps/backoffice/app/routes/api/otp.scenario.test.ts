@@ -1,4 +1,4 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
@@ -6,14 +6,6 @@ import path from "node:path";
 
 import type { AutomationExternalEntityRef } from "@fragno-dev/backoffice-api/v0/automation";
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
-
 import Database from "better-sqlite3";
 
 import {

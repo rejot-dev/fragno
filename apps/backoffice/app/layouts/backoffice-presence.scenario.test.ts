@@ -1,11 +1,4 @@
-import { expect, test, vi, assert } from "vitest";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
+import { expect, test, assert } from "vitest";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";

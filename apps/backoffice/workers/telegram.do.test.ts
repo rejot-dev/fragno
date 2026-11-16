@@ -20,16 +20,6 @@ const {
   dispatcherAlarmMock: vi.fn(async () => undefined),
 }));
 
-vi.mock("cloudflare:workers", () => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-
-  class MockRpcTarget {}
-
-  return { DurableObject: MockDurableObject, RpcTarget: MockRpcTarget };
-});
-
 vi.mock("@fragno-dev/db", () => ({
   migrate: migrateMock,
 }));

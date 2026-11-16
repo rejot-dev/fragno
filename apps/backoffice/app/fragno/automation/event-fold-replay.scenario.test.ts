@@ -1,4 +1,4 @@
-import { expect, test, vi, assert } from "vitest";
+import { expect, test, assert } from "vitest";
 
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
@@ -6,13 +6,6 @@ import path from "node:path";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import Database from "better-sqlite3";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";

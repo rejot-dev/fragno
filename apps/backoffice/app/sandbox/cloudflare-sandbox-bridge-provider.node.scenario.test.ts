@@ -1,13 +1,6 @@
-import { afterAll, assert, beforeAll, expect, test, vi } from "vitest";
+import { afterAll, assert, beforeAll, expect, test } from "vitest";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { createNodeBackofficeRuntimeConfiguration } from "@/backoffice-runtime/node/node-runtime-env";
