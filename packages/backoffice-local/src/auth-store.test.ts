@@ -129,8 +129,9 @@ describe("CLI auth store", () => {
           const auth = await readStoredAuth(authFile, ${JSON.stringify(baseUrl)});
           await refreshStoredOAuth(authFile, auth, () => {
             process.stdout.write("refreshing");
-            // An open timer, like a pending request's socket, keeps the child alive.
-            return new Promise(() => setInterval(() => {}, 60_000));
+            // Like a pending request's socket, the timer keeps the child alive and holds \`resolve\`.
+            // A promise nothing can settle is garbage, and collecting it closes the lock.
+            return new Promise((resolve) => setTimeout(resolve, 600_000));
           });
         `,
       ],
