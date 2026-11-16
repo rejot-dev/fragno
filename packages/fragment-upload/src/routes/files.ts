@@ -1,8 +1,6 @@
-import type { TableToColumnValues } from "@fragno-dev/db/query";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
-import type { TypedUnitOfWork } from "@fragno-dev/db";
 
 import { uploadFragmentDefinition } from "../definition";
 import type { FileEditOperation } from "../file-edits";
@@ -11,7 +9,6 @@ import { assertFileSize } from "../services/content";
 import { UploadServiceError } from "../services/errors";
 import { MAX_FILE_EDIT_TEXT_BYTES } from "../services/files";
 import { resolveFileKeyInput } from "../services/helpers";
-import { chunkQueryValues } from "../services/query-chunks";
 import { MAX_PREPARED_FILE_BATCH_ENTRIES } from "../services/uploads";
 import {
   extractTextIndexTerms,
@@ -32,10 +29,6 @@ import {
   visibilitySchema,
 } from "./shared";
 import { handleUploadServiceError as handleServiceError } from "./uploads-errors";
-
-type IndexedDocumentRow = TableToColumnValues<typeof uploadSchema.tables.file_text_document> & {
-  object: { body: Uint8Array } | null;
-};
 
 const legacyFileKeyPartsSchema = z.array(z.union([z.string(), z.number().int()]));
 
@@ -817,26 +810,22 @@ export const fileRoutesFactory = defineRoutes(uploadFragmentDefinition).create(
           // Reads every candidate's content along with its document, so callers hydrate only as
           // many candidates as their byte budget scans.
           const documents = await this.handlerTx()
-            .retrieve(({ forSchema }) => {
-              const uow = forSchema(uploadSchema);
-              for (const candidateKeys of chunkQueryValues(payload.candidateKeys)) {
-                uow.find("file_text_document", (b) =>
-                  b
-                    .whereIndex("idx_file_text_document_key", (eb) =>
-                      eb("key", "in", candidateKeys),
-                    )
-                    .joinOne("object", "storage_object", (object) =>
-                      object
-                        .onIndex("idx_storage_object_key", (eb) =>
-                          eb("storageKey", "=", eb.parent("objectKey")),
-                        )
-                        .select(["body"]),
-                    ),
-                );
-              }
-              return uow as unknown as TypedUnitOfWork<typeof uploadSchema, IndexedDocumentRow[][]>;
-            })
-            .transformRetrieve((chunks) => chunks.flat())
+            .retrieve(({ forSchema }) =>
+              forSchema(uploadSchema).find("file_text_document", (b) =>
+                b
+                  .whereIndex("idx_file_text_document_key", (eb) =>
+                    eb("key", "in", payload.candidateKeys),
+                  )
+                  .joinOne("object", "storage_object", (object) =>
+                    object
+                      .onIndex("idx_storage_object_key", (eb) =>
+                        eb("storageKey", "=", eb.parent("objectKey")),
+                      )
+                      .select(["body"]),
+                  ),
+              ),
+            )
+            .transformRetrieve(([documents]) => documents)
             .execute();
 
           const documentsByKey = new Map(documents.map((document) => [document.key, document]));

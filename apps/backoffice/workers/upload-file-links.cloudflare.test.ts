@@ -19,10 +19,11 @@ async function createLink(upload: DurableObjectStub, access: "read" | "write") {
   return `https://upload.internal/api/upload/file-links/${token}/archive.tar`;
 }
 
-// Durable Object SQLite binds at most 100 parameters per statement, which plain SQLite tests miss.
+// Durable Object SQLite binds at most 100 parameters per statement, and the archive's files are
+// looked up by a list of more keys than that.
 // The first request loads Upload's module graph through Vite, which takes around 20 seconds.
 test(
-  "a folder archive larger than one parameter batch round-trips through Durable Object SQLite",
+  "a folder archive of more files than a query binds parameters for round-trips through Durable Object SQLite",
   {
     timeout: 60_000,
   },

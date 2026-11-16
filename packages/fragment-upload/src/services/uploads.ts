@@ -15,7 +15,6 @@ import {
   toPreparedFileWrite,
 } from "./file-publication";
 import { resolveFileKeyInput } from "./helpers";
-import { chunkQueryValues } from "./query-chunks";
 import {
   type CreateUploadInput,
   ensureActiveUpload,
@@ -306,82 +305,62 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
         );
       }
 
-      const uploadIdChunks = chunkQueryValues(uploadIds);
-      const fileKeyChunks = chunkQueryValues(
-        Array.from(new Set([...deletions, ...assertions].map((entry) => entry.fileKey))),
+      const fileKeys = Array.from(
+        new Set([...deletions, ...assertions].map((entry) => entry.fileKey)),
       );
 
       return this.serviceTx(uploadSchema)
         .retrieve((uow) => {
           const retrieval = uow as UploadMutationUnitOfWork;
-          for (const ids of uploadIdChunks) {
-            retrieval.find("upload", (b) =>
-              b
-                .whereIndex("primary", (eb) => eb("id", "in", ids))
-                .joinOne("file", "file", (file) =>
-                  file
-                    .onIndex("idx_file_key", (eb) => eb("key", "=", eb.parent("key")))
-                    .joinOne("object", "storage_object", (object) =>
-                      object
-                        .onIndex("idx_storage_object_key", (eb) =>
-                          eb("storageKey", "=", eb.parent("objectKey")),
-                        )
-                        .select(["id"]),
-                    ),
-                ),
-            );
-          }
-          for (const ids of uploadIdChunks) {
-            retrieval.find("upload", (b) =>
-              b.whereIndex("idx_upload_id_expiresAt", (eb) =>
-                eb.and(eb("id", "in", ids), eb("expiresAt", ">", eb.now())),
+          retrieval.find("upload", (b) =>
+            b
+              .whereIndex("primary", (eb) => eb("id", "in", uploadIds))
+              .joinOne("file", "file", (file) =>
+                file
+                  .onIndex("idx_file_key", (eb) => eb("key", "=", eb.parent("key")))
+                  .joinOne("object", "storage_object", (object) =>
+                    object
+                      .onIndex("idx_storage_object_key", (eb) =>
+                        eb("storageKey", "=", eb.parent("objectKey")),
+                      )
+                      .select(["id"]),
+                  ),
               ),
-            );
-          }
-          for (const fileKeys of fileKeyChunks) {
-            retrieval.find("file", (b) =>
-              b
-                .whereIndex("idx_file_key", (eb) => eb("key", "in", fileKeys))
-                .joinOne("object", "storage_object", (object) =>
-                  object
-                    .onIndex("idx_storage_object_key", (eb) =>
-                      eb("storageKey", "=", eb.parent("objectKey")),
-                    )
-                    .select(["id"]),
-                ),
-            );
-          }
+          );
+          retrieval.find("upload", (b) =>
+            b.whereIndex("idx_upload_id_expiresAt", (eb) =>
+              eb.and(eb("id", "in", uploadIds), eb("expiresAt", ">", eb.now())),
+            ),
+          );
+          retrieval.find("file", (b) =>
+            b
+              .whereIndex("idx_file_key", (eb) => eb("key", "in", fileKeys))
+              .joinOne("object", "storage_object", (object) =>
+                object
+                  .onIndex("idx_storage_object_key", (eb) =>
+                    eb("storageKey", "=", eb.parent("objectKey")),
+                  )
+                  .select(["id"]),
+              ),
+          );
           return retrieval as TypedUnitOfWork<
             typeof uploadSchema,
-            Array<UploadWithFile[] | UploadSnapshot[] | StoredFileRow[]>,
+            [UploadWithFile[], UploadSnapshot[], StoredFileRow[]],
             unknown,
             UploadHooks
           >;
         })
-        .mutate(({ uow, retrieveResult }) => {
+        .mutate(({ uow, retrieveResult: [uploads, unexpiredUploads, files] }) => {
           const mutation = uow as UploadMutationUnitOfWork;
-          const uploadResults = retrieveResult.slice(
-            0,
-            uploadIdChunks.length,
-          ) as UploadWithFile[][];
-          const unexpiredResultsStart = uploadIdChunks.length;
-          const fileResultsStart = unexpiredResultsStart + uploadIdChunks.length;
-          const unexpiredUploadResults = retrieveResult.slice(
-            unexpiredResultsStart,
-            fileResultsStart,
-          ) as UploadSnapshot[][];
-          const fileResults = retrieveResult.slice(fileResultsStart) as StoredFileRow[][];
           const unexpiredUploadIds = new Set(
-            unexpiredUploadResults.flat().map((upload) => upload.id.toString()),
+            unexpiredUploads.map((upload) => upload.id.toString()),
           );
-          const uploadsById = new Map(
-            uploadResults.flat().map((upload) => [upload.id.toString(), upload]),
-          );
+          const uploadsById = new Map(uploads.map((upload) => [upload.id.toString(), upload]));
           const filesByKey = new Map([
-            ...uploadResults
-              .flat()
-              .flatMap((upload) => (upload.file ? [[upload.file.key, upload.file] as const] : [])),
-            ...fileResults.flat().map((file) => [file.key, file] as const),
+            ...uploads.flatMap((upload) =>
+              upload.file ? [[upload.file.key, upload.file] as const] : [],
+            ),
+            ...files.map((file) => [file.key, file] as const),
           ]);
 
           const mutationDestinations = new Set<string>();

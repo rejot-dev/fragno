@@ -24,7 +24,6 @@ import {
   publishFileContent,
   type StoredFileRow,
 } from "./file-publication";
-import { chunkQueryValues } from "./query-chunks";
 
 export const MAX_FILE_EDIT_TEXT_BYTES = 10 * 1024 * 1024;
 
@@ -241,28 +240,26 @@ export const createFileServices = (config: UploadFragmentConfig) => {
       return this.serviceTx(uploadSchema)
         .retrieve((uow) => {
           const retrieval = uow as UploadMutationUnitOfWork;
-          for (const keys of chunkQueryValues(fileKeys)) {
-            retrieval.find("file", (b) =>
-              b
-                .whereIndex("idx_file_key", (eb) => eb("key", "in", keys))
-                .joinOne("object", "storage_object", (object) =>
-                  object
-                    .onIndex("idx_storage_object_key", (eb) =>
-                      eb("storageKey", "=", eb.parent("objectKey")),
-                    )
-                    .select(["id"]),
-                ),
-            );
-          }
+          retrieval.find("file", (b) =>
+            b
+              .whereIndex("idx_file_key", (eb) => eb("key", "in", fileKeys))
+              .joinOne("object", "storage_object", (object) =>
+                object
+                  .onIndex("idx_storage_object_key", (eb) =>
+                    eb("storageKey", "=", eb.parent("objectKey")),
+                  )
+                  .select(["id"]),
+              ),
+          );
           return retrieval as TypedUnitOfWork<
             typeof uploadSchema,
-            StoredFileRow[][],
+            [StoredFileRow[]],
             unknown,
             UploadHooks
           >;
         })
-        .mutate(({ uow, retrieveResult }) => {
-          const filesByKey = new Map(retrieveResult.flat().map((file) => [file.key, file]));
+        .mutate(({ uow, retrieveResult: [files] }) => {
+          const filesByKey = new Map(files.map((file) => [file.key, file]));
           for (const write of writes) {
             assertFileWritePrecondition(
               filesByKey.get(write.fileKey) ?? null,
