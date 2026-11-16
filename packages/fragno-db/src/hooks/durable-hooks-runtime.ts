@@ -1,3 +1,4 @@
+import type { DatabaseAdapter } from "../adapters/adapters";
 import { DurableHooksLogger } from "./durable-hooks-logger";
 import type { HookProcessorConfig } from "./hooks";
 
@@ -32,6 +33,16 @@ function getNamespaceRuntimeMap(
   const created = new Map<string, DurableHooksRuntimeState>();
   runtimesByInternalFragment.set(internalFragment, created);
   return created;
+}
+
+/**
+ * The adapter durable hooks are stored and processed with. Runtimes are registered and looked up by
+ * its internal fragment, so every caller resolves it here.
+ */
+export function hookProcessingAdapterOf<TUOWConfig>(
+  adapter: DatabaseAdapter<TUOWConfig>,
+): DatabaseAdapter<TUOWConfig> {
+  return adapter.getHookProcessingAdapter?.() ?? adapter;
 }
 
 export function registerDurableHooksRuntime(config: HookProcessorConfig): DurableHooksRuntimeToken {

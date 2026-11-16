@@ -8,9 +8,15 @@ import {
   type DurableHooksRun,
 } from "./hooks";
 
+/**
+ * When hooks fall due next, or null when none are pending. `complete` is false when a fragment of
+ * a group failed its read: hooks it holds may fall due earlier than `nextWakeAt`, or at all.
+ */
+export type DurableHooksWakeRead = { nextWakeAt: Date | null; complete: boolean };
+
 export type DurableHooksProcessor = {
   processDue: () => Promise<DurableHooksRun>;
-  getNextWakeAt: () => Promise<Date | null>;
+  getNextWakeAt: () => Promise<DurableHooksWakeRead>;
   drain: () => Promise<void>;
   namespace: string;
 };
@@ -73,7 +79,7 @@ export function createDurableHooksProcessor(
     processDue: async () => runner.processDue(),
     drain: async () => runner.drain(),
     getNextWakeAt: async () => {
-      return await internalFragment.inContext(async function () {
+      const nextWakeAt = await internalFragment.inContext(async function () {
         return await this.handlerTx({
           name: `internal.hooks.${namespace}.getNextWakeAt`,
           transactionInstrumentation: durableHooks.transactionInstrumentation,
@@ -90,6 +96,7 @@ export function createDurableHooksProcessor(
           .transform(({ serviceResult: [result] }) => result)
           .execute();
       });
+      return { nextWakeAt, complete: true };
     },
   };
 }
@@ -185,9 +192,11 @@ export function createDurableHooksProcessorGroupFromProcessors(
         processors.map(async (processor) => await processor.getNextWakeAt()),
       );
       let nextWakeAt: Date | null = null;
+      let complete = true;
       for (const result of results) {
         if (result.status === "fulfilled") {
-          const wakeAt = result.value;
+          complete &&= result.value.complete;
+          const wakeAt = result.value.nextWakeAt;
           if (!wakeAt) {
             continue;
           }
@@ -195,10 +204,11 @@ export function createDurableHooksProcessorGroupFromProcessors(
             nextWakeAt = wakeAt;
           }
         } else {
+          complete = false;
           await reportProcessorGroupError(result.reason);
         }
       }
-      return nextWakeAt;
+      return { nextWakeAt, complete };
     },
   };
 }

@@ -238,6 +238,11 @@ export type HookNotifySource = "request" | "hook" | "alarm";
 export type HookNotifyContext = {
   source: HookNotifySource;
   route?: string | null;
+  /**
+   * When the earliest hook this notification announces is due, or `null` when it announces none
+   * and only asks the dispatcher to check its alarm.
+   */
+  dueAt: Date | null;
 };
 
 export type HookNotifier = {

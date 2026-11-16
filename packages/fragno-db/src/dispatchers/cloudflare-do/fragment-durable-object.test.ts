@@ -239,7 +239,7 @@ describe("createFragmentDurableObjectHost", () => {
 
     expect(result).toBe("ok");
     expect(routeCalls).toEqual([["POST", "/test"]]);
-    expect(notifications).toEqual([{ source: "request" }]);
+    expect(notifications).toEqual([{ source: "request", dueAt: null }]);
   });
 
   it("dispatches fetch requests to mounted fragments", async () => {
@@ -371,7 +371,7 @@ describe("createFragmentDurableObjectHost", () => {
     const runtime = await host.initialize({});
     await expect(runtime.fragment.callRoute()).resolves.toBe("ok");
 
-    expect(notifications).toEqual([{ source: "request" }]);
+    expect(notifications).toEqual([{ source: "request", dueAt: null }]);
   });
 
   it("delegates alarm to the latest durable hooks dispatcher", async () => {

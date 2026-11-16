@@ -18,6 +18,7 @@ import {
   DatabaseFragmentDefinitionBuilder,
   type ImplicitDatabaseDependencies,
 } from "./db-fragment-definition-builder";
+import { createDurableHooksProcessor } from "./dispatchers/cloudflare-do/index";
 import { getFragmentDurableHooks } from "./durable-hooks";
 import { internalSchema } from "./fragments/internal-fragment";
 import { defaultDurableHookRetryPolicy } from "./hooks/durable-hook-retry-policy";
@@ -1221,6 +1222,13 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
               namespace: runtime.config.namespace,
               hookName: "onPing",
               payload: { value: "ping" },
+              options: { processAt: new Date("2030-01-02T00:00:00Z") },
+            },
+            {
+              namespace: runtime.config.namespace,
+              hookName: "onPing",
+              payload: { value: "pong" },
+              options: { processAt: new Date("2030-01-01T00:00:00Z") },
             },
           ],
         } as unknown as IUnitOfWork;
@@ -1236,6 +1244,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
         expect(notifySpy.mock.calls[0]?.[0]).toEqual({
           source: "request",
           route: "POST /users",
+          dueAt: new Date("2030-01-01T00:00:00Z"),
         });
 
         notification.resolve();
@@ -1349,7 +1358,7 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
 
         await vi.waitFor(() => expect(notifySpy).toHaveBeenCalledTimes(1));
         assert(!mutationCompleted);
-        expect(notifySpy.mock.calls[0]?.[0]).toEqual({ source: "hook" });
+        expect(notifySpy.mock.calls[0]?.[0]).toEqual({ source: "hook", dueAt: expect.any(Date) });
 
         notification.resolve();
         await mutationCompletion;
@@ -1565,6 +1574,84 @@ describe("DatabaseFragmentDefinitionBuilder", () => {
   });
 
   describe("durable hooks cross-namespace scheduling", () => {
+    it("wakes the host for a hook a fragment without hooks queues behind an adapter wrapper", async () => {
+      const sqlite = new SQLite(":memory:");
+      const adapter = new SqlAdapter({
+        dialect: new SqliteDialect({ database: sqlite }),
+        driverConfig: new BetterSQLite3DriverConfig(),
+      });
+      // Names another adapter on the same database for its hooks, as a wrapping adapter does.
+      const wrapper: SqlAdapter & { getHookProcessingAdapter?: () => SqlAdapter } = new SqlAdapter({
+        dialect: new SqliteDialect({ database: sqlite }),
+        driverConfig: new BetterSQLite3DriverConfig(),
+      });
+      wrapper.getHookProcessingAdapter = () => adapter;
+      const sourceSchema = schema("hosted_source", (s) =>
+        s.addTable("items", (t) => t.addColumn("id", idColumn())),
+      );
+      const targetSchema = schema("hosted_target", (s) =>
+        s.addTable("items", (t) => t.addColumn("id", idColumn())),
+      );
+      const targetDef = defineFragment("hosted-target")
+        .extend(withDatabase(targetSchema))
+        .providesBaseService(({ defineService }) =>
+          defineService({
+            queue: function () {
+              return this.serviceTx(targetSchema)
+                .mutate(({ uow }) => {
+                  uow.triggerHook("onQueued", {});
+                })
+                .build();
+            },
+          }),
+        )
+        .provideHooks<{ onQueued: HookFn<Record<string, never>> }>(({ defineHook }) => ({
+          onQueued: defineHook(async function () {}),
+        }))
+        .build();
+      const sourceDef = defineFragment("hosted-source").extend(withDatabase(sourceSchema)).build();
+
+      try {
+        await adapter.prepareMigrations(internalSchema, null).executeWithDriver(adapter.driver, 0);
+        for (const migrated of [sourceSchema, targetSchema]) {
+          await adapter
+            .prepareMigrations(migrated, sanitizeNamespace(migrated.name))
+            .executeWithDriver(adapter.driver, 0);
+        }
+        const source = instantiate(sourceDef)
+          .withConfig({})
+          .withOptions({ databaseAdapter: wrapper })
+          .build();
+        const target = instantiate(targetDef)
+          .withConfig({})
+          .withOptions({ databaseAdapter: wrapper })
+          .build();
+        let alarm: number | null = null;
+        const host = createDurableHooksProcessor([source, target])(
+          {
+            storage: {
+              getAlarm: async () => alarm,
+              setAlarm: async (scheduledAt: number | Date) => {
+                alarm = new Date(scheduledAt).getTime();
+              },
+              deleteAlarm: async () => {
+                alarm = null;
+              },
+            },
+          },
+          {},
+        );
+        await host.initialize?.();
+        assert(alarm === null);
+
+        await source.callServices(() => target.services.queue());
+
+        assert(alarm !== null);
+      } finally {
+        await adapter.close();
+      }
+    });
+
     it("should propagate an active hook attempt through callServices to another fragment", async () => {
       const sqlite = new SQLite(":memory:");
       const adapter = new SqlAdapter({

@@ -15,14 +15,14 @@ describe("createDurableHooksDispatcher", () => {
       const dispatcher = createDurableHooksDispatcher({
         processor: {
           processDue,
-          getNextWakeAt: vi.fn().mockResolvedValue(null),
+          getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true }),
           drain: vi.fn().mockResolvedValue(undefined),
           namespace: "test",
         },
       });
 
-      await dispatcher.notify({ source: "request" });
-      await dispatcher.notify({ source: "request" });
+      await dispatcher.notify({ source: "request", dueAt: null });
+      await dispatcher.notify({ source: "request", dueAt: null });
 
       expect(processDue).toHaveBeenCalledTimes(0);
       await Promise.resolve();
@@ -43,13 +43,13 @@ describe("createDurableHooksDispatcher", () => {
     const dispatcher = createDurableHooksDispatcher({
       processor: {
         processDue,
-        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true }),
         drain: vi.fn().mockResolvedValue(undefined),
         namespace: "test",
       },
     });
 
-    await dispatcher.notify({ source: "request" });
+    await dispatcher.notify({ source: "request", dueAt: null });
     await vi.waitFor(() => {
       expect(processDue).toHaveBeenCalledTimes(1);
     });
@@ -62,7 +62,7 @@ describe("createDurableHooksDispatcher", () => {
 
   it("should wake and process hooks", async () => {
     const processDue = vi.fn().mockResolvedValue(completedRun());
-    const getNextWakeAt = vi.fn().mockResolvedValue(null);
+    const getNextWakeAt = vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
@@ -84,7 +84,7 @@ describe("createDurableHooksDispatcher", () => {
     const dispatcher = createDurableHooksDispatcher({
       processor: {
         processDue,
-        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true }),
         drain: vi.fn().mockResolvedValue(undefined),
         namespace: "test",
       },
@@ -103,7 +103,7 @@ describe("createDurableHooksDispatcher", () => {
     const dispatcher = createDurableHooksDispatcher({
       processor: {
         processDue: vi.fn().mockRejectedValue(processFailure),
-        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true }),
         drain: vi.fn().mockResolvedValue(undefined),
         namespace: "test",
       },
@@ -134,7 +134,7 @@ describe("createDurableHooksDispatcher", () => {
     const dispatcher = createDurableHooksDispatcher({
       processor: {
         processDue,
-        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true }),
         drain: vi.fn().mockResolvedValue(undefined),
         namespace: "test",
       },
@@ -166,7 +166,7 @@ describe("createDurableHooksDispatcher", () => {
     const dispatcher = createDurableHooksDispatcher({
       processor: {
         processDue,
-        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true }),
         drain: vi.fn().mockResolvedValue(undefined),
         namespace: "test",
       },
@@ -204,7 +204,7 @@ describe("createDurableHooksDispatcher", () => {
     const dispatcher = createDurableHooksDispatcher({
       processor: {
         processDue,
-        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true }),
         drain,
         namespace: "test",
       },
@@ -228,7 +228,9 @@ describe("createDurableHooksDispatcher", () => {
     vi.setSystemTime(now);
 
     const processDue = vi.fn().mockResolvedValue(completedRun());
-    const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() - 1000));
+    const getNextWakeAt = vi
+      .fn()
+      .mockResolvedValue({ nextWakeAt: new Date(now.getTime() - 1000), complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({
@@ -249,7 +251,13 @@ describe("createDurableHooksDispatcher", () => {
     try {
       const firstWake = Promise.withResolvers<Date | null>();
       const processDue = vi.fn().mockResolvedValue(completedRun());
-      const getNextWakeAt = vi.fn().mockReturnValueOnce(firstWake.promise).mockResolvedValue(null);
+      const getNextWakeAt = vi
+        .fn()
+        .mockImplementationOnce(async () => ({
+          nextWakeAt: await firstWake.promise,
+          complete: true,
+        }))
+        .mockResolvedValue({ nextWakeAt: null, complete: true });
       const dispatcher = createDurableHooksDispatcher({
         processor: {
           processDue,
@@ -295,7 +303,9 @@ describe("createDurableHooksDispatcher", () => {
     vi.setSystemTime(now);
 
     const processDue = vi.fn().mockResolvedValue(completedRun());
-    const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() + 60000));
+    const getNextWakeAt = vi
+      .fn()
+      .mockResolvedValue({ nextWakeAt: new Date(now.getTime() + 60000), complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
 
     const dispatcher = createDurableHooksDispatcher({

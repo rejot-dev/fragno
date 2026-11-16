@@ -72,10 +72,6 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
           fields: { error: DurableHooksLogger.toErrorMessage(error) },
         });
       });
-    state.setBackgroundDrain?.(async () => {
-      await processor.drain();
-    });
-
     const reportProcessError = async (error: unknown): Promise<void> => {
       try {
         await onProcessError(error);
@@ -117,8 +113,22 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
     let queued = false;
     let currentPromise: Promise<void> | undefined;
     let alarmRefreshQueued = false;
+    // The earliest due time announced by notifications that waited for a running refresh.
+    let queuedDueAt: number | null = null;
     let alarmRefreshPromise: Promise<void> | undefined;
     let latestAlarmRefreshSource: HookNotifySource = "request";
+    // When the next hook is due: read from the database, then moved earlier by each hook announced
+    // since. Notifications compare the alarm against it instead of reading the hooks every request.
+    // Processing changes hooks in ways only the database knows, so processing forgets it.
+    let hookSchedule: { known: false } | { known: true; nextWakeAt: number | null } = {
+      known: false,
+    };
+    // Counts processing starts and ends, so a read that overlapped one does not store what it read.
+    let hookScheduleGeneration = 0;
+    const forgetHookSchedule = () => {
+      hookScheduleGeneration += 1;
+      hookSchedule = { known: false };
+    };
     let scheduledHookAlarm: number | null = null;
     // Cloudflare runs one alarm handler at a time and holds back alarms set during it, so while this
     // handler runs, an overdue alarm is waiting rather than lost.
@@ -174,31 +184,9 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       return currentPromise;
     };
 
-    const scheduleNextAlarm = async (source: HookNotifySource) => {
-      DurableHooksLogger.debug("Durable hooks alarm schedule requested", {
-        namespace: processor.namespace,
-        fields: {
-          source,
-        },
-      });
-      const nextWakeAt = await processor.getNextWakeAt();
-      if (!nextWakeAt) {
-        const existingAlarm = await getAlarm?.();
-        if (existingAlarm !== null && existingAlarm === scheduledHookAlarm) {
-          await deleteAlarm?.();
-          scheduledHookAlarm = null;
-        }
-        DurableHooksLogger.debug("Durable hooks alarm idle", {
-          namespace: processor.namespace,
-          fields: {
-            source,
-          },
-        });
-        return;
-      }
-
+    const scheduleAlarmBy = async (nextWakeAt: number, source: HookNotifySource) => {
       const now = Date.now();
-      const scheduledAt = new Date(Math.max(nextWakeAt.getTime(), now));
+      const scheduledAt = new Date(Math.max(nextWakeAt, now));
       const existingAlarm = await getAlarm?.();
       const lostAlarm =
         activeAlarmHandlers === 0 &&
@@ -225,24 +213,99 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
         namespace: processor.namespace,
         fields: {
           source,
-          nextWakeAt: nextWakeAt.toISOString(),
+          nextWakeAt: new Date(nextWakeAt).toISOString(),
           scheduledAt: scheduledAt.toISOString(),
         },
       });
     };
 
-    const refreshAlarm = (source: HookNotifySource): Promise<void> => {
+    const scheduleNextAlarm = async (source: HookNotifySource) => {
+      DurableHooksLogger.debug("Durable hooks alarm schedule requested", {
+        namespace: processor.namespace,
+        fields: {
+          source,
+        },
+      });
+      const generation = hookScheduleGeneration;
+      const { nextWakeAt, complete } = await processor.getNextWakeAt();
+      // A fragment that failed its read may hold due hooks: the schedule becomes unknown, so the
+      // next notification reads again, and the alarm stays, as those hooks may be what it is for.
+      if (!complete) {
+        forgetHookSchedule();
+      } else if (generation === hookScheduleGeneration) {
+        hookSchedule = { known: true, nextWakeAt: nextWakeAt?.getTime() ?? null };
+      }
+      if (!nextWakeAt) {
+        if (!complete) {
+          return;
+        }
+        const existingAlarm = await getAlarm?.();
+        if (existingAlarm !== null && existingAlarm === scheduledHookAlarm) {
+          await deleteAlarm?.();
+          scheduledHookAlarm = null;
+        }
+        DurableHooksLogger.debug("Durable hooks alarm idle", {
+          namespace: processor.namespace,
+          fields: {
+            source,
+          },
+        });
+        return;
+      }
+
+      await scheduleAlarmBy(nextWakeAt.getTime(), source);
+    };
+
+    // A known schedule wakes no later than a hook announced due at `dueAt`.
+    const recordAnnouncedHook = (dueAt: number) => {
+      if (hookSchedule.known) {
+        const nextWakeAt = hookSchedule.nextWakeAt;
+        hookSchedule = {
+          known: true,
+          nextWakeAt: nextWakeAt === null ? dueAt : Math.min(nextWakeAt, dueAt),
+        };
+      }
+    };
+
+    const checkAlarm = async (source: HookNotifySource, dueAt: Date | null) => {
+      if (dueAt) {
+        recordAnnouncedHook(dueAt.getTime());
+      }
+      if (!hookSchedule.known) {
+        await scheduleNextAlarm(source);
+        return;
+      }
+      // Without due hooks, the dispatcher needs no alarm; the read that found none deleted its own.
+      if (hookSchedule.nextWakeAt !== null) {
+        await scheduleAlarmBy(hookSchedule.nextWakeAt, source);
+      }
+    };
+
+    const refreshAlarm = (source: HookNotifySource, dueAt: Date | null): Promise<void> => {
       latestAlarmRefreshSource = source;
       if (alarmRefreshPromise) {
+        // The running refresh may have read the hooks before this notification's were committed.
         alarmRefreshQueued = true;
+        if (dueAt) {
+          queuedDueAt =
+            queuedDueAt === null ? dueAt.getTime() : Math.min(queuedDueAt, dueAt.getTime());
+        }
         return alarmRefreshPromise;
       }
 
       alarmRefreshPromise = (async () => {
-        do {
+        await checkAlarm(source, dueAt);
+        while (alarmRefreshQueued) {
           alarmRefreshQueued = false;
+          const announcedDueAt = queuedDueAt;
+          queuedDueAt = null;
+          // Before the read, which may fail or miss a fragment: the announced hooks wake regardless.
+          if (announcedDueAt !== null) {
+            recordAnnouncedHook(announcedDueAt);
+            await scheduleAlarmBy(announcedDueAt, latestAlarmRefreshSource);
+          }
           await scheduleNextAlarm(latestAlarmRefreshSource);
-        } while (alarmRefreshQueued);
+        }
       })().finally(() => {
         alarmRefreshPromise = undefined;
       });
@@ -250,9 +313,12 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       return alarmRefreshPromise;
     };
 
-    const reconcileHookAlarm = async (source: HookNotifySource): Promise<void> => {
+    const reconcileHookAlarm = async (
+      source: HookNotifySource,
+      dueAt: Date | null,
+    ): Promise<void> => {
       try {
-        await refreshAlarm(source);
+        await refreshAlarm(source, dueAt);
       } catch (error) {
         DurableHooksLogger.error("Durable hooks alarm schedule failed", {
           namespace: processor.namespace,
@@ -263,28 +329,41 @@ export function createDurableHooksDispatcherDurableObject<TEnv>(
       }
     };
 
+    const drain = async () => {
+      forgetHookSchedule();
+      try {
+        await processor.drain();
+      } finally {
+        forgetHookSchedule();
+      }
+    };
+    state.setBackgroundDrain?.(drain);
+
     return {
       initialize: async () => {
         DurableHooksLogger.debug("Durable hooks dispatcher init", {
           namespace: processor.namespace,
         });
-        await reconcileHookAlarm("alarm");
+        await reconcileHookAlarm("alarm", null);
       },
       notify: async (context) => {
-        await reconcileHookAlarm(context.source);
+        await reconcileHookAlarm(context.source, context.dueAt);
       },
       alarm: async () => {
         activeAlarmHandlers += 1;
         try {
-          await runProcess();
-          await reconcileHookAlarm("alarm");
+          forgetHookSchedule();
+          try {
+            await runProcess();
+          } finally {
+            forgetHookSchedule();
+          }
+          await reconcileHookAlarm("alarm", null);
         } finally {
           activeAlarmHandlers -= 1;
         }
       },
-      drain: async () => {
-        await processor.drain();
-      },
+      drain,
     };
   };
 }

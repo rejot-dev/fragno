@@ -21,6 +21,7 @@ import { DurableHooksLogger } from "./hooks/durable-hooks-logger";
 import {
   getDurableHooksRuntimeByConfig,
   getDurableHooksRuntimeByNamespace,
+  hookProcessingAdapterOf,
   registerDurableHooksRuntime,
 } from "./hooks/durable-hooks-runtime";
 import {
@@ -38,6 +39,7 @@ import {
   type DurableHooksProcessingOptions,
   createDurableHooksRunner,
 } from "./hooks/hooks";
+import { isDbNow } from "./query/db-now";
 import {
   createQueryPolicyController,
   QueryPolicySet,
@@ -405,7 +407,7 @@ type DbRoundtripGuardState = {
   routes?: readonly { method?: AnyHttpMethod; path: string }[];
 };
 
-type DurableHooksLogContext = HookNotifyContext;
+type DurableHooksLogContext = Pick<HookNotifyContext, "source" | "route">;
 
 type AnyHandlerTxBuilder = HandlerTxBuilder<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -650,22 +652,37 @@ async function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
     return;
   }
 
-  const notifyContext: HookNotifyContext = {
-    source: logContext?.source ?? "request",
-    route: logContext?.route,
-  };
   const notifications: Promise<void>[] = [];
   const logContextFields = buildDurableHooksLogContext(logContext);
-  // Requeued hooks were already stored, but their dispatchers sleep until told they are due.
-  const triggeredCountByNamespace = new Map<string, number>();
-  for (const namespace of [
-    ...uow.getTriggeredHooks().map((hook) => hook.namespace),
-    ...uow.getRequeuedHookNamespaces(),
-  ]) {
-    triggeredCountByNamespace.set(namespace, (triggeredCountByNamespace.get(namespace) ?? 0) + 1);
+  const queuedByNamespace = new Map<string, { count: number; dueAt: Date }>();
+  const queue = (namespace: string, dueAt: Date) => {
+    const queued = queuedByNamespace.get(namespace);
+    queuedByNamespace.set(namespace, {
+      count: (queued?.count ?? 0) + 1,
+      dueAt: queued && queued.dueAt <= dueAt ? queued.dueAt : dueAt,
+    });
+  };
+  const now = new Date();
+  for (const hook of uow.getTriggeredHooks()) {
+    const processAt = hook.options?.processAt;
+    // A time on the database's clock is announced as due now: the runtime's clock may run behind
+    // it, and waking early only costs an alarm that finds nothing due.
+    queue(
+      hook.namespace,
+      processAt === undefined || isDbNow(processAt) ? now : new Date(processAt),
+    );
   }
+  // Requeued hooks were already stored, but their dispatchers sleep until told they are due.
+  for (const namespace of uow.getRequeuedHookNamespaces()) {
+    queue(namespace, now);
+  }
+  const notifyContextFor = (namespace: string): HookNotifyContext => ({
+    source: logContext?.source ?? "request",
+    route: logContext?.route,
+    dueAt: queuedByNamespace.get(namespace)?.dueAt ?? null,
+  });
   const ownNamespaceTriggeredCount = hooksConfig
-    ? (triggeredCountByNamespace.get(hooksConfig.namespace) ?? 0)
+    ? (queuedByNamespace.get(hooksConfig.namespace)?.count ?? 0)
     : 0;
 
   if (hooksConfig?.notifier && autoSchedule && ownNamespaceTriggeredCount > 0) {
@@ -673,7 +690,7 @@ async function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
       notifyDurableHooks(
         hooksConfig.notifier,
         hooksConfig.namespace,
-        notifyContext,
+        notifyContextFor(hooksConfig.namespace),
         logContextFields,
         {
           instrumentation: hooksConfig.instrumentation,
@@ -700,11 +717,11 @@ async function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
     });
   }
 
-  if (triggeredCountByNamespace.size === 0) {
+  if (queuedByNamespace.size === 0) {
     return;
   }
 
-  const namespaces = new Set(triggeredCountByNamespace.keys());
+  const namespaces = new Set(queuedByNamespace.keys());
   if (hooksConfig) {
     namespaces.delete(hooksConfig.namespace);
   }
@@ -730,7 +747,7 @@ async function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
       DurableHooksLogger.debug("Durable hooks notify skipped (autoSchedule=false)", {
         namespace,
         fields: {
-          queued: triggeredCountByNamespace.get(namespace) ?? 0,
+          queued: queuedByNamespace.get(namespace)?.count ?? 0,
           ...logContextFields,
         },
       });
@@ -745,11 +762,11 @@ async function notifyDurableHooksAfterMutate<THooks extends HooksMap>({
       continue;
     }
     notifications.push(
-      notifyDurableHooks(notifier, namespace, notifyContext, logContextFields, {
+      notifyDurableHooks(notifier, namespace, notifyContextFor(namespace), logContextFields, {
         crossNamespace: true,
         instrumentation: runtime.config.instrumentation,
         correlationId: uow.idempotencyKey,
-        queued: triggeredCountByNamespace.get(namespace) ?? 0,
+        queued: queuedByNamespace.get(namespace)?.count ?? 0,
       }),
     );
   }
@@ -1417,7 +1434,7 @@ export class DatabaseFragmentDefinitionBuilder<
 
       const autoSchedule = durableHooksOptions?.autoSchedule !== false;
       const baseAdapter = resolveDatabaseAdapter(context.options, this.#schema);
-      const hookAdapter = baseAdapter.getHookProcessingAdapter?.() ?? baseAdapter;
+      const hookAdapter = hookProcessingAdapterOf(baseAdapter);
       const hookOptions =
         hookAdapter === baseAdapter
           ? context.options
@@ -1545,7 +1562,10 @@ export class DatabaseFragmentDefinitionBuilder<
         resolveDatabaseAdapter(options, this.#schema);
       const internalFragment = isInternalFragment
         ? undefined
-        : (hooksConfig?.internalFragment ?? registryResolver?.getInternalFragment(databaseAdapter));
+        : (hooksConfig?.internalFragment ??
+          // Hooks this fragment queues for others are found by the internal fragment they were
+          // registered with, which is the hook adapter's.
+          registryResolver?.getInternalFragment(hookProcessingAdapterOf(databaseAdapter)));
 
       // Builder API: serviceTx using createServiceTxBuilder
       function serviceTx<TSchema extends AnySchema>(
