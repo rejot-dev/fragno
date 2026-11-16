@@ -74,6 +74,7 @@ const orderPlaced: AutomationEvent = {
   source: "shop",
   eventType: "order.placed",
   occurredAt: "2026-01-01T00:00:00.000Z",
+  sequence: null,
   payload: { total: 42 },
   actors: createBackofficeSystemExecution(scope).actors,
   subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },

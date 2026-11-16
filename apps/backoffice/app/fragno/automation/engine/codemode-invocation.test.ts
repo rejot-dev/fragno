@@ -32,6 +32,7 @@ const event: AutomationEvent = {
   source: "test",
   eventType: "canonical.requested",
   occurredAt: "2026-08-10T12:00:00.000Z",
+  sequence: null,
   payload: { requestId: "request-1" },
   actors: execution.actors,
   subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },

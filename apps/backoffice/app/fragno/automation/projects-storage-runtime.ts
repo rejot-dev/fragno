@@ -94,6 +94,7 @@ const triggerProjectEvent = ({
     source: "automations",
     eventType,
     occurredAt,
+    sequence: null,
     payload: buildProjectPayload(project, timestamps),
     actors: {
       initiator: AUTOMATION_SYSTEM_INITIATOR,

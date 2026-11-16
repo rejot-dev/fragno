@@ -195,6 +195,7 @@ describe("project automation event routing", () => {
       source: "test",
       eventType: "org.event",
       occurredAt: "2026-06-22T00:00:00.000Z",
+      sequence: null,
       payload: {},
       actors: {
         initiator: AUTOMATION_SYSTEM_INITIATOR,
@@ -374,6 +375,7 @@ describe("project automation event routing", () => {
       source: "test",
       eventType: "org.event",
       occurredAt: "2026-06-22T00:00:00.000Z",
+      sequence: null,
       payload: {},
       actors: {
         initiator: AUTOMATION_SYSTEM_INITIATOR,

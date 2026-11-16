@@ -91,6 +91,7 @@ function piAgentTurnEvent(
     eventType,
     payload: { agentName: config.agentName, ...payload },
     occurredAt: occurredAt.toISOString(),
+    sequence: null,
     actors: agent.turn(turn).execution.actors,
     subject: { ...piAgentEventSubject(scope, config.agentName), requestId },
     causation: { kind: "origin" },

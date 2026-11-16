@@ -126,6 +126,7 @@ describe("otp identity claim helpers", () => {
       source: "otp",
       eventType: "identity.claim.completed",
       occurredAt: "2026-03-17T12:05:00.000Z",
+      sequence: null,
       payload: {
         otpId: "otp_123",
         claimType: IDENTITY_LINK_TYPE,

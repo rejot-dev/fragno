@@ -194,6 +194,7 @@ test("a backfill disconnects connections whose integration was removed", async (
               state: "ready",
               label: { name: "Reson8", authMethod: "api-key" },
               occurredAt: new Date("2026-01-01T00:00:00.000Z"),
+              sequence: null,
             },
             { propagationContext: null },
           );

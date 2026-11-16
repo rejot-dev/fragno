@@ -47,6 +47,7 @@ type StoredEvent = {
   payload: Record<string, unknown>;
   subject: unknown;
   occurredAt: Date;
+  sequence: string | null;
 };
 
 /**
@@ -157,7 +158,13 @@ function latestStates(
 ) {
   const latest = new Map<
     string,
-    { id: string; payload: Record<string, unknown>; occurredAt: Date; createdAt: Date }
+    {
+      id: string;
+      payload: Record<string, unknown>;
+      occurredAt: Date;
+      sequence: string | null;
+      createdAt: Date;
+    }
   >();
   for (const event of events) {
     const state = stateOf(event);
@@ -168,6 +175,7 @@ function latestStates(
         occurredAfter(event, {
           eventId: kept.id,
           occurredAt: kept.occurredAt,
+          sequence: kept.sequence,
           storedAt: kept.createdAt,
         }))
     ) {
@@ -175,6 +183,7 @@ function latestStates(
         id: event.id,
         payload: state.payload,
         occurredAt: event.occurredAt,
+        sequence: event.sequence,
         createdAt: event.createdAt,
       });
     }

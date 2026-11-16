@@ -69,6 +69,7 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
               source: "custom",
               eventType: "thing.created",
               occurredAt: "2026-01-01T00:00:00.000Z",
+              sequence: null,
               payload: { thingId: "thing-1" },
               actors,
               subject: { userId: "user-1" },
@@ -78,6 +79,7 @@ test("stored event commands read scoped SQLite records with text, JSON, and curs
               ...older,
               id: "newer-event",
               occurredAt: "2026-01-02T00:00:00.000Z",
+              sequence: null,
               payload: { thingId: "thing-2" },
             };
             const object = ctx.runtime.objects.automations.for(scope);

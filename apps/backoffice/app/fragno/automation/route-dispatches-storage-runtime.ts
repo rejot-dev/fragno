@@ -186,6 +186,7 @@ export function buildRouteFailedEvent({
     source: AUTOMATION_ROUTE_FAILED_SOURCE,
     eventType: AUTOMATION_ROUTE_FAILED_EVENT_TYPE,
     occurredAt: new Date().toISOString(),
+    sequence: null,
     payload: {
       route: { id: route.id, name: route.name },
       event: { id: event.id, source: event.source, eventType: event.eventType },

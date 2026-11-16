@@ -58,6 +58,7 @@ const buildScheduledRouteEvent = ({
     source: AUTOMATION_SCHEDULE_SOURCE,
     eventType: AUTOMATION_SCHEDULE_EVENT_TYPE,
     occurredAt: scheduledFor.toISOString(),
+    sequence: null,
     payload: {
       id: route.id,
       name: route.name,

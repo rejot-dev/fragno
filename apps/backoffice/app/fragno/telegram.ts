@@ -64,6 +64,7 @@ export const buildTelegramAutomationEvent = (
   source: AUTOMATION_SOURCES.telegram,
   eventType: AUTOMATION_SOURCE_EVENT_TYPES.telegram.messageReceived,
   occurredAt: toIsoString(payload.sentAt, "sentAt"),
+  sequence: null,
   payload: {
     messageId: payload.messageId,
     chatId: payload.chatId,

@@ -383,6 +383,7 @@ type EventsListOutput = {
     eventType: string;
     /** ISO 8601 datetime string. */
     occurredAt: string;
+    sequence: string | null;
     payload: {
       [key: string]: unknown;
     };
@@ -806,6 +807,7 @@ type EventsGetOutput = {
   eventType: string;
   /** ISO 8601 datetime string. */
   occurredAt: string;
+  sequence: string | null;
   payload: {
     [key: string]: unknown;
   };
@@ -1249,6 +1251,7 @@ type EventsStateListOutput = {
       [key: string]: unknown;
     };
     occurredAt: string;
+    sequence: string | null;
     storedAt: string;
   }[];
   nextCursor?: string;
@@ -1270,6 +1273,7 @@ type EventsStateGetOutput = {
       [key: string]: unknown;
     };
     occurredAt: string;
+    sequence: string | null;
     storedAt: string;
   }[];
 };

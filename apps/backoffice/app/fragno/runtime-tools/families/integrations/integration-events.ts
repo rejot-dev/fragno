@@ -181,6 +181,8 @@ export async function recordIntegrationConnectionState(
     service: string;
     connectionId: string;
     occurredAt: Date;
+    /** The durable hook's `order`, when a hook records the change; see `AutomationEvent.sequence`. */
+    sequence: string | null;
   } & (
     | { state: IntegrationConnectionState; label: IntegrationConnectionLabel }
     | { state: "disconnected" }
@@ -195,6 +197,7 @@ export async function recordIntegrationConnectionState(
       source: INTEGRATIONS_EVENT_SOURCE,
       eventType: `connection.${change.state}`,
       occurredAt: change.occurredAt.toISOString(),
+      sequence: change.sequence,
       payload: {
         connectionId: change.connectionId,
         service: change.service,
@@ -235,6 +238,7 @@ export async function recordIntegrationSlotChange(
     service: slot.integrationId,
     connectionId: slot.connectionId,
     occurredAt: new Date(item.createdAt),
+    sequence: null,
   };
   await recordIntegrationConnectionState(
     automationsFor(item.scope),

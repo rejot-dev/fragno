@@ -57,6 +57,12 @@ export type AutomationEvent = {
   source: string;
   eventType: string;
   occurredAt: string;
+  /**
+   * Orders the event among the events its source recorded in the same millisecond, such as the
+   * order of the durable hook that recorded it. Lowercase hex digits, compared as text. Null when
+   * the source has none.
+   */
+  sequence: string | null;
   payload: AutomationEventPayload;
   actors: AutomationActors;
   subject?: AutomationEventSubject | null;
@@ -147,6 +153,14 @@ export const automationEventSchema = z.lazy(() =>
     source: z.string().trim().min(1),
     eventType: z.string().trim().min(1),
     occurredAt: z.iso.datetime(),
+    // Events recorded before sequences existed have none.
+    sequence: z.preprocess(
+      (value) => value ?? null,
+      z
+        .string()
+        .regex(/^[0-9a-f]+$/u, "A sequence is lowercase hex digits.")
+        .nullable(),
+    ),
     payload: z.record(z.string(), z.unknown()),
     actors: automationActorsSchema,
     subject: z.preprocess((value) => value ?? null, automationEventSubjectSchema.nullable()),
@@ -448,6 +462,7 @@ export const automationEventStateSchema = z.lazy(() =>
     eventId: z.string(),
     payload: z.record(z.string(), z.unknown()),
     occurredAt: z.string(),
+    sequence: z.string().nullable(),
     storedAt: z.string(),
   }),
 );

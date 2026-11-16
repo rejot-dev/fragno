@@ -55,6 +55,7 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
           id: this.hookId.toString(),
           scope: config.scope,
           occurredAt: this.createdAt,
+          sequence: this.order,
           change,
         }),
         { propagationContext: this.capturePropagationContext() },
@@ -66,15 +67,19 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
           id: this.hookId.toString(),
           scope: config.scope,
           occurredAt: this.createdAt,
+          sequence: this.order,
           change,
         }),
         { propagationContext: this.capturePropagationContext() },
       );
     }),
     recordTurnEnd: defineHook(async function ({ event, queue }): Promise<void> {
-      await config.automations?.ingestEvent(piAgentTurnEndEvent(event, queue, this.createdAt), {
-        propagationContext: this.capturePropagationContext(),
-      });
+      await config.automations?.ingestEvent(
+        piAgentTurnEndEvent(event, queue, { at: this.createdAt, sequence: this.order }),
+        {
+          propagationContext: this.capturePropagationContext(),
+        },
+      );
     }),
     redispatchAgentQueue: defineHook(async function ({ agentName }): Promise<void> {
       const handovers = await this.handlerTx()

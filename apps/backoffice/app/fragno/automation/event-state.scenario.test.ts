@@ -34,6 +34,7 @@ function stockChanged(
     source: "warehouse",
     eventType,
     occurredAt: new Date(start + second * 1000).toISOString(),
+    sequence: null,
     payload,
     actors: createBackofficeSystemExecution(scope).actors,
     subject: null,

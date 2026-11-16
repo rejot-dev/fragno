@@ -61,6 +61,7 @@ function incidentOpened(id: string, incidentId: string): AutomationEvent {
     source: "pagerduty",
     eventType: "incident.opened",
     occurredAt: new Date().toISOString(),
+    sequence: null,
     payload: { incidentId },
     actors: createBackofficeSystemExecution(scope).actors,
     subject: { scope },

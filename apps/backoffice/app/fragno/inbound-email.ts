@@ -104,6 +104,7 @@ export function buildInboundEmailAutomationEvent(
     source: AUTOMATION_SOURCES.email,
     eventType: AUTOMATION_SOURCE_EVENT_TYPES.email.messageReceived,
     occurredAt: payload.receivedAt,
+    sequence: null,
     payload,
     actors: {
       // Anyone can write any From address, so the sender stays an external address.
@@ -165,6 +166,7 @@ export function buildMailboxEmailStatusAutomationEvent(
     source: AUTOMATION_SOURCES.email,
     eventType,
     occurredAt: payload.occurredAt,
+    sequence: null,
     payload,
     actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
     causation: { kind: "origin" },

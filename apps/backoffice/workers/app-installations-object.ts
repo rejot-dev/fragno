@@ -174,6 +174,7 @@ export class AppInstallationsObject
           connectionId: encodeAppConnectionId(app.slug),
           ...(state === "disconnected" ? { state } : { state, label }),
           occurredAt: context.createdAt,
+          sequence: context.order,
         },
         { propagationContext: context.capturePropagationContext() },
       );

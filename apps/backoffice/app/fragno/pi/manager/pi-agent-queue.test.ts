@@ -273,6 +273,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       eventType: "turn.completed",
       payload: { answerEntryId: 7 },
       occurredAt: endedAt,
+      sequence: null,
       actors: provenance("ada").actors,
       subject: { scope, agentName, requestId },
       causation: { kind: "origin" },

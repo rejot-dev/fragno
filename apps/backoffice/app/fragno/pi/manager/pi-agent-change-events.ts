@@ -32,12 +32,15 @@ export function piAgentChangeEvent({
   id,
   scope,
   occurredAt,
+  sequence,
   change,
 }: {
   /** Unique per change, such as the durable hook ID, so redelivery records one event. */
   id: string;
   scope: BackofficeContextScope;
   occurredAt: Date;
+  /** The recording hook's `order`; see `AutomationEvent.sequence`. */
+  sequence: string | null;
   change: PiAgentChange;
 }): AutomationEvent {
   return {
@@ -48,6 +51,7 @@ export function piAgentChangeEvent({
     source: PI_AUTOMATION_SOURCE,
     eventType: PI_AGENT_AUTOMATION_EVENTS[change.kind].eventType,
     occurredAt: occurredAt.toISOString(),
+    sequence,
     payload: {
       agentName: change.agentName,
       ...("definition" in change ? { definition: change.definition } : {}),
@@ -63,12 +67,15 @@ export function piAgentQueueEvent({
   id,
   scope,
   occurredAt,
+  sequence,
   change,
 }: {
   /** Unique per change, such as the durable hook ID, so redelivery records one event. */
   id: string;
   scope: BackofficeContextScope;
   occurredAt: Date;
+  /** The recording hook's `order`; see `AutomationEvent.sequence`. */
+  sequence: string | null;
   change: PiAgentQueueChange;
 }): AutomationEvent {
   const { agentName, requestId, provenance, queue } = change;
@@ -80,6 +87,7 @@ export function piAgentQueueEvent({
     source: PI_AUTOMATION_SOURCE,
     eventType: PI_QUEUE_AUTOMATION_EVENTS[change.kind].eventType,
     occurredAt: occurredAt.toISOString(),
+    sequence,
     payload: {
       agentName,
       queue,
@@ -130,9 +138,14 @@ export function piAgentDroppedReply({
 export function piAgentTurnEndEvent(
   event: AutomationEvent,
   queue: PiAgentQueueCounts,
-  settledAt: Date,
+  settled: { at: Date; sequence: string },
 ): AutomationEvent {
-  return { ...event, occurredAt: settledAt.toISOString(), payload: { ...event.payload, queue } };
+  return {
+    ...event,
+    occurredAt: settled.at.toISOString(),
+    sequence: settled.sequence,
+    payload: { ...event.payload, queue },
+  };
 }
 
 /**
@@ -190,6 +203,7 @@ export async function backfillPiAgentEvents({
         id: `pi-agent-backfill:${definition.agentName}:${after}`,
         scope,
         occurredAt,
+        sequence: null,
         change: {
           kind,
           agentName: definition.agentName,

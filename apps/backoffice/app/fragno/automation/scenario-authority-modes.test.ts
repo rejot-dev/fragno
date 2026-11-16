@@ -70,6 +70,7 @@ const authorityEvent = ({
   source: "authority-test",
   eventType: "authority.requested",
   occurredAt: "2026-08-07T00:00:00.000Z",
+  sequence: null,
   payload: { id },
   actors: {
     initiator: {

@@ -89,6 +89,7 @@ export function createIntegrationsRuntime({
               state,
               label: { name, authMethod },
               occurredAt: new Date(nowEpochMs()),
+              sequence: null,
             },
             { propagationContext: null },
           );
@@ -113,6 +114,7 @@ export function createIntegrationsRuntime({
             connectionId,
             state: "disconnected",
             occurredAt: new Date(nowEpochMs()),
+            sequence: null,
           },
           { propagationContext: null },
         );

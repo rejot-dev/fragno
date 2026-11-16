@@ -487,5 +487,10 @@ export const automationFragmentSchema = schema("automations", (s) => {
       // Agents are read from the states of their events.
       .dropTable("pi_agent")
       .dropTable("pi_agent_request")
+      // Orders events that occurred in the same millisecond; see `compareEventOrder`.
+      .alterTable("automation_event", (t) => t.addColumn("sequence", column("string").nullable()))
+      .alterTable("automation_event_state", (t) =>
+        t.addColumn("sequence", column("string").nullable()),
+      )
   );
 });

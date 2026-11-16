@@ -245,6 +245,7 @@ function startRun(workflow: string, instanceId: string) {
       source: "shop",
       eventType: "order.manual",
       occurredAt: new Date(ctx.runtime.now()).toISOString(),
+      sequence: null,
       // Payloads are JSON, whose fields may start with $.
       payload: { $schema: "https://example.com/order.json", instanceId },
       actors: createBackofficeSystemExecution(scope).actors,

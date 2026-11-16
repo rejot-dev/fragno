@@ -40,6 +40,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
       source: "auth",
       eventType: "organization.created",
       occurredAt: "2026-06-12T00:00:00.000Z",
+      sequence: null,
       payload: { id: "org-1", name: "Org 1", slug: "org-1" },
       actors: {
         initiator: AUTOMATION_SYSTEM_INITIATOR,
@@ -169,6 +170,7 @@ describe("executeWorkflowCodemodeAutomation", () => {
       source: "test",
       eventType: "workflow.egress",
       occurredAt: "2026-08-11T00:00:00.000Z",
+      sequence: null,
       payload: {},
       actors: {
         initiator: AUTOMATION_SYSTEM_INITIATOR,

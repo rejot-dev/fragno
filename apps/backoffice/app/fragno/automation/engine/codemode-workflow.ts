@@ -151,6 +151,7 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
               source: "manual",
               eventType: "workflow.started",
               occurredAt: event.timestamp.toISOString(),
+              sequence: null,
               payload: params.trigger.payload,
               actors: execution.actors,
               subject: execution.scope.kind === "system" ? null : { scope: execution.scope },

@@ -73,6 +73,7 @@ const ticketOpened = {
   source: "support",
   eventType: "ticket.opened",
   occurredAt: "2026-10-20T09:00:00.000Z",
+  sequence: null,
   payload: { subject: "Charged twice", body: "I was charged twice for my order." },
   actors: member.actors,
   causation: { kind: "origin" as const },

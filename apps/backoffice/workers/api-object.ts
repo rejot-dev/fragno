@@ -156,6 +156,7 @@ export class ApiObject extends RpcTarget implements ApiCommands {
             connectionId: encodeApiConnectionId(payload.connectionId),
             state: "disconnected",
             occurredAt: context.createdAt,
+            sequence: context.order,
           },
           { propagationContext: context.capturePropagationContext() },
         );
@@ -175,6 +176,7 @@ export class ApiObject extends RpcTarget implements ApiCommands {
                 payload.connection && authMethodOfFragmentAuthMode(payload.connection.authMode),
             },
             occurredAt: context.createdAt,
+            sequence: context.order,
           },
           { propagationContext: context.capturePropagationContext() },
         );
@@ -203,6 +205,7 @@ export class ApiObject extends RpcTarget implements ApiCommands {
             connectionId: encodeWebhookConnectionId(payload.endpointId),
             ...stateChange,
             occurredAt: context.createdAt,
+            sequence: context.order,
           },
           { propagationContext: context.capturePropagationContext() },
         );
@@ -217,6 +220,7 @@ export class ApiObject extends RpcTarget implements ApiCommands {
             source: "api",
             eventType: "webhook.received",
             occurredAt: payload.receivedAt,
+            sequence: null,
             payload: { ...payload },
             actors: {
               initiator: AUTOMATION_SYSTEM_INITIATOR,

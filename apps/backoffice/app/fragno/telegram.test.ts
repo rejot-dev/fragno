@@ -28,6 +28,7 @@ describe("buildTelegramAutomationEvent", () => {
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-03-17T14:30:29.074Z",
+      sequence: null,
       payload: {
         messageId: "chat-1:10",
         chatId: "chat-1",

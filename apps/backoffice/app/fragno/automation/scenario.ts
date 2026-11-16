@@ -2301,6 +2301,7 @@ const buildOrganizationCreatedEvent = (input: OrganizationCreatedInput): Automat
     source: "auth",
     eventType: "organization.created",
     occurredAt: now,
+    sequence: null,
     payload: {
       organization: {
         id: input.id,
@@ -2336,6 +2337,7 @@ const buildCapabilityConfiguredEvent = (input: CapabilityConfiguredInput): Autom
   source: input.source ?? input.capabilityId,
   eventType: "capability.configured",
   occurredAt: "2026-01-01T00:00:00.000Z",
+  sequence: null,
   payload: {
     capabilityId: input.capabilityId,
     capabilityLabel: input.capabilityLabel ?? input.capabilityId,
@@ -2369,6 +2371,7 @@ const buildIdentityClaimCompletedEvent = (input: ConfirmClaimInput): AutomationE
     source: "otp",
     eventType: "identity.claim.completed",
     occurredAt: "2026-01-01T00:00:00.000Z",
+    sequence: null,
     payload: {
       otpId: input.otpId,
       claimType: input.claimType ?? "identity_link",

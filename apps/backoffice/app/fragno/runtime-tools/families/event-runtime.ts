@@ -275,6 +275,7 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
           occurredAt === undefined || new Date(occurredAt) > now
             ? now.toISOString()
             : new Date(occurredAt).toISOString(),
+        sequence: null,
         payload: normalizeEventPayload(payload),
         actors: options.emittedEventActors ?? options.execution.actors,
         subject:

@@ -195,6 +195,7 @@ function codemodeRunFailedEvent(
     source: CODEMODE_AUTOMATION_SOURCE,
     eventType: CODEMODE_AUTOMATION_EVENT_RUN_FAILED,
     occurredAt: run.finishedAt,
+    sequence: null,
     payload,
     actors,
     subject: { scope, runId: run.runId },

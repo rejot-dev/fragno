@@ -235,6 +235,7 @@ const ingestAutomationEvent = (
     source: validatedEvent.source,
     eventType: validatedEvent.eventType,
     occurredAt,
+    sequence: validatedEvent.sequence,
     payload:
       storedPayload === null ? validatedEvent.payload : storedPayload(validatedEvent.payload),
     actors: validatedEvent.actors,

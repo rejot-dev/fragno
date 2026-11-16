@@ -78,6 +78,7 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
   source: AUTOMATION_SOURCES.otp,
   eventType: AUTOMATION_SOURCE_EVENT_TYPES.otp.identityClaimCompleted,
   occurredAt: input.otp.confirmedAt.toISOString(),
+  sequence: null,
   payload: {
     otpId: input.otp.id,
     claimType: input.otp.type,
