@@ -1,6 +1,7 @@
 import type {
   AutomationActors,
   AutomationRouteAction,
+  AutomationRouteGrant,
   AutomationRouteDefinition,
   AutomationRouteSteward,
   AutomationRouteTrigger,
@@ -55,6 +56,21 @@ function isLegacyAutomationStartWorkflowAction(
   return action.kind === "start_workflow" && !("grants" in action.authority);
 }
 
+/**
+ * Stored grants can name permissions removed since they were written, or `integrations.execute`
+ * without the connections routes now grant it on. Those authorize nothing, so they are dropped.
+ */
+function knownRouteGrants(grants: readonly AutomationRouteGrant[]): AutomationRouteGrant[] {
+  return grants.flatMap((grant): AutomationRouteGrant[] =>
+    "connections" in grant
+      ? [grant]
+      : knownBackofficePermissions([grant]).filter(
+          (permission): permission is Exclude<typeof permission, { permission: "execute" }> =>
+            !(permission.namespace === "integrations" && permission.permission === "execute"),
+        ),
+  );
+}
+
 function normalizeStoredAutomationRouteAction(
   action: StoredAutomationRouteAction,
 ): AutomationRouteAction {
@@ -73,7 +89,7 @@ function normalizeStoredAutomationRouteAction(
   }
   return {
     ...action,
-    authority: { ...action.authority, grants: knownBackofficePermissions(action.authority.grants) },
+    authority: { ...action.authority, grants: knownRouteGrants(action.authority.grants) },
   };
 }
 

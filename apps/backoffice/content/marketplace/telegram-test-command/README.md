@@ -12,3 +12,7 @@ Version 2.0.0 declares its `/test` route in `.marketplace/installation.json`, so
 the route in sync with the installation and removes it on uninstall. Installing it approves
 `integrations.execute` and `packages.read`. The install workflow returns the reply as the
 installation's settings instead of writing a store key; install the package again to change it.
+
+Version 2.1.0 grants its route `integrations.execute` on the scope's `backoffice#telegram`
+connection only, because routes now name the connections they grant. Earlier versions grant it on
+every connection, which routes no longer can, so their replies are denied.

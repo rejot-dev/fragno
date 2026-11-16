@@ -1,11 +1,11 @@
 import { describe, expect, test, vi, assert } from "vitest";
 
-import { automationActorsSchema } from "@fragno-dev/backoffice-api/v0/automation";
-import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import {
-  BACKOFFICE_PERMISSION,
-  type BackofficePermissionRequirement,
-} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+  automationActorsSchema,
+  type AutomationRouteGrant,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import {
   createBackofficeSystemExecution,
@@ -140,7 +140,7 @@ const otherOrganizationScenario = ({
   allowErroredWorkflows = false,
 }: {
   name: string;
-  grants: BackofficePermissionRequirement[];
+  grants: AutomationRouteGrant[];
   outcome: BackofficeScenarioDefinitionInput["steps"];
   allowErroredWorkflows?: boolean;
 }) =>
@@ -239,7 +239,7 @@ const projectScenario = ({
   allowErroredWorkflows = false,
 }: {
   name: string;
-  grants: BackofficePermissionRequirement[];
+  grants: AutomationRouteGrant[];
   projectSetup: BackofficeScenarioDefinitionInput["steps"];
   outcome: BackofficeScenarioDefinitionInput["steps"];
   allowErroredWorkflows?: boolean;
@@ -685,7 +685,7 @@ describe("automation route authority modes", () => {
             },
           }),
           then.assert("the project holds the entry", async (ctx) => {
-            assert(await projectStoreValue(ctx, "authority/event-1") === "written");
+            assert((await projectStoreValue(ctx, "authority/event-1")) === "written");
           }),
         ],
       }),

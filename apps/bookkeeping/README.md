@@ -454,20 +454,21 @@ defines the event type with the subject as its key path, so its state in the fir
 each subject's latest: the agent's to-do list, which the firm can read too. Its route notifies the
 `bookkeeper` agent of each `requested` event, acting as an organization automation with the
 permissions the work takes: `pi.read`, `pi.modify`, `events.read`, `upload.read`, `models.extract`,
-`integrations.read` (to read the actions' input schemas), and `integrations.execute`, which
-installing the package approves. Backoffice notifies only an agent whose conversation a prompt
-started, so when Bookkeeping finds the agent's conversation not started as it tells the firm, it
-starts it with a prompt asking for what an event would, under request ID `bookkeeping:start`, once.
-The agent's own conversation then runs one codemode program, which its instructions give with
-Bookkeeping's event source, as `backoffice:connect` publishes the package for the app's ID: it lists
-the state and starts a subagent with `pi.prompt.submit` for each request still `requested` that none
-was started for, under the request's ID with its prompt, and ends its turn: each document runs in a
-new conversation of the agent, beside the others, so documents uploaded together are read side by
-side and no document sees another's text, and an import of hundreds of transactions takes one
-program. The agent's calls to Bookkeeping arrive as the installation's, the route not being a
-person: they read the books and answer requests (`documents.propose`, `documents.decline`, and their
-`bank.transactions` counterparts), and every other change is refused, whatever a document or a bank
-transaction tells the agent. Backoffice bills the turns to the firm.
+`integrations.read` (to read the actions' input schemas), and `integrations.execute` on
+`app#bookkeeping` alone, which installing the package approves. Backoffice notifies only an agent
+whose conversation a prompt started, so when Bookkeeping finds the agent's conversation not started
+as it tells the firm, it starts it with a prompt asking for what an event would, under request ID
+`bookkeeping:start`, once. The agent's own conversation then runs one codemode program, which its
+instructions give with Bookkeeping's event source, as `backoffice:connect` publishes the package for
+the app's ID: it lists the state and starts a subagent with `pi.prompt.submit` for each request
+still `requested` that none was started for, under the request's ID with its prompt, and ends its
+turn: each document runs in a new conversation of the agent, beside the others, so documents
+uploaded together are read side by side and no document sees another's text, and an import of
+hundreds of transactions takes one program. The agent's calls to Bookkeeping arrive as the
+installation's, the route not being a person: they read the books and answer requests
+(`documents.propose`, `documents.decline`, and their `bank.transactions` counterparts), and every
+other change is refused, whatever a document or a bank transaction tells the agent. Backoffice bills
+the turns to the firm.
 
 How the agent books a document is the `bookkeeping` skill its package installs at
 `/workspace/bookkeeping/skills/bookkeeping/SKILL.md`, which its instructions tell it to read and

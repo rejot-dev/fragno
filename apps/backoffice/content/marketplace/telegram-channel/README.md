@@ -46,5 +46,9 @@ user's permissions, and each prompt names both the chat and the sender. `/start`
 sender to link in a private chat, where no one else sees the claim link. Links made with earlier
 versions name chats and no longer apply; send `/start` again to link.
 
+Version 3.1.0 grants its `/start` route `integrations.execute` on the scope's `backoffice#telegram`
+connection only, because routes now name the connections they grant. Earlier versions grant it on
+every connection, which routes no longer can, so their `/start` workflow is denied its replies.
+
 Install this item into an organization, project, or personal automation scope. Telegram connection
 availability is configured separately.

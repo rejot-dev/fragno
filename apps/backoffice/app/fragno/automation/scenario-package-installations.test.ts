@@ -1,7 +1,9 @@
 import { assert, describe, expect, test, vi } from "vitest";
 
 import type { AutomationRouteCreateInput } from "@fragno-dev/backoffice-api/v0/automation";
+import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { MARKETPLACE_LOCK_PATH } from "@fragno-dev/backoffice-api/v0/marketplace";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
   class DurableObject {
@@ -20,6 +22,10 @@ import {
   createBackofficeSystemExecution,
 } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import {
+  automationRouteAuthority,
+  createAutomationRuntimeExecution,
+} from "@/fragno/automation/authority";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import {
@@ -206,7 +212,7 @@ describe("package installation scenarios", () => {
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
-      version: "2.0.0",
+      version: "2.1.0",
     });
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -224,7 +230,7 @@ describe("package installation scenarios", () => {
                   {
                     marketplace: { kind: "system" },
                     listingId: LISTING_ID,
-                    version: "2.0.0",
+                    version: "2.1.0",
                     installationRoot,
                     targetScope: TARGET_SCOPE,
                     permissions: [],
@@ -239,7 +245,7 @@ describe("package installation scenarios", () => {
             await expect(
               installMarketplacePackage(ctx, {
                 listingId: LISTING_ID,
-                version: "2.0.0",
+                version: "2.1.0",
                 installationRoot: `${installationRoot}/`,
               }),
             ).resolves.toMatchObject({ action: "created", workflowInstanceId });
@@ -249,7 +255,7 @@ describe("package installation scenarios", () => {
             await expect(readInstallation(ctx, LISTING_ID)).resolves.toBeNull();
             await submitTestCommandMessage(ctx, {
               installationRoot,
-              version: "2.0.0",
+              version: "2.1.0",
               message: "  First reply  ",
               eventId: "configure-first",
             });
@@ -266,7 +272,7 @@ describe("package installation scenarios", () => {
               await expect(readInstallation(ctx, LISTING_ID)).resolves.toEqual({
                 marketplace: { kind: "system" },
                 listingId: LISTING_ID,
-                version: "2.0.0",
+                version: "2.1.0",
                 installationRoot,
                 permissions: [
                   { namespace: "integrations", permission: "execute" },
@@ -276,7 +282,7 @@ describe("package installation scenarios", () => {
               });
               const file = await readWorkspaceFile(ctx, `${installationRoot}/${WORKFLOW_FILE}`);
               assert(file.ok);
-              await expect(file.text()).resolves.toBe(publishedWorkflowSource("2.0.0"));
+              await expect(file.text()).resolves.toBe(publishedWorkflowSource("2.1.0"));
               const route = await routes(ctx)("GET", "/routes/:routeId", {
                 pathParams: { routeId: ROUTE_ID },
               });
@@ -318,7 +324,7 @@ describe("package installation scenarios", () => {
             await expect(
               installMarketplacePackage(ctx, {
                 listingId: LISTING_ID,
-                version: "2.0.0",
+                version: "2.1.0",
                 installationRoot,
               }),
             ).resolves.toMatchObject({ action: "restarted" });
@@ -341,7 +347,7 @@ describe("package installation scenarios", () => {
             ).toMatchObject({ $ui: { state: { response: { message: "First reply" } } } });
             await submitTestCommandMessage(ctx, {
               installationRoot,
-              version: "2.0.0",
+              version: "2.1.0",
               message: "Second reply",
               eventId: "configure-second",
             });
@@ -358,6 +364,94 @@ describe("package installation scenarios", () => {
     );
   });
 
+  test("a route limited to some connections cannot approve a package's integrations.execute", async () => {
+    const installer = {
+      id: "installer",
+      name: "Installer",
+      enabled: true,
+      priority: 100,
+      trigger: { kind: "event", source: "packages-test", eventType: "install", matcher: null },
+      action: {
+        kind: "start_workflow",
+        authority: {
+          kind: "organization-automation",
+          grants: [
+            BACKOFFICE_PERMISSION.packages.install,
+            BACKOFFICE_PERMISSION.packages.read,
+            {
+              ...BACKOFFICE_PERMISSION.integrations.execute,
+              connections: [{ scope: { kind: "current" }, connectionId: "api#billing" }],
+            },
+          ],
+        },
+        workflowScriptPath: "/workspace/automations/install.workflow.js",
+        instanceIdTemplate: "install-${event.id}",
+      },
+    } satisfies AutomationRouteCreateInput;
+    const event: AutomationEvent = {
+      id: "install-1",
+      scopeRestriction: null,
+      scope: TARGET_SCOPE,
+      source: "packages-test",
+      eventType: "install",
+      occurredAt: "2026-11-16T00:00:00.000Z",
+      payload: {},
+      actors: createBackofficeSystemExecution(TARGET_SCOPE).actors,
+      subject: null,
+      causation: { kind: "origin" },
+    };
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "a route executing on api#billing installs the Telegram test command",
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+          given.router.route({ orgId: "org-1", ...installer }),
+        ],
+        steps: ({ then, runner }) => [
+          then.assert("publish packages", publishMarketplacePackages),
+          runner.drain(),
+          then.assert(
+            "the install is refused: the package's route would execute on every connection",
+            async (ctx) => {
+              await expect(
+                ctx.runtime.objects.automations
+                  .for(TARGET_SCOPE)
+                  .commands.restartMarketplaceIngestion(
+                    {
+                      marketplace: { kind: "system" },
+                      listingId: LISTING_ID,
+                      version: "2.1.0",
+                      installationRoot: "/workspace/packages/telegram",
+                      targetScope: TARGET_SCOPE,
+                      permissions: bundledMarketplacePermissions({
+                        slug: "telegram-test-command",
+                        version: "2.1.0",
+                      }),
+                    },
+                    {
+                      execution: createAutomationRuntimeExecution({
+                        event,
+                        authority: automationRouteAuthority({
+                          routeId: installer.id,
+                          routeScope: TARGET_SCOPE,
+                          mode: installer.action.authority,
+                        }),
+                      }),
+                      propagationContext: null,
+                    },
+                  ),
+              ).rejects.toThrow(
+                "it may execute only on org:org-1 api#billing, so it cannot approve execute on every connection",
+              );
+              await expect(readInstallation(ctx, LISTING_ID)).resolves.toBeNull();
+            },
+          ),
+        ],
+      }),
+    );
+  });
+
   test("upgrades an installation imported from a legacy lock, keeping edits to files the new version dropped", async () => {
     const installationRoot = "/workspace/first";
     const upgradeWorkflowId = await buildMarketplacePackageInstallWorkflowInstanceId({
@@ -365,7 +459,7 @@ describe("package installation scenarios", () => {
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
-      version: "2.0.0",
+      version: "2.1.0",
     });
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -452,7 +546,7 @@ describe("package installation scenarios", () => {
               await expect(
                 installMarketplacePackage(ctx, {
                   listingId: LISTING_ID,
-                  version: "2.0.0",
+                  version: "2.1.0",
                   installationRoot,
                 }),
               ).resolves.toMatchObject({ workflowInstanceId: upgradeWorkflowId });
@@ -462,7 +556,7 @@ describe("package installation scenarios", () => {
           then.assert("the upgraded install workflow receives its reply message", (ctx) =>
             submitTestCommandMessage(ctx, {
               installationRoot,
-              version: "2.0.0",
+              version: "2.1.0",
               message: "Upgraded reply",
               eventId: "configure-upgrade",
             }),
@@ -477,12 +571,12 @@ describe("package installation scenarios", () => {
             "the folder holds version 2.0.0, recorded as an installation",
             async (ctx) => {
               await expect(readInstallation(ctx, LISTING_ID)).resolves.toMatchObject({
-                version: "2.0.0",
+                version: "2.1.0",
                 installationRoot,
               });
               const file = await readWorkspaceFile(ctx, `${installationRoot}/${WORKFLOW_FILE}`);
               assert(file.ok);
-              await expect(file.text()).resolves.toBe(publishedWorkflowSource("2.0.0"));
+              await expect(file.text()).resolves.toBe(publishedWorkflowSource("2.1.0"));
               assert(
                 (await readWorkspaceFile(ctx, `${installationRoot}/notes/unchanged.md`)).status ===
                   410,
@@ -504,7 +598,7 @@ describe("package installation scenarios", () => {
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: LISTING_ID,
-      version: "2.0.0",
+      version: "2.1.0",
     });
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -517,7 +611,7 @@ describe("package installation scenarios", () => {
           then.assert("install version 2.0.0", async (ctx) => {
             await installMarketplacePackage(ctx, {
               listingId: LISTING_ID,
-              version: "2.0.0",
+              version: "2.1.0",
               installationRoot,
             });
           }),
@@ -525,7 +619,7 @@ describe("package installation scenarios", () => {
           then.assert("answer its install workflow", (ctx) =>
             submitTestCommandMessage(ctx, {
               installationRoot,
-              version: "2.0.0",
+              version: "2.1.0",
               message: "Reply",
               eventId: "configure",
             }),
@@ -536,7 +630,7 @@ describe("package installation scenarios", () => {
             await expect(
               installMarketplacePackage(ctx, {
                 listingId: LISTING_ID,
-                version: "2.0.0",
+                version: "2.1.0",
                 installationRoot: "/workspace/second",
               }),
             ).rejects.toThrow(
@@ -568,7 +662,7 @@ describe("package installation scenarios", () => {
               });
               await installMarketplacePackage(ctx, {
                 listingId: LISTING_ID,
-                version: "2.0.0",
+                version: "2.1.0",
                 installationRoot,
               });
             },
@@ -612,7 +706,7 @@ describe("package installation scenarios", () => {
             });
             await installMarketplacePackage(ctx, {
               listingId: LISTING_ID,
-              version: "2.0.0",
+              version: "2.1.0",
               installationRoot,
             });
           }),
@@ -620,7 +714,7 @@ describe("package installation scenarios", () => {
           then.assert("answer the test command's install workflow", (ctx) =>
             submitTestCommandMessage(ctx, {
               installationRoot,
-              version: "2.0.0",
+              version: "2.1.0",
               message: "Reply",
               eventId: "configure",
             }),
@@ -636,7 +730,7 @@ describe("package installation scenarios", () => {
                 .sort((left, right) => left.listingId.localeCompare(right.listingId)),
             ).toEqual([
               { listingId: GITHUB_CHANNEL_ID, version: "1.2.0" },
-              { listingId: LISTING_ID, version: "2.0.0" },
+              { listingId: LISTING_ID, version: "2.1.0" },
             ]);
           }),
           then.router.route({
@@ -749,10 +843,10 @@ describe("package installation scenarios", () => {
       targetScope: TARGET_SCOPE,
       installationRoot,
       listingId: TELEGRAM_CHANNEL_ID,
-      version: "2.1.0",
+      version: "3.1.0",
     });
     const [declaredAgent] = parseMarketplacePackageDeclaration(
-      getStaticMarketplaceEntry({ slug: "telegram-channel", version: "2.1.0" })!.files[
+      getStaticMarketplaceEntry({ slug: "telegram-channel", version: "3.1.0" })!.files[
         MARKETPLACE_DECLARATION_PATH
       ]!,
     ).agents;
@@ -812,7 +906,7 @@ describe("package installation scenarios", () => {
               assert(route.type === "json", JSON.stringify(route));
               await installMarketplacePackage(ctx, {
                 listingId: TELEGRAM_CHANNEL_ID,
-                version: "2.1.0",
+                version: "3.1.0",
                 installationRoot,
               });
             },
@@ -863,7 +957,7 @@ describe("package installation scenarios", () => {
           }),
           then.assert("the package manages the agent, which members can't change", async (ctx) => {
             await expect(readInstallation(ctx, TELEGRAM_CHANNEL_ID)).resolves.toMatchObject({
-              version: "2.1.0",
+              version: "3.1.0",
             });
             await expect(telegramAgent(ctx)).resolves.toMatchObject({
               permissions: ["*"],

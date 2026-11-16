@@ -4,10 +4,8 @@ import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import {
-  BACKOFFICE_PERMISSION,
-  type BackofficePermissionRequirement,
-} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { AutomationRouteGrant } from "@fragno-dev/backoffice-api/v0/automation";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import Database from "better-sqlite3";
 
 import {
@@ -574,7 +572,7 @@ describe("scheduled automation route scenario", () => {
         object: ctx.runtime.objects.automations.for(scope),
         context: { execution, propagationContext: null },
       });
-    const personalDigest = (id: string, grants: BackofficePermissionRequirement[] | "inherit") => ({
+    const personalDigest = (id: string, grants: AutomationRouteGrant[] | "inherit") => ({
       id,
       name: "Personal digest",
       enabled: true,

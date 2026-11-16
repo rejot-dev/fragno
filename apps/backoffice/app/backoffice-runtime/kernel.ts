@@ -7,12 +7,18 @@ import {
   backofficeContextScopesEqual,
   backofficeScopeContains,
   backofficeScopePathSegment,
+  backofficeScopeReferenceCodec,
   backofficeScopeRootOwner,
+  formatBackofficeScopeSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import { piAgentActorName } from "@/fragno/pi/agent/pi-agent-actor";
 
-import type { BackofficeAuthorityResolver } from "./authority-resolver";
+import type {
+  BackofficeAuthorityResolver,
+  BackofficeGrant,
+  BackofficeGrantedConnection,
+} from "./authority-resolver";
 import { resolveBackofficeInternalServiceAuthorityRole } from "./authority-roles";
 import {
   backofficeExecutionContextSchema,
@@ -31,6 +37,11 @@ export type BackofficeKernelAction = {
   execution: BackofficeExecutionContext;
   operation: BackofficePermissionRequirement;
   resource?: unknown;
+};
+
+/** The resource of a call that executes an action on one connection, in the scope it is in. */
+export type BackofficeConnectionResource = BackofficeGrantedConnection & {
+  kind: "integration-connection";
 };
 
 /** One operation that must be authorized as part of an all-of authorization check. */
@@ -128,32 +139,118 @@ export function isBackofficeForbiddenError(
 }
 
 const backofficePermissionsEqual = (
-  grant: BackofficePermissionRequirement,
+  grant: BackofficePermissionRequirement | BackofficeGrant,
   requirement: BackofficePermissionRequirement,
 ) => grant.namespace === requirement.namespace && grant.permission === requirement.permission;
+
+// Resources are built by trusted host code, so their kind names their shape.
+export function isBackofficeConnectionResource(
+  resource: unknown,
+): resource is BackofficeConnectionResource {
+  return (
+    typeof resource === "object" &&
+    (resource as { kind?: unknown })?.kind === "integration-connection"
+  );
+}
+
+/** A connection by its scope's IDs and its address; where the scope is kept does not change it. */
+function connectionKey({ scope, connectionId }: BackofficeGrantedConnection): string {
+  return `${formatBackofficeScopeSegment(scope, backofficeScopeReferenceCodec)} ${connectionId}`;
+}
+
+/**
+ * Resources whose check approves a permission for something else to hold: installing a package
+ * approves its permissions for its routes and install workflow. They hold the permission whole.
+ */
+function approvesPermission(resource: unknown): boolean {
+  return (
+    typeof resource === "object" &&
+    (resource as { kind?: unknown })?.kind === "package-installation"
+  );
+}
+
+/**
+ * Whether a grant covers a requirement. Execute on named connections covers a call naming one of
+ * them, but never approving execute for something else, which would hold it on every connection.
+ * Any other requirement naming no connection is a source's own check of a call that named its
+ * connection where it entered: runtime tools that require `integrations.execute` name one.
+ */
+function grantCovers(
+  grant: BackofficeGrant,
+  requirement: BackofficeKernelAuthorizationRequirement,
+): boolean {
+  if (!backofficePermissionsEqual(grant, requirement.operation)) {
+    return false;
+  }
+  const resource = requirement.resource;
+  if (!("connections" in grant)) {
+    return true;
+  }
+  if (!isBackofficeConnectionResource(resource)) {
+    return !approvesPermission(resource);
+  }
+  const key = connectionKey(resource);
+  return grant.connections.some((connection) => connectionKey(connection) === key);
+}
+
+function describeGrant(grant: BackofficeGrant): string {
+  const permission = `${grant.namespace}.${grant.permission}`;
+  return "connections" in grant
+    ? `${permission} on ${grant.connections.map(connectionKey).join(", ")}`
+    : permission;
+}
+
+/**
+ * Why grants that execute on named connections deny a call to another one, or approving execute,
+ * naming the connections they do cover; null when the grants do not execute on named connections.
+ */
+function connectionDenialReason(
+  grants: readonly BackofficeGrant[],
+  requirement: BackofficeKernelAuthorizationRequirement,
+): string | null {
+  const grant = grants.find((candidate) =>
+    backofficePermissionsEqual(candidate, requirement.operation),
+  );
+  if (!grant || !("connections" in grant)) {
+    return null;
+  }
+  const covered = grant.connections.map(connectionKey).join(", ");
+  if (isBackofficeConnectionResource(requirement.resource)) {
+    return `it may execute on ${covered}, not on ${connectionKey(requirement.resource)}`;
+  }
+  return approvesPermission(requirement.resource)
+    ? `it may execute only on ${covered}, so it cannot approve execute on every connection`
+    : null;
+}
 
 const DENIAL_LISTED_GRANTS = 8;
 
 /** Names the delegate and what it holds, so a denial points at the grant to change. */
 function delegatedActorDenialMessage(
   actor: BackofficeExecutionContext["actors"]["delegation"][number],
-  requirement: BackofficePermissionRequirement,
-  grants: readonly BackofficePermissionRequirement[],
+  requirement: BackofficeKernelAuthorizationRequirement,
+  grants: readonly BackofficeGrant[],
 ): string {
-  const listed = grants
-    .slice(0, DENIAL_LISTED_GRANTS)
-    .map((grant) => `${grant.namespace}.${grant.permission}`);
+  const actorLabel =
+    actor.type === "pi-agent"
+      ? `Agent '${piAgentActorName(actor)}'`
+      : `Delegated ${actor.type} '${actor.id}'`;
+  const connectionReason = connectionDenialReason(grants, requirement);
+  if (connectionReason) {
+    return `${actorLabel} is not granted this connection: ${connectionReason}.`;
+  }
+  const listed = grants.slice(0, DENIAL_LISTED_GRANTS).map(describeGrant);
   const held =
     grants.length === 0
       ? "(none)"
       : grants.length > DENIAL_LISTED_GRANTS
         ? `${listed.join(", ")}, and ${grants.length - DENIAL_LISTED_GRANTS} more`
         : listed.join(", ");
-  const required = `${requirement.namespace}.${requirement.permission}`;
+  const required = `${requirement.operation.namespace}.${requirement.operation.permission}`;
   // A Pi agent's grants are its definition's permissions, which is where they are changed.
   return actor.type === "pi-agent"
-    ? `Agent '${piAgentActorName(actor)}' is not granted ${required}; its definition grants: ${held}.`
-    : `Delegated ${actor.type} '${actor.id}' is not granted ${required}; it is granted: ${held}.`;
+    ? `${actorLabel} is not granted ${required}; its definition grants: ${held}.`
+    : `${actorLabel} is not granted ${required}; it is granted: ${held}.`;
 }
 
 /**
@@ -338,13 +435,13 @@ export class BackofficeKernel {
 
       const resolvedPrincipalAuthority = principalAuthorityResult.value;
       if (resolvedPrincipalAuthority.kind === "principal") {
-        if (
-          !resolvedPrincipalAuthority.permissions.some((grant) =>
-            backofficePermissionsEqual(grant, requirement.operation),
-          )
-        ) {
+        const grants = resolvedPrincipalAuthority.permissions;
+        if (!grants.some((grant) => grantCovers(grant, requirement))) {
+          const connectionReason = connectionDenialReason(grants, requirement);
           throw new BackofficeForbiddenError(
-            "The current principal does not have the required permission.",
+            connectionReason
+              ? `The current principal '${principal?.id}' is not granted this connection: ${connectionReason}.`
+              : "The current principal does not have the required permission.",
             "principal-permission-denied",
           );
         }
@@ -369,15 +466,11 @@ export class BackofficeKernel {
             "authority-unavailable",
           );
         }
-        if (
-          !actorResult.value.some((grant) =>
-            backofficePermissionsEqual(grant, requirement.operation),
-          )
-        ) {
+        if (!actorResult.value.some((grant) => grantCovers(grant, requirement))) {
           throw new BackofficeForbiddenError(
             delegatedActorDenialMessage(
               trustedExecution.actors.delegation[index],
-              requirement.operation,
+              requirement,
               actorResult.value,
             ),
             "actor-capability-denied",

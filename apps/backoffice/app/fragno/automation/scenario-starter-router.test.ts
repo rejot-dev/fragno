@@ -174,7 +174,7 @@ if (!telegramTestCommandEntry) {
 const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
   targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
   slug: "telegram-channel",
-  version: "3.0.0",
+  version: "3.1.0",
   // The Marketplace page's suggested folder, so nothing depends on where a package lands.
   installationRoot: "/workspace/telegram-channel",
 } as const;
@@ -200,7 +200,15 @@ const telegramTestCommandRoute = {
     kind: "start_workflow" as const,
     authority: {
       kind: "organization-automation" as const,
-      grants: [BACKOFFICE_PERMISSION.integrations.execute, BACKOFFICE_PERMISSION.store.read],
+      grants: [
+        {
+          ...BACKOFFICE_PERMISSION.integrations.execute,
+          connections: [
+            { scope: { kind: "current" as const }, connectionId: "backoffice#telegram" },
+          ],
+        },
+        BACKOFFICE_PERMISSION.store.read,
+      ],
     },
     workflowScriptPath: "/workspace/automations/telegram-test-command.workflow.js",
     instanceIdTemplate: "telegram-test-${event.id}",

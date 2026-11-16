@@ -125,7 +125,7 @@ const UPDATED_STATIC_MARKETPLACE_VERSION = STATIC_TELEGRAM_TEST_COMMAND.versions
   (version) => version.version === "1.1.0",
 );
 const INSTALLER_STATIC_MARKETPLACE_VERSION = STATIC_TELEGRAM_TEST_COMMAND.versions.find(
-  (version) => version.version === "2.0.0",
+  (version) => version.version === "2.1.0",
 );
 if (
   !BASE_STATIC_MARKETPLACE_VERSION ||
@@ -138,11 +138,11 @@ const TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE =
   BASE_STATIC_MARKETPLACE_VERSION.files[MARKETPLACE_PACKAGE_FILE_KEY];
 const CURRENT_TELEGRAM_TEST_COMMAND_WORKFLOW_SOURCE = getStaticMarketplaceEntry({
   slug: "telegram-test-command",
-  version: "2.0.0",
+  version: "2.1.0",
 })?.files[MARKETPLACE_PACKAGE_FILE_KEY];
 const TELEGRAM_TEST_COMMAND_PERMISSIONS = bundledMarketplacePermissions({
   slug: "telegram-test-command",
-  version: "2.0.0",
+  version: "2.1.0",
 });
 
 /**
@@ -161,7 +161,7 @@ async function submitTelegramTestCommandInstaller(
     installationRoot: "/workspace",
     targetScope,
     listingId: MARKETPLACE_LISTING_ID,
-    version: "2.0.0",
+    version: "2.1.0",
   });
   const workflows = createWorkflowsRouteCaller({
     object: ctx.runtime.objects.automations.for(coordinator),
@@ -473,7 +473,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                 .commands.getListingStorage({ listingId: MARKETPLACE_LISTING_ID }),
             ).resolves.toMatchObject({
               listingStatus: "published",
-              versions: ["2.0.0", "1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
+              versions: ["2.1.0", "2.0.0", "1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
             });
           }),
         ],
@@ -524,16 +524,16 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: telegramChannelListingId,
-                  version: "2.1.0",
+                  version: "3.1.0",
                   targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   permissions: bundledMarketplacePermissions({
                     slug: "telegram-channel",
-                    version: "2.1.0",
+                    version: "3.1.0",
                   }),
                 },
                 execution,
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "2.1.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "3.1.0" });
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
@@ -718,16 +718,16 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                     marketplace: { kind: "system" },
                     installationRoot: "/workspace",
                     listingId: telegramChannelListingId,
-                    version: "2.1.0",
+                    version: "3.1.0",
                     targetScope,
                     permissions: bundledMarketplacePermissions({
                       slug: "telegram-channel",
-                      version: "2.1.0",
+                      version: "3.1.0",
                     }),
                   },
                   execution,
                 ),
-              ).resolves.toMatchObject({ state: "requested", version: "2.1.0" });
+              ).resolves.toMatchObject({ state: "requested", version: "3.1.0" });
             }
           }),
           runner.drain(),
@@ -748,7 +748,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                   listingId: telegramChannelListingId,
                   targetScope,
                 }),
-              ).resolves.toMatchObject({ version: "2.1.0" });
+              ).resolves.toMatchObject({ version: "3.1.0" });
 
               const targetAutomations = ctx.runtime.objects.automations.for(targetScope);
               for (const routeId of [
@@ -819,7 +819,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId,
-                  version: "2.0.0",
+                  version: "2.1.0",
                   targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
                 },
@@ -832,14 +832,14 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                   propagationContext: null,
                 },
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "2.0.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "2.1.0" });
             await expect(
               automations.commands.requestMarketplaceIngestion(
                 {
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId,
-                  version: "2.0.0",
+                  version: "2.1.0",
                   targetScope: {
                     kind: "project",
                     owner: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
@@ -856,7 +856,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                   propagationContext: null,
                 },
               ),
-            ).resolves.toMatchObject({ state: "requested", version: "2.0.0" });
+            ).resolves.toMatchObject({ state: "requested", version: "2.1.0" });
 
             ctx.vars.projectId = project.id;
           }),
@@ -939,7 +939,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
-      version: "2.0.0",
+      version: "2.1.0",
     });
 
     await withMarketplaceInstallerSource(
@@ -965,7 +965,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                       marketplace: { kind: "system" },
                       installationRoot: "/workspace",
                       listingId: MARKETPLACE_LISTING_ID,
-                      version: "2.0.0",
+                      version: "2.1.0",
                       targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                       permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
                     },
@@ -1036,7 +1036,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
-      version: "2.0.0",
+      version: "2.1.0",
     });
     const installerExecution = createBackofficeUserExecution({
       scope: { kind: "org", orgId: "org-1", jurisdiction: null },
@@ -1072,7 +1072,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                 marketplace: { kind: "system" },
                 installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
-                version: "2.0.0",
+                version: "2.1.0",
                 targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
               },
@@ -1083,7 +1083,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                 marketplace: { kind: "system" },
                 installationRoot: "/workspace",
                 listingId: MARKETPLACE_LISTING_ID,
-                version: "2.0.0",
+                version: "2.1.0",
                 targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                 permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
               },
@@ -1245,7 +1245,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
       installationRoot: "/workspace",
       targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
       listingId: MARKETPLACE_LISTING_ID,
-      version: "2.0.0",
+      version: "2.1.0",
     });
 
     await runBackofficeScenario(
@@ -1288,7 +1288,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                   marketplace: { kind: "system" },
                   installationRoot: "/workspace",
                   listingId: MARKETPLACE_LISTING_ID,
-                  version: "2.0.0",
+                  version: "2.1.0",
                   targetScope: { kind: "org", orgId: "org-1", jurisdiction: null },
                   permissions: TELEGRAM_TEST_COMMAND_PERMISSIONS,
                 },
@@ -2874,7 +2874,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
               marketplace.commands.getListingStorage({ listingId }),
             ).resolves.toMatchObject({
               listingStatus: "archived",
-              versions: ["2.0.0", "1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
+              versions: ["2.1.0", "2.0.0", "1.4.0", "1.3.0", "1.2.1", "1.1.0", "1.0.0"],
             });
           }),
         ],
@@ -2896,7 +2896,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                 publisherName: "Scenario publisher",
               },
               slug: "scenario-download-entry",
-              version: "2.0.0",
+              version: "2.1.0",
               metadata: {
                 name: "Scenario download entry",
                 summary: "A marketplace fixture for exercising scenario download behavior.",
@@ -2924,7 +2924,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
             expect(detail.listing).toMatchObject({
               slug: "scenario-download-entry",
               publisherName: "Scenario publisher",
-              latestVersion: "2.0.0",
+              latestVersion: "2.1.0",
               status: "published",
             });
           }),

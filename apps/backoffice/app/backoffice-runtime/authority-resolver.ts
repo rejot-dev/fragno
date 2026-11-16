@@ -28,6 +28,21 @@ import {
   resolveBackofficeUserAuthorityRole,
 } from "./authority-roles";
 
+/** A connection an actor may execute actions on, with the scope it is in. */
+export type BackofficeGrantedConnection = { scope: BackofficeContextScope; connectionId: string };
+
+/**
+ * What an actor holds: a permission, or `integrations.execute` on the named connections only, which
+ * the kernel checks where a call names the connection it executes on.
+ */
+export type BackofficeGrant =
+  | BackofficePermissionRequirement
+  | {
+      namespace: "integrations";
+      permission: "execute";
+      connections: readonly BackofficeGrantedConnection[];
+    };
+
 /**
  * Resolves the current authority of the identities named by trusted Backoffice provenance.
  *
@@ -48,7 +63,7 @@ export type BackofficeAuthorityResolver = {
       execution: BackofficeExecutionContext;
     },
     operations?: readonly BackofficePermissionRequirement[],
-  ): Promise<readonly BackofficePermissionRequirement[]>;
+  ): Promise<readonly BackofficeGrant[]>;
 
   /**
    * Returns the capabilities currently granted to one delegate or assistant in the provenance
@@ -58,7 +73,7 @@ export type BackofficeAuthorityResolver = {
   resolveActorCapabilityGrants(input: {
     actor: AutomationActors["delegation"][number];
     execution: BackofficeExecutionContext;
-  }): Promise<readonly BackofficePermissionRequirement[]>;
+  }): Promise<readonly BackofficeGrant[]>;
 };
 
 /** The production identity lookup used when execution has no verified access-token authority. */

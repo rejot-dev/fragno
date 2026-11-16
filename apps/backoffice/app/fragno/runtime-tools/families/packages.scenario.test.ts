@@ -93,27 +93,27 @@ describe("Workspace package runtime scenarios", () => {
             async (ctx) => {
               const bash = await createScenarioShell(ctx, ORG_SCOPE);
               const view = await bash.exec(
-                `marketplace.view --listing-id '${LISTING_ID}' --version 2.0.0`,
+                `marketplace.view --listing-id '${LISTING_ID}' --version 2.1.0`,
               );
               assert(view.exitCode === 0, view.stderr);
               expect(view.stdout).toContain(
-                "Permissions to approve for 2.0.0: integrations.execute, packages.read\n",
+                "Permissions to approve for 2.1.0: integrations.execute, packages.read\n",
               );
               const unapproved = await bash.exec(
-                `packages.install --listing-id '${LISTING_ID}' --version 2.0.0 --installation-root ${INSTALLATION_ROOT}`,
+                `packages.install --listing-id '${LISTING_ID}' --version 2.1.0 --installation-root ${INSTALLATION_ROOT}`,
               );
               expect(unapproved.exitCode).not.toBe(0);
               expect(unapproved.stderr).toContain(
                 "This release declares the permissions integrations.execute, packages.read",
               );
               const installed = await bash.exec(
-                `packages.install --listing-id '${LISTING_ID}' --version 2.0.0 --installation-root ${INSTALLATION_ROOT}/ --permission integrations.execute --permission packages.read --format json`,
+                `packages.install --listing-id '${LISTING_ID}' --version 2.1.0 --installation-root ${INSTALLATION_ROOT}/ --permission integrations.execute --permission packages.read --format json`,
               );
               assert(installed.exitCode === 0, installed.stderr);
               const result = packagesInstallResultSchema.parse(JSON.parse(installed.stdout));
               expect(result).toMatchObject({
                 action: "created",
-                version: "2.0.0",
+                version: "2.1.0",
                 installationRoot: INSTALLATION_ROOT,
                 workflowScope: ORG_SCOPE,
               });
@@ -129,7 +129,7 @@ describe("Workspace package runtime scenarios", () => {
             });
             expect(status.result).toEqual({
               listingId: LISTING_ID,
-              version: "2.0.0",
+              version: "2.1.0",
               installationRoot: INSTALLATION_ROOT,
               status: "waiting",
               installer: {
@@ -171,7 +171,7 @@ describe("Workspace package runtime scenarios", () => {
             const bash = await createScenarioShell(ctx, ORG_SCOPE);
             const text = await bash.exec("packages.ls");
             assert(
-              text.stdout === `${LISTING_ID}@2.0.0\t${INSTALLATION_ROOT}\tpublic\n`,
+              text.stdout === `${LISTING_ID}@2.1.0\t${INSTALLATION_ROOT}\tpublic\n`,
               text.stdout,
             );
             const run = await ctx.runCodemode({
@@ -182,7 +182,7 @@ describe("Workspace package runtime scenarios", () => {
             expect(run.result).toEqual({
               marketplace: { kind: "system" },
               listingId: LISTING_ID,
-              version: "2.0.0",
+              version: "2.1.0",
               installationRoot: INSTALLATION_ROOT,
               permissions: [
                 { namespace: "integrations", permission: "execute" },
@@ -204,7 +204,7 @@ describe("Workspace package runtime scenarios", () => {
               assertToolCalls: ["packages.uninstall"],
             });
             expect(run.result).toMatchObject({
-              installation: { listingId: LISTING_ID, version: "2.0.0" },
+              installation: { listingId: LISTING_ID, version: "2.1.0" },
               removedRouteIds: ["telegram-test-command"],
             });
             const after = await ctx.runCodemode({
