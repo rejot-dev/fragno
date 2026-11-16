@@ -11,7 +11,7 @@ type EventsCodemodeProvider = {
    */
   list(input: EventsListInput): Promise<EventsListOutput>;
   /**
-   * Get one stored automation event by id in the current scope, with each route it matched and where that route stands: about to act, retrying after an error, completed with what it did, or failed for good.
+   * Get one stored automation event by id in the current scope, with each route it matched and where that route stands: about to act, retrying after an error, completed with what it did, or failed for good. Null when the scope has no event with that id, including one deleted since, as old events are.
    * Requires `events.read`.
    */
   get(input: EventsGetInput): Promise<EventsGetOutput>;

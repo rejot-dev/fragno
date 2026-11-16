@@ -18,20 +18,26 @@ const CAPABILITY_EVENT_LABELS = new Map(
 );
 
 /** Whether a scheduled route, rather than an event from outside, set the trace in motion. */
-export function isScheduledTrace(summary: EventTraceSummary): boolean {
-  return summary.source === AUTOMATION_SCHEDULE_SOURCE;
+export function isScheduledTrace({ trigger }: EventTraceSummary): boolean {
+  return trigger.kind === "event" && trigger.source === AUTOMATION_SCHEDULE_SOURCE;
 }
 
-/** What set a trace in motion, in words: a schedule by its name, else the event and its subject. */
-export function describeTraceTrigger(summary: EventTraceSummary): string {
-  if (isScheduledTrace(summary)) {
-    return summary.headline === null ? "On schedule" : `On schedule · ${summary.headline}`;
+/**
+ * What set a trace in motion, in words: a schedule by its name, else the event and its subject, or
+ * that the event expired.
+ */
+export function describeTraceTrigger({ trigger }: EventTraceSummary): string {
+  if (trigger.kind === "expired") {
+    return "After an expired event";
+  }
+  if (trigger.source === AUTOMATION_SCHEDULE_SOURCE) {
+    return trigger.headline === null ? "On schedule" : `On schedule · ${trigger.headline}`;
   }
   const label =
-    summary.label ??
-    CAPABILITY_EVENT_LABELS.get(`${summary.source}\u0000${summary.eventType}`) ??
-    `${summary.source} · ${summary.eventType}`;
-  return summary.headline === null ? label : `${label} · ${summary.headline}`;
+    trigger.label ??
+    CAPABILITY_EVENT_LABELS.get(`${trigger.source}\u0000${trigger.eventType}`) ??
+    `${trigger.source} · ${trigger.eventType}`;
+  return trigger.headline === null ? label : `${label} · ${trigger.headline}`;
 }
 
 /** What a trace did, named by its workflows and agents. */

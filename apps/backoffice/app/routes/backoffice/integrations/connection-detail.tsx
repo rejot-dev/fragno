@@ -78,7 +78,12 @@ export default function BackofficeIntegrationConnectionDetail({
     connectionId: connection.connectionId,
   });
   const history = historyRead.status === "ready" ? historyRead.data : [];
-  const current = history[0];
+  // Its state outlives the events of its history, which are deleted as they age.
+  const connectionsRead = useAutomationRead(replica, "integrationConnections", undefined);
+  const current =
+    connectionsRead.status === "ready"
+      ? connectionsRead.data.find((record) => record.connectionId === connection.connectionId)
+      : undefined;
 
   return (
     <article className="flex min-w-0 flex-col gap-4">
@@ -142,10 +147,10 @@ export default function BackofficeIntegrationConnectionDetail({
             ) : null}
           </DetailSection>
 
-          <DetailSection title="State history">
+          <DetailSection title="Recent state changes">
             {history.length === 0 ? (
               <p className="px-3 py-2.5 text-xs text-[var(--bo-muted)]">
-                No state change has been reported for this address.
+                No recent state change for this address; older ones are deleted with old events.
               </p>
             ) : (
               <ol className="divide-y divide-[color:var(--bo-border)]">

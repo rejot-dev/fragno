@@ -129,13 +129,25 @@ function readDispatchedRuns(
  */
 type EventTraceOrigins = "all" | "acted-on";
 
+const ROOT_ID = `coalesce(${EVENT_TABLE}."rootEventId", ${EVENT_TABLE}."id")`;
+
+/**
+ * The row a trace is listed by: its origin, or, once that was deleted, as old events are, its
+ * earliest event left.
+ */
+const LISTED_EVENT = `("rootEventId" IS NULL OR "rootEventId" = "id"
+  OR (NOT EXISTS (SELECT 1 FROM ${EVENT_TABLE} AS "origin" WHERE "origin"."id" = ${EVENT_TABLE}."rootEventId")
+    AND NOT EXISTS (SELECT 1 FROM ${EVENT_TABLE} AS "earlier"
+      WHERE "earlier"."rootEventId" = ${EVENT_TABLE}."rootEventId"
+        AND ("earlier"."occurredAt", "earlier"."id") < (${EVENT_TABLE}."occurredAt", ${EVENT_TABLE}."id"))))`;
+
 // Mirrors `traceOutcome`'s "unhandled": routes have matched it, yet it caused no dispatch and no
-// event.
+// event. A trace whose origin was deleted has events left, which it caused.
 const ACTED_ON_ORIGIN = `("routesMatched" = 0
   OR EXISTS (SELECT 1 FROM ${automationTable("automation_route_dispatch")} AS "dispatch"
-    WHERE "dispatch"."rootEventId" = ${EVENT_TABLE}."id")
+    WHERE "dispatch"."rootEventId" = ${ROOT_ID})
   OR EXISTS (SELECT 1 FROM ${EVENT_TABLE} AS "derived"
-    WHERE "derived"."rootEventId" = ${EVENT_TABLE}."id" AND "derived"."id" <> "derived"."rootEventId"))`;
+    WHERE "derived"."rootEventId" = ${ROOT_ID} AND "derived"."id" <> "derived"."rootEventId"))`;
 
 /**
  * The newest `limit` origins' summaries, as the Activity list shows them. They are projected where
@@ -149,9 +161,10 @@ export function readEventTraceSummaries(
 }
 
 /**
- * What `projectEventTraceSummaries` needs for the newest `limit` origins: the origins, with the
- * payload their headline comes from, the events they caused, their dispatches, and the runs those
- * started or sent events to. Origins that tie on time come newest ID first.
+ * What `projectEventTraceSummaries` needs for the newest `limit` traces: the events they are listed
+ * by, with the payload their headline comes from, the events their origins caused, their
+ * dispatches, and the runs those started or sent events to. Traces that tie on time come newest ID
+ * first.
  */
 function readEventTraceList(
   reader: LofiSqliteReader,
@@ -160,29 +173,30 @@ function readEventTraceList(
   const origins = reader.query({
     sql: `SELECT ${EVENT_SELECT}, "payload"
           FROM ${EVENT_TABLE}
-          WHERE ("rootEventId" IS NULL OR "rootEventId" = "id")
+          WHERE ${LISTED_EVENT}
             ${which === "acted-on" ? `AND ${ACTED_ON_ORIGIN}` : ""}
           ORDER BY "occurredAt" DESC, "id" DESC
           LIMIT ?`,
     params: [limit],
     columns: { ...EVENT_COLUMNS, payload: event.payload },
   });
-  const originIds = origins.map(({ id }) => id);
+  const rootIds = origins.map(({ id, rootEventId }) => rootEventId ?? id);
+  const listedIds = new Set(origins.map(({ id }) => id));
   const derived =
-    originIds.length === 0
+    rootIds.length === 0
       ? []
       : reader.query({
           sql: `SELECT ${EVENT_SELECT}
                 FROM ${EVENT_TABLE}
-                WHERE "rootEventId" IN (${placeholders(originIds.length)}) AND "id" <> "rootEventId"`,
-          params: originIds,
+                WHERE "rootEventId" IN (${placeholders(rootIds.length)}) AND "id" <> "rootEventId"`,
+          params: rootIds,
           columns: EVENT_COLUMNS,
         });
-  const dispatches = readDispatches(reader, originIds);
+  const dispatches = readDispatches(reader, rootIds);
   const runs = readDispatchedRuns(reader, dispatches);
   const events: EventTraceEvent[] = [
     ...origins.map((origin) => ({ ...origin, subject: null }) as EventTraceEvent),
-    ...(derived as EventRow[]).map(withoutBody),
+    ...(derived as EventRow[]).filter(({ id }) => !listedIds.has(id)).map(withoutBody),
   ];
   return { events, dispatches, runs };
 }

@@ -522,7 +522,12 @@ function describeActivity(traces: EventTraceSummary[]): string[] {
     const [newest, ...older] = entry.kind === "trace" ? [entry.trace] : entry.traces;
     const effects = newest.effects.map(({ kind, label }) => `${kind} ${label}`).join(", ");
     const repeats = older.length === 0 ? "" : ` ×${older.length + 1}`;
-    return `${effects}${repeats} ← ${newest.source} ${newest.headline ?? newest.eventType}: ${newest.outcome.kind}`;
+    const { trigger } = newest;
+    const origin =
+      trigger.kind === "event"
+        ? `${trigger.source} ${trigger.headline ?? trigger.eventType}`
+        : "expired event";
+    return `${effects}${repeats} ← ${origin}: ${newest.outcome.kind}`;
   });
 }
 

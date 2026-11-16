@@ -130,14 +130,26 @@ export type EventTraceOutcome =
  */
 export type EventTraceEffect = { kind: "workflow" | "agent" | "route"; label: string };
 
+/**
+ * The origin a trace started from, or `expired` once it was deleted, as old events are, while
+ * events it caused are left.
+ */
+export type EventTraceTrigger =
+  | {
+      kind: "event";
+      source: string;
+      eventType: string;
+      /** The label the scope's event catalog gives the origin's type, if the scope defines it. */
+      label: string | null;
+      /** What the origin is about, read from its payload, such as an issue title or a schedule name. */
+      headline: string | null;
+    }
+  | { kind: "expired" };
+
 export type EventTraceSummary = {
   rootEventId: string;
-  source: string;
-  eventType: string;
-  /** The label the scope's event catalog gives the origin's type, if the scope defines it. */
-  label: string | null;
-  /** What the origin is about, read from its payload, such as an issue title or a schedule name. */
-  headline: string | null;
+  trigger: EventTraceTrigger;
+  /** When the origin occurred, or else the earliest event left of the trace. */
   occurredAt: Date;
   /** What the origin set in motion: the workflows it started, else what else came of it. */
   effects: EventTraceEffect[];
@@ -283,7 +295,10 @@ export function eventTraceStepNodeId(stepId: string): string {
   return `step:${stepId}`;
 }
 
-/** Origin events root their own trace; newest first. */
+/**
+ * Each trace's summary, newest first. A trace whose origin was deleted is kept for the events it
+ * caused that are left.
+ */
 export function projectEventTraceSummaries({
   events,
   dispatches,
@@ -296,18 +311,13 @@ export function projectEventTraceSummaries({
   limit: number;
 }): EventTraceSummary[] {
   const runsByKey = new Map(runs.map((run) => [runKey(run.workflowName, run.instanceId), run]));
-  const eventsByRoot = groupBy(events, rootIdOf);
   const dispatchesByRoot = groupBy(dispatches, (dispatch) => dispatch.rootEventId);
 
-  return events
-    .filter((event) => rootIdOf(event) === event.id)
-    .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime())
-    .slice(0, limit)
-    .map((origin) => {
-      const derivedEvents = (eventsByRoot.get(origin.id) ?? []).filter(
-        (event) => event.id !== origin.id,
-      );
-      const rootDispatches = [...(dispatchesByRoot.get(origin.id) ?? [])].sort(
+  return [...groupBy(events, rootIdOf)]
+    .map(([rootEventId, traceEvents]): EventTraceSummary => {
+      const origin = traceEvents.find((event) => event.id === rootEventId) ?? null;
+      const derivedEvents = traceEvents.filter((event) => event !== origin);
+      const rootDispatches = [...(dispatchesByRoot.get(rootEventId) ?? [])].sort(
         (left, right) => left.dispatchedAt.getTime() - right.dispatchedAt.getTime(),
       );
       const rootRuns = rootDispatches.flatMap((dispatch) => {
@@ -316,16 +326,26 @@ export function projectEventTraceSummaries({
         return run ? [run] : [];
       });
       return {
-        rootEventId: origin.id,
-        source: origin.source,
-        eventType: origin.eventType,
-        label: origin.label,
-        headline: eventHeadline(origin.payload),
-        occurredAt: origin.occurredAt,
+        rootEventId,
+        trigger:
+          origin === null
+            ? { kind: "expired" }
+            : {
+                kind: "event",
+                source: origin.source,
+                eventType: origin.eventType,
+                label: origin.label,
+                headline: eventHeadline(origin.payload),
+              },
+        occurredAt:
+          origin?.occurredAt ??
+          new Date(Math.min(...derivedEvents.map((event) => event.occurredAt.getTime()))),
         effects: traceEffects(rootDispatches, runsByKey, derivedEvents),
         outcome: traceOutcome(origin, derivedEvents, rootDispatches, rootRuns),
       };
-    });
+    })
+    .sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime())
+    .slice(0, limit);
 }
 
 /** Records by `timeOf`, then by ID, so records from any source come out in one order. */
@@ -429,12 +449,12 @@ function traceEffects(
 }
 
 function traceOutcome(
-  origin: EventTraceEvent,
+  origin: EventTraceEvent | null,
   derivedEvents: readonly EventTraceEvent[],
   dispatches: readonly EventTraceDispatch[],
   runs: readonly EventTraceRun[],
 ): EventTraceOutcome {
-  if (!origin.routesMatched) {
+  if (origin !== null && !origin.routesMatched) {
     return { kind: "in_progress", state: "running", failedCount: 0 };
   }
   if (dispatches.length === 0 && derivedEvents.length === 0) {
@@ -453,12 +473,23 @@ function traceOutcome(
     };
   }
   const moments = [
-    origin.occurredAt,
+    ...(origin === null ? [] : [origin.occurredAt]),
     ...derivedEvents.map((event) => event.occurredAt),
     ...dispatches.map((dispatch) => dispatch.dispatchedAt),
     ...runs.flatMap((run) => (run.completedAt === null ? [] : [run.completedAt])),
   ].map((moment) => moment.getTime());
   return { kind: "settled", settledAt: new Date(Math.max(...moments)), failedCount };
+}
+
+/** Nothing is known of an expired origin, so it repeats no other. */
+function sameTrigger(left: EventTraceTrigger, right: EventTraceTrigger): boolean {
+  return (
+    left.kind === "event" &&
+    right.kind === "event" &&
+    left.source === right.source &&
+    left.eventType === right.eventType &&
+    left.headline === right.headline
+  );
 }
 
 /**
@@ -474,12 +505,7 @@ export function projectEventTraceList(
     const previousTraces =
       previous === undefined ? [] : previous.kind === "trace" ? [previous.trace] : previous.traces;
     const first = previousTraces[0];
-    if (
-      first === undefined ||
-      first.source !== summary.source ||
-      first.eventType !== summary.eventType ||
-      first.headline !== summary.headline
-    ) {
+    if (first === undefined || !sameTrigger(first.trigger, summary.trigger)) {
       entries.push({ kind: "trace", trace: summary });
       continue;
     }
@@ -518,7 +544,8 @@ export function eventTraceRunIds({
  * fans out to several routes reads as siblings; what a route caused, a derived event or a run,
  * hangs from the route. Events a run fired hang from the run. A run a route only sent an event to
  * appears for what that event set off: the steps from when it took the event until it waits for
- * the next one.
+ * the next one. Events whose parent was deleted, as old events are, hang from the origin, and an
+ * origin that was deleted reads as expired, so what it set in motion stays.
  */
 export function projectEventTrace({
   rootEventId,
@@ -541,14 +568,14 @@ export function projectEventTrace({
     events.filter((event) => rootIdOf(event) === rootEventId),
     (event) => event.occurredAt,
   );
-  const root = traceEvents.find((event) => event.id === rootEventId);
-  if (!root) {
-    return null;
-  }
+  const root = traceEvents.find((event) => event.id === rootEventId) ?? null;
   const traceDispatches = byTime(
     dispatches.filter((dispatch) => dispatch.rootEventId === rootEventId),
     (dispatch) => dispatch.dispatchedAt,
   );
+  if (traceEvents.length === 0 && traceDispatches.length === 0) {
+    return null;
+  }
   const steps = byTime(unorderedSteps, (step) => step.createdAt);
   const deliveries = byTime(unorderedDeliveries, (delivery) => delivery.createdAt);
   const runsByKey = new Map(runs.map((run) => [runKey(run.workflowName, run.instanceId), run]));
@@ -562,29 +589,42 @@ export function projectEventTrace({
     }),
   );
   const records = new Map<string, EventTraceRecord>();
+  const eventIds = new Set(traceEvents.map((event) => event.id));
+
+  /**
+   * What hangs from an event: the routes it matched, events derived from it whose route's record is
+   * gone, and events fired by a run outside this trace, such as a manual one.
+   */
+  function childrenOf(eventId: string): CausalFlameNode[] {
+    const dispatchChildren = traceDispatches.flatMap((dispatch) =>
+      dispatch.eventId === eventId ? [dispatchNode(dispatch)] : [],
+    );
+    const otherChildren = traceEvents.flatMap((child) =>
+      parentEventIdOf(child) === eventId && !hangsFromCause(child, eventId)
+        ? [eventNode(child, causeDetail(child))]
+        : [],
+    );
+    return [...dispatchChildren, ...otherChildren];
+  }
+
+  /** Whether the route or run that caused the event draws it. */
+  function hangsFromCause(event: EventTraceEvent, parentEventId: string): boolean {
+    switch (event.causation?.kind) {
+      case "route":
+        return dispatchKeys.has(dispatchKey(event.causation.routeId, parentEventId));
+      case "workflow":
+        return startedRunKeys.has(runKey(event.causation.workflowName, event.causation.instanceId));
+      case "origin":
+      case "forward":
+      case undefined:
+        return false;
+    }
+    throw new Error("Unsupported automation event causation.");
+  }
 
   function eventNode(event: EventTraceEvent, detail: string | null): CausalFlameNode {
     const id = `event:${event.id}`;
     records.set(id, { kind: "event", event });
-    // A derived event hangs from the route that derived it, unless that route's record is gone.
-    const unroutedChildren = traceEvents.flatMap((child) =>
-      child.causation?.kind === "route" &&
-      child.causation.parent.eventId === event.id &&
-      !dispatchKeys.has(dispatchKey(child.causation.routeId, event.id))
-        ? [eventNode(child, `via route ${child.causation.routeId}`)]
-        : [],
-    );
-    // Events fired by a run outside this trace, such as a manual one, hang from their parent.
-    const orphanedWorkflowChildren = traceEvents.flatMap((child) =>
-      child.causation?.kind === "workflow" &&
-      child.causation.parent?.eventId === event.id &&
-      !startedRunKeys.has(runKey(child.causation.workflowName, child.causation.instanceId))
-        ? [eventNode(child, `fired by ${child.causation.instanceId}`)]
-        : [],
-    );
-    const dispatchChildren = traceDispatches.flatMap((dispatch) =>
-      dispatch.eventId === event.id ? [dispatchNode(dispatch)] : [],
-    );
     return {
       id,
       kind: "event",
@@ -592,7 +632,7 @@ export function projectEventTrace({
       detail,
       status: "ok",
       timing: { kind: "instant", at: event.occurredAt.getTime() },
-      children: [...dispatchChildren, ...unroutedChildren, ...orphanedWorkflowChildren],
+      children: childrenOf(event.id),
     };
   }
 
@@ -873,5 +913,71 @@ export function projectEventTrace({
     }
   }
 
-  return { rootEventId, root: eventNode(root, null), records };
+  // Routes and events whose event was deleted, other than the origin, hang from the origin.
+  const deleted = (eventId: string) => eventId !== rootEventId && !eventIds.has(eventId);
+  const parentlessChildren = [
+    ...traceDispatches.flatMap((dispatch) =>
+      deleted(dispatch.eventId) ? [dispatchNode(dispatch)] : [],
+    ),
+    ...traceEvents.flatMap((event) => {
+      const parentEventId = parentEventIdOf(event);
+      return parentEventId !== null &&
+        deleted(parentEventId) &&
+        !hangsFromCause(event, parentEventId)
+        ? [eventNode(event, causeDetail(event))]
+        : [];
+    }),
+  ];
+  const origin: CausalFlameNode =
+    root === null
+      ? {
+          id: `event:${rootEventId}`,
+          kind: "event",
+          label: "Expired event",
+          detail: null,
+          status: "ok",
+          timing: {
+            kind: "instant",
+            at: Math.min(
+              ...traceEvents.map((event) => event.occurredAt.getTime()),
+              ...traceDispatches.map((dispatch) => dispatch.dispatchedAt.getTime()),
+            ),
+          },
+          children: childrenOf(rootEventId),
+        }
+      : eventNode(root, null);
+  return {
+    rootEventId,
+    root: { ...origin, children: [...origin.children, ...parentlessChildren] },
+    records,
+  };
+}
+
+/** The event an event was caused by in its scope; origins and forwarded events have none. */
+function parentEventIdOf(event: EventTraceEvent): string | null {
+  switch (event.causation?.kind) {
+    case "route":
+      return event.causation.parent.eventId;
+    case "workflow":
+      return event.causation.parent?.eventId ?? null;
+    case "origin":
+    case "forward":
+    case undefined:
+      return null;
+  }
+  throw new Error("Unsupported automation event causation.");
+}
+
+function causeDetail(event: EventTraceEvent): string | null {
+  switch (event.causation?.kind) {
+    case "route":
+      return `via route ${event.causation.routeId}`;
+    case "workflow":
+      return `fired by ${event.causation.instanceId}`;
+    case "origin":
+    case "forward":
+    case undefined:
+      return null;
+  }
+  throw new Error("Unsupported automation event causation.");
 }

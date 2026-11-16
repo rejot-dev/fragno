@@ -595,7 +595,7 @@ export const eventsOperations = {
   },
   "events.get": {
     description:
-      "Get one stored automation event by id in the current scope, with each route it matched and where that route stands: about to act, retrying after an error, completed with what it did, or failed for good.",
+      "Get one stored automation event by id in the current scope, with each route it matched and where that route stands: about to act, retrying after an error, completed with what it did, or failed for good. Null when the scope has no event with that id, including one deleted since, as old events are.",
     permissions: [BACKOFFICE_PERMISSION.events.read],
     input: z.lazy(() => z.object({ id: z.string().trim().min(1) })),
     output: z.lazy(() => automationEventDetailSchema.nullable()),
