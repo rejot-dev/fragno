@@ -224,6 +224,18 @@ function ringArcs(sections: readonly Section[], unit: number, rotation: number) 
 }
 
 /**
+ * Rings already turned, by everything turning one depends on. A universe is laid out again whenever
+ * anything on it happens, such as an event being seen or a workflow starting, which leaves its rings
+ * as they were; the search is by far the costliest part of laying one out. Enough are kept for every
+ * planet of a large universe.
+ */
+const turnedRings = new Map<
+  string,
+  { order: { section: number; events: number[] }[]; rotation: number }
+>();
+const TURNED_RINGS_KEPT = 64;
+
+/**
  * Turns the ring, and reorders its sources and each source's events, so forwarded events face the
  * planets they go to or come from, and forwards leave and land on the near side; so workflows,
  * amid the events starting them, face what they call; and so those events stay close, keeping
@@ -243,6 +255,55 @@ function turnRing(
   if (!faced) {
     return { sections, rotation: 0 };
   }
+  const key = JSON.stringify([
+    sections.map(({ source, events }) => [
+      source.id,
+      events.map(({ event, outputs }) => [event.id, outputs]),
+    ]),
+    [...forwardBearings],
+    workflows.map(({ eventIds, calls }) => [eventIds, calls]),
+  ]);
+  const known = turnedRings.get(key);
+  if (known) {
+    // Kept as the most recently used.
+    turnedRings.delete(key);
+    turnedRings.set(key, known);
+    // The key fixes the order of `sections` and their events, so the order found holds as indices
+    // into them, whose events may have been seen more often since.
+    return {
+      sections: known.order.map(({ section, events }) => ({
+        ...sections[section],
+        events: events.map((event) => sections[section].events[event]),
+      })),
+      rotation: known.rotation,
+    };
+  }
+  const turned = searchRing(sections, unit, forwardBearings, workflows);
+  if (turnedRings.size >= TURNED_RINGS_KEPT) {
+    turnedRings.delete(turnedRings.keys().next().value!);
+  }
+  turnedRings.set(key, {
+    order: turned.sections.map((found) => {
+      const section = sections.findIndex(({ source }) => source.id === found.source.id);
+      return {
+        section,
+        events: found.events.map(({ event }) =>
+          sections[section].events.findIndex((entry) => entry.event.id === event.id),
+        ),
+      };
+    }),
+    rotation: turned.rotation,
+  });
+  return turned;
+}
+
+/** Searches for the order and rotation of the ring that `turnRing` describes. */
+function searchRing(
+  sections: readonly Section[],
+  unit: number,
+  forwardBearings: ReadonlyMap<string, readonly number[]>,
+  workflows: readonly RingWorkflow[],
+): { sections: readonly Section[]; rotation: number } {
   const bestRotation = rotationScorer(unit, forwardBearings, workflows);
   // Each order is scored once, at its best rotation; the search comes back to orders often.
   const scored = new Map<
