@@ -622,14 +622,17 @@ test.each(["http://localhost:5173", "http://127.0.0.1:5173"])(
           }),
         ),
       );
-      expect(approved).toMatchObject({ status: "approved" });
+      assert(approved instanceof Response);
+      assert.equal(
+        approved.headers.get("location"),
+        "/backoffice/settings/authorized-applications",
+      );
       const router = createMemoryRouter([{ id: "device", path: "/", element: <DeviceScreen /> }], {
-        hydrationData: { loaderData: { device: review }, actionData: { device: approved } },
+        hydrationData: { loaderData: { device: review } },
       });
       try {
         const html = renderToStaticMarkup(<RouterProvider router={router} />);
-        expect(html).toContain('href="/backoffice"');
-        expect(html).toContain("Go to dashboard");
+        expect(html).toContain("consent-owner@example.test");
         expect(html).toContain('href="/backoffice/settings/authorized-applications"');
       } finally {
         router.dispose();
@@ -775,7 +778,8 @@ test("device consent is listed and revocation prevents refresh, pending redempti
       .parse(await requested.json());
     const url = new URL(`/backoffice/device?user_code=${device.user_code}`, origin);
     const review = await deviceLoader(routeArgs(ctx, new Request(url, { headers: { cookie } })));
-    assert.equal(review.clientName, "Leyway CLI");
+    assert.equal(review.account.email, "consent-owner@example.test");
+    assert.equal(review.client.firstParty, true);
     const approved = await deviceAction(
       routeArgs(
         ctx,
@@ -786,7 +790,8 @@ test("device consent is listed and revocation prevents refresh, pending redempti
         }),
       ),
     );
-    expect(approved).toMatchObject({ status: "approved" });
+    assert(approved instanceof Response);
+    assert.equal(approved.headers.get("location"), "/backoffice/settings/authorized-applications");
     const issued = await authRequest(
       ctx,
       "/oauth2/token",
@@ -880,6 +885,80 @@ test("device consent is listed and revocation prevents refresh, pending redempti
         )
       ).ok,
     );
+  });
+});
+
+test("switching accounts on a device code ends that sign-in so the other account approves a new one", async () => {
+  await runConsentScenario(async (ctx) => {
+    const auth = ctx.runtime.objects.auth.singleton();
+    const config = await auth.commands.getLeywayCliOAuthConfig({ requestUrl: origin });
+    async function startDeviceSignIn() {
+      const requested = await authRequest(
+        ctx,
+        "/device/code",
+        "",
+        new URLSearchParams({ client_id: config.clientId, scope: config.scope, resource: origin }),
+      );
+      const device = z
+        .object({ device_code: z.string(), user_code: z.string() })
+        .parse(await requested.json());
+      return {
+        deviceCode: device.device_code,
+        url: new URL(`/backoffice/device?user_code=${device.user_code}`, origin),
+      };
+    }
+    function postIntent(url: URL, cookie: string, intent: string) {
+      return deviceAction(
+        routeArgs(
+          ctx,
+          new Request(url, {
+            method: "POST",
+            headers: { cookie, origin },
+            body: new URLSearchParams({ intent }),
+          }),
+        ),
+      );
+    }
+    function pollToken(deviceCode: string) {
+      return authRequest(
+        ctx,
+        "/oauth2/token",
+        "",
+        new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+          device_code: deviceCode,
+          client_id: config.clientId,
+          resource: origin,
+        }),
+      );
+    }
+    const wrongAccount = String(ctx.vars.session);
+    const rightAccount = String(ctx.vars.otherSession);
+
+    const first = await startDeviceSignIn();
+    const opened = await deviceLoader(
+      routeArgs(ctx, new Request(first.url, { headers: { cookie: wrongAccount } })),
+    );
+    assert.equal(opened.account.email, "consent-owner@example.test");
+    await expect(
+      deviceLoader(routeArgs(ctx, new Request(first.url, { headers: { cookie: rightAccount } }))),
+    ).rejects.toMatchObject({ status: 400 });
+
+    assert.deepEqual(await postIntent(first.url, wrongAccount, "switch-account"), {
+      status: "switching-account",
+    });
+    const ended = await pollToken(first.deviceCode);
+    assert.equal(z.object({ error: z.string() }).parse(await ended.json()).error, "access_denied");
+
+    const second = await startDeviceSignIn();
+    const review = await deviceLoader(
+      routeArgs(ctx, new Request(second.url, { headers: { cookie: rightAccount } })),
+    );
+    assert.equal(review.account.email, "other-user@example.test");
+    const approved = await postIntent(second.url, rightAccount, "approve");
+    assert(approved instanceof Response);
+    const issued = await pollToken(second.deviceCode);
+    assert(issued.ok, await issued.clone().text());
   });
 });
 

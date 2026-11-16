@@ -1,9 +1,9 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { callBetterAuth, getAuthDurableObject, getLeywayCliOAuthConfig } = vi.hoisted(() => ({
+const { callBetterAuth, getAuthDurableObject, getOAuthClientFacts } = vi.hoisted(() => ({
   callBetterAuth: vi.fn(),
   getAuthDurableObject: vi.fn(),
-  getLeywayCliOAuthConfig: vi.fn(),
+  getOAuthClientFacts: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({ callBetterAuth }));
@@ -13,12 +13,13 @@ import { action, loader } from "./device";
 
 const context = {} as never;
 const deviceUrl = "https://backoffice.example/backoffice/device?user_code=ABCD-EFGH";
-const config = {
-  clientId: "codemode-client",
-  scope: "openid offline_access backoffice",
-  deviceAuthorizationEndpoint: "https://backoffice.example/api/auth/device/code",
-  tokenEndpoint: "https://backoffice.example/api/auth/oauth2/token",
-  verificationUri: "https://backoffice.example/backoffice/device",
+const client = {
+  clientId: "cli-client",
+  name: "Leyway CLI",
+  redirectUris: [],
+  scopes: ["openid", "offline_access", "backoffice"],
+  disabled: false,
+  managedByBackoffice: true,
 };
 
 function routeArgs(request: Request) {
@@ -27,7 +28,7 @@ function routeArgs(request: Request) {
 
 function authenticatedSessionResponse() {
   return Response.json({
-    user: { id: "user-1", email: "user@example.com" },
+    user: { id: "user-1", name: "Ada Lovelace", email: "user@example.com" },
     session: { id: "session-1" },
   });
 }
@@ -36,17 +37,17 @@ function deviceAuthorizationResponse() {
   return Response.json({
     user_code: "ABCD-EFGH",
     status: "pending",
-    client_id: config.clientId,
-    scope: config.scope,
+    client_id: client.clientId,
+    scope: "openid offline_access backoffice",
   });
 }
 
 beforeEach(() => {
   callBetterAuth.mockReset();
   getAuthDurableObject.mockReset();
-  getLeywayCliOAuthConfig.mockReset();
-  getLeywayCliOAuthConfig.mockResolvedValue(config);
-  getAuthDurableObject.mockReturnValue({ commands: { getLeywayCliOAuthConfig } });
+  getOAuthClientFacts.mockReset();
+  getOAuthClientFacts.mockResolvedValue(client);
+  getAuthDurableObject.mockReturnValue({ commands: { getOAuthClientFacts } });
 });
 
 describe("Backoffice device approval route", () => {
@@ -82,7 +83,7 @@ describe("Backoffice device approval route", () => {
       thrown.headers.get("location"),
       "/backoffice/login?returnTo=%2Fbackoffice%2Fdevice%3Fuser_code%3DABCD-EFGH",
     );
-    expect(getLeywayCliOAuthConfig).not.toHaveBeenCalled();
+    expect(getOAuthClientFacts).not.toHaveBeenCalled();
   });
 
   test("loads the first-party device authorization for review", async () => {
@@ -93,13 +94,14 @@ describe("Backoffice device approval route", () => {
     const result = await loader(routeArgs(new Request(deviceUrl)));
 
     expect(result).toEqual({
-      clientName: "Leyway CLI",
+      account: { name: "Ada Lovelace", email: "user@example.com" },
+      client: { name: "Leyway CLI", firstParty: true },
       userCode: "ABCD-EFGH",
       scopes: ["openid", "offline_access", "backoffice"],
     });
   });
 
-  test("approves the claimed device code", async () => {
+  test("approves the claimed device code and opens the authorized applications", async () => {
     callBetterAuth
       .mockResolvedValueOnce(authenticatedSessionResponse())
       .mockResolvedValueOnce(deviceAuthorizationResponse())
@@ -112,7 +114,8 @@ describe("Backoffice device approval route", () => {
 
     const result = await action(routeArgs(request));
 
-    expect(result).toEqual({ status: "approved" });
+    assert(result instanceof Response);
+    assert.equal(result.headers.get("location"), "/backoffice/settings/authorized-applications");
     expect(callBetterAuth).toHaveBeenLastCalledWith(request, context, "/device/approve", {
       method: "POST",
       body: JSON.stringify({ userCode: "ABCD-EFGH" }),

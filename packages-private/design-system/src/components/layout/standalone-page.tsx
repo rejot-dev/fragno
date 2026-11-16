@@ -43,9 +43,11 @@ export function StandalonePageAccount({ email, signOut }: { email: string; signO
   return (
     <div className="flex min-w-0 items-center gap-2 text-sm">
       <p className="min-w-0 truncate text-[var(--bo-muted)]">
-        Signed in as <span className="font-semibold text-[var(--bo-fg)]">{email}</span>
+        {/* A phone's header keeps room for the address and the sign-out control. */}
+        <span className="max-sm:sr-only">Signed in as </span>
+        <span className="font-semibold text-[var(--bo-fg)]">{email}</span>
       </p>
-      {signOut}
+      <div className="shrink-0">{signOut}</div>
     </div>
   );
 }
