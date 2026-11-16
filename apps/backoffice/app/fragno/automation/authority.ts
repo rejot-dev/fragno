@@ -45,11 +45,10 @@ const SCOPED_AUTOMATION_ROUTE_ACTOR_ID_PREFIX = "automation-route/";
 const noAutomationRouteGrants = [] as const satisfies readonly BackofficePermissionRequirement[];
 
 /**
- * The identity a route's action acts as. An organization automation principal is
- * `automation-route:<routeId>` and only ever acts in its route's scope. A user delegate follows its
- * workflow into every scope its user can reach, so it names its route's scope as well:
- * `automation-route/<scope segment>/<routeId>`. Scope segments encode `/`, so the route ID follows
- * the first one after the prefix.
+ * The identity a route's action acts as: `automation-route/<scope segment>/<routeId>`. Its workflow
+ * follows calls into other scopes, such as an organization automation into the organization's
+ * projects, and its grants stay those of the route in the scope it names. Scope segments encode
+ * `/`, so the route ID follows the first one after the prefix.
  */
 export const automationRouteAuthority = ({
   routeId,
@@ -61,10 +60,7 @@ export const automationRouteAuthority = ({
   mode: AutomationAuthorityMode;
 }): AutomationRuntimeAuthority => ({
   mode,
-  automationId:
-    mode.kind === "organization-automation"
-      ? `${AUTOMATION_ROUTE_ACTOR_ID_PREFIX}${routeId}`
-      : `${SCOPED_AUTOMATION_ROUTE_ACTOR_ID_PREFIX}${backofficeScopePathSegment(routeScope)}/${routeId}`,
+  automationId: `${SCOPED_AUTOMATION_ROUTE_ACTOR_ID_PREFIX}${backofficeScopePathSegment(routeScope)}/${routeId}`,
 });
 
 export type AutomationRouteAuthorityLookup = (input: {
@@ -73,9 +69,9 @@ export type AutomationRouteAuthorityLookup = (input: {
 }) => Promise<Pick<AutomationRouteDefinition, "enabled" | "action"> | null>;
 
 /**
- * The route an automation-route actor acts for. Its scope is null for identities that do not name
- * one: organization automation principals, and delegates started before delegates named it, whose
- * route is in the scope they act in.
+ * The route an automation-route actor acts for. Its scope is null for the unscoped identities that
+ * runs started before actors named their route's scope still carry; their route is looked up in the
+ * scope they act in.
  */
 function automationRouteFromActor(
   actor: AutomationActor<"principal" | "delegate">,
@@ -89,7 +85,7 @@ function automationRouteFromActor(
     return routeId.length > 0 ? { routeId, routeScope: null } : null;
   }
 
-  if (actor.role !== "delegate" || !actor.id.startsWith(SCOPED_AUTOMATION_ROUTE_ACTOR_ID_PREFIX)) {
+  if (!actor.id.startsWith(SCOPED_AUTOMATION_ROUTE_ACTOR_ID_PREFIX)) {
     return null;
   }
   const scopedRoute = actor.id.slice(SCOPED_AUTOMATION_ROUTE_ACTOR_ID_PREFIX.length);

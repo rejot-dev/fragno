@@ -344,7 +344,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       ...runtime,
       authorityResolver: createAutomationRouteAuthorityResolver({
         fallbackResolver: runtime.authorityResolver,
-        // A route's delegate follows its workflow into other scopes, so its route may live elsewhere.
+        // A route's actor follows its workflow into other scopes, so its route may live elsewhere.
         lookupRoute: async ({ scope, routeId }) =>
           backofficeContextScopesEqual(this.#requireScope(), scope)
             ? await this.getRouteForAuthority({ id: routeId })

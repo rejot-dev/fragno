@@ -51,6 +51,7 @@ import { CODEMODE_WORKFLOW, codemodeWorkflowParamsSchema } from "./engine/codemo
 import { createAutomationsRouteCaller, createWorkflowsRouteCaller } from "./route-callers";
 import {
   backofficeFiles,
+  type BackofficeScenarioContext,
   type BackofficeScenarioDefinitionInput,
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -197,6 +198,112 @@ const otherOrganizationScenario = ({
     ],
   });
 
+const projectWorkflowSource = `export default defineWorkflow(
+  { name: "into-project" },
+  async (event, step) => {
+    const eventId = event.id;
+    await step.do("write in the organization's project", async () => {
+      const projectId = await state.readFile({ path: "/workspace/project-id.txt" });
+      await context.project(projectId).store.set({ key: "authority/" + eventId, value: "written" });
+    });
+    return { eventId };
+  },
+);
+`;
+
+const organizationScope = { kind: "org" as const, orgId: "org-1", jurisdiction: null };
+
+function projectScope(projectId: unknown) {
+  return { kind: "project" as const, owner: organizationScope, projectId: String(projectId) };
+}
+
+/** The value the project holds under `key`, read through codemode in the project. */
+async function projectStoreValue(ctx: BackofficeScenarioContext, key: string) {
+  const run = await ctx.runCodemode({
+    scope: projectScope(ctx.vars.projectId),
+    code: `async () => (await store.get({ key: ${JSON.stringify(key)} }))?.value ?? null`,
+  });
+  return run.result;
+}
+
+/**
+ * An organization automation in org-1, granted `grants`, whose workflow writes to the
+ * organization's project, whose ID it reads from a file. `projectSetup` runs once the project
+ * exists, its ID in `ctx.vars.projectId`.
+ */
+const projectScenario = ({
+  name,
+  grants,
+  projectSetup,
+  outcome,
+  allowErroredWorkflows = false,
+}: {
+  name: string;
+  grants: BackofficePermissionRequirement[];
+  projectSetup: BackofficeScenarioDefinitionInput["steps"];
+  outcome: BackofficeScenarioDefinitionInput["steps"];
+  allowErroredWorkflows?: boolean;
+}) =>
+  defineBackofficeScenario({
+    objects: scenarioObjects,
+    name,
+    options: { allowErroredWorkflows },
+    files: backofficeFiles.workspaceStarter(),
+    setup: ({ given }) => [
+      given.auth.user({ id: "owner-1", role: "admin" }),
+      given.auth.organization({
+        id: "org-1",
+        name: "Ada Labs",
+        ownerUserId: "owner-1",
+        ownerRoles: ["owner"],
+      }),
+      given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "owner-1" }),
+      given.direct.file({
+        orgId: "org-1",
+        path: "/workspace/automations/into-project.workflow.js",
+        content: projectWorkflowSource,
+      }),
+      given.router.route({
+        orgId: "org-1",
+        id: "into-project",
+        name: "Into the project",
+        enabled: true,
+        priority: 100,
+        trigger: {
+          kind: "event",
+          source: "authority-test",
+          eventType: "authority.requested",
+          matcher: { path: "$.payload.id", op: "exists" },
+        },
+        action: {
+          kind: "start_workflow",
+          authority: { kind: "organization-automation", grants },
+          workflowScriptPath: "/workspace/automations/into-project.workflow.js",
+          instanceIdTemplate: "into-project-${event.id}",
+        },
+      }),
+    ],
+    steps: (builders) => [
+      builders.when.project.create({
+        owner: organizationScope,
+        name: "Docs",
+        slug: "docs",
+        description: "Product docs",
+        createdByUserId: "owner-1",
+        captureIdAs: "projectId",
+      }),
+      builders.then.assert("the workflow knows the project", async (ctx) => {
+        await ctx.runCodemode({
+          scope: organizationScope,
+          code: `async () => { await state.writeFile({ path: "/workspace/project-id.txt", content: ${JSON.stringify(String(ctx.vars.projectId))} }); }`,
+        });
+      }),
+      ...projectSetup(builders),
+      builders.when.automation.ingestEvent(authorityEvent({ id: "event-1" })),
+      ...outcome(builders),
+    ],
+  });
+
 const liveGrantWorkflowSource = `export default defineWorkflow(
   { name: "live-automation-grant" },
   async (_event, step) => {
@@ -302,7 +409,7 @@ describe("automation route authority modes", () => {
               principal: {
                 scope: "internal",
                 type: "automation",
-                id: "automation-route:organization-authority",
+                id: "automation-route/org:org-1/organization-authority",
                 role: "principal",
               },
               delegation: [],
@@ -331,7 +438,7 @@ describe("automation route authority modes", () => {
               expect(params.execution.scopeRestriction).toBeNull();
               expect(params.execution.actors.principal).toMatchObject({
                 type: "automation",
-                id: "automation-route:organization-authority",
+                id: "automation-route/org:org-1/organization-authority",
               });
             },
           ),
@@ -357,7 +464,7 @@ describe("automation route authority modes", () => {
               principal: {
                 scope: "internal",
                 type: "automation",
-                id: "automation-route:organization-authority",
+                id: "automation-route/org:org-1/organization-authority",
                 role: "principal",
               },
               delegation: [],
@@ -551,6 +658,85 @@ describe("automation route authority modes", () => {
             );
           }),
           then.store.missing({ orgId: "org-2", key: "authority/event-1" }),
+        ],
+        allowErroredWorkflows: true,
+      }),
+    );
+  });
+
+  test("organization-automation route grants follow its workflow into the organization's projects", async () => {
+    await runBackofficeScenario(
+      projectScenario({
+        name: "organization automation acts in its project",
+        grants: [BACKOFFICE_PERMISSION.upload.read, BACKOFFICE_PERMISSION.store.modify],
+        projectSetup: () => [],
+        outcome: ({ then }) => [
+          then.workflow.instance({
+            remoteWorkflowName: "into-project",
+            instanceId: "into-project-event-1",
+            status: "complete",
+            actors: {
+              principal: {
+                type: "automation",
+                id: "automation-route/org:org-1/into-project",
+                role: "principal",
+              },
+              delegation: [],
+            },
+          }),
+          then.assert("the project holds the entry", async (ctx) => {
+            assert(await projectStoreValue(ctx, "authority/event-1") === "written");
+          }),
+        ],
+      }),
+    );
+  });
+
+  test("a project route with the same ID lends an organization automation none of its grants", async () => {
+    await runBackofficeScenario(
+      projectScenario({
+        name: "organization automation keeps its own grants in its project",
+        grants: [BACKOFFICE_PERMISSION.upload.read, BACKOFFICE_PERMISSION.store.read],
+        projectSetup: ({ then }) => [
+          then.assert("the project has an unrelated route by the same ID", async (ctx) => {
+            const scope = projectScope(ctx.vars.projectId);
+            const routes = createAutomationsRouteCaller({
+              object: ctx.runtime.objects.automations.for(scope),
+              context: {
+                execution: createBackofficeSystemExecution(scope),
+                propagationContext: null,
+              },
+            });
+            const response = await routes("POST", "/routes", {
+              body: {
+                id: "into-project",
+                name: "Unrelated project route",
+                enabled: true,
+                priority: 100,
+                trigger: { kind: "event", source: "elsewhere", eventType: "noop", matcher: null },
+                action: {
+                  kind: "start_workflow",
+                  authority: {
+                    kind: "organization-automation",
+                    grants: [BACKOFFICE_PERMISSION.store.modify],
+                  },
+                  workflowScriptPath: "/workspace/automations/unrelated.workflow.js",
+                  instanceIdTemplate: "unrelated-${event.id}",
+                },
+              },
+            });
+            assert(response.type === "json");
+          }),
+        ],
+        outcome: ({ then }) => [
+          then.workflow.instance({
+            remoteWorkflowName: "into-project",
+            instanceId: "into-project-event-1",
+            status: "errored",
+          }),
+          then.assert("the project holds no entry", async (ctx) => {
+            expect(await projectStoreValue(ctx, "authority/event-1")).toBeNull();
+          }),
         ],
         allowErroredWorkflows: true,
       }),

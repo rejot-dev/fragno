@@ -55,7 +55,7 @@ describe("createAutomationRuntimeExecution", () => {
         principal: {
           scope: "internal",
           type: "automation",
-          id: "automation-route:telegram-message",
+          id: "automation-route/org:org-1/telegram-message",
           role: "principal",
         },
         delegation: [],
