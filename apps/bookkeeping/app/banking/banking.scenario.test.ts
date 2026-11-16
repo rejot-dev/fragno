@@ -333,6 +333,29 @@ test("statements are imported once, oldest first, each continuing the one before
   });
 });
 
+test("a file of a hundred daily statements imports, and importing it again imports nothing", async () => {
+  await runBookkeepingScenario(async (scenario) => {
+    const { ada } = await openBooks(scenario);
+    const current = await addCurrentAccount(ada);
+    // One statement a day, as banks export when asked for each day's: more than one query binds.
+    let previous = marchStatement(YEAR);
+    const days = [previous];
+    for (let day = 1; day < 100; day += 1) {
+      const date = new Date(Date.UTC(YEAR, 3, day)).toISOString().slice(0, 10);
+      previous = nextStatement(previous, { id: `day-${date}`, startDate: date, endDate: date }, []);
+      days.push(previous);
+    }
+    expect(await importStatements(ada, current, days)).toMatchObject({
+      error: null,
+      imported: { imported: 100, skipped: 0 },
+    });
+    expect(await importStatements(ada, current, days)).toMatchObject({
+      error: null,
+      imported: { imported: 0, skipped: 100, transactionIds: [] },
+    });
+  });
+});
+
 test("payments are booked against what they pay, until the bank account adds up to the bank's balance", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { ada } = await openBooks(scenario);
