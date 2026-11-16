@@ -65,9 +65,18 @@ export interface HookContext {
    */
   nextRetryAt: Date | null;
   /**
-   * When the hook event was created.
+   * When the hook event was created. Hooks created in the same millisecond share it; use `order`
+   * to tell which came first.
    */
   createdAt: Date;
+  /**
+   * Opaque position of this hook among the hooks of its database, in lowercase hex digits compared
+   * as text, which orders alike in JavaScript and in SQL: a hook created by a later transaction, or
+   * later in the same transaction, has a greater `order`.
+   * Databases that commit transactions concurrently, such as Postgres and MySQL, order hooks by
+   * creation, which can differ from commit order.
+   */
+  order: string;
   /**
    * Create a handler transaction builder to run atomic operations.
    */
@@ -517,6 +526,15 @@ function captureDurableHookPropagationContext(
  * Each triggered hook carries its own namespace (set at trigger-time), so this
  * function works regardless of which fragment's handler is executing.
  */
+// The internal ID grows with each insert; zero-padding it lets `order` compare as text. Text leaves
+// room for orders that are not numbers, such as a FoundationDB commit versionstamp in hex.
+function hookOrder(hookId: FragnoId) {
+  if (hookId.internalId === undefined) {
+    throw new Error(`Hook ${hookId.externalId} was read without its internal ID.`);
+  }
+  return hookId.internalId.toString().padStart(20, "0");
+}
+
 export function prepareHookMutations(
   uow: Pick<IUnitOfWork, "getTriggeredHooks" | "forSchema" | "idempotencyKey">,
   internalFragment: InternalFragmentInstance,
@@ -775,6 +793,7 @@ export async function processHooks<THooks extends HooksMap>(
               lastAttemptAt: event.lastAttemptAt,
               nextRetryAt: event.nextRetryAt,
               createdAt: event.createdAt,
+              order: hookOrder(event.id),
               handlerTx: config.handlerTx,
             };
             await hookFn.call(hookContext, event.payload);
