@@ -1,12 +1,12 @@
 import type {
   AutomationAuthorityMode,
-  AutomationGrantedConnectionScope,
   AutomationRouteGrant,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import {
   automationActorsSchema,
   automationEntityRefsEqual,
   automationRouteActionAuthority,
+  resolveAutomationGrantedConnectionScope,
   type AutomationActor,
   type AutomationActors,
   type AutomationRouteDefinition,
@@ -19,7 +19,6 @@ import {
 import {
   type BackofficeContextScope,
   backofficeScopePathSegment,
-  backofficeScopeProjectOwner,
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
@@ -115,30 +114,6 @@ function automationRouteFromActor(
   };
 }
 
-/**
- * The scope a route grants a connection in, as a codemode `context` handle in the route's scope
- * reaches it; null for a project of a scope that owns none, such as System.
- */
-function grantedConnectionScope(
-  routeScope: BackofficeContextScope,
-  scope: AutomationGrantedConnectionScope,
-): BackofficeContextScope | null {
-  switch (scope.kind) {
-    case "current":
-      return routeScope;
-    case "org":
-      return { kind: "org", orgId: scope.orgId, jurisdiction: null };
-    case "user":
-      return { kind: "user", userId: scope.userId, jurisdiction: null };
-    case "project": {
-      const owner = backofficeScopeProjectOwner(routeScope);
-      return owner && { kind: "project", owner, projectId: scope.projectId };
-    }
-    default:
-      throw new Error("Unsupported granted connection scope.", { cause: scope satisfies never });
-  }
-}
-
 /** A route's grants as the kernel checks them, its connections in the scopes they are in. */
 function routeGrants(
   routeScope: BackofficeContextScope,
@@ -150,7 +125,7 @@ function routeGrants(
           namespace: grant.namespace,
           permission: grant.permission,
           connections: grant.connections.flatMap(({ scope, connectionId }) => {
-            const resolved = grantedConnectionScope(routeScope, scope);
+            const resolved = resolveAutomationGrantedConnectionScope(routeScope, scope);
             return resolved ? [{ scope: resolved, connectionId }] : [];
           }),
         }
