@@ -514,39 +514,41 @@ async function insertOutboxMutationRows(
   const serializer = createSQLSerializer(driverConfig);
   const mutationsTable = internalSchema.tables.fragno_db_outbox_mutations;
   const db = createColdKysely(driverConfig.databaseType);
-  // A 50-row insert failed on Durable Object SQLite; keep each statement well below that size.
-  const maxRowsPerInsert = 10;
+  const serializedRows = options.operations.map((operation) => {
+    const values = {
+      id: createId(),
+      entryVersionstamp: options.entryVersionstamp,
+      mutationVersionstamp: operation.versionstamp,
+      uowId: options.uowId,
+      schema: operation.schema,
+      table: operation.table,
+      externalId: operation.op === "truncate" ? null : operation.externalId,
+      op: operation.op,
+      payload: superjson.serialize(operation),
+    };
+    const serializedValues: Record<string, unknown> = {};
 
-  for (let start = 0; start < options.operations.length; start += maxRowsPerInsert) {
-    const serializedRows = options.operations
-      .slice(start, start + maxRowsPerInsert)
-      .map((operation) => {
-        const values = {
-          id: createId(),
-          entryVersionstamp: options.entryVersionstamp,
-          mutationVersionstamp: operation.versionstamp,
-          uowId: options.uowId,
-          schema: operation.schema,
-          table: operation.table,
-          externalId: operation.op === "truncate" ? null : operation.externalId,
-          op: operation.op,
-          payload: superjson.serialize(operation),
-        };
-        const serializedValues: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(values)) {
+      const col = mutationsTable.getColumnByName(key);
+      if (!col) {
+        serializedValues[key] = value;
+        continue;
+      }
+      serializedValues[col.name] = serializer.serialize(value, col);
+    }
 
-        for (const [key, value] of Object.entries(values)) {
-          const col = mutationsTable.getColumnByName(key);
-          if (!col) {
-            serializedValues[key] = value;
-            continue;
-          }
-          serializedValues[col.name] = serializer.serialize(value, col);
-        }
+    return serializedValues;
+  });
+  // Each row binds a parameter per column, so as many rows go in one insert as the driver binds.
+  const rowsPerInsert = Math.floor(
+    driverConfig.maxParametersPerQuery / Object.keys(serializedRows[0]).length,
+  );
 
-        return serializedValues;
-      });
-
-    const query = db.insertInto("fragno_db_outbox_mutations").values(serializedRows).compile();
+  for (let start = 0; start < serializedRows.length; start += rowsPerInsert) {
+    const query = db
+      .insertInto("fragno_db_outbox_mutations")
+      .values(serializedRows.slice(start, start + rowsPerInsert))
+      .compile();
     await tx.executeQuery(query);
   }
 }
