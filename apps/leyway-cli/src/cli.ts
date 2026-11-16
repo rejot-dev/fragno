@@ -6,9 +6,9 @@ import { dirname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
+import { backofficeErrorMessage } from "@rejot-dev/backoffice-local/error-message";
 
 import {
-  backofficeErrorMessage,
   connectToBackoffice,
   downloadBackofficeFile,
   executeBackofficeBash,

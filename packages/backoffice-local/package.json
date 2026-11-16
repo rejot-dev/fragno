@@ -14,6 +14,10 @@
     "./dev-server-port": {
       "types": "./dist/backoffice-dev-server-port.d.ts",
       "default": "./dist/backoffice-dev-server-port.js"
+    },
+    "./error-message": {
+      "types": "./dist/backoffice-error-message.d.ts",
+      "default": "./dist/backoffice-error-message.js"
     }
   },
   "scripts": {

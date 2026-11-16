@@ -20,6 +20,7 @@ import {
 import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
 
 import { backofficeDevServerPorts } from "./backoffice-dev-server-port.js";
+import { backofficeErrorMessage } from "./backoffice-error-message.js";
 import {
   fetchBackofficeWithoutRedirect,
   resolveSameOriginBackofficeEndpoint,
@@ -100,10 +101,6 @@ type OAuthToken = Omit<OAuthCredential, "clientId">;
 type AuthenticatedState = { auth: StoredAuthState; me: BackofficeMe };
 export type BackofficeServerCandidate = { baseUrl: string };
 type AuthedFetchOptions = RequestInit & { baseUrl?: string | null };
-
-export function backofficeErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function responseMessage(body: unknown): string {
   if (body && typeof body === "object") {
