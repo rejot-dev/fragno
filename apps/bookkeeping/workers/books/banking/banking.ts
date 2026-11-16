@@ -35,6 +35,7 @@ const bankingErrorCodes = [
   "STATEMENT_CHANGED",
   "STATEMENT_UNBALANCED",
   "STATEMENT_OUT_OF_ORDER",
+  "STATEMENT_OVERLAP",
   "STATEMENT_GAP",
   "TRANSACTION_NOT_FOUND",
   "TRANSACTION_BOOKED",
@@ -178,10 +179,9 @@ function transactionRow(row: {
 
 /**
  * The statements of a file to import, oldest first, after `last`, the account's last imported
- * statement: each must add up, end no earlier than the one before, and open with its closing
- * balance. Statements imported before, `imported` by their bank's ID with their fingerprints, are
- * skipped; one saying something else than when it was imported is refused, as an import cannot be
- * undone.
+ * statement: each must add up, start after the one before ends, and open with its closing balance.
+ * Statements imported before, `imported` by their bank's ID with their fingerprints, are skipped;
+ * one saying something else than when it was imported is refused, as an import cannot be undone.
  */
 function planImport(
   account: { iban: string; currency: string; lastStatement: StatementEnd | null },
@@ -230,6 +230,14 @@ function planImport(
       throw new BankingError(
         "STATEMENT_OUT_OF_ORDER",
         `Statement ${statement.reference} ends before the last imported statement: import statements oldest first.`,
+      );
+    }
+    // Balances alone do not tell a statement repeating days already imported: movements that add
+    // up to nothing open and close it as one continuing the last, and would be imported twice.
+    if (last !== null && statement.startDate <= last.endDate) {
+      throw new BankingError(
+        "STATEMENT_OVERLAP",
+        `Statement ${statement.reference} starts on ${statement.startDate}, a day the statements imported before cover: export statements starting after ${last.endDate}, so no movement is imported twice.`,
       );
     }
     if (last !== null && statement.openingBalanceMinor !== last.closingBalanceMinor) {

@@ -501,8 +501,10 @@ Members import a bank account's statements on its page from a CAMT.053 file, as 
 it (`camt053.ts`, any version). An import refuses a file that is not a complete XML document, as one
 cut short could still add up; a date that is no day of the calendar; a file of another account; a
 statement whose entries do not add up from its opening to its closing balance, one ending before the
-last imported, and one that does not open with the closing balance of the statement before it, so a
-missing statement shows instead of the books drifting from the bank. It imports a file's statements
+last imported, one starting on a day the statements before it cover, and one that does not open with
+the closing balance of the statement before it, so a missing statement shows instead of the books
+drifting from the bank. Balances alone would let a statement repeating imported days through, when
+the movements it repeats add up to nothing, and import them twice. It imports a file's statements
 oldest first, in one transaction: all of them or none. Statements are known by the bank's ID, so
 importing a file again skips the statements imported before, and refuses one whose ID was imported
 saying something else, compared by a SHA-256 hash of the statement as read, as an import cannot be
