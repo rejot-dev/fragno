@@ -29,6 +29,8 @@ export type IndexScanOptions = {
   endInclusive?: boolean;
   direction?: "asc" | "desc";
   limit?: number;
+  /** Narrows the scan to keys whose leading values equal these. */
+  prefix?: IndexKey;
 };
 
 const compareKeys = (left: IndexKey, right: IndexKey, compareValue: CompareValue): number => {
@@ -41,6 +43,17 @@ const compareKeys = (left: IndexKey, right: IndexKey, compareValue: CompareValue
   }
 
   return left.length - right.length;
+};
+
+const compareKeyPrefix = (key: IndexKey, prefix: IndexKey, compareValue: CompareValue): number => {
+  for (let i = 0; i < prefix.length; i += 1) {
+    const result = compareValue(key[i], prefix[i]);
+    if (result !== 0) {
+      return result;
+    }
+  }
+
+  return 0;
 };
 
 export class SortedArrayIndex<T> {
@@ -128,17 +141,22 @@ export class SortedArrayIndex<T> {
     const direction = options.direction ?? "asc";
     const limit = options.limit ?? Number.POSITIVE_INFINITY;
 
-    const start = options.start
+    let start = options.start
       ? options.startInclusive === false
         ? this.#upperBound(options.start)
         : this.#lowerBound(options.start)
       : 0;
 
-    const end = options.end
+    let end = options.end
       ? options.endInclusive === true
         ? this.#upperBound(options.end)
         : this.#lowerBound(options.end)
       : this.#entries.length;
+
+    if (options.prefix) {
+      start = Math.max(start, this.#prefixBound(options.prefix, false));
+      end = Math.min(end, this.#prefixBound(options.prefix, true));
+    }
 
     if (start >= end || limit <= 0) {
       return [];
@@ -198,6 +216,24 @@ export class SortedArrayIndex<T> {
       return `${value}n`;
     }
     return String(value);
+  }
+
+  /** The first entry at or past `prefix`, or with `upper` the first entry past all its keys. */
+  #prefixBound(prefix: IndexKey, upper: boolean): number {
+    let low = 0;
+    let high = this.#entries.length;
+
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      const comparison = compareKeyPrefix(this.#entries[mid].key, prefix, this.#compareValue);
+      if (comparison < 0 || (upper && comparison === 0)) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+
+    return low;
   }
 
   #lowerBound(key: IndexKey): number {
