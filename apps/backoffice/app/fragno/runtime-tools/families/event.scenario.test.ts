@@ -1,4 +1,4 @@
-import { assert, expect, test, vi } from "vitest";
+import { assert, expect, test } from "vitest";
 
 import {
   type AutomationEventCausation,
@@ -7,13 +7,6 @@ import {
   automationEventRoutesListResultSchema,
 } from "@fragno-dev/backoffice-api/v0/events";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";

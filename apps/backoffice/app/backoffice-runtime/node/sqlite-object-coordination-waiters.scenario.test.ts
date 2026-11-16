@@ -1,17 +1,10 @@
-import { assert, expect, test, vi } from "vitest";
+import { assert, expect, test } from "vitest";
 
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import Database from "better-sqlite3";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 

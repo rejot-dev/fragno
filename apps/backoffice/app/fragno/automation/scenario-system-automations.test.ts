@@ -1,4 +1,4 @@
-import { describe, expect, test, vi, assert } from "vitest";
+import { describe, expect, test, assert } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
@@ -14,41 +14,11 @@ import {
   type InMemoryBackofficeRuntime,
 } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 import { createStateShellFileSystem } from "@/fragno/runtime-tools/state-shell-file-system";
-
-import { readBackofficeAutomationSource } from "./read-backoffice-automation-source";
-import {
-  setUpScenarioAuthMember,
-  setUpScenarioAuthOrganization,
-  setUpScenarioAuthUser,
-} from "./scenario-auth";
-import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-
-  class MockRpcTarget {}
-  class MockWorkerEntrypoint {}
-
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: MockRpcTarget,
-    WorkerEntrypoint: MockWorkerEntrypoint,
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({
-  DurableObject,
-  RpcTarget,
-  WorkerEntrypoint,
-}));
-
-import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
 import { ApiObject } from "../../../workers/api-object";
 import { AppInstallationsObject } from "../../../workers/app-installations-object";
@@ -62,7 +32,14 @@ import { OtpObject } from "../../../workers/otp-object";
 import { ResendObject } from "../../../workers/resend-object";
 import { TelegramObject } from "../../../workers/telegram-object";
 import { UploadObject } from "../../../workers/upload-object";
+import { readBackofficeAutomationSource } from "./read-backoffice-automation-source";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+import {
+  setUpScenarioAuthMember,
+  setUpScenarioAuthOrganization,
+  setUpScenarioAuthUser,
+} from "./scenario-auth";
+import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 const scenarioObjects = {
   API: (input) => new ApiObject(input),

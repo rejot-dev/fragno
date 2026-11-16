@@ -1,11 +1,4 @@
-import { assert, test, vi } from "vitest";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
+import { assert, test } from "vitest";
 
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 

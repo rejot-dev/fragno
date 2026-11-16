@@ -1,11 +1,4 @@
-import { assert, expect, test, vi } from "vitest";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class MockDurableObject {},
-  RpcTarget: class MockRpcTarget {},
-  WorkerEntrypoint: class MockWorkerEntrypoint {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+import { assert, expect, test } from "vitest";
 
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { AcceptedShare, Share } from "@fragno-dev/backoffice-api/v0/shares";

@@ -1,15 +1,8 @@
-import { assert, expect, test, vi } from "vitest";
+import { assert, expect, test } from "vitest";
 
 import type { FileLink } from "@fragno-dev/backoffice-api/v0/state";
 import { packTar, unpackTar, type TarEntry } from "modern-tar";
 import { matchPath } from "react-router";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";

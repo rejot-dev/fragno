@@ -1,4 +1,4 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
@@ -6,29 +6,11 @@ import type { HookContext } from "@fragno-dev/db";
 import type { OtpConfirmedHookPayload } from "@fragno-dev/otp-fragment";
 
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import { queryAutomationReplica } from "@/fragno/automation/lofi/testing";
 import type { BackofficeScenarioStep } from "@/fragno/automation/scenario";
 import { IDENTITY_LINK_TYPE } from "@/fragno/otp";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-
-  class MockRpcTarget {}
-  class MockWorkerEntrypoint {}
-
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: MockRpcTarget,
-    WorkerEntrypoint: MockWorkerEntrypoint,
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
-
-import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
 import { ApiObject } from "../../../workers/api-object";
 import { AuthObject } from "../../../workers/auth-object";

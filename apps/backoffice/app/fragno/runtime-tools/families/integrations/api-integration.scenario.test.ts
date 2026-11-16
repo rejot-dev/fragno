@@ -1,9 +1,10 @@
-import { assert, expect, test, vi } from "vitest";
+import { assert, expect, test } from "vitest";
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { API_OAUTH_REDIRECT_URI_QUERY_PARAMETER } from "@fragno-dev/api-fragment/types";
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import { integrationSetupProgressSchema } from "@fragno-dev/backoffice-api/v0/integrations";
 import {
@@ -11,15 +12,6 @@ import {
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
-
-import { API_OAUTH_REDIRECT_URI_QUERY_PARAMETER } from "@fragno-dev/api-fragment/types";
 
 import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";
 import {

@@ -1,4 +1,4 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import {
   marketplacePublishResultSchema,
@@ -7,12 +7,6 @@ import {
   type MarketplaceVisibility,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { BackofficeRoutableScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-
-vi.mock("cloudflare:workers", () => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {

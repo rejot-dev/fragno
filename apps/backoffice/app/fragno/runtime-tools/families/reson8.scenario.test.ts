@@ -1,11 +1,4 @@
-import { expect, test, vi, assert } from "vitest";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
+import { expect, test, assert } from "vitest";
 
 import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
 import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";

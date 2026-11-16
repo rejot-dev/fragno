@@ -1,14 +1,6 @@
-import { afterAll, beforeAll, assert, test, vi } from "vitest";
+import { afterAll, beforeAll, assert, test } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
-
 import { createCodemodeTestServer } from "@fragno-dev/codemode/testing/codemode-test-server";
 import { isWorkflowStepStartedControlPayload } from "@fragno-dev/workflows/step-emission-control";
 

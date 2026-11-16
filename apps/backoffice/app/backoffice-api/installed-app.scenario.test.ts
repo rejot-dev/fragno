@@ -1,4 +1,4 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
@@ -17,13 +17,6 @@ import type {
   BackofficeUserContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";

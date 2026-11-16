@@ -1,4 +1,4 @@
-import { afterAll, assert, beforeAll, describe, test, vi } from "vitest";
+import { afterAll, assert, beforeAll, describe, test } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { createCodemodeNodeExecutor } from "@fragno-dev/codemode/remote/codemode-node-executor";
@@ -35,21 +35,6 @@ import { ResendObject } from "../../../../workers/resend-object";
 import { TelegramObject } from "../../../../workers/telegram-object";
 import { UploadObject } from "../../../../workers/upload-object";
 import { projectWorkflowHealthRuns, projectWorkflowList } from "./workflow-health";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-  class MockRpcTarget {}
-  class MockWorkerEntrypoint {}
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: MockRpcTarget,
-    WorkerEntrypoint: MockWorkerEntrypoint,
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 const scenarioObjects = {
   API: (input) => new ApiObject(input),

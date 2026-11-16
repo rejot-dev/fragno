@@ -1,14 +1,7 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import { packagesInstallResultSchema } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {

@@ -1,16 +1,8 @@
-import { assert, expect, test, vi } from "vitest";
+import { assert, expect, test } from "vitest";
 
 import { integrationSetupProgressSchema } from "@fragno-dev/backoffice-api/v0/integrations";
-import { z } from "zod";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
-
 import { projectConnectorConnectionSchema } from "@fragno-dev/project-connector-fragment/contracts";
+import { z } from "zod";
 
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";

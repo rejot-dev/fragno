@@ -1,11 +1,4 @@
-import { afterAll, beforeAll, assert, expect, test, vi } from "vitest";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+import { afterAll, beforeAll, assert, expect, test } from "vitest";
 
 import { once } from "node:events";
 import { createServer, createConnection, type Socket } from "node:net";

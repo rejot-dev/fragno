@@ -1,9 +1,21 @@
+import { fileURLToPath } from "node:url";
+
 import { defineProject } from "vitest/config";
 
 import { docsVitestResolveConfig } from "./vitest.shared";
 
 export default defineProject({
-  resolve: docsVitestResolveConfig,
+  resolve: {
+    alias: [
+      ...docsVitestResolveConfig.alias,
+      {
+        find: /^cloudflare:workers$/,
+        replacement: fileURLToPath(
+          new URL("./shims/cloudflare-workers.test-support.ts", import.meta.url),
+        ),
+      },
+    ],
+  },
   test: {
     name: "node",
     environment: "node",

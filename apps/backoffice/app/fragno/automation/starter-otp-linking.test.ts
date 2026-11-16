@@ -1,29 +1,9 @@
-import { describe, test, vi } from "vitest";
+import { describe, test } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 
-import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
-
-import { createAutomationRuntimeExecution } from "./authority";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-
-  class MockRpcTarget {}
-  class MockWorkerEntrypoint {}
-
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: MockRpcTarget,
-    WorkerEntrypoint: MockWorkerEntrypoint,
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
-
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
+import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
 import { ApiObject } from "../../../workers/api-object";
@@ -39,6 +19,7 @@ import { McpObject } from "../../../workers/mcp-object";
 import { OtpObject } from "../../../workers/otp-object";
 import { ResendObject } from "../../../workers/resend-object";
 import { UploadObject } from "../../../workers/upload-object";
+import { createAutomationRuntimeExecution } from "./authority";
 import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 
 const scenarioObjects = {

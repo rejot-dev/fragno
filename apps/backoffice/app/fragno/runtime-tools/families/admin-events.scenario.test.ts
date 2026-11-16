@@ -3,13 +3,6 @@ import { afterEach, assert, expect, test, vi } from "vitest";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { CausalFlameNode } from "@fragno-private/design-system/workflow-runs/causal-flame-graph-model";
 
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
-
 import {
   createBackofficeRequestExecution,
   createBackofficeSystemExecution,

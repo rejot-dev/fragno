@@ -3,36 +3,12 @@ import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vites
 import { FragnoId } from "@fragno-dev/db/schema";
 
 import type { HookContext } from "@fragno-dev/db";
-
-import type { OrganizationHookPayload } from "@/fragno/auth/contracts";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint, tracing } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-
-  class MockRpcTarget {}
-  class MockWorkerEntrypoint {}
-
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: MockRpcTarget,
-    WorkerEntrypoint: MockWorkerEntrypoint,
-    tracing: {
-      enterSpan: vi.fn((_name: string, callback: (span: unknown) => unknown) =>
-        callback({ isTraced: true, setAttribute: vi.fn() }),
-      ),
-    },
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint, tracing }));
-
 import type { ResendSendEmailInput } from "@fragno-dev/resend-fragment";
 
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import type { OrganizationHookPayload } from "@/fragno/auth/contracts";
 import { AUTH_AUTOMATION_EVENT_ORGANIZATION_CREATED } from "@/fragno/backoffice-capabilities/capabilities/auth";
 import { EMAIL_VERIFICATION_TYPE } from "@/fragno/otp";
 

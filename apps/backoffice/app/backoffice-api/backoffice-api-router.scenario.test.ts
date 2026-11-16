@@ -18,13 +18,6 @@ import { z } from "zod";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler, fromJsonSchema, McpServer } from "@modelcontextprotocol/server";
 
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
-
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
   createBackofficeSystemExecution,

@@ -1,23 +1,15 @@
-import { assert, expect, test, vi } from "vitest";
+import { assert, expect, test } from "vitest";
 
+import { createModels } from "@earendil-works/pi-ai/models";
+import { fauxAssistantMessage, fauxProvider, fauxText } from "@earendil-works/pi-ai/providers/faux";
 import { piAgentAttachmentsKeyPrefix } from "@fragno-dev/backoffice-api/v0/pi-conversation/prompt-attachments";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { STATE_FILE_MAX_BYTES } from "@fragno-dev/backoffice-api/v0/state";
+import { createUploadHelpers } from "@fragno-dev/upload/helpers";
 import {
   createAssistantUiMessages,
   piConversationMessages,
 } from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
-
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
-
-import { createModels } from "@earendil-works/pi-ai/models";
-import { fauxAssistantMessage, fauxProvider, fauxText } from "@earendil-works/pi-ai/providers/faux";
-import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import { STATE_FILE_MAX_BYTES } from "@fragno-dev/backoffice-api/v0/state";
-import { createUploadHelpers } from "@fragno-dev/upload/helpers";
 
 import type { ConversationView } from "@earendil-works/pi-durable";
 

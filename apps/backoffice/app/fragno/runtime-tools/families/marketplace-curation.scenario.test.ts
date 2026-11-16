@@ -1,4 +1,4 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import {
   MARKETPLACE_FEATURED_LIMIT,
@@ -6,12 +6,6 @@ import {
   type MarketplaceCategory,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-
-vi.mock("cloudflare:workers", () => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
 
 import {
   createBackofficeSystemExecution,

@@ -1,11 +1,4 @@
-import { afterAll, afterEach, beforeAll, assert, expect, test, vi } from "vitest";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
+import { afterAll, afterEach, beforeAll, assert, expect, test } from "vitest";
 
 import { fileURLToPath } from "node:url";
 

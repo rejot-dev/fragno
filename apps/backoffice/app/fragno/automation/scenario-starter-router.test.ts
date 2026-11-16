@@ -1,4 +1,4 @@
-import { assert, describe, expect, test, vi } from "vitest";
+import { assert, describe, expect, test } from "vitest";
 
 import {
   type AutomationEvent,
@@ -8,35 +8,13 @@ import {
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { CausalFlameNode } from "@fragno-private/design-system/workflow-runs/causal-flame-graph-model";
 
+import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
+import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
+import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { queryAutomationReplica, readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
 import { projectEventTrace } from "@/routes/backoffice/dashboard/event-traces";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-
-  class MockRpcTarget {}
-  class MockWorkerEntrypoint {}
-
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: MockRpcTarget,
-    WorkerEntrypoint: MockWorkerEntrypoint,
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({
-  DurableObject,
-  RpcTarget,
-  WorkerEntrypoint,
-}));
-
-import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
-import { createBackofficeServiceExecution } from "@/backoffice-runtime/context";
-import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 
 import { ApiObject } from "../../../workers/api-object";
 import { AppInstallationsObject } from "../../../workers/app-installations-object";

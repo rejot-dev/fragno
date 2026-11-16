@@ -1,24 +1,5 @@
 import { afterEach, assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { DurableObject, RpcTarget, WorkerEntrypoint, tracing } = vi.hoisted(() => {
-  class MockDurableObject {
-    constructor(_state: unknown, _env: unknown) {}
-  }
-
-  return {
-    DurableObject: MockDurableObject,
-    RpcTarget: class {},
-    WorkerEntrypoint: class {},
-    tracing: {
-      enterSpan: vi.fn((_name: string, callback: (span: unknown) => unknown) =>
-        callback({ isTraced: true, setAttribute: vi.fn() }),
-      ),
-    },
-  };
-});
-
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint, tracing }));
-
 import { createInMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";

@@ -1,12 +1,5 @@
 import { assert, expect, test, vi } from "vitest";
 
-const workers = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => workers);
-
 // Observes configuration loads so the scenario can count them per request.
 vi.mock("@/routes/backoffice/connections/telegram/data", async (importOriginal) => {
   const actual =
