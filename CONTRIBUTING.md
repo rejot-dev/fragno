@@ -101,6 +101,12 @@ Examples:
   - Use toExtend to check if your type extends the expected type
 - Tests are colocated, e.g. `route.ts` -> `route.test.ts`
 - DO NOT use mocks. Instead write the implementation such that real objects can be mocked in tests.
+- Backoffice's `node` Vitest project runs test files without isolation: files in a worker share
+  loaded modules, because importing Backoffice takes longer than most files' tests. Vitest restores
+  spies, environment variables, and globals after each test; anything else a file changes in the
+  process stays changed for the next file. A file that needs `vi.mock` is named `*.isolated.test.ts`
+  and runs in the `node-isolated` project; lint enforces this. Node tests load `cloudflare:workers`
+  from `apps/backoffice/shims/cloudflare-workers.test-support.ts`.
 
 ### Changed tests
 

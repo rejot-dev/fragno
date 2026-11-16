@@ -20,6 +20,13 @@ export default defineProject({
     name: "node",
     environment: "node",
     globals: true,
+    // Files in a worker share loaded modules: importing Backoffice takes longer than most files' tests.
+    // Files that replace modules with `vi.mock` would leak the replacements, so they are named
+    // `*.isolated.test.*` and run in `vitest.node-isolated.config.ts`.
+    isolate: false,
+    restoreMocks: true,
+    unstubEnvs: true,
+    unstubGlobals: true,
     // Node 26's built-in web storage shadows happy-dom's isolated storage in client test files.
     execArgv: ["--no-experimental-webstorage"],
     // The heaviest scenarios take about 2s locally but several times that on CI runners shared with
@@ -34,6 +41,7 @@ export default defineProject({
     ],
     // Bridge transport coverage is opt-in; ordinary scenarios do not start a workerd bridge server.
     exclude: [
+      "**/*.isolated.test.{ts,tsx}",
       "app/**/*.cloudflare.test.ts",
       "workers/**/*.cloudflare.test.ts",
       "**/*.bridge.scenario.test.ts",

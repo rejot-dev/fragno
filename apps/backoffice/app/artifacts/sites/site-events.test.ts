@@ -32,7 +32,10 @@ test("the host fires only events whose parts are what automations read", () => {
   assert.equal(problemOf({ type: "x".repeat(201) }), "An event's type is at most 200 characters.");
   assert.equal(problemOf({ viewer: " " }), "An event's viewer is the viewer's id, or null.");
   assert.equal(problemOf({ payload: [] as never }), "An event's payload is an object.");
-  assert.match(problemOf({ payload: { size: 1n } }) ?? "", /^An event's payload is JSON: /u);
+  // Not a bigint: wa-sqlite gives every bigint in the process a `toJSON` once it loads.
+  const cyclic: { self: unknown } = { self: null };
+  cyclic.self = cyclic;
+  assert.match(problemOf({ payload: cyclic }) ?? "", /^An event's payload is JSON: /u);
   assert.equal(
     problemOf({ payload: { text: "x".repeat(64 * 1024) } }),
     "An event's payload is at most 64 KB of JSON.",

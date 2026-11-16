@@ -41,6 +41,7 @@ export default mergeConfig(
       },
       projects: [
         resolveConfig("./vitest.node.config.ts"),
+        resolveConfig("./vitest.node-isolated.config.ts"),
         resolveConfig("./vitest.cloudflare.config.ts"),
       ],
     },

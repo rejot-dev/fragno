@@ -1,7 +1,5 @@
 import { SpanStatusCode, trace, type Span } from "@opentelemetry/api";
 
-const backofficeNodeTracer = trace.getTracer("rejot-backoffice");
-
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return (
     ((typeof value === "object" && value !== null) || typeof value === "function") &&
@@ -19,7 +17,8 @@ function recordNodeOpenTelemetryError(span: Span, error: unknown): void {
 
 /** Runs synchronous or asynchronous Node work inside one active OpenTelemetry span. */
 export function runNodeOpenTelemetrySpan<T>(name: string, execute: (span: Span) => T): T {
-  return backofficeNodeTracer.startActiveSpan(name, (span) => {
+  // Looked up per span: a tracer kept from before the global provider was replaced records nowhere.
+  return trace.getTracer("rejot-backoffice").startActiveSpan(name, (span) => {
     try {
       const result = execute(span);
       if (isPromiseLike(result)) {
