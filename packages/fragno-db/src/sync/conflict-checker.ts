@@ -3,6 +3,7 @@ import { sql } from "kysely";
 import type { DriverConfig } from "../adapters/generic-sql/driver-config";
 import { createColdKysely } from "../adapters/generic-sql/migration/cold-kysely";
 import { createSQLQueryCompiler } from "../adapters/generic-sql/query/create-sql-query-compiler";
+import { bindInList } from "../adapters/generic-sql/query/in-list";
 import type { SQLiteStorageMode } from "../adapters/generic-sql/sqlite-storage";
 import type { NamingResolver } from "../naming/sql-naming";
 import type { Condition } from "../query/condition-builder";
@@ -104,7 +105,7 @@ const hasKeyConflicts = async (
         eb.and([
           eb("schema", "=", group.schema),
           eb("table", "=", group.table),
-          eb("externalId", "in", group.externalIds),
+          eb("externalId", "in", bindInList(group.externalIds, runtime.driverConfig)),
         ]),
       ),
     ),

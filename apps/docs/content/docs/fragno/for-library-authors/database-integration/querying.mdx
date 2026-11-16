@@ -110,6 +110,13 @@ const [user] = await this.handlerTx()
 // user is User | null
 ```
 
+### Looking Up Many Values
+
+An `in` condition takes a list of any length. On SQLite the list binds as JSON, split over as few
+parameters as keep each within Cloudflare Durable Object SQLite's 2 MB per value, so it stays within
+its limit of 100 bound parameters per query; the query still uses the index for each value. Lists of
+`binary` values, or of `bigint` values stored as BLOBs, bind a parameter per value instead.
+
 ### Database Time in Queries
 
 Use `eb.now()` when you need the database’s notion of “now” inside query conditions:
