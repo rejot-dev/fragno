@@ -11,6 +11,11 @@ import {
   type QueryResult,
 } from "kysely";
 
+import {
+  DURABLE_OBJECT_MAX_BOUND_PARAMETERS,
+  DURABLE_OBJECT_MAX_VALUE_BYTES,
+} from "./durable-object-limits";
+
 interface DurableObjectId {
   toString(): string;
   equals(other: DurableObjectId): boolean;
@@ -62,6 +67,50 @@ interface DurableObjectStorage {
 interface DurableObjectState {
   readonly id: DurableObjectId;
   readonly storage: DurableObjectStorage;
+}
+
+/**
+ * Runs `compiledQuery` on the object's SQLite storage. A query binding more parameters, or a larger
+ * value, than Durable Object SQLite takes is refused here, naming the query: storage would reject
+ * it without saying why, and where storage is plain SQLite, as in tests, it would pass.
+ */
+function exec(config: DODialectConfig, compiledQuery: CompiledQuery) {
+  const sqlStart = compiledQuery.sql.slice(0, 200);
+  const bound = compiledQuery.parameters.length;
+  if (bound > DURABLE_OBJECT_MAX_BOUND_PARAMETERS) {
+    throw new Error(
+      `Durable Object SQLite binds at most ${DURABLE_OBJECT_MAX_BOUND_PARAMETERS} parameters per query, and this one binds ${bound}: ${sqlStart}`,
+    );
+  }
+  for (const [position, parameter] of compiledQuery.parameters.entries()) {
+    const bytes = oversizeBytes(parameter);
+    if (bytes !== null) {
+      throw new Error(
+        `Durable Object SQLite holds at most ${DURABLE_OBJECT_MAX_VALUE_BYTES} bytes in a value, and parameter ${position + 1} of this query has ${bytes}: ${sqlStart}`,
+      );
+    }
+  }
+  try {
+    return config.ctx.storage.sql.exec(compiledQuery.sql, ...compiledQuery.parameters);
+  } catch (error) {
+    throw new Error(`Durable Object SQLite rejected query: ${compiledQuery.sql}`, {
+      cause: error,
+    });
+  }
+}
+
+/** The bytes a string or BLOB takes, when more than Durable Object SQLite holds in a value. */
+function oversizeBytes(value: unknown): number | null {
+  // A UTF-16 code unit takes at most three bytes in UTF-8, so only long strings need encoding.
+  const bytes =
+    typeof value === "string"
+      ? value.length * 3 > DURABLE_OBJECT_MAX_VALUE_BYTES
+        ? new TextEncoder().encode(value).byteLength
+        : 0
+      : value instanceof ArrayBuffer || ArrayBuffer.isView(value)
+        ? value.byteLength
+        : 0;
+  return bytes > DURABLE_OBJECT_MAX_VALUE_BYTES ? bytes : null;
 }
 
 /** Final Durable Object SQLite row counters for one fully consumed compiled query. */
@@ -172,14 +221,7 @@ class DOConnection implements DatabaseConnection {
   async executeQuery<O>(compiledQuery: CompiledQuery): Promise<QueryResult<O>> {
     const queryInstrumentation = this.#config.queryInstrumentation;
     const queryStartedAt = queryInstrumentation ? performance.now() : 0;
-    let cursor: SqlStorageCursor<Record<string, SqlStorageValue>>;
-    try {
-      cursor = this.#config.ctx.storage.sql.exec(compiledQuery.sql, ...compiledQuery.parameters);
-    } catch (error) {
-      throw new Error(`Durable Object SQLite rejected query: ${compiledQuery.sql}`, {
-        cause: error,
-      });
-    }
+    const cursor = exec(this.#config, compiledQuery);
 
     const rows = cursor.toArray() as O[];
     const rowsWritten = cursor.rowsWritten;
@@ -286,14 +328,7 @@ class DOConnection implements DatabaseConnection {
       throw new Error("Durable Object SQLite stream chunk size must be positive.");
     }
     const queryStartedAt = this.#config.queryInstrumentation ? performance.now() : 0;
-    let cursor: SqlStorageCursor<Record<string, SqlStorageValue>>;
-    try {
-      cursor = this.#config.ctx.storage.sql.exec(compiledQuery.sql, ...compiledQuery.parameters);
-    } catch (error) {
-      throw new Error(`Durable Object SQLite rejected query: ${compiledQuery.sql}`, {
-        cause: error,
-      });
-    }
+    const cursor = exec(this.#config, compiledQuery);
 
     let rowsReturned = 0;
     let rows: O[] = [];

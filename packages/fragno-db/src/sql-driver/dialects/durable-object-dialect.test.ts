@@ -47,6 +47,38 @@ describe("Durable Object SQLite dialect", () => {
     );
   });
 
+  test("refuses a query binding more parameters than Durable Object SQLite takes", async () => {
+    const { state, exec } = createDurableObjectState({ rows: [], rowsRead: 0, rowsWritten: 0 });
+    const driver = new DurableObjectDialect({
+      ctx: state as never,
+      queryInstrumentation: null,
+    }).createDriver();
+    const connection = await driver.acquireConnection();
+    const query = (count: number) =>
+      ({
+        ...createCompiledQuery(`select id from items where id in (${"?, ".repeat(count - 1)}?)`),
+        parameters: Array.from({ length: count }, (_, position) => position),
+      }) as CompiledQuery;
+
+    await expect(connection.executeQuery(query(100))).resolves.toMatchObject({ rows: [] });
+    await expect(connection.executeQuery(query(101))).rejects.toThrow(
+      "Durable Object SQLite binds at most 100 parameters per query, and this one binds 101:",
+    );
+    await expect(connection.streamQuery!(query(101), 10).next()).rejects.toThrow(
+      "this one binds 101",
+    );
+    // Only a string over the limit in UTF-8 is refused: "é" takes two bytes.
+    const valued = (value: string) =>
+      ({ ...createCompiledQuery("select ?"), parameters: [value] }) as CompiledQuery;
+    await expect(connection.executeQuery(valued("é".repeat(1_000_000)))).resolves.toMatchObject({
+      rows: [],
+    });
+    await expect(connection.executeQuery(valued(`${"é".repeat(1_000_000)}x`))).rejects.toThrow(
+      "Durable Object SQLite holds at most 2000000 bytes in a value, and parameter 1 of this query has 2000001:",
+    );
+    expect(exec).toHaveBeenCalledTimes(2);
+  });
+
   test("skips row-read measurements when instrumentation is disabled", async () => {
     const rows = [{ id: 1 }, { id: 2 }];
     const exec = vi.fn(() => ({
