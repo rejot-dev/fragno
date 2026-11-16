@@ -275,7 +275,7 @@ test("events record the routes and workflows that caused them back to their orig
           });
           expect(summary).toMatchObject({
             rootEventId: webhookEventId,
-            headline: "#42 Flaky deploy check",
+            trigger: { kind: "event", headline: "#42 Flaky deploy check" },
             effects: expect.arrayContaining([
               { kind: "workflow", label: "issue-log" },
               { kind: "workflow", label: "triage-issue" },

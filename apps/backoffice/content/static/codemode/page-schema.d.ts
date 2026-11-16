@@ -91,7 +91,7 @@ type PageRelations = {
     consumedByStepKey: string | null;
     position: number;
   };
-  /** Automation events. payload, actors, and subject are JSON; read fields with ->> such as payload ->> '$.action'. */
+  /** Automation events. payload, actors, and subject are JSON; read fields with ->> such as payload ->> '$.action'. Old events are deleted, so what must last comes from event_state. */
   events: {
     id: string;
     scope: PageSqlJson;

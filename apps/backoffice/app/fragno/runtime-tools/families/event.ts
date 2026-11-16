@@ -339,7 +339,11 @@ const getEventTool = defineBackofficeRuntimeTool({
       outputOptions: readEventOutputOptions,
       format: (event, options) => {
         if (!event) {
-          return { stderr: "Automation event not found.\n", exitCode: 1 };
+          return {
+            stderr:
+              "Automation event not found; old events are deleted, so an old id may be gone.\n",
+            exitCode: 1,
+          };
         }
         if (options.format === "json" || options.print) {
           return { data: event };

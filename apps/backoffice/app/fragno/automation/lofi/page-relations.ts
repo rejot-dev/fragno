@@ -94,7 +94,7 @@ const TABLE_RELATIONS: TableRelation[] = [
   {
     name: "events",
     description:
-      "Automation events. payload, actors, and subject are JSON; read fields with ->> such as payload ->> '$.action'.",
+      "Automation events. payload, actors, and subject are JSON; read fields with ->> such as payload ->> '$.action'. Old events are deleted, so what must last comes from event_state.",
     schema: automationFragmentSchema,
     table: "automation_event",
   },

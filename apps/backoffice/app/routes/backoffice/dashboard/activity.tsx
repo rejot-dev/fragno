@@ -249,7 +249,8 @@ function ActivityWorkspace({
           <PaneSpinner label="Reading the trace" />
         ) : trace === null ? (
           <p className="py-5 text-sm text-[var(--bo-muted)]">
-            There is no event {openedTrace} in this scope.
+            There is no event {openedTrace} in this scope, or it and all it set in motion have
+            expired.
           </p>
         ) : (
           <TraceView

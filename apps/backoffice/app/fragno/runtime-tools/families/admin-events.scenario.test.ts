@@ -1,6 +1,7 @@
 import { afterEach, assert, expect, test, vi } from "vitest";
 
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import type { CausalFlameNode } from "@fragno-private/design-system/workflow-runs/causal-flame-graph-model";
 
 const workers = vi.hoisted(() => ({
   DurableObject: class {},
@@ -16,7 +17,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import { queryAutomationReplica } from "@/fragno/automation/lofi/testing";
+import { queryAutomationReplica, readAutomationReplica } from "@/fragno/automation/lofi/testing";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -24,6 +25,7 @@ import {
 } from "@/fragno/automation/scenario";
 import { createInteractiveBashHost } from "@/fragno/runtime-tools/automation-host";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
+import { projectEventTrace } from "@/routes/backoffice/dashboard/event-traces";
 
 import { AuthObject } from "../../../../workers/auth-object";
 import { AutomationsObject } from "../../../../workers/automations-object";
@@ -248,3 +250,128 @@ test("an administrator deletes old events of one type from storage and sync hist
     }),
   );
 });
+
+test("what a deleted event set in motion stays in Activity", async () => {
+  const reclassify = (input: {
+    id: string;
+    name: string;
+    from: { source: string; eventType: string };
+    eventType: string;
+  }) =>
+    ({
+      orgId: "org-1",
+      id: input.id,
+      name: input.name,
+      enabled: true,
+      priority: 1,
+      trigger: { kind: "event", ...input.from, matcher: null },
+      action: {
+        kind: "reclassify_event",
+        source: "custom",
+        eventType: input.eventType,
+        payload: { kind: "projection", fields: { deliveryId: "$.payload.deliveryId" } },
+      },
+    }) as const;
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: scenarioObjects,
+      name: "Activity after old events are deleted",
+      setup: ({ given }) => [
+        given.organization.exists({ id: "org-1", slug: "ada-labs", name: "Ada Labs" }),
+        given.auth.user({ id: "admin-1", role: "admin" }),
+      ],
+      steps: ({ when, then }) => [
+        when.router.createRoute(
+          reclassify({
+            id: "push",
+            name: "Read pushes",
+            from: { source: "github", eventType: "webhook.received" },
+            eventType: "push.received",
+          }),
+        ),
+        when.router.createRoute(
+          reclassify({
+            id: "check",
+            name: "Check pushes",
+            from: { source: "custom", eventType: "push.received" },
+            eventType: "push.checked",
+          }),
+        ),
+        when.automation.ingestEvent(oldPush),
+        then.assert("a trace keeps what is left of it as its events are deleted", async (ctx) => {
+          await ctx.drain();
+          const browser = ctx.lofi.automations.forOrg("org-1");
+          async function activity() {
+            await browser.drain();
+            const [all, actedOn, rows] = await Promise.all([
+              readAutomationReplica(browser.replica, "eventTraceSummaries", {
+                limit: 10,
+                origins: "all",
+              }),
+              readAutomationReplica(browser.replica, "eventTraceSummaries", {
+                limit: 10,
+                origins: "acted-on",
+              }),
+              readAutomationReplica(browser.replica, "eventTrace", { rootEventId: oldPush.id }),
+            ]);
+            assert.deepEqual(actedOn, all);
+            const trace = projectEventTrace({ rootEventId: oldPush.id, ...rows });
+            assert(trace);
+            return {
+              listed: all.map(({ rootEventId, trigger }) => ({
+                rootEventId,
+                trigger: trigger.kind,
+              })),
+              trace: outline(trace.root),
+            };
+          }
+
+          vi.useFakeTimers({ toFake: ["Date"] });
+          vi.setSystemTime(Date.now() + 9 * 24 * 60 * 60 * 1000);
+          const bash = await terminal(ctx, administratorRequest());
+          async function deleteEvents(source: string, eventType: string) {
+            const deleted = await bash.exec(
+              `admin.events.delete --org ada-labs --source ${source} --event-type ${eventType} --before 2100-01-01 --danger`,
+            );
+            assert.equal(deleted.exitCode, 0, deleted.stderr);
+            expect(deleted.stdout).toContain("deleted 1.");
+          }
+
+          // The route on a deleted event, and what it caused, hang from the origin.
+          await deleteEvents("custom", "push.received");
+          expect(await activity()).toEqual({
+            listed: [{ rootEventId: oldPush.id, trigger: "event" }],
+            trace: [
+              "event github · webhook.received [ok]",
+              "  route Check pushes [ok] (Reclassified the event)",
+              "    event custom · push.checked [ok]",
+              "  route Read pushes [ok] (Reclassified the event)",
+            ],
+          });
+
+          await deleteEvents("github", "webhook.received");
+          expect(await activity()).toEqual({
+            listed: [{ rootEventId: oldPush.id, trigger: "expired" }],
+            trace: [
+              "event Expired event [ok]",
+              "  route Check pushes [ok] (Reclassified the event)",
+              "    event custom · push.checked [ok]",
+              "  route Read pushes [ok] (Reclassified the event)",
+            ],
+          });
+        }),
+      ],
+    }),
+  );
+});
+
+/** One line per node, siblings in label order. */
+function outline(node: CausalFlameNode, depth = 0): string[] {
+  const detail = node.detail === null ? "" : ` (${node.detail})`;
+  return [
+    `${"  ".repeat(depth)}${node.kind} ${node.label} [${node.status}]${detail}`,
+    ...[...node.children]
+      .sort((left, right) => left.label.localeCompare(right.label))
+      .flatMap((child) => outline(child, depth + 1)),
+  ];
+}
