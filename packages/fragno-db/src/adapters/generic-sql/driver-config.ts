@@ -4,6 +4,9 @@ import {
   suffixNamingStrategy,
   type SqlNamingStrategy,
 } from "../../naming/sql-naming";
+import { DURABLE_OBJECT_MAX_BOUND_PARAMETERS } from "../../sql-driver/dialects/durable-object-limits";
+
+export { DURABLE_OBJECT_MAX_BOUND_PARAMETERS };
 
 export const supportedDatabases = ["sqlite", "postgresql", "mysql"] as const;
 export type SupportedDatabase = (typeof supportedDatabases)[number];
@@ -269,8 +272,7 @@ export class CloudflareDurableObjectsDriverConfig extends DriverConfig {
   override readonly driverType = "cloudflare_durable_objects";
 
   override get maxParametersPerQuery(): number {
-    // Durable Object SQLite rejects statements with more than 100 bound parameters.
-    return 100;
+    return DURABLE_OBJECT_MAX_BOUND_PARAMETERS;
   }
   override readonly databaseType = "sqlite";
   override readonly retrievalExecution = nativeStreamRetrieval;
