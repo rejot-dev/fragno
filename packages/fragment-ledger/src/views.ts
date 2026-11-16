@@ -150,6 +150,7 @@ function amountViews<TAmount extends z.ZodType>(amount: TAmount) {
 
   const openItemView = z.object({
     id: z.string(),
+    partyAccountId: z.string(),
     lineId: z.string(),
     entry: z.object({
       id: z.string(),

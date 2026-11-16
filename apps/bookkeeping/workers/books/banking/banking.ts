@@ -493,19 +493,20 @@ const bankingFragmentDefinition = defineFragment("banking")
           .build();
       },
 
-      getTransaction: function (id: string) {
+      /** The transactions of `ids` that exist, in no particular order. */
+      getTransactions: function (ids: string[]) {
         return this.serviceTx(bankingSchema)
           .withServiceCalls(
             () =>
               [
-                serviceDeps.ledger.getSourceDocuments({ ids: [id] }),
-                serviceDeps.proposals.getProposals({ ids: [id] }),
+                serviceDeps.ledger.getSourceDocuments({ ids }),
+                serviceDeps.proposals.getProposals({ ids }),
               ] as const,
           )
           .retrieve((uow) =>
-            uow.findFirst("transaction", (b) =>
+            uow.find("transaction", (b) =>
               b
-                .whereIndex("primary", (eb) => eb("id", "=", id))
+                .whereIndex("primary", (eb) => eb("id", "in", ids))
                 .joinOne("bankAccount", "bankAccount", (account) =>
                   account.onIndex("primary", (eb) => eb("id", "=", eb.parent("bankAccountId"))),
                 )
@@ -516,11 +517,8 @@ const bankingFragmentDefinition = defineFragment("banking")
                 ),
             ),
           )
-          .transformRetrieve(([transaction], [sources, proposals]): TransactionView | null => {
-            if (!transaction) {
-              return null;
-            }
-            return {
+          .transformRetrieve(([transactions], [sources, proposals]): TransactionView[] =>
+            transactions.map((transaction) => ({
               ...describedTransaction(transactionRow(transaction), sources, proposals),
               // References always resolve: every joined row is referenced by a foreign key.
               bankAccount: bankAccountView(transaction.bankAccount!),
@@ -528,8 +526,8 @@ const bankingFragmentDefinition = defineFragment("banking")
                 id: transaction.statement!.id.valueOf(),
                 reference: transaction.statement!.reference,
               },
-            };
-          })
+            })),
+          )
           .build();
       },
 
@@ -730,14 +728,17 @@ const bankingFragmentDefinition = defineFragment("banking")
       },
 
       /** The customers and suppliers an IBAN paid or was paid by, by party account ID. */
-      counterpartiesOf: function (iban: string) {
+      /** The party accounts each of `ibans` paid or was paid by, as learned from bookings. */
+      counterpartiesOf: function (ibans: string[]) {
         return this.serviceTx(bankingSchema)
           .retrieve((uow) =>
             uow.find("counterparty", (b) =>
-              b.whereIndex("idx_counterparty_iban", (eb) => eb("iban", "=", iban)),
+              b.whereIndex("idx_counterparty_iban", (eb) => eb("iban", "in", ibans)),
             ),
           )
-          .transformRetrieve(([rows]) => rows.map((row) => row.partyAccountId))
+          .transformRetrieve(([rows]) =>
+            rows.map((row) => ({ iban: row.iban, partyAccountId: row.partyAccountId })),
+          )
           .build();
       },
     }),

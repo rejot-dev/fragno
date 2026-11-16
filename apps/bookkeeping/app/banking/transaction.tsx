@@ -33,7 +33,7 @@ import { requireBooks, requireBooksSubmission, type FormResult } from "../books/
 import { FormError } from "../books/forms";
 import type { BooksOutletContext } from "../books/layout";
 import type { Route } from "./+types/transaction";
-import { settleableItems, suggestPayment } from "./matching.server";
+import { settleableItems, suggestPayments } from "./matching.server";
 import { SignedAmount, transactionEntries, TransactionStatus } from "./transactions";
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -73,12 +73,9 @@ export async function loader({ request, params }: Route.LoaderArgs) {
       preselected: {},
     };
   }
-  const suggestion = await suggestPayment(
-    context,
-    transaction,
-    await context.books.describe(),
-    new URL(request.url).searchParams.get("party"),
-  );
+  const [suggestion] = await suggestPayments(context, await context.books.describe(), [
+    { transaction, chosen: new URL(request.url).searchParams.get("party") },
+  ]);
   return { transaction, progress, ...suggestion };
 }
 

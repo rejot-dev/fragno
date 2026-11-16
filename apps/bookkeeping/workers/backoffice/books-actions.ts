@@ -37,6 +37,7 @@ import { requestPrefix, type ProposalSubject } from "./proposal-requests";
 
 type BooksStub = ReturnType<CloudflareEnv["BOOKS"]["getByName"]>;
 type Described = Awaited<ReturnType<Books["describe"]>>;
+type OpenItem = Awaited<ReturnType<Books["listOpenItems"]>>[number];
 
 /** The person an action that changes the books acts for. */
 type Person = { name: string };
@@ -697,7 +698,7 @@ function transactionOutputOf(
 function settlementsOf(
   settles: { item: string; amount: string }[],
   transaction: { amountMinor: bigint },
-  items: Awaited<ReturnType<Books["listOpenItems"]>>,
+  items: OpenItem[],
   currency: string,
   digits: number,
 ): { openItemId: string; amount: string }[] {
@@ -1110,7 +1111,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     async run(books, input) {
       const index = indexBooks(await books.describe());
       const partyAccount = index.partyAccount(input.role, input.code);
-      const items = await books.listOpenItems({ partyAccountId: partyAccount.id });
+      const items = await books.listOpenItems({ partyAccountIds: [partyAccount.id] });
       return {
         items: items.map((item) => {
           const digits = index.minorUnitDigits(item.currency);
@@ -1292,40 +1293,48 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
       const accounts = described.parties.flatMap((party) =>
         party.accounts.map((account) => ({ ...account, party })),
       );
+      const itemsOf = new Map<string, OpenItem[]>();
+      for (const item of await books.listOpenItems({
+        partyAccountIds: accounts.map((account) => account.id),
+      })) {
+        const group = itemsOf.get(item.partyAccountId);
+        if (group) {
+          group.push(item);
+        } else {
+          itemsOf.set(item.partyAccountId, [item]);
+        }
+      }
       return {
         today: now,
-        parties: await Promise.all(
-          accounts.map(async (account) => {
-            const items = await books.listOpenItems({ partyAccountId: account.id });
-            // What the party's usual side carries: customers owe debits, suppliers are owed credits.
-            const usual = account.role === "customer" ? "debit" : "credit";
-            const byCurrency = new Map<string, { amount: bigint; overdue: bigint }>();
-            for (const item of items) {
-              const signed = item.side === usual ? item.outstandingMinor : -item.outstandingMinor;
-              const total = byCurrency.get(item.currency) ?? { amount: 0n, overdue: 0n };
-              total.amount += signed;
-              if (item.dueDate < now) {
-                total.overdue += signed;
-              }
-              byCurrency.set(item.currency, total);
+        parties: accounts.map((account) => {
+          // What the party's usual side carries: customers owe debits, suppliers are owed credits.
+          const usual = account.role === "customer" ? "debit" : "credit";
+          const byCurrency = new Map<string, { amount: bigint; overdue: bigint }>();
+          for (const item of itemsOf.get(account.id) ?? []) {
+            const signed = item.side === usual ? item.outstandingMinor : -item.outstandingMinor;
+            const total = byCurrency.get(item.currency) ?? { amount: 0n, overdue: 0n };
+            total.amount += signed;
+            if (item.dueDate < now) {
+              total.overdue += signed;
             }
-            return {
-              name: account.party.name,
-              role: account.role,
-              code: account.code,
-              outstanding: [...byCurrency]
-                .filter(([, total]) => total.amount !== 0n || total.overdue !== 0n)
-                .map(([currency, total]) => {
-                  const digits = index.minorUnitDigits(currency);
-                  return {
-                    currency,
-                    amount: decimalAmount(total.amount, digits),
-                    overdue: decimalAmount(total.overdue, digits),
-                  };
-                }),
-            };
-          }),
-        ),
+            byCurrency.set(item.currency, total);
+          }
+          return {
+            name: account.party.name,
+            role: account.role,
+            code: account.code,
+            outstanding: [...byCurrency]
+              .filter(([, total]) => total.amount !== 0n || total.overdue !== 0n)
+              .map(([currency, total]) => {
+                const digits = index.minorUnitDigits(currency);
+                return {
+                  currency,
+                  amount: decimalAmount(total.amount, digits),
+                  overdue: decimalAmount(total.overdue, digits),
+                };
+              }),
+          };
+        }),
       };
     },
   }),
@@ -1484,7 +1493,10 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
         detail.type === "entry"
           ? [...new Set(detail.parts.flatMap((part) => part.iban ?? []))]
           : [];
-      const learned: string[] = ibans.length === 1 ? await books.counterpartiesOf(ibans[0]) : [];
+      const learned =
+        ibans.length === 1
+          ? (await books.counterpartiesOf(ibans)).map(({ partyAccountId }) => partyAccountId)
+          : [];
       return {
         ...transactionOutputOf(transaction, index.minorUnitDigits(bankAccount.currency), index),
         bankAccount: {
@@ -1655,7 +1667,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
     async run(books, input, person) {
       const index = indexBooks(await books.describe());
       const partyAccount = index.partyAccount(input.role, input.code);
-      const items = await books.listOpenItems({ partyAccountId: partyAccount.id });
+      const items = await books.listOpenItems({ partyAccountIds: [partyAccount.id] });
       const item = (id: string) =>
         items.find((row) => row.id === id) ??
         refuse(`${input.role} ${input.code} has no open item ${id}.`);
@@ -1877,7 +1889,7 @@ const BOOKS_ACTION_LIST: BooksAction[] = [
           settles: settlementsOf(
             booking.settles,
             transaction,
-            await books.listOpenItems({ partyAccountId: partyAccount.id }),
+            await books.listOpenItems({ partyAccountIds: [partyAccount.id] }),
             currency,
             index.minorUnitDigits(currency),
           ),
