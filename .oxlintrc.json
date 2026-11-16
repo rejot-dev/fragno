@@ -258,6 +258,34 @@
         "prefer-rest-params": "error",
         "prefer-spread": "error"
       }
+    },
+    {
+      "files": ["apps/backoffice/**/*.test.ts", "apps/backoffice/**/*.test.tsx"],
+      "rules": {
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "vi",
+            "property": "mock",
+            "message": "Backoffice test files share modules, so a module mock leaks into other files. Name this file *.isolated.test.* to run it alone."
+          },
+          {
+            "object": "vi",
+            "property": "doMock",
+            "message": "Backoffice test files share modules, so a module mock leaks into other files. Name this file *.isolated.test.* to run it alone."
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "apps/backoffice/**/*.isolated.test.ts",
+        "apps/backoffice/**/*.isolated.test.tsx",
+        "apps/backoffice/**/*.cloudflare.test.ts"
+      ],
+      "rules": {
+        "no-restricted-properties": "off"
+      }
     }
   ]
 }
