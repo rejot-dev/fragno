@@ -212,6 +212,13 @@ type PiGetActivityOutput = {
                   input: string;
                 }
               | {
+                  kind: "tool";
+                  name: string;
+                  scope: string | null;
+                  label: string;
+                  target: string | null;
+                }
+              | {
                   kind: "call";
                   name: string;
                   scope: string | null;
@@ -245,6 +252,13 @@ type PiGetActivityOutput = {
                   actionId: string;
                   scope: string | null;
                   input: string;
+                }
+              | {
+                  kind: "tool";
+                  name: string;
+                  scope: string | null;
+                  label: string;
+                  target: string | null;
                 }
               | {
                   kind: "call";
@@ -281,6 +295,13 @@ type PiGetActivityOutput = {
                   actionId: string;
                   scope: string | null;
                   input: string;
+                }
+              | {
+                  kind: "tool";
+                  name: string;
+                  scope: string | null;
+                  label: string;
+                  target: string | null;
                 }
               | {
                   kind: "call";
