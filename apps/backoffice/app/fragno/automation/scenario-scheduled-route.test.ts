@@ -532,7 +532,7 @@ describe("scheduled automation route scenario", () => {
               principal: {
                 scope: "internal",
                 type: "automation",
-                id: "automation-route:daily-digest",
+                id: "automation-route/org:org-1/daily-digest",
                 role: "principal",
               },
               delegation: [],

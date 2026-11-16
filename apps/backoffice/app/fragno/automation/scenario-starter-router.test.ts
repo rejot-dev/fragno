@@ -630,7 +630,7 @@ describe("starter automation router scenarios", () => {
               principal: {
                 scope: "internal",
                 type: "automation",
-                id: "automation-route:custom-alpha",
+                id: "automation-route/org:org-1/custom-alpha",
                 role: "principal",
               },
               delegation: [],

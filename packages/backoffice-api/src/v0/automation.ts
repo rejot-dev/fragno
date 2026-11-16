@@ -177,13 +177,14 @@ export type AutomationAuthorityMode =
       /**
        * Run as an organization-owned automation independently of the triggering user's authority.
        *
-       * The stable `automation-route:<routeId>` identity becomes the principal while the original
-       * initiator remains provenance and supplies no authority. For each protected operation, the
-       * authority resolver reads the owning route's current grants. The stable route ID provides
-       * identity for persistence and auditing while making grant changes and route disablement
-       * visible to already-running workflows. The route can therefore continue after its creator or
-       * triggering user loses organization access, while remaining limited to its current explicit
-       * grants.
+       * The stable `automation-route/<scope segment>/<routeId>` identity becomes the principal while
+       * the original initiator remains provenance and supplies no authority. For each protected
+       * operation, the authority resolver reads the owning route's current grants, in the scope the
+       * identity names, also when the workflow acts in one of the organization's projects. The
+       * stable route identity provides identity for persistence and auditing while making grant
+       * changes and route disablement visible to already-running workflows. The route can therefore
+       * continue after its creator or triggering user loses organization access, while remaining
+       * limited to its current explicit grants.
        */
       kind: "organization-automation";
       grants: readonly BackofficePermissionRequirement[];
