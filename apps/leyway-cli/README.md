@@ -43,3 +43,6 @@ leyway download org:acme /static/SYSTEM.md ./SYSTEM.md
 
 Set `LEYWAY_URL` to select a server, `LEYWAY_AUTH_FILE` to override credential storage, or
 `LEYWAY_OPEN_BROWSER=1` to open the device authorization page during login.
+
+The credential file keeps one sign-in per server, so signing in to one server, such as another
+worktree's dev server or Leyway Cloud, keeps the others signed in.
