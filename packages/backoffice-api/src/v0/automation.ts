@@ -8,7 +8,12 @@ import {
   type BackofficePermissionRequirement,
 } from "./shared/permissions";
 import { piAgentNameSchema } from "./shared/pi-agent-name";
-import { type BackofficeRoutableScope, backofficeRoutableScopeSchema } from "./shared/scope";
+import {
+  type BackofficeContextScope,
+  type BackofficeRoutableScope,
+  backofficeRoutableScopeSchema,
+  backofficeScopeProjectOwner,
+} from "./shared/scope";
 
 export type AutomationExternalEntityRef<
   TSource extends string = string,
@@ -136,6 +141,30 @@ export type AutomationGrantedConnectionScope =
   | { kind: "org"; orgId: string }
   | { kind: "user"; userId: string }
   | { kind: "project"; projectId: string };
+
+/**
+ * The scope a route grants a connection in, as a codemode `context` handle in the route's scope
+ * reaches it; null for a project of a scope that owns none, such as System.
+ */
+export function resolveAutomationGrantedConnectionScope(
+  routeScope: BackofficeContextScope,
+  scope: AutomationGrantedConnectionScope,
+): BackofficeContextScope | null {
+  switch (scope.kind) {
+    case "current":
+      return routeScope;
+    case "org":
+      return { kind: "org", orgId: scope.orgId, jurisdiction: null };
+    case "user":
+      return { kind: "user", userId: scope.userId, jurisdiction: null };
+    case "project": {
+      const owner = backofficeScopeProjectOwner(routeScope);
+      return owner && { kind: "project", owner, projectId: scope.projectId };
+    }
+    default:
+      throw new Error("Unsupported granted connection scope.", { cause: scope satisfies never });
+  }
+}
 
 /** A connection whose actions a route's workflow or agent may execute. */
 export type AutomationGrantedConnection = {
