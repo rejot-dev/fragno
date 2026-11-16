@@ -7,11 +7,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  clearPendingDeviceAuthorization,
   type OAuthCredential,
+  type PendingDeviceAuthorization,
+  readPendingDeviceAuthorization,
   readStoredAuth,
   refreshStoredOAuth,
   storeAuth,
   storeBackofficeCredential,
+  storePendingDeviceAuthorization,
   type StoredAuthState,
 } from "./auth-store.js";
 
@@ -41,6 +45,15 @@ function signedIn(baseUrl: string, refreshToken: string): StoredAuthState {
       expiresAt: "2026-01-01T00:00:00.000Z",
       scope: { kind: "system" },
     },
+  };
+}
+
+function pendingLogin(deviceCode: string): PendingDeviceAuthorization {
+  return {
+    clientId: "cli",
+    deviceCode,
+    intervalSeconds: 5,
+    expiresAt: "2026-01-01T00:00:00.000Z",
   };
 }
 
@@ -144,5 +157,21 @@ describe("CLI auth store", () => {
       child.kill("SIGKILL");
       await exited;
     }
+  });
+
+  it("keeps a newer pending login when an older one finishes", async () => {
+    const pendingLoginFile = `${authFile}.pending`;
+    const baseUrl = "http://127.0.0.1:5911";
+    await storePendingDeviceAuthorization(pendingLoginFile, baseUrl, pendingLogin("first"));
+    await storePendingDeviceAuthorization(pendingLoginFile, baseUrl, pendingLogin("second"));
+
+    await clearPendingDeviceAuthorization(pendingLoginFile, baseUrl, "first");
+    assert.equal(
+      (await readPendingDeviceAuthorization(pendingLoginFile, baseUrl))?.deviceCode,
+      "second",
+    );
+
+    await clearPendingDeviceAuthorization(pendingLoginFile, baseUrl, "second");
+    assert.isNull(await readPendingDeviceAuthorization(pendingLoginFile, baseUrl));
   });
 });

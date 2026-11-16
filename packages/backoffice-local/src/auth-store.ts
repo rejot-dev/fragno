@@ -61,7 +61,7 @@ export async function readStoredAuth(
 
 /** Stores a new sign-in, replacing the server's previous credentials. */
 export async function storeAuth(authFile: string, auth: StoredAuthState): Promise<void> {
-  await withAuthFileLock(authFile, async () => {
+  await withFileLock(authFile, async () => {
     await writeServerCredential(authFile, auth);
   });
 }
@@ -74,7 +74,7 @@ export async function storeBackofficeCredential(
   authFile: string,
   auth: StoredAuthState,
 ): Promise<void> {
-  await withAuthFileLock(authFile, async () => {
+  await withFileLock(authFile, async () => {
     const current = await readStoredAuth(authFile, auth.baseUrl);
     await writeServerCredential(authFile, { ...(current ?? auth), backoffice: auth.backoffice });
   });
@@ -92,7 +92,7 @@ export async function refreshStoredOAuth(
   auth: StoredAuthState,
   refresh: (oauth: OAuthCredential) => Promise<OAuthCredential>,
 ): Promise<StoredAuthState> {
-  return await withAuthFileLock(authFile, async () => {
+  return await withFileLock(authFile, async () => {
     const current = (await readStoredAuth(authFile, auth.baseUrl)) ?? auth;
     if (current.oauth.refreshToken !== auth.oauth.refreshToken) {
       return current;
@@ -103,66 +103,129 @@ export async function refreshStoredOAuth(
   });
 }
 
+const pendingLoginFileSchema = z.object({
+  servers: z.record(
+    z.string(),
+    z.object({
+      clientId: z.string(),
+      deviceCode: z.string(),
+      intervalSeconds: z.number().nonnegative(),
+      expiresAt: z.iso.datetime(),
+    }),
+  ),
+});
+type PendingLoginFile = z.infer<typeof pendingLoginFileSchema>;
+// Stored separately from credentials so another process can resume the approval wait.
+export type PendingDeviceAuthorization = PendingLoginFile["servers"][string];
+
+export async function readPendingDeviceAuthorization(
+  pendingLoginFile: string,
+  baseUrl: string,
+): Promise<PendingDeviceAuthorization | null> {
+  return (await readPendingLoginFile(pendingLoginFile)).servers[baseUrl] ?? null;
+}
+
+/** Replaces the server's pending authorization, so only the latest requested code is awaited. */
+export async function storePendingDeviceAuthorization(
+  pendingLoginFile: string,
+  baseUrl: string,
+  authorization: PendingDeviceAuthorization,
+): Promise<void> {
+  await withFileLock(pendingLoginFile, async () => {
+    const current = await readPendingLoginFile(pendingLoginFile);
+    await writeStateFile(pendingLoginFile, {
+      servers: { ...current.servers, [baseUrl]: authorization },
+    });
+  });
+}
+
+/** Removes the server's pending authorization once its device code has been spent. */
+export async function clearPendingDeviceAuthorization(
+  pendingLoginFile: string,
+  baseUrl: string,
+  deviceCode: string,
+): Promise<void> {
+  await withFileLock(pendingLoginFile, async () => {
+    const { servers } = await readPendingLoginFile(pendingLoginFile);
+    // A newer `login --start` may have replaced the authorization this process waited for.
+    if (servers[baseUrl]?.deviceCode !== deviceCode) {
+      return;
+    }
+    const remaining = { ...servers };
+    delete remaining[baseUrl];
+    await writeStateFile(pendingLoginFile, { servers: remaining });
+  });
+}
+
 async function readAuthFile(authFile: string): Promise<AuthFile> {
+  return await readStateFile(authFile, authFileSchema, "Auth state");
+}
+
+async function readPendingLoginFile(pendingLoginFile: string): Promise<PendingLoginFile> {
+  return await readStateFile(pendingLoginFile, pendingLoginFileSchema, "Pending login state");
+}
+
+async function readStateFile<T extends { servers: object }>(
+  file: string,
+  schema: z.ZodType<T>,
+  label: string,
+): Promise<T> {
   let text;
   try {
-    text = await readFile(authFile, "utf8");
+    text = await readFile(file, "utf8");
   } catch (error) {
     if (isErrorCode(error, "ENOENT")) {
-      return { servers: {} };
+      return schema.parse({ servers: {} });
     }
-    throw new Error(
-      `Could not read auth state from ${authFile}: ${backofficeErrorMessage(error)}`,
-      {
-        cause: error,
-      },
-    );
+    throw new Error(`Could not read ${label} from ${file}: ${backofficeErrorMessage(error)}`, {
+      cause: error,
+    });
   }
   let parsed;
   try {
     parsed = JSON.parse(text);
   } catch (error) {
-    throw new Error(
-      `Auth state in ${authFile} is not valid JSON: ${backofficeErrorMessage(error)}`,
-      {
-        cause: error,
-      },
-    );
+    throw new Error(`${label} in ${file} is not valid JSON: ${backofficeErrorMessage(error)}`, {
+      cause: error,
+    });
   }
-  const authState = authFileSchema.safeParse(parsed);
-  if (!authState.success) {
-    throw new Error(`Auth state in ${authFile} uses an unsupported format. Remove it and log in.`);
+  const state = schema.safeParse(parsed);
+  if (!state.success) {
+    throw new Error(`${label} in ${file} uses an unsupported format. Remove it and log in.`);
   }
-  return authState.data;
+  return state.data;
 }
 
 /** Callers hold the lock, so the file cannot change between this read and the rename. */
 async function writeServerCredential(authFile: string, auth: StoredAuthState): Promise<void> {
   const { baseUrl, ...credential } = auth;
   const current = await readAuthFile(authFile);
-  const next: AuthFile = { servers: { ...current.servers, [baseUrl]: credential } };
-  const temporaryAuthFile = `${authFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  await writeFile(temporaryAuthFile, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporaryAuthFile, authFile);
-  await chmod(authFile, 0o600);
+  await writeStateFile(authFile, { servers: { ...current.servers, [baseUrl]: credential } });
+}
+
+async function writeStateFile(file: string, state: AuthFile | PendingLoginFile): Promise<void> {
+  const temporaryFile = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  await writeFile(temporaryFile, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+  await rename(temporaryFile, file);
+  await chmod(file, 0o600);
 }
 
 /**
- * Runs `critical` while holding the lock on `authFile`.
+ * Runs `critical` while holding the lock on `file`.
  *
  * The lock is an exclusive SQLite transaction, which holds an OS file lock. A holder that is slow,
  * such as one waiting on a token request, keeps it; one that exits, however it exits, loses it
  * to the OS. So nothing has to guess whether a holder is still alive, and nothing deletes a lock.
  */
-async function withAuthFileLock<T>(authFile: string, critical: () => Promise<T>): Promise<T> {
-  await mkdir(dirname(authFile), { recursive: true });
-  const lock = new DatabaseSync(`${authFile}.lock`);
+async function withFileLock<T>(file: string, critical: () => Promise<T>): Promise<T> {
+  await mkdir(dirname(file), { recursive: true });
+  const lock = new DatabaseSync(`${file}.lock`);
   try {
     const deadline = Date.now() + LOCK_TIMEOUT_MS;
     // Polls instead of setting a busy timeout, which would block the event loop while waiting.
     while (!tryBeginExclusive(lock)) {
       if (Date.now() > deadline) {
-        throw new Error(`Timed out waiting for another leyway command to finish with ${authFile}.`);
+        throw new Error(`Timed out waiting for another leyway command to finish with ${file}.`);
       }
       await new Promise((resolveWait) => {
         setTimeout(resolveWait, LOCK_RETRY_MS);

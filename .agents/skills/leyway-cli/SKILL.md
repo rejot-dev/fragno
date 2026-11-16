@@ -22,9 +22,12 @@ It always runs from the repository root, so give local paths relative to the roo
    for Leyway Cloud.
 2. Run `pnpm -w -s leyway scopes` and take the scope argument the user means, asking when several
    fit. Every later command takes it as its first argument.
-3. When a command reports no stored credential, sign in. `login` blocks until the user approves, so
-   start it in the background: `pnpm -w -s leyway login > /tmp/leyway-login.log 2>&1 &`. Give the
-   user the URL from the log and continue once the log says `Authenticated as`.
+3. When a command reports no stored credential, run `pnpm -w -s leyway login --start`. If it prints
+   an approval URL, give it to the user in a progress message, then **in the same turn** run
+   `pnpm -w -s leyway login --wait`. Pass the selected server's `--base-url` to both calls. Resume
+   the scope command once login prints `Authenticated as`. If a tool timeout interrupts the wait,
+   rerun `--wait` for the same approval; if approval expires, restart with `--start`. A denial ends
+   the sign-in attempt.
 
 Cloud scopes hold real people's data: confirm with the user before any command that writes to one.
 

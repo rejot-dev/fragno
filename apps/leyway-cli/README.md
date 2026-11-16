@@ -41,6 +41,10 @@ leyway download org:acme /workspace/reports/report.pdf ./report.pdf
 leyway download org:acme /static/SYSTEM.md ./SYSTEM.md
 ```
 
+`leyway login` waits for approval of the sign-in it requests. To ask for approval in one process and
+wait in another, as an agent that shows the URL in chat does, run `leyway login --start`, then
+`leyway login --wait`; running `--wait` again resumes the same approval.
+
 Set `LEYWAY_URL` to select a server, `LEYWAY_AUTH_FILE` to override credential storage, or
 `LEYWAY_OPEN_BROWSER=1` to open the device authorization page during login.
 

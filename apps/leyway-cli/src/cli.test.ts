@@ -22,6 +22,8 @@ describe("Leyway CLI", () => {
     expect(output).toContain("never the internal organization ID");
     expect(output).toContain("--after-versionstamp");
     expect(output).toContain("--force");
+    expect(output).toContain("--start");
+    expect(output).toContain("--wait");
     expect(output).toContain("Scope syntax:");
   });
 
@@ -37,6 +39,15 @@ describe("Leyway CLI", () => {
 
     assert.equal(result.status, 1);
     expect(result.stderr).toContain("Workspace path must identify a file inside /workspace.");
+  });
+
+  it.each(["--start", "--force", "--open"])("rejects --wait combined with %s", (flag) => {
+    const result = spawnSync(process.execPath, [executable, "login", "--wait", flag], {
+      cwd: packageDirectory,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 1);
+    expect(result.stderr).toContain("Login options:");
   });
 
   it("prints the package version", () => {

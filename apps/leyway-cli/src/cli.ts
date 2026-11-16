@@ -9,7 +9,6 @@ import { fileURLToPath } from "node:url";
 import { backofficeErrorMessage } from "@rejot-dev/backoffice-local/error-message";
 
 import {
-  connectToBackoffice,
   downloadBackofficeFile,
   executeBackofficeBash,
   executeBackofficeCodemode,
@@ -20,7 +19,9 @@ import {
   probeBackofficeServer,
   resolveBackofficeAuthFile,
   resolveBackofficeDefaultScopeForServer,
+  startBackofficeLogin,
   uploadBackofficeWorkspaceFile,
+  waitForBackofficeLogin,
 } from "@rejot-dev/backoffice-local";
 
 import { consumeAutomationOutboxStream } from "./automation-outbox-stream.js";
@@ -69,6 +70,9 @@ Scope syntax:
 Login options:
   --open                 Open the browser when device authorization is required
   --force                Ignore stored authentication and request new approval
+  --start                Print the approval URL and exit instead of waiting
+  --wait                 Wait for approval requested by login --start; rerun
+                         it to keep waiting after an interruption
 
 Listen options:
   --after-versionstamp VALUE
@@ -91,6 +95,7 @@ Global options:
 
 Examples:
   leyway login --open
+  leyway login --start && leyway login --wait
   leyway scopes
   leyway doctor
   leyway system org:acme ./SYSTEM.md
@@ -181,31 +186,46 @@ async function resolveCliBaseUrl(requestedBaseUrl: string | null | undefined): P
 }
 
 async function login(args: string[]): Promise<void> {
-  const openBrowser = takeFlag(args, "--open") || process.env["LEYWAY_OPEN_BROWSER"] === "1";
+  const openFlag = takeFlag(args, "--open");
+  const openBrowser = openFlag || process.env["LEYWAY_OPEN_BROWSER"] === "1";
   const forceLogin = takeFlag(args, "--force");
+  const startOnly = takeFlag(args, "--start");
+  const waitOnly = takeFlag(args, "--wait");
   const requestedBaseUrl = getFlag(args, "--base-url", configuredBaseUrl);
-  if (args.length > 0) {
+  if (args.length > 0 || (waitOnly && (startOnly || openFlag || forceLogin))) {
     usage();
   }
   const baseUrl = await resolveCliBaseUrl(requestedBaseUrl);
 
-  const connection = await connectToBackoffice({
-    baseUrl,
-    openBrowser,
-    forceLogin,
-    onDeviceAuthorization: ({ verificationUrl, userCode }) => {
-      console.log(`Open ${verificationUrl}`);
-      console.log(`Enter code: ${userCode}`);
-      console.log("Waiting for approval…");
-    },
-  });
-  console.log(`Authenticated as ${connection.summary.user.email}`);
-  console.error(
-    connection.authentication === "stored"
-      ? `Reused OAuth credential state from ${resolveBackofficeAuthFile()}`
-      : `Stored OAuth credential state in ${resolveBackofficeAuthFile()}`,
-  );
-  console.log(JSON.stringify(connection.summary, null, 2));
+  if (!waitOnly) {
+    const started = await startBackofficeLogin({ baseUrl, openBrowser, forceLogin });
+    if (started.kind === "stored") {
+      printLoginSummary(
+        started.summary,
+        `Reused OAuth credential state from ${resolveBackofficeAuthFile()}`,
+      );
+      return;
+    }
+    console.log(`Open ${started.authorization.verificationUrl}`);
+    console.log(`Enter code: ${started.authorization.userCode}`);
+    if (startOnly) {
+      console.log(`Then run leyway login --wait --base-url ${baseUrl} to finish signing in.`);
+      return;
+    }
+  }
+
+  console.log("Waiting for approval…");
+  const summary = await waitForBackofficeLogin({ baseUrl });
+  printLoginSummary(summary, `Stored OAuth credential state in ${resolveBackofficeAuthFile()}`);
+}
+
+function printLoginSummary(
+  summary: Awaited<ReturnType<typeof waitForBackofficeLogin>>,
+  credentialMessage: string,
+): void {
+  console.log(`Authenticated as ${summary.user.email}`);
+  console.error(credentialMessage);
+  console.log(JSON.stringify(summary, null, 2));
 }
 
 async function printAvailableScopes(args: string[]): Promise<void> {

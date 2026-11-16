@@ -19,11 +19,15 @@ import {
 import { FRAGNO_OUTBOX_PAGE_SIZE } from "@fragno-dev/db/outbox";
 
 import {
+  clearPendingDeviceAuthorization,
   type OAuthCredential,
+  type PendingDeviceAuthorization,
+  readPendingDeviceAuthorization,
   readStoredAuth,
   refreshStoredOAuth,
   storeAuth,
   storeBackofficeCredential,
+  storePendingDeviceAuthorization,
   type StoredAuthState,
 } from "./auth-store.js";
 import { backofficeDevServerPorts } from "./backoffice-dev-server-port.js";
@@ -103,6 +107,7 @@ function responseMessage(body: unknown): string {
 }
 const configuredBaseUrl = process.env["LEYWAY_URL"]?.replace(/\/$/, "") ?? null;
 const authFile = resolveBackofficeAuthFile();
+const pendingLoginFile = `${authFile}.pending`;
 const oauthDeviceCodeGrantType = "urn:ietf:params:oauth:grant-type:device_code";
 const credentialRefreshLeewayMs = 30_000;
 
@@ -401,20 +406,23 @@ function parseOAuthTokenResponse(
 
 async function pollForOAuthToken(
   config: LeywayCliOAuthConfig,
-  deviceCode: DeviceCodeResponse,
+  authorization: PendingDeviceAuthorization,
   baseUrl: string,
 ): Promise<OAuthToken> {
-  let intervalMs = Math.max(1, deviceCode.interval) * 1_000;
-  const expiresAt = Date.now() + deviceCode.expires_in * 1_000;
+  let intervalMs = Math.max(1, authorization.intervalSeconds) * 1_000;
+  const expiresAt = new Date(authorization.expiresAt).getTime();
 
   while (Date.now() < expiresAt) {
-    await sleep(intervalMs);
+    await sleep(Math.min(intervalMs, expiresAt - Date.now()));
+    if (Date.now() >= expiresAt) {
+      break;
+    }
     const response = await fetchBackofficeWithoutRedirect(config.tokenEndpoint, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
         grant_type: oauthDeviceCodeGrantType,
-        device_code: deviceCode.device_code,
+        device_code: authorization.deviceCode,
         client_id: config.clientId,
         resource: baseUrl,
       }),
@@ -433,16 +441,23 @@ async function pollForOAuthToken(
       continue;
     }
     if (oauthError === "access_denied") {
-      throw new Error("OAuth device authorization was denied.");
+      throw new DeviceAuthorizationEndedError(
+        "OAuth device authorization was denied. Run leyway login --start again.",
+      );
     }
     if (oauthError === "expired_token") {
-      throw new Error("OAuth device authorization expired before it was approved.");
+      throw new DeviceAuthorizationEndedError(expiredDeviceAuthorizationMessage);
     }
     throw new Error(`OAuth token polling failed (${response.status}): ${responseMessage(body)}`);
   }
 
-  throw new Error("OAuth device authorization expired before it was approved.");
+  throw new DeviceAuthorizationEndedError(expiredDeviceAuthorizationMessage);
 }
+
+class DeviceAuthorizationEndedError extends Error {}
+
+const expiredDeviceAuthorizationMessage =
+  "OAuth device authorization expired before it was approved. Run leyway login --start again.";
 
 function isCredentialUnexpired(expiresAt: string): boolean {
   const expiresAtMilliseconds = new Date(expiresAt).getTime();
@@ -771,7 +786,7 @@ export type BackofficeDeviceAuthorization = {
   userCode: string;
 };
 
-export async function resumeBackofficeLogin(options: {
+async function resumeBackofficeLogin(options: {
   baseUrl: string;
 }): Promise<ReturnType<typeof getBackofficeLoginSummary> | null> {
   const baseUrl = await probeBackofficeServer({ print: false, baseUrl: options.baseUrl });
@@ -792,22 +807,76 @@ export async function resumeBackofficeLogin(options: {
   }
 }
 
-export async function loginToBackoffice(options: {
+export type BackofficeLoginStart =
+  | { kind: "stored"; summary: ReturnType<typeof getBackofficeLoginSummary> }
+  | { kind: "pending"; authorization: BackofficeDeviceAuthorization };
+
+/**
+ * Reuses the stored sign-in, or requests a device authorization and stores it for
+ * `waitForBackofficeLogin`, which a later process may run.
+ */
+export async function startBackofficeLogin(options: {
   baseUrl: string;
-  openBrowser?: boolean;
-  onDeviceAuthorization?: (authorization: BackofficeDeviceAuthorization) => void;
-}): Promise<ReturnType<typeof getBackofficeLoginSummary>> {
+  openBrowser: boolean;
+  forceLogin: boolean;
+}): Promise<BackofficeLoginStart> {
+  if (!options.forceLogin) {
+    const summary = await resumeBackofficeLogin({ baseUrl: options.baseUrl });
+    if (summary) {
+      return { kind: "stored", summary };
+    }
+  }
+
   const baseUrl = await probeBackofficeServer({ print: false, baseUrl: options.baseUrl });
   const config = await registerOrLoadOAuthClient(baseUrl);
   const deviceCode = await requestDeviceCode(config, baseUrl);
-  options.onDeviceAuthorization?.({
-    verificationUrl: deviceCode.verification_uri_complete,
-    userCode: deviceCode.user_code,
+  await storePendingDeviceAuthorization(pendingLoginFile, baseUrl, {
+    clientId: config.clientId,
+    deviceCode: deviceCode.device_code,
+    intervalSeconds: deviceCode.interval,
+    expiresAt: new Date(Date.now() + deviceCode.expires_in * 1_000).toISOString(),
   });
   if (options.openBrowser) {
     openBackofficeVerificationUrl(deviceCode.verification_uri_complete);
   }
-  const oauth = await pollForOAuthToken(config, deviceCode, baseUrl);
+  return {
+    kind: "pending",
+    authorization: {
+      verificationUrl: deviceCode.verification_uri_complete,
+      userCode: deviceCode.user_code,
+    },
+  };
+}
+
+/**
+ * Waits until the user approves the device authorization `startBackofficeLogin` stored, then
+ * stores the sign-in. Waiting again after an interruption resumes the same authorization.
+ */
+export async function waitForBackofficeLogin(options: {
+  baseUrl: string;
+}): Promise<ReturnType<typeof getBackofficeLoginSummary>> {
+  const baseUrl = await probeBackofficeServer({ print: false, baseUrl: options.baseUrl });
+  const config = await registerOrLoadOAuthClient(baseUrl);
+  const authorization = await readPendingDeviceAuthorization(pendingLoginFile, baseUrl);
+  if (!authorization) {
+    const summary = await resumeBackofficeLogin({ baseUrl });
+    if (summary) {
+      return summary;
+    }
+    throw new Error(`No login is pending for ${baseUrl}. Run leyway login --start.`);
+  }
+  if (authorization.clientId !== config.clientId) {
+    throw new Error(`The login client changed for ${baseUrl}. Run leyway login --start again.`);
+  }
+  let oauth: OAuthToken;
+  try {
+    oauth = await pollForOAuthToken(config, authorization, baseUrl);
+  } catch (error) {
+    if (error instanceof DeviceAuthorizationEndedError) {
+      await clearPendingDeviceAuthorization(pendingLoginFile, baseUrl, authorization.deviceCode);
+    }
+    throw error;
+  }
   const initialAuth: StoredAuthState = {
     baseUrl,
     oauth: { clientId: config.clientId, ...oauth },
@@ -817,8 +886,11 @@ export async function loginToBackoffice(options: {
       scope: { kind: "system" },
     },
   };
+  // The device code is single-use. Keep its tokens even if the subsequent exchange fails.
+  await storeAuth(authFile, initialAuth);
+  await clearPendingDeviceAuthorization(pendingLoginFile, baseUrl, authorization.deviceCode);
   const auth = await exchangeOAuthTokenForBackofficeJwt(initialAuth, null);
-  await storeAuth(authFile, auth);
+  await storeBackofficeCredential(authFile, auth);
   const current = await fetchMe(auth);
   if (!current.response.ok || !isMeBody(current.body)) {
     throw new Error(
@@ -826,26 +898,6 @@ export async function loginToBackoffice(options: {
     );
   }
   return getBackofficeLoginSummary({ baseUrl, me: current.body });
-}
-
-export async function connectToBackoffice(options: {
-  baseUrl: string;
-  openBrowser?: boolean;
-  forceLogin?: boolean;
-  onDeviceAuthorization?: (authorization: BackofficeDeviceAuthorization) => void;
-}): Promise<{
-  summary: ReturnType<typeof getBackofficeLoginSummary>;
-  authentication: "stored" | "device";
-}> {
-  if (!options.forceLogin) {
-    const summary = await resumeBackofficeLogin({ baseUrl: options.baseUrl });
-    if (summary) {
-      return { summary, authentication: "stored" };
-    }
-  }
-
-  const summary = await loginToBackoffice(options);
-  return { summary, authentication: "device" };
 }
 
 export async function resolveBackofficeDefaultScopeForServer(options: {
