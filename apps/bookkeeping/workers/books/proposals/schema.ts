@@ -1,6 +1,12 @@
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
 /**
+ * What a request is about, as the firm's people read it: the document's file name or the bank
+ * transaction's description, and the client and administration whose books hold it.
+ */
+export type RequestAbout = { title: string; client: string; administration: string };
+
+/**
  * The bookkeeping agent's proposal for something to book, from being asked to its answer: asked
  * under `requestId` and not answered yet, a `booking` it proposes, or why it proposes none.
  * Asking again replaces its answer. Times are ISO timestamps; `by` names the person the agent acted
@@ -11,6 +17,7 @@ import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 export type ProposalRequest = {
   status: "requested";
   requestId: string;
+  about: RequestAbout;
   generation: number;
   firmId: string;
   announced: boolean;
@@ -26,6 +33,7 @@ export type ProposalRequest = {
 export type RequestChange = {
   subjectId: string;
   requestId: string;
+  about: RequestAbout;
   firmId: string;
   status: "requested" | "proposed" | "declined" | "withdrawn";
   prompt: string | null;

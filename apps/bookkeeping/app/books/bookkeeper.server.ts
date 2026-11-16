@@ -12,7 +12,11 @@ import {
 } from "../../workers/backoffice/document-shares";
 import { requestPrefix } from "../../workers/backoffice/proposal-requests";
 import type { DocumentView } from "../../workers/books/documents/documents";
-import type { AgentProposal, ProposalRequest } from "../../workers/books/proposals/schema";
+import type {
+  AgentProposal,
+  ProposalRequest,
+  RequestAbout,
+} from "../../workers/books/proposals/schema";
 import { canManage } from "../../workers/directory/membership";
 import {
   backofficeProblem,
@@ -134,6 +138,15 @@ function requestIdOf(
   return `${requestPrefix(context.administration.id, subject)}${ask === "first" ? first : crypto.randomUUID()}`;
 }
 
+/** What a request is about, as the firm's work queue names it. */
+function requestAbout(context: BooksContext, title: string): RequestAbout {
+  return {
+    title,
+    client: context.organization.name,
+    administration: context.administration.name,
+  };
+}
+
 /** What the agent is told about the subject: what it is, where it reads it, and how to answer. */
 async function promptContent(
   context: BooksContext,
@@ -216,6 +229,7 @@ async function askAboutTransactions(
       return {
         transactionId: id,
         requestId,
+        about: requestAbout(context, subject.transaction.description),
         prompt: await promptContent(context, subject, requestId),
       };
     }),
@@ -243,6 +257,7 @@ async function askAboutDocument(
   const recorded = await context.books.requestDocumentProposal({
     documentId: document.id,
     requestId,
+    about: requestAbout(context, document.filename),
     asked,
     first: ask === "first",
   });

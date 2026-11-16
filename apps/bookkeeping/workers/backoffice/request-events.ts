@@ -25,6 +25,11 @@ export type RequestEventPayload = {
   status: RequestChange["status"];
   /** What the agent is asked, for a request; null once it ended. */
   prompt: string | null;
+  /** The document's file name or the bank transaction's description. */
+  title: string;
+  /** The client and administration whose books the subject is in. */
+  client: string;
+  administration: string;
 };
 
 /** The payload's JSON Schema, which Backoffice checks every event of the type against. */
@@ -35,8 +40,11 @@ export const REQUEST_EVENT_PAYLOAD_SCHEMA = {
     requestId: { type: "string", minLength: 1 },
     status: { type: "string", enum: ["requested", "proposed", "declined", "withdrawn"] },
     prompt: { type: ["string", "null"] },
+    title: { type: "string" },
+    client: { type: "string" },
+    administration: { type: "string" },
   },
-  required: ["subject", "requestId", "status", "prompt"],
+  required: ["subject", "requestId", "status", "prompt", "title", "client", "administration"],
   additionalProperties: false,
 };
 
@@ -122,6 +130,7 @@ export function createFirmTeller(env: CloudflareEnv): (change: RequestChange) =>
       requestId: change.requestId,
       status: change.status,
       prompt: change.prompt,
+      ...change.about,
     };
     try {
       await backoffice.call(scope, "events.fire", {

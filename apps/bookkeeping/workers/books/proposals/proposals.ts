@@ -13,6 +13,7 @@ import {
   type AgentProposal,
   type ProposalAnswer,
   type ProposalRequest,
+  type RequestAbout,
   type RequestChange,
 } from "./schema";
 
@@ -76,6 +77,7 @@ const proposalsFragmentDefinition = defineFragment<ProposalsConfig>("proposals")
         requests: {
           subjectId: string;
           requestId: string;
+          about: RequestAbout;
           prompt: string | null;
         }[];
         asked: { generation: number; firmId: string; by: string; at: string };
@@ -100,7 +102,7 @@ const proposalsFragmentDefinition = defineFragment<ProposalsConfig>("proposals")
           )
           .transformRetrieve(([rows, management]) => ({
             management,
-            planned: requests.map(({ subjectId, requestId, prompt }) => {
+            planned: requests.map(({ subjectId, requestId, about, prompt }) => {
               const row = rows.find((candidate) => candidate.id.valueOf() === subjectId) ?? null;
               const current = row?.proposal ?? null;
               const kept =
@@ -111,6 +113,7 @@ const proposalsFragmentDefinition = defineFragment<ProposalsConfig>("proposals")
               const request: ProposalRequest = {
                 status: "requested",
                 requestId,
+                about,
                 ...asked,
                 announced: prompt !== null,
               };
@@ -322,10 +325,10 @@ function announce(
   request: ProposalRequest,
   prompt: string,
 ) {
-  const { requestId, firmId, at } = request;
+  const { requestId, about, firmId, at } = request;
   uow.triggerHook(
     "onRequestChanged",
-    { subjectId, requestId, firmId, status: "requested", prompt, at },
+    { subjectId, requestId, about, firmId, status: "requested", prompt, at },
     { id: announcementHookId(requestId) },
   );
 }
@@ -341,10 +344,11 @@ function settle(
   if (!request.announced) {
     return;
   }
-  const { requestId, firmId } = request;
+  const { requestId, about, firmId } = request;
   uow.triggerHook("onRequestChanged", {
     subjectId,
     requestId,
+    about,
     firmId,
     status,
     prompt: null,

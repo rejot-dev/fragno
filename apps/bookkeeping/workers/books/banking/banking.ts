@@ -9,7 +9,7 @@ import {
 import type { createLedgerFragment } from "@fragno-dev/ledger";
 
 import type { createProposalsFragment } from "../proposals/proposals";
-import type { AgentProposal, ProposalAnswer } from "../proposals/schema";
+import type { AgentProposal, ProposalAnswer, RequestAbout } from "../proposals/schema";
 import { bookingEntry, booksSource, type SourceDocument } from "../sources";
 import type { Statement } from "./camt053";
 import type { TransactionDetail } from "./detail";
@@ -687,6 +687,7 @@ const bankingFragmentDefinition = defineFragment("banking")
         requests: {
           transactionId: string;
           requestId: string;
+          about: RequestAbout;
           prompt: string;
         }[];
         asked: ProposalAsked;
