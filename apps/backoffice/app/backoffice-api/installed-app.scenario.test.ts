@@ -629,6 +629,33 @@ describe("installed-app event delivery SQLite scenarios", () => {
     ]);
   });
 
+  test("Bookkeeping sends an event again under its idempotency key, and Backoffice keeps the first", async () => {
+    await runInstalledAppScenario("Bookkeeping resends an event", (then) => [
+      then("the event sent again returns the first one's receipt", async (ctx) => {
+        const send = (message: string, occurredAt: string) =>
+          sendEvent(ctx, {
+            credential: ctx.vars.credential,
+            body: {
+              eventType: connectionTested,
+              payload: { message },
+              idempotencyKey: "connection-test-1",
+              occurredAt,
+            },
+          });
+        const first = await send("Hello from Bookkeeping", "2026-01-02T03:04:05.000Z");
+        const again = await send("Hello again", "2026-01-03T00:00:00.000Z");
+        expect(again.eventId).toBe(first.eventId);
+        ctx.vars.eventId = first.eventId;
+      }),
+      then("the owner sees one event, as first sent, when it happened", async (ctx) => {
+        expect(await getEventAsOwner(ctx, ctx.vars.eventId)).toMatchObject({
+          payload: { message: "Hello from Bookkeeping" },
+          occurredAt: "2026-01-02T03:04:05.000Z",
+        });
+      }),
+    ]);
+  });
+
   test("forged fields, other organizations, raw OAuth tokens, and human-only authority are rejected", async () => {
     await runInstalledAppScenario(
       "installed-app credentials stay inside their approval",

@@ -533,6 +533,21 @@ const eventEmitInputSchema = z.lazy(() =>
     subjectUserId: z.string().trim().min(1).optional(),
     payload: z.record(z.string(), z.unknown()).optional(),
     targetScope: backofficeContextScopeSchema.optional(),
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(1)
+      .max(256)
+      .optional()
+      .describe(
+        "Names the event, so firing it again, such as after a lost response, stores nothing more: the first event fired with the key from the same source in the target scope stands, and the receipt names it.",
+      ),
+    occurredAt: z.iso
+      .datetime()
+      .optional()
+      .describe(
+        "When what the event reports happened, if earlier than now, such as for an event sent late or again. It orders the event's type's state, which keeps each key's latest event.",
+      ),
   }),
 );
 
@@ -581,7 +596,7 @@ const automationEventCatalogGetInputSchema = z.lazy(() =>
 export const eventsOperations = {
   "events.fire": {
     description:
-      "Fire an automation event for the current context or a selected target scope. Sources starting with `app:` belong to installed apps, and only an app's own credential emits them.",
+      "Fire an automation event for the current context or a selected target scope. Sources starting with `app:` belong to installed apps, and only an app's own credential emits them. With an `idempotencyKey`, firing it again stores nothing more and returns the first event's receipt.",
     permissions: [BACKOFFICE_PERMISSION.events.emit],
     input: eventEmitInputSchema,
     output: eventEmitOutputSchema,
