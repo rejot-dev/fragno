@@ -500,7 +500,7 @@ function describeFocus(
       lines: [
         `In ${scopeLabel(focus.scopeId)}`,
         ...(startedBy.length > 0 ? [`Started by ${listed(startedBy)}`] : []),
-        called.length > 0 ? `Calls ${listed(called)}` : "Calls no outside system",
+        called.length > 0 ? `May call ${listed(called)}` : "May call no outside system",
       ],
     };
   }
@@ -513,7 +513,7 @@ function describeFocus(
       icon: external?.icon ?? "link",
       name: external?.label ?? focus.id,
       lines: [
-        `Called by ${countLabel(callers.length, "workflow")} in ${countLabel(scopeIds.length, "scope")}`,
+        `May be called by ${countLabel(callers.length, "workflow")} in ${countLabel(scopeIds.length, "scope")}`,
         ...scopeIds.map(
           (scopeId) =>
             `${scopeLabel(scopeId)}: ${listed(callers.filter((call) => call.scopeId === scopeId).map((call) => workflowLabel(scopeId, call.workflowId)))}`,
@@ -540,7 +540,7 @@ function describeFocus(
     lines: [
       eventsStartWorkflows(startingEvents.size, planet?.layout.workflows.length ?? 0),
       ...(destinations.length > 0 ? [`Forwards to ${listed(destinations.map(scopeLabel))}`] : []),
-      ...(called.length > 0 ? [`Calls ${listed(called)}`] : []),
+      ...(called.length > 0 ? [`May call ${listed(called)}`] : []),
     ],
   };
 }
@@ -618,7 +618,7 @@ function FocusCard({
 
 /**
  * Every scope as a planet of what starts its workflows, with the events one scope forwards to
- * another drawn between them, inside a frame of the outside systems those workflows call. Planets
+ * another drawn between them, inside a frame of the outside systems those workflows may call. Planets
  * push each other apart and the ones that forward to each other pull together, so dragging one
  * moves its neighbours and letting go lets it drift into place. Drag the background to pan, and
  * pinch or hold ⌘/Ctrl while scrolling to zoom; the frame stays put. Hovering a planet lights up

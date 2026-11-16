@@ -1,143 +1,139 @@
+import {
+  resolveAutomationGrantedConnectionScope,
+  type AutomationRouteDefinition,
+} from "@fragno-dev/backoffice-api/v0/automation";
+import {
+  allBackofficePermissionRequirements,
+  type BackofficePermissionNamespace,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type {
   OrchestrationExternal,
   OrchestrationExternalCall,
+  OrchestrationUniverse,
 } from "@fragno-private/design-system/orchestration/orchestration-universe-model";
 
-import {
-  isTriviaToken,
-  staticStringValue,
-  tokenizeWorkflowSource,
-  type SourceRange,
-} from "@fragno-dev/workflow-visualizer-tokens";
-
-import { visualizeWorkflowScript } from "@/fragno/automation/workflow-visualizations";
+import { scopeIdentity } from "@/fragno/automation/forward-accepts";
 import type { IntegrationConnectionRecord } from "@/fragno/runtime-tools/families/integrations/integration-connections";
-import {
-  resolveWorkflowRuntimeToolCalls,
-  type RuntimeToolWorkflowDescriptor,
-} from "@/fragno/runtime-tools/workflow-catalog";
 
 import { serviceIcon, workflowTargetId } from "./orchestration-graph";
 
-/** A workflow script as a run kept it: its path and source. */
-export type WorkflowProgram = { filename: string; code: string };
-
-/** A workflow that calls an outside system, by the workflow's target ID in its scope's graph. */
-export type WorkflowOutsideCall = Omit<OrchestrationExternalCall, "scopeId" | "externalId"> & {
-  external: OrchestrationExternal;
-};
-
-/** The connections a scope's workflows execute actions on, as its replica records them. */
-export type WorkflowConnections = readonly Pick<
+/** The connections a scope keeps, as its replica records them. */
+export type ScopeConnections = readonly Pick<
   IntegrationConnectionRecord,
   "connectionId" | "service" | "displayName"
 >[];
 
-/** The systems outside Backoffice that workflows reach through runtime tools other than integrations. */
-const OUTSIDE_SYSTEMS: readonly (OrchestrationExternal & {
-  reachedBy: (tool: RuntimeToolWorkflowDescriptor) => boolean;
-})[] = [
-  { id: "web", label: "Web", icon: "globe", reachedBy: (tool) => tool.namespace === "web" },
-  { id: "models", label: "Models", icon: "cpu", reachedBy: (tool) => tool.namespace === "models" },
-  {
-    id: "browser-run",
-    label: "Browser Run",
-    icon: "monitor",
-    reachedBy: (tool) => tool.namespace === "cloudflare",
-  },
-];
+/** A scope the universe read, whose routes grant its workflows what they may call. */
+type GrantingScope = {
+  scope: BackofficeContextScope;
+  routes: readonly AutomationRouteDefinition[];
+  connections: ScopeConnections;
+};
 
-const EXECUTE_INTEGRATION_ACTION = "integrations.execute";
+/** The systems outside Backoffice that permissions other than executing integrations reach. */
+const PERMISSION_SYSTEMS: Partial<Record<BackofficePermissionNamespace, OrchestrationExternal>> = {
+  web: { id: "web", label: "Web", icon: "globe" },
+  models: { id: "models", label: "Models", icon: "cpu" },
+  cloudflare: { id: "browser-run", label: "Browser Run", icon: "monitor" },
+};
 
-/** Where integration actions go when the script works out their connection as it runs. */
-const SOME_INTEGRATION: OrchestrationExternal = {
-  id: "integrations",
-  label: "Integrations",
+/** Where executing integrations on no connection in particular reaches: any connection. */
+const ANY_CONNECTION: OrchestrationExternal = {
+  id: "any-connection",
+  label: "Any connection",
   icon: "link",
 };
 
-/** The system a connection reaches, by its record in the calling scope, or by its address alone. */
-function connectionSystem(
-  connectionId: string,
-  connections: WorkflowConnections,
-): OrchestrationExternal {
-  const connection = connections.find((candidate) => candidate.connectionId === connectionId);
-  const [namespace, localId] = connectionId.includes("#")
-    ? connectionId.split(/#(.*)/s, 2)
-    : [connectionId, connectionId];
-  return {
-    id: `connection:${connectionId}`,
-    label: connection?.displayName ?? localId,
-    icon: (connection && serviceIcon(connection.service)) ?? serviceIcon(namespace) ?? "link",
-  };
+/** The system a permission reaches outside Backoffice, if any. */
+function permissionSystem(permission: BackofficePermissionRequirement): OrchestrationExternal[] {
+  if (permission.namespace === "integrations" && permission.permission === "execute") {
+    return [ANY_CONNECTION];
+  }
+  const system = PERMISSION_SYSTEMS[permission.namespace];
+  return system ? [system] : [];
 }
 
 /**
- * The connection an `integrations.execute` call names: its first argument's `connectionId`, when
- * that is spelled out as a string. Null when the script works it out as it runs.
+ * What the workflows on the universe's planets may call outside Backoffice, as the enabled routes
+ * starting them grant: the connections they may execute on, the web, models, and Browser Run. A
+ * route inheriting its user's permissions may execute on any connection and reach them all.
+ * Disabled routes grant nothing. A connection is one system per scope and address, by its record
+ * in its scope when that scope was read, or else by its address. Connections outside the
+ * organization also go by their scope's name, so two scopes' connections to one service tell apart.
  */
-export function executedConnectionId(code: string, call: SourceRange): string | null {
-  const tokens = [...tokenizeWorkflowSource(code.slice(call.start.offset, call.end.offset))].filter(
-    (token) => !isTriviaToken(token),
+export function grantedOutsideSystems({
+  organizationId,
+  scopes,
+  scopeLabel,
+}: {
+  organizationId: string;
+  scopes: readonly GrantingScope[];
+  scopeLabel: (scope: BackofficeContextScope) => string;
+}): Pick<OrchestrationUniverse, "externals" | "calls"> {
+  const connectionsOf = new Map(
+    scopes.map(({ scope, connections }) => [scopeIdentity(scope), connections]),
   );
-  const open = tokens.findIndex(({ value }) => value === "(");
-  if (tokens[open + 1]?.value !== "{") {
-    return null;
-  }
-  // The properties of the argument are the tokens one bracket into it.
-  let depth = 0;
-  for (let index = open + 2; index < tokens.length && depth >= 0; index += 1) {
-    const { value } = tokens[index];
-    if (value === "(" || value === "{" || value === "[") {
-      depth += 1;
-    } else if (value === ")" || value === "}" || value === "]") {
-      depth -= 1;
-    } else if (
-      depth === 0 &&
-      (value === "connectionId" || staticStringValue(tokens[index]) === "connectionId") &&
-      tokens[index + 1]?.value === ":" &&
-      (tokens[index + 3]?.value === "," || tokens[index + 3]?.value === "}")
-    ) {
-      const connectionId = staticStringValue(tokens[index + 2]);
-      return connectionId === undefined ? null : connectionId;
-    }
-  }
-  return null;
-}
+  const connectionSystem = (
+    scope: BackofficeContextScope,
+    connectionId: string,
+  ): OrchestrationExternal => {
+    const scopeId = scopeIdentity(scope);
+    const connection = connectionsOf
+      .get(scopeId)
+      ?.find((candidate) => candidate.connectionId === connectionId);
+    const [namespace, localId] = connectionId.includes("#")
+      ? connectionId.split(/#(.*)/s, 2)
+      : [connectionId, connectionId];
+    const name = connection?.displayName ?? localId;
+    return {
+      id: `connection:${scopeId}|${connectionId}`,
+      label: scopeId === organizationId ? name : `${scopeLabel(scope)} · ${name}`,
+      icon: (connection && serviceIcon(connection.service)) ?? serviceIcon(namespace) ?? "link",
+    };
+  };
 
-/**
- * Which outside systems each workflow script calls in its steps, once per workflow and system. An
- * integration action reaches the connection it names, by the name `connections` give it, or every
- * such action whose connection the script works out as it runs reaches one shared system.
- */
-export function workflowOutsideCalls(
-  programs: readonly WorkflowProgram[],
-  catalog: readonly RuntimeToolWorkflowDescriptor[],
-  connections: WorkflowConnections,
-): WorkflowOutsideCall[] {
-  return programs.flatMap(({ filename, code }) => {
-    const visualization = visualizeWorkflowScript(filename, code);
-    const toolCalls = [
-      ...resolveWorkflowRuntimeToolCalls({ visualization, catalog }).values(),
-    ].flat();
-    const systems = new Map<string, OrchestrationExternal>();
-    for (const system of OUTSIDE_SYSTEMS) {
-      if (toolCalls.some(({ tool }) => system.reachedBy(tool))) {
-        systems.set(system.id, { id: system.id, label: system.label, icon: system.icon });
+  const externals = new Map<string, OrchestrationExternal>();
+  const calls = new Map<string, OrchestrationExternalCall>();
+  for (const { scope, routes } of scopes) {
+    const scopeId = scopeIdentity(scope);
+    for (const route of routes) {
+      if (!route.enabled || route.action.kind !== "start_workflow") {
+        continue;
+      }
+      const { grants } = route.action.authority;
+      // Inheriting, a route grants every permission, as the authority resolver resolves it.
+      const reached =
+        grants === "inherit"
+          ? allBackofficePermissionRequirements.flatMap(permissionSystem)
+          : grants.flatMap((grant) => {
+              if (!("connections" in grant)) {
+                return permissionSystem(grant);
+              }
+              return grant.connections.flatMap((connection) => {
+                const connectionScope = resolveAutomationGrantedConnectionScope(
+                  scope,
+                  connection.scope,
+                );
+                return connectionScope
+                  ? [connectionSystem(connectionScope, connection.connectionId)]
+                  : [];
+              });
+            });
+      const workflowId = workflowTargetId(route.action.workflowScriptPath);
+      for (const external of reached) {
+        externals.set(external.id, external);
+        calls.set(`${scopeId}|${workflowId}|${external.id}`, {
+          scopeId,
+          workflowId,
+          externalId: external.id,
+        });
       }
     }
-    for (const { tool, invocation } of toolCalls) {
-      if (tool.qualifiedName === EXECUTE_INTEGRATION_ACTION) {
-        const connectionId = executedConnectionId(code, invocation.source);
-        const system = connectionId
-          ? connectionSystem(connectionId, connections)
-          : SOME_INTEGRATION;
-        systems.set(system.id, system);
-      }
-    }
-    return [...systems.values()].map((external) => ({
-      workflowId: workflowTargetId(filename),
-      external,
-    }));
-  });
+  }
+  return {
+    externals: [...externals.values()].sort((left, right) => left.label.localeCompare(right.label)),
+    calls: [...calls.values()],
+  };
 }

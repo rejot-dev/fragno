@@ -16,18 +16,6 @@ const codemodeProgramSchema = z.union([
     .transform(({ filename, modules }) => ({ filename, code: modules[filename] ?? null })),
 ]);
 
-/**
- * The workflow script a Codemode run ran, from the run's params: its path and source. Null for runs
- * of other workflows, and for snapshots missing the script's own module.
- */
-export function codemodeRunProgram(params: unknown): { filename: string; code: string } | null {
-  const parsed = z.object({ program: codemodeProgramSchema }).safeParse(params);
-  if (!parsed.success || parsed.data.program.code === null) {
-    return null;
-  }
-  return { filename: parsed.data.program.filename, code: parsed.data.program.code };
-}
-
 // Instance params are opaque to the workflow runtime; only Codemode runs carry a program.
 const codemodeWorkflowRunParamsSchema = z.object({
   program: codemodeProgramSchema,

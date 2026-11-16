@@ -7,7 +7,6 @@ import type { OrchestrationGraph } from "@fragno-private/design-system/orchestra
 import type { OrchestrationForward } from "./orchestration-graph";
 import { projectOrchestrationUniverse } from "./orchestration-universe";
 
-const FETCH = "workflow:/workspace/automations/fetch.workflow.js";
 const organization = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
 const person = { kind: "user", userId: "user-1", jurisdiction: null } as const;
 
@@ -52,10 +51,7 @@ function universeWith(
       graph: graph("Ada Labs"),
       routes: [],
       deliveries: [],
-      calls: [
-        { workflowId: FETCH, external: { id: "web", label: "Web", icon: "globe" } },
-        { workflowId: FETCH, external: { id: "connection:api#crm", label: "CRM", icon: "code" } },
-      ],
+      connections: [],
     },
     projects: [],
     viewer: {
@@ -65,12 +61,7 @@ function universeWith(
         graph: graph("Ada"),
         routes,
         deliveries: [],
-        calls: [
-          {
-            workflowId: FETCH,
-            external: { id: "connection:api#crm", label: "Ada's CRM", icon: "code" },
-          },
-        ],
+        connections: [],
       },
     },
     recentForwards: forwardedBy.map(forwardFrom),
@@ -92,21 +83,6 @@ describe("the universe of an organization", () => {
         ({ id, graph }) => `${id} ${graph.scopeLabel}`,
       ),
     ).toEqual(["org:org-1 Ada Labs", "user:user-2 Grace Hopper", "user:user-3 user:user-3"]);
-  });
-
-  test("names the scope of each workflow that calls an outside system", () => {
-    expect(universeWith([]).calls).toEqual([
-      { scopeId: "org:org-1", workflowId: FETCH, externalId: "web" },
-      { scopeId: "org:org-1", workflowId: FETCH, externalId: "connection:api#crm" },
-      { scopeId: "user:user-1", workflowId: FETCH, externalId: "connection:api#crm" },
-    ]);
-  });
-
-  test("shows each outside system once, by the name the first scope calling it gives it", () => {
-    expect(universeWith([]).externals.map(({ id, label }) => `${id} ${label}`)).toEqual([
-      "connection:api#crm CRM",
-      "web Web",
-    ]);
   });
 
   test("shows the person looking once a route of theirs names the organization", () => {

@@ -9,14 +9,14 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 
-const { graphReads, deliveryReads, connectionReads, noPrograms } = vi.hoisted(() => ({
+const { graphReads, deliveryReads, connectionReads, noConnections } = vi.hoisted(() => ({
   // What each replica's graph, delivery, and connection reads return, by the replica's name.
   graphReads: new Map<string, unknown>(),
   deliveryReads: new Map<string, unknown>(),
   connectionReads: new Map<string, unknown>(),
-  // No workflow has run, so none calls an outside system, and there are no connections. A read
-  // returns the same data until it changes, as a replica view does.
-  noPrograms: { status: "ready", data: [] },
+  // There are no connections. A read returns the same data until it changes, as a replica view
+  // does.
+  noConnections: { status: "ready", data: [] },
 }));
 
 // A replica here is only its name, which picks the reads above.
@@ -28,11 +28,9 @@ vi.mock("@/fragno/automation/lofi/replica", () => ({
     error: null,
   }),
   useAutomationRead: (replica: string | null, read: string) =>
-    read === "latestWorkflowPrograms"
-      ? noPrograms
-      : read === "integrationConnections"
-        ? ((replica && connectionReads.get(replica)) ?? noPrograms)
-        : ((replica && deliveryReads.get(replica)) ?? { status: "loading" }),
+    read === "integrationConnections"
+      ? ((replica && connectionReads.get(replica)) ?? noConnections)
+      : ((replica && deliveryReads.get(replica)) ?? { status: "loading" }),
 }));
 vi.mock("./scope-orchestration-graph", () => ({
   useScopeOrchestrationGraph: (replica: string | null) =>
@@ -91,7 +89,6 @@ function renderUniverse() {
       replica={"organization" as never}
       selectedScope={selectedScope}
       scopes={{ projects: [books] as never, viewer: null, memberNames: {}, problems: [] }}
-      runtimeToolCatalog={[]}
     />,
   );
 }
