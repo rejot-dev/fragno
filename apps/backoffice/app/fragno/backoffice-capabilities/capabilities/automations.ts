@@ -6,6 +6,7 @@ import type {
   AutomationsDurableHookFragment,
   AutomationsCommands,
 } from "@/backoffice-runtime/object-registry";
+import { ROUTE_FAILED_KEY_PATH } from "@/fragno/automation/route-dispatches-storage-runtime";
 import type { BackofficeCapability } from "@/fragno/backoffice-capabilities/backoffice-capabilities";
 import { createDurableHookRepositoryFromCommands } from "@/fragno/durable-hook-command-repository";
 import type { DurableHookRepository } from "@/fragno/durable-hooks";
@@ -97,8 +98,9 @@ export const automationsCapability: BackofficeCapability = {
         eventType: "route.failed",
         label: "Route failed",
         description:
-          "Fires when a route fails for good on an event: its error cannot be fixed by retrying, or it ran out of attempts. Fires again each time a retried route fails. A route that fails on a route.failed event fires none.",
+          "Fires when a route fails for good on an event: its error cannot be fixed by retrying, or it ran out of attempts. Fires again each time a retried route fails. A route that fails on a route.failed event fires none. Keyed by route: each route's state is its latest failure, until the route is retried on that failure's event or the state is deleted.",
         payloadSchema: routeFailedPayloadSchema,
+        keyPath: ROUTE_FAILED_KEY_PATH,
         example: {
           route: { id: "deliver-to-run", name: "Deliver to the triage run" },
           event: { id: "event-1", source: "github", eventType: "issues.opened" },

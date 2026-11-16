@@ -13,6 +13,7 @@ import type { Cursor, DatabaseServiceContext, TxResult } from "@fragno-dev/db";
 import { installedAppAsDelegate } from "@/fragno/app-installations/authority";
 
 import { AUTOMATION_SYSTEM_INITIATOR } from "./actors";
+import { STATE_INDEX } from "./event-state";
 import type { AutomationHookUnitOfWork } from "./internal-hooks";
 import { automationFragmentSchema } from "./schema";
 
@@ -142,6 +143,18 @@ type AutomationRouteDispatchServiceContext = DatabaseServiceContext<Record<strin
 
 export const AUTOMATION_ROUTE_FAILED_SOURCE = "automations" as const;
 export const AUTOMATION_ROUTE_FAILED_EVENT_TYPE = "route.failed" as const;
+/**
+ * Each route's latest failure is its state, which outlives the events and dispatch records that
+ * retention deletes, until the route is retried on that event or the state is deleted.
+ */
+export const ROUTE_FAILED_KEY_PATH = "$.route.id";
+
+type RouteFailedPayload = {
+  route: { id: string; name: string };
+  event: { id: string; source: string; eventType: string };
+  error: string;
+  failedAttempts: number;
+};
 
 export function isRouteFailedEvent(event: Pick<AutomationEvent, "source" | "eventType">) {
   return (
@@ -178,7 +191,7 @@ export function buildRouteFailedEvent({
       event: { id: event.id, source: event.source, eventType: event.eventType },
       error,
       failedAttempts,
-    },
+    } satisfies RouteFailedPayload,
     // Keeps whom the failed event acted through, so neither an agent nor an installed app is told
     // of failures it caused. An app acting as itself was the event's principal; as a delegate it
     // only narrows what routes acting on the failure may do, as when it acts for a user.
@@ -247,7 +260,8 @@ export const createAutomationRouteDispatchServices = (
     /**
      * Runs a route that failed for good on an event again. `retryHook` queues the route's durable
      * hook again; the route reads as pending only when its hook will run, so a hook that already
-     * runs or completed is left alone, even when recording its failure did not commit.
+     * runs or completed is left alone, even when recording its failure did not commit. Retrying the
+     * route's latest failure deletes its failure state; failing again records it again.
      */
     retryRouteDispatch<
       THookRetry,
@@ -265,14 +279,24 @@ export const createAutomationRouteDispatchServices = (
       return this.serviceTx(automationFragmentSchema)
         .withServiceCalls(() => [retryHook(id)] as const)
         .retrieve((uow) =>
-          uow.findFirst("automation_route_dispatch", (b) =>
-            b.whereIndex("primary", (eb) => eb("id", "=", id)),
-          ),
+          uow
+            .findFirst("automation_route_dispatch", (b) =>
+              b.whereIndex("primary", (eb) => eb("id", "=", id)),
+            )
+            .findFirst("automation_event_state", (b) =>
+              b.whereIndex(STATE_INDEX, (eb) =>
+                eb.and(
+                  eb("source", "=", AUTOMATION_ROUTE_FAILED_SOURCE),
+                  eb("eventType", "=", AUTOMATION_ROUTE_FAILED_EVENT_TYPE),
+                  eb("key", "=", routeId),
+                ),
+              ),
+            ),
         )
         .mutate(
           ({
             uow,
-            retrieveResult: [row],
+            retrieveResult: [row, failure],
             serviceIntermediateResult: [hookRetry],
           }): AutomationRouteRetry => {
             if (!row || hookRetry.status === "not_found") {
@@ -283,6 +307,11 @@ export const createAutomationRouteDispatchServices = (
             }
             const pending = routeDispatchStateColumns({ status: "pending" });
             uow.update("automation_route_dispatch", row.id, (b) => b.set(pending).check());
+            // Only `buildRouteFailedEvent` fires route.failed events, so states hold its payload.
+            const failedEvent = (failure?.payload as RouteFailedPayload | undefined)?.event;
+            if (failure && failedEvent?.id === eventId) {
+              uow.delete("automation_event_state", failure.id, (b) => b.check());
+            }
             return { status: "retried", route: routeDispatchOfRow({ ...row, ...pending }) };
           },
         )

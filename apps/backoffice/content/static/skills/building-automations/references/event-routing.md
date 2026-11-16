@@ -257,5 +257,10 @@ any event to be told about failures, for example with `notify_agent`, or match `
 to watch one route. A retried route that fails again records another. A route that fails while
 handling a `route.failed` event records none, so failures cannot feed each other.
 
+The type keys on `$.route.id`, so each route's state is its latest failure, and outlasts the events
+it names: `events.stateList({ source: "automations", eventType: "route.failed" })` lists the routes
+with one. Retrying the route on that failure's event deletes the state, and failing again records it
+again. To dismiss a failure, delete its state with `events.stateDelete`.
+
 **Complete when** the owning scope, matching event IDs, relevant payloads, and downstream outcomes
 are supported by retrieved evidence, or the exact unverified boundary is stated.

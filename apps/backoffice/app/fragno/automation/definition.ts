@@ -82,6 +82,8 @@ import {
   type EventStateKey,
   keepEventState,
   requireEventKey,
+  STATE_INDEX,
+  writeEventState,
 } from "./event-state";
 import { createAutomationEventServices } from "./events-storage-runtime";
 import { buildExternalIdentityBindingId, canLinkExternalIdentity } from "./external-identities";
@@ -101,11 +103,14 @@ import type {
 import { createPackageInstallationServices } from "./package-installations-storage-runtime";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
+  AUTOMATION_ROUTE_FAILED_EVENT_TYPE,
+  AUTOMATION_ROUTE_FAILED_SOURCE,
   buildRouteFailedEvent,
   createAutomationRouteDispatchServices,
   isRouteFailedEvent,
   readRouteDispatchState,
   recordMatchedRoute,
+  ROUTE_FAILED_KEY_PATH,
   routeDispatchId,
 } from "./route-dispatches-storage-runtime";
 import { dispatchAutomationRouteSchedule } from "./route-scheduling-runtime";
@@ -1225,22 +1230,54 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
                     }),
                   ] as const,
               )
-              .mutate(({ forSchema, serviceIntermediateResult: [update] }) => {
-                // A route that fails on an announcement, or on an event reclassified from one,
-                // announces nothing, so failures cannot feed each other.
-                if (
-                  !exhausted ||
-                  !update.settles ||
-                  isRouteFailedEvent(event) ||
-                  reclassificationChain.some(isRouteFailedEvent)
-                ) {
-                  return;
-                }
-                ingestAutomationEvent(
-                  forSchema(automationFragmentSchema),
-                  buildRouteFailedEvent({ event, route, failedAttempts, error: message }),
-                );
-              })
+              .retrieve(({ forSchema }) =>
+                forSchema(automationFragmentSchema).findFirst("automation_event_state", (b) =>
+                  b.whereIndex(STATE_INDEX, (eb) =>
+                    eb.and(
+                      eb("source", "=", AUTOMATION_ROUTE_FAILED_SOURCE),
+                      eb("eventType", "=", AUTOMATION_ROUTE_FAILED_EVENT_TYPE),
+                      eb("key", "=", route.id),
+                    ),
+                  ),
+                ),
+              )
+              .mutate(
+                ({ forSchema, retrieveResult: [state], serviceIntermediateResult: [update] }) => {
+                  // A route that fails on an announcement, or on an event reclassified from one,
+                  // announces nothing, so failures cannot feed each other.
+                  if (
+                    !exhausted ||
+                    !update.settles ||
+                    isRouteFailedEvent(event) ||
+                    reclassificationChain.some(isRouteFailedEvent)
+                  ) {
+                    return;
+                  }
+                  const uow = forSchema(automationFragmentSchema);
+                  const failure = buildRouteFailedEvent({
+                    event,
+                    route,
+                    failedAttempts,
+                    error: message,
+                  });
+                  ingestAutomationEvent(uow, failure);
+                  // Kept with the failure rather than by a later hook, so a retry, which deletes
+                  // the state it reads, cannot run before the state exists. Its stored time is
+                  // when it failed, a moment before the database stamps the event's.
+                  const failedAt = new Date(failure.occurredAt);
+                  writeEventState(
+                    uow,
+                    {
+                      source: failure.source,
+                      eventType: failure.eventType,
+                      key: route.id,
+                      keyPath: ROUTE_FAILED_KEY_PATH,
+                    },
+                    { ...failure, occurredAt: failedAt, createdAt: failedAt },
+                    state ?? null,
+                  );
+                },
+              )
               .execute();
             throw error;
           }
