@@ -128,6 +128,7 @@ test("Telegram connects, acts, checks its webhook, and disconnects through integ
               "messages.send",
               "messages.edit",
               "chat-actions.send",
+              "request",
               "files.get",
               "files.download",
             ],
@@ -142,6 +143,33 @@ test("Telegram connects, acts, checks its webhook, and disconnects through integ
             download: { bytes: [1, 2, 3], contentType: "audio/ogg" },
           });
         }),
+        then.assert(
+          "request calls Bot API methods but keeps text messages and the webhook off it",
+          async (ctx) => {
+            const run = await ctx.runCodemode({
+              scope,
+              code: `async () => {
+              const request = (method, payload) => integrations.execute({ connectionId: "backoffice#telegram", actionId: "request", input: { method, payload } }).catch((error) => error.message);
+              return {
+                document: await request("sendDocument", { chat_id: "1001", document: "https://files.example.test/invoice.pdf" }),
+                message: await request("sendMessage", { chat_id: "1001", text: "Untracked" }),
+                webhook: await request("setWebhook", { url: "https://elsewhere.example.test" }),
+              };
+            }`,
+            });
+            expect(run.result).toEqual({
+              document: { ok: true, result: true },
+              message: expect.stringContaining("sendMessage is not available"),
+              webhook: expect.stringContaining("setWebhook is not available"),
+            });
+            expect(ctx.fakes.telegram?.botApiCalls).toEqual([
+              {
+                method: "sendDocument",
+                body: { chat_id: "1001", document: "https://files.example.test/invoice.pdf" },
+              },
+            ]);
+          },
+        ),
         runner.drain(),
         then.telegram.sentMessage({ chatId: "1001", text: "Hello from integrations" }),
         then.telegram.sentChatAction({ chatId: "1001", action: "typing" }),

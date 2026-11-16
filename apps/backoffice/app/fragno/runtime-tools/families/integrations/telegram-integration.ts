@@ -2,7 +2,7 @@ import type {
   IntegrationInspection,
   IntegrationSetupProgress,
 } from "@fragno-dev/backoffice-api/v0/integrations";
-import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
+import { jsonValueSchema, type JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { z } from "zod";
 
@@ -121,6 +121,37 @@ const telegramActions = [
     }),
     output: z.strictObject({ ok: z.boolean() }),
     run: (runtime, input) => runtime.sendChatAction(input),
+  }),
+  defineTelegramAction({
+    id: "request",
+    label: "Call Bot API method",
+    description:
+      "Call any Telegram Bot API method with the bot's stored token, such as sendDocument with a public PDF URL. The payload uses the Bot API's own parameter names, such as chat_id. sendMessage and editMessageText are rejected; use messages.send and messages.edit so the conversation is recorded. Webhook methods, getUpdates, logOut, and close are rejected because Backoffice owns the webhook. Telegram's errors are returned in the result envelope.",
+    input: z.strictObject({
+      method: z
+        .string()
+        .regex(/^[A-Za-z]+$/)
+        .describe("Bot API method name, such as sendDocument."),
+      payload: z.record(z.string(), jsonValueSchema),
+    }),
+    output: z.discriminatedUnion("ok", [
+      z.strictObject({ ok: z.literal(true), result: jsonValueSchema }),
+      z.strictObject({
+        ok: z.literal(false),
+        errorCode: z.number().int().nullable(),
+        description: z.string().nullable(),
+      }),
+    ]),
+    run: async (runtime, input) => {
+      const response = await runtime.request(input);
+      return response.ok
+        ? response
+        : {
+            ok: false as const,
+            errorCode: response.errorCode ?? null,
+            description: response.description ?? null,
+          };
+    },
   }),
   defineTelegramAction({
     id: "files.get",

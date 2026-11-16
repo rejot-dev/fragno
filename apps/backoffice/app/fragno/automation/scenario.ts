@@ -272,6 +272,8 @@ export type FakeTelegramApi = {
   sendMessageCalls: TelegramSendCall[];
   editMessageTextCalls: TelegramEditCall[];
   sendChatActionCalls: TelegramChatActionCall[];
+  /** Methods called through the generic Bot API route; each succeeds with `true`. */
+  botApiCalls: { method: string; body: Record<string, unknown> }[];
   getFileCalls: TelegramGetFileCall[];
   downloadFileCalls: TelegramDownloadFileCall[];
   setWebhookCalls: Parameters<TelegramAdminApi["setWebhook"]>[0][];
@@ -1092,6 +1094,7 @@ const createFakeTelegramApi = (input: { files?: FakeTelegramFile[] } = {}): Fake
   const sendMessageCalls: TelegramSendCall[] = [];
   const editMessageTextCalls: TelegramEditCall[] = [];
   const sendChatActionCalls: TelegramChatActionCall[] = [];
+  const botApiCalls: FakeTelegramApi["botApiCalls"] = [];
   const getFileCalls: TelegramGetFileCall[] = [];
   const downloadFileCalls: TelegramDownloadFileCall[] = [];
   const setWebhookCalls: Parameters<TelegramAdminApi["setWebhook"]>[0][] = [];
@@ -1125,6 +1128,7 @@ const createFakeTelegramApi = (input: { files?: FakeTelegramFile[] } = {}): Fake
     sendMessageCalls,
     editMessageTextCalls,
     sendChatActionCalls,
+    botApiCalls,
     getFileCalls,
     downloadFileCalls,
     setWebhookCalls,
@@ -1147,7 +1151,11 @@ const createFakeTelegramApi = (input: { files?: FakeTelegramFile[] } = {}): Fake
       }),
     },
     api: {
-      call: async () => ({ ok: false, description: "Unsupported fake Telegram API call" }),
+      // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- TelegramApi lets callers choose the result type.
+      call: async <T>(method: string, body: Record<string, unknown>) => {
+        botApiCalls.push({ method, body });
+        return { ok: true, result: true as T };
+      },
       sendMessage: async (payload) => {
         const body = normalizePayload(payload);
         sendMessageCalls.push({ method: "sendMessage", body });
