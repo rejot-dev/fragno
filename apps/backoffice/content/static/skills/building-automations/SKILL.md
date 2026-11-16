@@ -83,7 +83,9 @@ reclassifies the event, or forwards it to another scope.
 
    Save workflow implementations in `/workspace/automations/` with a `.workflow.js` suffix. A saved
    workflow is a module: it imports saved modules, such as integration clients, with static `import`
-   statements, and `js.check` checks it as the runner loads it.
+   statements, and `js.check` checks it as the runner loads it. When changing a saved workflow or
+   its imports, read **Changing a saved workflow** in `/static/skills/workflows/SKILL.md` before
+   testing or switching its routes.
 
    Record what a workflow learns as values: its step results, the events it emits, and the values it
    stores hold numbers as numbers, times as milliseconds since the epoch, and statuses as codes,
@@ -124,12 +126,13 @@ reclassifies the event, or forwards it to another scope.
    and route disablement still apply. Use an explicit canonical grant array only when the route must
    narrow the user's authority.
 
-   `organization-automation` has no user principal to inherit from. Give it the explicit canonical
-   permissions used by its runtime tools; actions on Telegram and Resend need only
-   `integrations.execute`. Creating or updating an explicit grant array requires the configuring
-   execution to hold every requested grant. **Complete when** the authority mode names the intended
-   principal and its grant policy is either inherited user authority or the smallest explicit
-   automation grant set.
+   `organization-automation` acts with the route's grants in the route's own scope. For work in
+   another scope, forward an event to a route there that establishes its own authority; share files
+   explicitly when needed. Give the automation the explicit canonical permissions used by its
+   runtime tools; actions on Telegram and Resend need only `integrations.execute`. Creating or
+   updating an explicit grant array requires the configuring execution to hold every requested
+   grant. **Complete when** every protected operation has an identified target scope and authority
+   valid in that scope, with either inherited user permissions or the smallest explicit grant set.
 
    Start a run per occurrence on a schedule, with an explicit IANA time zone:
 

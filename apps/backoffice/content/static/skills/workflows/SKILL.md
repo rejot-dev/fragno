@@ -39,9 +39,9 @@ Use `defineWorkflow` for work that must survive retries, time, or an external co
     ```
 
     Put side effects, provider calls, and expensive work inside `step.do`. Keep pure deterministic
-    calculations outside steps. An instance pins the saved modules it imports when it is created.
-    Use stable, descriptive step names because history and retries address those names. Use
-    `step.sleep` or `step.sleepUntil` for time and `step.waitForEvent` for external continuation.
+    calculations outside steps. Use stable, descriptive step names because history and retries
+    address those names. Use `step.sleep` or `step.sleepUntil` for time and `step.waitForEvent` for
+    external continuation.
 
     **Complete when** every non-deterministic operation has a durable step and every continuation
     has an exact event type.
@@ -99,6 +99,20 @@ An agent has one ongoing conversation and runs one turn at a time; a prompt to a
 for the current turn. The turn runs with the workflow's current permissions, narrowed by the agent's
 definition. Keep unrelated external effects in separate `step.do` calls with their own stable
 idempotency keys.
+
+## Changing a saved workflow
+
+An instance snapshots its workflow and imported modules at creation, along with its original input.
+Retrying or restarting it reuses that snapshot, including a route's
+`existingRun: "restart_finished"`.
+
+After editing a workflow or its imports, create a fresh instance ID to execute the revised code.
+Update every route or stored reference that targets the replaced instance, and terminate the old run
+when it should no longer act.
+
+**Complete when** a fresh instance has executed the revised behavior and every affected trigger
+targets the intended instance. Verify the run's results, rather than the current file at its source
+path.
 
 ## Operating an existing workflow
 

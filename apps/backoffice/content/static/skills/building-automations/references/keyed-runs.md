@@ -17,6 +17,9 @@ such as triaging an incident in a sandbox or onboarding a customer.
    - `"restart_finished"`: a later event starts a complete, errored, or terminated run again,
      replacing its steps and events. A run still going stays.
 
+   When restarting after a workflow or import edit, read **Changing a saved workflow** in
+   `/static/skills/workflows/SKILL.md` before choosing the instance ID.
+
    **Complete when** the template renders one ID per thing and `existingRun` says whether the work
    starts again.
 
