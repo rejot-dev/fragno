@@ -84,7 +84,7 @@ const packagesInstallTool = defineBackofficeRuntimeTool({
           },
         ],
         examples: [
-          "packages.install --listing-id 'system#telegram-test-command' --version 2.0.0 --installation-root /workspace/telegram --permission integrations.execute --permission packages.read --format json",
+          "packages.install --listing-id 'system#telegram-test-command' --version 2.1.0 --installation-root /workspace/telegram --permission integrations.execute --permission packages.read --format json",
         ],
       },
       parse: defineCliArgsParser<z.input<typeof packagesInstallInputSchema>>("packages.install", {

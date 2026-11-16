@@ -72,9 +72,11 @@ Read `/static/skills/building-automations/SKILL.md` and follow it, with these ch
 
 - **Authority**: `organization-automation` with explicit grants. Email events carry no user, and
   email senders never link to one, so `linked-user` and `delegated-user` actions never run.
-- **Grants**: `integrations.execute` and `connections.read` for the connection's actions, since each
-  reads the person's address first; `web.download` and `upload.modify` to save attachments;
-  `models.extract` to read them; plus whatever else the workflow calls.
+- **Grants**: `integrations.execute` on the address's connection,
+  `connections: [{ scope: { kind: "current" }, connectionId: "backoffice#email" }]`, and
+  `connections.read` for its actions, since each reads the person's address first; `web.download`
+  and `upload.modify` to save attachments; `models.extract` to read them; plus whatever else the
+  workflow calls.
 
 In the workflow, `event.payload.text` holds the plain-text body. Call `message.get` for the HTML,
 the headers, or the whole text when `textTruncated` is true. For an attachment, `attachment.get`

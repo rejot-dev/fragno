@@ -59,7 +59,15 @@ definitions, and agents Backoffice keeps in sync for each installation:
         "kind": "start_workflow",
         "authority": {
           "kind": "organization-automation",
-          "grants": [{ "namespace": "integrations", "permission": "execute" }]
+          "grants": [
+            {
+              "namespace": "integrations",
+              "permission": "execute",
+              "connections": [
+                { "scope": { "kind": "current" }, "connectionId": "backoffice#email" }
+              ]
+            }
+          ]
         },
         "workflowScriptPath": "automations/daily-report.workflow.js",
         "instanceIdTemplate": "daily-report-${event.id}"
@@ -93,7 +101,8 @@ definitions, and agents Backoffice keeps in sync for each installation:
 - Routes use the `router.create` input. A `start_workflow` path names a file in the package;
   installation points it at the installed copy.
 - A route's grants must be declared permissions. The installer approves exactly the declared
-  permissions, and must hold each of them.
+  permissions, and must hold each of them. A route grants `integrations.execute` on the connections
+  its workflow executes on; `current` is the scope the package is installed in.
 - Event definitions use the `events.catalog.create` input, and can't redefine built-in events.
 - Agents use the `pi.createAgent` input. An agent's turns run with the prompter's permissions,
   narrowed by its own, so `["*"]` needs no declared permission. A routine that prompts the agent

@@ -1,8 +1,9 @@
 import { z } from "zod";
 
 import type { BackofficeApiOperation } from "../api";
-import { BACKOFFICE_PERMISSION } from "./shared/permissions";
+import { integrationConnectionIdSchema } from "./integrations";
 import {
+  BACKOFFICE_PERMISSION,
   backofficePermissionRequirementSchema,
   type BackofficePermissionRequirement,
 } from "./shared/permissions";
@@ -127,10 +128,38 @@ export const automationActorsSchema: z.ZodType<AutomationActors> = z
   .meta({ id: "AutomationActors" });
 
 /**
+ * The scope of a connection a route grants, named as a codemode `context` handle names it:
+ * `current` is the route's own scope, and a project is one of the route's owner's.
+ */
+export type AutomationGrantedConnectionScope =
+  | { kind: "current" }
+  | { kind: "org"; orgId: string }
+  | { kind: "user"; userId: string }
+  | { kind: "project"; projectId: string };
+
+/** A connection whose actions a route's workflow or agent may execute. */
+export type AutomationGrantedConnection = {
+  scope: AutomationGrantedConnectionScope;
+  connectionId: string;
+};
+
+/** `integrations.execute` on named connections, the only way a route grants it. */
+export type AutomationConnectionsGrant = {
+  namespace: "integrations";
+  permission: "execute";
+  connections: readonly AutomationGrantedConnection[];
+};
+
+/** A permission a route grants in the scopes its action reaches, or execute on named connections. */
+export type AutomationRouteGrant =
+  | Exclude<BackofficePermissionRequirement, typeof BACKOFFICE_PERMISSION.integrations.execute>
+  | AutomationConnectionsGrant;
+
+/**
  * Explicit grants narrow the user's authority. `inherit` leaves the user's current permissions
  * unrestricted by the route delegate.
  */
-type AutomationUserRouteGrants = readonly BackofficePermissionRequirement[] | "inherit";
+type AutomationUserRouteGrants = readonly AutomationRouteGrant[] | "inherit";
 
 /**
  * Selects whose current permissions authorize protected work started by an automation route.
@@ -187,7 +216,7 @@ export type AutomationAuthorityMode =
        * limited to its current explicit grants.
        */
       kind: "organization-automation";
-      grants: readonly BackofficePermissionRequirement[];
+      grants: readonly AutomationRouteGrant[];
     };
 
 export const automationScheduleCadenceSchema = z.lazy(() =>
@@ -552,22 +581,63 @@ function backofficePermissionKey(grant: BackofficePermissionRequirement): string
   return `${grant.namespace}.${grant.permission}`;
 }
 
-const automationRouteGrantsSchema = z.lazy(() =>
-  z.array(backofficePermissionRequirementSchema).superRefine((grants, context) => {
-    const encountered = new Set<string>();
-    for (const [index, grant] of grants.entries()) {
-      const key = backofficePermissionKey(grant);
-      if (encountered.has(key)) {
-        context.addIssue({
-          code: "custom",
-          path: [index],
-          message: `Automation route grant '${key}' is duplicated.`,
-        });
-      }
-      encountered.add(key);
-    }
-  }),
-) satisfies z.ZodType<readonly BackofficePermissionRequirement[]>;
+const automationGrantedConnectionSchema = z
+  .lazy(() =>
+    z.strictObject({
+      scope: z.discriminatedUnion("kind", [
+        z.strictObject({ kind: z.literal("current") }),
+        z.strictObject({ kind: z.literal("org"), orgId: z.string().trim().min(1) }),
+        z.strictObject({ kind: z.literal("user"), userId: z.string().trim().min(1) }),
+        z.strictObject({ kind: z.literal("project"), projectId: z.string().trim().min(1) }),
+      ]),
+      connectionId: integrationConnectionIdSchema,
+    }),
+  )
+  .meta({ id: "AutomationGrantedConnection" }) satisfies z.ZodType<AutomationGrantedConnection>;
+
+const automationConnectionsGrantSchema = z
+  .lazy(() =>
+    z.strictObject({
+      namespace: z.literal("integrations"),
+      permission: z.literal("execute"),
+      connections: z
+        .array(automationGrantedConnectionSchema)
+        .min(1, "An integrations.execute grant names at least one connection.")
+        .describe(
+          "The connections the route may execute actions on, the only way a route grants integrations.execute. `current` is the route's own scope; calls to other connections are denied.",
+        ),
+    }),
+  )
+  .meta({ id: "AutomationConnectionsGrant" }) satisfies z.ZodType<AutomationConnectionsGrant>;
+
+const automationRouteGrantsSchema = z.lazy(
+  () =>
+    z
+      .array(z.union([automationConnectionsGrantSchema, backofficePermissionRequirementSchema]))
+      .superRefine((grants, context) => {
+        const encountered = new Set<string>();
+        for (const [index, grant] of grants.entries()) {
+          const key = backofficePermissionKey(grant);
+          if (encountered.has(key)) {
+            context.addIssue({
+              code: "custom",
+              path: [index],
+              message: `Automation route grant '${key}' is duplicated.`,
+            });
+          }
+          encountered.add(key);
+          if (key === "integrations.execute" && !("connections" in grant)) {
+            context.addIssue({
+              code: "custom",
+              path: [index],
+              message:
+                "Routes grant integrations.execute on named connections: add connections, such as [{ scope: { kind: 'current' }, connectionId: 'api#slack' }].",
+            });
+          }
+        }
+      }),
+  // The refinement rejects integrations.execute without connections.
+) as unknown as z.ZodType<readonly AutomationRouteGrant[]>;
 
 const automationAuthorityModeSchema = z
   .lazy(() =>

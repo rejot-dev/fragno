@@ -1,3 +1,4 @@
+import type { AutomationRouteGrant } from "@fragno-dev/backoffice-api/v0/automation";
 import type {
   MarketplaceListingMetadata,
   MarketplacePackageDeclaration,
@@ -176,23 +177,35 @@ function bookkeeperDeclaration(eventSource: string): AgentPackageDeclaration {
         action: {
           kind: "notify_agent",
           agentName: BOOKKEEPER_AGENT_NAME,
-          authority: { kind: "organization-automation", grants: BOOKKEEPER_PERMISSIONS },
+          authority: { kind: "organization-automation", grants: BOOKKEEPER_GRANTS },
         },
       },
     ],
   };
 }
 
-/** What the bookkeeping agent's package's route acts with, so what installing it approves. */
-const BOOKKEEPER_PERMISSIONS: BackofficePermissionRequirement[] = [
+/**
+ * What the bookkeeping agent's package's route acts with; of connections, it executes Bookkeeping's
+ * actions only.
+ */
+const BOOKKEEPER_GRANTS: AutomationRouteGrant[] = [
   BACKOFFICE_PERMISSION.pi.read,
   BACKOFFICE_PERMISSION.pi.modify,
   BACKOFFICE_PERMISSION.events.read,
   BACKOFFICE_PERMISSION.upload.read,
   BACKOFFICE_PERMISSION.models.extract,
   BACKOFFICE_PERMISSION.integrations.read,
-  BACKOFFICE_PERMISSION.integrations.execute,
+  {
+    namespace: "integrations",
+    permission: "execute",
+    connections: [{ scope: { kind: "current" }, connectionId: BOOKKEEPING_CONNECTION_ID }],
+  },
 ];
+
+/** What installing the bookkeeping agent's package approves: the permissions its route is granted. */
+const BOOKKEEPER_PERMISSIONS: BackofficePermissionRequirement[] = BOOKKEEPER_GRANTS.map((grant) =>
+  "connections" in grant ? BACKOFFICE_PERMISSION.integrations.execute : grant,
+);
 
 /**
  * How the agent links what it names to its page, by the codes it reads from the books, which pages
@@ -262,7 +275,7 @@ export type AgentPackageName = "bookkeeper" | "books";
 export const AGENT_PACKAGES: Record<AgentPackageName, AgentPackage> = {
   bookkeeper: {
     slug: "bookkeeper-agent",
-    version: "1.6.2",
+    version: "1.6.3",
     metadata: {
       name: "Bookkeeping agent",
       summary:

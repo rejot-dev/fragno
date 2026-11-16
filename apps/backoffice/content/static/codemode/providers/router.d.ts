@@ -242,11 +242,11 @@ type AutomationNotifyAppAction = {
 type AutomationAuthorityMode =
   | {
       kind: "delegated-user" | "linked-user";
-      grants: BackofficePermissionRequirement[] | "inherit";
+      grants: (AutomationConnectionsGrant | BackofficePermissionRequirement)[] | "inherit";
     }
   | {
       kind: "organization-automation";
-      grants: BackofficePermissionRequirement[];
+      grants: (AutomationConnectionsGrant | BackofficePermissionRequirement)[];
     };
 type AutomationWorkflowEventTarget =
   | AutomationWorkflowEventInstanceIdTarget
@@ -307,6 +307,12 @@ type AutomationEventPayloadProjection = {
   fields: {
     [key: string]: string;
   };
+};
+type AutomationConnectionsGrant = {
+  namespace: "integrations";
+  permission: "execute";
+  /** The connections the route may execute actions on, the only way a route grants integrations.execute. `current` is the route's own scope; calls to other connections are denied. */
+  connections: AutomationGrantedConnection[];
 };
 type BackofficePermissionRequirement =
   | {
@@ -424,6 +430,26 @@ type AutomationWorkflowEventStoredInstanceIdTarget = {
   kind: "stored_instance_id";
   keyTemplate: string;
 };
+type AutomationGrantedConnection = {
+  scope:
+    | {
+        kind: "current";
+      }
+    | {
+        kind: "org";
+        orgId: string;
+      }
+    | {
+        kind: "user";
+        userId: string;
+      }
+    | {
+        kind: "project";
+        projectId: string;
+      };
+  connectionId: IntegrationConnectionId;
+};
+type IntegrationConnectionId = string;
 type AutomationRouteTriggerInput =
   | {
       kind: "event";

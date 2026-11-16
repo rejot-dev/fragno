@@ -10,6 +10,7 @@ import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import {
   BackofficeForbiddenError,
   BackofficeKernel,
+  isBackofficeConnectionResource,
   isBackofficeForbiddenError,
   noopBackofficeKernelObserver,
   type BackofficeForbiddenErrorDetails,
@@ -157,7 +158,8 @@ export type BackofficeRuntimeTool<
   activity: BackofficeRuntimeToolActivity<z.output<TInputSchema>>;
   /** Every listed permission is required in the execution's scope. */
   requiredPermissions: readonly BackofficePermissionRequirement[];
-  getResource?(input: z.output<TInputSchema>): unknown;
+  /** What the call acts on, in the scope it runs in; the kernel checks permissions against it. */
+  getResource?(input: z.output<TInputSchema>, scope: BackofficeContextScope): unknown;
   inputSchema: TInputSchema;
   outputSchema: TOutputSchema;
   /** Secret-bearing output is returned to the caller but omitted from tool-call records. */
@@ -293,7 +295,22 @@ const authorizeBackofficeRuntimeTool = async (
   parsedInput: unknown,
   context: BackofficeToolContext,
 ) => {
-  const resource = tool.getResource?.(parsedInput) ?? { kind: "runtime-tool", toolId: tool.id };
+  const resource = tool.getResource?.(parsedInput, context.execution.scope) ?? {
+    kind: "runtime-tool",
+    toolId: tool.id,
+  };
+  // A route may grant integrations.execute on named connections only, which a call can only be
+  // held to when it names the one it executes on.
+  if (
+    tool.requiredPermissions.some(
+      ({ namespace, permission }) => namespace === "integrations" && permission === "execute",
+    ) &&
+    !isBackofficeConnectionResource(resource)
+  ) {
+    throw new Error(
+      `Runtime tool ${tool.namespace}.${tool.name} requires integrations.execute without naming its connection.`,
+    );
+  }
 
   // TODO: Express this ordered authorization chain without triggering async-await-in-loop.
   for (const operation of tool.requiredPermissions) {

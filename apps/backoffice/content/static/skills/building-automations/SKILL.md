@@ -126,13 +126,20 @@ reclassifies the event, or forwards it to another scope.
    and route disablement still apply. Use an explicit canonical grant array only when the route must
    narrow the user's authority.
 
-   `organization-automation` acts with the route's grants in the route's own scope. For work in
-   another scope, forward an event to a route there that establishes its own authority; share files
-   explicitly when needed. Give the automation the explicit canonical permissions used by its
-   runtime tools; actions on Telegram and Resend need only `integrations.execute`. Creating or
-   updating an explicit grant array requires the configuring execution to hold every requested
-   grant. **Complete when** every protected operation has an identified target scope and authority
-   valid in that scope, with either inherited user permissions or the smallest explicit grant set.
+   `organization-automation` acts with the route's grants in the route's own scope and, from an
+   organization, in its projects. For work in another scope, forward an event to a route there that
+   establishes its own authority; share files explicitly when needed. Give the automation the
+   explicit canonical permissions used by its runtime tools; actions on Telegram and Resend need
+   only `integrations.execute`.
+
+   A route grants `integrations.execute` on the connections its workflow executes on, each named
+   with its scope as a `context` handle reaches it: `{ kind: "current" }` for the route's own,
+   `{ kind: "org", orgId }`, `{ kind: "user", userId }`, or `{ kind: "project", projectId }`. A call
+   to any other connection is denied with the connections the route does grant. Creating or updating
+   an explicit grant array requires the configuring execution to hold every requested grant, and
+   execute on every granted connection. **Complete when** every protected operation has an
+   identified target scope and authority valid in that scope, with either inherited user permissions
+   or the smallest explicit grant set, which names every connection the workflow executes on.
 
    Start a run per occurrence on a schedule, with an explicit IANA time zone:
 
@@ -153,7 +160,13 @@ reclassifies the event, or forwards it to another scope.
          kind: "start_workflow",
          authority: {
            kind: "organization-automation",
-           grants: [{ namespace: "integrations", permission: "execute" }],
+           grants: [
+             {
+               namespace: "integrations",
+               permission: "execute",
+               connections: [{ scope: { kind: "current" }, connectionId: "backoffice#telegram" }],
+             },
+           ],
          },
          workflowScriptPath: "/workspace/automations/daily-digest.workflow.js",
          instanceIdTemplate: "daily-digest-${event.id}",

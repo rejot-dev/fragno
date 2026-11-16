@@ -80,10 +80,10 @@ describe("automation routing schemas", () => {
         [
           "type AutomationAuthorityMode = {",
           '  kind: "delegated-user" | "linked-user";',
-          '  grants: BackofficePermissionRequirement[] | "inherit";',
+          '  grants: (AutomationConnectionsGrant | BackofficePermissionRequirement)[] | "inherit";',
           "} | {",
           '  kind: "organization-automation";',
-          "  grants: BackofficePermissionRequirement[];",
+          "  grants: (AutomationConnectionsGrant | BackofficePermissionRequirement)[];",
           "};",
         ].join("\n"),
       );

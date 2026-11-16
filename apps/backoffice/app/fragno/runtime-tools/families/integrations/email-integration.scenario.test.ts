@@ -576,7 +576,10 @@ async function emailIdAt(ctx: BackofficeScenarioContext, address: string) {
 
 /** The grants the receiving-email skill gives a route that acts on email. */
 const receivingEmailSkillGrants = [
-  BACKOFFICE_PERMISSION.integrations.execute,
+  {
+    ...BACKOFFICE_PERMISSION.integrations.execute,
+    connections: [{ scope: { kind: "current" }, connectionId: "backoffice#email" }],
+  },
   BACKOFFICE_PERMISSION.connections.read,
   BACKOFFICE_PERMISSION.web.download,
   BACKOFFICE_PERMISSION.upload.modify,

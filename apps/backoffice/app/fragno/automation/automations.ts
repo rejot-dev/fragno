@@ -37,6 +37,7 @@ import {
 import { BACKOFFICE_REQUIRED_PERMISSION_HEADER } from "@/backoffice-runtime/required-permission-header";
 import { createAutomationFragment, type AutomationFragmentConfig } from "@/fragno/automation";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
+import { automationRouteGrantRequirements } from "@/fragno/automation/authority";
 import {
   CODEMODE_WORKFLOW,
   codemodeWorkflowParamsSchema,
@@ -747,10 +748,11 @@ export const createAutomationsRuntime = (
       const authority = action ? automationRouteActionAuthority(action) : null;
       if (authority && authority.grants !== "inherit") {
         requirements.push(
-          ...authority.grants.map((grant) => ({
-            operation: grant,
-            resource: { kind: "automation-route-grant", routeId, grant },
-          })),
+          ...automationRouteGrantRequirements({
+            routeId,
+            routeScope: config.ownerScope,
+            grants: authority.grants,
+          }),
         );
       }
 
@@ -797,10 +799,11 @@ export const createAutomationsRuntime = (
           try {
             await config.kernel.assertAuthorizedAll({
               execution,
-              requirements: grants.map((grant) => ({
-                operation: grant,
-                resource: { kind: "automation-route-grant", routeId, grant },
-              })),
+              requirements: automationRouteGrantRequirements({
+                routeId,
+                routeScope: config.ownerScope,
+                grants,
+              }),
             });
           } catch (cause) {
             if (isBackofficeForbiddenError(cause)) {

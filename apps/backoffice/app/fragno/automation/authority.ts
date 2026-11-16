@@ -1,4 +1,8 @@
-import type { AutomationAuthorityMode } from "@fragno-dev/backoffice-api/v0/automation";
+import type {
+  AutomationAuthorityMode,
+  AutomationGrantedConnectionScope,
+  AutomationRouteGrant,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import {
   automationActorsSchema,
   automationEntityRefsEqual,
@@ -10,16 +14,24 @@ import {
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import {
   allBackofficePermissionRequirements,
-  type BackofficePermissionRequirement,
+  BACKOFFICE_PERMISSION,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
   backofficeScopePathSegment,
+  backofficeScopeProjectOwner,
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import type { BackofficeAuthorityResolver } from "@/backoffice-runtime/authority-resolver";
+import type {
+  BackofficeAuthorityResolver,
+  BackofficeGrant,
+} from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
+import type {
+  BackofficeConnectionResource,
+  BackofficeKernelAuthorizationRequirement,
+} from "@/backoffice-runtime/kernel";
 
 export type AutomationRuntimeAuthority = Readonly<{
   mode: AutomationAuthorityMode;
@@ -42,7 +54,7 @@ export class AutomationAuthorityModeError extends Error {
 
 const AUTOMATION_ROUTE_ACTOR_ID_PREFIX = "automation-route:";
 const SCOPED_AUTOMATION_ROUTE_ACTOR_ID_PREFIX = "automation-route/";
-const noAutomationRouteGrants = [] as const satisfies readonly BackofficePermissionRequirement[];
+const noAutomationRouteGrants = [] as const satisfies readonly BackofficeGrant[];
 
 /**
  * The identity a route's action acts as: `automation-route/<scope segment>/<routeId>`. Its workflow
@@ -100,6 +112,76 @@ function automationRouteFromActor(
   };
 }
 
+/**
+ * The scope a route grants a connection in, as a codemode `context` handle in the route's scope
+ * reaches it; null for a project of a scope that owns none, such as System.
+ */
+function grantedConnectionScope(
+  routeScope: BackofficeContextScope,
+  scope: AutomationGrantedConnectionScope,
+): BackofficeContextScope | null {
+  switch (scope.kind) {
+    case "current":
+      return routeScope;
+    case "org":
+      return { kind: "org", orgId: scope.orgId, jurisdiction: null };
+    case "user":
+      return { kind: "user", userId: scope.userId, jurisdiction: null };
+    case "project": {
+      const owner = backofficeScopeProjectOwner(routeScope);
+      return owner && { kind: "project", owner, projectId: scope.projectId };
+    }
+    default:
+      throw new Error("Unsupported granted connection scope.", { cause: scope satisfies never });
+  }
+}
+
+/** A route's grants as the kernel checks them, its connections in the scopes they are in. */
+function routeGrants(
+  routeScope: BackofficeContextScope,
+  grants: readonly AutomationRouteGrant[],
+): BackofficeGrant[] {
+  return grants.map((grant) =>
+    "connections" in grant
+      ? {
+          namespace: grant.namespace,
+          permission: grant.permission,
+          connections: grant.connections.flatMap(({ scope, connectionId }) => {
+            const resolved = grantedConnectionScope(routeScope, scope);
+            return resolved ? [{ scope: resolved, connectionId }] : [];
+          }),
+        }
+      : grant,
+  );
+}
+
+/**
+ * What saving a route that grants `grants` asks of whoever saves it: every permission it grants,
+ * and execute on every connection it grants that on, so nobody grants a route more than they hold.
+ */
+export function automationRouteGrantRequirements({
+  routeId,
+  routeScope,
+  grants,
+}: {
+  routeId: string;
+  routeScope: BackofficeContextScope;
+  grants: readonly AutomationRouteGrant[];
+}): BackofficeKernelAuthorizationRequirement[] {
+  return routeGrants(routeScope, grants).flatMap(
+    (grant): BackofficeKernelAuthorizationRequirement[] =>
+      "connections" in grant
+        ? grant.connections.map((connection) => ({
+            operation: BACKOFFICE_PERMISSION.integrations.execute,
+            resource: {
+              kind: "integration-connection",
+              ...connection,
+            } satisfies BackofficeConnectionResource,
+          }))
+        : [{ operation: grant, resource: { kind: "automation-route-grant", routeId, grant } }],
+  );
+}
+
 /** Returns the owning route id only for stable automation-route actor identities. */
 export function automationRouteIdFromActor(
   actor: AutomationActor<"principal" | "delegate">,
@@ -115,16 +197,14 @@ async function resolveAutomationRouteActorGrants({
   actor: AutomationActor<"principal" | "delegate">;
   execution: BackofficeExecutionContext;
   lookupRoute: AutomationRouteAuthorityLookup;
-}): Promise<readonly BackofficePermissionRequirement[] | null> {
+}): Promise<readonly BackofficeGrant[] | null> {
   const actorRoute = automationRouteFromActor(actor);
   if (!actorRoute) {
     return null;
   }
 
-  const route = await lookupRoute({
-    scope: actorRoute.routeScope ?? execution.scope,
-    routeId: actorRoute.routeId,
-  });
+  const routeScope = actorRoute.routeScope ?? execution.scope;
+  const route = await lookupRoute({ scope: routeScope, routeId: actorRoute.routeId });
   const authority = route?.enabled ? automationRouteActionAuthority(route.action) : null;
   if (!authority) {
     return noAutomationRouteGrants;
@@ -140,7 +220,7 @@ async function resolveAutomationRouteActorGrants({
   if (authority.grants === "inherit") {
     return allBackofficePermissionRequirements;
   }
-  return authority.grants;
+  return routeGrants(routeScope, authority.grants);
 }
 
 /** Resolves automation principals and delegates from their owning route's current grant set. */

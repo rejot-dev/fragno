@@ -390,7 +390,12 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
         label: "Run connection action",
         target: (input) => `${input.actionId} on ${input.connectionId}`,
       },
-      getResource: (input) => ({ connectionId: input.connectionId, actionId: input.actionId }),
+      getResource: (input, scope) => ({
+        kind: "integration-connection",
+        scope,
+        connectionId: input.connectionId,
+        actionId: input.actionId,
+      }),
       execute: async (input, context: IntegrationsToolContext) =>
         await requireIntegrationsRuntime(context).execute(input),
       adapters: {

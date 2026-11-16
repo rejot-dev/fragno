@@ -300,7 +300,8 @@ missing installation, an unlinked account, or changed actions awaiting approval,
 
 Discovery, listing, inspection, and action contracts require `integrations.read`; setup,
 reconfigure, disconnect, and verification require `integrations.manage`; execution requires
-`integrations.execute`. Each source's own store also checks `connections.read` for reading its
+`integrations.execute`, which a route grants on the connections it names (see the
+building-automations skill). Each source's own store also checks `connections.read` for reading its
 configuration and `connections.manage` for changing it. Report a permission failure as it stands, in
 the current scope and source.
 
