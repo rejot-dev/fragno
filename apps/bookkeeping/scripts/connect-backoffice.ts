@@ -1,7 +1,7 @@
 /// <reference types="node" />
 
 /**
- * Connects this Bookkeeping checkout to a Backoffice server through the Backoffice CLI: signs in,
+ * Connects this Bookkeeping checkout to a Backoffice server through the Leyway CLI: signs in,
  * creates or repairs Bookkeeping's OAuth client, registers the app as first-party with its actions,
  * publishes its agents' packages in its Marketplace, and writes the resulting credentials to
  * apps/bookkeeping/.dev.vars. Safe to rerun; every step converges.
@@ -37,7 +37,7 @@ process.on("uncaughtException", (error) => {
 const bookkeepingDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(bookkeepingDir, "../..");
 const devVarsPath = resolve(bookkeepingDir, ".dev.vars");
-const cliEntry = resolve(repositoryRoot, "apps/backoffice-cli/bin/run.js");
+const cliEntry = resolve(repositoryRoot, "apps/leyway-cli/bin/run.js");
 
 const OAUTH_SCOPES = ["openid", "profile", "email", "offline_access", "backoffice"];
 // Firms and clients are Backoffice organizations: Bookkeeping reads them and their members as the
@@ -107,7 +107,7 @@ function origin(value: string, flag: string) {
 function runCli(args: string[], output: "inherit" | "capture") {
   const result = spawnSync(process.execPath, [cliEntry, ...args], {
     cwd: repositoryRoot,
-    env: { ...process.env, BACKOFFICE_OPEN_BROWSER: "0" },
+    env: { ...process.env, LEYWAY_OPEN_BROWSER: "0" },
     encoding: "utf8",
     stdio: ["inherit", output === "inherit" ? "inherit" : "pipe", "inherit"],
   });
@@ -146,7 +146,7 @@ const localBackofficeUrl = `http://127.0.0.1:${backofficeDevServerPort(bookkeepi
 if (flags.help) {
   console.log(`Usage: pnpm --dir apps/bookkeeping backoffice:connect [options]
 
-Signs in to Backoffice with the Backoffice CLI (a global administrator is required), creates or
+Signs in to Backoffice with the Leyway CLI (a global administrator is required), creates or
 repairs Bookkeeping's OAuth client, registers the app as first-party with its actions, publishes its
 agents' packages in its Marketplace, creates the operator organization with the administrator as
 owner and installs Bookkeeping there, and updates apps/bookkeeping/.dev.vars. Rerunning converges on
@@ -207,21 +207,14 @@ const actions = {
 
 console.log(`Backoffice:  ${backofficeUrl}\nBookkeeping: ${bookkeepingUrl}\n`);
 
-console.log("1/6 Building the Backoffice CLI");
+console.log("1/6 Building the Leyway CLI");
 const build = spawnSync(
   "pnpm",
-  [
-    "exec",
-    "turbo",
-    "run",
-    "build",
-    "--filter=@rejot-dev/backoffice-cli",
-    "--output-logs=errors-only",
-  ],
+  ["exec", "turbo", "run", "build", "--filter=@rejot-dev/leyway-cli", "--output-logs=errors-only"],
   { cwd: repositoryRoot, stdio: "inherit" },
 );
 if (build.status !== 0) {
-  throw new Error("Building the Backoffice CLI failed.");
+  throw new Error("Building the Leyway CLI failed.");
 }
 
 console.log("\n2/6 Signing in to Backoffice");

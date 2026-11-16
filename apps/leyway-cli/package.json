@@ -1,5 +1,5 @@
 {
-  "name": "@rejot-dev/backoffice-cli",
+  "name": "@rejot-dev/leyway-cli",
   "version": "0.1.0",
   "private": true,
   "homepage": "https://leyway.com",
@@ -7,10 +7,10 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/rejot-dev/fragno.git",
-    "directory": "apps/backoffice-cli"
+    "directory": "apps/leyway-cli"
   },
   "bin": {
-    "backoffice": "./bin/run.js"
+    "leyway": "./bin/run.js"
   },
   "type": "module",
   "main": "./dist/cli.js",
@@ -23,7 +23,7 @@
     }
   },
   "scripts": {
-    "backoffice-cli": "tsx ./src/cli.ts",
+    "leyway-cli": "tsx ./src/cli.ts",
     "build": "tsdown",
     "types:check": "tsc --noEmit",
     "test": "vitest run",

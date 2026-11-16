@@ -520,31 +520,6 @@ importers:
         specifier: ^8.21.3
         version: 8.21.3
 
-  apps/backoffice-cli:
-    dependencies:
-      '@fragno-dev/db':
-        specifier: workspace:*
-        version: link:../../packages/fragno-db
-      '@rejot-dev/backoffice-local':
-        specifier: workspace:*
-        version: link:../../packages/backoffice-local
-    devDependencies:
-      '@fragno-private/typescript-config':
-        specifier: workspace:*
-        version: link:../../packages-private/typescript-config
-      '@fragno-private/vitest-config':
-        specifier: workspace:*
-        version: link:../../packages-private/vitest-config
-      '@types/node':
-        specifier: ^22.19.7
-        version: 22.19.20
-      '@vitest/coverage-istanbul':
-        specifier: 'catalog:'
-        version: 5.0.5(vitest@5.0.5)
-      vitest:
-        specifier: 'catalog:'
-        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.19.20)(@vitest/coverage-istanbul@5.0.5)(@vitest/ui@5.0.5)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.3.0))(vite@8.0.16(@types/node@22.19.20)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
-
   apps/backoffice-context-cli:
     dependencies:
       oxfmt:
@@ -1038,6 +1013,31 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: '@typescript/typescript6@6.0.2'
+
+  apps/leyway-cli:
+    dependencies:
+      '@fragno-dev/db':
+        specifier: workspace:*
+        version: link:../../packages/fragno-db
+      '@rejot-dev/backoffice-local':
+        specifier: workspace:*
+        version: link:../../packages/backoffice-local
+    devDependencies:
+      '@fragno-private/typescript-config':
+        specifier: workspace:*
+        version: link:../../packages-private/typescript-config
+      '@fragno-private/vitest-config':
+        specifier: workspace:*
+        version: link:../../packages-private/vitest-config
+      '@types/node':
+        specifier: ^22.19.7
+        version: 22.19.20
+      '@vitest/coverage-istanbul':
+        specifier: 'catalog:'
+        version: 5.0.5(vitest@5.0.5)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@22.19.20)(@vitest/coverage-istanbul@5.0.5)(@vitest/ui@5.0.5)(happy-dom@20.10.2)(jsdom@27.4.0(@noble/hashes@2.3.0))(vite@8.0.16(@types/node@22.19.20)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(tsx@4.22.4)(yaml@2.9.0))
 
   example-apps/astro-example:
     dependencies:

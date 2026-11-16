@@ -112,7 +112,7 @@ export type IssueBackofficeTokenResult = {
   organization: Pick<Organization, "id" | "slug"> | null;
 };
 
-export type BackofficeCliOAuthConfig = {
+export type LeywayCliOAuthConfig = {
   clientId: string;
   scope: string;
   deviceAuthorizationEndpoint: string;

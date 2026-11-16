@@ -427,7 +427,7 @@ describe("fragment HTTP authority scenarios", () => {
       const auth = ctx.runtime.objects.auth.singleton();
       const sessionCookie = ctx.vars.session;
       assert(typeof sessionCookie === "string");
-      const config = await auth.commands.getBackofficeCliOAuthConfig({ requestUrl: origin });
+      const config = await auth.commands.getLeywayCliOAuthConfig({ requestUrl: origin });
       async function authPost(pathname: string, body: URLSearchParams | { userCode: string }) {
         const response = await auth.http.fetch(
           new Request(`${origin}/api/auth${pathname}`, {

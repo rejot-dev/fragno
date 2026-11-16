@@ -587,7 +587,7 @@ test.each(["http://localhost:5173", "http://127.0.0.1:5173"])(
     await runConsentScenario(async (ctx) => {
       const cookie = String(ctx.vars.session);
       const auth = ctx.runtime.objects.auth.singleton();
-      const config = await auth.commands.getBackofficeCliOAuthConfig({ requestUrl: requestOrigin });
+      const config = await auth.commands.getLeywayCliOAuthConfig({ requestUrl: requestOrigin });
       const requested = await authRequest(
         ctx,
         "/device/code",
@@ -763,7 +763,7 @@ test("device consent is listed and revocation prevents refresh, pending redempti
   await runConsentScenario(async (ctx) => {
     const cookie = String(ctx.vars.session);
     const auth = ctx.runtime.objects.auth.singleton();
-    const config = await auth.commands.getBackofficeCliOAuthConfig({ requestUrl: origin });
+    const config = await auth.commands.getLeywayCliOAuthConfig({ requestUrl: origin });
     const requested = await authRequest(
       ctx,
       "/device/code",
@@ -775,7 +775,7 @@ test("device consent is listed and revocation prevents refresh, pending redempti
       .parse(await requested.json());
     const url = new URL(`/backoffice/device?user_code=${device.user_code}`, origin);
     const review = await deviceLoader(routeArgs(ctx, new Request(url, { headers: { cookie } })));
-    assert.equal(review.clientName, "Leyway Codemode");
+    assert.equal(review.clientName, "Leyway CLI");
     const approved = await deviceAction(
       routeArgs(
         ctx,
@@ -813,7 +813,7 @@ test("device consent is listed and revocation prevents refresh, pending redempti
     expect(consent).toHaveLength(1);
     expect(consent[0]).toMatchObject({
       clientId: config.clientId,
-      clientName: "Leyway Codemode",
+      clientName: "Leyway CLI",
     });
     const pending = z.object({ device_code: z.string(), user_code: z.string() }).parse(
       await (

@@ -182,7 +182,7 @@ async function runExecutionTokenScenario(check: (ctx: BackofficeScenarioContext)
 
 async function authorizeFirstPartyClient(ctx: BackofficeScenarioContext) {
   const auth = ctx.runtime.objects.auth.singleton().commands;
-  const config = await auth.getBackofficeCliOAuthConfig({ requestUrl: origin });
+  const config = await auth.getLeywayCliOAuthConfig({ requestUrl: origin });
   const token = await authorizeOAuthDevice(ctx, {
     clientId: config.clientId,
     scopes: config.scope,
@@ -301,7 +301,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
       assert.equal(tampered.status, 401);
       const config = await ctx.runtime.objects.auth
         .singleton()
-        .commands.getBackofficeCliOAuthConfig({ requestUrl: origin });
+        .commands.getLeywayCliOAuthConfig({ requestUrl: origin });
       const identityOnly = await authorizeOAuthDevice(ctx, {
         clientId: config.clientId,
         scopes: "openid offline_access",
@@ -327,7 +327,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
         users: [{ id: user.id, email: user.email, role: "admin", status: "active" }],
       });
       const created = await authRequest(ctx, "/oauth2/create-client", {
-        client_name: "Leyway Codemode",
+        client_name: "Leyway CLI",
         software_id: "fragno-backoffice-codemode",
         scope: "openid offline_access backoffice",
         token_endpoint_auth_method: "none",
@@ -397,7 +397,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
     await runExecutionTokenScenario(async (ctx) => {
       const freshOrigin = "https://fresh.backoffice.example";
       const auth = ctx.runtime.objects.auth.singleton();
-      const config = await auth.commands.getBackofficeCliOAuthConfig({ requestUrl: origin });
+      const config = await auth.commands.getLeywayCliOAuthConfig({ requestUrl: origin });
       const responses = await Promise.allSettled(
         Array.from({ length: 10 }, () =>
           auth.http.fetch(

@@ -102,7 +102,7 @@ import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import type { AuthAppProvisioningCommands } from "@/fragno/auth/app-provisioning";
 import type {
   AdministeredMember,
-  BackofficeCliOAuthConfig,
+  LeywayCliOAuthConfig,
   BackofficeMeData,
   Organization,
   OrganizationHookPayload,
@@ -450,7 +450,7 @@ export type AuthCommands = DurableHookCommands &
     issueAppActionToken(input: AppActionTokenInput): Promise<{ token: string }>;
     /** Signs a short-lived ticket that opens one agent's view socket with the execution named. */
     issuePiAgentWatchTicket(input: PiAgentWatchTicketInput): Promise<PiAgentWatchTicket>;
-    getBackofficeCliOAuthConfig(input: { requestUrl: string }): Promise<BackofficeCliOAuthConfig>;
+    getLeywayCliOAuthConfig(input: { requestUrl: string }): Promise<LeywayCliOAuthConfig>;
     /** Verifies an installed app's client-credentials token and returns its registered app. */
     authenticateInstalledAppClient(input: {
       requestUrl: string;

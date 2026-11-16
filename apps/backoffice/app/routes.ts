@@ -311,7 +311,7 @@ export default [
   ...prefix("api", [
     route("admin/grant", "routes/api/admin-grant.ts"),
     route("auth/*", "routes/api/auth.ts"),
-    route("backoffice/cli-config", "routes/api/backoffice-cli-config.ts"),
+    route("backoffice/cli-config", "routes/api/leyway-cli-config.ts"),
     route("backoffice/execution-token", "routes/api/backoffice-execution-token.ts"),
     route("backoffice/me", "routes/api/backoffice-me.ts"),
     route("backoffice/app-installations/claim", "routes/api/backoffice-app-installation-claim.ts"),

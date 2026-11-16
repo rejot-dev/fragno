@@ -33,7 +33,7 @@ import type {
   VerifyUserEmailInput,
   VerifyUserEmailResult,
   BackofficeMeData,
-  BackofficeCliOAuthConfig,
+  LeywayCliOAuthConfig,
   UserOrganizationAuthorityInput,
 } from "@/fragno/auth/contracts";
 import type {
@@ -157,10 +157,8 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthCommands {
     return await this.#object.issuePiAgentWatchTicket(input);
   }
 
-  async getBackofficeCliOAuthConfig(input: {
-    requestUrl: string;
-  }): Promise<BackofficeCliOAuthConfig> {
-    return await this.#object.getBackofficeCliOAuthConfig(input);
+  async getLeywayCliOAuthConfig(input: { requestUrl: string }): Promise<LeywayCliOAuthConfig> {
+    return await this.#object.getLeywayCliOAuthConfig(input);
   }
 
   async exchangeBackofficeExecutionToken(

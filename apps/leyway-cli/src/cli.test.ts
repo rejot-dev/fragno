@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const packageDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const executable = resolve(packageDirectory, "bin/run.js");
 
-describe("backoffice CLI", () => {
+describe("Leyway CLI", () => {
   it("prints approachable help", () => {
     const output = execFileSync(process.execPath, [executable, "--help"], {
       cwd: packageDirectory,
@@ -15,9 +15,9 @@ describe("backoffice CLI", () => {
     });
 
     expect(output).toContain("Usage:");
-    expect(output).toContain("backoffice login");
-    expect(output).toContain("backoffice scopes");
-    expect(output).toContain("backoffice listen org:acme");
+    expect(output).toContain("leyway login");
+    expect(output).toContain("leyway scopes");
+    expect(output).toContain("leyway listen org:acme");
     expect(output).toContain("org:<organization-slug>");
     expect(output).toContain("never the internal organization ID");
     expect(output).toContain("--after-versionstamp");

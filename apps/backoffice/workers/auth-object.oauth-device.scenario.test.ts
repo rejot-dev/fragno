@@ -73,7 +73,7 @@ for (const origin of ["http://localhost:5173", "http://127.0.0.1:5173"]) {
             "approved local device token exchanges without weakening audience verification",
             async ({ runtime, vars }) => {
               const auth = runtime.objects.auth.singleton();
-              const config = await auth.commands.getBackofficeCliOAuthConfig({
+              const config = await auth.commands.getLeywayCliOAuthConfig({
                 requestUrl: `${origin}/api/backoffice/cli-config`,
               });
               assert.equal(new URL(config.tokenEndpoint).origin, origin);

@@ -75,7 +75,7 @@ import {
   administersMembers,
   type AuthHookContext,
   type AuthUser,
-  type BackofficeCliOAuthConfig,
+  type LeywayCliOAuthConfig,
   type BackofficeMeData,
   joinOrganizationRoles,
   type Organization,
@@ -169,7 +169,7 @@ import {
 } from "./auth/better-auth-migrations";
 import {
   createBackofficeAdminOAuthClient,
-  getBackofficeCliOAuthConfig,
+  getLeywayCliOAuthConfig,
   initializeBackofficeCodemodeOAuthClient,
   getBackofficeOAuthClientFacts,
   initializeBackofficeOAuthResource,
@@ -1633,12 +1633,10 @@ export class AuthObject implements AuthCommands {
     return { ticket: issued.token, expiresAt: issued.expiresAt.toISOString() };
   }
 
-  async getBackofficeCliOAuthConfig(input: {
-    requestUrl: string;
-  }): Promise<BackofficeCliOAuthConfig> {
+  async getLeywayCliOAuthConfig(input: { requestUrl: string }): Promise<LeywayCliOAuthConfig> {
     await this.#ready;
     const baseURL = new URL(input.requestUrl).origin;
-    return await getBackofficeCliOAuthConfig(this.#getAuth(baseURL), input);
+    return await getLeywayCliOAuthConfig(this.#getAuth(baseURL), input);
   }
 
   #resolveOAuthClientPolicy(auth: BetterAuthInstance, requestUrl: string) {

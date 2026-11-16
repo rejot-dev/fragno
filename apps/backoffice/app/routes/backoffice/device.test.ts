@@ -1,9 +1,9 @@
 import { assert, beforeEach, describe, expect, test, vi } from "vitest";
 
-const { callBetterAuth, getAuthDurableObject, getBackofficeCliOAuthConfig } = vi.hoisted(() => ({
+const { callBetterAuth, getAuthDurableObject, getLeywayCliOAuthConfig } = vi.hoisted(() => ({
   callBetterAuth: vi.fn(),
   getAuthDurableObject: vi.fn(),
-  getBackofficeCliOAuthConfig: vi.fn(),
+  getLeywayCliOAuthConfig: vi.fn(),
 }));
 
 vi.mock("@/fragno/auth/auth-server", () => ({ callBetterAuth }));
@@ -44,9 +44,9 @@ function deviceAuthorizationResponse() {
 beforeEach(() => {
   callBetterAuth.mockReset();
   getAuthDurableObject.mockReset();
-  getBackofficeCliOAuthConfig.mockReset();
-  getBackofficeCliOAuthConfig.mockResolvedValue(config);
-  getAuthDurableObject.mockReturnValue({ commands: { getBackofficeCliOAuthConfig } });
+  getLeywayCliOAuthConfig.mockReset();
+  getLeywayCliOAuthConfig.mockResolvedValue(config);
+  getAuthDurableObject.mockReturnValue({ commands: { getLeywayCliOAuthConfig } });
 });
 
 describe("Backoffice device approval route", () => {
@@ -82,7 +82,7 @@ describe("Backoffice device approval route", () => {
       thrown.headers.get("location"),
       "/backoffice/login?returnTo=%2Fbackoffice%2Fdevice%3Fuser_code%3DABCD-EFGH",
     );
-    expect(getBackofficeCliOAuthConfig).not.toHaveBeenCalled();
+    expect(getLeywayCliOAuthConfig).not.toHaveBeenCalled();
   });
 
   test("loads the first-party device authorization for review", async () => {
@@ -93,7 +93,7 @@ describe("Backoffice device approval route", () => {
     const result = await loader(routeArgs(new Request(deviceUrl)));
 
     expect(result).toEqual({
-      clientName: "Leyway Codemode",
+      clientName: "Leyway CLI",
       userCode: "ABCD-EFGH",
       scopes: ["openid", "offline_access", "backoffice"],
     });
