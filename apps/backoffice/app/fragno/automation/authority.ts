@@ -28,10 +28,13 @@ import type {
   BackofficeGrant,
 } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import type {
-  BackofficeConnectionResource,
-  BackofficeKernelAuthorizationRequirement,
+import {
+  BackofficeForbiddenError,
+  type BackofficeConnectionResource,
+  type BackofficeKernelAuthorizationRequirement,
 } from "@/backoffice-runtime/kernel";
+
+import { scopeIdentity } from "./forward-accepts";
 
 export type AutomationRuntimeAuthority = Readonly<{
   mode: AutomationAuthorityMode;
@@ -156,29 +159,60 @@ function routeGrants(
 }
 
 /**
- * What saving a route that grants `grants` asks of whoever saves it: every permission it grants,
- * and execute on every connection it grants that on, so nobody grants a route more than they hold.
+ * Whether a route's own scope reaches `scope` without a user: the scope itself, or a project it
+ * owns. A person's role in such a project is their role in the route's scope.
+ */
+function routeScopeReaches(routeScope: BackofficeContextScope, scope: BackofficeContextScope) {
+  return (
+    scopeIdentity(scope) === scopeIdentity(routeScope) ||
+    (scope.kind === "project" && scopeIdentity(scope.owner) === scopeIdentity(routeScope))
+  );
+}
+
+/**
+ * What saving a route asks of whoever saves it: every permission it grants, and execute on every
+ * connection it grants. Whoever saves a route, and every delegate they act through, must hold what
+ * it grants: a user-backed route can act as someone the saver acts for, such as a personal
+ * schedule acting as the scope's owner. Its user's own permissions in a connection's scope are
+ * resolved on every call, so saving asks nothing there. An organization automation acts only in
+ * its route's scope and the projects that scope owns, so granting it a connection elsewhere is
+ * refused.
  */
 export function automationRouteGrantRequirements({
   routeId,
   routeScope,
+  authorityKind,
   grants,
 }: {
   routeId: string;
   routeScope: BackofficeContextScope;
+  authorityKind: AutomationAuthorityMode["kind"];
   grants: readonly AutomationRouteGrant[];
 }): BackofficeKernelAuthorizationRequirement[] {
   return routeGrants(routeScope, grants).flatMap(
-    (grant): BackofficeKernelAuthorizationRequirement[] =>
-      "connections" in grant
-        ? grant.connections.map((connection) => ({
-            operation: BACKOFFICE_PERMISSION.integrations.execute,
-            resource: {
-              kind: "integration-connection",
-              ...connection,
-            } satisfies BackofficeConnectionResource,
-          }))
-        : [{ operation: grant, resource: { kind: "automation-route-grant", routeId, grant } }],
+    (grant): BackofficeKernelAuthorizationRequirement[] => {
+      if (!("connections" in grant)) {
+        return [{ operation: grant, resource: { kind: "automation-route-grant", routeId, grant } }];
+      }
+      return grant.connections.map((connection) => {
+        if (
+          authorityKind === "organization-automation" &&
+          !routeScopeReaches(routeScope, connection.scope)
+        ) {
+          throw new BackofficeForbiddenError(
+            `An organization automation acts only in its route's scope and the projects it owns, so it cannot be granted ${connection.connectionId} in ${scopeIdentity(connection.scope)}.`,
+            "context-access-denied",
+          );
+        }
+        return {
+          operation: BACKOFFICE_PERMISSION.integrations.execute,
+          resource: {
+            kind: "integration-connection",
+            ...connection,
+          } satisfies BackofficeConnectionResource,
+        };
+      });
+    },
   );
 }
 

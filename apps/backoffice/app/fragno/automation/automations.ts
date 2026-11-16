@@ -700,8 +700,8 @@ export const createAutomationsRuntime = (
     { ifMatchesRoute, request, requestContext },
     { error },
   ) {
-    const authorizeAutomationRequirements = async (
-      requirements: readonly BackofficeKernelAuthorizationRequirement[],
+    const authorizeAutomation = async (
+      authorize: (execution: BackofficeExecutionContext) => Promise<void>,
     ) => {
       if (!requestContext) {
         return error(
@@ -714,7 +714,7 @@ export const createAutomationsRuntime = (
       }
 
       try {
-        await config.kernel.assertAuthorizedAll({ execution: requestContext, requirements });
+        await authorize(requestContext);
         return undefined;
       } catch (cause) {
         if (isBackofficeForbiddenError(cause)) {
@@ -726,6 +726,13 @@ export const createAutomationsRuntime = (
         throw cause;
       }
     };
+
+    const authorizeAutomationRequirements = async (
+      requirements: readonly BackofficeKernelAuthorizationRequirement[],
+    ) =>
+      await authorizeAutomation(async (execution) => {
+        await config.kernel.assertAuthorizedAll({ execution, requirements });
+      });
 
     const authorizeAutomationOperation = async (
       operation: BackofficePermissionRequirement,
@@ -739,24 +746,26 @@ export const createAutomationsRuntime = (
       routeId: string;
       action: AutomationRouteAction | undefined;
     }) => {
-      const requirements: BackofficeKernelAuthorizationRequirement[] = [
-        {
-          operation: BACKOFFICE_PERMISSION.router.modify,
-          resource: { kind: "automation-route", routeId },
-        },
-      ];
       const authority = action ? automationRouteActionAuthority(action) : null;
-      if (authority && authority.grants !== "inherit") {
-        requirements.push(
-          ...automationRouteGrantRequirements({
-            routeId,
-            routeScope: config.ownerScope,
-            grants: authority.grants,
-          }),
-        );
-      }
-
-      return await authorizeAutomationRequirements(requirements);
+      return await authorizeAutomation(async (execution) => {
+        await config.kernel.assertAuthorizedAll({
+          execution,
+          requirements: [
+            {
+              operation: BACKOFFICE_PERMISSION.router.modify,
+              resource: { kind: "automation-route", routeId },
+            },
+            ...(authority && authority.grants !== "inherit"
+              ? automationRouteGrantRequirements({
+                  routeId,
+                  routeScope: config.ownerScope,
+                  authorityKind: authority.kind,
+                  grants: authority.grants,
+                })
+              : []),
+          ],
+        });
+      });
     };
 
     const createRouteResponse = await ifMatchesRoute("POST", "/routes", async ({ input }) => {
@@ -791,8 +800,8 @@ export const createAutomationsRuntime = (
         const execution = requestContext;
         setAutomationRouteMutationActors(request, execution.actors);
         setAutomationRouteMutationActionAuthorizer(request, async ({ routeId, action }) => {
-          const grants = automationRouteActionAuthority(action)?.grants;
-          if (grants === undefined || grants === "inherit") {
+          const authority = automationRouteActionAuthority(action);
+          if (!authority || authority.grants === "inherit") {
             return;
           }
 
@@ -802,7 +811,8 @@ export const createAutomationsRuntime = (
               requirements: automationRouteGrantRequirements({
                 routeId,
                 routeScope: config.ownerScope,
-                grants,
+                authorityKind: authority.kind,
+                grants: authority.grants,
               }),
             });
           } catch (cause) {
