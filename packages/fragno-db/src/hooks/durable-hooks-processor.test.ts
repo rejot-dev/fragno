@@ -120,7 +120,7 @@ describe("createDurableHooksProcessor", () => {
         .execute();
     });
 
-    const wakeAt = await processor.getNextWakeAt();
+    const { nextWakeAt: wakeAt } = await processor.getNextWakeAt();
     expect(wakeAt).toBeInstanceOf(Date);
 
     const run = await processor.processDue();
@@ -221,7 +221,7 @@ describe("createDurableHooksProcessor", () => {
         .execute();
     });
 
-    const wakeAt = await processor.getNextWakeAt();
+    const { nextWakeAt: wakeAt } = await processor.getNextWakeAt();
     expect(wakeAt).toBeInstanceOf(Date);
     expect(wakeAt!.getTime()).toBeLessThanOrEqual(Date.now());
   });
@@ -319,7 +319,7 @@ describe("createDurableHooksProcessorGroupFromProcessors", () => {
     return {
       namespace: "test",
       processDue,
-      getNextWakeAt: vi.fn().mockResolvedValue(null),
+      getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true }),
       drain: vi.fn().mockResolvedValue(undefined),
     };
   }
@@ -409,11 +409,11 @@ describe("createDurableHooksProcessorGroupFromProcessors", () => {
 
     const processorA = makeProcessor({
       namespace: "a",
-      getNextWakeAt: vi.fn().mockResolvedValue(late),
+      getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: late, complete: true }),
     });
     const processorB = makeProcessor({
       namespace: "b",
-      getNextWakeAt: vi.fn().mockResolvedValue(early),
+      getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: early, complete: true }),
     });
     const processorC = makeProcessor({
       namespace: "c",
@@ -425,8 +425,8 @@ describe("createDurableHooksProcessorGroupFromProcessors", () => {
       { onError },
     );
 
-    const wakeAt = await group.getNextWakeAt();
-    expect(wakeAt).toEqual(early);
+    // The failed read leaves the earliest wake unknown.
+    await expect(group.getNextWakeAt()).resolves.toEqual({ nextWakeAt: early, complete: false });
     expect(onError).toHaveBeenCalledWith(error);
   });
 });

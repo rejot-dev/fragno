@@ -100,7 +100,8 @@ export function createDurableHooksDispatcher(
 
   async function poll(): Promise<void> {
     try {
-      const nextWakeAt = await options.processor.getNextWakeAt();
+      // Polling reads again on its next tick, so an incomplete read needs no handling here.
+      const { nextWakeAt } = await options.processor.getNextWakeAt();
       if (!nextWakeAt) {
         return;
       }

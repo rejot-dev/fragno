@@ -2,7 +2,10 @@ import type { DatabaseAdapter } from "./adapters/adapters";
 import type { ImplicitDatabaseDependencies } from "./db-fragment-definition-builder";
 import type { InternalFragmentInstance } from "./fragments/internal-fragment";
 import { getDurableHooksToken } from "./hooks/durable-hooks-fragment";
-import { getDurableHooksRuntimeByToken } from "./hooks/durable-hooks-runtime";
+import {
+  getDurableHooksRuntimeByToken,
+  hookProcessingAdapterOf,
+} from "./hooks/durable-hooks-runtime";
 import type { DurableHookPropagationContext, HookStatus } from "./hooks/hooks";
 import { getInternalFragment } from "./internal/adapter-registry";
 import type { AnyFragnoInstantiatedDatabaseFragment } from "./mod";
@@ -49,7 +52,7 @@ export type DurableHooksAccessor = {
 export function getFragmentDurableHooks(
   deps: Pick<ImplicitDatabaseDependencies, "databaseAdapter" | "namespace" | "schema">,
 ): { namespace: string; hookService: DurableHooksService } {
-  const hookAdapter = deps.databaseAdapter.getHookProcessingAdapter?.() ?? deps.databaseAdapter;
+  const hookAdapter = hookProcessingAdapterOf(deps.databaseAdapter);
   return {
     // The namespace the fragment's hooks are queued under.
     namespace: deps.namespace ?? deps.schema.name,
@@ -79,7 +82,7 @@ export function getDurableHooksService(
     throw new Error("Durable hooks namespace is missing.");
   }
 
-  const hookAdapter = deps.databaseAdapter.getHookProcessingAdapter?.() ?? deps.databaseAdapter;
+  const hookAdapter = hookProcessingAdapterOf(deps.databaseAdapter);
   const internalFragment = runtime?.config.internalFragment ?? getInternalFragment(hookAdapter);
 
   return {

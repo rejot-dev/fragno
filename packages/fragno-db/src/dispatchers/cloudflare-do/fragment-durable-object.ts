@@ -149,7 +149,7 @@ const createHostedFragment = <TFragment extends AnyFragnoInstantiatedDatabaseFra
   const methodCache = new Map<PropertyKey, unknown>();
 
   const notifyHooks = async () => {
-    await dispatcher?.notify?.({ source: "request" });
+    await dispatcher?.notify?.({ source: "request", dueAt: null });
   };
 
   return new Proxy(fragment, {

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi, assert } from "vitest";
 
 import { DurableHooksLogger } from "../../hooks/durable-hooks-logger";
+import {
+  createDurableHooksProcessorGroupFromProcessors,
+  type DurableHooksProcessor,
+} from "../../hooks/durable-hooks-processor";
 import { createDurableHooksDispatcherDurableObject } from "./dispatcher";
 
 const completedRun = (count = 0) => ({
@@ -16,7 +20,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
 
   it("should schedule an initial alarm during explicit initialization", async () => {
     const processDue = vi.fn().mockResolvedValue(completedRun());
-    const getNextWakeAt = vi.fn().mockResolvedValue(new Date());
+    const getNextWakeAt = vi.fn().mockResolvedValue({ nextWakeAt: new Date(), complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
 
@@ -42,7 +46,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue: vi.fn().mockResolvedValue(completedRun()),
-        getNextWakeAt: vi.fn().mockResolvedValue(new Date()),
+        getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: new Date(), complete: true }),
         drain: vi.fn().mockResolvedValue(undefined),
         namespace: "test",
       }),
@@ -63,7 +67,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue: vi.fn().mockResolvedValue(completedRun()),
-        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true }),
         drain,
         namespace: "test",
       }),
@@ -84,7 +88,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
 
   it("should leave the alarm unchanged when no pending hooks exist", async () => {
     const processDue = vi.fn().mockResolvedValue(completedRun());
-    const getNextWakeAt = vi.fn().mockResolvedValue(null);
+    const getNextWakeAt = vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
 
@@ -110,7 +114,9 @@ describe("createDurableHooksDispatcherDurableObject", () => {
 
   it("should resolve notify only after alarm scheduling completes", async () => {
     const processDue = vi.fn().mockResolvedValue(completedRun());
-    const getNextWakeAt = vi.fn().mockResolvedValue(new Date("2024-01-01T00:00:00Z"));
+    const getNextWakeAt = vi
+      .fn()
+      .mockResolvedValue({ nextWakeAt: new Date("2024-01-01T00:00:00Z"), complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
     const notifyAlarmScheduling = Promise.withResolvers<void>();
     const setAlarm = vi
@@ -131,7 +137,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     await handler.initialize?.();
     expect(setAlarm).toHaveBeenCalledTimes(1);
 
-    const notification = handler.notify?.({ source: "request" });
+    const notification = handler.notify?.({ source: "request", dueAt: null });
     assert(notification);
     let notificationCompleted = false;
     const notificationCompletion = notification.then(() => {
@@ -153,7 +159,9 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     vi.setSystemTime(now);
 
     const processDue = vi.fn().mockResolvedValue(completedRun());
-    const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() + 60000));
+    const getNextWakeAt = vi
+      .fn()
+      .mockResolvedValue({ nextWakeAt: new Date(now.getTime() + 60000), complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
     const getAlarm = vi.fn().mockResolvedValue(now.getTime() - 1);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
@@ -193,7 +201,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue: vi.fn().mockResolvedValue(completedRun()),
-        getNextWakeAt: async () => nextWakeAt,
+        getNextWakeAt: async () => ({ nextWakeAt, complete: true }),
         drain: vi.fn().mockResolvedValue(undefined),
         namespace: "test",
       }),
@@ -204,16 +212,208 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       {},
     );
 
-    await handler.notify?.({ source: "request" });
+    await handler.notify?.({ source: "request", dueAt: null });
 
     assert(alarmTimestamp === now.getTime());
     expect(onLostAlarm).toHaveBeenCalledExactlyOnceWith({ scheduledAt: new Date(lostAlarmAt) });
 
+    // Processing the hooks leaves none, which the next notification reads.
     nextWakeAt = null;
-    await handler.notify?.({ source: "request" });
+    await handler.drain?.();
+    await handler.notify?.({ source: "request", dueAt: null });
 
     expect(deleteAlarm).not.toHaveBeenCalled();
     assert(alarmTimestamp === now.getTime());
+  });
+
+  it("should answer notifications from the schedule it read until hooks are processed", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = new Date("2024-01-01T00:00:00Z").getTime();
+    vi.setSystemTime(now);
+    const getNextWakeAt = vi.fn(async () => ({
+      nextWakeAt: new Date(now + 60_000),
+      complete: true,
+    }));
+    let alarmTimestamp: number | null = null;
+    const setAlarm = vi.fn(async (timestamp: number | Date) => {
+      alarmTimestamp = timestamp instanceof Date ? timestamp.getTime() : timestamp;
+    });
+    const deleteAlarm = async () => {
+      alarmTimestamp = null;
+    };
+
+    const handlerFactory = createDurableHooksDispatcherDurableObject({
+      createProcessor: () => ({
+        processDue: vi.fn().mockResolvedValue(completedRun()),
+        getNextWakeAt,
+        drain: vi.fn().mockResolvedValue(undefined),
+        namespace: "test",
+      }),
+    });
+    const handler = handlerFactory(
+      { storage: { getAlarm: async () => alarmTimestamp, setAlarm, deleteAlarm } },
+      {},
+    );
+
+    await handler.initialize?.();
+    await handler.notify?.({ source: "request", dueAt: null });
+    expect(setAlarm).toHaveBeenCalledOnce();
+
+    await handler.notify?.({ source: "request", dueAt: new Date(now + 10_000) });
+    assert(alarmTimestamp === now + 10_000);
+
+    // Cloudflare dropped the alarm; the next request restores it from the schedule.
+    await deleteAlarm();
+    await handler.notify?.({ source: "request", dueAt: null });
+    assert(alarmTimestamp === now + 10_000);
+    expect(getNextWakeAt).toHaveBeenCalledOnce();
+
+    await handler.alarm?.();
+    expect(getNextWakeAt).toHaveBeenCalledTimes(2);
+  });
+
+  it("should read again after a fragment failed its read", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = new Date("2024-01-01T00:00:00Z").getTime();
+    vi.setSystemTime(now);
+    const pendingRead = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("read failed"))
+      .mockResolvedValue({ nextWakeAt: new Date(now + 60_000), complete: true });
+    const fragment = (
+      namespace: string,
+      getNextWakeAt: DurableHooksProcessor["getNextWakeAt"],
+    ) => ({
+      processDue: vi.fn().mockResolvedValue(completedRun()),
+      getNextWakeAt,
+      drain: vi.fn().mockResolvedValue(undefined),
+      namespace,
+    });
+    let alarmTimestamp: number | null = null;
+
+    const handlerFactory = createDurableHooksDispatcherDurableObject({
+      createProcessor: () =>
+        createDurableHooksProcessorGroupFromProcessors([
+          fragment("idle", async () => ({ nextWakeAt: null, complete: true })),
+          fragment("pending", pendingRead),
+        ]),
+    });
+    const handler = handlerFactory(
+      {
+        storage: {
+          getAlarm: async () => alarmTimestamp,
+          setAlarm: async (timestamp: number | Date) => {
+            alarmTimestamp = timestamp instanceof Date ? timestamp.getTime() : timestamp;
+          },
+          deleteAlarm: async () => {
+            alarmTimestamp = null;
+          },
+        },
+      },
+      {},
+    );
+
+    await handler.initialize?.();
+    assert(alarmTimestamp === null);
+
+    await handler.notify?.({ source: "request", dueAt: null });
+    assert(alarmTimestamp === now + 60_000);
+
+    // The complete read is the schedule now.
+    await handler.notify?.({ source: "request", dueAt: null });
+    expect(pendingRead).toHaveBeenCalledTimes(2);
+  });
+
+  it("should wake a hook announced during a refresh whose read a fragment failed", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const now = new Date("2024-01-01T00:00:00Z").getTime();
+    vi.setSystemTime(now);
+    const dueAt = new Date(now + 60_000);
+    const pendingRead = vi
+      .fn()
+      .mockResolvedValueOnce({ nextWakeAt: null, complete: true })
+      .mockRejectedValueOnce(new Error("read failed"))
+      .mockResolvedValue({ nextWakeAt: dueAt, complete: true });
+    const fragment = (
+      namespace: string,
+      getNextWakeAt: DurableHooksProcessor["getNextWakeAt"],
+    ) => ({
+      processDue: vi.fn().mockResolvedValue(completedRun()),
+      getNextWakeAt,
+      drain: vi.fn().mockResolvedValue(undefined),
+      namespace,
+    });
+    let alarmTimestamp: number | null = null;
+
+    const handlerFactory = createDurableHooksDispatcherDurableObject({
+      createProcessor: () =>
+        createDurableHooksProcessorGroupFromProcessors([
+          fragment("idle", async () => ({ nextWakeAt: null, complete: true })),
+          fragment("pending", pendingRead),
+        ]),
+    });
+    const handler = handlerFactory(
+      {
+        storage: {
+          getAlarm: async () => alarmTimestamp,
+          setAlarm: async (timestamp: number | Date) => {
+            alarmTimestamp = timestamp instanceof Date ? timestamp.getTime() : timestamp;
+          },
+          deleteAlarm: async () => {
+            alarmTimestamp = null;
+          },
+        },
+      },
+      {},
+    );
+    await handler.initialize?.();
+    assert(alarmTimestamp === null);
+
+    // The hook's own announcement waits for the refresh a request started, and reads again.
+    await Promise.all([
+      handler.notify?.({ source: "request", dueAt: null }),
+      handler.notify?.({ source: "request", dueAt }),
+    ]);
+    expect(pendingRead).toHaveBeenCalledTimes(2);
+    assert(alarmTimestamp === dueAt.getTime());
+
+    // The failed read left the schedule unknown, so the next request reads again.
+    await handler.notify?.({ source: "request", dueAt: null });
+    expect(pendingRead).toHaveBeenCalledTimes(3);
+  });
+
+  it("should not keep a schedule it read while hooks were processed", async () => {
+    const reads: PromiseWithResolvers<Date | null>[] = [];
+    const getNextWakeAt = vi.fn(async () => {
+      const read = Promise.withResolvers<Date | null>();
+      reads.push(read);
+      return { nextWakeAt: await read.promise, complete: true };
+    });
+
+    const handlerFactory = createDurableHooksDispatcherDurableObject({
+      createProcessor: () => ({
+        processDue: vi.fn().mockResolvedValue(completedRun()),
+        getNextWakeAt,
+        drain: vi.fn().mockResolvedValue(undefined),
+        namespace: "test",
+      }),
+    });
+    const handler = handlerFactory(
+      { storage: { getAlarm: async () => null, setAlarm: vi.fn(), deleteAlarm: vi.fn() } },
+      {},
+    );
+
+    const notification = handler.notify?.({ source: "request", dueAt: null });
+    await vi.waitFor(() => expect(reads).toHaveLength(1));
+    // The drain schedules a retry the read did not see.
+    await handler.drain?.();
+    reads[0].resolve(null);
+    await notification;
+
+    const nextNotification = handler.notify?.({ source: "request", dueAt: null });
+    await vi.waitFor(() => expect(reads).toHaveLength(2));
+    reads[1].resolve(null);
+    await nextNotification;
   });
 
   it("should keep an alarm held back by its running alarm handler", async () => {
@@ -239,7 +439,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue,
-        getNextWakeAt: async () => nextWakeAt,
+        getNextWakeAt: async () => ({ nextWakeAt, complete: true }),
         drain: vi.fn().mockResolvedValue(undefined),
         namespace: "test",
       }),
@@ -257,7 +457,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     // A request queues a hook while the alarm's hooks still run, long after the retry was due.
     vi.setSystemTime(start.getTime() + 10 * 60_000);
     nextWakeAt = new Date();
-    await handler.notify?.({ source: "request" });
+    await handler.notify?.({ source: "request", dueAt: null });
 
     expect(setAlarm).not.toHaveBeenCalled();
     expect(onLostAlarm).not.toHaveBeenCalled();
@@ -279,7 +479,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
         completion: firstCompletion.promise,
       })
       .mockResolvedValueOnce(completedRun(1));
-    const getNextWakeAt = vi.fn().mockResolvedValue(null);
+    const getNextWakeAt = vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
 
@@ -317,7 +517,10 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       claimedCount: 1,
       completion: completion.promise,
     });
-    const getNextWakeAt = vi.fn().mockResolvedValueOnce(wakeAt).mockResolvedValueOnce(null);
+    const getNextWakeAt = vi
+      .fn()
+      .mockResolvedValueOnce({ nextWakeAt: wakeAt, complete: true })
+      .mockResolvedValueOnce({ nextWakeAt: null, complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
     let alarmTimestamp: number | null = null;
     const getAlarm = vi.fn(async () => alarmTimestamp);
@@ -358,7 +561,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handlerFactory = createDurableHooksDispatcherDurableObject({
       createProcessor: () => ({
         processDue: vi.fn().mockResolvedValue(completedRun()),
-        getNextWakeAt: vi.fn().mockResolvedValue(null),
+        getNextWakeAt: vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true }),
         drain: vi.fn().mockResolvedValue(undefined),
         namespace: "test",
       }),
@@ -385,7 +588,9 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     vi.setSystemTime(now);
 
     const processDue = vi.fn().mockResolvedValue(completedRun());
-    const getNextWakeAt = vi.fn().mockResolvedValue(new Date(now.getTime() - 10000));
+    const getNextWakeAt = vi
+      .fn()
+      .mockResolvedValue({ nextWakeAt: new Date(now.getTime() - 10000), complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
 
@@ -416,7 +621,7 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const processFailure = new Error("process failed");
     const errorReporting = Promise.withResolvers<void>();
     const processDue = vi.fn().mockRejectedValue(processFailure);
-    const getNextWakeAt = vi.fn().mockResolvedValue(null);
+    const getNextWakeAt = vi.fn().mockResolvedValue({ nextWakeAt: null, complete: true });
     const onProcessError = vi.fn(async () => await errorReporting.promise);
 
     const handlerFactory = createDurableHooksDispatcherDurableObject({
@@ -454,7 +659,9 @@ describe("createDurableHooksDispatcherDurableObject", () => {
       .fn()
       .mockRejectedValueOnce(processFailure)
       .mockResolvedValueOnce(completedRun());
-    const getNextWakeAt = vi.fn().mockResolvedValue(new Date("2024-01-01T00:00:00Z"));
+    const getNextWakeAt = vi
+      .fn()
+      .mockResolvedValue({ nextWakeAt: new Date("2024-01-01T00:00:00Z"), complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
     const setAlarm = vi.fn().mockResolvedValue(undefined);
     const onProcessError = vi.fn(async () => {
@@ -493,10 +700,12 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const processDue = vi.fn().mockResolvedValue(completedRun());
     const getNextWakeAt = vi
       .fn()
-      .mockResolvedValueOnce(new Date("2024-01-01T00:00:00Z"))
-      .mockRejectedValueOnce(scheduleFailure);
+      .mockResolvedValue({ nextWakeAt: new Date("2024-01-01T00:00:00Z"), complete: true });
     const drain = vi.fn().mockResolvedValue(undefined);
-    const setAlarm = vi.fn().mockResolvedValue(undefined);
+    const setAlarm = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(scheduleFailure);
     const onProcessError = vi.fn(async () => {
       throw new Error("callback failed");
     });
@@ -515,7 +724,9 @@ describe("createDurableHooksDispatcherDurableObject", () => {
     const handler = handlerFactory({ storage: { setAlarm } }, {});
     await handler.initialize?.();
 
-    await expect(handler.notify?.({ source: "request" })).rejects.toBe(scheduleFailure);
+    await expect(handler.notify?.({ source: "request", dueAt: null })).rejects.toBe(
+      scheduleFailure,
+    );
 
     expect(onProcessError).toHaveBeenCalledWith(scheduleFailure);
     assert(
