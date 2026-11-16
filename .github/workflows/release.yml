@@ -71,6 +71,11 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      # On workflow_run, github.sha is main's latest commit, not the one CI tested. changesets/action
+      # resets its release branch to github.sha, which is missing from the clone when main moved on.
+      - name: Fetch latest main commit
+        run: git fetch --depth=1 origin ${{ github.sha }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
