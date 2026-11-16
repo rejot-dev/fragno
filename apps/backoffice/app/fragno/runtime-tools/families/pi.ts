@@ -204,6 +204,7 @@ const agentListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.list"),
   namespace: "pi",
   name: "listAgents",
+  activity: { label: "List agents", target: () => null },
   execute: async (_input, context: PiToolContext) => {
     const directory = await requirePiManagerRuntime(context.runtimes.pi).listAgents();
     return { agents: directory.agents.map(agentDefinition) };
@@ -227,6 +228,7 @@ const agentGetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.get"),
   namespace: "pi",
   name: "getAgent",
+  activity: { label: "Read agent", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) => {
     return await requirePiManagerRuntime(context.runtimes.pi).getAgent(input);
   },
@@ -257,6 +259,7 @@ const agentReloadTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.reload"),
   namespace: "pi",
   name: "reloadAgent",
+  activity: { label: "Reload agent skills", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) => {
     return await requirePiManagerRuntime(context.runtimes.pi).reloadAgent(input);
   },
@@ -287,6 +290,7 @@ const promptSubmitTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.prompt.submit"),
   namespace: "pi",
   name: "submitPrompt",
+  activity: { label: "Prompt agent", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) => {
     return piPromptReceiptOutputSchema.parse(
       normalizeRuntimeOutput(
@@ -364,6 +368,7 @@ const promptGetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.prompt.get"),
   namespace: "pi",
   name: "getPrompt",
+  activity: { label: "Check prompt", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) =>
     await requirePiManagerRuntime(context.runtimes.pi).getPrompt(input),
   adapters: {
@@ -400,6 +405,7 @@ const agentStopTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.stop"),
   namespace: "pi",
   name: "stopAgent",
+  activity: { label: "Stop agent", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) => {
     await requirePiManagerRuntime(context.runtimes.pi).stopAgent(input);
     return { stopped: true as const };
@@ -430,6 +436,7 @@ const agentResumeTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.resume"),
   namespace: "pi",
   name: "resumeAgent",
+  activity: { label: "Resume agent", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) => {
     await requirePiManagerRuntime(context.runtimes.pi).resumeAgent(input);
     return { resumed: true as const };
@@ -460,6 +467,7 @@ const agentCreateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.create"),
   namespace: "pi",
   name: "createAgent",
+  activity: { label: "Create agent", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) =>
     await requirePiManagerRuntime(context.runtimes.pi).createAgent(input),
   adapters: {
@@ -482,6 +490,7 @@ const agentUpdateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.update"),
   namespace: "pi",
   name: "updateAgent",
+  activity: { label: "Update agent", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) =>
     await requirePiManagerRuntime(context.runtimes.pi).updateAgent(input),
   adapters: {
@@ -504,6 +513,7 @@ const agentDeleteTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.delete"),
   namespace: "pi",
   name: "deleteAgent",
+  activity: { label: "Delete agent", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) => {
     await requirePiManagerRuntime(context.runtimes.pi).deleteAgent(input);
     return { deleted: true as const };
@@ -534,6 +544,7 @@ const agentBackfillEventsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.backfillEvents"),
   namespace: "pi",
   name: "backfillAgentEvents",
+  activity: { label: "Record agent events", target: () => null },
   execute: async (_input, context: PiToolContext) =>
     await requirePiManagerRuntime(context.runtimes.pi).backfillAgentEvents(),
   adapters: {
@@ -555,6 +566,7 @@ const agentMessagesTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.messages"),
   namespace: "pi",
   name: "listMessages",
+  activity: { label: "Read agent messages", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) =>
     await requirePiManagerRuntime(context.runtimes.pi).listMessages(input),
   adapters: {
@@ -608,6 +620,7 @@ const agentHistoryTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.history"),
   namespace: "pi",
   name: "listHistory",
+  activity: { label: "Read agent history", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) =>
     await requirePiManagerRuntime(context.runtimes.pi).listHistory(input),
   adapters: {
@@ -657,6 +670,7 @@ const agentActivityTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.activity"),
   namespace: "pi",
   name: "getActivity",
+  activity: { label: "Read agent activity", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) =>
     await requirePiManagerRuntime(context.runtimes.pi).getActivity(input),
   adapters: {
@@ -693,6 +707,7 @@ const agentWatchTicketTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.watchTicket"),
   namespace: "pi",
   name: "getWatchTicket",
+  activity: { label: "Create agent watch ticket", target: (input) => input.agentName },
   execute: async (input, context: PiToolContext) =>
     await requirePiManagerRuntime(context.runtimes.pi).issueWatchTicket(input),
   adapters: {
@@ -723,6 +738,7 @@ const agentExportTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("pi.agent.export"),
   namespace: "pi",
   name: "exportConversation",
+  activity: { label: "Export conversation", target: (input) => input.agentName },
   getResource: ({ out }) => ({ path: out }),
   execute: async ({ agentName, out, history }, context: PiToolContext) => {
     const state = context.runtimes.state;

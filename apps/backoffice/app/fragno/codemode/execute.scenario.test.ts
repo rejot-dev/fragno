@@ -119,7 +119,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
                 calls: {
                   items: [
                     {
-                      subject: { kind: "call", name: "projects.create", scope: null },
+                      subject: { kind: "tool", name: "projects.create", scope: null },
                       status: "failed",
                       error: expect.stringContaining("TOOL_UNAVAILABLE: projects.create"),
                     },
@@ -188,7 +188,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
               calls: {
                 items: [
                   {
-                    subject: { kind: "call", name: "projects.list", scope: null },
+                    subject: { kind: "tool", name: "projects.list", scope: null },
                     status: "failed",
                     error: expect.stringContaining("TOOL_UNAVAILABLE"),
                   },
@@ -213,7 +213,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
               errorDetails: null,
               result: { projects: [{ projectId: ctx.vars.projectId, name: "Existing" }] },
               calls: {
-                items: [{ subject: { kind: "call", name: "projects.list" }, status: "succeeded" }],
+                items: [{ subject: { kind: "tool", name: "projects.list" }, status: "succeeded" }],
               },
             },
           });
@@ -303,7 +303,7 @@ test("Codemode execution retains unavailable-tool diagnostics without granting c
             details: {
               calls: {
                 items: [
-                  { subject: { kind: "call", name: "state.writeFile" }, status: "succeeded" },
+                  { subject: { kind: "tool", name: "state.writeFile" }, status: "succeeded" },
                   {
                     subject: { kind: "list", pattern: "/workspace/discovery/**/SKILL.md" },
                     status: "succeeded",

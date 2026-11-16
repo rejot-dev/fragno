@@ -57,6 +57,7 @@ const startSandboxTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("sandbox.start"),
   namespace: "sandbox",
   name: "startSandbox",
+  activity: { label: "Start sandbox", target: (input) => input.id },
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).startSandbox(input),
   adapters: {
@@ -128,6 +129,7 @@ const listSandboxesTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("sandbox.list"),
   namespace: "sandbox",
   name: "listSandboxes",
+  activity: { label: "List sandboxes", target: () => null },
   execute: async (_input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).listSandboxes(),
   adapters: {
@@ -149,6 +151,7 @@ const killSandboxTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("sandbox.kill"),
   namespace: "sandbox",
   name: "killSandbox",
+  activity: { label: "Stop sandbox", target: (input) => input.sandboxId },
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).killSandbox(input),
   adapters: {
@@ -178,6 +181,7 @@ const executeCommandTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("sandbox.exec"),
   namespace: "sandbox",
   name: "executeCommand",
+  activity: { label: "Run sandbox command", target: (input) => input.command },
   execute: async (input, context: SandboxToolContext) =>
     await getSandboxRuntime(context.runtimes.sandbox).executeCommand(input),
   adapters: {

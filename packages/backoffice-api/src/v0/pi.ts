@@ -418,8 +418,19 @@ export const codemodeCallSubjectSchema = z.lazy(() =>
       input: z.string(),
     }),
     z.object({
-      kind: z.literal("call"),
+      kind: z.literal("tool"),
       // `provider.tool`, as the program called it.
+      name: z.string(),
+      scope: z.string().nullable(),
+      // What the call does, such as "Save file".
+      label: z.string(),
+      // The input value it acted on, such as a path, cut to one line; null when the label says it all.
+      target: z.string().nullable(),
+    }),
+    // A call only its name and raw input describe: one whose input its tool would refuse, or one
+    // recorded before tools had labels.
+    z.object({
+      kind: z.literal("call"),
       name: z.string(),
       scope: z.string().nullable(),
       input: z.string(),

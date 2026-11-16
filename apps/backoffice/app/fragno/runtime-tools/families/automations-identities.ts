@@ -50,6 +50,10 @@ const resolveExternalIdentityTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("identity.external.resolve"),
   namespace: "identity",
   name: "resolveExternal",
+  activity: {
+    label: "Resolve external identity",
+    target: (input) => `${input.source} ${input.type} ${input.id}`,
+  },
   execute: async (input, context: AutomationIdentityToolContext) =>
     await getAutomationIdentityRuntime(context.runtimes.identity).resolveExternal(input),
   adapters: {
@@ -97,6 +101,7 @@ const listExternalIdentitiesTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("identity.external.list"),
   namespace: "identity",
   name: "listExternal",
+  activity: { label: "List external identities", target: () => null },
   execute: async (input, context: AutomationIdentityToolContext) =>
     await getAutomationIdentityRuntime(context.runtimes.identity).listExternal(input),
   adapters: {

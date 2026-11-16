@@ -52,6 +52,7 @@ const getProfileTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.me"),
   namespace: "account",
   name: "me",
+  activity: { label: "Read your account", target: () => null },
   execute: async (_input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).getProfile(),
   adapters: {
@@ -75,6 +76,7 @@ const updateProfileTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.profile.update"),
   namespace: "account",
   name: "profileUpdate",
+  activity: { label: "Update your name", target: (input) => input.name },
   execute: async (input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).updateProfile(input),
   adapters: {
@@ -107,6 +109,7 @@ const listOrganizationsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.orgs.list"),
   namespace: "account",
   name: "orgsList",
+  activity: { label: "List your organizations", target: () => null },
   execute: async (_input, context: AccountToolContext) => {
     const organizations = await getAccountRuntime(context.runtimes.account).listOrganizations();
     return { organizations };
@@ -141,6 +144,7 @@ const listInvitationsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.invitations.list"),
   namespace: "account",
   name: "invitationsList",
+  activity: { label: "List your invitations", target: () => null },
   execute: async (_input, context: AccountToolContext) => {
     const invitations = await getAccountRuntime(context.runtimes.account).listInvitations();
     return { invitations };
@@ -181,6 +185,7 @@ const acceptInvitationTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.invitations.accept"),
   namespace: "account",
   name: "invitationsAccept",
+  activity: { label: "Accept invitation", target: (input) => input.invitationId },
   execute: async (input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).acceptInvitation(input),
   adapters: {
@@ -213,6 +218,7 @@ const listApplicationsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("account.applications.list"),
   namespace: "account",
   name: "applicationsList",
+  activity: { label: "List authorized applications", target: () => null },
   execute: async (input, context: AccountToolContext) =>
     await getAccountRuntime(context.runtimes.account).listApplications(input),
   adapters: {

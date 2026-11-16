@@ -78,6 +78,11 @@ const setUsageLimitTool = defineBackofficeRuntimeTool({
   id: "admin.usage-limits.set",
   namespace: "admin",
   name: "usageLimitsSet",
+  activity: {
+    label: "Set usage limit",
+    target: ({ meter, owner }) =>
+      `${meter} for ${owner.kind === "org" ? owner.organizationSlug : owner.userId}`,
+  },
   description:
     "Set an organization's or a user's monthly limit on a metered resource: ai.cost.total, the cost of models and Workers AI in USD, or email.sent, the emails a person sends from their own address. Once the owner's usage this UTC month reaches it, new agent prompts and model calls, or new emails, are refused; work already running finishes. `default` restores the deployment's limit.",
   requiredPermissions: [

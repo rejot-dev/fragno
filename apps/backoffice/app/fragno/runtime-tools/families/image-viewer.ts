@@ -113,6 +113,7 @@ const viewImageTool = defineBackofficeRuntimeTool({
   id: "state.viewImage",
   namespace: "state",
   name: "viewImage",
+  activity: { label: "View image", target: (input) => input.path },
   description: `Look at a PNG, JPEG, or WebP image in state yourself: it follows the program's output in your tool result. Only agents can view images, each at most ${DEFAULT_IMAGE_LIMITS.maxWidth}×${DEFAULT_IMAGE_LIMITS.maxHeight} pixels; one program views at most ${MAX_VIEWED_IMAGES} images of ${MAX_IMAGE_FILE_BYTES} bytes together.`,
   requiredPermissions: [BACKOFFICE_PERMISSION.upload.read],
   inputSchema: pathInputSchema,

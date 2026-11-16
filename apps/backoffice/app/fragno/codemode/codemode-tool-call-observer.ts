@@ -6,7 +6,7 @@ import type {
   CodemodeToolCallObserver,
 } from "@fragno-dev/codemode/host/codemode-host-capabilities";
 
-import { codemodeCallSubject } from "./codemode-call-subject";
+import type { CodemodeCallDescriber } from "./codemode-call-subject";
 import type { CodemodeRunToolCall, CodemodeToolCallSettlement } from "./codemode-fragment";
 
 const TOOL_SUMMARY_MAX_LENGTH = 500;
@@ -36,14 +36,14 @@ export type CodemodeToolCallOutcome = Omit<CodemodeToolCallSettlement, "settledA
 /**
  * Where a run's tool calls are kept: each when its guest makes it, and again when it settles.
  * `started` returns what `settled` needs to find the call again, such as its row's ID. The call
- * comes with its bounded input and with what it did, read from its whole input.
+ * comes with its bounded summary, and with its whole input to read what it did.
  */
 export type CodemodeToolCallRecorder<TStarted> = {
   started(
     sequence: number,
     call: CodemodeToolCall,
-    input: string,
-    subject: CodemodeCallSubject,
+    summary: string,
+    input: unknown,
   ): Promise<TStarted> | TStarted;
   settled(started: TStarted, outcome: CodemodeToolCallOutcome): Promise<void> | void;
 };
@@ -61,12 +61,7 @@ export function codemodeToolCallObserver<TStarted>(
   return async function recordToolCall(call, input, invoke) {
     // Taken before any await, so parallel calls keep the order the guest made them in.
     const sequence = calls++;
-    const started = await recorder.started(
-      sequence,
-      call,
-      summarizeToolValue(input),
-      codemodeCallSubject(call, input),
-    );
+    const started = await recorder.started(sequence, call, summarizeToolValue(input), input);
     let result: CodemodeToolResult;
     try {
       result = await invoke();
@@ -101,19 +96,23 @@ export type CodemodeToolCallLog = {
   readonly recorder: CodemodeToolCallRecorder<number>;
 };
 
-/** `onChange` sees every call as it starts and again as it settles. */
+/**
+ * `describe` reads what each call did once, as it starts; `onChange` sees every call as it starts
+ * and again as it settles.
+ */
 export function createCodemodeToolCallLog(
+  describe: CodemodeCallDescriber,
   onChange: ((calls: readonly CodemodeLoggedToolCall[]) => void) | null,
 ): CodemodeToolCallLog {
   const calls: CodemodeLoggedToolCall[] = [];
   return {
     calls,
     recorder: {
-      started(sequence, call, input, subject) {
+      started(sequence, call, summary, input) {
         calls[sequence] = {
           ...call,
-          input,
-          subject,
+          input: summary,
+          subject: describe(call, input),
           calledAt: new Date().toISOString(),
           status: "running",
         };

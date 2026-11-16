@@ -38,6 +38,7 @@ const packagesInstallTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("packages.install"),
   namespace: "packages",
   name: "install",
+  activity: { label: "Install package", target: (input) => input.listingId },
   getResource: (input) => ({
     listingId: input.listingId,
     installationRoot: input.installationRoot,
@@ -118,6 +119,7 @@ const packagesStatusTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("packages.status"),
   namespace: "packages",
   name: "status",
+  activity: { label: "Check package installation", target: (input) => input.workflowInstanceId },
   execute: async (input, context: PackagesToolContext) =>
     await getPackagesRuntime(context).status(input),
   adapters: {
@@ -156,6 +158,7 @@ const packagesListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("packages.ls"),
   namespace: "packages",
   name: "ls",
+  activity: { label: "List installed packages", target: () => null },
   execute: async (_input, context: PackagesToolContext) => await getPackagesRuntime(context).ls(),
   adapters: {
     bash: {
@@ -185,6 +188,7 @@ const packagesGetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("packages.get"),
   namespace: "packages",
   name: "get",
+  activity: { label: "Read installed package", target: (input) => input.listingId },
   execute: async (input, context: PackagesToolContext) =>
     await getPackagesRuntime(context).get(input),
   adapters: {
@@ -214,6 +218,7 @@ const packagesUninstallTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("packages.uninstall"),
   namespace: "packages",
   name: "uninstall",
+  activity: { label: "Uninstall package", target: (input) => input.listingId },
   getResource: (input) => ({ listingId: input.listingId }),
   execute: async (input, context: PackagesToolContext) =>
     await getPackagesRuntime(context).uninstall(input),
@@ -252,6 +257,7 @@ const packagesImportLegacyTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("packages.importLegacy"),
   namespace: "packages",
   name: "importLegacy",
+  activity: { label: "Import legacy packages", target: () => null },
   execute: async (input, context: PackagesToolContext) =>
     await getPackagesRuntime(context).importLegacy(input),
   adapters: {

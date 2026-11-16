@@ -26,6 +26,7 @@ export const blobsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("blobs.createUpload"),
       namespace: "blobs",
       name: "createUpload",
+      activity: { label: "Start blob upload", target: (input) => input.key },
       execute: async (input, context: BlobsToolContext) =>
         await getBlobsRuntime(context).createUpload(input),
     }),
@@ -33,6 +34,7 @@ export const blobsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("blobs.completeUpload"),
       namespace: "blobs",
       name: "completeUpload",
+      activity: { label: "Finish blob upload", target: (input) => input.uploadId },
       execute: async (input, context: BlobsToolContext) =>
         await getBlobsRuntime(context).completeUpload(input),
     }),
@@ -40,6 +42,7 @@ export const blobsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("blobs.get"),
       namespace: "blobs",
       name: "get",
+      activity: { label: "Read blob details", target: (input) => input.key },
       execute: async (input, context: BlobsToolContext) =>
         await getBlobsRuntime(context).get(input),
     }),
@@ -47,6 +50,7 @@ export const blobsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("blobs.list"),
       namespace: "blobs",
       name: "list",
+      activity: { label: "List blobs", target: (input) => input.prefix ?? null },
       execute: async (input, context: BlobsToolContext) =>
         await getBlobsRuntime(context).list(input),
     }),
@@ -54,6 +58,7 @@ export const blobsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("blobs.createDownloadUrl"),
       namespace: "blobs",
       name: "createDownloadUrl",
+      activity: { label: "Create blob download link", target: (input) => input.key },
       execute: async (input, context: BlobsToolContext) =>
         await getBlobsRuntime(context).createDownloadUrl(input),
     }),
@@ -67,6 +72,7 @@ export const blobsToolFamily = defineBackofficeRuntimeToolFamily({
       }),
       namespace: "blobs",
       name: "read",
+      activity: { label: "Read blob", target: (input) => input.key },
       execute: async (input, context: BlobsToolContext) =>
         await getBlobsRuntime(context).read(input),
     }),
@@ -74,6 +80,7 @@ export const blobsToolFamily = defineBackofficeRuntimeToolFamily({
       ...backofficeApiOperationToolFields("blobs.delete"),
       namespace: "blobs",
       name: "delete",
+      activity: { label: "Delete blob", target: (input) => input.key },
       execute: async (input, context: BlobsToolContext) => {
         await getBlobsRuntime(context).delete(input);
       },

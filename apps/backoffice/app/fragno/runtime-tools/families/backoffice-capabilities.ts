@@ -104,6 +104,7 @@ const hookScopesListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("hooks.scopes.list"),
   namespace: "hooks",
   name: "scopesList",
+  activity: { label: "List hook scopes", target: () => null },
   execute: async (_input, context: BackofficeCapabilitiesToolContext) =>
     await getRuntime(context).listHookScopes(),
   adapters: {

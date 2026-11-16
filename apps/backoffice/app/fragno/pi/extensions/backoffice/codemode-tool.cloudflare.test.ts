@@ -171,6 +171,23 @@ describe("Pi codemode tool", () => {
     expect(result.details).toMatchObject({
       result: "hello from pi",
       logs: [],
+      calls: {
+        items: [
+          { subject: { kind: "read", path: "/workspace/input.txt" }, status: "succeeded" },
+          {
+            // The file's content stays out of the call's line.
+            subject: {
+              kind: "tool",
+              name: "state.writeFile",
+              scope: null,
+              label: "Save file",
+              target: "/workspace/output.txt",
+            },
+            status: "succeeded",
+          },
+          { subject: { kind: "read", path: "/workspace/output.txt" }, status: "succeeded" },
+        ],
+      },
     });
     const content = result.output[0];
     assert(content?.type === "text");
@@ -813,20 +830,22 @@ describe("Pi codemode tool", () => {
         items: [
           {
             subject: {
-              kind: "call",
+              kind: "tool",
               name: "store.get",
               scope: null,
-              input: '{"key":"telegram/chat-123"}',
+              label: "Read store entry",
+              target: "telegram/chat-123",
             },
             status: "succeeded",
             durationMs: expect.any(Number),
           },
           {
             subject: {
-              kind: "call",
+              kind: "tool",
               name: "store.set",
               scope: null,
-              input: '{"key":"telegram/chat-456","value":"user-55"}',
+              label: "Save store entry",
+              target: "telegram/chat-456",
             },
             status: "succeeded",
             durationMs: expect.any(Number),
@@ -892,6 +911,20 @@ describe("Pi codemode tool", () => {
       details: {
         runId: expect.any(String),
         errorDetails: { name: "ZodError", message: expect.stringContaining("Too small") },
+        // Input the tool refuses has no label to read, so the call shows what the program sent.
+        calls: {
+          items: [
+            {
+              subject: {
+                kind: "call",
+                name: "store.set",
+                scope: null,
+                input: '{"key":"","value":""}',
+              },
+              status: "failed",
+            },
+          ],
+        },
       },
     });
 

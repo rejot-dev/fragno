@@ -37,6 +37,7 @@ const createOAuthClientTool = defineBackofficeRuntimeTool(
     id: "admin.oauth-clients.create",
     namespace: "admin",
     name: "oauthClientsCreate",
+    activity: { label: "Create OAuth client", target: (input) => input.name },
     description:
       "Create an Auth-owned authorization-code OAuth web or native client for the current System administrator. Confidential clients return an initial secret and may use client credentials; public clients use PKCE without a secret. Does not register or install a Backoffice app.",
     requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage],
@@ -126,6 +127,7 @@ const listOAuthClientsTool = defineBackofficeRuntimeTool({
   id: "admin.oauth-clients.list",
   namespace: "admin",
   name: "oauthClientsList",
+  activity: { label: "List OAuth clients", target: () => null },
   description:
     "List the global Auth-owned OAuth client catalog, including other owners and the internal Codemode client, using cursor pagination. Never exposes credentials or credential hashes.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsRead],
@@ -213,6 +215,7 @@ const updateOAuthClientTool = defineBackofficeRuntimeTool({
   id: "admin.oauth-clients.update",
   namespace: "admin",
   name: "oauthClientsUpdate",
+  activity: { label: "Update OAuth client", target: (input) => input.clientId },
   description:
     "Replace the redirect URIs, OAuth scopes, and client-credentials access of an OAuth client owned by the current System administrator. Widened scopes apply to new authorizations only; existing users authorize again.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage],
@@ -285,6 +288,7 @@ const rotateOAuthClientSecretTool = defineBackofficeRuntimeTool(
     id: "admin.oauth-clients.rotate-secret",
     namespace: "admin",
     name: "oauthClientsRotateSecret",
+    activity: { label: "Rotate OAuth client secret", target: (input) => input.clientId },
     description:
       "Replace the secret of a confidential OAuth client owned by the current System administrator. The previous secret stops working immediately; the new one is returned once.",
     requiredPermissions: [BACKOFFICE_PERMISSION.admin.oauthClientsManage],

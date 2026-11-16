@@ -154,6 +154,7 @@ export const automationEventsCatalogListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.catalog.list"),
   namespace: "events",
   name: "catalogList",
+  activity: { label: "List event types", target: () => null },
   execute: async (_input, context: EventCatalogToolContext) =>
     await getEventCatalogRuntime(context).listAutomationEvents(),
   adapters: {
@@ -176,6 +177,7 @@ export const automationEventsCatalogGetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.catalog.get"),
   namespace: "events",
   name: "catalogGet",
+  activity: { label: "Read event type", target: (input) => `${input.source}/${input.eventType}` },
   execute: async (input, context: EventCatalogToolContext) =>
     await getEventCatalogRuntime(context).getAutomationEvent(input),
   adapters: {
@@ -219,6 +221,7 @@ export const automationEventsCatalogCreateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.catalog.create"),
   namespace: "events",
   name: "catalogCreate",
+  activity: { label: "Define event type", target: (input) => `${input.source}/${input.eventType}` },
   execute: async (input, context: EventCatalogToolContext) =>
     await getEventCatalogRuntime(context).createAutomationEvent(input),
   adapters: {
@@ -251,6 +254,7 @@ export const automationEventsCatalogUpdateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("events.catalog.update"),
   namespace: "events",
   name: "catalogUpdate",
+  activity: { label: "Update event type", target: (input) => `${input.source}/${input.eventType}` },
   execute: async (input, context: EventCatalogToolContext) =>
     await getEventCatalogRuntime(context).updateAutomationEvent(input),
   adapters: {

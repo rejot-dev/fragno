@@ -40,6 +40,7 @@ const featureTool = defineBackofficeRuntimeTool({
   id: "admin.marketplace.feature",
   namespace: "admin",
   name: "marketplaceFeature",
+  activity: { label: "Feature listing", target: (input) => input.listingId },
   description: `Feature a published Marketplace listing, optionally scheduled with startsAt and ending at until, ordered by priority (higher first) with an optional curator note. Featuring an already featured listing replaces its settings. Expired and unpublished entries are removed to make room. ${MARKETPLACE_CURATION_SCOPE_HELP}`,
   // Curation authority depends on the scope, so the runtime checks it beyond the read permission.
   requiredPermissions: [BACKOFFICE_PERMISSION.marketplace.read],
@@ -107,6 +108,7 @@ const unfeatureTool = defineBackofficeRuntimeTool({
   id: "admin.marketplace.unfeature",
   namespace: "admin",
   name: "marketplaceUnfeature",
+  activity: { label: "Unfeature listing", target: (input) => input.listingId },
   description: `Remove a Marketplace listing's feature entry. Removing an entry that does not exist succeeds with removed false. ${MARKETPLACE_CURATION_SCOPE_HELP}`,
   // Curation authority depends on the scope, so the runtime checks it beyond the read permission.
   requiredPermissions: [BACKOFFICE_PERMISSION.marketplace.read],
@@ -181,6 +183,7 @@ const pushStaticTool = defineBackofficeRuntimeTool({
   id: "admin.marketplace.push-static",
   namespace: "admin",
   name: "marketplacePushStatic",
+  activity: { label: "Publish static marketplace entries", target: () => null },
   description: "Publish the bundled static marketplace entries from System context.",
   requiredPermissions: [BACKOFFICE_PERMISSION.internal.manage],
   inputSchema: z.object({ force: z.boolean().optional() }).optional().default({}),
@@ -221,6 +224,7 @@ const publishAppPackageTool = defineBackofficeRuntimeTool({
   id: "admin.marketplace.publish-app-package",
   namespace: "admin",
   name: "marketplacePublishAppPackage",
+  activity: { label: "Publish app package", target: (input) => `${input.slug}@${input.version}` },
   description:
     "Publish a release into a registered app's Marketplace, which only the app's installations install from (packages.install with app visibility). The app owns the listing, app:<slug>#<package slug>. Versions are immutable: publishing a published version again with the same files changes nothing, and with other files fails. Publishing is durable; installs of a requested release fail until it is published.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],

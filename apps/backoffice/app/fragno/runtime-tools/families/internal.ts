@@ -58,6 +58,7 @@ const filesSeedExecuteTool = defineBackofficeRuntimeTool({
   id: "internal.files.seed.execute",
   namespace: "internal",
   name: "filesSeedExecute",
+  activity: { label: "Seed workspace files", target: () => null },
   description: "Seed the org workspace with starter files if they do not already exist.",
   requiredPermissions: [BACKOFFICE_PERMISSION.internal.manage],
   inputSchema: z.object({ force: z.boolean().optional() }),

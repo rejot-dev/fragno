@@ -53,6 +53,7 @@ const classifyTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("models.classify"),
   namespace: "models",
   name: "classify",
+  activity: { label: "Classify", target: (input) => Object.keys(input.questions).join(", ") },
   execute: async ({ state, images: files, questions }, context: ModelsToolContext) => {
     const models = requireModelsRuntime(context.runtimes.models);
     await assertModelsFilesReadable(context, files);
@@ -69,6 +70,7 @@ const generateImageTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("models.generateImage"),
   namespace: "models",
   name: "generateImage",
+  activity: { label: "Generate image", target: (input) => input.out },
   getResource: ({ out }) => ({ path: out }),
   execute: async ({ prompt, out, size, quality }, context: ModelsToolContext) => {
     const state = context.runtimes.state;
@@ -90,6 +92,11 @@ const extractTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("models.extract"),
   namespace: "models",
   name: "extract",
+  activity: {
+    label: "Extract from files",
+    target: (input) =>
+      input.files.map((file) => ("path" in file ? file.path : file.blob)).join(", "),
+  },
   execute: async (
     { files, instructions, schema, model, thinkingLevel },
     context: ModelsToolContext,

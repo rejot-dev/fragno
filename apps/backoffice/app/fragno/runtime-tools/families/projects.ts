@@ -27,6 +27,7 @@ const listProjectsTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("projects.list"),
   namespace: "projects",
   name: "list",
+  activity: { label: "List projects", target: () => null },
   async execute(input, context: ProjectsToolContext) {
     return await getProjectsRuntime(context).list(input);
   },
@@ -83,6 +84,7 @@ const createProjectTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("projects.create"),
   namespace: "projects",
   name: "create",
+  activity: { label: "Create project", target: (input) => input.name },
   async execute(input, context: ProjectsToolContext) {
     return await getProjectsRuntime(context).create(input);
   },

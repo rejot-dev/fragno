@@ -73,6 +73,10 @@ const deleteEventsTool = defineBackofficeRuntimeTool({
   id: "admin.events.delete",
   namespace: "admin",
   name: "eventsDelete",
+  activity: {
+    label: "Delete stored events",
+    target: (input) => `${input.source}/${input.eventType} in ${input.organizationSlug}`,
+  },
   description:
     "Permanently delete one pass of an organization's stored events of one type, oldest first, with their sync history. Repeat with the returned cursor until it is null.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],

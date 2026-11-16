@@ -78,6 +78,7 @@ const transcribePrerecordedTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("reson8.prerecorded.transcribe"),
   namespace: "reson8",
   name: "transcribePrerecorded",
+  activity: { label: "Transcribe audio", target: (input) => input.path },
   execute: async ({ path, ...options }, context: Reson8ToolContext) => {
     if (!context.runtimes.state) {
       throw new Error("Reson8 transcription reads workspace files, which this context lacks.");
@@ -182,6 +183,7 @@ const createRealtimeTokenTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("reson8.realtime.token"),
   namespace: "reson8",
   name: "createRealtimeToken",
+  activity: { label: "Create transcription token", target: () => null },
   execute: async (_input, context: Reson8ToolContext) =>
     await getReson8Runtime(context.runtimes.reson8).createRealtimeToken(),
   adapters: {

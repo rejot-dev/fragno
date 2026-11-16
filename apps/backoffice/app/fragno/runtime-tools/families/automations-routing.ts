@@ -162,6 +162,7 @@ const routerListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.list"),
   namespace: "router",
   name: "list",
+  activity: { label: "List routes", target: () => null },
   execute: async (_input, context: AutomationRouterToolContext) =>
     await getRuntime(context).listRoutes(),
   adapters: {
@@ -186,6 +187,7 @@ const routerGetTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.get"),
   namespace: "router",
   name: "get",
+  activity: { label: "Read route", target: (input) => input.id },
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).getRoute(input),
   adapters: {
@@ -220,6 +222,7 @@ const routerCreateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.create"),
   namespace: "router",
   name: "create",
+  activity: { label: "Create route", target: (input) => input.name },
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).createRoute(input),
   adapters: {
@@ -254,6 +257,7 @@ const routerUpdateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.update"),
   namespace: "router",
   name: "update",
+  activity: { label: "Update route", target: (input) => input.id },
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).updateRoute(input),
   adapters: {
@@ -298,6 +302,7 @@ const routerDeleteTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.delete"),
   namespace: "router",
   name: "delete",
+  activity: { label: "Delete route", target: (input) => input.id },
   execute: async (input, context: AutomationRouterToolContext) => {
     return { deleted: await getRuntime(context).deleteRoute(input) };
   },
@@ -319,6 +324,7 @@ const routerTriggerNowTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.trigger-now"),
   namespace: "router",
   name: "triggerNow",
+  activity: { label: "Trigger route now", target: (input) => input.id },
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).triggerScheduledRouteNow(input),
   adapters: {
@@ -372,6 +378,7 @@ const routerAcceptsListTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.accepts.list"),
   namespace: "router",
   name: "acceptsList",
+  activity: { label: "List forward accepts", target: () => null },
   execute: async (_input, context: AutomationRouterToolContext) =>
     await getRuntime(context).listForwardAccepts(),
   adapters: {
@@ -396,6 +403,7 @@ const routerAcceptsCreateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.accepts.create"),
   namespace: "router",
   name: "acceptsCreate",
+  activity: { label: "Accept forwarded events", target: (input) => input.name },
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).createForwardAccept(input),
   adapters: {
@@ -430,6 +438,7 @@ const routerAcceptsUpdateTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.accepts.update"),
   namespace: "router",
   name: "acceptsUpdate",
+  activity: { label: "Update forward accept", target: (input) => input.id },
   execute: async (input, context: AutomationRouterToolContext) =>
     await getRuntime(context).updateForwardAccept(input),
   adapters: {
@@ -471,6 +480,7 @@ const routerAcceptsDeleteTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("router.accepts.delete"),
   namespace: "router",
   name: "acceptsDelete",
+  activity: { label: "Delete forward accept", target: (input) => input.id },
   execute: async (input, context: AutomationRouterToolContext) => {
     return { deleted: await getRuntime(context).deleteForwardAccept(input) };
   },

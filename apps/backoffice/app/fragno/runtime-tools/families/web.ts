@@ -47,6 +47,7 @@ const webExtractTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("web.extract"),
   namespace: "web",
   name: "extract",
+  activity: { label: "Extract page", target: (input) => input.input.url ?? null },
   // The contract keeps page options open; the Cloudflare fragment validates them in full.
   execute: async (input, context: WebToolContext) =>
     await getWebRuntime(context.runtimes.web).extract(input as WebExtractInput),
@@ -87,6 +88,7 @@ const webDownloadTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("web.download"),
   namespace: "web",
   name: "download",
+  activity: { label: "Download file", target: (input) => input.url },
   getResource: ({ path }) => ({ path }),
   execute: async ({ url, path }, context: WebToolContext) => {
     const state = context.runtimes.state;

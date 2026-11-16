@@ -47,6 +47,7 @@ const createClaimTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("otp.identity.create-claim"),
   namespace: "otp",
   name: "createIdentityClaim",
+  activity: { label: "Create identity claim link", target: () => null },
   execute: async (input, context: OtpToolContext) =>
     await getOtpRuntime(context.runtimes.otp).createClaim(input),
   adapters: {
