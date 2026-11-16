@@ -9,7 +9,7 @@ import {
 import type { createLedgerFragment } from "@fragno-dev/ledger";
 
 import type { createProposalsFragment } from "../proposals/proposals";
-import type { AgentProposal, ProposalAnswer, ProposalRequest } from "../proposals/schema";
+import type { AgentProposal, ProposalAnswer } from "../proposals/schema";
 import { bookingEntry, booksSource, type SourceDocument } from "../sources";
 import type { Statement } from "./camt053";
 import type { TransactionDetail } from "./detail";
@@ -17,6 +17,7 @@ import { bankingSchema, type StatementEnd, type TransactionBooking } from "./sch
 
 type LedgerServices = ReturnType<typeof createLedgerFragment>["services"];
 type ProposalsServices = ReturnType<typeof createProposalsFragment>["services"];
+type ProposalAsked = Parameters<ProposalsServices["requestProposals"]>[0]["asked"];
 type PostEntryInput = Parameters<LedgerServices["postEntry"]>[0];
 type ReverseEntryInput = Parameters<LedgerServices["reverseEntry"]>[0];
 type BankingUnitOfWork = TypedUnitOfWork<typeof bankingSchema>;
@@ -553,6 +554,10 @@ const bankingFragmentDefinition = defineFragment("banking")
               [
                 serviceDeps.ledger.getSourceDocuments({ ids: [transactionId] }),
                 serviceDeps.ledger.listAccounts(),
+                serviceDeps.proposals.withdrawRequest({
+                  subjectId: transactionId,
+                  reason: "The bank transaction was booked before the agent answered.",
+                }),
                 serviceDeps.ledger.postEntry({
                   ...entry,
                   source:
@@ -623,7 +628,7 @@ const bankingFragmentDefinition = defineFragment("banking")
               }
             },
           )
-          .transform(({ serviceResult: [, , posted] }) => posted)
+          .transform(({ serviceResult: [, , , posted] }) => posted)
           .build();
       },
 
@@ -673,30 +678,68 @@ const bankingFragmentDefinition = defineFragment("banking")
           .build();
       },
 
-      /** Records that the bookkeeping agent was asked about a transaction to book. */
-      requestProposal: function (input: {
-        transactionId: string;
-        request: ProposalRequest;
+      /**
+       * Records that the bookkeeping agent was asked about transactions to book, each told to the
+       * firm with its prompt, as the proposals fragment records requests. Returns the proposal in
+       * effect for each, in order.
+       */
+      requestProposals: function (input: {
+        requests: {
+          transactionId: string;
+          requestId: string;
+          prompt: string;
+        }[];
+        asked: ProposalAsked;
         first: boolean;
       }) {
-        const { transactionId, request, first } = input;
+        const { requests, asked, first } = input;
+        const ids = requests.map((request) => request.transactionId);
         return this.serviceTx(bankingSchema)
           .withServiceCalls(
             () =>
               [
-                serviceDeps.ledger.getSourceDocuments({ ids: [transactionId] }),
-                serviceDeps.proposals.requestProposal({ subjectId: transactionId, request, first }),
+                serviceDeps.ledger.getSourceDocuments({ ids }),
+                serviceDeps.proposals.requestProposals({
+                  requests: requests.map(({ transactionId, ...request }) => ({
+                    subjectId: transactionId,
+                    ...request,
+                  })),
+                  asked,
+                  first,
+                }),
               ] as const,
           )
           .retrieve((uow) =>
-            uow.findFirst("transaction", (b) =>
-              b.whereIndex("primary", (eb) => eb("id", "=", transactionId)),
+            uow.find("transaction", (b) => b.whereIndex("primary", (eb) => eb("id", "in", ids))),
+          )
+          .transformRetrieve(([transactions], [sources]) =>
+            ids.map((id) =>
+              subjectToBook(
+                transactions.find((transaction) => transaction.id.valueOf() === id) ?? null,
+                sources.find((source) => source.id === id) ?? null,
+              ),
             ),
           )
-          .transformRetrieve(([transaction], [sources]) =>
-            subjectToBook(transaction, sources[0] ?? null),
+          .mutate(
+            ({ uow, retrieveResult: transactions, serviceIntermediateResult: [, { planned }] }) => {
+              // Booking a transaction updates it, so a request and a booking conflict whichever
+              // commits first: a request after a booking retries and is refused, and a booking after
+              // a request retries and withdraws it. A transaction asked about is otherwise as it was.
+              transactions.forEach((transaction, index) => {
+                if (planned[index]?.recorded) {
+                  uow.update("transaction", transaction.id, (b) =>
+                    b.set({ booked: transaction.booked }).check(),
+                  );
+                }
+              });
+            },
           )
-          .transform(({ serviceResult: [, proposal] }) => proposal as TransactionProposal)
+          .transform(({ serviceResult: [, requested] }) =>
+            requested.map(({ subjectId, proposal }) => ({
+              transactionId: subjectId,
+              proposal: proposal as TransactionProposal,
+            })),
+          )
           .build();
       },
 

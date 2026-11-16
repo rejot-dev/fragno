@@ -135,9 +135,9 @@ async function advanceAgentPackage(
         listingId: agentPackageListingId(agentPackage),
         version,
         installationRoot: AGENT_PACKAGE_ROOT,
-        // The package's agent lists permissions, but they only narrow the turns of whoever prompts
-        // it.
-        permissions: [],
+        // What its routes act with; its agent's permissions only narrow the turns of whoever
+        // prompts it.
+        permissions: agentPackage.permissions,
         visibility: "app",
       });
     } catch (error) {

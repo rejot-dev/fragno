@@ -316,12 +316,12 @@ The Directory records an install before it asks for it, so one whose answer neve
 for again, which answers with its run while it runs; one Backoffice refused, as a version not
 published yet, started nothing, so the next step installs the shipped version. Backoffice keeps a
 package's agent as its release declares it, so members can neither change nor delete it, and only
-Bookkeeping uninstalls the package while it is installed. When Bookkeeping finds the agent missing
-as it prompts it, as after its owners uninstalled Bookkeeping, removed the package, and installed
-Bookkeeping again, the Directory installs the package again and Bookkeeping prompts once more. An
-agent of the package's name the members defined, as Bookkeeping defined its agents before it shipped
-packages, becomes the package's when it is identical to the package's agent; one that differs blocks
-the install until they delete it.
+Bookkeeping uninstalls the package while it is installed. When Bookkeeping finds the bookkeeping
+agent missing as it tells the firm of a request, as after its owners uninstalled Bookkeeping,
+removed the package, and installed Bookkeeping again, the Directory installs the package again and
+the books tell the firm once more shortly after. An agent of the package's name the members defined,
+as Bookkeeping defined its agents before it shipped packages, becomes the package's when it is
+identical to the package's agent; one that differs blocks the install until they delete it.
 
 Published versions never change. After changing an agent, bump its package's version, deploy, and
 run `pnpm backoffice:connect` first, which publishes it: until a version is published, installing it
@@ -427,16 +427,39 @@ request asked while a revocation runs may reuse the share it revokes, so a revoc
 request awaiting an answer shares the file again. An answer may also come while the file is being
 shared for its request, before the share exists, so sharing records the file shared again
 afterwards, and revokes it again, without asking the agent, when the request no longer awaits an
-answer. Bookkeeping asks as its installation, not as the person, so the agent's calls to Bookkeeping
-arrive as the installation's: they read the books and answer requests (`documents.propose`,
-`documents.decline`, and their `bank.transactions` counterparts), and every other change is refused,
-whatever a document or a bank transaction tells the agent. The agent comes from the
-`bookkeeper-agent` [package](#agent-packages) installed in the firm's project, which grants it
-`upload.read`, `models.extract`, `integrations.read` (to read the actions' input schemas), and
-`integrations.execute`. Bookkeeping submits the prompt, naming the administration and where the file
-is shared, with `pi.prompt.submit` as a `subagent`: each document runs in a new conversation of the
-agent, beside the others, so documents uploaded together are read side by side and no document sees
-another's text. Backoffice bills the turn to the firm.
+answer.
+
+Bookkeeping does not prompt the agent about a request: it tells the firm what it asks, and the agent
+hands the requests out to subagents of its own. Recording a request triggers a durable hook in the
+books (`workers/books/proposals`), which the `Books` object's alarm runs once the request commits:
+it fires a `proposal.changed` event in the firm's agent project with `events.fire`, as Bookkeeping's
+installation (`workers/backoffice/request-events.ts`). Its payload names the request's `subject`
+(`document:<administration ID>:<document ID>`, or `transaction:…`), its `requestId`, its `status`,
+`requested`, and the `prompt` to answer it with, naming the administration and where the file is
+shared. A document's request is told once its file is shared; a bank transaction's at once. When the
+request ends, answered, withdrawn as the firm changed, or because a person booked or dismissed its
+subject first, the books tell the firm again, with the status it ended with and no prompt. Each
+event names its request and status as its idempotency key and occurred when the change did, so one
+told again after a failure is stored once and a late one does not overtake a later change. A failure
+is retried, ten attempts over up to an hour. The `bookkeeper-agent` [package](#agent-packages)
+defines the event type with the subject as its key path, so its state in the firm's project keeps
+each subject's latest: the agent's to-do list, which the firm can read too. Its route notifies the
+`bookkeeper` agent of each `requested` event, acting as an organization automation with the
+permissions the work takes: `pi.read`, `pi.modify`, `events.read`, `upload.read`, `models.extract`,
+`integrations.read` (to read the actions' input schemas), and `integrations.execute`, which
+installing the package approves. Backoffice notifies only an agent whose conversation a prompt
+started, so when Bookkeeping finds the agent's conversation not started as it tells the firm, it
+starts it with a prompt asking for what an event would, under request ID `bookkeeping:start`, once.
+The agent's own conversation then runs one codemode program, which its instructions give with
+Bookkeeping's event source, as `backoffice:connect` publishes the package for the app's ID: it lists
+the state and starts a subagent with `pi.prompt.submit` for each request still `requested` that none
+was started for, under the request's ID with its prompt, and ends its turn: each document runs in a
+new conversation of the agent, beside the others, so documents uploaded together are read side by
+side and no document sees another's text, and an import of hundreds of transactions takes one
+program. The agent's calls to Bookkeeping arrive as the installation's, the route not being a
+person: they read the books and answer requests (`documents.propose`, `documents.decline`, and their
+`bank.transactions` counterparts), and every other change is refused, whatever a document or a bank
+transaction tells the agent. Backoffice bills the turns to the firm.
 
 How the agent books a document is the `bookkeeping` skill its package installs at
 `/workspace/bookkeeping/skills/bookkeeping/SKILL.md`, which its instructions tell it to read and
@@ -444,9 +467,12 @@ follow. The skill is marked `disable-model-invocation: true`, so Backoffice offe
 the firm's other agents never pick it up. Following it, the agent reads the document with
 `documents.get` and `models.extract`, the books with `books.describe` and `entries.list`, and
 answers with `documents.propose`, an entry as `entries.post` takes it that must balance, or with
-`documents.decline` and why. It cannot post: people review proposals. The document's page shows the
-proposal and the agent's note, and **Review and book** opens the new-entry form filled in from it;
-the documents list marks documents with a proposal. A proposal is checked against the books when
+`documents.decline` and why. Every request ends with an answer: when a call fails, the agent fixes
+it and tries again, and declines with what went wrong when it still cannot read what it needs. Each
+prompt gives the administration's ID as the `administration` to pass, beside the books' name, which
+the agent once passed instead. It cannot post: people review proposals. The document's page shows
+the proposal and the agent's note, and **Review and book** opens the new-entry form filled in from
+it; the documents list marks documents with a proposal. A proposal is checked against the books when
 made, and again by the ledger when booked: it puts no line on a bank account, which `books.describe`
 marks `bank`, as the bank's transaction books the payment.
 
@@ -462,27 +488,29 @@ document's does (`app/books/bookkeeper-proposal.tsx`, `app/books/bookkeeper.serv
 Each document has the agent's proposal (`workers/books/proposals`, a fragment that keeps them for
 anything to book): asked, under a request ID; the proposed entry; or the reason it proposes none. It
 is the latest word on the document, not a history, and no approval: people book as they see fit, and
-the proposal only fills in the form. The request is recorded before the agent is set up and asked,
-so one that never reached it shows. While it is unanswered the document's page asks Backoffice where
-it stands with `pi.prompt.get`: waiting, running, failed with the reason, finished without an
-answer, or never received; or that Backoffice cannot say, e.g. while it cannot be reached. For a
-request the agent received, it also lists the steps of the agent's work so far, from the subagent's
+the proposal only fills in the form. The request is recorded before the firm is told of it, so one
+that never reached the agent shows. While it is unanswered the document's page asks Backoffice where
+it stands with `pi.prompt.get`: waiting, running, failed with the reason, or finished without an
+answer; before the agent started on it, the books say whether they are still telling the firm, gave
+up with the reason, or told it, so it waits for the agent; a document's request whose file was never
+shared was never told; or that Backoffice cannot say, e.g. while it cannot be reached. For a request
+the agent received, it also lists the steps of the agent's work so far, from the subagent's
 `pi.agent.activity`: Bookkeeping's own actions it ran, its reads of the file with `models.extract`,
 and its other work, as work. What that work was stays on the server: it follows the firm's skills
 and instructions, which are the firm's, not the client's. The agent answers before its turn ends, so
 the page reads the document again before showing a finished turn without an answer. While waiting or
 running, the page asks again every 5 seconds while it is in view, since nothing tells Bookkeeping
-when the agent's turn ends. Any but the first two offer **Ask again**, which sends a new request.
-The prompt names its request, and the agent's answer names it back: an answer counts only while the
-document awaits that request, so an earlier request's subagent still running, or one that can no
-longer read the file once the first answer stopped sharing it, cannot replace the answer. An agent's
-answer must name a request about the document, whose IDs all begin
-`document:<administration ID>:<document ID>:`: one that does not, as when the agent shortened the
-ID, is refused with how to give it, rather than as a request answered since, which the agent stops
-at. A person's agent may answer without a request, replacing any answer. The upload asks under one
-request ID, and only while the document has no proposal, so sending it again, even twice at once,
-asks once and never undoes an answer. Booking or dismissing a document ends its proposal's requests:
-the agent's actions refuse documents that are not to book.
+when the agent's turn ends. All but those still being told, or queued or running in Backoffice,
+offer **Ask again**, which sends a new request. The prompt names its request, and the agent's answer
+names it back: an answer counts only while the document awaits that request, so an earlier request's
+subagent still running, or one that can no longer read the file once the first answer stopped
+sharing it, cannot replace the answer. An agent's answer must name a request about the document,
+whose IDs all begin `document:<administration ID>:<document ID>:`: one that does not, as when the
+agent shortened the ID, is refused with how to give it, rather than as a request answered since,
+which the agent stops at. A person's agent may answer without a request, replacing any answer. The
+upload asks under one request ID, and only while the document has no proposal, so sending it again,
+even twice at once, asks once and never undoes an answer. Booking or dismissing a document withdraws
+the request it awaits, and the agent's actions refuse documents that are not to book.
 
 ### Bank accounts
 
@@ -535,13 +563,14 @@ transaction, so those to book list by index. An entry's page links to the transa
 
 An import asks the firm's [bookkeeping agent](#the-bookkeeping-agent) how to book each new
 transaction that the payment form, as it starts, does not book whole as settling what it pays
-(`app/banking/matching.server.ts`), in a subagent of its own, under request ID `…:import`, once.
-Opening balances are left to people: the bank does not say what the books held before. The agent
-proposes a payment, by or to a customer or supplier and settling which of their open items for how
-much, each within what it has outstanding and together within the payment, which the payment form
-then starts from; or an entry's lines besides the bank's, which must balance it and put nothing on a
-bank account, and which **Review and book** fills the new-entry form in from. The list marks
-transactions with a proposal, and a transaction's page asks the agent, again or for the first time.
+(`app/banking/matching.server.ts`), under request ID `…:import`, once, recording every request in
+one call to the books, which tell the firm of each. Opening balances are left to people: the bank
+does not say what the books held before. The agent proposes a payment, by or to a customer or
+supplier and settling which of their open items for how much, each within what it has outstanding
+and together within the payment, which the payment form then starts from; or an entry's lines
+besides the bank's, which must balance it and put nothing on a bank account, and which **Review and
+book** fills the new-entry form in from. The list marks transactions with a proposal, and a
+transaction's page asks the agent, again or for the first time.
 
 ### Asking about the books
 

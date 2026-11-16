@@ -1,12 +1,19 @@
 import { SqlAdapter } from "@fragno-dev/db/adapters/sql";
 import { DurableObjectDialect } from "@fragno-dev/db/dialects/durable-object";
+import {
+  createDurableHooksProcessor,
+  type DurableHooksDispatcherDurableObjectHandler,
+} from "@fragno-dev/db/dispatchers/cloudflare-do";
 import { CloudflareDurableObjectsDriverConfig } from "@fragno-dev/db/drivers";
+import { getDurableHooksService } from "@fragno-dev/db/durable-hooks";
+import type { FragnoId } from "@fragno-dev/db/schema";
 import { LedgerError, type LedgerErrorCode } from "@fragno-dev/ledger/errors";
 import { DurableObject } from "cloudflare:workers";
 
 import { migrate } from "@fragno-dev/db";
 import { createLedgerFragment } from "@fragno-dev/ledger";
 
+import { createFirmTeller } from "../backoffice/request-events";
 import {
   BANK_TRANSACTION_SOURCE_KIND,
   BankingError,
@@ -28,6 +35,7 @@ import {
 } from "./documents/documents";
 import { periodEndDates, today } from "./fiscal-years";
 import {
+  announcementHookId,
   createProposalsFragment,
   ProposalError,
   type ProposalErrorCode,
@@ -55,15 +63,26 @@ export type Outcome<T> =
     };
 
 /**
+ * How far telling the firm of a request got: `pending` while the books keep trying, `failed` with
+ * why once they gave up, and `told` once Backoffice took it.
+ */
+export type RequestDelivery =
+  | { status: "pending" }
+  | { status: "failed"; error: string }
+  | { status: "told" };
+
+/**
  * One administration's books: the ledger fragment, the documents and bank transactions booked
  * through it, and the bookkeeping agent's proposals for booking them, on the object's own SQLite
- * database, named by the administration's ID.
+ * database, named by the administration's ID. The firm keeping them is told of the requests asked
+ * of its agent after they commit, by durable hooks this object's alarm runs.
  */
 export class Books extends DurableObject<CloudflareEnv> {
   private readonly ledger: Ledger;
   private readonly proposals: Proposals;
   private readonly documents: Documents;
   private readonly banking: Banking;
+  private readonly hooks: DurableHooksDispatcherDurableObjectHandler;
 
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
     super(ctx, env);
@@ -74,7 +93,10 @@ export class Books extends DurableObject<CloudflareEnv> {
       driverConfig: new CloudflareDurableObjectsDriverConfig(),
     });
     this.ledger = createLedgerFragment({ databaseAdapter });
-    this.proposals = createProposalsFragment({ databaseAdapter });
+    this.proposals = createProposalsFragment(
+      { tellFirm: createFirmTeller(env) },
+      { databaseAdapter },
+    );
     this.documents = createDocumentsFragment(
       { databaseAdapter },
       { ledger: this.ledger.services, proposals: this.proposals.services },
@@ -83,12 +105,22 @@ export class Books extends DurableObject<CloudflareEnv> {
       { databaseAdapter },
       { ledger: this.ledger.services, proposals: this.proposals.services },
     );
+    this.hooks = createDurableHooksProcessor<CloudflareEnv>([this.proposals], {
+      onProcessError: (error) => {
+        console.warn("The books could not tell a firm of a request yet.", error);
+      },
+    })(ctx, env);
     void ctx.blockConcurrencyWhile(async () => {
       await migrate(this.ledger);
       await migrate(this.proposals);
       await migrate(this.documents);
       await migrate(this.banking);
+      await this.hooks.initialize?.();
     });
+  }
+
+  async alarm(): Promise<void> {
+    await this.hooks.alarm?.();
   }
 
   /**
@@ -317,6 +349,43 @@ export class Books extends DurableObject<CloudflareEnv> {
     );
   }
 
+  /**
+   * Tells the firm of a request about a document, once its file is shared with the firm. Returns
+   * whether the request awaits an answer.
+   */
+  announceDocumentRequest(input: { documentId: string; requestId: string; prompt: string }) {
+    const { documentId, ...request } = input;
+    return attempt(
+      this.proposals.callServices(() =>
+        this.proposals.services.announceRequest({ subjectId: documentId, ...request }),
+      ),
+    );
+  }
+
+  /** How far telling the firm of a request it was to be told of got. */
+  async requestDelivery(requestId: string): Promise<RequestDelivery> {
+    const { hookService } = getDurableHooksService(this.proposals);
+    const hook = await this.proposals.inContext(async function () {
+      return await this.handlerTx()
+        .withServiceCalls(
+          () =>
+            [
+              // Hook IDs are the strings they were triggered with.
+              hookService.getHookById(announcementHookId(requestId) as unknown as FragnoId),
+            ] as const,
+        )
+        .transform(({ serviceResult: [found] }) => found ?? null)
+        .execute();
+    });
+    if (hook?.status === "failed") {
+      return { status: "failed", error: hook.error ?? "No reason was recorded." };
+    }
+    // Hooks that succeeded are deleted after a week.
+    return hook === null || hook.status === "completed"
+      ? { status: "told" }
+      : { status: "pending" };
+  }
+
   answerDocumentRequest(input: Parameters<Documents["services"]["answerRequest"]>[0]) {
     return attempt(this.documents.callServices(() => this.documents.services.answerRequest(input)));
   }
@@ -430,8 +499,8 @@ export class Books extends DurableObject<CloudflareEnv> {
     return this.banking.callServices(() => this.banking.services.getTransactions(ids));
   }
 
-  requestTransactionProposal(input: Parameters<Banking["services"]["requestProposal"]>[0]) {
-    return attempt(this.banking.callServices(() => this.banking.services.requestProposal(input)));
+  requestTransactionProposals(input: Parameters<Banking["services"]["requestProposals"]>[0]) {
+    return attempt(this.banking.callServices(() => this.banking.services.requestProposals(input)));
   }
 
   answerTransactionRequest(input: Parameters<Banking["services"]["answerRequest"]>[0]) {

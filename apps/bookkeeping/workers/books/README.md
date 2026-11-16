@@ -12,7 +12,9 @@ which one books it. The proposals fragment in `proposals/` records the bookkeepi
 for booking what is to book, from the request to the answer, under the ID of the source document
 that would book it, and the generation of the client's management they are asked under; documents
 and bank transactions record theirs through it, in their own transaction, which refuses requests and
-answers about one that is not to book. The ledger's refusals return as `Outcome` values, because
+answers about one that is not to book. Each change to a request the firm was told of triggers its
+durable hook, which the object's alarm runs after the change commits, to tell the firm with an event
+(`../backoffice/request-events.ts`). The ledger's refusals return as `Outcome` values, because
 errors crossing Durable Object RPC keep only their message. Opening the books (`open`) sets the
 functional currency (`currencies.ts`) and, in the same transaction, this calendar year's monthly
 periods (`fiscal-years.ts`) and the default journals and chart of accounts (`default-books.ts`).

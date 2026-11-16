@@ -26,7 +26,12 @@ type BooksContext = Awaited<ReturnType<typeof requireBooks>>;
 
 const NOT_INSTALLED = "Bookkeeping is not installed for this administration's project.";
 
-const BOOKKEEPER_AGENT_NAME = AGENT_PACKAGES.bookkeeper.agent.agentName;
+const NO_FIRM = "No firm keeps these books, so there is no bookkeeping agent to ask.";
+
+const NO_FIRM_AGENT =
+  "The firm keeping these books has not set up its bookkeeping agent yet: one of its owners or admins sets it up by opening the firm in Bookkeeping.";
+
+const BOOKKEEPER_AGENT_NAME = AGENT_PACKAGES.bookkeeper.agentName;
 
 /** Where Bookkeeping provisions each firm's agent project, so provisioning again finds it. */
 const FIRM_AGENT_PROJECT = { externalProjectId: "bookkeeper", name: "Bookkeeping agent" };
@@ -62,34 +67,21 @@ export async function setUpFirmAgent(context: OrganizationContext): Promise<void
 
 /**
  * Bookkeeping's installation in the administration's project, which shares documents, and in the
- * agent project of the firm keeping its books, which holds the agent. Bookkeeping prompts the agent
- * as its installation, not as the person, so the agent's calls to Bookkeeping can answer requests
- * for proposals and change nothing else, whatever a document or a bank transaction tells it.
- * `firmId` is the firm the request was recorded with, read once, so the request never reaches a
- * firm it was not recorded for.
+ * agent project of the firm keeping its books, which holds the agent. `firmId` is the firm the
+ * request was recorded with, read once, so the request never reaches a firm it was not recorded
+ * for.
  */
 async function connectToAgent(
   context: BooksContext,
-  firmId: string | null,
+  firmId: string,
 ): Promise<
-  | { ok: true; firmId: string; administration: InstalledProject; agent: InstalledProject }
+  | { ok: true; administration: InstalledProject; agent: InstalledProject }
   | { ok: false; error: string }
 > {
   const { organization, administration } = context;
-  const directory = env.DIRECTORY.getByName("directory");
-  if (firmId === null) {
-    return {
-      ok: false,
-      error: "No firm keeps these books, so there is no bookkeeping agent to ask.",
-    };
-  }
-  const projectId = await directory.findFirmAgent(firmId);
+  const projectId = await env.DIRECTORY.getByName("directory").findFirmAgent(firmId);
   if (projectId === null) {
-    return {
-      ok: false,
-      error:
-        "The firm keeping these books has not set up its bookkeeping agent yet: one of its owners or admins sets it up by opening the firm in Bookkeeping.",
-    };
+    return { ok: false, error: NO_FIRM_AGENT };
   }
   const administrationScope = {
     kind: "project" as const,
@@ -113,7 +105,6 @@ async function connectToAgent(
   }
   return {
     ok: true,
-    firmId,
     administration: { scope: administrationScope, backoffice: clientBackoffice },
     agent: { scope: agentScope, backoffice: firmBackoffice },
   };
@@ -124,24 +115,23 @@ export type ProposalSubject =
   | { kind: "document"; document: Pick<DocumentView, "id" | "filename" | "storageKey"> }
   | { kind: "transaction"; transaction: { id: string; description: string } };
 
-function subjectId(subject: ProposalSubject): string {
-  return subject.kind === "document" ? subject.document.id : subject.transaction.id;
-}
+type DocumentSubject = Extract<ProposalSubject, { kind: "document" }>;
+type TransactionSubject = Extract<ProposalSubject, { kind: "transaction" }>;
 
-/** Records the request, as the subject's books do. Returns the proposal in effect. */
-function recordRequest(
+/** Whom a request is asked of and for: the firm, under the generation read before, and by whom. */
+type Asked = { generation: number; firmId: string; by: string; at: string };
+
+/**
+ * The ID of the request asking about `subject`: an upload or an import asks `first`, under one ID
+ * per subject, so sending it again never asks twice; asking `again` sends a new one.
+ */
+function requestIdOf(
   context: BooksContext,
-  subject: ProposalSubject,
-  request: ProposalRequest,
-  first: boolean,
-) {
-  return subject.kind === "document"
-    ? context.books.requestDocumentProposal({ documentId: subject.document.id, request, first })
-    : context.books.requestTransactionProposal({
-        transactionId: subject.transaction.id,
-        request,
-        first,
-      });
+  subject: { kind: ProposalSubject["kind"]; id: string },
+  ask: "first" | "again",
+): string {
+  const first = subject.kind === "document" ? "upload" : "import";
+  return `${requestPrefix(context.administration.id, subject)}${ask === "first" ? first : crypto.randomUUID()}`;
 }
 
 /** What the agent is told about the subject: what it is, where it reads it, and how to answer. */
@@ -151,7 +141,8 @@ async function promptContent(
   requestId: string,
 ): Promise<string> {
   const { organization, administration } = context;
-  const books = `of administration ${administration.id}, ${organization.name}'s ${administration.name}`;
+  // The agent once gave the books' name where their ID belongs, so the prompt says which is which.
+  const books = `in the books of ${organization.name}'s ${administration.name}, whose administration ID is ${administration.id}: give \`administration: "${administration.id}"\` in every action's input`;
   if (subject.kind === "document") {
     const { document } = subject;
     return `Propose the entry for document ${document.id} (${document.filename}) ${books}. Its file is the blob ${await sharedDocumentKey(administration.id, document)}. This is request ${requestId}: give it as \`request\` when you answer with documents.propose or documents.decline.`;
@@ -161,151 +152,175 @@ async function promptContent(
 }
 
 /**
- * Asks the bookkeeping agent to propose how to book each subject, as a subagent of its own: an
- * upload or an import asks `first`, under one request ID per subject, and only while the subject
- * has no proposal, so sending it again never asks twice; asking `again` sends a new request. Every
- * request is recorded first, so one that never reached the agent, e.g. because Backoffice could
- * not set it up, shows on the subject's page to ask again. A document's file is shared with the
- * agent while its request awaits an answer. Returns why the requests were not all sent instead.
+ * Asks the bookkeeping agent of the firm keeping the books to propose how to book each subject:
+ * the books record each request, under one ID per subject, only while the subject has no
+ * proposal, unless asked `again`. Once a request commits, the books tell the firm, whose agent
+ * starts a subagent for it; a document's request is told once its file is shared with the firm,
+ * and only while the request awaits an answer. A request that never reached the agent, e.g.
+ * because its file could not be shared, shows on its subject's page to ask again. Returns why the
+ * requests were not all asked instead.
  */
 export async function askBookkeeper(
   context: BooksContext,
   subjects: ProposalSubject[],
   ask: "first" | "again",
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const directory = env.DIRECTORY.getByName("directory");
   // Read now, not when the page started, and recorded with the requests: a change of firm after
   // this withdraws them, and the books refuse them once they heard of a change.
-  const management = await env.DIRECTORY.getByName("directory").findClient(context.organization.id);
+  const management = await directory.findClient(context.organization.id);
   if (management === null) {
     return { ok: false, error: "These books belong to no client Bookkeeping knows." };
   }
-  const asked = [];
-  for (const subject of subjects) {
-    // A subject is first asked about as it is uploaded or imported.
-    const first = subject.kind === "document" ? "upload" : "import";
-    const prefix = requestPrefix(context.administration.id, {
-      kind: subject.kind,
-      id: subjectId(subject),
-    });
-    const requestId = `${prefix}${ask === "first" ? first : crypto.randomUUID()}`;
-    const recorded = await recordRequest(
-      context,
-      subject,
-      {
-        status: "requested",
-        requestId,
-        generation: management.generation,
-        by: context.user.name,
-        at: new Date().toISOString(),
-      },
-      ask === "first",
-    );
-    if (!recorded.ok) {
-      return { ok: false, error: recorded.message };
-    }
-    const proposal = recorded.value;
-    // Another request or an answer came first. Sending this request again is safe: Backoffice
-    // queues a request ID once.
-    if (proposal.status === "requested" && proposal.requestId === requestId) {
-      asked.push({ subject, requestId });
+  if (management.firmId === null) {
+    return { ok: false, error: NO_FIRM };
+  }
+  if ((await directory.findFirmAgent(management.firmId)) === null) {
+    return { ok: false, error: NO_FIRM_AGENT };
+  }
+  const asked: Asked = {
+    generation: management.generation,
+    firmId: management.firmId,
+    by: context.user.name,
+    at: new Date().toISOString(),
+  };
+  const transactions = subjects.filter(
+    (subject): subject is TransactionSubject => subject.kind === "transaction",
+  );
+  const documents = subjects.filter(
+    (subject): subject is DocumentSubject => subject.kind === "document",
+  );
+  if (transactions.length > 0) {
+    const asking = await askAboutTransactions(context, transactions, asked, ask);
+    if (!asking.ok) {
+      return asking;
     }
   }
-  if (asked.length === 0) {
+  const asking = await Promise.all(
+    documents.map((subject) => askAboutDocument(context, subject, asked, ask)),
+  );
+  return asking.find((outcome) => !outcome.ok) ?? { ok: true };
+}
+
+/** Records the requests about bank transactions in one call, which tells the firm of each. */
+async function askAboutTransactions(
+  context: BooksContext,
+  subjects: TransactionSubject[],
+  asked: Asked,
+  ask: "first" | "again",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const requests = await Promise.all(
+    subjects.map(async (subject) => {
+      const { id } = subject.transaction;
+      const requestId = requestIdOf(context, { kind: "transaction", id }, ask);
+      return {
+        transactionId: id,
+        requestId,
+        prompt: await promptContent(context, subject, requestId),
+      };
+    }),
+  );
+  const recorded = await context.books.requestTransactionProposals({
+    requests,
+    asked,
+    first: ask === "first",
+  });
+  return recorded.ok ? { ok: true } : { ok: false, error: recorded.message };
+}
+
+/**
+ * Records the request about a document, shares its file with the firm's agent while the request
+ * awaits an answer, then has the books tell the firm of it.
+ */
+async function askAboutDocument(
+  context: BooksContext,
+  subject: DocumentSubject,
+  asked: Asked,
+  ask: "first" | "again",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { document } = subject;
+  const requestId = requestIdOf(context, { kind: "document", id: document.id }, ask);
+  const recorded = await context.books.requestDocumentProposal({
+    documentId: document.id,
+    requestId,
+    asked,
+    first: ask === "first",
+  });
+  if (!recorded.ok) {
+    return { ok: false, error: recorded.message };
+  }
+  const proposal = recorded.value;
+  // Another request or an answer came first, or the firm was told of this one already.
+  if (proposal.status !== "requested" || proposal.requestId !== requestId || proposal.announced) {
     return { ok: true };
   }
   try {
-    const connected = await connectToAgent(context, management.firmId);
+    const connected = await connectToAgent(context, asked.firmId);
     if (!connected.ok) {
       return { ok: false, error: connected.error };
     }
-    for (const { subject, requestId } of asked) {
-      const awaited =
-        subject.kind === "document"
-          ? await shareForRequest(env, {
-              administration: context.administration,
-              projects: { administration: connected.administration, agent: connected.agent },
-              document: subject.document,
-              requestId,
-            })
-          : true;
-      // Answered meanwhile, e.g. by a person: the agent has nothing to answer.
-      if (!awaited) {
-        continue;
-      }
-      const prompted = await promptAgent(connected.agent, {
-        agentName: BOOKKEEPER_AGENT_NAME,
-        requestId,
-        // Each subject is a subagent of its own: subjects are read side by side, and none sees
-        // another's text.
-        subagent: true,
-        content: await promptContent(context, subject, requestId),
-      });
-      if (!prompted) {
-        return {
-          ok: false,
-          error: "The firm's bookkeeping agent is being set up. Ask again in a moment.",
-        };
-      }
+    const awaited = await shareForRequest(env, {
+      administration: context.administration,
+      projects: { administration: connected.administration, agent: connected.agent },
+      document,
+      requestId,
+    });
+    // Answered meanwhile, e.g. by a person: the agent has nothing to answer.
+    if (!awaited) {
+      return { ok: true };
     }
   } catch (error) {
-    return { ok: false, error: `Backoffice did not ask the agent: ${backofficeProblem(error)}` };
+    return {
+      ok: false,
+      error: `Backoffice did not share the document with the agent: ${backofficeProblem(error)}`,
+    };
   }
-  return { ok: true };
+  const announced = await context.books.announceDocumentRequest({
+    documentId: document.id,
+    requestId,
+    prompt: await promptContent(context, subject, requestId),
+  });
+  return announced.ok ? { ok: true } : { ok: false, error: announced.message };
 }
 
 /**
- * Submits a prompt to the firm's bookkeeping agent. Returns false when its project has no agent,
- * as when the package was removed while Bookkeeping was uninstalled, after reinstalling it.
- */
-async function promptAgent(
-  agent: InstalledProject,
-  prompt: { agentName: string; requestId: string; subagent: boolean; content: string },
-): Promise<boolean> {
-  const submit = async () => {
-    try {
-      await agent.backoffice.call(agent.scope, "pi.prompt.submit", prompt);
-      return true;
-    } catch (error) {
-      if (error instanceof BackofficeApiRequestError && error.code === "not_found") {
-        return false;
-      }
-      throw error;
-    }
-  };
-  if (await submit()) {
-    return true;
-  }
-  await env.DIRECTORY.getByName("directory").reinstallAgentPackage(agent.scope.projectId);
-  return await submit();
-}
-
-/**
- * Where the agent stands with a request: Backoffice's answer with the steps of the agent's work,
- * `lost` when the agent never received it, or `unknown` with why Backoffice could not say.
+ * Where the agent stands with a request: Backoffice's answer with the steps of the agent's work
+ * once the agent started on it. Before, `unsent` when the books never told the firm of it, such as
+ * a document whose file could not be shared; `sending` while they keep trying to; `undelivered`
+ * once they gave up; and `waiting` once Backoffice took it, for the agent to start on it. `unknown`
+ * says why Backoffice could not say.
  */
 export type BookkeeperProgress =
   | (PiPromptStatus & { steps: AgentStep[] })
-  | { status: "lost" }
+  | { status: "unsent" }
+  | { status: "sending" }
+  | { status: "undelivered"; reason: string }
+  | { status: "waiting" }
   | { status: "unknown"; message: string };
 
 async function readBookkeeperProgress(
   context: BooksContext,
-  requestId: string,
+  request: ProposalRequest,
 ): Promise<BookkeeperProgress> {
+  if (!request.announced) {
+    return { status: "unsent" };
+  }
+  const { requestId } = request;
   try {
-    const client = await env.DIRECTORY.getByName("directory").findClient(context.organization.id);
-    const connected = await connectToAgent(context, client?.firmId ?? null);
+    const connected = await connectToAgent(context, request.firmId);
     if (!connected.ok) {
-      return { status: "unknown", message: connected.error };
+      return (
+        (await undelivered(context, requestId)) ?? { status: "unknown", message: connected.error }
+      );
     }
     const { agent } = connected;
     const progress = await agent.backoffice.call(agent.scope, "pi.prompt.get", {
       agentName: BOOKKEEPER_AGENT_NAME,
       requestId,
     });
-    // Read only for a request the agent received: the agent may not even exist otherwise.
+    // Read only for a request the agent started on: the agent may not even exist otherwise.
     if (progress === null) {
-      return { status: "lost" };
+      return (await undelivered(context, requestId)) ?? { status: "waiting" };
     }
     // The request runs in a subagent of its own, which its request ID names.
     const activity = await agent.backoffice.call(agent.scope, "pi.agent.activity", {
@@ -320,8 +335,27 @@ async function readBookkeeperProgress(
     );
     return { ...progress, steps };
   } catch (error) {
-    return { status: "unknown", message: backofficeProblem(error) };
+    const message = backofficeProblem(error);
+    return (await undelivered(context, requestId)) ?? { status: "unknown", message };
   }
+}
+
+/**
+ * Where the books stand telling the firm of the request, unless they told it: the books know that
+ * without Backoffice, so it shows even while Backoffice cannot be reached.
+ */
+async function undelivered(
+  context: BooksContext,
+  requestId: string,
+): Promise<BookkeeperProgress | null> {
+  const delivery = await context.books.requestDelivery(requestId);
+  if (delivery.status === "pending") {
+    return { status: "sending" };
+  }
+  if (delivery.status === "failed") {
+    return { status: "undelivered", reason: delivery.error };
+  }
+  return null;
 }
 
 /**
@@ -339,8 +373,8 @@ export async function withBookkeeperProgress<
   if (subject.state.status !== "to-book" || proposal?.status !== "requested") {
     return { subject, progress: null };
   }
-  const progress = await readBookkeeperProgress(context, proposal.requestId);
-  if (["queued", "running", "unknown"].includes(progress.status)) {
+  const progress = await readBookkeeperProgress(context, proposal);
+  if (progress.status !== "completed" && progress.status !== "failed") {
     return { subject, progress };
   }
   // The agent answers before its turn ends, so a turn that ended may have answered since.

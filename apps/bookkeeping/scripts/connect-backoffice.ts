@@ -58,6 +58,10 @@ const REQUESTED_PERMISSIONS = [
   { namespace: "models", permission: "extract" },
   { namespace: "integrations", permission: "read" },
   { namespace: "integrations", permission: "execute" },
+  // Bookkeeping tells firms of what their agents are asked with events, which its agent package's
+  // route reads.
+  { namespace: "events", permission: "emit" },
+  { namespace: "events", permission: "read" },
 ];
 
 function readDevVars(): Map<string, string> {
@@ -403,7 +407,7 @@ const published = execSystem(
         slug: agentPackage.slug,
         version: agentPackage.version,
         metadata: agentPackage.metadata,
-        files: agentPackageFiles(agentPackage),
+        files: agentPackageFiles(agentPackage, app.appId),
       })),
     )};
     const published = [];

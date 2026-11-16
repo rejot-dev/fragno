@@ -35,7 +35,7 @@ const NOT_INSTALLED = "Bookkeeping is not installed for this administration's pr
 
 const AGENT_INSTALLING = "The assistant is being set up. Try again in a moment.";
 
-const BOOKS_AGENT_NAME = AGENT_PACKAGES.books.agent.agentName;
+const BOOKS_AGENT_NAME = AGENT_PACKAGES.books.agentName;
 
 /**
  * Backoffice's API as Bookkeeping's installation in the administration's project, which prompts its

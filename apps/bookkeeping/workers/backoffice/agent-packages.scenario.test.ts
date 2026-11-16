@@ -15,8 +15,8 @@ test("a deploy shipping a new version of an agent's package upgrades every proje
     await scenario.openAdministration(ada, clientPath, "Engines");
     await scenario.openAdministration(ada, clientPath, "Looms");
     const installed = (version: string) => [{ listingId: "app:bookkeeping#books-agent", version }];
-    expect(scenario.backoffice.installedPackages(CLIENT, "Engines")).toEqual(installed("1.0.2"));
-    expect(scenario.backoffice.installedPackages(CLIENT, "Looms")).toEqual(installed("1.0.2"));
+    expect(scenario.backoffice.installedPackages(CLIENT, "Engines")).toEqual(installed("1.0.3"));
+    expect(scenario.backoffice.installedPackages(CLIENT, "Looms")).toEqual(installed("1.0.3"));
     // Bookkeeping sees the installs it started finish.
     scenario.advanceTime(5_000);
     await scenario.runDueAlarms();
@@ -24,9 +24,14 @@ test("a deploy shipping a new version of an agent's package upgrades every proje
 
     const books = AGENT_PACKAGES.books;
     const instructions = "Answer from the books, briefly.";
-    scenario.deploy({
-      books: { ...books, version: "1.1.0", agent: { ...books.agent, instructions } },
-    });
+    const declare: typeof books.declare = (eventSource) => {
+      const declared = books.declare(eventSource);
+      return {
+        ...declared,
+        agents: declared.agents.map((agent) => ({ ...agent, instructions })),
+      };
+    };
+    scenario.deploy({ books: { ...books, version: "1.1.0", declare } });
     await scenario.runDueAlarms();
     for (const administration of ["Engines", "Looms"]) {
       expect(scenario.backoffice.installedPackages(CLIENT, administration)).toEqual(
@@ -89,7 +94,7 @@ test("a rollback during an upgrade waits for the upgrade, then installs the vers
     scenario.advanceTime(5_000);
     await scenario.runDueAlarms();
     await scenario.runDueAlarms();
-    expect(scenario.backoffice.installedPackages(CLIENT, "Engines")).toEqual(installed("1.0.2"));
+    expect(scenario.backoffice.installedPackages(CLIENT, "Engines")).toEqual(installed("1.0.3"));
 
     // Once it sees that install finish, Bookkeeping installs nothing more.
     scenario.advanceTime(5_000);
@@ -97,7 +102,7 @@ test("a rollback during an upgrade waits for the upgrade, then installs the vers
     scenario.advanceTime(3_600_000);
     await scenario.runDueAlarms();
     expect(installs()).toBe(before + 2);
-    expect(scenario.backoffice.installedPackages(CLIENT, "Engines")).toEqual(installed("1.0.2"));
+    expect(scenario.backoffice.installedPackages(CLIENT, "Engines")).toEqual(installed("1.0.3"));
   });
 });
 
@@ -125,7 +130,7 @@ test("an upgrade whose start Bookkeeping never heard about is followed through a
     scenario.advanceTime(3_600_000);
     await scenario.runDueAlarms();
     await scenario.runDueAlarms();
-    expect(scenario.backoffice.installedPackages(CLIENT, "Engines")).toEqual(installed("1.0.2"));
+    expect(scenario.backoffice.installedPackages(CLIENT, "Engines")).toEqual(installed("1.0.3"));
   });
 });
 
@@ -156,7 +161,7 @@ test("an agent the client's members defined under the package's name blocks its 
     scenario.backoffice.admin.uninstall(CLIENT);
     scenario.backoffice.admin.uninstallPackage(CLIENT, "Engines", "app:bookkeeping#books-agent");
     scenario.backoffice.admin.defineAgent(CLIENT, "Engines", {
-      ...AGENT_PACKAGES.books.agent,
+      ...booksAgent(),
       instructions: "The instructions Bookkeeping wrote before.",
     });
     scenario.backoffice.admin.reinstall(CLIENT);
@@ -194,7 +199,7 @@ test("an agent Bookkeeping defined before it shipped packages, which the members
     // As before Bookkeeping shipped its agents as packages: the members' agent, as Bookkeeping wrote it.
     scenario.backoffice.admin.uninstall(CLIENT);
     scenario.backoffice.admin.uninstallPackage(CLIENT, "Engines", "app:bookkeeping#books-agent");
-    scenario.backoffice.admin.defineAgent(CLIENT, "Engines", AGENT_PACKAGES.books.agent);
+    scenario.backoffice.admin.defineAgent(CLIENT, "Engines", booksAgent());
     scenario.backoffice.admin.reinstall(CLIENT);
 
     scenario.deploy({ books: { ...AGENT_PACKAGES.books, version: "1.1.0" } });
@@ -227,7 +232,13 @@ test("a client secret Backoffice no longer accepts fails the alarm instead of be
       "Bookkeeping could not authenticate to Backoffice (HTTP 401).",
     );
     expect(scenario.backoffice.installedPackages(CLIENT, "Engines")).toEqual([
-      { listingId: "app:bookkeeping#books-agent", version: "1.0.2" },
+      { listingId: "app:bookkeeping#books-agent", version: "1.0.3" },
     ]);
   });
 });
+
+/** The agent the books' package defines, which declares no events, so no source shapes it. */
+function booksAgent() {
+  const [agent] = AGENT_PACKAGES.books.declare("app:bookkeeping-app").agents;
+  return agent;
+}

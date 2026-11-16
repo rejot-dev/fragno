@@ -3,7 +3,7 @@ import { withDatabase, type FragnoPublicConfigWithDatabase } from "@fragno-dev/d
 import type { createLedgerFragment } from "@fragno-dev/ledger";
 
 import type { createProposalsFragment } from "../proposals/proposals";
-import type { AgentProposal, ProposalAnswer, ProposalRequest } from "../proposals/schema";
+import type { AgentProposal, ProposalAnswer } from "../proposals/schema";
 import { bookingEntry, booksSource, type SourceDocument } from "../sources";
 import {
   documentsSchema,
@@ -14,6 +14,7 @@ import {
 
 type LedgerServices = ReturnType<typeof createLedgerFragment>["services"];
 type ProposalsServices = ReturnType<typeof createProposalsFragment>["services"];
+type ProposalAsked = Parameters<ProposalsServices["requestProposals"]>[0]["asked"];
 type PostEntryInput = Parameters<LedgerServices["postEntry"]>[0];
 type ReverseEntryInput = Parameters<LedgerServices["reverseEntry"]>[0];
 
@@ -275,6 +276,10 @@ const documentsFragmentDefinition = defineFragment("documents")
                       ? { ...input.source, id: documentId, kind: DOCUMENT_SOURCE_KIND }
                       : { type: "existing", id: documentId },
                 }),
+                serviceDeps.proposals.withdrawRequest({
+                  subjectId: documentId,
+                  reason: "The document was booked before the agent answered.",
+                }),
               ] as const,
           )
           .retrieve((uow) =>
@@ -339,16 +344,22 @@ const documentsFragmentDefinition = defineFragment("documents")
        */
       requestProposal: function (input: {
         documentId: string;
-        request: ProposalRequest;
+        requestId: string;
+        asked: ProposalAsked;
         first: boolean;
       }) {
-        const { documentId, request, first } = input;
+        const { documentId, requestId, asked, first } = input;
         return this.serviceTx(documentsSchema)
           .withServiceCalls(
             () =>
               [
                 serviceDeps.ledger.getSourceDocuments({ ids: [documentId] }),
-                serviceDeps.proposals.requestProposal({ subjectId: documentId, request, first }),
+                // The firm is told once the file is shared with it, which takes Backoffice.
+                serviceDeps.proposals.requestProposals({
+                  requests: [{ subjectId: documentId, requestId, prompt: null }],
+                  asked,
+                  first,
+                }),
               ] as const,
           )
           .retrieve((uow) =>
@@ -358,13 +369,13 @@ const documentsFragmentDefinition = defineFragment("documents")
           )
           .transformRetrieve(([document], [sources]) => subjectToBook(document, sources[0] ?? null))
           .mutate(
-            ({ uow, retrieveResult: document, serviceIntermediateResult: [, { recorded }] }) => {
-              if (recorded) {
+            ({ uow, retrieveResult: document, serviceIntermediateResult: [, { planned }] }) => {
+              if (planned[0].recorded) {
                 uow.update("document", document.id, (b) => b.set({ shared: true }).check());
               }
             },
           )
-          .transform(({ serviceResult: [, proposal] }) => proposal as DocumentProposal)
+          .transform(({ serviceResult: [, [requested]] }) => requested.proposal as DocumentProposal)
           .build();
       },
 
@@ -495,7 +506,14 @@ const documentsFragmentDefinition = defineFragment("documents")
         const { documentId } = input;
         return this.serviceTx(documentsSchema)
           .withServiceCalls(
-            () => [serviceDeps.ledger.getSourceDocuments({ ids: [documentId] })] as const,
+            () =>
+              [
+                serviceDeps.ledger.getSourceDocuments({ ids: [documentId] }),
+                serviceDeps.proposals.withdrawRequest({
+                  subjectId: documentId,
+                  reason: "The document was dismissed before the agent answered.",
+                }),
+              ] as const,
           )
           .retrieve((uow) =>
             uow.findFirst("document", (b) =>

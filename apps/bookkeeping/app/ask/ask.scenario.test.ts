@@ -93,7 +93,7 @@ test("the agent's package is Bookkeeping's while it is installed, and opening th
     const { ada, clientPath } = await scenario.practice();
     await scenario.openAdministration(ada, clientPath, ADMINISTRATION);
     expect(scenario.backoffice.installedPackages(CLIENT, ADMINISTRATION)).toEqual([
-      { listingId: "app:bookkeeping#books-agent", version: "1.0.2" },
+      { listingId: "app:bookkeeping#books-agent", version: "1.0.3" },
     ]);
 
     // Members cannot uninstall the package while Bookkeeping is installed. Once its owners
@@ -109,7 +109,7 @@ test("the agent's package is Bookkeeping's while it is installed, and opening th
 
     expect(await askPage(ada)).toEqual({ agent: { ok: true, provisioned: false } });
     expect(scenario.backoffice.installedPackages(CLIENT, ADMINISTRATION)).toEqual([
-      { listingId: "app:bookkeeping#books-agent", version: "1.0.2" },
+      { listingId: "app:bookkeeping#books-agent", version: "1.0.3" },
     ]);
     expect(await ask(ada, "rent", "What did we spend on rent?")).toEqual({ error: null });
   });
@@ -203,7 +203,7 @@ test("files a question carries become documents, which the agent reads and the f
     };
     expect(await upload()).toEqual({ error: null });
     expect(await upload()).toEqual({ error: null });
-    expect(scenario.backoffice.prompts("lovelace-co", "Bookkeeping agent")).toMatchObject([
+    expect(scenario.backoffice.subagentPrompts("lovelace-co", "Bookkeeping agent")).toMatchObject([
       { agentName: "bookkeeper", requestId: expect.stringContaining(`:${documentId}:upload`) },
     ]);
 

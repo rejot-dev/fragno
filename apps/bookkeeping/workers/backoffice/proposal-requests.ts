@@ -8,3 +8,8 @@ export type ProposalSubject = { kind: "document" | "transaction"; id: string };
 export function requestPrefix(administrationId: string, subject: ProposalSubject): string {
   return `${subject.kind}:${administrationId}:${subject.id}:`;
 }
+
+/** The subject a request is about: its ID as `requestPrefix` begins it, without the last colon. */
+export function requestSubject(requestId: string): string {
+  return requestId.slice(0, requestId.lastIndexOf(":"));
+}
