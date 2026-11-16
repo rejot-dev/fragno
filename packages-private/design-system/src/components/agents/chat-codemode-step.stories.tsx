@@ -134,14 +134,26 @@ const REMINDERS: SampleCall[] = [
   },
   {
     id: "r3",
-    subject: { kind: "call", name: "crm.contacts.get", scope: null, input: '{"id":"con_acme"}' },
+    subject: {
+      kind: "tool",
+      name: "crm.contacts.get",
+      scope: null,
+      label: "Read contact",
+      target: "con_acme",
+    },
     offsetMs: 500,
     durationMs: 180,
     error: null,
   },
   {
     id: "r4",
-    subject: { kind: "call", name: "crm.contacts.get", scope: null, input: '{"id":"con_globex"}' },
+    subject: {
+      kind: "tool",
+      name: "crm.contacts.get",
+      scope: null,
+      label: "Read contact",
+      target: "con_globex",
+    },
     offsetMs: 500,
     durationMs: 210,
     error: null,
@@ -149,10 +161,11 @@ const REMINDERS: SampleCall[] = [
   {
     id: "r5",
     subject: {
-      kind: "call",
+      kind: "tool",
       name: "crm.contacts.get",
       scope: "org:initech-holdings",
-      input: '{"id":"con_initech"}',
+      label: "Read contact",
+      target: "con_initech",
     },
     offsetMs: 501,
     durationMs: 260,
@@ -161,10 +174,11 @@ const REMINDERS: SampleCall[] = [
   {
     id: "r6",
     subject: {
-      kind: "call",
+      kind: "tool",
       name: "email.send",
       scope: null,
-      input: '{"to":"ap@acme.test","template":"reminder","invoice":"INV-4182"}',
+      label: "Send email",
+      target: "ap@acme.test",
     },
     offsetMs: 770,
     durationMs: 520,
@@ -173,10 +187,11 @@ const REMINDERS: SampleCall[] = [
   {
     id: "r7",
     subject: {
-      kind: "call",
+      kind: "tool",
       name: "email.send",
       scope: null,
-      input: '{"to":"billing@globex.test","template":"reminder","invoice":"INV-4190"}',
+      label: "Send email",
+      target: "billing@globex.test",
     },
     offsetMs: 1_300,
     durationMs: 90,
@@ -186,10 +201,11 @@ const REMINDERS: SampleCall[] = [
   {
     id: "r8",
     subject: {
-      kind: "call",
+      kind: "tool",
       name: "email.send",
       scope: null,
-      input: '{"to":"finance@initech.test","template":"reminder","invoice":"INV-4203"}',
+      label: "Send email",
+      target: "finance@initech.test",
     },
     offsetMs: 1_400,
     durationMs: 480,
@@ -326,10 +342,11 @@ const WAITING: SampleCall[] = Array.from({ length: 5 }, (_, index) => [
   {
     id: `list-${index}`,
     subject: {
-      kind: "call",
+      kind: "tool",
       name: "store.list",
       scope: null,
-      input: '{"limit":100}',
+      label: "List store entries",
+      target: null,
     } as const,
     offsetMs: 40 + index * 2_012 + 2_003,
     durationMs: index === 0 ? 10 : 6,
@@ -465,10 +482,11 @@ export function ManyCalls() {
     {
       id: "list",
       subject: {
-        kind: "call",
+        kind: "tool",
         name: "crm.contacts.list",
         scope: null,
-        input: '{"tag":"churn-risk"}',
+        label: "List contacts",
+        target: "churn-risk",
       },
       offsetMs: 0,
       status: "succeeded",
@@ -476,10 +494,11 @@ export function ManyCalls() {
     },
     ...Array.from({ length: 40 }, (_, index): ChatCodemodeCall => {
       const subject: ChatCodemodeCallSubject = {
-        kind: "call",
+        kind: "tool",
         name: "crm.deals.get",
         scope: null,
-        input: `{"contactId":"con_${1000 + index}"}`,
+        label: "Read deal",
+        target: `con_${1000 + index}`,
       };
       const durationMs = 140 + ((index * 37) % 220);
       return index === 17
@@ -554,7 +573,13 @@ const SWEEP_CODE = `async () => {
 const SWEEP: SampleCall[] = [
   {
     id: "list",
-    subject: { kind: "call", name: "crm.contacts.list", scope: null, input: '{"tag":"overdue"}' },
+    subject: {
+      kind: "tool",
+      name: "crm.contacts.list",
+      scope: null,
+      label: "List contacts",
+      target: "overdue",
+    },
     offsetMs: 0,
     durationMs: 380,
     error: null,
@@ -578,10 +603,11 @@ const SWEEP: SampleCall[] = [
       {
         id: `send-${customer}`,
         subject: {
-          kind: "call",
+          kind: "tool",
           name: "email.send",
           scope: null,
-          input: `{"to":"ap@${customer}.test","template":"reminder"}`,
+          label: "Send email",
+          target: `ap@${customer}.test`,
         },
         offsetMs: offsetMs + 320,
         durationMs: 240 + ((index * 31) % 60),

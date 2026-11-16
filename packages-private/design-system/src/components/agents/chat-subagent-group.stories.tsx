@@ -270,10 +270,11 @@ function BatchTurn({
             id: document.id,
             offsetMs: 20 + index * 12,
             subject: {
-              kind: "call",
+              kind: "tool",
               name: "pi.submitPrompt",
               scope: null,
-              input: `{ subagent: true, ${document.id} }`,
+              label: "Prompt agent",
+              target: document.id,
             },
             status: "succeeded",
             durationMs: 40,

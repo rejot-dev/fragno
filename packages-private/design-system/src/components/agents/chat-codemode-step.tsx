@@ -25,6 +25,18 @@ export type ChatCodemodeCallSubject =
       input: string;
     }
   | {
+      kind: "tool";
+      /** The tool as the program called it, such as "state.writeFile". */
+      name: string;
+      /** A scope other than the run's own, such as "org:acme"; null for the run's scope. */
+      scope: string | null;
+      /** What the call does, such as "Save file". */
+      label: string;
+      /** The input it acted on, such as a path; null when the label says it all. */
+      target: string | null;
+    }
+  | {
+      /** A call only its tool's name and raw input describe. */
       kind: "call";
       /** The tool as the program called it, such as "crm.contacts.list". */
       name: string;
@@ -109,6 +121,13 @@ function callLine(subject: ChatCodemodeCallSubject): CallLine {
         detail: subject.input,
         code: true,
       };
+    case "tool":
+      return {
+        icon: "corner-down-right",
+        title: { running: subject.label, succeeded: subject.label, failed: subject.label },
+        detail: subject.target ?? "",
+        code: false,
+      };
     case "call":
       return {
         icon: "corner-down-right",
@@ -127,6 +146,8 @@ export function codemodeCallHeadline(subject: ChatCodemodeCallSubject) {
       return `Loading the ${subject.name} skill`;
     case "action":
       return `Running ${subject.actionId} on ${subject.connectionId}`;
+    case "tool":
+      return subject.target === null ? subject.label : `${subject.label}: ${subject.target}`;
     case "call":
       return `Calling ${subject.name}`;
     case "read":
@@ -172,6 +193,7 @@ function callTags(subject: ChatCodemodeCallSubject): string[] {
       return subject.scope === null
         ? [subject.connectionId]
         : [subject.scope, subject.connectionId];
+    case "tool":
     case "call":
       return subject.scope === null ? [] : [subject.scope];
     case "skill":
@@ -215,6 +237,8 @@ function CallRow({ call, spanMs }: { call: ChatCodemodeCall; spanMs: number }) {
                 ? "text-[var(--bo-live)]"
                 : "text-[var(--bo-fg)]",
           )}
+          // A label stands in for the tool the program called; hovering it names the tool.
+          title={call.subject.kind === "tool" ? call.subject.name : undefined}
         >
           {running ? <span className="bo-shimmer-text">{title.running}</span> : title[call.status]}
         </span>

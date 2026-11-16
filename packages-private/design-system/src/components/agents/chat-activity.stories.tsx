@@ -92,10 +92,11 @@ const STEPS: SampleStep[] = [
         id: "write",
         offsetMs: 15,
         subject: {
-          kind: "call",
+          kind: "tool",
           name: "state.writeFile",
           scope: null,
-          input: '{"path":"/workspace/reminders.md","content":"# Reminders…"}',
+          label: "Save file",
+          target: "/workspace/reminders.md",
         },
         status: "succeeded",
         durationMs: 880,
