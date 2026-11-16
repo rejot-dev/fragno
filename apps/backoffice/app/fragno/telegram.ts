@@ -141,6 +141,7 @@ export function createTelegramServer(
       access = BACKOFFICE_PERMISSION.connections.manage;
     });
     for (const path of [
+      "/bot-api/:method",
       "/chats/:chatId/send",
       "/chats/:chatId/actions",
       "/chats/:chatId/messages/:messageId/edit",

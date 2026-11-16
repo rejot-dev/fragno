@@ -94,6 +94,16 @@ export function createTelegramRuntime({
       }
       return throwOnRouteRuntimeError(response, routeError("Telegram message send"));
     },
+    async request({ method, payload }: { method: string; payload: Record<string, unknown> }) {
+      const response = await callRoute("POST", "/bot-api/:method", {
+        pathParams: { method },
+        body: payload,
+      });
+      if (response.type === "json" && isSuccessStatus(response.status)) {
+        return response.data;
+      }
+      return throwOnRouteRuntimeError(response, routeError("Telegram Bot API request"));
+    },
     async sendChatAction({ chatId, action }: { chatId: string; action: "typing" }) {
       const response = await callRoute("POST", "/chats/:chatId/actions", {
         pathParams: { chatId },
