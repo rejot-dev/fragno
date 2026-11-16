@@ -23,6 +23,7 @@ import type {
   ClassifierContext,
   ClassifierResult,
   FetchFunction,
+  ImageContent,
   Model,
 } from "@earendil-works/pi-ai";
 
@@ -93,8 +94,11 @@ export function createPiClassifier(
 /** Generates an image from a prompt; resolves to an error result instead of rejecting. */
 export type PiImageGenerator = (request: PiImageGenerationRequest) => Promise<AssistantImages>;
 
-/** A caller's image: the prompt and the Images API settings it is rendered with. */
-export type PiImageGenerationRequest = OpenAIImageOptions & { prompt: string };
+/** A caller's image: the prompt, the reference images' bytes, and the Images API settings it is rendered with. */
+export type PiImageGenerationRequest = OpenAIImageOptions & {
+  prompt: string;
+  references: ImageContent[];
+};
 
 /** Generates images with OpenAI's GPT Image 2.5 Flare, which requires an OpenAI API key. */
 export function createPiImageGenerator(
@@ -111,9 +115,13 @@ export function createPiImageGenerator(
   if (!model) {
     throw new Error("The OpenAI Images provider no longer lists gpt-image-2.5-flare.");
   }
-  return async ({ prompt, ...settings }) => {
+  return async ({ prompt, references, ...settings }) => {
     const options: ModelsImagesOptions & OpenAIImageOptions = { ...settings, fetch };
-    return await models.generateImages(model, { input: [{ type: "text", text: prompt }] }, options);
+    return await models.generateImages(
+      model,
+      { input: [{ type: "text", text: prompt }, ...references] },
+      options,
+    );
   };
 }
 

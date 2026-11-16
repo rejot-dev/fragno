@@ -73,13 +73,20 @@ const generateImageTool = defineBackofficeRuntimeTool({
   name: "generateImage",
   activity: { label: "Generate image", target: (input) => input.out },
   getResource: ({ out }) => ({ path: out }),
-  execute: async ({ prompt, out, size, quality }, context: ModelsToolContext) => {
+  execute: async ({ prompt, references, out, size, quality }, context: ModelsToolContext) => {
     const state = context.runtimes.state;
     if (!state) {
       throw new Error("Generating an image requires the workspace filesystem.");
     }
-    const { bytes } = await requireModelsRuntime(context.runtimes.models).generateImage({
+    const models = requireModelsRuntime(context.runtimes.models);
+    await assertModelsFilesReadable(context, references);
+    const { bytes } = await models.generateImage({
       prompt,
+      references: await readModelsImages(
+        { state, blobs: context.runtimes.blobs },
+        references,
+        "generateImage",
+      ),
       size,
       quality,
       outputFormat: outputFormatOf(out),

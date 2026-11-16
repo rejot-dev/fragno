@@ -6,7 +6,7 @@ type ModelsCodemodeProvider = {
    */
   classify(input: ModelsClassifyInput): Promise<ModelsClassifyOutput>;
   /**
-   * Generate an image from a prompt and write it to the workspace. Generation can take up to two minutes, longer than an immediate codemode run is allowed, so call it inside a workflow step. Each call is billed by input and output tokens, which grow with size and quality.
+   * Generate an image from a prompt and optional reference images, and write it to the workspace. Generation can take up to two minutes, longer than an immediate codemode run is allowed, so call it inside a workflow step. References require upload.read. Each call is billed by input and output tokens, which grow with references, size, and quality.
    * Requires `models.generateImage` and `upload.modify`.
    */
   generateImage(input: ModelsGenerateImageInput): Promise<ModelsGenerateImageOutput>;
@@ -96,6 +96,16 @@ type ModelsClassifyOutput = {
 type ModelsGenerateImageInput = {
   /** What the image shows and how. */
   prompt: string;
+  /** Ordered images the model draws from, such as a product to restage, a style to match, or an image to edit, each a workspace file `{ path }` or a blob `{ blob }` by key; requires upload.read for each. The prompt refers to them by position, such as "the first image". Up to 16 PNG, JPEG, or WebP images; at most 10 MiB per image and 20 MiB total. */
+  references?: (
+    | {
+        path: string;
+      }
+    | {
+        /** The blob's key. A scope's own blob has a key like recordings/2026-10-26.mp4: segments joined by slashes, none empty, '.' or '..'. A blob another scope shares has a key that starts /shared/<name>/, such as /shared/client1-calls/monday.wav: give it whole, leading slash included. Shared blobs are read-only. */
+        blob: string;
+      }
+  )[];
   /** Absolute path of the image to write under /workspace. Its extension picks the format. */
   out: string;
   /** Square, landscape, or portrait; `auto` lets the model choose from the prompt. */

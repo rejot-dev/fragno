@@ -125,9 +125,28 @@ const modelsClassifyOutputSchema = z.lazy(() =>
   }),
 );
 
+/** Raw reference image budgets, before base64 expansion and provider request serialization. */
+export const MODELS_GENERATE_IMAGE_REFERENCE_LIMITS = {
+  count: 16,
+  perImageBytes: 10 * 1024 * 1024,
+  totalBytes: 20 * 1024 * 1024,
+} as const;
+
 const modelsGenerateImageInputSchema = z.lazy(() =>
   z.strictObject({
     prompt: z.string().trim().min(1).max(32_000).describe("What the image shows and how."),
+    references: z
+      .array(modelsFileSchema)
+      .max(MODELS_GENERATE_IMAGE_REFERENCE_LIMITS.count)
+      .default([])
+      .describe(
+        "Ordered images the model draws from, such as a product to restage, a style to match, " +
+          "or an image to edit, each a workspace file `{ path }` or a blob `{ blob }` by key; " +
+          "requires upload.read for each. The prompt refers to them by position, such as " +
+          `"the first image". Up to ${MODELS_GENERATE_IMAGE_REFERENCE_LIMITS.count} PNG, JPEG, or ` +
+          `WebP images; at most ${MODELS_GENERATE_IMAGE_REFERENCE_LIMITS.perImageBytes / 1024 ** 2} ` +
+          `MiB per image and ${MODELS_GENERATE_IMAGE_REFERENCE_LIMITS.totalBytes / 1024 ** 2} MiB total.`,
+      ),
     out: z
       .string()
       .trim()
@@ -230,10 +249,10 @@ export const modelsOperations = {
   },
   "models.generateImage": {
     description:
-      "Generate an image from a prompt and write it to the workspace. Generation can take up to " +
-      "two minutes, longer than an immediate codemode run is allowed, so call it inside a " +
-      "workflow step. Each call is billed by input and output tokens, which grow with size and " +
-      "quality.",
+      "Generate an image from a prompt and optional reference images, and write it to the " +
+      "workspace. Generation can take up to two minutes, longer than an immediate codemode run " +
+      "is allowed, so call it inside a workflow step. References require upload.read. Each " +
+      "call is billed by input and output tokens, which grow with references, size, and quality.",
     permissions: [BACKOFFICE_PERMISSION.models.generateImage, BACKOFFICE_PERMISSION.upload.modify],
     input: modelsGenerateImageInputSchema,
     output: modelsGenerateImageOutputSchema,

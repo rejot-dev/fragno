@@ -1,5 +1,6 @@
 import {
   MODELS_CLASSIFY_IMAGE_LIMITS,
+  MODELS_GENERATE_IMAGE_REFERENCE_LIMITS,
   type ModelsFile,
 } from "@fragno-dev/backoffice-api/v0/models";
 
@@ -17,6 +18,11 @@ const IMAGE_READS = {
     limits: MODELS_CLASSIFY_IMAGE_LIMITS,
     tooLarge: "MODELS_CLASSIFY_IMAGE_TOO_LARGE",
     invalid: "MODELS_CLASSIFY_INVALID_IMAGE",
+  },
+  generateImage: {
+    limits: MODELS_GENERATE_IMAGE_REFERENCE_LIMITS,
+    tooLarge: "MODELS_GENERATE_IMAGE_REFERENCE_TOO_LARGE",
+    invalid: "MODELS_GENERATE_IMAGE_INVALID_REFERENCE",
   },
 } as const;
 

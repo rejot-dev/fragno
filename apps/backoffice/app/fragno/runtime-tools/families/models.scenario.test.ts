@@ -301,6 +301,7 @@ test("a workflow generates an image, judges its bytes through Decisions, and bil
         openaiImages: fake.openaiImages({
           image: base64ToBytes(pngBase64),
           inputTokens: 40,
+          imageInputTokens: 0,
           outputTokens: 4160,
         }),
         openaiDecisions: fake.openaiDecisions({ answers: reviewAnswers, inputTokens: 1200 }),
@@ -609,7 +610,12 @@ test("a workflow writes a generated image to the workspace and bills its organiz
         "automations/product-shot.workflow.js": productShotWorkflow,
       }),
       fakes: ({ fake }) => ({
-        openaiImages: fake.openaiImages({ image: jpeg, inputTokens: 40, outputTokens: 4_160 }),
+        openaiImages: fake.openaiImages({
+          image: jpeg,
+          inputTokens: 40,
+          imageInputTokens: 0,
+          outputTokens: 4_160,
+        }),
       }),
       setup: ({ given }) => [
         given.organization.exists({ id: scope.orgId, name: "Ada Labs" }),
@@ -1025,6 +1031,161 @@ test("models read a scan and a photo kept as blobs, too large for the workspace"
             }),
           ).rejects.toThrow("BLOB_NOT_FOUND: blob scans/missing.pdf does not exist.");
           expect(ctx.fakes.openaiResponses?.requests).toHaveLength(1);
+        }),
+      ],
+    }),
+  );
+});
+
+const restageWorkflow = `export default defineWorkflow({ name: "restage-product" }, async (event, step) => {
+  const product = await step.do("draw product", async () =>
+    await models.generateImage({
+      prompt: "Product photo of a brass desk lamp on white.",
+      out: "/workspace/images/lamp-1.png",
+      size: "1024x1024",
+      quality: "low",
+    }),
+  );
+  return await step.do("restage product", async () =>
+    await models.generateImage({
+      prompt: "Place the lamp from the first image on the desk in the second image.",
+      references: [{ path: product.path }, { blob: event.payload.room }],
+      out: "/workspace/images/lamp-1-staged.png",
+      size: "1536x1024",
+      quality: "low",
+    }),
+  );
+});`;
+
+test("a workflow restages its product shot in a room kept as a blob", async () => {
+  const r2 = createFakeR2(blobBuckets);
+  const room = new Uint8Array([82, 73, 70, 70, 4, 0, 0, 0, 87, 69, 66, 80]);
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "models.generateImage draws from reference images",
+      objects: {
+        ...allLocalObjects,
+        BLOBS: (input) =>
+          new BlobsObject({ ...input, storage: { buckets: blobBuckets, fetch: r2.fetch } }),
+      },
+      files: backofficeFiles.workspaceStarter({
+        "automations/restage-product.workflow.js": restageWorkflow,
+      }),
+      fakes: ({ fake }) => ({
+        openaiImages: fake.openaiImages({
+          image: base64ToBytes(pngBase64),
+          inputTokens: 40,
+          imageInputTokens: 1_000,
+          outputTokens: 4_160,
+        }),
+      }),
+      setup: ({ given }) => [
+        given.organization.exists({ id: scope.orgId, name: "Ada Labs" }),
+        given.auth.user({ id: "member-1" }),
+        given.auth.member({ orgId: scope.orgId, userId: "member-1", roles: ["member"] }),
+        given.codemode.writeFile({
+          orgId: scope.orgId,
+          path: "/workspace/products/notes.txt",
+          content: "Brass, angled arm.",
+        }),
+      ],
+      steps: ({ when, then }) => [
+        then.assert("a person uploads a photo of the room", async (ctx) => {
+          await storeBlob(ctx, r2, {
+            key: "rooms/study.webp",
+            contentType: "image/webp",
+            bytes: room,
+          });
+        }),
+        when.workflow.createInstance({
+          orgId: scope.orgId,
+          path: "/workspace/automations/restage-product.workflow.js",
+          remoteWorkflowName: "restage-product",
+          instanceId: "restage-product-1",
+          execution: member,
+          event: {
+            ...ticketOpened,
+            id: "product-1",
+            source: "catalog",
+            eventType: "product.created",
+            payload: { room: "rooms/study.webp" },
+          },
+        }),
+        then.workflow.instance({
+          remoteWorkflowName: "restage-product",
+          status: "complete",
+          output: { path: "/workspace/images/lamp-1-staged.png" },
+        }),
+        then.assert(
+          "OpenAI edits from both references' bytes, in the caller's order",
+          ({ fakes, kernelActions }) => {
+            expect(fakes.openaiImages?.requests).toEqual([
+              expect.objectContaining({ url: "https://api.openai.com/v1/images/generations" }),
+              {
+                url: "https://api.openai.com/v1/images/edits",
+                body: {
+                  model: "gpt-image-2.5-flare",
+                  prompt: "Place the lamp from the first image on the desk in the second image.",
+                  n: 1,
+                  size: "1536x1024",
+                  quality: "low",
+                  output_format: "png",
+                  images: [
+                    { image_url: `data:image/png;base64,${pngBase64}` },
+                    { image_url: "data:image/webp;base64,UklGRgQAAABXRUJQ" },
+                  ],
+                },
+              },
+            ]);
+            expect(kernelActions).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({
+                  operation: BACKOFFICE_PERMISSION.upload.read,
+                  resource: { path: "/workspace/images/lamp-1.png" },
+                }),
+                expect.objectContaining({
+                  operation: BACKOFFICE_PERMISSION.upload.read,
+                  resource: { kind: "blob", key: "rooms/study.webp" },
+                }),
+              ]),
+            );
+          },
+        ),
+        then.files.bytes({
+          orgId: scope.orgId,
+          path: "/workspace/images/lamp-1-staged.png",
+          content: base64ToBytes(pngBase64),
+        }),
+        then.assert("a reference that is not an image never reaches the model", async (ctx) => {
+          await expect(
+            ctx.runCodemode({
+              scope,
+              code: `async () => await models.generateImage({
+                prompt: "Draw the lamp these notes describe.",
+                references: [{ path: "/workspace/products/notes.txt" }],
+                out: "/workspace/images/notes.png",
+              })`,
+            }),
+          ).rejects.toThrow(
+            "MODELS_GENERATE_IMAGE_INVALID_REFERENCE: /workspace/products/notes.txt must contain a PNG, JPEG, or WebP image.",
+          );
+          expect(ctx.fakes.openaiImages?.requests).toHaveLength(2);
+        }),
+        then.billing.tracker({
+          scope,
+          period,
+          meter: "ai.tokens.input",
+          quantity: "1080",
+          eventCount: "2",
+        }),
+        // Each call reads 40 text tokens at $5 and writes 4,160 image tokens at $30 per million;
+        // the restage also reads 1,000 image tokens at $8.
+        then.billing.tracker({
+          scope,
+          period,
+          meter: "ai.cost.total",
+          quantity: "258000000",
+          eventCount: "2",
         }),
       ],
     }),

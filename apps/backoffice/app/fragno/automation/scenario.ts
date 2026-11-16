@@ -351,10 +351,14 @@ type ScenarioFakeFactory = {
     answer: (context: ClassifierContext) => ClassifierResult["answers"];
     inputTokens: number;
   }): FakeClassifierApi;
-  /** Answers every Images API generation with `image` in the requested format and this usage. */
+  /**
+   * Answers every Images API generation and edit with `image` in the requested format and this
+   * usage; edits add `imageInputTokens` for their reference images.
+   */
   openaiImages(input: {
     image: Uint8Array;
     inputTokens: number;
+    imageInputTokens: number;
     outputTokens: number;
   }): FakeOpenAIModelApi;
   /** Serves Decisions answers over HTTP so scenarios exercise the real Pi adapter. */
@@ -1594,6 +1598,7 @@ const createFakeClassifierApi: ScenarioFakeFactory["classifier"] = ({ answer, in
 const createFakeOpenAIImagesApi: ScenarioFakeFactory["openaiImages"] = ({
   image,
   inputTokens,
+  imageInputTokens,
   outputTokens,
 }) => {
   const requests: FakeOpenAIModelApi["requests"] = [];
@@ -1603,15 +1608,16 @@ const createFakeOpenAIImagesApi: ScenarioFakeFactory["openaiImages"] = ({
       const request = new Request(input, init);
       const body = (await request.json()) as { output_format: string };
       requests.push({ url: request.url, body });
+      const imageTokens = request.url.endsWith("/images/edits") ? imageInputTokens : 0;
       return Response.json({
         created: 1_792_486_800,
         data: [{ b64_json: bytesToBase64(image) }],
         output_format: body.output_format,
         usage: {
-          input_tokens: inputTokens,
-          input_tokens_details: { text_tokens: inputTokens, image_tokens: 0 },
+          input_tokens: inputTokens + imageTokens,
+          input_tokens_details: { text_tokens: inputTokens, image_tokens: imageTokens },
           output_tokens: outputTokens,
-          total_tokens: inputTokens + outputTokens,
+          total_tokens: inputTokens + imageTokens + outputTokens,
         },
       });
     },

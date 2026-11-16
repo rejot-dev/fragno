@@ -2,20 +2,24 @@
 name: image-generation
 description:
   "Generate images with models.generateImage and write them to the workspace. Use when the user
-  wants an image created, or an automation must produce one."
+  wants an image created or an existing one changed, or an automation must produce one."
 ---
 
 <!-- The prompting advice adapts OpenAI's GPT Image prompting guide. -->
 
 # Image Generation
 
-`models.generateImage` renders one image from a prompt and writes it to `out`. Every call starts
-fresh: the model sees this prompt only, never earlier images or the conversation.
+`models.generateImage` renders one image from a prompt and optional `references` and writes it to
+`out`. Every call starts fresh: the model sees this prompt and these references only, never earlier
+images or the conversation.
 
 1. **Brief.** Read "/static/codemode/providers/models.d.ts". Settle the subject, the medium (photo,
    illustration, 3D render, diagram), where the image will be used, and any literal text it shows.
-   Choose what the request leaves open and name those choices in your reply. **Complete when** every
-   visible element and the image's use are decided.
+   When the image must match something that exists, such as a product, a logo, a person, a room, a
+   style, or an image to change, pass it as a reference, a workspace file `{ path }` or a blob
+   `{ blob }`, rather than describing it. Choose what the request leaves open and name those choices
+   in your reply. **Complete when** every visible element, every reference, and the image's use are
+   decided.
 
 2. **Prompt.** Write the prompt in this order: scene, subject, key details, constraints.
    - Name the use, such as "product photo for a catalog page", to set the level of polish.
@@ -24,6 +28,8 @@ fresh: the model sees this prompt only, never earlier images or the conversation
    - Put literal text in quotes with its font, color, and placement. Spell unusual words letter by
      letter.
    - State exclusions, such as "no watermark", "no extra text", and "no logos".
+   - Name references by position, such as "the lamp from the first image", and say what to keep from
+     each and what to change.
 
    **Complete when** someone who never saw the conversation could render the image from the prompt
    alone.
@@ -70,8 +76,10 @@ fresh: the model sees this prompt only, never earlier images or the conversation
 
 5. **Show and revise.** The user judges the image; you cannot see it. Show it as a Markdown image
    with the prompt and settings that produced it. To revise, change one thing in the full prompt and
-   write to the next version's path, so earlier versions stay comparable. **Complete when** the user
-   has seen every image, or the automation's output lists every path.
+   write to the next version's path, so earlier versions stay comparable. When the user likes an
+   image but one detail, pass it as the first reference and ask for only that change, keeping
+   everything else. **Complete when** the user has seen every image, or the automation's output
+   lists every path.
 
 ## Failures
 
@@ -79,4 +87,7 @@ fresh: the model sees this prompt only, never earlier images or the conversation
   Rephrase the prompt before calling again.
 - Other `MODELS_GENERATE_IMAGE_FAILED` errors carry OpenAI's error code. Retry rate limits and
   server errors; correct the request for the rest.
+- `MODELS_GENERATE_IMAGE_INVALID_REFERENCE` and `MODELS_GENERATE_IMAGE_REFERENCE_TOO_LARGE`: a
+  reference is not a PNG, JPEG, or WebP image, or the references exceed their size limits. Convert
+  or shrink them, or pass fewer.
 - `MODELS_GENERATE_IMAGE_UNAVAILABLE`: this deployment has no image model configured. Tell the user.
