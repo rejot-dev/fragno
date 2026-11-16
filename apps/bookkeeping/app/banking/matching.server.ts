@@ -106,18 +106,25 @@ function preselect(transaction: TransactionView, items: OpenItem[]): Map<string,
   return amounts;
 }
 
-/** The open items of `partyAccountId` the transaction can settle: in its currency, on the other side. */
-export async function settleableItems(
-  context: Context,
-  transaction: TransactionView,
-  partyAccountId: string,
-) {
-  const items = await context.books.listOpenItems({ partyAccountId });
+/** Of a party account's open items, those the transaction can settle: in its currency, on the other side. */
+function settleable(transaction: TransactionView, items: OpenItem[]): OpenItem[] {
   return items.filter(
     (item) =>
       item.outstandingMinor > 0n &&
       item.side === settledSide(transaction) &&
       item.currency === transaction.bankAccount.currency,
+  );
+}
+
+/** The open items of `partyAccountId` the transaction can settle. */
+export async function settleableItems(
+  context: Context,
+  transaction: TransactionView,
+  partyAccountId: string,
+) {
+  return settleable(
+    transaction,
+    await context.books.listOpenItems({ partyAccountIds: [partyAccountId] }),
   );
 }
 
@@ -133,58 +140,101 @@ export type PaymentSuggestion = {
 };
 
 /**
- * How the payment form starts for `transaction`: with the customer or supplier `chosen`, else the
- * one the bookkeeping agent proposes it pays, else the likeliest; settling what the agent proposes
- * of theirs, else what the books suggest.
+ * How the payment form starts for each transaction: with the customer or supplier `chosen`, else
+ * the one the bookkeeping agent proposes it pays, else the likeliest; settling what the agent
+ * proposes of theirs, else what the books suggest. However many transactions there are, the books
+ * are asked twice: for what their counterparties' IBANs paid before, and for open items.
  */
-export async function suggestPayment(
+export async function suggestPayments(
   context: Context,
-  transaction: TransactionView,
   books: Described,
-  chosen: string | null,
-): Promise<PaymentSuggestion> {
-  const { detail, proposal } = transaction;
-  const ibans =
-    detail.type === "entry" ? [...new Set(detail.parts.flatMap((part) => part.iban ?? []))] : [];
-  const learned = ibans.length === 1 ? await context.books.counterpartiesOf(ibans[0]) : [];
-  const suggested = suggestPartyAccounts(transaction, books, learned);
+  forms: { transaction: TransactionView; chosen: string | null }[],
+): Promise<PaymentSuggestion[]> {
   const partyAccounts = new Set(
     books.parties.flatMap((party) => party.accounts.map(({ id }) => id)),
   );
-  const payment =
-    proposal?.status === "proposed" &&
-    proposal.booking.type === "payment" &&
-    partyAccounts.has(proposal.booking.partyAccountId)
-      ? proposal.booking
-      : null;
-  const partyAccountId =
-    chosen !== null && partyAccounts.has(chosen)
-      ? chosen
-      : (payment?.partyAccountId ?? suggested[0] ?? null);
-  const items =
-    partyAccountId === null ? [] : await settleableItems(context, transaction, partyAccountId);
-  if (payment === null || payment.partyAccountId !== partyAccountId) {
+  // Only a transaction with a single counterparty IBAN says who it is with.
+  const ibanOf = (transaction: TransactionView) => {
+    const { detail } = transaction;
+    const ibans =
+      detail.type === "entry" ? [...new Set(detail.parts.flatMap((part) => part.iban ?? []))] : [];
+    return ibans.length === 1 ? ibans[0] : null;
+  };
+  const ibans = [...new Set(forms.flatMap(({ transaction }) => ibanOf(transaction) ?? []))];
+  const learned = grouped(
+    ibans.length === 0 ? [] : await context.books.counterpartiesOf(ibans),
+    ({ iban }) => iban,
+  );
+
+  const starts = forms.map(({ transaction, chosen }) => {
+    const iban = ibanOf(transaction);
+    const suggested = suggestPartyAccounts(
+      transaction,
+      books,
+      iban === null ? [] : (learned.get(iban) ?? []).map(({ partyAccountId }) => partyAccountId),
+    );
+    const { proposal } = transaction;
+    const payment =
+      proposal?.status === "proposed" &&
+      proposal.booking.type === "payment" &&
+      partyAccounts.has(proposal.booking.partyAccountId)
+        ? proposal.booking
+        : null;
+    const partyAccountId =
+      chosen !== null && partyAccounts.has(chosen)
+        ? chosen
+        : (payment?.partyAccountId ?? suggested[0] ?? null);
+    return { transaction, suggested, payment, partyAccountId };
+  });
+
+  const partyAccountIds = [
+    ...new Set(starts.flatMap(({ partyAccountId }) => partyAccountId ?? [])),
+  ];
+  const openItems = grouped(
+    partyAccountIds.length === 0 ? [] : await context.books.listOpenItems({ partyAccountIds }),
+    (item) => item.partyAccountId,
+  );
+
+  return starts.map(({ transaction, suggested, payment, partyAccountId }) => {
+    const items =
+      partyAccountId === null ? [] : settleable(transaction, openItems.get(partyAccountId) ?? []);
+    if (payment === null || payment.partyAccountId !== partyAccountId) {
+      return {
+        suggested,
+        partyAccountId,
+        items,
+        preselected: Object.fromEntries(preselect(transaction, items)),
+      };
+    }
+    const digits = books.currencies.find(
+      (currency) => currency.code === transaction.bankAccount.currency,
+    )!.minorUnitDigits;
+    const settleableIds = new Set(items.map((item) => item.id));
     return {
       suggested,
       partyAccountId,
       items,
-      preselected: Object.fromEntries(preselect(transaction, items)),
+      // The agent's amounts were checked as it proposed them; items settled since are left out.
+      preselected: Object.fromEntries(
+        payment.settles
+          .filter((settlement) => settleableIds.has(settlement.openItemId))
+          .map((settlement) => [settlement.openItemId, parseAmount(settlement.amount, digits)!]),
+      ),
     };
+  });
+}
+
+function grouped<T>(rows: T[], keyOf: (row: T) => string): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const row of rows) {
+    const group = groups.get(keyOf(row));
+    if (group) {
+      group.push(row);
+    } else {
+      groups.set(keyOf(row), [row]);
+    }
   }
-  const digits = books.currencies.find(
-    (currency) => currency.code === transaction.bankAccount.currency,
-  )!.minorUnitDigits;
-  return {
-    suggested,
-    partyAccountId,
-    items,
-    // The agent's amounts were checked as it proposed them; items settled since are left out.
-    preselected: Object.fromEntries(
-      payment.settles
-        .filter((settlement) => items.some((item) => item.id === settlement.openItemId))
-        .map((settlement) => [settlement.openItemId, parseAmount(settlement.amount, digits)!]),
-    ),
-  };
+  return groups;
 }
 
 /** Whether the payment form, as it starts, books the whole transaction as settling what it pays. */

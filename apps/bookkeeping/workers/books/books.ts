@@ -420,8 +420,14 @@ export class Books extends DurableObject<CloudflareEnv> {
     };
   }
 
-  getTransaction(id: string) {
-    return this.banking.callServices(() => this.banking.services.getTransaction(id));
+  async getTransaction(id: string) {
+    const [transaction] = await this.getTransactions([id]);
+    return transaction ?? null;
+  }
+
+  /** The bank transactions of `ids` that exist, in no particular order. */
+  getTransactions(ids: string[]) {
+    return this.banking.callServices(() => this.banking.services.getTransactions(ids));
   }
 
   requestTransactionProposal(input: Parameters<Banking["services"]["requestProposal"]>[0]) {
@@ -483,8 +489,8 @@ export class Books extends DurableObject<CloudflareEnv> {
     );
   }
 
-  counterpartiesOf(iban: string) {
-    return this.banking.callServices(() => this.banking.services.counterpartiesOf(iban));
+  counterpartiesOf(ibans: string[]) {
+    return this.banking.callServices(() => this.banking.services.counterpartiesOf(ibans));
   }
 }
 

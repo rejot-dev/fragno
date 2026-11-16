@@ -27,7 +27,7 @@ import { FormError } from "../books/forms";
 import type { BooksOutletContext } from "../books/layout";
 import { DOCUMENT_MAX_SIZE, readUploadForm } from "../documents/documents.server";
 import type { Route } from "./+types/account";
-import { settlesWhole, suggestPayment } from "./matching.server";
+import { settlesWhole, suggestPayments } from "./matching.server";
 import { SignedAmount, TransactionStatus } from "./transactions";
 
 export function meta({ loaderData }: Route.MetaArgs) {
@@ -90,22 +90,29 @@ type ImportAnswer =
  * are what the books held before, which the bank does not say.
  */
 async function askAboutImported(context: Context, transactionIds: string[]): Promise<Asked> {
-  const books = await context.books.describe();
-  const subjects = [];
-  for (const id of transactionIds) {
-    // Imported in the same import: it exists.
-    const transaction = (await context.books.getTransaction(id))!;
-    if (transaction.detail.type === "opening-balance") {
-      continue;
-    }
-    if (settlesWhole(transaction, await suggestPayment(context, transaction, books, null))) {
-      continue;
-    }
-    subjects.push({
+  const [books, imported] = await Promise.all([
+    context.books.describe(),
+    context.books.getTransactions(transactionIds),
+  ]);
+  // Asked in the order they were imported, as the bank listed them.
+  const position = new Map(transactionIds.map((id, index) => [id, index]));
+  const transactions = imported
+    .filter((transaction) => transaction.detail.type !== "opening-balance")
+    .sort((a, b) => position.get(a.id)! - position.get(b.id)!);
+  const suggestions = await suggestPayments(
+    context,
+    books,
+    transactions.map((transaction) => ({ transaction, chosen: null })),
+  );
+  const subjects = transactions
+    .filter((transaction, index) => !settlesWhole(transaction, suggestions[index]))
+    .map((transaction) => ({
       kind: "transaction" as const,
-      transaction: { id, description: describeTransaction(transaction.detail) },
-    });
-  }
+      transaction: {
+        id: transaction.id,
+        description: describeTransaction(transaction.detail),
+      },
+    }));
   const asked = await askBookkeeper(context, subjects, "first");
   return asked.ok ? { ok: true, count: subjects.length } : asked;
 }

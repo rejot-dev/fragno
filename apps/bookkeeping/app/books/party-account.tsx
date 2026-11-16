@@ -41,7 +41,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     throw new Response("This customer or supplier does not exist.", { status: 404 });
   }
   return {
-    items: await books.listOpenItems({ partyAccountId: params.partyAccountId }),
+    items: await books.listOpenItems({ partyAccountIds: [params.partyAccountId] }),
     today: today(),
   };
 }
@@ -81,7 +81,7 @@ export async function action({ request, params }: Route.ActionArgs): Promise<For
       }),
     );
   }
-  const items = await books.listOpenItems({ partyAccountId: params.partyAccountId });
+  const items = await books.listOpenItems({ partyAccountIds: [params.partyAccountId] });
   const debit = items.find((item) => item.id === submitted.debitItemId);
   const credit = items.find((item) => item.id === submitted.creditItemId);
   if (!debit || !credit) {

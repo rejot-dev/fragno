@@ -453,7 +453,7 @@ export const ledgerRoutesFactory = defineRoutes(ledgerFragmentDefinition).create
       handler: async function ({ pathParams }, { json }) {
         const [items] = await this.handlerTx()
           .withServiceCalls(() => [
-            services.listOpenItems({ partyAccountId: pathParams.partyAccountId }),
+            services.listOpenItems({ partyAccountIds: [pathParams.partyAccountId] }),
           ])
           .execute();
         return json(toHttp(items));

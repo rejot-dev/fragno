@@ -284,18 +284,23 @@ export const readServices = {
   },
 
   /**
-   * A party account's open items by due date, settled ones included, with the entries they come
-   * from and the allocations that settled them.
+   * The open items of party accounts, by account and then due date, settled ones included, with
+   * the entries they come from and the allocations that settled them.
    */
-  listOpenItems: function (this: LedgerServiceContext, input: { partyAccountId: string }) {
+  listOpenItems: function (this: LedgerServiceContext, input: { partyAccountIds: string[] }) {
     return this.serviceTx(ledgerSchema)
       .retrieve((uow) =>
         uow.find("openItem", (b) =>
           b
             .whereIndex("idx_open_item_party_due", (eb) =>
-              eb("partyAccountId", "=", input.partyAccountId),
+              eb("partyAccountId", "in", input.partyAccountIds),
             )
             .orderByIndex("idx_open_item_party_due", "asc")
+            .joinOne("partyAccount", "partyAccount", (partyAccount) =>
+              partyAccount
+                .onIndex("primary", (eb) => eb("id", "=", eb.parent("partyAccountId")))
+                .select(["id"]),
+            )
             .joinOne("line", "line", (line) =>
               line
                 .onIndex("primary", (eb) => eb("id", "=", eb.parent("lineId")))
@@ -349,6 +354,7 @@ export const readServices = {
           const entry = line.entry!;
           return {
             id: item.id.valueOf(),
+            partyAccountId: item.partyAccount!.id.valueOf(),
             lineId: line.id.valueOf(),
             entry: {
               id: entry.id.valueOf(),
