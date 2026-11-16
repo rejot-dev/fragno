@@ -327,7 +327,9 @@ type SubagentBatch = {
 /**
  * Places the batches anyone but the agent's own turns asked for among the thread's messages, each
  * as a system message before the first turn that starts after it was asked, so no turn is split.
- * Subagents one asker asks for between two turns are one batch.
+ * Subagents one asker asks for between two turns are one batch. Those asked while the last turn
+ * runs show before it until it ends: assistant-ui takes a running thread that ends in anything but
+ * the agent's turn to await a reply, and adds an empty one of its own.
  */
 export function withSubagentBatches(
   messages: readonly ThreadMessageLike[],
@@ -340,13 +342,30 @@ export function withSubagentBatches(
         : [],
     )
     .sort((left, right) => left.askedAt.getTime() - right.askedAt.getTime());
-  // Turns start with what the agent was given; a turn's own messages are the agent's.
-  const turnStarts = messages.flatMap((message, index) =>
-    message.role === "assistant" ? [] : [{ index, at: message.createdAt?.getTime() ?? 0 }],
-  );
+  // A turn starts with what the agent was given, or, answering events it was given, with the
+  // agent's own message, which holds them. A turn that has not started responding has no time
+  // yet; it is the latest. Other messages without one, such as a reset, have no place in time.
+  const turnStarts = messages.flatMap((message, index) => {
+    if (message.role === "assistant" && messages[index - 1]?.role !== "assistant" && index > 0) {
+      return [];
+    }
+    const at =
+      message.createdAt?.getTime() ??
+      (message.role === "assistant" ? Number.POSITIVE_INFINITY : null);
+    return at === null ? [] : [{ index, at }];
+  });
+  // Where the batches go that no turn started after: the end, or the start of the running turn.
+  const newest = messages.at(-1);
+  let end = messages.length;
+  if (newest?.role === "assistant" && newest.status?.type === "running") {
+    end -= 1;
+    if (end > 0 && messages[end - 1]?.role !== "assistant") {
+      end -= 1;
+    }
+  }
   const placed: { position: number; batch: SubagentBatch; askedAt: Date }[] = [];
   for (const { subagent, asker, askedAt } of asked) {
-    const position = turnStarts.find(({ at }) => at > askedAt.getTime())?.index ?? messages.length;
+    const position = turnStarts.find(({ at }) => at > askedAt.getTime())?.index ?? end;
     const last = placed.at(-1);
     if (last?.position === position && last.batch.asker === asker) {
       last.batch.subagents.push(subagent);
