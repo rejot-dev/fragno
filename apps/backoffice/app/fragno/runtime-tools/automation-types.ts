@@ -54,6 +54,8 @@ export type EventEmitArgs = {
   subjectUserId?: string;
   payload?: Record<string, unknown>;
   targetScope?: BackofficeContextScope;
+  idempotencyKey?: string;
+  occurredAt?: string;
 };
 
 export type AutomationCommandOptionSpec = {

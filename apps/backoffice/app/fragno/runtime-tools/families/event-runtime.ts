@@ -72,6 +72,18 @@ function emittedEventCausation(emitter: EventEmitter): AutomationEventCausation 
   };
 }
 
+/**
+ * The ID of the event a source fires under `idempotencyKey`. Each scope stores its own events, so
+ * the key needs to be unique only among its source's events in the target scope.
+ */
+async function idempotentEventId(source: string, idempotencyKey: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify([source, idempotencyKey])),
+  );
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 /** Builds an event runtime whose reads authorize against the same scope as emission. */
 export function createEventRuntime(options: CreateEventRuntimeOptions): EventRuntime {
   const callRoute = createAutomationsRouteCaller({
@@ -182,7 +194,15 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
         `Events backend returned ${response.status}${response.type === "error" ? `: ${response.error.message}` : ""}`,
       );
     },
-    emitEvent: async ({ eventType, source, subjectUserId, payload, targetScope }) => {
+    emitEvent: async ({
+      eventType,
+      source,
+      subjectUserId,
+      payload,
+      targetScope,
+      idempotencyKey,
+      occurredAt,
+    }) => {
       const { emitter } = options;
       const parentEvent = emitter.kind === "workflow" ? emitter.event : undefined;
       const currentScope = options.execution.scope;
@@ -239,13 +259,22 @@ export function createEventRuntime(options: CreateEventRuntimeOptions): EventRun
         throw new Error("events.fire source is required without a parent automation event.");
       }
 
+      const now = new Date();
       const nextEvent: AutomationEvent = {
-        id: crypto.randomUUID(),
+        // Ingestion stores an event ID once, so an event fired again under its key is the first.
+        id:
+          idempotencyKey === undefined
+            ? crypto.randomUUID()
+            : await idempotentEventId(nextSource, idempotencyKey),
         scope: resolvedTargetScope,
         scopeRestriction: backofficeExecutionScopeRestriction(options.execution),
         source: nextSource,
         eventType,
-        occurredAt: new Date().toISOString(),
+        // A time later than now, as another machine's clock may give, counts as now.
+        occurredAt:
+          occurredAt === undefined || new Date(occurredAt) > now
+            ? now.toISOString()
+            : new Date(occurredAt).toISOString(),
         payload: normalizeEventPayload(payload),
         actors: options.emittedEventActors ?? options.execution.actors,
         subject:

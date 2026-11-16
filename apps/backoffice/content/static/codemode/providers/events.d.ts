@@ -1,7 +1,7 @@
 // Automation events: catalog, stored events and the routes they matched, firing, retries. Read to see what can trigger automations or why one did not act.
 type EventsCodemodeProvider = {
   /**
-   * Fire an automation event for the current context or a selected target scope. Sources starting with `app:` belong to installed apps, and only an app's own credential emits them.
+   * Fire an automation event for the current context or a selected target scope. Sources starting with `app:` belong to installed apps, and only an app's own credential emits them. With an `idempotencyKey`, firing it again stores nothing more and returns the first event's receipt.
    * Requires `events.emit`.
    */
   fire(input: EventsFireInput): Promise<EventsFireOutput>;
@@ -183,6 +183,10 @@ type EventsFireInput = {
             };
         projectId: string;
       };
+  /** Names the event, so firing it again, such as after a lost response, stores nothing more: the first event fired with the key from the same source in the target scope stands, and the receipt names it. */
+  idempotencyKey?: string;
+  /** When what the event reports happened, if earlier than now, such as for an event sent late or again. It orders the event's type's state, which keeps each key's latest event. */
+  occurredAt?: string;
 };
 type EventsFireOutput = {
   accepted: boolean;

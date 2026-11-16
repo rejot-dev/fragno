@@ -3350,6 +3350,18 @@
         "description": "Target scope as JSON, e.g. {\"kind\":\"org\",\"orgId\":\"org-1\"}"
       },
       {
+        "name": "idempotency-key",
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "Names the event: firing it again with the same key stores nothing more and returns the first event's receipt"
+      },
+      {
+        "name": "occurred-at",
+        "valueRequired": true,
+        "valueName": "iso-datetime",
+        "description": "When what the event reports happened, if earlier than now"
+      },
+      {
         "name": "help",
         "description": "Show this help text",
         "valueRequired": false,

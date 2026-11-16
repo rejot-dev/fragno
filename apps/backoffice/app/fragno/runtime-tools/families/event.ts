@@ -70,6 +70,8 @@ const parseEventFireArgs = defineCliArgsParser<EventEmitArgs>("events.fire", {
   subjectUserId: {},
   payload: { kind: "json", option: "payload-json" },
   targetScope: { kind: "json", option: "target-scope-json" },
+  idempotencyKey: {},
+  occurredAt: {},
 });
 
 function attempts(count: number): string {
@@ -171,6 +173,19 @@ const fireEventTool = defineBackofficeRuntimeTool({
             valueRequired: true,
             valueName: "json",
             description: 'Target scope as JSON, e.g. {"kind":"org","orgId":"org-1"}',
+          },
+          {
+            name: "idempotency-key",
+            valueRequired: true,
+            valueName: "key",
+            description:
+              "Names the event: firing it again with the same key stores nothing more and returns the first event's receipt",
+          },
+          {
+            name: "occurred-at",
+            valueRequired: true,
+            valueName: "iso-datetime",
+            description: "When what the event reports happened, if earlier than now",
           },
         ],
         examples: [

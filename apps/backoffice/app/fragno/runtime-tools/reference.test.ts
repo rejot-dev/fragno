@@ -147,6 +147,8 @@ describe("runtime tool reference generation", () => {
             "subject-user-id",
             "payload-json",
             "target-scope-json",
+            "idempotency-key",
+            "occurred-at",
           ],
         },
         {
