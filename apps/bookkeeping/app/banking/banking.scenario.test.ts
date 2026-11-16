@@ -283,6 +283,23 @@ test("statements are imported once, oldest first, each continuing the one before
     ).toMatchObject({
       error: `Statement ${YEAR}-03 has an impossible date, ${YEAR}-02-30.`,
     });
+    // A file holding a statement twice, saying different things, imports neither.
+    const extra = {
+      reference: `${YEAR}0325-001`,
+      bookingDate: `${YEAR}-03-25`,
+      amountCents: 2_500,
+      counterparty: { name: "A. I. King", iban: "NL44RABO0123456789" },
+      remittance: "Advance",
+      information: "SEPA Overboeking",
+    };
+    expect(
+      await importStatements(charles, current, [
+        march,
+        { ...march, entries: [...march.entries, extra] },
+      ]),
+    ).toMatchObject({
+      error: `The file holds statement ${YEAR}-03 twice, saying different things: export it from your bank again.`,
+    });
     // A file missing April's statement imports nothing, not even March's.
     expect(await importStatements(charles, current, [march, may])).toMatchObject({
       error: `Statement ${YEAR}-05 does not open with the closing balance of the statement before it: import the statements between them first.`,
