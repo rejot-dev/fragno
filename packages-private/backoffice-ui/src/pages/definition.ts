@@ -1,3 +1,4 @@
+import { DURABLE_OBJECT_MAX_BOUND_PARAMETERS } from "@fragno-dev/db/drivers";
 import { z } from "zod";
 
 import { absoluteFilePathSchema } from "../absolute-file-path";
@@ -12,8 +13,8 @@ export const PAGE_LIMITS = {
   files: 8,
   /** Characters of one query's SQL. */
   sqlLength: 20_000,
-  /** Values one query binds, a list counting as one: Durable Object SQLite binds at most 100. */
-  params: 100,
+  /** Values one query binds, a list counting as one: pages query Durable Object SQLite. */
+  params: DURABLE_OBJECT_MAX_BOUND_PARAMETERS,
   /** Columns one query declares, counting those of nested rows. */
   columns: 64,
   /** How deep nested rows declared with `{ rows }` may nest. */

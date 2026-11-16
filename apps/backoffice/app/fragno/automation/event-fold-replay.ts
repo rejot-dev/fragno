@@ -119,10 +119,7 @@ export const REPLAYED_EVENT_TYPES: readonly { source: string; eventType: string 
 
 const EVENTS_OF_TYPE_INDEX = "idx_automation_event_source_type_occurredAt";
 
-/**
- * A page's states are read in one `in` list of its keys, besides the type's source and event type,
- * and Durable Object SQLite binds at most 100 parameters per statement.
- */
+/** Events replayed in one transaction, bounding the states one pass reads and writes. */
 const EVENTS_REPLAYED_PER_PASS = 50;
 
 function replayedTypeOf(pass: Pick<EventFoldReplayPass, "source" | "eventType">) {
