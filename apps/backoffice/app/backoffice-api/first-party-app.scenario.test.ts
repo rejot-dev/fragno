@@ -49,6 +49,7 @@ import { AppInstallationsObject } from "../../workers/app-installations-object";
 import { AppsObject } from "../../workers/apps-object";
 import { AuthObject } from "../../workers/auth-object";
 import { AutomationsObject } from "../../workers/automations-object";
+import { BillingObject } from "../../workers/billing-object";
 import { MarketplaceObject } from "../../workers/marketplace-object";
 import { OtpObject } from "../../workers/otp-object";
 import { UploadObject } from "../../workers/upload-object";
@@ -64,6 +65,9 @@ const scenarioObjects = {
   OTP: (input) => new OtpObject(input),
   // Installing a package defines its agents.
   PI_MANAGER: allLocalObjects.PI_MANAGER,
+  // Notifying an agent queues a turn of it, which bills its usage.
+  PI: allLocalObjects.PI,
+  BILLING: (input) => new BillingObject(input),
   TELEGRAM: null,
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
@@ -1620,6 +1624,203 @@ test("Bookkeeping installs its agent package from its own Marketplace into a pro
         const agents = await owner.exec("pi.agent.list --format json");
         assert.equal(agents.exitCode, 0, agents.stderr);
         expect(agents.stdout).not.toContain('"books"');
+      },
+    ),
+  ]);
+});
+
+test("Bookkeeping's agent package routes its events to its agent, which installing it from a project approves the permissions of", async () => {
+  const listingId = "app:bookkeeping#bookkeeper-agent";
+  const eventType = "proposal.changed";
+  // Notifying the agent runs a turn of it, which the route does as its principal.
+  const grants = [
+    BACKOFFICE_PERMISSION.pi.read,
+    BACKOFFICE_PERMISSION.pi.modify,
+    BACKOFFICE_PERMISSION.events.read,
+  ];
+  const project = (ctx: Ctx) =>
+    ({
+      kind: "project",
+      owner: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null },
+      projectId: ctx.vars.projectId,
+    }) as const;
+  const request = (ctx: Ctx, status: string) => ({
+    eventType,
+    payload: {
+      subject: "transaction:books-1:t-1",
+      requestId: "transaction:books-1:t-1:import",
+      status,
+    },
+    idempotencyKey: `transaction:books-1:t-1:import:${status}`,
+    occurredAt: "2026-03-01T10:00:00.000Z",
+  });
+
+  await runFirstPartyScenario("first-party agent package with routes", (then) => [
+    then(
+      "an administrator publishes the package, declaring Bookkeeping's events and a route to its agent",
+      async (ctx) => {
+        const source = `app:${ctx.vars.appId}`;
+        const declaration = {
+          permissions: grants,
+          eventDefinitions: [
+            { source, eventType, label: "Request changed", keyPath: "$.subject", enabled: true },
+          ],
+          routes: [
+            {
+              id: "bookkeeping-requests",
+              name: "Hand out the requests from Bookkeeping",
+              trigger: {
+                kind: "event",
+                source,
+                eventType,
+                matcher: { path: "$.payload.status", op: "eq", value: "requested" },
+              },
+              action: {
+                kind: "notify_agent",
+                agentName: "bookkeeper",
+                authority: { kind: "organization-automation", grants },
+              },
+            },
+          ],
+          agents: [
+            {
+              agentName: "bookkeeper",
+              description: "Proposes how to book what Bookkeeping asks about.",
+              model: null,
+              permissions: ["events.read", "pi.read"],
+              instructions: "Hand out the requests from Bookkeeping.",
+            },
+          ],
+        };
+        await execAsAdministrator(
+          ctx,
+          `admin.marketplace.publish-app-package --app-id ${ctx.vars.appId} --slug bookkeeper-agent --version 1.0.0 --metadata-json '${JSON.stringify(
+            {
+              name: "Bookkeeping agent",
+              summary: "The agent proposing how to book.",
+              description: "Defines the agent Bookkeeping asks in the agent project of each firm.",
+              category: "operations",
+              tags: [],
+            },
+          )}' --files-json '${JSON.stringify({
+            ".marketplace/installation.json": JSON.stringify(declaration),
+          })}' --format json`,
+        );
+        await ctx.drain();
+      },
+    ),
+    then(
+      "Bookkeeping provisions a project, and may install packages and fire events",
+      async (ctx) => {
+        await ctx.runtime.objects.apps.singleton().commands.updateAppPermissions({
+          appId: ctx.vars.appId,
+          requestedPermissions: [
+            emit,
+            BACKOFFICE_PERMISSION.events.read,
+            BACKOFFICE_PERMISSION.packages.install,
+            BACKOFFICE_PERMISSION.packages.read,
+            BACKOFFICE_PERMISSION.pi.read,
+            BACKOFFICE_PERMISSION.pi.modify,
+          ],
+        });
+        await authorizeBookkeeping(ctx, ctx.vars.existingCookie);
+        const client = provisioning(ctx);
+        ctx.vars.orgId = (
+          await client.call("organizations.provision", {
+            externalOrganizationId: "bk-firm-1",
+            name: "Lovelace & Co",
+            ownerUserId: ctx.vars.existingUserId,
+          })
+        ).organizationId;
+        ctx.vars.projectId = (
+          await client.call("projects.provision", {
+            organizationId: ctx.vars.orgId,
+            externalProjectId: "bookkeeper",
+            name: "Bookkeeping agent",
+            createdByUserId: ctx.vars.existingUserId,
+          })
+        ).projectId;
+      },
+    ),
+    then(
+      "Bookkeeping installs the package from the project's credential, approving what its route acts with",
+      async (ctx) => {
+        const bookkeeping = await installationClient(ctx, project(ctx));
+        const installed = await bookkeeping.call(project(ctx), "packages.install", {
+          listingId,
+          version: "1.0.0",
+          installationRoot: "/workspace/bookkeeping",
+          permissions: grants,
+          visibility: "app",
+        });
+        await ctx.drain();
+        expect(
+          await bookkeeping.call(project(ctx), "packages.status", {
+            workflowInstanceId: installed.workflowInstanceId,
+            workflowScope: installed.workflowScope,
+          }),
+        ).toMatchObject({ status: "complete" });
+      },
+    ),
+    then(
+      "a request fired twice is one event, kept as its subject's state, which notifies the agent",
+      async (ctx) => {
+        const bookkeeping = await installationClient(ctx, project(ctx));
+        // Notifications reach only an agent whose conversation started, which a prompt starts.
+        await bookkeeping.call(project(ctx), "pi.prompt.submit", {
+          agentName: "bookkeeper",
+          requestId: "bookkeeping:start",
+          content: "Hand out the requests waiting for you.",
+        });
+        const fired = await bookkeeping.call(
+          project(ctx),
+          "events.fire",
+          request(ctx, "requested"),
+        );
+        const again = await bookkeeping.call(
+          project(ctx),
+          "events.fire",
+          request(ctx, "requested"),
+        );
+        expect(again.eventId).toBe(fired.eventId);
+        await ctx.drain();
+        expect(
+          await bookkeeping.call(project(ctx), "events.get", { id: fired.eventId }),
+        ).toMatchObject({
+          routing: {
+            status: "matched",
+            routes: [
+              {
+                routeId: "bookkeeping-requests",
+                status: "completed",
+                outcome: { kind: "agent_notified", agentName: "bookkeeper" },
+              },
+            ],
+          },
+        });
+        const { events } = await bookkeeping.call(project(ctx), "events.list", {});
+        expect(
+          events.filter(({ eventType: type }) => type === eventType).map(({ id }) => id),
+        ).toEqual([fired.eventId]);
+
+        // The request's end is kept as the subject's latest, and notifies nobody.
+        const ended = await bookkeeping.call(project(ctx), "events.fire", {
+          ...request(ctx, "proposed"),
+          occurredAt: "2026-03-01T10:05:00.000Z",
+        });
+        await ctx.drain();
+        expect(
+          await bookkeeping.call(project(ctx), "events.state.get", {
+            source: `app:${ctx.vars.appId}`,
+            eventType,
+            keys: ["transaction:books-1:t-1"],
+          }),
+        ).toMatchObject({
+          states: [{ eventId: ended.eventId, payload: { status: "proposed" } }],
+        });
+        expect(
+          await bookkeeping.call(project(ctx), "events.get", { id: ended.eventId }),
+        ).toMatchObject({ routing: { status: "matched", routes: [] } });
       },
     ),
   ]);

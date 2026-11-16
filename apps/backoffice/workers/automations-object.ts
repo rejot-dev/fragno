@@ -987,9 +987,11 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       declared: declaration.permissions,
       approved: input.permissions,
     });
-    // An installer can't approve more for a package than they may do themselves.
+    // An installer can't approve more for a package than they may do themselves where its routes
+    // act: in its workspace, which an installer restricted to it, as an app installed for a project,
+    // reaches although this coordinating organization is beyond it.
     await this.#kernel.assertAuthorizedAll({
-      execution: context.execution,
+      execution: { ...context.execution, scope: input.targetScope },
       requirements: input.permissions.map((operation) => ({
         operation,
         resource: { kind: "package-installation", listingId: input.listingId },
