@@ -129,6 +129,28 @@ const queuedMessageSchema = z.object({
   queued: z.boolean(),
 });
 
+const botApiResultSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), result: z.unknown() }),
+  z.object({
+    ok: z.literal(false),
+    errorCode: z.number().optional(),
+    description: z.string().optional(),
+  }),
+]);
+
+// The fragment receives updates through its webhook and records the messages it sends, so the
+// Bot API route cannot replace the webhook or send text messages outside the recorded queue.
+// Telegram matches method names case-insensitively.
+const blockedBotApiMethods = new Set([
+  "setwebhook",
+  "deletewebhook",
+  "getupdates",
+  "logout",
+  "close",
+  "sendmessage",
+  "editmessagetext",
+]);
+
 const webhookOutputSchema = z.object({
   ok: z.boolean(),
   duplicate: z.boolean().optional(),
@@ -437,6 +459,33 @@ export const telegramRoutesFactory = defineRoutes(telegramFragmentDefinition).cr
             .execute();
 
           return json({ ok: true, queued: true });
+        },
+      }),
+
+      defineRoute({
+        method: "POST",
+        path: "/bot-api/:method",
+        inputSchema: z.record(z.string(), z.unknown()),
+        outputSchema: botApiResultSchema,
+        errorCodes: ["INVALID_METHOD", "METHOD_NOT_ALLOWED"] as const,
+        handler: async function ({ pathParams, input }, { json, error }) {
+          // The method becomes a URL path segment.
+          if (!/^[A-Za-z]+$/.test(pathParams.method)) {
+            return error(
+              { message: "Telegram Bot API methods are letters only", code: "INVALID_METHOD" },
+              400,
+            );
+          }
+          if (blockedBotApiMethods.has(pathParams.method.toLowerCase())) {
+            return error(
+              {
+                message: `${pathParams.method} is not available through the Bot API route. Send and edit text messages through the chat routes; the webhook is managed by the fragment.`,
+                code: "METHOD_NOT_ALLOWED",
+              },
+              403,
+            );
+          }
+          return json(await api.call(pathParams.method, await input.valid()));
         },
       }),
 
