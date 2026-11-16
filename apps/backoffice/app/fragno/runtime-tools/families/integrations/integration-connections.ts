@@ -70,6 +70,7 @@ export type IntegrationConnectionEventState = {
   eventId: string;
   payload: IntegrationConnectionStatePayload;
   occurredAt: Date;
+  sequence: string | null;
   storedAt: Date;
 };
 

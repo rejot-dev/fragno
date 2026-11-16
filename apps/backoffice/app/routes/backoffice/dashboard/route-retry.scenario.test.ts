@@ -160,6 +160,7 @@ test("an owner retries a route that failed for good from the Activity page", asy
               source: "custom",
               eventType: "check.requested",
               occurredAt: "2026-01-01T00:00:00.000Z",
+              sequence: null,
               payload: {},
               actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
               subject: { scope: { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null } },

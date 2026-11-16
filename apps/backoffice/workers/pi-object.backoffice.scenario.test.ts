@@ -1108,6 +1108,7 @@ test("an agent's backfill records agent events as the agent's turn, keeping its 
               source: "pi",
               eventType: "agent.created",
               occurredAt: new Date(runtime.now()).toISOString(),
+              sequence: null,
               payload: {
                 agentName: "ghost",
                 definition: {
@@ -2267,6 +2268,7 @@ for (const revocation of ["restricted", "disabled", "deleted"] as const) {
       source: "telegram",
       eventType: "message.received",
       occurredAt: "2026-10-04T16:23:00.000Z",
+      sequence: null,
       payload: { chatId: "1001", messageId: id, fromUserId: "1001", text: "Hello" },
       actors: {
         initiator: {

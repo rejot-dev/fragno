@@ -384,6 +384,7 @@ describe("package installation scenarios", () => {
       source: "packages-test",
       eventType: "install",
       occurredAt: "2026-11-16T00:00:00.000Z",
+      sequence: null,
       payload: {},
       actors: createBackofficeSystemExecution(TARGET_SCOPE).actors,
       subject: null,

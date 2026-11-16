@@ -43,6 +43,7 @@ test("a hook that fails for good reports one failed attempt for its object's sco
           source: "custom",
           eventType: "check.requested",
           occurredAt: "2026-01-01T00:00:00.000Z",
+          sequence: null,
           payload: {},
           actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
           subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },

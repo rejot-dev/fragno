@@ -55,6 +55,7 @@ describe("automation event reclassification", () => {
         source: "github",
         eventType: "webhook.received",
         occurredAt: "2026-01-01T00:00:00.000Z",
+        sequence: null,
         payload: { pullRequest: { number: 42 }, ignored: true },
         actors: {
           initiator: { scope: "internal", type: "system", id: "github", role: "initiator" },
@@ -98,6 +99,7 @@ const event = {
   source: "test",
   eventType: "created",
   occurredAt: "2026-01-01T00:00:00.000Z",
+  sequence: null,
   payload: { status: "open" },
   actors: {
     initiator: {

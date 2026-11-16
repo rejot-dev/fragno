@@ -504,6 +504,7 @@ const dispatchOrganizationEvent = async (
       source: AUTH_AUTOMATION_SOURCE,
       eventType,
       occurredAt,
+      sequence: null,
       payload: buildOrganizationPayload(organization),
       actors: {
         initiator: buildAuthInitiator(payload.actor),

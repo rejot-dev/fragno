@@ -98,6 +98,7 @@ export async function fireSiteEvent({
     source: siteEventSource(sitePath),
     eventType: type,
     occurredAt: new Date().toISOString(),
+    sequence: null,
     payload,
     actors: {
       initiator: { scope: "internal", type: "site", id: sitePath, role: "initiator" },

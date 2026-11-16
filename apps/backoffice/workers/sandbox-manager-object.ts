@@ -34,6 +34,7 @@ function buildSandboxAutomationEvent(
     source: "sandbox",
     eventType: `instance.${event.type}`,
     occurredAt: new Date().toISOString(),
+    sequence: null,
     payload: {
       sandboxId: event.sandboxId,
       provider: event.provider,

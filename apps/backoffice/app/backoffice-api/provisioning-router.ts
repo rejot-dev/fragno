@@ -462,6 +462,7 @@ export const backofficeProvisioningRouter = new Hono<{
     source: PROVISIONING_AUTOMATION_SOURCE,
     eventType: event.eventType,
     occurredAt: new Date().toISOString(),
+    sequence: null,
     payload: { appId: app.id, input: input.data, result: output },
     actors: {
       initiator: { scope: "internal", type: "app", id: app.id, role: "initiator" },

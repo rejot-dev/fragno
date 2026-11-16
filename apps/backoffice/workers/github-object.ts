@@ -130,6 +130,7 @@ export class GitHubObject implements GitHubCommands {
                     ? { state }
                     : { state, label: { name: payload.fullName, authMethod: "app-installation" } }),
                   occurredAt: context.createdAt,
+                  sequence: context.order,
                 },
                 { propagationContext: context.capturePropagationContext() },
               );

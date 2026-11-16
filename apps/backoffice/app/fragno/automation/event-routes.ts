@@ -45,6 +45,7 @@ export function automationEventRecord(
     source: event.source,
     eventType: event.eventType,
     occurredAt: event.occurredAt.toISOString(),
+    sequence: event.sequence,
     payload: event.payload,
     actors: event.actors,
     subject: event.subject ?? null,

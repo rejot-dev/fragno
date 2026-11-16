@@ -70,6 +70,7 @@ export type PiAgentEventState = {
   eventId: string;
   payload: PiAgentStatePayload;
   occurredAt: Date;
+  sequence: string | null;
   storedAt: Date;
 };
 

@@ -109,6 +109,7 @@ const scopedEvent = (orgId: string): AutomationEvent => ({
   source: "github",
   eventType: "issue.opened",
   occurredAt: "2026-01-01T00:00:00.000Z",
+  sequence: null,
   payload: { issueId: "issue-1" },
   actors: {
     initiator: {
@@ -216,6 +217,7 @@ describe("Automations authorized HTTP context", () => {
           source: "backoffice",
           eventType: "user.action",
           occurredAt: "2026-07-28T00:00:00.000Z",
+          sequence: null,
           payload: {},
           actors: createBackofficeUserExecution({ scope, userId: scope.userId }).actors,
           subject: { userId: scope.userId },

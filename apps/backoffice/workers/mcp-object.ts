@@ -127,6 +127,7 @@ export class McpObject extends RpcTarget implements McpCommands {
             source: "mcp",
             eventType: "server.configuration.changed",
             occurredAt: new Date().toISOString(),
+            sequence: null,
             payload: { ...payload },
             actors: {
               initiator: AUTOMATION_SYSTEM_INITIATOR,
@@ -149,6 +150,7 @@ export class McpObject extends RpcTarget implements McpCommands {
             connectionId: encodeMcpConnectionId(payload.serverId),
             state: "disconnected",
             occurredAt: context.createdAt,
+            sequence: context.order,
           },
           { propagationContext: context.capturePropagationContext() },
         );
@@ -167,6 +169,7 @@ export class McpObject extends RpcTarget implements McpCommands {
               authMethod: payload.server && authMethodOfFragmentAuthMode(payload.server.authMode),
             },
             occurredAt: context.createdAt,
+            sequence: context.order,
           },
           { propagationContext: context.capturePropagationContext() },
         );

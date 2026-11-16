@@ -45,6 +45,7 @@ function githubWebhookEvent(input: {
     source: "github",
     eventType: "webhook.received",
     occurredAt: input.occurredAt,
+    sequence: null,
     payload: {
       deliveryId: input.deliveryId,
       githubEvent: input.githubEvent,

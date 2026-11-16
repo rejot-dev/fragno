@@ -528,7 +528,7 @@ export function readPiAgents(reader: LofiSqliteReader): PiAgentRecord[] {
   const state = automationFragmentSchema.tables.automation_event_state.columns;
   const eventTypes = Object.keys(piAgentActivityByEventType);
   const states = reader.query({
-    sql: `SELECT "eventType", "eventId", "payload", "occurredAt", "storedAt"
+    sql: `SELECT "eventType", "eventId", "payload", "occurredAt", "sequence", "storedAt"
           FROM ${automationTable("automation_event_state")}
           WHERE "source" = ? AND "eventType" IN (${eventTypes.map(() => "?").join(", ")})`,
     params: [PI_AUTOMATION_SOURCE, ...eventTypes],
@@ -537,6 +537,7 @@ export function readPiAgents(reader: LofiSqliteReader): PiAgentRecord[] {
       eventId: state.eventId,
       payload: state.payload,
       occurredAt: state.occurredAt,
+      sequence: state.sequence,
       storedAt: state.storedAt,
     },
   });
@@ -563,7 +564,7 @@ export function readPiAgentTurns(reader: LofiSqliteReader, since: Date): PiAgent
 /**
  * The source's events of the types, oldest first, as stored, and of those only the ones whose
  * subject names `subject.id` at `subject.field` when it is given. Of events in the same instant,
- * the one stored first comes first.
+ * the one with the lower sequence comes first, then the one stored first, as `compareEventOrder`.
  */
 function readEventsOfTypes(
   reader: LofiSqliteReader,
@@ -585,7 +586,7 @@ function readEventsOfTypes(
           FROM ${automationTable("automation_event")}
           WHERE "source" = ? AND "eventType" IN (${eventTypes.map(() => "?").join(", ")})
             AND "occurredAt" >= ?${subject ? ` AND "subject" ->> ? = ?` : ""}
-          ORDER BY "occurredAt", "${event.getInternalIdColumn().name}"`,
+          ORDER BY "occurredAt", "sequence", "${event.getInternalIdColumn().name}"`,
     params: [source, ...eventTypes, since, ...(subject ? [`$.${subject.field}`, subject.id] : [])],
     columns: {
       id: "text",
@@ -605,7 +606,7 @@ export function readIntegrationConnections(
   const state = automationFragmentSchema.tables.automation_event_state.columns;
   const eventTypes = integrationConnectionEvents.map(({ eventType }) => eventType);
   const states = reader.query({
-    sql: `SELECT "eventType", "eventId", "payload", "occurredAt", "storedAt"
+    sql: `SELECT "eventType", "eventId", "payload", "occurredAt", "sequence", "storedAt"
           FROM ${automationTable("automation_event_state")}
           WHERE "source" = ? AND "eventType" IN (${eventTypes.map(() => "?").join(", ")})`,
     params: [INTEGRATIONS_EVENT_SOURCE, ...eventTypes],
@@ -614,6 +615,7 @@ export function readIntegrationConnections(
       eventId: state.eventId,
       payload: state.payload,
       occurredAt: state.occurredAt,
+      sequence: state.sequence,
       storedAt: state.storedAt,
     },
   });
@@ -622,8 +624,7 @@ export function readIntegrationConnections(
 }
 
 /**
- * The state changes a connection's events reported, newest first. Of changes made in the same
- * instant, the one stored later comes first, as states keep it.
+ * The state changes a connection's events reported, newest first, in the order states keep.
  */
 export function readIntegrationConnectionHistory(
   reader: LofiSqliteReader,

@@ -72,6 +72,7 @@ const telegramMessageEvent = ({
     source: "telegram",
     eventType: "message.received",
     occurredAt: "2026-01-01T00:00:00.000Z",
+    sequence: null,
     payload: {
       messageId: id,
       chatId,
@@ -116,6 +117,7 @@ const identityClaimCompletedEvent = ({
     source: "otp",
     eventType: "identity.claim.completed",
     occurredAt: "2026-01-01T00:00:00.000Z",
+    sequence: null,
     payload: {
       otpId,
       claimType: "identity_link",

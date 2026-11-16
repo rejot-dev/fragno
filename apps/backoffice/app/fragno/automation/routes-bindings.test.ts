@@ -362,6 +362,7 @@ describe("automation routes /routes", () => {
       source: "custom",
       eventType: "ready",
       occurredAt: "2026-01-01T00:00:00.000Z",
+      sequence: null,
       payload: { organization: { id: "org_123" } },
       actors: {
         initiator: actor,
@@ -430,6 +431,7 @@ describe("automation routes /routes", () => {
         source: "custom",
         eventType: "ready",
         occurredAt: "2026-01-01T00:00:00.000Z",
+        sequence: null,
         payload: {},
         actors: {
           initiator: actor,
@@ -527,6 +529,7 @@ describe("automation routes /routes", () => {
         source: "custom",
         eventType: "ready",
         occurredAt: "2026-01-01T00:00:00.000Z",
+        sequence: null,
         payload: {},
         actors: {
           initiator: actor,
@@ -607,6 +610,7 @@ describe("automation routes /routes", () => {
       source: "custom",
       eventType: "thing.happened",
       occurredAt: "2026-01-01T00:00:00.000Z",
+      sequence: null,
       payload: {},
       actors: {
         initiator: actor,
@@ -686,6 +690,7 @@ describe("automation routes /routes", () => {
       source: "custom",
       eventType: "signal.received",
       occurredAt: "2026-01-01T00:00:00.000Z",
+      sequence: null,
       payload: { key: "alpha" },
       actors: {
         initiator: actor,
@@ -721,6 +726,7 @@ describe("automation routes /events", () => {
         source: "custom",
         eventType: "ready",
         occurredAt: "2026-01-01T00:00:00.000Z",
+        sequence: null,
         payload: { ok: true },
         actors: {
           initiator: actor,
@@ -769,6 +775,7 @@ describe("automation routes /events", () => {
           source: "custom",
           eventType: "ready",
           occurredAt: `2026-01-01T00:00:0${id.slice(-1)}.000Z`,
+          sequence: null,
           payload: { id },
           actors: {
             initiator: actor,
@@ -818,6 +825,7 @@ describe("automation routes /events", () => {
           source: "custom",
           eventType: "ready",
           occurredAt: "not-a-timestamp",
+          sequence: null,
           payload: {},
           actors: {
             initiator: actor,

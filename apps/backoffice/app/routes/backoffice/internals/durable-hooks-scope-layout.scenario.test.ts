@@ -64,6 +64,7 @@ test("an administrator wakes the hooks a lost alarm left pending", async () => {
             source: "custom",
             eventType: "intake.received",
             occurredAt: "2026-01-01T00:00:00.000Z",
+            sequence: null,
             payload: {},
             actors: { initiator: AUTOMATION_SYSTEM_INITIATOR, principal: null, delegation: [] },
             subject: null,

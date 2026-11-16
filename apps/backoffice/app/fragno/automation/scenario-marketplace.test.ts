@@ -192,6 +192,7 @@ function githubPullRequestWebhookEvent(action: "opened" | "synchronize"): Automa
     source: "github",
     eventType: "webhook.received",
     occurredAt: "2026-08-24T12:00:00.000Z",
+    sequence: null,
     payload: {
       deliveryId: `delivery-${action}`,
       githubEvent: "pull_request",

@@ -93,12 +93,17 @@ export function assertEventKeyPathFitsExample(definition: {
 
 /** Whether the event comes after the one the state holds, in `compareEventOrder`'s order. */
 export function occurredAfter(
-  event: { id: string; occurredAt: Date; createdAt: Date },
-  state: { eventId: string; occurredAt: Date; storedAt: Date },
+  event: { id: string; occurredAt: Date; sequence: string | null; createdAt: Date },
+  state: { eventId: string; occurredAt: Date; sequence: string | null; storedAt: Date },
 ) {
   return (
     compareEventOrder(
-      { eventId: event.id, occurredAt: event.occurredAt, storedAt: event.createdAt },
+      {
+        eventId: event.id,
+        occurredAt: event.occurredAt,
+        sequence: event.sequence,
+        storedAt: event.createdAt,
+      },
       state,
     ) > 0
   );
@@ -164,9 +169,16 @@ export function writeEventState(
     id: string;
     payload: AutomationEventState["payload"];
     occurredAt: Date;
+    sequence: string | null;
     createdAt: Date;
   },
-  state: { id: FragnoId; eventId: string; occurredAt: Date; storedAt: Date } | null,
+  state: {
+    id: FragnoId;
+    eventId: string;
+    occurredAt: Date;
+    sequence: string | null;
+    storedAt: Date;
+  } | null,
 ) {
   if (state && !occurredAfter(event, state)) {
     return false;
@@ -176,6 +188,7 @@ export function writeEventState(
     eventId: event.id,
     payload: event.payload,
     occurredAt: event.occurredAt,
+    sequence: event.sequence,
     storedAt: event.createdAt,
   };
   if (state) {
@@ -197,6 +210,7 @@ function eventStateOfRow(row: {
   eventId: string;
   payload: AutomationEventState["payload"];
   occurredAt: Date;
+  sequence: string | null;
   storedAt: Date;
 }): AutomationEventState {
   return {
@@ -205,6 +219,7 @@ function eventStateOfRow(row: {
     eventId: row.eventId,
     payload: row.payload,
     occurredAt: row.occurredAt.toISOString(),
+    sequence: row.sequence,
     storedAt: row.storedAt.toISOString(),
   };
 }

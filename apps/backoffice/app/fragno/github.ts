@@ -198,6 +198,7 @@ export const buildGitHubAutomationEvent = ({
     source: "github",
     eventType: "webhook.received",
     occurredAt: meta.receivedAt,
+    sequence: null,
     payload: {
       deliveryId: meta.deliveryId,
       githubEvent: event.name,

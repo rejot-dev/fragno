@@ -121,6 +121,7 @@ function syncRequested(
     source: "ledger",
     eventType: "sync.requested",
     occurredAt: new Date(at).toISOString(),
+    sequence: null,
     payload: { batch, invoices: ["INV-1", "INV-2"], ...payload },
     actors: createBackofficeSystemExecution(scope).actors,
     subject: { scope },

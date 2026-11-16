@@ -73,6 +73,7 @@ const systemUnrelatedEvent = {
   source: "github",
   eventType: "issue.opened",
   occurredAt: "2026-01-01T00:00:00.000Z",
+  sequence: null,
   payload: {
     issueId: "issue-1",
   },
@@ -220,6 +221,7 @@ describe("system automation scenarios", () => {
         source: "auth",
         eventType: "organization.created",
         occurredAt: "2026-01-01T00:00:00.000Z",
+        sequence: null,
         payload: {
           organization: {
             id: orgId,
@@ -600,6 +602,7 @@ describe("system automation scenarios", () => {
                 source: "auth",
                 eventType: "organization.created",
                 occurredAt: "2026-01-01T00:00:00.000Z",
+                sequence: null,
                 payload: {
                   organization: {
                     id: "org-1",
@@ -639,6 +642,7 @@ describe("system automation scenarios", () => {
               source: "auth",
               eventType: "organization.updated",
               occurredAt: "2026-01-01T00:01:00.000Z",
+              sequence: null,
               payload: {
                 organization: {
                   id: "org-1",

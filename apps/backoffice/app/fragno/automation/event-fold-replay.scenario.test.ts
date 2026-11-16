@@ -36,6 +36,7 @@ function event(
     source,
     eventType,
     occurredAt: new Date(at(second)).toISOString(),
+    sequence: null,
     payload,
     actors: createBackofficeSystemExecution(scope).actors,
     subject,

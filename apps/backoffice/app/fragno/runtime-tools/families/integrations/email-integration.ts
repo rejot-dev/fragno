@@ -221,7 +221,7 @@ type InboundEmailRuntime = Pick<BackofficeRuntimeServices, "objects" | "config">
 export async function recordMailboxChange(
   objects: Pick<BackofficeRuntimeServices["objects"], "automations">,
   mailbox: ResendMailbox,
-  context: Pick<HookContext, "hookId" | "createdAt" | "capturePropagationContext">,
+  context: Pick<HookContext, "hookId" | "createdAt" | "order" | "capturePropagationContext">,
 ) {
   const owner = inboundEmailOwnerScope(mailbox.owner);
   const change = {
@@ -230,6 +230,7 @@ export async function recordMailboxChange(
     service: emailIntegrationId,
     connectionId: INBOUND_EMAIL_CONNECTION_ID,
     occurredAt: context.createdAt,
+    sequence: context.order,
   };
   await recordIntegrationConnectionState(
     objects.automations.for(owner).commands,

@@ -16,6 +16,7 @@ const event = {
   source: "telegram",
   eventType: "telegram.message.received",
   occurredAt: "2026-07-27T00:00:00.000Z",
+  sequence: null,
   payload: {},
   subject: null,
   actors: {

@@ -136,6 +136,7 @@ export class ProjectConnectorObject extends RpcTarget implements ProjectConnecto
                 state: payload.ready ? "ready" : "unavailable",
                 label: { name: payload.connection.connectionName, authMethod: "oauth" },
                 occurredAt: context.createdAt,
+                sequence: context.order,
               },
               { propagationContext: context.capturePropagationContext() },
             );
@@ -155,6 +156,7 @@ export class ProjectConnectorObject extends RpcTarget implements ProjectConnecto
                 ]),
                 state: "disconnected",
                 occurredAt: context.createdAt,
+                sequence: context.order,
               },
               { propagationContext: context.capturePropagationContext() },
             );
