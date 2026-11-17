@@ -15,6 +15,7 @@ import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
 const scope: BackofficeContextScope = { kind: "org", orgId: "org-1", jurisdiction: null };
+const period = new Date().toISOString().slice(0, 7);
 const logo = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 // A temporary link that redirects to the file, like Drive's export links.
 const exportLink = "https://drive.example/export?id=logo";
@@ -34,6 +35,70 @@ function unsizedBody(bytes: number) {
     }),
   );
 }
+
+test("an agent searches the web for a provider's API documentation, billed per search", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "search the web",
+      objects: allLocalObjects,
+      fakes: ({ fake }) => ({
+        workersAi: fake.workersAi({
+          models: {},
+          searchResults: {
+            "Acme API authentication": [
+              {
+                url: "https://docs.acme.example/api/authentication",
+                title: "Authentication | Acme API",
+                description: "Send your secret key as a bearer token.",
+              },
+              { url: "https://acme.example", title: "Acme", description: null },
+            ],
+          },
+        }),
+      }),
+      setup: ({ given }) => [given.organization.exists({ id: scope.orgId, name: "Ada Labs" })],
+      steps: ({ then }) => [
+        then.assert("the search returns the pages the engine found", async (ctx) => {
+          await expect(
+            ctx.runCodemode({
+              scope,
+              code: `async () => await web.search({ query: "Acme API authentication" })`,
+            }),
+          ).resolves.toEqual(
+            expect.objectContaining({
+              result: {
+                results: [
+                  {
+                    url: "https://docs.acme.example/api/authentication",
+                    title: "Authentication | Acme API",
+                    description: "Send your secret key as a bearer token.",
+                  },
+                  { url: "https://acme.example", title: "Acme", description: null },
+                ],
+              },
+            }),
+          );
+          expect(ctx.fakes.workersAi?.searches).toEqual([
+            {
+              gatewayId: "default",
+              provider: "exa",
+              query: "Acme API authentication",
+              limit: 10,
+            },
+          ]);
+          expect(ctx.kernelActions).toEqual(
+            expect.arrayContaining([
+              expect.objectContaining({ operation: BACKOFFICE_PERMISSION.web.search }),
+            ]),
+          );
+        }),
+        // Exa's list price, $7 per thousand searches.
+        then.billing.tracker({ scope, period, meter: "ai.cost.total", quantity: "7000000" }),
+        then.billing.tracker({ scope, period, meter: "web.searches", quantity: "1" }),
+      ],
+    }),
+  );
+});
 
 test("an agent downloads the file behind a temporary link into the workspace", async () => {
   await runBackofficeScenario(

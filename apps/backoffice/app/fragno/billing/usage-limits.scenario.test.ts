@@ -185,6 +185,7 @@ test("an organization out of allowance cannot start model work until an administ
               }),
             },
           },
+          searchResults: {},
         }),
       }),
       setup: ({ given }) => [
@@ -206,12 +207,22 @@ test("an organization out of allowance cannot start model work until an administ
           await ctx.drain();
           expect(ctx.fakes.workersAi?.runs).toHaveLength(1);
         }),
-        then.assert("once the limit is used up, a run never reaches Cloudflare", async (ctx) => {
-          await expect(ctx.runCodemode({ scope, code: runClairic })).rejects.toThrow(
-            "USAGE_LIMIT_EXCEEDED: This organization has used $0.000013 of its $0.00001 monthly ai.cost.total limit.",
-          );
-          expect(ctx.fakes.workersAi?.runs).toHaveLength(1);
-        }),
+        then.assert(
+          "once the limit is used up, neither a run nor a web search reaches Cloudflare",
+          async (ctx) => {
+            await expect(ctx.runCodemode({ scope, code: runClairic })).rejects.toThrow(
+              "USAGE_LIMIT_EXCEEDED: This organization has used $0.000013 of its $0.00001 monthly ai.cost.total limit.",
+            );
+            await expect(
+              ctx.runCodemode({
+                scope,
+                code: `async () => await web.search({ query: "Acme API authentication" })`,
+              }),
+            ).rejects.toThrow("USAGE_LIMIT_EXCEEDED");
+            expect(ctx.fakes.workersAi?.runs).toHaveLength(1);
+            expect(ctx.fakes.workersAi?.searches).toEqual([]);
+          },
+        ),
         then.assert("monitoring hears once that the organization reached its limit", (ctx) => {
           expect(ctx.telemetry.filter((signal) => signal.kind === "usage-limit-reached")).toEqual([
             expect.objectContaining({

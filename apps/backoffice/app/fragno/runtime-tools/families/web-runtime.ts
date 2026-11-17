@@ -5,7 +5,7 @@ import type {
 } from "@fragno-dev/cloudflare-fragment/browser-run";
 import { createRouteCaller } from "@fragno-dev/core/api";
 
-import type { FetchCommands } from "@/backoffice-runtime/object-registry";
+import type { FetchCommands, PiManagerCommands } from "@/backoffice-runtime/object-registry";
 import { BackofficeOperationError } from "@/backoffice-runtime/operation-error";
 import type { CloudflareFragment } from "@/fragno/cloudflare";
 import { readBoundedBytes } from "@/lib/bounded-bytes";
@@ -18,6 +18,7 @@ export type WebExtractResult = Extract<BrowserRunExtractResult, { action: "conte
 export type WebRuntime = {
   extract(input: WebExtractInput): Promise<WebExtractResult>;
   download(url: string): Promise<Uint8Array>;
+  search: PiManagerCommands["searchWeb"];
 };
 
 const WEB_DOWNLOAD_MAX_REDIRECTS = 5;
@@ -126,11 +127,14 @@ async function download(fetch: typeof globalThis.fetch, url: string): Promise<Ui
 export const createWebRuntime = ({
   cloudflare,
   fetch,
+  search,
 }: {
   /** Browser Run extracts pages; null when the deployment has no Cloudflare binding. */
   cloudflare: FetchCommands | null;
   /** Reaches the public internet for downloads; null where the runtime cannot download. */
   fetch: typeof globalThis.fetch | null;
+  /** The scope's PiManager, which bills each search to the scope's owner. */
+  search: PiManagerCommands["searchWeb"];
 }): WebRuntime => {
   const callRoute = cloudflare
     ? createRouteCaller<CloudflareFragment>({
@@ -168,5 +172,6 @@ export const createWebRuntime = ({
       }
       return await download(fetch, url);
     },
+    search,
   };
 };

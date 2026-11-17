@@ -486,6 +486,10 @@ const createRuntimeContext = ({
           ? (unavailableObject(() => runtime.objects.cloudflare.singleton())?.http ?? null)
           : null,
         fetch: runtime.webFetch,
+        search: async (input) =>
+          await kernel
+            .scoped("PI_MANAGER", execution.scope, runtime.objects.piManager)
+            .commands.searchWeb(input),
       }),
     },
     // Builds run codemode, and a page build loads this module, so builders are imported per use.

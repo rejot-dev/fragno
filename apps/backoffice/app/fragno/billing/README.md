@@ -38,20 +38,20 @@ exceptions allowing customer usage with a missing billing dependency.
 Each root owner, an organization or a user's personal account, has limits per UTC month on its
 `ai.cost.total` and on `email.sent`, the emails a person sends from their inbound address.
 `usage-limits.ts` holds the deployment defaults: $10, and 100 emails, which are free but spend the
-shared domain's reputation. Workers AI counts toward the cost by its neurons, so they have no limit
-of their own. The owner's Billing object keeps limits an administrator set in `billing_limit`; a
-meter without a row has the default.
+shared domain's reputation. Workers AI counts toward the cost by its neurons, and `web.search` by
+its search engine's list price, so neither has a limit of its own. The owner's Billing object keeps
+limits an administrator set in `billing_limit`; a meter without a row has the default.
 `admin.usage-limits.set --org <slug> | --user <id> --meter <meter> --limit <amount | unlimited | default>`
 sets them, in USD or whole emails.
 
 Work that records usage on a limited meter checks the owner's limits before it starts, through
 `checkUsageLimits`: Pi prompts, manual compactions, `models.classify`, `models.generateImage`,
-`models.extract`, Workers AI runs, and sent email. The Resend Fragment's durable hook records each
-email an address queued, once, as `email-sent:<emailId>`. Once usage reaches a limit, they are
-refused with `USAGE_LIMIT_EXCEEDED`; prompts and compactions answer `403`, so automations do not
-retry them. Resending a prompt's request ID is not new work: it recovers the receipt of the prompt
-it first admitted. System work is never limited, and a customer whose Billing cannot answer is
-refused like one without the binding.
+`models.extract`, Workers AI runs, `web.search`, and sent email. The Resend Fragment's durable hook
+records each email an address queued, once, as `email-sent:<emailId>`. Once usage reaches a limit,
+they are refused with `USAGE_LIMIT_EXCEEDED`; prompts and compactions answer `403`, so automations
+do not retry them. Resending a prompt's request ID is not new work: it recovers the receipt of the
+prompt it first admitted. System work is never limited, and a customer whose Billing cannot answer
+is refused like one without the binding.
 
 Nothing is reserved. Admitted turns run to completion, and usage arrives after the work that
 recorded it, so an owner can end a month somewhat past its limit. Notifications, queued items, and

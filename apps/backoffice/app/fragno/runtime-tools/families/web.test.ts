@@ -12,6 +12,7 @@ const createRuntime = (): WebRuntime => ({
     result: "Example",
   })) as WebRuntime["extract"],
   download: vi.fn(),
+  search: vi.fn(),
 });
 
 describe("web runtime tools", () => {

@@ -60,6 +60,7 @@ import {
   parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { AcceptedShare, Share, SharedContents } from "@fragno-dev/backoffice-api/v0/shares";
+import type { WebSearchResult } from "@fragno-dev/cloudflare-fragment/workers-ai";
 import type { CodemodeHost } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { GitHubWebhookRouter } from "workers/github-webhook-router.do";
 import type { GitHub } from "workers/github.do";
@@ -649,6 +650,8 @@ export type PiManagerCommands = WarmableCommands & {
     model: string;
     input: Record<string, JsonValue>;
   }): Promise<{ output: JsonValue }>;
+  /** Searches the web and records the search's price, like `classify`. */
+  searchWeb(input: { query: string }): Promise<{ results: WebSearchResult[] }>;
   /** Whether `applyPackageAgents` would accept a package's agents, checked before installing. */
   checkPackageAgents(
     input: Omit<PackageAgentsInput, "actors">,

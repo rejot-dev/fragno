@@ -64,7 +64,7 @@ const CODEMODE_PROVIDER_SUMMARIES: Record<string, string> = {
     "Automation events: catalog, stored events and the routes they matched, firing, retries. Read to see what can trigger automations or why one did not act.",
   cloudflare:
     "Cloudflare Browser Run: screenshots, PDFs, crawls. Read to capture or crawl a page in a real browser.",
-  web: "Web pages as content or Markdown, and files downloaded from URLs into the workspace. Read to fetch a web page or download a file.",
+  web: "Web search, web pages as content or Markdown, and files downloaded from URLs into the workspace. Read to search the web, fetch a web page, or download a file.",
   models:
     "Classifiers for typed questions about data and images, typed extraction from PDFs and images, and image generation. Read to classify, read a PDF, or generate images.",
   otp: "Identity-claim links for external senders. Read to let an external user link their account.",

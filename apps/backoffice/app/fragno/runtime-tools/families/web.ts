@@ -3,6 +3,7 @@ import type { z } from "zod";
 
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import {
+  defineCliArgsParser,
   parseCliTokens,
   readOutputOptions,
   readStringOption,
@@ -84,6 +85,48 @@ const webExtractTool = defineBackofficeRuntimeTool({
   },
 });
 
+const webSearchTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("web.search"),
+  namespace: "web",
+  name: "search",
+  activity: { label: "Search the web", target: (input) => input.query },
+  execute: async (input, context: WebToolContext) =>
+    await getWebRuntime(context.runtimes.web).search(input),
+  adapters: {
+    bash: {
+      command: "web.search",
+      help: {
+        summary: "Search the web for up to 10 pages.",
+        options: [
+          {
+            name: "query",
+            required: true,
+            valueRequired: true,
+            valueName: "text",
+            description: "What to search for.",
+          },
+        ],
+        examples: ["web.search --query 'Acme API authentication'"],
+      },
+      parse: defineCliArgsParser("web.search", {
+        query: { kind: "string", required: true },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              data: result,
+              stdout: result.results
+                .map(({ url, title, description }) =>
+                  [title, url, description].filter((line) => line !== null).join("\n"),
+                )
+                .join("\n\n")
+                .concat("\n"),
+            },
+    },
+  },
+});
+
 const webDownloadTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("web.download"),
   namespace: "web",
@@ -101,7 +144,7 @@ const webDownloadTool = defineBackofficeRuntimeTool({
   },
 });
 
-export const webRuntimeTools = [webExtractTool, webDownloadTool] as const;
+export const webRuntimeTools = [webExtractTool, webSearchTool, webDownloadTool] as const;
 
 export const webToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "web",

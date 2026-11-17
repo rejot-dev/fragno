@@ -29,6 +29,34 @@ const webExtractResultSchema = z.lazy(() =>
   ]),
 );
 
+const webSearchInputSchema = z.lazy(() =>
+  z.strictObject({
+    query: z
+      .string()
+      .trim()
+      .min(1)
+      .max(1024)
+      .describe("What to search for, such as `Acme API authentication`."),
+  }),
+);
+
+const webSearchOutputSchema = z.lazy(() =>
+  z.object({
+    results: z
+      .array(
+        z.object({
+          url: z.string(),
+          title: z.string(),
+          description: z
+            .string()
+            .nullable()
+            .describe("A summary or excerpt of the page; null when the engine wrote none."),
+        }),
+      )
+      .describe("The most relevant pages first."),
+  }),
+);
+
 const webDownloadInputSchema = z.lazy(() =>
   z.strictObject({
     url: z
@@ -57,6 +85,14 @@ export const webOperations = {
     permissions: [BACKOFFICE_PERMISSION.cloudflare.browserRun],
     input: webExtractInputSchema,
     output: webExtractResultSchema,
+  },
+  "web.search": {
+    description:
+      "Search the web for up to 10 pages, each with its URL, title, and description. Each search " +
+      "is billed to the scope's owner and counts toward its ai.cost.total limit.",
+    permissions: [BACKOFFICE_PERMISSION.web.search],
+    input: webSearchInputSchema,
+    output: webSearchOutputSchema,
   },
   "web.download": {
     description:

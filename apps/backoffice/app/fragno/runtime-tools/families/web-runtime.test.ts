@@ -5,6 +5,10 @@ import type { FetchCommands } from "@/backoffice-runtime/object-registry";
 import { NotConfiguredError } from "../runtime-errors";
 import { createWebRuntime } from "./web-runtime";
 
+const unusedSearch = async () => {
+  throw new Error("The test searches nothing.");
+};
+
 describe("createWebRuntime", () => {
   test("calls the Browser Run extract route", async () => {
     let request: Request | undefined;
@@ -14,7 +18,7 @@ describe("createWebRuntime", () => {
         return Response.json({ action: "markdown", result: "Example" });
       },
     };
-    const runtime = createWebRuntime({ cloudflare: object, fetch });
+    const runtime = createWebRuntime({ cloudflare: object, fetch, search: unusedSearch });
 
     await expect(
       runtime.extract({
@@ -36,7 +40,7 @@ describe("createWebRuntime", () => {
           { status: 400 },
         ),
     };
-    const runtime = createWebRuntime({ cloudflare: object, fetch });
+    const runtime = createWebRuntime({ cloudflare: object, fetch, search: unusedSearch });
 
     await expect(
       runtime.extract({

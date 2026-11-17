@@ -91,6 +91,12 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
     return await this.#object.runWorkersAi(input);
   }
 
+  async searchWeb(
+    input: Parameters<PiManagerCommands["searchWeb"]>[0],
+  ): ReturnType<PiManagerCommands["searchWeb"]> {
+    return await this.#object.searchWeb(input);
+  }
+
   async checkPackageAgents(input: Omit<PackageAgentsInput, "actors">) {
     return await this.#object.checkPackageAgents(input);
   }
