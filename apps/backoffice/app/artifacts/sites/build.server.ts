@@ -1,3 +1,4 @@
+import type { AutomationActor } from "@fragno-dev/backoffice-api/v0/automation";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { CODEMODE_WORKER_RUNTIME } from "@fragno-dev/codemode/execution/codemode-worker-bundle";
 import { z } from "zod";
@@ -95,7 +96,8 @@ const RETIRED_BUILD_KEPT_MS = 15 * 60 * 1000;
  * R2 where the deployment has buckets and in the workspace's `.build` otherwise, then serves it.
  * A failed build leaves the previous one serving, and sources that did not change since the
  * served build are not built again. `authorizeWorker` throws unless whoever builds may read what
- * a `worker.js` reads, and `mayFire` says whether they may emit the events it fires.
+ * a `worker.js` reads and call the tools it calls, `mayFire` says whether they may emit the events
+ * it fires, and `builder` is the principal its tool calls act for.
  */
 export async function buildSite({
   state,
@@ -106,6 +108,7 @@ export async function buildSite({
   sitePath,
   authorizeWorker,
   mayFire,
+  builder,
 }: {
   state: BackofficeStateBackend;
   codemode: CodemodeRunner;
@@ -115,6 +118,7 @@ export async function buildSite({
   sitePath: string;
   authorizeWorker: () => Promise<void>;
   mayFire: () => Promise<boolean>;
+  builder: AutomationActor<"principal"> | null;
 }): Promise<SiteBuildOutcome> {
   const problem = sitePathProblem(sitePath);
   if (problem !== null) {
@@ -155,7 +159,7 @@ export async function buildSite({
       message: `${sitePath} has neither a worker.js nor files under public/.`,
     };
   }
-  const sources = await siteSourcesFingerprint(worker.modules, files, fires, settings);
+  const sources = await siteSourcesFingerprint(worker.modules, files, fires, builder, settings);
   const store = siteStore({ siteStorage, state, scope, sitePath });
   const current = await store.readPointer();
   if (current.status === "built" && current.pointer.served.sources === sources) {
@@ -184,7 +188,7 @@ export async function buildSite({
   await store.writeFile(
     build,
     SITE_WORKER_FILE,
-    encodeSiteWorker({ bundle: compiled.bundle, fires }),
+    encodeSiteWorker({ bundle: compiled.bundle, fires, builder }),
     "application/json",
   );
   const index: SiteIndex = { files: {} };
@@ -412,18 +416,21 @@ async function mapAtMost<T, R>(
  * Fingerprints everything a build is made of, so sources that did not change are not built again.
  * It includes the Worker runtime because a stored bundle only loads on the runtime it was built
  * for, so a new runtime must rebuild it, whether it fires, so a build by someone who may emit
- * events, or no longer may, replaces it, and the settings, which the pointer to the build records.
+ * events, or no longer may, replaces it, who built it, so a build by someone else acts for them,
+ * and the settings, which the pointer to the build records.
  */
 async function siteSourcesFingerprint(
   modules: Record<string, string>,
   assets: readonly SiteFileSource[],
   fires: boolean,
+  builder: AutomationActor<"principal"> | null,
   settings: SiteSettings,
 ): Promise<string> {
   const inputs = JSON.stringify([
     SITE_BUILD_LAYOUT,
     CODEMODE_WORKER_RUNTIME,
     fires,
+    builder,
     settings,
     Object.entries(modules).sort(([left], [right]) => left.localeCompare(right)),
     // Sizes and modification times, not contents, so an unchanged site is not read: a file

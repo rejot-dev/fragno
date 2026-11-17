@@ -1,4 +1,6 @@
+import type { AutomationActor } from "@fragno-dev/backoffice-api/v0/automation";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import type { CodemodeToolResult } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { SqliteValue } from "@fragno-dev/lofi/sqlite";
 import { PAGE_LIMITS } from "@fragno-private/backoffice-ui/pages/definition";
 
@@ -31,24 +33,30 @@ export type SiteDataResult =
 
 /**
  * What the host tells a site's `env.DATA` about the Worker it serves: whose data it reads, which
- * site fires its events, and whether the build may fire them. A Worker loaded for the one request
- * an agent sends carries that request's `probe`, which keeps its events for the agent, and fires
- * them too when the agent asked to.
+ * site fires its events, whether the build may fire them, and who built it, whom its tool calls
+ * act for. A Worker loaded for the one request an agent sends carries that request's `probe`,
+ * which keeps its events for the agent, and fires them too when the agent asked to.
  */
 export type SiteDataProps = {
   scope: BackofficeContextScope;
   sitePath: string;
   fires: boolean;
+  /** The principal of the build's execution; null when the system built it. */
+  builder: AutomationActor<"principal"> | null;
   probe?: SiteProbe;
 };
 
 /** The request an agent sent, and whether its events fire as a viewer's do. */
 export type SiteProbe = { id: string; fire: boolean };
 
-/** The site Worker's binding that `env.DATA` reads and fires events through. */
+/**
+ * The site Worker's binding that `env.DATA` reads and fires events through, and its tool globals,
+ * such as `state`, call tools through.
+ */
 export type SiteDataBinding = {
   query(query: SiteDataQuery): Promise<SiteDataResult>;
   fire(event: SiteEvent): Promise<SiteFireResult>;
+  call(namespace: string, tool: string, args: unknown[]): Promise<CodemodeToolResult>;
 };
 
 /**

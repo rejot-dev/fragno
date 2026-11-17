@@ -496,6 +496,7 @@ export class CodemodeObject extends RpcTarget implements CodemodeCommands {
         }
       },
       mayFire: async () => authority.fires,
+      builder: execution.actors.principal,
     });
     if (built.kind !== "built") {
       return built;

@@ -1,3 +1,4 @@
+import type { CodemodeToolResult } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 import type {
@@ -11,7 +12,8 @@ import type { SiteEvent, SiteFireResult } from "../app/artifacts/sites/site-even
 /**
  * The binding a site Worker's `env.DATA` goes through: it reads the automation data of the scope
  * its props name, with the SQL pages read it with, and fires events into that scope's automations
- * as the site. The host that loaded the Worker sets its props.
+ * as the site. The Worker's tool globals call tools through it, as whoever built the site. The host
+ * that loaded the Worker sets its props.
  */
 export class SiteData
   extends WorkerEntrypoint<CloudflareEnv, SiteDataProps>
@@ -42,6 +44,20 @@ export class SiteData
       limiter: cloudflareSiteEventLimiter(this.env.SITE_EVENTS),
       props: this.ctx.props,
       event,
+    });
+  }
+
+  async call(namespace: string, tool: string, args: unknown[]): Promise<CodemodeToolResult> {
+    const [{ callSiteTool }, { createCloudflareBackofficeRuntimeServices }] = await Promise.all([
+      import("../app/artifacts/sites/site-tools.server"),
+      import("../app/backoffice-runtime/runtime-services"),
+    ]);
+    return await callSiteTool({
+      runtime: createCloudflareBackofficeRuntimeServices(this.env),
+      props: this.ctx.props,
+      namespace,
+      tool,
+      args,
     });
   }
 }

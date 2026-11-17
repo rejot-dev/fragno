@@ -1,3 +1,7 @@
+import {
+  automationPrincipalActorSchema,
+  type AutomationActor,
+} from "@fragno-dev/backoffice-api/v0/automation";
 import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
 import { z } from "zod";
 
@@ -20,12 +24,30 @@ const siteWorkerFileSchema = builtJavaScriptModuleSchema.extend({
    * sites fired events have none, and do not fire.
    */
   fires: z.boolean().default(false),
+  /**
+   * The principal of the execution that built it, whom the Worker's tool calls act for; null when
+   * the system built it. Builds from before sites called tools have none, and call none.
+   */
+  builder: automationPrincipalActorSchema.nullable().default(null),
 });
 
 export type SiteWorker = z.output<typeof siteWorkerFileSchema>;
 
-export function encodeSiteWorker({ bundle, fires }: { bundle: WorkerBundle; fires: boolean }) {
-  return JSON.stringify({ format: builtJavaScriptModuleSchema.shape.format.value, bundle, fires });
+export function encodeSiteWorker({
+  bundle,
+  fires,
+  builder,
+}: {
+  bundle: WorkerBundle;
+  fires: boolean;
+  builder: AutomationActor<"principal"> | null;
+}) {
+  return JSON.stringify({
+    format: builtJavaScriptModuleSchema.shape.format.value,
+    bundle,
+    fires,
+    builder,
+  });
 }
 
 /**

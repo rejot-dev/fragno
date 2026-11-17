@@ -7,6 +7,7 @@ import {
   type ArtifactSiteResponse,
 } from "@fragno-dev/backoffice-api/v0/artifacts";
 import {
+  allBackofficePermissionRequirements,
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
@@ -20,7 +21,10 @@ import {
   type BackofficeIdentityDirectory,
 } from "@/backoffice-runtime/authority-resolver";
 import type { BackofficeVerifiedRequestAuthority } from "@/backoffice-runtime/context";
-import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
+import {
+  createBackofficeSystemExecution,
+  createBackofficeUserExecution,
+} from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjectFactory } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
@@ -152,6 +156,8 @@ async function request(
     headers?: Record<string, string>;
     pointers?: SitePointerCache;
     viewer?: SiteViewer;
+    /** Resolves the authority of the site's tool calls, in place of the scenario's. */
+    resolver?: BackofficeAuthorityResolver;
   } = {},
 ) {
   const runtime = ctx.runtime.services;
@@ -170,7 +176,9 @@ async function request(
       sitePath,
     }),
     bindings: {
-      ...inProcessSiteWorkerBindings(runtime),
+      ...inProcessSiteWorkerBindings(
+        init.resolver ? { ...runtime, authorityResolver: init.resolver } : runtime,
+      ),
       siteAssets: (props) => ({
         async fetch(assetRequest) {
           const interleaved = beforeNextAssetRead;
@@ -998,6 +1006,194 @@ function faultyReplica(faults: ReplicaFaults): LocalBackofficeObjectFactory<Site
   };
 }
 
+const FILES_SITE_PATH = "/workspace/menu.site";
+
+/**
+ * Answers each path with what `state` reads, through a saved module that reads as programs do, and
+ * a read that fails with its message.
+ */
+const FILES_WORKER = `import { readMenu } from "/workspace/lib/menu.js";
+
+export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    const answer = async (read) => {
+      try {
+        return Response.json(await read());
+      } catch (error) {
+        return Response.json({ error: error.name + ": " + error.message });
+      }
+    };
+    switch (url.pathname) {
+      case "/menu":
+        return answer(() => readMenu());
+      case "/list":
+        return answer(() => state.readdir({ path: "/workspace/data" }));
+      case "/search":
+        return answer(async () => {
+          const { upload } = await state.searchFiles({ pattern: "/workspace/data/**", keywords: ["soup"] });
+          return upload.results.map(({ path, matches }) => ({ path, lines: matches.map((match) => match.line) }));
+        });
+      case "/write":
+        return answer(() => state.writeFile({ path: "/workspace/data/menu.json", content: "{}" }));
+      default:
+        return new Response("Not Found", { status: 404 });
+    }
+  },
+};
+`;
+
+const MENU_MODULE =
+  'export const readMenu = async () => await state.readJson({ path: "/workspace/data/menu.json" });';
+
+async function readFiles(ctx: BackofficeScenarioContext, path: string): Promise<unknown> {
+  return await (await request(ctx, FILES_SITE_PATH, path)).json();
+}
+
+test("a site's Worker reads the scope's workspace with state, as programs do", async () => {
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: allLocalObjects,
+      env: { SITES_ENABLED: "true" },
+      name: "a site reads workspace files",
+      setup: ({ given }) => [
+        given.organization.exists({ id: orgId }),
+        given.codemode.writeFile({
+          orgId,
+          path: `${FILES_SITE_PATH}/worker.js`,
+          content: FILES_WORKER,
+        }),
+        given.codemode.writeFile({ orgId, path: "/workspace/lib/menu.js", content: MENU_MODULE }),
+        given.codemode.writeFile({
+          orgId,
+          path: "/workspace/data/menu.json",
+          content: JSON.stringify({ soup: "tomato" }),
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert("a saved module the Worker imports reads a file with state", async (ctx) => {
+          assert.deepInclude(await buildSite(ctx, FILES_SITE_PATH), { status: "built" });
+          assert.deepEqual(await readFiles(ctx, "/menu"), { soup: "tomato" });
+          assert.deepEqual(await readFiles(ctx, "/list"), ["menu.json"]);
+        }),
+        then.assert("the Worker searches the workspace's files", async (ctx) => {
+          // Upload indexes files for search in its hooks.
+          await ctx.drain();
+          assert.deepEqual(await readFiles(ctx, "/search"), [
+            { path: "/workspace/data/menu.json", lines: [1] },
+          ]);
+        }),
+        then.assert("the Worker reads files as they are now, without a rebuild", async (ctx) => {
+          await writeFile(ctx, "/workspace/data/menu.json", JSON.stringify({ soup: "leek" }));
+          assert.deepEqual(await readFiles(ctx, "/menu"), { soup: "leek" });
+        }),
+        then.assert("the Worker calls only the tools sites may call", async (ctx) => {
+          const { error } = (await readFiles(ctx, "/write")) as { error: string };
+          assert.match(
+            error,
+            /^Error: Sites cannot call state\.writeFile; they call state\.readFile,/u,
+          );
+          assert.deepEqual(await workspace(ctx).readJson("/workspace/data/menu.json"), {
+            soup: "leek",
+          });
+        }),
+      ],
+    }),
+  );
+});
+
+/**
+ * Lets each of `people` do anything in the organization until they are revoked, and grants no
+ * delegate anything, as identity state that changes under a site.
+ */
+function grantedUntilRevoked(people: readonly string[]) {
+  const granted = new Set(people);
+  const resolver: BackofficeAuthorityResolver = {
+    resolvePrincipalPermissions: async ({ principal }) =>
+      granted.has(principal.id) ? allBackofficePermissionRequirements : [],
+    resolveActorCapabilityGrants: async () => [],
+  };
+  return {
+    resolver,
+    revoke(person: string) {
+      granted.delete(person);
+    },
+  };
+}
+
+/** Builds a site as `userId`, from a request their current permissions authorize. */
+async function buildSiteAs(
+  ctx: BackofficeScenarioContext,
+  resolver: BackofficeAuthorityResolver,
+  userId: string,
+  path: string,
+): Promise<unknown> {
+  const runtime = { ...ctx.runtime.services, authorityResolver: resolver };
+  const context = createBackofficeToolContext(
+    createRouteBackedRuntimeContext({
+      runtime,
+      execution: createBackofficeUserExecution({ scope, userId }),
+      kernel: new BackofficeKernel(runtime),
+      emitter: { kind: "caller" },
+    }),
+  );
+  const tool = artifactsToolFamily.tools.find(({ name }) => name === "buildSite");
+  assert(tool);
+  return await executeBackofficeRuntimeTool(tool, { path }, context);
+}
+
+test("a site's tool calls act for whoever built it, with the permissions they hold now", async () => {
+  const people = grantedUntilRevoked(["ada", "bob"]);
+  const read = async (ctx: BackofficeScenarioContext) =>
+    await (await request(ctx, FILES_SITE_PATH, "/menu", { resolver: people.resolver })).json();
+  const denied = /^BackofficeForbiddenError: Permission denied for state\.readJson\./u;
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: allLocalObjects,
+      env: { SITES_ENABLED: "true" },
+      name: "a site's tools act for its builder",
+      setup: ({ given }) => [
+        given.organization.exists({ id: orgId }),
+        given.codemode.writeFile({
+          orgId,
+          path: `${FILES_SITE_PATH}/worker.js`,
+          content: FILES_WORKER,
+        }),
+        given.codemode.writeFile({ orgId, path: "/workspace/lib/menu.js", content: MENU_MODULE }),
+        given.codemode.writeFile({
+          orgId,
+          path: "/workspace/data/menu.json",
+          content: JSON.stringify({ soup: "tomato" }),
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert("a site Ada built reads what she may read", async (ctx) => {
+          assert.deepInclude(await buildSiteAs(ctx, people.resolver, "ada", FILES_SITE_PATH), {
+            status: "built",
+          });
+          assert.deepEqual(await read(ctx), { soup: "tomato" });
+        }),
+        then.assert("once Ada may no longer read files, neither may her site", async (ctx) => {
+          people.revoke("ada");
+          assert.match(((await read(ctx)) as { error: string }).error, denied);
+        }),
+        then.assert(
+          "Bob building the same sources builds it anew, and the site acts for him",
+          async (ctx) => {
+            assert.deepInclude(await buildSiteAs(ctx, people.resolver, "bob", FILES_SITE_PATH), {
+              status: "built",
+            });
+            assert.equal(await buildCount(ctx, FILES_SITE_PATH), 2);
+            assert.deepEqual(await read(ctx), { soup: "tomato" });
+            people.revoke("bob");
+            assert.match(((await read(ctx)) as { error: string }).error, denied);
+          },
+        ),
+      ],
+    }),
+  );
+});
+
 test("a copy that cannot follow Automations reports why, and tries again on its own", async () => {
   const faults = { streamDown: true, laterAlarmFails: false, metaReadFails: false };
   await runBackofficeScenario(
@@ -1247,6 +1443,7 @@ export default { fetch() { return new Response(); } };`,
                 sitePath,
                 authorizeWorker: refuse,
                 mayFire: async () => true,
+                builder: null,
               });
             await expect(build(PROBE_SITE_PATH)).rejects.toThrow("Not granted store.read.");
             const store = siteStoreForServing({

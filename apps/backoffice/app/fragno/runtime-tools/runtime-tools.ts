@@ -164,6 +164,11 @@ export type BackofficeRuntimeTool<
   outputSchema: TOutputSchema;
   /** Secret-bearing output is returned to the caller but omitted from tool-call records. */
   resultLogging: "summary" | "redacted";
+  /**
+   * Whether a site's Worker may call it, as whoever built the site. A site serves what it reads to
+   * everyone who opens it, so a tool is callable only when its results may be shown that way.
+   */
+  callableFromSites: boolean;
   /** Returns the output schema's input; callers receive it parsed, e.g. with dates as ISO strings. */
   execute(input: z.output<TInputSchema>, context: TContext): Promise<z.input<TOutputSchema>>;
   adapters?: BackofficeRuntimeToolAdapters<TInputSchema, TOutputSchema, TContext, TBashInput>;
@@ -217,11 +222,11 @@ export function defineBackofficeRuntimeTool<
 >(
   tool: Omit<
     BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext, TBashInput>,
-    "resultLogging"
-  >,
+    "resultLogging" | "callableFromSites"
+  > & { callableFromSites?: boolean },
   resultLogging: "summary" | "redacted" = "summary",
 ): BackofficeRuntimeTool<TInputSchema, TOutputSchema, TContext, TBashInput> {
-  return { ...tool, resultLogging };
+  return { ...tool, callableFromSites: tool.callableFromSites ?? false, resultLogging };
 }
 
 export const defineBackofficeRuntimeToolFamily = <

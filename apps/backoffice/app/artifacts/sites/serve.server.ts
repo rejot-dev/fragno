@@ -16,6 +16,7 @@ import { fireSiteEvent } from "./site-events.server";
 import { recordSiteTraces, type SiteTailProps, type SiteTraceItem } from "./site-logs";
 import { SITE_HOST_COOKIE_PREFIX, type SiteViewer } from "./site-session.server";
 import type { SitePointerRead, SiteStore } from "./site-store.server";
+import { callSiteTool } from "./site-tools.server";
 import { siteWorkerCode } from "./site-worker.server";
 
 /**
@@ -76,7 +77,10 @@ export async function readSitePointer({
 export type SiteWorkerBindings = {
   workerLoader: WorkerLoader | null;
   siteAssets: (props: SiteAssetsProps) => SiteAssetsBinding;
-  /** The site Worker's `env.DATA`, which reads the scope's automation data and fires events. */
+  /**
+   * The site Worker's `env.DATA`, which reads the scope's automation data and fires events, and
+   * which its tool globals, such as `state`, call tools through.
+   */
   siteData: (props: SiteDataProps) => unknown;
   /** The tail that keeps what the site's Worker logs and throws in the scope's site logs. */
   siteTail: (props: SiteTailProps) => unknown;
@@ -128,6 +132,8 @@ export function inProcessSiteWorkerBindings(
           props,
           event,
         }),
+      call: async (namespace: string, tool: string, args: unknown[]) =>
+        await callSiteTool({ runtime, props, namespace, tool, args }),
     }),
     siteTail: (props) => ({
       tail: async (events: SiteTraceItem[]) => {
@@ -191,7 +197,13 @@ export async function loadSiteWorker({
       built.bundle,
       {
         ASSETS: siteAssets(props),
-        DATA: siteData({ scope, sitePath, fires: built.fires, ...(probe ? { probe } : {}) }),
+        DATA: siteData({
+          scope,
+          sitePath,
+          fires: built.fires,
+          builder: built.builder,
+          ...(probe ? { probe } : {}),
+        }),
       },
       [siteTail({ scope, sitePath, ...(probe ? { probe: probe.id } : {}) }) as Fetcher],
     );

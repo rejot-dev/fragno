@@ -1,7 +1,13 @@
 import type { WorkerBundle } from "@fragno-dev/codemode/compiler/worker-bundle";
+import {
+  CODEMODE_GUEST_API_SOURCE,
+  createCodemodeProviderGlobalsSource,
+  createCodemodeProviderProxySource,
+} from "@fragno-dev/codemode/guest/codemode-guest-api-source";
 
 import { siteDataClientSource } from "./site-data-client";
 import { siteBuildDirectory } from "./site-path";
+import { SITE_TOOL_NAMESPACES } from "./site-tools.server";
 
 /**
  * The module a site's Worker is built from. It wraps the site's `worker.js`, or, for a site
@@ -9,12 +15,16 @@ import { siteBuildDirectory } from "./site-path";
  * before publishing: a `worker.js` that throws while loading, or exports no `fetch`, fails its
  * build instead of replacing a working one. The site gets `env.DATA` as `sql` and `fire`, which
  * read and fire through the binding the host gave it; a request that reads while the scope's data
- * is still being copied is answered 503. It lives under `.build`, where no saved module can take its path.
+ * is still being copied is answered 503. Each namespace of the tools sites call, such as `state`,
+ * is a global as in programs, so saved modules a site imports call tools as they do there. It
+ * lives under `.build`, where no saved module can take its path.
  */
 export function siteWorkerEntry(
   sitePath: string,
   worker: "worker.js" | "files only",
 ): { path: string; source: string } {
+  // Only the names reach the guest; the tools stay with the host, which `env.DATA` calls.
+  const providers = SITE_TOOL_NAMESPACES.map((name) => ({ name, fns: {} }));
   const site =
     worker === "worker.js"
       ? `import site from ${JSON.stringify(`${sitePath}/worker.js`)};`
@@ -26,10 +36,25 @@ ${site}
 
 const siteData = ${siteDataClientSource};
 
+// Codemode's guest API, over dispatchers that call each namespace's tools through the binding.
+const siteTools = (binding) => {
+  const __dispatchers = Object.fromEntries(
+    ${JSON.stringify(SITE_TOOL_NAMESPACES)}.map((namespace) => [
+      namespace,
+      { call: (tool, args) => binding.call(namespace, tool, args) },
+    ]),
+  );
+${CODEMODE_GUEST_API_SOURCE}
+${createCodemodeProviderProxySource(providers)}
+${createCodemodeProviderGlobalsSource(providers)}
+};
+
 const UNAVAILABLE = "This site is unavailable while its data is copied. Try again in a moment.";
 
 export default class Site extends WorkerEntrypoint {
   async fetch(request) {
+    // Every request of this Worker calls tools as the one builder, so they share the globals.
+    if (this.env.DATA) siteTools(this.env.DATA);
     const data = this.env.DATA ? siteData(this.env.DATA) : null;
     const env = data ? { ...this.env, DATA: data.data } : this.env;
     let response;

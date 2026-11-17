@@ -69,6 +69,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.readFile"),
       namespace: "state",
       name: "readFile",
+      callableFromSites: true,
       activity: { label: "Read file", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).readFile(path),
@@ -77,6 +78,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       id: "state.readFileBytes",
       namespace: "state",
       name: "readFileBytes",
+      callableFromSites: true,
       activity: { label: "Read file", target: (input) => input.path },
       description: "Read a file from codemode state as bytes.",
       requiredPermissions: [BACKOFFICE_PERMISSION.upload.read],
@@ -130,6 +132,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.exists"),
       namespace: "state",
       name: "exists",
+      callableFromSites: true,
       activity: { label: "Check path exists", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).exists(path),
@@ -138,6 +141,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.stat"),
       namespace: "state",
       name: "stat",
+      callableFromSites: true,
       activity: { label: "Read file details", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).stat(path),
@@ -163,6 +167,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.readdir"),
       namespace: "state",
       name: "readdir",
+      callableFromSites: true,
       activity: { label: "List folder", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).readdir(path),
@@ -171,6 +176,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.readdirWithFileTypes"),
       namespace: "state",
       name: "readdirWithFileTypes",
+      callableFromSites: true,
       activity: { label: "List folder", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).readdirWithFileTypes(path),
@@ -222,6 +228,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.glob"),
       namespace: "state",
       name: "glob",
+      callableFromSites: true,
       activity: { label: "Find files", target: (input) => input.pattern },
       execute: async ({ pattern }, context: StateToolContext) =>
         await getStateRuntime(context).glob(pattern),
@@ -230,6 +237,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.readJson"),
       namespace: "state",
       name: "readJson",
+      callableFromSites: true,
       activity: { label: "Read file", target: (input) => input.path },
       execute: async ({ path }, context: StateToolContext) =>
         await getStateRuntime(context).readJson(path),
@@ -258,6 +266,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.searchText"),
       namespace: "state",
       name: "searchText",
+      callableFromSites: true,
       activity: {
         label: "Search file",
         target: (input) => `${JSON.stringify(input.query)} in ${input.path}`,
@@ -269,6 +278,7 @@ export const codemodeStateToolFamily = defineBackofficeRuntimeToolFamily<StateTo
       ...backofficeApiOperationToolFields("state.searchFiles"),
       namespace: "state",
       name: "searchFiles",
+      callableFromSites: true,
       activity: { label: "Search files", target: (input) => input.pattern },
       execute: async ({ pattern, keywords, options }, context: StateToolContext) =>
         await getStateRuntime(context).searchFiles(pattern, keywords, options),

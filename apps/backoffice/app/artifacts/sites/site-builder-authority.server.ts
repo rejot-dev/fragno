@@ -8,6 +8,7 @@ import {
 } from "@/backoffice-runtime/kernel";
 
 import { mayFireSiteEvents } from "./site-events.server";
+import { SITE_TOOL_PERMISSIONS } from "./site-tools.server";
 
 /**
  * What whoever builds a site may let its `worker.js` do. The tool's caller decides it, as its
@@ -15,7 +16,10 @@ import { mayFireSiteEvents } from "./site-events.server";
  * not in the scope's Codemode object that builds.
  */
 export type SiteBuilderAuthority = {
-  /** Why the builder may not read what a `worker.js` reads, or null when they may. */
+  /**
+   * Why the builder may not read what a `worker.js` reads, or call the tools it calls, or null
+   * when they may.
+   */
   dataDenial: BackofficeForbiddenErrorDetails | null;
   /** Whether the builder may emit the events a `worker.js` fires. */
   fires: boolean;
@@ -35,10 +39,11 @@ export async function siteBuilderAuthority({
     kernel
       .assertAuthorizedAll({
         execution,
-        requirements: ARTIFACT_SITE_DATA_PERMISSIONS.map((operation) => ({
-          operation,
-          resource: { path: sitePath },
-        })),
+        // The tools' calls act for the builder's principal, so the agent who builds, which a
+        // call does not name, must hold their permissions too.
+        requirements: [...ARTIFACT_SITE_DATA_PERMISSIONS, ...SITE_TOOL_PERMISSIONS].map(
+          (operation) => ({ operation, resource: { path: sitePath } }),
+        ),
       })
       .then(
         () => null,
