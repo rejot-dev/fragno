@@ -1,0 +1,4 @@
+@import "../app/app.css";
+
+/* Tailwind finds classes below the Vite root, which is this directory, so it is shown the app's. */
+@source "../app";
