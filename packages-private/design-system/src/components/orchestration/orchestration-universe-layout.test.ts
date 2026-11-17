@@ -4,7 +4,11 @@ import { UNIVERSE } from "./orchestration-graph-story-support";
 import { toWorld, type Size } from "./orchestration-universe-camera";
 import { FRAME_PADDING, TILE_THICKNESS } from "./orchestration-universe-frame";
 import { arrangeAtRest } from "./orchestration-universe-layout";
-import { layoutUniverse, type UniversePlanet } from "./orchestration-universe-model";
+import {
+  layoutUniverse,
+  type OrchestrationUniverse,
+  type UniversePlanet,
+} from "./orchestration-universe-model";
 import {
   seedUniverse,
   settleUniverse,
@@ -21,6 +25,8 @@ const VIEWS: Size[] = [
 ];
 // How far, in degrees, a forward may leave or arrive from the way to the other planet.
 const FORWARD_SLACK = 40;
+// Past a quarter turn round its planet from its workflow, a call has to go round the planet.
+const QUARTER_TURN = 90;
 
 function degrees(angle: number): number {
   return (Math.abs(angle) * 180) / Math.PI;
@@ -152,6 +158,90 @@ describe("the universe at rest", () => {
           );
         }
       });
+    });
+  }
+});
+
+/**
+ * One scope of eight workflows, two started by events of each of four sources, each calling two
+ * systems of its own, named so that by name they would line up out of order.
+ */
+function callingOwnSystems(): OrchestrationUniverse {
+  const workflows = Array.from({ length: 8 }, (_, index) => `run-${index}`);
+  const sources = ["a", "b", "c", "d"];
+  const systems = workflows.flatMap((workflowId) => [`${workflowId}-x`, `${workflowId}-y`]);
+  return {
+    scopes: [
+      {
+        id: "org",
+        graph: {
+          scopeLabel: "Org",
+          inlets: [],
+          sources: sources.map((id) => ({ id, label: id, icon: "zap" })),
+          events: workflows.map((workflowId, index) => ({
+            id: `${workflowId}:ready`,
+            sourceId: sources[index % sources.length],
+            eventType: `${workflowId}.ready`,
+            label: `${workflowId} ready`,
+            recentCount: 0,
+          })),
+          routes: workflows.map((workflowId) => ({
+            id: workflowId,
+            eventId: `${workflowId}:ready`,
+            label: workflowId,
+            priority: 100,
+            enabled: true,
+            matcher: null,
+            action: { kind: "start_workflow", targetId: workflowId },
+          })),
+          targets: workflows.map((workflowId) => ({
+            id: workflowId,
+            label: workflowId,
+            kind: "workflow",
+            activeCount: 0,
+          })),
+        },
+      },
+    ],
+    forwards: [],
+    externals: systems.map((id, index) => ({
+      id,
+      label: `System ${String((index * 5) % systems.length).padStart(2, "0")}`,
+      icon: "link",
+      scopeLabel: null,
+    })),
+    calls: systems.map((id) => ({
+      scopeId: "org",
+      workflowId: id.slice(0, -2),
+      externalId: id,
+    })),
+    inheriting: [],
+  };
+}
+
+describe("a planet calling systems of its own", () => {
+  for (const size of VIEWS) {
+    test(`puts each where its call need not go round the planet in a ${size.width}×${size.height} view`, () => {
+      const layout = layoutUniverse(callingOwnSystems());
+      const { fit, tiles, planets } = arrangeAtRest(
+        layout,
+        new Map([["org", { x: 0, y: 0 }]]),
+        size,
+      );
+      for (const call of layout.calls) {
+        const tile = tiles.find(({ external }) => external.id === call.externalId);
+        const workflow = planets[0].layout.workflows.find(
+          ({ workflow: { id } }) => id === call.workflowId,
+        );
+        assert.exists(tile);
+        assert.exists(workflow);
+        const toward = bearing({ x: 0, y: 0 }, toWorld(fit, tile.center));
+        assert.isAtMost(
+          degrees(shortestDelta(workflow.angle, toward)),
+          QUARTER_TURN,
+          `${call.workflowId} → ${call.externalId}`,
+        );
+      }
     });
   }
 });
