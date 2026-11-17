@@ -86,6 +86,8 @@ export async function loadPostHog(): Promise<PostHog | null> {
     const { default: posthogClient } = await import("posthog-js");
     posthogClient.init(projectToken, {
       api_host: host,
+      // The host may be our reverse proxy, which serves no PostHog UI; the toolbar needs the app host.
+      ui_host: "https://eu.posthog.com",
       defaults: "2026-05-30",
       before_send: redactAnalyticsEvent,
       save_campaign_params: false,

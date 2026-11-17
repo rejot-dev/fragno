@@ -99,7 +99,10 @@ other builds ignore it, since Turbo shares builds between machines and a build m
 what its cache key hashes:
 
 - `VITE_POSTHOG_PROJECT_TOKEN`: the project's public client token, not a personal API key.
-- `VITE_POSTHOG_HOST`: the ingestion host, currently `https://eu.i.posthog.com`.
+- `VITE_POSTHOG_HOST`: the ingestion host, currently `https://e.leyway.com`. It is PostHog's managed
+  reverse proxy for the EU region, so ad blockers that block PostHog's own domains don't drop
+  events. Its `e` CNAME in the `leyway.com` zone must stay DNS only, not proxied. PostHog manages
+  the proxy under organization settings, Managed reverse proxies.
 - `VITE_POSTHOG_APP_ORIGIN`: the exact deployed origin, currently `https://leyway.com`.
 
 These values are embedded at build time; setting Worker runtime secrets does not configure the
