@@ -6,6 +6,7 @@
     "app/**/.server/**/*",
     "app/**/.client/**/*",
     "workers/**/*",
+    "replay/**/*",
     "scripts/node-server/**/*",
     "scripts/test-oauth-client.scenario.test.ts",
     "worker-configuration.d.ts",

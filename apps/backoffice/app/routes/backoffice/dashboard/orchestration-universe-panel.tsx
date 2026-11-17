@@ -130,6 +130,12 @@ function ScopeGraphReader({
   return null;
 }
 
+type OrganizationUniverseProps = {
+  replica: LofiSqliteClient;
+  selectedScope: BackofficeScopeSelection;
+  scopes: OrchestrationUniverseScopes;
+};
+
 /**
  * The organization as one planet among its projects, the members who forward into it, and the
  * person looking, with the forwards between them. The organization's projects and the person's
@@ -137,16 +143,20 @@ function ScopeGraphReader({
  * download, and draw their graphs once caught up. Other members' planets are what the organization
  * knows of them. The replicas close once the universe is left.
  */
-export function OrganizationUniverse({
+export function OrganizationUniverse(props: OrganizationUniverseProps) {
+  return <OrganizationUniverseAt {...props} now={useClock(CLOCK_TICK_MS)} />;
+}
+
+/**
+ * `OrganizationUniverse` as it stood at `now`, which decides the day of forwards and activity it
+ * shows: a recording replays as it was captured, however long ago that was.
+ */
+export function OrganizationUniverseAt({
   replica,
   selectedScope,
   scopes,
-}: {
-  replica: LofiSqliteClient;
-  selectedScope: BackofficeScopeSelection;
-  scopes: OrchestrationUniverseScopes;
-}) {
-  const now = useClock(CLOCK_TICK_MS);
+  now,
+}: OrganizationUniverseProps & { now: number }) {
   // The window start only moves when a new bucket begins, so the reads restart rarely.
   const since = dashboardBucketStarts(now)[0] ?? now;
   const organizationScope = useMemo(

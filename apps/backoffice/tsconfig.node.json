@@ -3,11 +3,13 @@
     "vite.config.ts",
     "vite.node.config.ts",
     "vite.node-server.config.ts",
+    "vite.replay.config.ts",
     "react-router.config.ts",
     "source.config.ts",
     "vitest*.ts",
     "dev-vars.test.ts",
-    "scripts/**/*.ts"
+    "scripts/**/*.ts",
+    "replay/manifest.ts"
   ],
   "exclude": [
     "scripts/better-auth-cli.ts",
