@@ -102,7 +102,7 @@ const PERSONAL_WORKSPACE_PERMISSION_DECISIONS = {
   sandbox: { modify: "grant", read: "grant" },
   store: { modify: "grant", read: "grant" },
   upload: { modify: "grant", read: "grant" },
-  web: { download: "grant" },
+  web: { download: "grant", search: "grant" },
   workflow: { executeCode: "grant", modify: "grant", read: "grant" },
 } as const satisfies BackofficePermissionDecisions;
 
@@ -156,7 +156,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     sandbox: { modify: "grant", read: "grant" },
     store: { modify: "grant", read: "grant" },
     upload: { modify: "grant", read: "grant" },
-    web: { download: "grant" },
+    web: { download: "grant", search: "grant" },
     workflow: { executeCode: "grant", modify: "grant", read: "grant" },
   },
   "user-owner": PERSONAL_WORKSPACE_PERMISSION_DECISIONS,
@@ -200,7 +200,7 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     sandbox: { modify: "grant", read: "grant" },
     store: { modify: "grant", read: "grant" },
     upload: { modify: "grant", read: "grant" },
-    web: { download: "grant" },
+    web: { download: "grant", search: "grant" },
     workflow: { executeCode: "grant", modify: "grant", read: "grant" },
   },
   "app-workspace-observer": {
@@ -238,7 +238,8 @@ export const USER_AUTHORITY_ROLE_PERMISSION_DECISIONS = {
     sandbox: { modify: "deny", read: "grant" },
     store: { modify: "deny", read: "grant" },
     upload: { modify: "deny", read: "grant" },
-    web: { download: "deny" },
+    // Every search is billed to the workspace's organization.
+    web: { download: "deny", search: "deny" },
     workflow: { executeCode: "deny", modify: "deny", read: "grant" },
   },
 } as const satisfies Record<string, BackofficePermissionDecisions>;

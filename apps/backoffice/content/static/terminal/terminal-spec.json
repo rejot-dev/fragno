@@ -3948,6 +3948,38 @@
     ]
   },
   {
+    "command": "web.search",
+    "summary": "Search the web for up to 10 pages.",
+    "options": [
+      {
+        "name": "query",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "text",
+        "description": "What to search for."
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "otp.identity.create-claim",
     "summary": "otp.identity.create-claim creates a short-lived identity claim URL for the trusted external initiator.",
     "options": [

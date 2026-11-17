@@ -22,7 +22,7 @@ import {
   backofficeScopePathSegment,
   backofficeScopeRootOwner,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { WorkersAiBinding } from "@fragno-dev/cloudflare-fragment/workers-ai";
+import type { WebSearchResult, WorkersAiBinding } from "@fragno-dev/cloudflare-fragment/workers-ai";
 import { sanitizeToolName } from "@fragno-dev/codemode/runtime-api";
 import { InMemoryFs, type IFileSystem } from "just-bash";
 
@@ -312,10 +312,15 @@ export type FakeOpenAIModelApi = {
   fetch: FetchFunction;
 };
 
-/** One Cloudflare account's Workers AI: the binding that runs models and the API that describes them. */
+/**
+ * One Cloudflare account's Workers AI: the binding that runs models and searches the web, and the
+ * API that describes the models.
+ */
 export type FakeWorkersAi = {
   /** Every run, in order, with the model it named. */
   runs: { model: string; input: Record<string, unknown> }[];
+  /** Every web search, in order. */
+  searches: Parameters<WorkersAiBinding["websearch"]>[0][];
   binding: WorkersAiBinding;
   /** Cloudflare's model documentation, which serves each model's schemas. */
   fetch: FetchFunction;
@@ -376,7 +381,8 @@ type ScenarioFakeFactory = {
   }): FakeOpenAIModelApi;
   /**
    * An account that runs these models, publishing their schemas. Each run answers with `output`
-   * and bills `neurons`; null leaves the usage header out. Other models do not exist.
+   * and bills `neurons`; null leaves the usage header out. Other models do not exist. A web search
+   * finds the results listed for its query, and nothing for any other.
    */
   workersAi(input: {
     models: Record<
@@ -386,6 +392,7 @@ type ScenarioFakeFactory = {
         run: (input: Record<string, unknown>) => { output: unknown; neurons: number | null };
       }
     >;
+    searchResults: Record<string, WebSearchResult[]>;
   }): FakeWorkersAi;
 };
 
@@ -1700,11 +1707,25 @@ function createFakeOpenAIResponsesApi({
 
 function createFakeWorkersAi({
   models,
+  searchResults,
 }: Parameters<ScenarioFakeFactory["workersAi"]>[0]): FakeWorkersAi {
   const runs: FakeWorkersAi["runs"] = [];
+  const searches: FakeWorkersAi["searches"] = [];
   return {
     runs,
+    searches,
     binding: {
+      async websearch(request) {
+        searches.push(request);
+        // AI Gateway leaves out a description the engine did not write.
+        const items = (searchResults[request.query] ?? []).map(({ description, ...result }) =>
+          description === null ? result : { ...result, description },
+        );
+        return Response.json({
+          items,
+          metadata: { query: request.query, requestId: `search-${searches.length}`, latencyMs: 1 },
+        });
+      },
       async run(model, input) {
         runs.push({ model, input });
         const known = models[model];

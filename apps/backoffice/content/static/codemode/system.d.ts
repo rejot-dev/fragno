@@ -35,7 +35,7 @@
 /// <reference path="/static/codemode/providers/events.d.ts" />
 // Cloudflare Browser Run: screenshots, PDFs, crawls. Read to capture or crawl a page in a real browser.
 /// <reference path="/static/codemode/providers/cloudflare.d.ts" />
-// Web pages as content or Markdown, and files downloaded from URLs into the workspace. Read to fetch a web page or download a file.
+// Web search, web pages as content or Markdown, and files downloaded from URLs into the workspace. Read to search the web, fetch a web page, or download a file.
 /// <reference path="/static/codemode/providers/web.d.ts" />
 // Classifiers for typed questions about data and images, typed extraction from PDFs and images, and image generation. Read to classify, read a PDF, or generate images.
 /// <reference path="/static/codemode/providers/models.d.ts" />

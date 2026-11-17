@@ -79,10 +79,22 @@ const MODEL_CALL_COUNTS = {
   generateImage: { meter: "models.images", unit: "image", quantity: 1 },
   extract: { meter: "models.extractions", unit: "extraction", quantity: 1 },
   runWorkersAi: { meter: "workers-ai.runs", unit: "run", quantity: 1 },
+  searchWeb: { meter: "web.searches", unit: "search", quantity: 1 },
 } as const satisfies Record<string, BillingMeasurementInput>;
 
 /** Cloudflare bills Workers AI at $0.011 per thousand neurons, 11 nano-USD per milli-neuron. */
 const WORKERS_AI_NANO_USD_PER_MILLI_NEURON = 11;
+
+/**
+ * Searches run on Exa, which found providers' own API documentation where the cheaper engines AI
+ * Gateway offers found copies or nothing, through the gateway every Cloudflare account has. The
+ * gateway bills its list price, $7 per thousand searches. Unlike them, Exa may retain queries.
+ */
+const WEB_SEARCH = {
+  gatewayId: "default",
+  provider: "exa",
+  nanoUsdPerSearch: 7_000_000,
+} as const;
 
 /** Shared scoped agent directory; agent execution is handed to the runtime's agent namespace. */
 export class PiManagerObject extends RpcTarget implements PiManagerCommands {
@@ -128,7 +140,7 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     imageGenerator: PiImageGenerator | null;
     /** Null without extraction credentials, so `extract` rejects. */
     extractor: PiExtractor | null;
-    /** Null without the `AI` binding, so Workers AI is unavailable. */
+    /** Null without the `AI` binding, so Workers AI and web search are unavailable. */
     workersAi: WorkersAi | null;
     nowEpochMs: () => number;
   }) {
@@ -409,6 +421,33 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     });
     // The binding parsed the output from JSON.
     return { output: run.output as JsonValue };
+  }
+
+  async searchWeb({
+    query,
+  }: Parameters<PiManagerCommands["searchWeb"]>[0]): ReturnType<PiManagerCommands["searchWeb"]> {
+    if (!this.#workersAi) {
+      throw new Error("WEB_SEARCH_UNAVAILABLE: Workers AI is not configured on this deployment.");
+    }
+    const billing = await this.#admitModelCall(["ai.cost.total"]);
+    const search = await this.#workersAi.search({
+      gatewayId: WEB_SEARCH.gatewayId,
+      provider: WEB_SEARCH.provider,
+      query,
+    });
+    if (search.status === "failed") {
+      throw new Error(`WEB_SEARCH_FAILED: ${search.message}`);
+    }
+    await this.#recordModelUsage(billing, {
+      operation: "searchWeb",
+      succeeded: true,
+      provider: WEB_SEARCH.provider,
+      model: "web-search",
+      charged: [
+        { meter: "ai.cost.total", unit: "nano-usd", quantity: WEB_SEARCH.nanoUsdPerSearch },
+      ],
+    });
+    return { results: search.results };
   }
 
   async checkPackageAgents(

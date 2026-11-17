@@ -111,6 +111,7 @@ export const BACKOFFICE_PERMISSION = {
   },
   web: {
     download: { namespace: "web", permission: "download" },
+    search: { namespace: "web", permission: "search" },
   },
   workflow: {
     executeCode: { namespace: "workflow", permission: "executeCode" },

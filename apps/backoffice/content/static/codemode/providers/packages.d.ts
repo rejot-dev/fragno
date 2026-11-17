@@ -135,7 +135,7 @@ type BackofficePermissionRequirement =
     }
   | {
       namespace: "web";
-      permission: "download";
+      permission: "download" | "search";
     }
   | {
       namespace: "workflow";

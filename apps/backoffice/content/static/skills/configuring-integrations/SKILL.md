@@ -81,6 +81,9 @@ Take the highest rung that offers the requested service:
    `_`, `-`, starting with a letter or digit) and address it as `api#stripe`. Take the base URL and
    auth method from provider documentation; a service name alone establishes neither.
 
+Find provider documentation you have no URL for with `web.search`, then read it with `web.extract`,
+following `/static/skills/web/SKILL.md`.
+
 An `unavailable` service names its reason, usually the owning scope; use that scope when the user
 owns it. Each service's setup instructions, action schemas, and event catalog entries describe its
 fields, actions, and events.
