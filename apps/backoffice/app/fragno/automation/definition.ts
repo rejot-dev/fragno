@@ -113,6 +113,7 @@ import {
   ROUTE_FAILED_KEY_PATH,
   routeDispatchId,
 } from "./route-dispatches-storage-runtime";
+import { automationRouteSteward, normalizeStoredAutomationRouteAction } from "./route-records";
 import { dispatchAutomationRouteSchedule } from "./route-scheduling-runtime";
 import {
   buildWorkflowEventPayload,
@@ -1026,17 +1027,17 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               ? [route]
               : routeRows
                   .map(
-                    (row) =>
-                      ({
-                        id: row.id.externalId,
-                        name: row.name,
-                        enabled: row.enabled,
-                        priority: row.priority,
-                        trigger: row.trigger,
-                        action: row.action,
-                        description: row.description,
-                        nextOccurrenceAt: null,
-                      }) as AutomationRouteDefinition,
+                    (row): AutomationRouteDefinition => ({
+                      id: row.id.externalId,
+                      name: row.name,
+                      enabled: row.enabled,
+                      priority: row.priority,
+                      trigger: row.trigger,
+                      action: normalizeStoredAutomationRouteAction(row.action),
+                      description: row.description,
+                      steward: automationRouteSteward(row.metadata),
+                      nextOccurrenceAt: null,
+                    }),
                   )
                   .filter(
                     (candidate) =>

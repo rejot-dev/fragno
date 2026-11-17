@@ -15,7 +15,9 @@ type LegacyAutomationStartWorkflowAction = Omit<AutomationStartWorkflowAction, "
   authority: { kind: "organization-automation"; grants?: never };
 };
 
-type StoredAutomationRouteAction = AutomationRouteAction | LegacyAutomationStartWorkflowAction;
+export type StoredAutomationRouteAction =
+  | AutomationRouteAction
+  | LegacyAutomationStartWorkflowAction;
 
 /**
  * Routes store their steward with their provenance. Before stewardship, Marketplace install scripts
@@ -71,7 +73,8 @@ function knownRouteGrants(grants: readonly AutomationRouteGrant[]): AutomationRo
   );
 }
 
-function normalizeStoredAutomationRouteAction(
+/** A stored route action as the runtime enforces it, whichever shape stored it. */
+export function normalizeStoredAutomationRouteAction(
   action: StoredAutomationRouteAction,
 ): AutomationRouteAction {
   if (isLegacyAutomationStartWorkflowAction(action)) {
@@ -125,7 +128,7 @@ export const normalizeAutomationRoute = (
       updatedByActors: row.metadata.updatedByActors,
     },
     nextOccurrenceAt: scheduleState?.nextOccurrenceAt?.toISOString() ?? null,
-  } as AutomationRouteDefinition;
+  };
 };
 
 /** The listing whose pre-stewardship install script labelled this route, if one did. */

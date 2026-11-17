@@ -1,9 +1,14 @@
 import { afterAll, assert, beforeAll, describe, expect, test, vi } from "vitest";
 
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import type {
   AutomationAuthorityMode,
   AutomationGrantedConnection,
   AutomationRouteCreateInput,
+  AutomationRouteGrant,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
@@ -18,6 +23,7 @@ import {
 import { pageRows, pageValue, type PageData } from "@fragno-private/backoffice-ui/pages/rows";
 import { BackofficeUiStoreRenderer } from "@fragno-private/backoffice-ui/renderer";
 import { layoutUniverse } from "@fragno-private/design-system/orchestration/orchestration-universe-model";
+import Database from "better-sqlite3";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
@@ -1368,6 +1374,107 @@ describe("dashboard", () => {
         ],
       }),
     );
+  });
+
+  test("the universe draws routes stored before their grants named connections as the runtime reads them", async () => {
+    const workflow = (name: string) => `/workspace/automations/${name}.workflow.js`;
+    const startRoute = (
+      id: string,
+      grants: AutomationRouteGrant[],
+    ): AutomationRouteCreateInput => ({
+      id,
+      name: id,
+      enabled: true,
+      priority: 100,
+      trigger: { kind: "event", source: "crm", eventType: id, matcher: null },
+      action: {
+        kind: "start_workflow",
+        authority: { kind: "organization-automation", grants },
+        workflowScriptPath: workflow(id),
+        instanceIdTemplate: `${id}-\${event.id}`,
+      },
+    });
+    // Each stored shape's marker, removed from the route's row and the outbox entry that wrote it.
+    const storedBefore = {
+      grants: ',"grants":[]',
+      connections: ',"connections":[{"scope":{"kind":"current"},"connectionId":"api#crm"}]',
+    };
+    const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-stored-routes-"));
+    try {
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          objects: scenarioObjects,
+          name: "an organization's routes stored before grants, and before execute named connections",
+          options: { sqliteDataDirectory: directory },
+          setup: ({ given }) => [
+            given.organization.exists({ id: orgId, name: "Ada Labs" }),
+            given.router.route({ orgId, ...startRoute("before-grants", []) }),
+            given.router.route({
+              orgId,
+              ...startRoute("before-connections", [
+                BACKOFFICE_PERMISSION.models.classify,
+                {
+                  ...BACKOFFICE_PERMISSION.integrations.execute,
+                  connections: [{ scope: { kind: "current" }, connectionId: "api#crm" }],
+                },
+              ]),
+            }),
+          ],
+          steps: ({ then }) => [
+            then.assert("store the routes as they were written then", async () => {
+              const changed = { grants: 0, connections: 0 };
+              for (const file of await readdir(directory)) {
+                if (!file.startsWith("automations-") || !file.endsWith(".sqlite")) {
+                  continue;
+                }
+                const database = new Database(path.join(directory, file));
+                try {
+                  const columns = database
+                    .prepare(
+                      `SELECT m.name AS "table", c.name AS "column" FROM sqlite_master m
+                         JOIN pragma_table_info(m.name) c
+                       WHERE m.type = 'table' AND c.type IN ('TEXT', 'text', 'json', 'JSON')`,
+                    )
+                    .all() as { table: string; column: string }[];
+                  for (const { table, column } of columns) {
+                    for (const [shape, marker] of Object.entries(storedBefore)) {
+                      // Historical data bypasses today's validation, as only old writers made it.
+                      changed[shape as keyof typeof storedBefore] += database
+                        .prepare(
+                          `UPDATE "${table}" SET "${column}" = replace("${column}", ?, '')
+                           WHERE instr("${column}", ?) > 0`,
+                        )
+                        .run(marker, marker).changes;
+                    }
+                  }
+                } finally {
+                  database.close();
+                }
+              }
+              expect(changed).toEqual({ grants: 2, connections: 2 });
+            }),
+            then.assert(
+              "a route before grants calls nothing, and plain execute reaches no connection",
+              async (ctx) => {
+                const { calls } = await readUniverse(ctx, {
+                  projects: [],
+                  viewer: {
+                    scope: { kind: "user", userId: "user-1", jurisdiction: null },
+                    label: "Ada",
+                  },
+                  read: false,
+                });
+                assert.deepEqual(calls, [
+                  `org:org-1 workflow:${workflow("before-connections")} → models "Models" cpu`,
+                ]);
+              },
+            ),
+          ],
+        }),
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   test("a workflow needs attention for the failures since it last completed", async () => {

@@ -45,7 +45,12 @@ import type { OrchestrationForward } from "@/routes/backoffice/dashboard/orchest
 
 import { CODEMODE_WORKFLOW } from "../engine/codemode-invocation";
 import { forwardAcceptLetsIn, forwardNeedsAccept } from "../forward-accepts";
-import { automationRouteSteward, type StoredAutomationRouteMetadata } from "../route-records";
+import {
+  automationRouteSteward,
+  normalizeStoredAutomationRouteAction,
+  type StoredAutomationRouteAction,
+  type StoredAutomationRouteMetadata,
+} from "../route-records";
 import { automationFragmentSchema } from "../schema";
 
 const automationTable = (name: keyof typeof automationFragmentSchema.tables) =>
@@ -79,14 +84,20 @@ export function readAutomationRoutes(reader: LofiSqliteReader): AutomationRouteD
       nextOccurrenceAt: schedule.nextOccurrenceAt,
     },
   });
-  // Only the automations fragment writes routes, so their JSON columns hold the shapes it persists.
+  // Only the automations fragment writes routes, so their JSON columns hold the shapes it has
+  // persisted, which read as the runtime reads them.
   return (
-    rows as (Omit<AutomationRouteDefinition, "nextOccurrenceAt" | "steward" | "metadata"> & {
+    rows as (Omit<
+      AutomationRouteDefinition,
+      "action" | "nextOccurrenceAt" | "steward" | "metadata"
+    > & {
+      action: StoredAutomationRouteAction;
       metadata: StoredAutomationRouteMetadata | null;
       nextOccurrenceAt: Date | null;
     })[]
-  ).map(({ metadata, ...route }) => ({
+  ).map(({ action, metadata, ...route }) => ({
     ...route,
+    action: normalizeStoredAutomationRouteAction(action),
     steward: automationRouteSteward(metadata),
     nextOccurrenceAt: route.nextOccurrenceAt?.toISOString() ?? null,
   }));
