@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 
+import { cn } from "../../cn";
 import { prefersReducedMotion } from "../controls/appearance-preferences";
 import { IconButton } from "../controls/button";
 import { Icon, type IconName } from "../icon";
@@ -118,6 +119,10 @@ const PLANET_HIT_RADIUS = PLANET_ORBIT_RADIUS + 28;
 // Each workflow answers the pointer within a small orbit of its own, wider than its node, which
 // shows while it is focused.
 const WORKFLOW_HIT_RADIUS = PLANET_WORKFLOW_NODE_RADIUS + 16;
+// A workflow that acts as its user wears a badge on its node's shoulder, away from its label.
+const INHERITING_BADGE_RADIUS = 12;
+const INHERITING_BADGE_OFFSET = PLANET_WORKFLOW_NODE_RADIUS * Math.SQRT1_2;
+const INHERITING = "Acts as its user";
 const NO_ITEM_INTERACTION: PlanetItemInteraction = { kind: "none" };
 // The layout follows the view's shape in steps, so resizing does not stir it every pixel.
 const ASPECT_STEP = 0.1;
@@ -635,6 +640,7 @@ function describeFocus(
   forwards: readonly UniverseForward[],
   externals: readonly OrchestrationExternal[],
   calls: readonly UniverseCall[],
+  inheriting: ReadonlySet<string>,
 ): { kind: string; icon: IconName; name: string; lines: string[] } {
   const scopeLabel = (scopeId: string) =>
     planets.find(({ scope }) => scope.id === scopeId)?.scope.graph.scopeLabel ?? scopeId;
@@ -668,7 +674,11 @@ function describeFocus(
       lines: [
         `In ${scopeLabel(focus.scopeId)}`,
         ...(startedBy.length > 0 ? [`Started by ${listed(startedBy)}`] : []),
-        called.length > 0 ? `May call ${listed(called)}` : "May call no outside system",
+        inheriting.has(focus.id)
+          ? `${INHERITING}, so it may call whatever they may`
+          : called.length > 0
+            ? `May call ${listed(called)}`
+            : "May call no outside system",
       ],
     };
   }
@@ -1330,15 +1340,46 @@ function UniverseView({ universe, waited }: { universe: OrchestrationUniverse; w
                           workflowId: workflow.id,
                         } as const;
                         const [x, y] = polar(angle, PLANET_ORBIT_RADIUS);
+                        const inheriting = layout.inheriting.has(target.id);
+                        const item = { kind: "target", id: workflow.id } as const;
                         return (
                           <g
                             key={workflow.id}
                             transform={`translate(${x} ${y}) scale(${workflowScale})`}
-                            aria-label={`${workflow.label} workflow`}
+                            aria-label={`${workflow.label} workflow${inheriting ? `, ${INHERITING.toLowerCase()}` : ""}`}
                             className="cursor-pointer outline-none"
                             {...focusHandlers(target)}
                           >
                             <circle r={WORKFLOW_HIT_RADIUS} className="fill-transparent" />
+                            {inheriting ? (
+                              <g
+                                transform={`translate(${INHERITING_BADGE_OFFSET} ${-INHERITING_BADGE_OFFSET})`}
+                                opacity={
+                                  lit === null ||
+                                  lit.has(universeItemKey({ scopeId: scope.id, item }))
+                                    ? 1
+                                    : DIMMED
+                                }
+                                className="transition-opacity duration-200"
+                              >
+                                <title>{INHERITING}</title>
+                                <circle
+                                  r={INHERITING_BADGE_RADIUS}
+                                  className={cn(
+                                    "fill-[var(--bo-panel)]",
+                                    TARGET_KIND_PRESENTATION.workflow.strokeClassName,
+                                  )}
+                                  strokeWidth={1.5}
+                                />
+                                <SvgIcon
+                                  name="user"
+                                  x={0}
+                                  y={0}
+                                  size={INHERITING_BADGE_RADIUS * 1.25}
+                                  className={TARGET_KIND_PRESENTATION.workflow.iconClassName}
+                                />
+                              </g>
+                            ) : null}
                             {sameFocus(focus, target) ? (
                               <circle
                                 r={WORKFLOW_HIT_RADIUS}
@@ -1451,7 +1492,7 @@ function UniverseView({ universe, waited }: { universe: OrchestrationUniverse; w
 
       {focus ? (
         <FocusCard
-          {...describeFocus(focus, planets, forwards, externals, calls)}
+          {...describeFocus(focus, planets, forwards, externals, calls, layout.inheriting)}
           pinned={sameFocus(pinned, focus)}
           onClear={() => {
             setPinned(null);

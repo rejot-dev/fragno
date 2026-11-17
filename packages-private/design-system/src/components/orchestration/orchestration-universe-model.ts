@@ -33,11 +33,18 @@ export type OrchestrationExternal = { id: string; label: string; icon: IconName 
 /** A workflow of one scope that may call an outside system, as what starts it grants. */
 export type OrchestrationExternalCall = { scopeId: string; workflowId: string; externalId: string };
 
+/**
+ * A workflow of one scope that an enabled route starts as its user, with their permissions left
+ * whole: it may call whatever they may, which no line could show.
+ */
+export type OrchestrationInheritingWorkflow = { scopeId: string; workflowId: string };
+
 export type OrchestrationUniverse = {
   scopes: readonly OrchestrationUniverseScope[];
   forwards: readonly OrchestrationForward[];
   externals: readonly OrchestrationExternal[];
   calls: readonly OrchestrationExternalCall[];
+  inheriting: readonly OrchestrationInheritingWorkflow[];
 };
 
 /** An item of one scope's planet. */
@@ -139,6 +146,8 @@ export function layoutUniverse(universe: OrchestrationUniverse): {
   forwards: UniverseForward[];
   externals: OrchestrationExternal[];
   calls: UniverseCall[];
+  /** The inheriting workflows, by `workflowFocusId`. */
+  inheriting: ReadonlySet<string>;
 } {
   const forwards = universeForwards(universe);
   const linked = new Set(
@@ -173,6 +182,9 @@ export function layoutUniverse(universe: OrchestrationUniverse): {
     forwards,
     externals: universe.externals.filter((external) => called.has(external.id)),
     calls,
+    inheriting: new Set(
+      universe.inheriting.map(({ scopeId, workflowId }) => workflowFocusId(scopeId, workflowId)),
+    ),
   };
 }
 
