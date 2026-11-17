@@ -128,6 +128,8 @@ const NO_ITEM_INTERACTION: PlanetItemInteraction = { kind: "none" };
 const ASPECT_STEP = 0.1;
 const DEFAULT_ASPECT = 1.5;
 const DIMMED_TILE = 0.35;
+// A whole planet's calls show faintly, so they hint where it reaches without crossing everything.
+const PLANET_CALL_OPACITY = 0.3;
 // A planet still being read says how far it got under its hub.
 const STATUS_LABEL_Y = 140;
 // How long a planet that finished loading fades from its ring to its graph, as .bo-planet-reveal
@@ -802,11 +804,11 @@ function FocusCard({
  * push each other apart and the ones that forward to each other pull together, so dragging one
  * moves its neighbours and letting go lets it drift into place. Drag the background to pan, and
  * pinch or hold ⌘/Ctrl while scrolling to zoom; the frame stays put. Hovering a planet lights up
- * what leaves it: the forwards, what they reach, and the systems its workflows call. Hovering a
- * workflow, within the small orbit round it, lights up what starts it and draws its calls out to
- * the systems it reaches. Hovering a system draws the calls to it and lights up what ends up
- * calling it, back through the forwards. Clicking pins any of them. A forward that nothing on the
- * planet it reaches listens to lands on a stretch of that planet's orbit.
+ * what leaves it: the forwards, what they reach, and the systems its workflows call, with their
+ * calls drawn faintly. Hovering a workflow, within the small orbit round it, lights up what starts
+ * it and draws its calls out to the systems it reaches. Hovering a system draws the calls to it and
+ * lights up what ends up calling it, back through the forwards. Clicking pins any of them. A forward
+ * that nothing on the planet it reaches listens to lands on a stretch of that planet's orbit.
  */
 /**
  * Whether to show the universe: once every scope is read, or once waiting for that took too long;
@@ -1128,8 +1130,7 @@ function UniverseView({ universe, waited }: { universe: OrchestrationUniverse; w
     () => (shownCamera ? callRouter(field, planets, tiles, shownCamera) : null),
     [field, planets, tiles, shownCamera],
   );
-  // Calls only show for a focused workflow or outside system; at rest, or for a whole planet, they
-  // would cross every planet.
+  // Calls only show for what is focused; at rest they would cross every planet.
   const litCalls = useMemo(
     () => (lit ? calls.filter((call) => lit.has(callKey(call))) : NO_CALLS),
     [lit, calls],
@@ -1212,6 +1213,7 @@ function UniverseView({ universe, waited }: { universe: OrchestrationUniverse; w
                 <path
                   key={call.id}
                   d={path}
+                  opacity={focus?.kind === "scope" ? PLANET_CALL_OPACITY : 1}
                   className={`fill-none ${ACTION_EDGE_CLASS_NAME.start_workflow}`}
                   strokeWidth={1 / scale}
                   strokeLinecap="round"

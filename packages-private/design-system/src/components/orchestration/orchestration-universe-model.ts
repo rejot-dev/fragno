@@ -289,11 +289,10 @@ export function workflowFocusId(scopeId: string, workflowId: string): string {
 }
 
 /**
- * What a scope sends elsewhere, as item, forward and external keys: its forwards, everything the
- * forwarded events reach and start in the scopes they land in, and the outside systems the
- * scope's own workflows call. The calls themselves are left out: they show for one workflow at a
- * time, or else they would cross every planet. So are the scope's own items; whoever shows them
- * decides how.
+ * What a scope sends elsewhere, as item, forward, call and external keys: its forwards, everything
+ * the forwarded events reach and start in the scopes they land in, and the calls of the scope's own
+ * workflows with the outside systems they reach. The scope's own items are left out; whoever shows
+ * them decides how.
  */
 function outgoingItems(index: UniverseIndex, scopeId: string): Set<string> {
   const lit = new Set<string>();
@@ -313,6 +312,7 @@ function outgoingItems(index: UniverseIndex, scopeId: string): Set<string> {
     leave(scopeId, forward.eventId);
   }
   for (const call of index.callsFrom.get(scopeId) ?? []) {
+    lit.add(callKey(call));
     lit.add(externalKey(call.externalId));
   }
   return lit;
