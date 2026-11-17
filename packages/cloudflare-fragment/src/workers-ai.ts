@@ -8,7 +8,22 @@ export type WorkersAiBinding = {
     inputs: Record<string, unknown>,
     options: { returnRawResponse: true },
   ): Promise<Response>;
+  websearch(request: {
+    gatewayId: string;
+    provider: WebSearchProvider;
+    query: string;
+    limit: number;
+  }): Promise<Response>;
 };
+
+/** The search engines AI Gateway runs web searches on. */
+export type WebSearchProvider = "ceramic" | "exa" | "linkup";
+
+export type WebSearchResult = { url: string; title: string; description: string | null };
+
+export type WorkersAiWebSearch =
+  | { status: "completed"; results: WebSearchResult[] }
+  | { status: "failed"; code: number; message: string };
 
 /** One run, with the neurons Cloudflare bills for it; failed runs are not billed. */
 export type WorkersAiRun =
@@ -24,6 +39,12 @@ export type WorkersAiModelSchemas =
 export type WorkersAi = {
   run(model: string, input: Record<string, unknown>): Promise<WorkersAiRun>;
   modelSchemas(model: string): Promise<WorkersAiModelSchemas>;
+  /** Searches the web through an AI Gateway, which bills the search to the binding's account. */
+  search(input: {
+    gatewayId: string;
+    provider: WebSearchProvider;
+    query: string;
+  }): Promise<WorkersAiWebSearch>;
 };
 
 // https://developers.cloudflare.com/workers-ai/platform/errors/
@@ -38,6 +59,9 @@ const UNAVAILABLE_MODEL_ERROR_CODES = new Set([
 ]);
 
 const MODEL_DOCUMENTATION_URL = "https://developers.cloudflare.com/workers-ai/models";
+
+/** A search is billed per request, so each asks for the most results one returns. */
+const WEB_SEARCH_RESULT_LIMIT = 10;
 
 /**
  * Runs models through the binding and reads their schemas from Cloudflare's public model
@@ -94,7 +118,48 @@ export function createWorkersAi({
       ]);
       return input && output ? { status: "found", input, output } : { status: "missing" };
     },
+    async search({ gatewayId, provider, query }) {
+      const response = await binding.websearch({
+        gatewayId,
+        provider,
+        query,
+        limit: WEB_SEARCH_RESULT_LIMIT,
+      });
+      if (!response.ok) {
+        return {
+          status: "failed",
+          code: response.status,
+          message: await readWebSearchError(response),
+        };
+      }
+      // Engines describe some pages, and AI Gateway leaves the description out of the others.
+      const { items } = (await response.json()) as {
+        items: { url: string; title: string; description?: string }[];
+      };
+      return {
+        status: "completed",
+        results: items.map(({ url, title, description }) => ({
+          url,
+          title,
+          description: description ?? null,
+        })),
+      };
+    },
   };
+}
+
+/** AI Gateway explains a refused search in `error.message`, such as a credit balance of zero. */
+async function readWebSearchError(response: Response): Promise<string> {
+  const text = await response.text();
+  try {
+    const body = JSON.parse(text) as { error?: { message?: unknown } };
+    if (typeof body.error?.message === "string") {
+      return body.error.message;
+    }
+  } catch {
+    // Not JSON: the text is the explanation.
+  }
+  return text || `HTTP ${response.status}`;
 }
 
 async function readWorkersAiError(

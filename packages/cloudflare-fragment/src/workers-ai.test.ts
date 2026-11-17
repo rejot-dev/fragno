@@ -11,11 +11,15 @@ function createWorkersAiWith({
   fetch = async () => {
     throw new Error("The test reads no documentation.");
   },
+  websearch = async () => {
+    throw new Error("The test searches nothing.");
+  },
 }: {
   run?: WorkersAiBinding["run"];
   fetch?: typeof globalThis.fetch;
+  websearch?: WorkersAiBinding["websearch"];
 }) {
-  return createWorkersAi({ binding: { run }, fetch });
+  return createWorkersAi({ binding: { run, websearch }, fetch });
 }
 
 /** How the binding answers a failed run when asked for the raw response. */
@@ -98,6 +102,57 @@ describe("Workers AI", () => {
     ]);
     await expect(workersAi.modelSchemas("@cf/cloudflare/missing")).resolves.toEqual({
       status: "missing",
+    });
+  });
+
+  test("a search asks for the most results one returns, and a refused search fails", async () => {
+    const responses = [
+      Response.json({
+        items: [
+          {
+            url: "https://docs.acme.example/api",
+            title: "Acme API",
+            description: "Authenticate with a bearer token.",
+          },
+          { url: "https://acme.example", title: "Acme" },
+        ],
+        metadata: { query: "Acme API", requestId: "search-1", latencyMs: 612 },
+      }),
+      // How AI Gateway refused a search on an account without credits.
+      Response.json(
+        {
+          ok: false,
+          error: {
+            category: "gateway",
+            code: "web_search_payment_required",
+            status: 402,
+            retryable: false,
+            message: "Your AI Gateway credit balance is zero, so this search could not be billed.",
+          },
+        },
+        { status: 402 },
+      ),
+    ];
+    const websearch = vi.fn<WorkersAiBinding["websearch"]>(async () => responses.shift()!);
+    const workersAi = createWorkersAiWith({ websearch });
+    const search = { gatewayId: "default", provider: "exa", query: "Acme API" } as const;
+
+    await expect(workersAi.search(search)).resolves.toEqual({
+      status: "completed",
+      results: [
+        {
+          url: "https://docs.acme.example/api",
+          title: "Acme API",
+          description: "Authenticate with a bearer token.",
+        },
+        { url: "https://acme.example", title: "Acme", description: null },
+      ],
+    });
+    expect(websearch).toHaveBeenCalledWith({ ...search, limit: 10 });
+    await expect(workersAi.search(search)).resolves.toEqual({
+      status: "failed",
+      code: 402,
+      message: "Your AI Gateway credit balance is zero, so this search could not be billed.",
     });
   });
 });
