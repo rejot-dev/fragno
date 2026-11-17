@@ -590,6 +590,108 @@ export function layoutWorkflowTriggerGraph(
   return { sources, events, workflows, triggers };
 }
 
+/**
+ * `to`, turned `progress` (0 to 1) of the way from `from`; what only `to` lays out is where `to`
+ * puts it. The planet turns as one, as far as its arcs turn on average, and each item the short way
+ * from there: items turning the short way on their own would split a ring turning half round.
+ */
+export function turnWorkflowTriggerLayout(
+  from: WorkflowTriggerLayout,
+  to: WorkflowTriggerLayout,
+  progress: number,
+): WorkflowTriggerLayout {
+  const startOf = new Map(
+    [...from.sources, ...from.events].map((arc) => [
+      "source" in arc ? `source|${arc.source.id}` : `event|${arc.event.id}`,
+      arc.startAngle,
+    ]),
+  );
+  const rotation = shortestDelta(
+    0,
+    circularMean(
+      [...to.sources, ...to.events].flatMap((arc) => {
+        const before = startOf.get(
+          "source" in arc ? `source|${arc.source.id}` : `event|${arc.event.id}`,
+        );
+        return before === undefined
+          ? []
+          : [{ angle: arc.startAngle - before, weight: arc.endAngle - arc.startAngle }];
+      }),
+    ),
+  );
+  const turn = (angle: number, before: number | undefined) =>
+    before === undefined
+      ? angle
+      : before + (rotation + shortestDelta(before + rotation, angle)) * progress;
+  function turnArc<A extends Arc>(arc: A, before: Arc | undefined): A {
+    if (!before) {
+      return arc;
+    }
+    const startAngle = turn(arc.startAngle, before.startAngle);
+    const width = before.endAngle - before.startAngle;
+    const endAngle = startAngle + width + (arc.endAngle - arc.startAngle - width) * progress;
+    return { ...arc, startAngle, endAngle };
+  }
+  const sources = new Map(from.sources.map((arc) => [arc.source.id, arc]));
+  const events = new Map(from.events.map((arc) => [arc.event.id, arc]));
+  const workflows = new Map(from.workflows.map(({ workflow, angle }) => [workflow.id, angle]));
+  const triggerKey = ({
+    sourceId,
+    eventId,
+    workflowId,
+  }: WorkflowTriggerLayout["triggers"][number]) => `${sourceId}|${eventId}|${workflowId}`;
+  const triggers = new Map(from.triggers.map((trigger) => [triggerKey(trigger), trigger.angle]));
+  return {
+    sources: to.sources.map((arc) => turnArc(arc, sources.get(arc.source.id))),
+    events: to.events.map((arc) => turnArc(arc, events.get(arc.event.id))),
+    workflows: to.workflows.map((node) => ({
+      ...node,
+      angle: turn(node.angle, workflows.get(node.workflow.id)),
+    })),
+    triggers: to.triggers.map((trigger) => ({
+      ...trigger,
+      angle: turn(trigger.angle, triggers.get(triggerKey(trigger))),
+    })),
+  };
+}
+
+/**
+ * Whether `from` turns into `to`: both have the same arcs in the same order round the ring, so the
+ * ring stays whole as it turns.
+ */
+export function turnsInto(from: WorkflowTriggerLayout, to: WorkflowTriggerLayout): boolean {
+  const ring = (layout: WorkflowTriggerLayout) =>
+    [
+      ...layout.sources.map((arc) => ({ id: `source|${arc.source.id}`, at: arc.startAngle })),
+      ...layout.events.map((arc) => ({ id: `event|${arc.event.id}`, at: arc.startAngle })),
+    ]
+      .sort((a, b) => normalizeAngle(a.at) - normalizeAngle(b.at) || (a.id < b.id ? -1 : 1))
+      .map(({ id }) => id);
+  const before = ring(from);
+  const after = ring(to);
+  const offset = after.indexOf(before[0]);
+  return (
+    before.length === after.length &&
+    (before.length === 0 ||
+      (offset >= 0 && before.every((id, index) => after[(offset + index) % after.length] === id)))
+  );
+}
+
+/** Whether two layouts put every item at the same angles. */
+export function sameWorkflowTriggerArrangement(
+  a: WorkflowTriggerLayout,
+  b: WorkflowTriggerLayout,
+): boolean {
+  const angles = (layout: WorkflowTriggerLayout) =>
+    [
+      ...layout.sources.flatMap((arc) => [arc.source.id, arc.startAngle, arc.endAngle]),
+      ...layout.events.flatMap((arc) => [arc.event.id, arc.startAngle, arc.endAngle]),
+      ...layout.workflows.flatMap(({ workflow, angle }) => [workflow.id, angle]),
+      ...layout.triggers.map(({ angle }) => angle),
+    ].join(",");
+  return angles(a) === angles(b);
+}
+
 export type WorkflowTriggerItem = { kind: "source" | "event" | "target"; id: string };
 
 /** What an item starts and what starts it, as `itemKey`s, the item included. */

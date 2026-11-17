@@ -41,6 +41,7 @@ describe("the universe's layout", () => {
       seedUniverse(scopes, forwards, new Map()),
       universeLinks(forwards),
       universeRoom(scopes.length, 16 / 9),
+      1,
     );
     expect(offLine([...settled.values()])).toBeGreaterThan(500);
   });

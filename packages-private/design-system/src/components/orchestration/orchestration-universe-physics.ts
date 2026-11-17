@@ -194,14 +194,18 @@ export function seedUniverse(
   );
 }
 
-/** Where the planets come to rest from here when nobody touches them. */
+/**
+ * Where the planets come to rest from here when nobody touches them, from the warmth `heat`: the
+ * steps an animation from that warmth would take.
+ */
 export function settleUniverse(
   bodies: ReadonlyMap<string, Body>,
   links: readonly UniverseLink[],
   room: UniverseRoom,
+  heat: number,
 ): Map<string, Body> {
   let settled = new Map(bodies);
-  for (let alpha = 1; alpha > ALPHA_MIN; alpha = coolUniverse(alpha, 0)) {
+  for (let alpha = heat; alpha > ALPHA_MIN; alpha = coolUniverse(alpha, 0)) {
     settled = stepUniverse(settled, links, room, alpha, null);
   }
   return new Map([...settled].map(([id, body]) => [id, { ...body, vx: 0, vy: 0 }]));

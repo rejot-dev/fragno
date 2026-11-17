@@ -57,8 +57,14 @@ import {
   universeField,
   workflowGrowth,
 } from "./orchestration-universe-routes";
-import { useUniverseSimulation } from "./orchestration-universe-simulation";
+import { GLIDE_MS, useUniverseSimulation } from "./orchestration-universe-simulation";
 import { polar, SANS_CHAR_WIDTH, type Point } from "./radial-geometry";
+import {
+  sameWorkflowTriggerArrangement,
+  turnsInto,
+  turnWorkflowTriggerLayout,
+  type WorkflowTriggerLayout,
+} from "./workflow-trigger-graph-model";
 import {
   PLANET_EVENT_EDGE_RADIUS,
   PLANET_ORBIT_RADIUS,
@@ -128,6 +134,9 @@ const LEAVE_MS = 500;
 // How quickly the fitted view follows the planets as they move: the time it takes to close most
 // of the way, in milliseconds.
 const CAMERA_EASE_MS = 120;
+// How long the view waits for every scope to be read before it shows those that are. Shown as each
+// is read, the planets would be arranged anew with every scope.
+const READ_WAIT_MS = 2500;
 // The share of the ring the arc turning round a planet still being read covers.
 const LOADING_ARC = 0.2;
 const NO_TILES: readonly ExternalTile[] = [];
@@ -145,17 +154,23 @@ function sameFocus(current: UniverseFocus | null, target: UniverseFocus): boolea
 const PlanetBody = memo(function PlanetBody({
   planet,
   idPrefix,
+  markerIdPrefix,
   lit,
   workflowScale,
   finishedLoading,
+  redrawn,
   focusRingWidth,
 }: {
   planet: UniversePlanet;
+  /** Apart from the markers' prefix, so how a redrawn planet was drawn keeps its own ids. */
   idPrefix: string;
+  markerIdPrefix: string;
   lit: ReadonlySet<string> | null;
   workflowScale: number;
   /** The status a planet that just finished loading last showed, while its graph fades in. */
   finishedLoading: OrchestrationUniverseScopeStatus | null;
+  /** Whether the planet was just drawn anew, so its graph fades in. */
+  redrawn: boolean;
   /** How wide the focused planet's orbit is drawn; null on every other planet. */
   focusRingWidth: number | null;
 }) {
@@ -191,14 +206,14 @@ const PlanetBody = memo(function PlanetBody({
         layout={planet.layout}
         forwardCounts={planet.forwardCounts}
         idPrefix={`${idPrefix}-${scopeId}`}
-        markerIdPrefix={idPrefix}
+        markerIdPrefix={markerIdPrefix}
         emphasis={(item) =>
           lit === null || lit.has(universeItemKey({ scopeId, item })) ? 1 : DIMMED
         }
         interaction={NO_ITEM_INTERACTION}
         workflowScale={workflowScale}
         workflowLabelReach={WORKFLOW_LABEL_REACH}
-        revealing={finishedLoading !== null}
+        revealing={finishedLoading !== null || redrawn}
       />
       {planet.scope.status ? (
         <PlanetStatus status={planet.scope.status} />
@@ -308,26 +323,48 @@ function useLeavingPlanets(
 }
 
 /**
+ * Whether the view has been painted. Mounting measures the view and settles the planets in it
+ * before the first paint, which nothing should animate; the first frame's callbacks run once that
+ * is done.
+ */
+function usePainted(): { readonly current: boolean } {
+  const painted = useRef(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      painted.current = true;
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+  return painted;
+}
+
+/**
  * Follows `target`, easing towards it as it moves, so the view closes in smoothly once a planet
- * leaves. A first camera, a new size, and reduced motion take it at once.
+ * leaves. A camera before the first paint, a new size, and reduced motion take it at once.
  */
 function useEasedCamera(target: Camera | null, size: Size | null): Camera | null {
   const [shown, setShown] = useState(target);
   const shownRef = useRef(target);
   const sizeRef = useRef(size);
+  const painted = usePainted();
   useLayoutEffect(() => {
     const from = shownRef.current;
     const resized =
       sizeRef.current?.width !== size?.width || sizeRef.current?.height !== size?.height;
     sizeRef.current = size;
-    if (!target || !from || resized || prefersReducedMotion()) {
+    if (!target || !from || resized || !painted.current || prefersReducedMotion()) {
       shownRef.current = target;
       setShown(target);
       return undefined;
     }
     let frame = 0;
     let last = performance.now();
-    const tick = (now: number) => {
+    // Not the frame's timestamp: that is when the frame began, which after a long commit comes
+    // before `last`, and a step back in time would ease away from the target.
+    const tick = () => {
+      const now = performance.now();
       const step = 1 - Math.exp(-(now - last) / CAMERA_EASE_MS);
       last = now;
       const current = shownRef.current ?? target;
@@ -352,6 +389,93 @@ function useEasedCamera(target: Camera | null, size: Size | null): Camera | null
     };
   }, [target, size]);
   return shown;
+}
+
+/**
+ * `planets`, each turning from how it was last drawn into its new arrangement as the planets glide
+ * to theirs. A planet whose ring comes in another order cannot turn into it whole, so it is drawn
+ * anew instead: `redrawn` keeps how it was drawn while that fades and the new one fades in.
+ * Changes before the first paint, and with reduced motion, show at once; a planet that was still
+ * being read fades in from its ring as it is.
+ */
+function useTurningPlanets(planets: readonly UniversePlanet[]): {
+  shown: readonly UniversePlanet[];
+  redrawn: ReadonlyMap<string, UniversePlanet>;
+} {
+  const [redrawn, redraw] = useFading<UniversePlanet>(REVEAL_MS);
+  const [turn, setTurn] = useState<{
+    from: ReadonlyMap<string, WorkflowTriggerLayout>;
+    progress: number;
+  } | null>(null);
+  const shownRef = useRef(planets);
+  const painted = usePainted();
+  const shown = useMemo(
+    () =>
+      turn
+        ? planets.map((planet) => {
+            const from = turn.from.get(planet.scope.id);
+            return from && from !== planet.layout
+              ? { ...planet, layout: turnWorkflowTriggerLayout(from, planet.layout, turn.progress) }
+              : planet;
+          })
+        : planets,
+    [planets, turn],
+  );
+  // Runs before `shownRef` takes this render, so a turn that interrupts another starts from where
+  // the planets were last drawn. Its first step renders before paint, so the new arrangement never
+  // shows for a frame first.
+  useLayoutEffect(() => {
+    if (!painted.current || prefersReducedMotion()) {
+      setTurn(null);
+      return undefined;
+    }
+    const arranged = new Map(planets.map(({ scope, layout }) => [scope.id, layout]));
+    const changed = shownRef.current.filter(({ scope, layout }) => {
+      const to = arranged.get(scope.id);
+      return (
+        to !== undefined &&
+        to !== layout &&
+        !scope.status &&
+        !sameWorkflowTriggerArrangement(layout, to)
+      );
+    });
+    const redrawing = changed.filter(({ scope, layout }) => {
+      const to = arranged.get(scope.id);
+      return to !== undefined && !turnsInto(layout, to);
+    });
+    if (redrawing.length > 0) {
+      redraw(redrawing.map((planet) => [planet.scope.id, planet]));
+    }
+    const from = new Map(
+      changed
+        .filter((planet) => !redrawing.includes(planet))
+        .map(({ scope, layout }) => [scope.id, layout]),
+    );
+    if (from.size === 0) {
+      setTurn(null);
+      return undefined;
+    }
+    const start = performance.now();
+    let frame = 0;
+    const tick = () => {
+      const elapsed = Math.min(1, (performance.now() - start) / GLIDE_MS);
+      if (elapsed < 1) {
+        setTurn({ from, progress: 1 - (1 - elapsed) ** 3 });
+        frame = requestAnimationFrame(tick);
+      } else {
+        setTurn(null);
+      }
+    };
+    setTurn({ from, progress: 0 });
+    frame = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [planets, painted, redraw]);
+  useLayoutEffect(() => {
+    shownRef.current = shown;
+  }, [shown]);
+  return { shown, redrawn };
 }
 
 /**
@@ -405,6 +529,46 @@ const TILE_ROTATION: Record<ExternalTile["side"], number> = {
   right: 90,
 };
 
+/** A tile per outside system and side of the frame, so a tile changing sides is a new one. */
+function tileKey(tile: ExternalTile): string {
+  return `${tile.external.id}|${tile.side}`;
+}
+
+/**
+ * Tiles that left their side of the frame, for another side or for good, where they were drawn,
+ * while they fade; and the keys of tiles drawn since the first, which fade in. A tile changing
+ * sides fades from one to the other instead of crossing the view, turning as it goes.
+ */
+function useTileChanges(tiles: readonly ExternalTile[]): {
+  leaving: readonly ExternalTile[];
+  arrived: ReadonlySet<string>;
+} {
+  const [fading, leave] = useFading<ExternalTile>(LEAVE_MS);
+  const [arrived, setArrived] = useState<ReadonlySet<string>>(() => new Set());
+  const drawn = useRef<ReadonlyMap<string, ExternalTile> | null>(null);
+  useLayoutEffect(() => {
+    const before = drawn.current;
+    drawn.current = new Map(tiles.map((tile) => [tileKey(tile), tile]));
+    if (before === null || before.size === 0) {
+      return;
+    }
+    const left = [...before].filter(([key]) => !drawn.current?.has(key));
+    if (left.length > 0) {
+      leave(left);
+    }
+    const added = tiles.map(tileKey).filter((key) => !before.has(key));
+    if (added.length > 0) {
+      setArrived((current) => new Set([...current, ...added]));
+    }
+  }, [tiles, leave]);
+  // A tile that comes back while it fades shows as itself.
+  const leaving = useMemo(() => {
+    const keys = new Set(tiles.map(tileKey));
+    return [...fading].filter(([key]) => !keys.has(key)).map(([, tile]) => tile);
+  }, [fading, tiles]);
+  return { leaving, arrived };
+}
+
 /** An outside system as a slim tile on the frame; tiles on the sides read along the side. */
 function ExternalTileShape({
   tile,
@@ -418,9 +582,13 @@ function ExternalTileShape({
   const left = -tile.length / 2;
   return (
     <g
-      transform={`translate(${tile.center.x} ${tile.center.y}) rotate(${TILE_ROTATION[tile.side]})`}
+      // A transform the stylesheet's transition moves, so a tile glides to where it is put anew,
+      // easing out as the planets glide.
+      style={{
+        transform: `translate(${tile.center.x}px, ${tile.center.y}px) rotate(${TILE_ROTATION[tile.side]}deg)`,
+        transition: `transform ${GLIDE_MS}ms cubic-bezier(0.33, 1, 0.68, 1), opacity 200ms`,
+      }}
       opacity={opacity}
-      className="transition-opacity duration-200"
     >
       <rect
         x={left}
@@ -628,7 +796,52 @@ function FocusCard({
  * calling it, back through the forwards. Clicking pins any of them. A forward that nothing on the
  * planet it reaches listens to lands on a stretch of that planet's orbit.
  */
+/**
+ * Whether to show the universe: once every scope is read, or once waiting for that took too long;
+ * once shown, it stays. `waited` when scopes were still being read as it opened.
+ */
+function useUniverseShown(scopes: readonly OrchestrationUniverseScope[]): {
+  shown: boolean;
+  waited: boolean;
+} {
+  const reading = scopes.some((scope) => scope.status?.kind === "loading");
+  const [waited] = useState(reading);
+  const [read, setRead] = useState(!reading);
+  const [waitedTooLong, setWaitedTooLong] = useState(false);
+  useEffect(() => {
+    if (!reading) {
+      setRead(true);
+    }
+  }, [reading]);
+  useEffect(() => {
+    if (!waited) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      setWaitedTooLong(true);
+    }, READ_WAIT_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [waited]);
+  return { shown: read || !reading || waitedTooLong, waited };
+}
+
 export function OrchestrationUniverseGraph({ universe }: { universe: OrchestrationUniverse }) {
+  const { shown, waited } = useUniverseShown(universe.scopes);
+  if (!shown) {
+    const read = universe.scopes.filter((scope) => scope.status?.kind !== "loading").length;
+    return (
+      <div className="relative flex h-full min-h-[420px] w-full items-center justify-center rounded-[6px] border border-[var(--bo-border)] bg-[var(--bo-bg)] text-sm text-[var(--bo-muted)]">
+        Read {read} of {universe.scopes.length} scopes…
+      </div>
+    );
+  }
+  return <UniverseView universe={universe} waited={waited} />;
+}
+
+/** The universe; `waited` when it shows after waiting for its scopes, so it fades in. */
+function UniverseView({ universe, waited }: { universe: OrchestrationUniverse; waited: boolean }) {
   const idPrefix = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -675,9 +888,20 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
     () => (size && layout.planets.length > 0 ? arrangeAtRest(layout, resting, size) : null),
     [layout, resting, size],
   );
-  const planets = atRest?.planets ?? layout.planets;
+  const { shown: planets, redrawn } = useTurningPlanets(atRest?.planets ?? layout.planets);
   const leavingPlanets = useLeavingPlanets(planets, bodies);
-  const tiles = atRest?.tiles ?? NO_TILES;
+  // In an order where they stay as they move: a tile whose node moves between its siblings is drawn
+  // anew, and jumps to where it is put instead of moving there.
+  const tiles = useMemo(
+    () =>
+      [...(atRest?.tiles ?? NO_TILES)].sort(
+        (a, b) =>
+          a.external.label.localeCompare(b.external.label) ||
+          (a.external.id < b.external.id ? -1 : a.external.id > b.external.id ? 1 : 0),
+      ),
+    [atRest],
+  );
+  const tileChanges = useTileChanges(tiles);
   const positions = useMemo(
     () => planets.map(({ scope }) => bodies.get(scope.id) ?? { x: 0, y: 0 }),
     [planets, bodies],
@@ -750,8 +974,11 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
     }
     const bounds = container.getBoundingClientRect();
     setSize({ width: bounds.width, height: bounds.height });
+    // The border box, as measured above; a content box would differ by the border, which would
+    // count as a resize as soon as the observer first reports.
     const observer = new ResizeObserver(([entry]) => {
-      setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
+      const [box] = entry.borderBoxSize;
+      setSize({ width: box.inlineSize, height: box.blockSize });
     });
     observer.observe(container);
     return () => {
@@ -917,7 +1144,7 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
         ref={svgRef}
         role="group"
         aria-label="Automation across scopes"
-        className="absolute inset-0 size-full cursor-grab touch-none select-none active:cursor-grabbing"
+        className={`absolute inset-0 size-full cursor-grab touch-none select-none active:cursor-grabbing ${waited ? "bo-planet-reveal" : ""}`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
@@ -1028,9 +1255,11 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
                     <PlanetBody
                       planet={planet}
                       idPrefix={idPrefix}
+                      markerIdPrefix={idPrefix}
                       lit={null}
                       workflowScale={workflowScale}
                       finishedLoading={null}
+                      redrawn={false}
                       focusRingWidth={null}
                     />
                   </g>
@@ -1053,11 +1282,28 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
                       <PlanetBody
                         planet={planet}
                         idPrefix={idPrefix}
+                        markerIdPrefix={idPrefix}
                         lit={focusedScope === scope.id ? null : lit}
                         workflowScale={workflowScale}
                         finishedLoading={finishedLoading.get(scope.id) ?? null}
+                        redrawn={redrawn.has(scope.id)}
                         focusRingWidth={focusedScope === scope.id ? Math.max(2, 1.2 / scale) : null}
                       />
+                      {/* How a redrawn planet was drawn fades over its new drawing. */}
+                      {redrawn.has(scope.id) ? (
+                        <g className="bo-planet-status-leave pointer-events-none" aria-hidden>
+                          <PlanetBody
+                            planet={redrawn.get(scope.id)!}
+                            idPrefix={`${idPrefix}-was`}
+                            markerIdPrefix={idPrefix}
+                            lit={null}
+                            workflowScale={workflowScale}
+                            finishedLoading={null}
+                            redrawn={false}
+                            focusRingWidth={null}
+                          />
+                        </g>
+                      ) : null}
                       {/* The focused planet shows whole; the corner card names it instead. */}
                       {scale < OVERVIEW_SCALE && focusedScope !== scope.id ? (
                         <ScopeNameTag label={label} grow={readable(24, MIN_TAG_FONT)} />
@@ -1167,15 +1413,24 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
             strokeWidth={1}
           />
         ) : null}
+        {tileChanges.leaving.map((tile) => (
+          <g
+            key={`leaving|${tileKey(tile)}`}
+            aria-hidden="true"
+            className="bo-planet-status-leave pointer-events-none"
+          >
+            <ExternalTileShape tile={tile} focused={false} opacity={1} />
+          </g>
+        ))}
         {tiles.map((tile) => {
           const target = { kind: "external", id: tile.external.id } as const;
           const count = callCounts.get(tile.external.id) ?? 0;
           return (
             <g
-              key={tile.external.id}
+              key={tileKey(tile)}
               data-external={tile.external.id}
               aria-label={`${tile.external.label}, called by ${count} ${count === 1 ? "workflow" : "workflows"}`}
-              className="cursor-pointer outline-none"
+              className={`cursor-pointer outline-none ${tileChanges.arrived.has(tileKey(tile)) ? "bo-planet-reveal" : ""}`}
               {...focusHandlers(target)}
             >
               <ExternalTileShape
@@ -1206,7 +1461,7 @@ export function OrchestrationUniverseGraph({ universe }: { universe: Orchestrati
 
       <div
         style={{ top: FRAME_PADDING - 6, right: FRAME_PADDING - 6 }}
-        className="absolute flex items-center gap-0.5 rounded-[6px] border border-[var(--bo-border)] bg-[var(--bo-panel)] p-0.5 shadow-sm"
+        className={`absolute flex items-center gap-0.5 rounded-[6px] border border-[var(--bo-border)] bg-[var(--bo-panel)] p-0.5 shadow-sm ${waited ? "bo-planet-reveal" : ""}`}
       >
         <IconButton
           label="Zoom in"
