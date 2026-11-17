@@ -1,9 +1,12 @@
 import { coverageConfigDefaults } from "vitest/config";
 
+import { slowTestReporter } from "./slow-test-reporter.js";
+
 const baseConfig = {
   test: {
     globals: true,
     silent: true,
+    reporters: ["default", slowTestReporter()],
     coverage: {
       provider: "istanbul",
       exclude: ["templates/**", ...coverageConfigDefaults.exclude],

@@ -48,6 +48,9 @@ jobs:
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_API: ${{ vars.TURBO_API }}
       TURBO_SCM_BASE: "origin/main"
+      # In CI, Turbo prints a task's output once it ends, so a stalled test run printed nothing. Live
+      # output shows what the slow-test reporter of `@fragno-private/vitest-config` names.
+      TURBO_LOG_ORDER: stream
     steps:
       - uses: actions/checkout@v4
         with:
@@ -100,8 +103,8 @@ jobs:
       # Backoffice's `test:changed` skips the slow Cloudflare project, so pull requests run it here.
       - name: Run Backoffice Cloudflare tests
         if: github.event_name == 'pull_request'
-        # Takes about a minute, but once stalled for over an hour with no output.
-        timeout-minutes: 10
+        # Takes about a minute, but has stalled for hours; fail it before it uses up the job's time.
+        timeout-minutes: 4
         run:
           pnpm exec turbo run test:cloudflare --affected --filter=@fragno-apps/backoffice-rr
           --concurrency=80%
