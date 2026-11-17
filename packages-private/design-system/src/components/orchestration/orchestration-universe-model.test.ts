@@ -26,9 +26,13 @@ describe("what focusing lights up", () => {
   const { planets, forwards, externals, calls } = layoutUniverse(UNIVERSE);
   const highlights = universeHighlights(planets, forwards, externals, calls);
 
-  test("a planet lights the systems its workflows call, but draws none of the calls", () => {
+  test("a planet lights its workflows' calls and the systems they reach", () => {
     expect(litCallsAndSystems(highlights.scopes.get("org"))).toEqual({
-      calls: [],
+      calls: [
+        "org|telegram-user-linking→telegram",
+        "org|organization-onboarding→email",
+        "org|organization-onboarding→slack",
+      ],
       systems: ["telegram", "email", "slack"],
     });
   });
