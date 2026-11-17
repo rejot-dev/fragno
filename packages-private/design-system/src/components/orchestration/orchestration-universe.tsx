@@ -691,6 +691,8 @@ function describeFocus(
       icon: external?.icon ?? "link",
       name: external?.label ?? focus.id,
       lines: [
+        // Tiles name their scope only where names collide.
+        ...(external?.scopeLabel ? [`A connection of ${external.scopeLabel}`] : []),
         `May be called by ${countLabel(callers.length, "workflow")} in ${countLabel(scopeIds.length, "scope")}`,
         ...scopeIds.map(
           (scopeId) =>
