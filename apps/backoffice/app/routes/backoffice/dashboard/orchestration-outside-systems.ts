@@ -31,9 +31,9 @@ type GrantingScope = {
 
 /** The systems outside Backoffice that permissions other than executing integrations reach. */
 const PERMISSION_SYSTEMS: Partial<Record<BackofficePermissionNamespace, OrchestrationExternal>> = {
-  web: { id: "web", label: "Web", icon: "globe" },
-  models: { id: "models", label: "Models", icon: "cpu" },
-  cloudflare: { id: "browser-run", label: "Browser Run", icon: "monitor" },
+  web: { id: "web", label: "Web", icon: "globe", scopeLabel: null },
+  models: { id: "models", label: "Models", icon: "cpu", scopeLabel: null },
+  cloudflare: { id: "browser-run", label: "Browser Run", icon: "monitor", scopeLabel: null },
 };
 
 /**
@@ -42,8 +42,9 @@ const PERMISSION_SYSTEMS: Partial<Record<BackofficePermissionNamespace, Orchestr
  * Run. A route inheriting its user's permissions names nothing, so its workflow is inheriting
  * instead: lines to everything its user may call would only bury the ones routes name. Disabled
  * routes grant nothing. A connection is one system per scope and address, by its record in its
- * scope when that scope was read, or else by its address. Connections outside the organization
- * also go by their scope's name, so two scopes' connections to one service tell apart.
+ * scope when that scope was read, or else by its address. A connection outside the organization
+ * whose name another system shares also goes by its scope's name, so two scopes' connections to
+ * one service tell apart.
  */
 export function grantedOutsideSystems({
   organizationId,
@@ -57,6 +58,7 @@ export function grantedOutsideSystems({
   const connectionsOf = new Map(
     scopes.map(({ scope, connections }) => [scopeIdentity(scope), connections]),
   );
+  const outsideOrganization = new Set<string>();
   const connectionSystem = (
     scope: BackofficeContextScope,
     connectionId: string,
@@ -68,11 +70,15 @@ export function grantedOutsideSystems({
     const [namespace, localId] = connectionId.includes("#")
       ? connectionId.split(/#(.*)/s, 2)
       : [connectionId, connectionId];
-    const name = connection?.displayName ?? localId;
+    const id = `connection:${scopeId}|${connectionId}`;
+    if (scopeId !== organizationId) {
+      outsideOrganization.add(id);
+    }
     return {
-      id: `connection:${scopeId}|${connectionId}`,
-      label: scopeId === organizationId ? name : `${scopeLabel(scope)} · ${name}`,
+      id,
+      label: connection?.displayName ?? localId,
       icon: (connection && serviceIcon(connection.service)) ?? serviceIcon(namespace) ?? "link",
+      scopeLabel: scopeLabel(scope),
     };
   };
 
@@ -113,8 +119,20 @@ export function grantedOutsideSystems({
       }
     }
   }
+  const sharedLabels = new Map<string, number>();
+  for (const { label } of externals.values()) {
+    sharedLabels.set(label, (sharedLabels.get(label) ?? 0) + 1);
+  }
+  // Only where names collide do connections outside the organization take their scope's name too.
+  const named = [...externals.values()].map((external) =>
+    external.scopeLabel !== null &&
+    outsideOrganization.has(external.id) &&
+    sharedLabels.get(external.label)! > 1
+      ? { ...external, label: `${external.scopeLabel} · ${external.label}` }
+      : external,
+  );
   return {
-    externals: [...externals.values()].sort((left, right) => left.label.localeCompare(right.label)),
+    externals: named.sort((left, right) => left.label.localeCompare(right.label)),
     calls: [...calls.values()],
     inheriting: [...inheriting.values()],
   };

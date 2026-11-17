@@ -97,6 +97,21 @@ test("a workflow acting as its user says so instead of what it may call", () => 
   assert.include(card("telegram-user-linking workflow"), "May call Telegram");
 });
 
+test("a connection's tile leaves its scope to the card", () => {
+  const view = render(
+    <OrchestrationUniverseGraph
+      universe={{
+        ...UNIVERSE,
+        externals: UNIVERSE.externals.map((external) =>
+          external.id === "slack" ? { ...external, scopeLabel: "Ada Labs" } : external,
+        ),
+      }}
+    />,
+  );
+  fireEvent.click(view.getByRole("button", { name: /^Slack, called by/ }));
+  assert.include(view.getByRole("status").textContent, "A connection of Ada Labs");
+});
+
 test("a project found empty once read fades where it was, and then is gone", async () => {
   const view = renderStillReading();
   assert.isNotNull(view.container.querySelector('[data-planet="drafts"]'));

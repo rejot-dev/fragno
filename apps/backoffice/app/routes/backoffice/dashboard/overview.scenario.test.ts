@@ -1349,7 +1349,7 @@ describe("dashboard", () => {
         ],
         steps: ({ when, then }) => [
           then.assert(
-            "each workflow may call what its enabled routes name, connections by scope, and one acting as its user names nothing",
+            "each workflow may call what its enabled routes name, connections by scope where names collide, and one acting as its user names nothing",
             async (ctx) => {
               const { calls: drawn, inheriting } = await calls(ctx);
               assert.deepEqual(inheriting, [`org:org-1 workflow:${workflow("chat")}`]);
@@ -1357,7 +1357,7 @@ describe("dashboard", () => {
                 `org:org-1 workflow:${workflow("notify-member")} → connection:org:org-2|api#crm "org:org-2 · crm" code`,
                 `org:org-1 workflow:${workflow("notify-member")} → connection:user:user-2|api#crm "user:user-2 · crm" code`,
                 `org:org-1 workflow:${workflow("research-lead")} → connection:org:org-1|api#crm "crm" code`,
-                `org:org-1 workflow:${workflow("research-lead")} → connection:project:org:org-1:books|api#ledger "project:org:org-1:books · ledger" code`,
+                `org:org-1 workflow:${workflow("research-lead")} → connection:project:org:org-1:books|api#ledger "ledger" code`,
                 `org:org-1 workflow:${workflow("research-lead")} → models "Models" cpu`,
                 `org:org-1 workflow:${workflow("research-lead")} → web "Web" globe`,
               ]);
