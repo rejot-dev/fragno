@@ -63,6 +63,7 @@ import { createAdminRuntime } from "@/fragno/runtime-tools/families/admin-runtim
 import { createAppsRuntime } from "@/fragno/runtime-tools/families/apps-runtime";
 import { createBackofficeCapabilitiesRuntime } from "@/fragno/runtime-tools/families/backoffice-capabilities";
 import { createBlobsRuntime } from "@/fragno/runtime-tools/families/blobs-runtime";
+import { createBrowserRunMeter } from "@/fragno/runtime-tools/families/browser-run-usage";
 import { createCloudflareRuntime } from "@/fragno/runtime-tools/families/cloudflare-runtime";
 import { createEventCatalogRuntime } from "@/fragno/runtime-tools/families/event-catalog";
 import {
@@ -295,6 +296,11 @@ const createRuntimeContext = ({
   const uploadObject = () => kernel.scoped("UPLOAD", execution.scope, runtime.objects.upload);
   const automationsOf = (scope: BackofficeRoutableScope) =>
     kernel.scoped("AUTOMATIONS", scope, runtime.objects.automations).commands;
+  const meterBrowserRun = createBrowserRunMeter({
+    runtime,
+    scope: execution.scope,
+    nowEpochMs: Date.now,
+  });
 
   return {
     execution,
@@ -477,7 +483,9 @@ const createRuntimeContext = ({
     cloudflare: runtime.config.bindings.cloudflare
       ? (() => {
           const object = unavailableObject(() => runtime.objects.cloudflare.singleton());
-          return object ? { runtime: createCloudflareRuntime({ http: object.http }) } : null;
+          return object
+            ? { runtime: createCloudflareRuntime({ http: object.http, meterBrowserRun }) }
+            : null;
         })()
       : null,
     web: {
@@ -485,6 +493,7 @@ const createRuntimeContext = ({
         cloudflare: runtime.config.bindings.cloudflare
           ? (unavailableObject(() => runtime.objects.cloudflare.singleton())?.http ?? null)
           : null,
+        meterBrowserRun,
         fetch: runtime.webFetch,
         search: async (input) =>
           await kernel

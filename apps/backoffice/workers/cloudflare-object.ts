@@ -14,16 +14,21 @@ export class CloudflareObject implements CloudflareCommands {
   constructor({
     env,
     runtime,
+    fetch,
   }: {
     state: BackofficeObjectState;
     env?: CloudflareObjectEnv;
     runtime: BackofficeRuntimeServices;
+    /** Reaches Cloudflare's API. */
+    fetch: typeof globalThis.fetch;
   }) {
     const accountId = env?.CLOUDFLARE_WORKERS_ACCOUNT_ID?.trim();
     const apiToken = env?.CLOUDFLARE_WORKERS_API_TOKEN?.trim();
 
     this.#fragment =
-      accountId && apiToken ? createCloudflareServer({ accountId, apiToken }, runtime) : null;
+      accountId && apiToken
+        ? createCloudflareServer({ accountId, apiToken, fetch }, runtime)
+        : null;
   }
 
   async fetch(request: Request): Promise<Response> {

@@ -18,7 +18,12 @@ describe("createWebRuntime", () => {
         return Response.json({ action: "markdown", result: "Example" });
       },
     };
-    const runtime = createWebRuntime({ cloudflare: object, fetch, search: unusedSearch });
+    const runtime = createWebRuntime({
+      cloudflare: object,
+      meterBrowserRun: () => async () => {},
+      fetch,
+      search: unusedSearch,
+    });
 
     await expect(
       runtime.extract({
@@ -40,7 +45,12 @@ describe("createWebRuntime", () => {
           { status: 400 },
         ),
     };
-    const runtime = createWebRuntime({ cloudflare: object, fetch, search: unusedSearch });
+    const runtime = createWebRuntime({
+      cloudflare: object,
+      meterBrowserRun: () => async () => {},
+      fetch,
+      search: unusedSearch,
+    });
 
     await expect(
       runtime.extract({

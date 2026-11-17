@@ -194,7 +194,7 @@ export const allLocalObjects = {
     }),
   GITHUB: (input) => new GitHubObject(input),
   GITHUB_WEBHOOK_ROUTER: (input) => new GitHubWebhookRouterObject(input),
-  CLOUDFLARE: (input) => new CloudflareObject(input),
+  CLOUDFLARE: (input) => new CloudflareObject({ ...input, fetch }),
   PRESENCE: (input) => new PresenceObject(input),
   // In memory, reading Automations in-process.
   SITE_REPLICA: ({ runtime, state, nowEpochMs }) =>
