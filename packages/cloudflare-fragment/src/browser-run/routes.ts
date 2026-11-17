@@ -8,10 +8,16 @@ import {
   browserRunExtractInputSchema,
   browserRunExtractResultSchema,
 } from "./contracts";
+import { BROWSER_MS_USED_HEADER } from "./quick-actions";
 
 const unreachableAction = (request: never): never => {
   throw new Error(`Unsupported Browser Run action: ${JSON.stringify(request)}`);
 };
+
+/** Passes on the browser time Cloudflare billed, so callers can attribute it. */
+const browserTimeHeaders = (browserMsUsed: number) => ({
+  [BROWSER_MS_USED_HEADER]: String(browserMsUsed),
+});
 
 export const browserRunRoutesFactory = defineRoutes(cloudflareFragmentDefinition).create(
   ({ services, defineRoute }) => [
@@ -24,41 +30,36 @@ export const browserRunRoutesFactory = defineRoutes(cloudflareFragmentDefinition
         const request = await input.valid();
 
         switch (request.action) {
-          case "content":
-            return json({
-              action: request.action,
-              result: await services.browserRun.content(request.input),
-            });
-          case "scrape":
-            return json({
-              action: request.action,
-              result: await services.browserRun.scrape(request.input),
-            });
-          case "snapshot":
-            return json({
-              action: request.action,
-              result: await services.browserRun.snapshot(request.input),
-            });
-          case "json":
-            return json({
-              action: request.action,
-              result: await services.browserRun.json(request.input),
-            });
-          case "links":
-            return json({
-              action: request.action,
-              result: await services.browserRun.links(request.input),
-            });
-          case "markdown":
-            return json({
-              action: request.action,
-              result: await services.browserRun.markdown(request.input),
-            });
-          case "accessibility-tree":
-            return json({
-              action: request.action,
-              result: await services.browserRun.accessibilityTree(request.input),
-            });
+          case "content": {
+            const { result, browserMsUsed } = await services.browserRun.content(request.input);
+            return json({ action: request.action, result }, 200, browserTimeHeaders(browserMsUsed));
+          }
+          case "scrape": {
+            const { result, browserMsUsed } = await services.browserRun.scrape(request.input);
+            return json({ action: request.action, result }, 200, browserTimeHeaders(browserMsUsed));
+          }
+          case "snapshot": {
+            const { result, browserMsUsed } = await services.browserRun.snapshot(request.input);
+            return json({ action: request.action, result }, 200, browserTimeHeaders(browserMsUsed));
+          }
+          case "json": {
+            const { result, browserMsUsed } = await services.browserRun.json(request.input);
+            return json({ action: request.action, result }, 200, browserTimeHeaders(browserMsUsed));
+          }
+          case "links": {
+            const { result, browserMsUsed } = await services.browserRun.links(request.input);
+            return json({ action: request.action, result }, 200, browserTimeHeaders(browserMsUsed));
+          }
+          case "markdown": {
+            const { result, browserMsUsed } = await services.browserRun.markdown(request.input);
+            return json({ action: request.action, result }, 200, browserTimeHeaders(browserMsUsed));
+          }
+          case "accessibility-tree": {
+            const { result, browserMsUsed } = await services.browserRun.accessibilityTree(
+              request.input,
+            );
+            return json({ action: request.action, result }, 200, browserTimeHeaders(browserMsUsed));
+          }
           default:
             return unreachableAction(request);
         }

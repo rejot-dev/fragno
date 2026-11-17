@@ -1,4 +1,5 @@
 export { createBrowserRunCaptureClient } from "./client";
+export { BROWSER_MS_USED_HEADER, readBrowserMsUsed } from "./quick-actions";
 export type { BrowserRunCaptureClient } from "./client";
 export {
   browserRunCaptureInputSchema,

@@ -17,7 +17,11 @@ const jsonHeaders = {
   "content-type": "application/json",
 };
 
-const createSuccessResponse = (result: unknown, status = 200) =>
+const createSuccessResponse = (
+  result: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+) =>
   new Response(
     JSON.stringify({
       success: true,
@@ -27,7 +31,7 @@ const createSuccessResponse = (result: unknown, status = 200) =>
     }),
     {
       status,
-      headers: jsonHeaders,
+      headers: { ...jsonHeaders, ...headers },
     },
   );
 
@@ -139,7 +143,9 @@ describe("cloudflare-fragment", () => {
   });
 
   test("extracts Browser Run page data through a typed JSON route", async () => {
-    fetchMock.mockResolvedValueOnce(createSuccessResponse("<h1>Rendered</h1>"));
+    fetchMock.mockResolvedValueOnce(
+      createSuccessResponse("<h1>Rendered</h1>", 200, { "x-browser-ms-used": "219.5" }),
+    );
 
     const response = await fragment.callRoute("POST", "/browser-run/extract", {
       body: {
@@ -160,6 +166,8 @@ describe("cloudflare-fragment", () => {
       action: "content",
       result: "<h1>Rendered</h1>",
     });
+    // Callers attribute the browser time Cloudflare billed.
+    assert(response.headers.get("x-browser-ms-used") === "219.5");
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
       "/accounts/acct_test/browser-rendering/content",
     );
@@ -170,7 +178,7 @@ describe("cloudflare-fragment", () => {
     fetchMock.mockResolvedValueOnce(
       new Response(pngBytes, {
         status: 200,
-        headers: { "content-type": "image/png" },
+        headers: { "content-type": "image/png", "x-browser-ms-used": "370" },
       }),
     );
 
@@ -186,6 +194,7 @@ describe("cloudflare-fragment", () => {
     );
 
     assert(response.headers.get("content-type") === "image/png");
+    assert(response.headers.get("x-browser-ms-used") === "370");
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(pngBytes);
   });
 
