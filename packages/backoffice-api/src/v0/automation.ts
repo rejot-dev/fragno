@@ -70,7 +70,7 @@ const automationInitiatorActorSchema = z.lazy(() =>
   ]),
 );
 
-const automationPrincipalActorSchema = z.lazy(() =>
+export const automationPrincipalActorSchema = z.lazy(() =>
   z.discriminatedUnion("scope", [
     automationInternalEntitySchema._zod.innerType.extend({ role: z.literal("principal") }),
     automationExternalEntitySchema._zod.innerType.extend({ role: z.literal("principal") }),

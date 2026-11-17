@@ -136,6 +136,14 @@ inside another site.
   };
   ```
 
+- **Tools:** the Worker calls the tools sites may call as programs call them, through the same
+  globals, so a saved module it imports calls them as it does in a program. Today these are
+  `state`'s reads: `readFile`, `readFileBytes`, `readJson`, `exists`, `stat`, `readdir`,
+  `readdirWithFileTypes`, `glob`, `searchText`, and `searchFiles`, which read files as they are when
+  the request comes. Calls act for whoever built the site, with the permissions they hold when the
+  call runs; calling any other tool throws, naming those a site may call. Changes go through events,
+  as Writing data describes. Everyone who opens the site sees what the Worker returns, so it returns
+  only what the site is for.
 - **Imports:** `worker.js` imports saved `.js` modules by relative path, at most 1 MB of source in
   all, and npm packages that `site.json` lists under `dependencies` with their versions, such as
   `{ "dependencies": { "zod": "4.1.5" } }`. Give exact versions: a range may install a newer version
@@ -146,9 +154,9 @@ inside another site.
   `viewer: { id, email }`, and refuses `ley-` headers of its own. Requests to a public site carry
   none.
 - **Isolation:** the Worker has no network, so `fetch` throws, and no bindings besides `ASSETS` and
-  `DATA`. It receives the cookies the scope's sites set; a cookie it sets for the whole domain is
-  dropped. The scope's sites share one address, and with it cookies and browser storage, so name
-  cookies and storage keys after the site.
+  `DATA`, and the tool globals. It receives the cookies the scope's sites set; a cookie it sets for
+  the whole domain is dropped. The scope's sites share one address, and with it cookies and browser
+  storage, so name cookies and storage keys after the site.
 - **Host headers:** every answer carries headers the site can add to but not loosen: no other site
   may frame its pages, forms post only to its own address, and camera, microphone, location, and
   payments are off. Requests other than GET, HEAD, and OPTIONS from other sites' pages are refused.

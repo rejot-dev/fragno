@@ -1,3 +1,5 @@
+import type { AutomationActor } from "@fragno-dev/backoffice-api/v0/automation";
+
 /**
  * What a site's Worker may fire. Each viewer's limit is the `SITE_EVENTS` rate limit of the
  * wrangler configs, which deployed Workers count by.
@@ -16,6 +18,11 @@ const SITE_EVENT_SOURCE_PREFIX = "site:";
 /** The source of every event a site's Worker fires, such as `site:/workspace/tools/shop.site`. */
 export function siteEventSource(sitePath: string): string {
   return `${SITE_EVENT_SOURCE_PREFIX}${sitePath}`;
+}
+
+/** The site's Worker as the actor that initiates what it does: the events it fires and its calls. */
+export function siteInitiator(sitePath: string): AutomationActor<"initiator"> {
+  return { scope: "internal", type: "site", id: sitePath, role: "initiator" };
 }
 
 /** Automations trust these sources, so only the site's Worker may fire them. */

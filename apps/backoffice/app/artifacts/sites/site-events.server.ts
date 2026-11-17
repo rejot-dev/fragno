@@ -13,6 +13,7 @@ import {
   checkedSiteEvent,
   SITE_EVENTS_LIMITED,
   siteEventSource,
+  siteInitiator,
   type SiteEvent,
   type SiteFireResult,
 } from "./site-events";
@@ -101,7 +102,7 @@ export async function fireSiteEvent({
     sequence: null,
     payload,
     actors: {
-      initiator: { scope: "internal", type: "site", id: sitePath, role: "initiator" },
+      initiator: siteInitiator(sitePath),
       principal: null,
       delegation: [],
     },
