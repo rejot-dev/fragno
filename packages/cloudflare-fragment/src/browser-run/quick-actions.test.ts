@@ -12,7 +12,7 @@ const quickActions = createBrowserRunQuickActions(
   "acct_test",
 );
 
-const createCloudflareResponse = (result: unknown) =>
+const createCloudflareResponse = (result: unknown, headers: Record<string, string> = {}) =>
   new Response(
     JSON.stringify({
       success: true,
@@ -22,7 +22,7 @@ const createCloudflareResponse = (result: unknown) =>
     }),
     {
       status: 200,
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", ...headers },
     },
   );
 
@@ -43,11 +43,13 @@ describe("Browser Run Quick Actions", () => {
   });
 
   test("runs a stateless Quick Action with the fragment account", async () => {
-    fetchMock.mockResolvedValueOnce(createCloudflareResponse("<h1>Rendered</h1>"));
+    fetchMock.mockResolvedValueOnce(
+      createCloudflareResponse("<h1>Rendered</h1>", { "x-browser-ms-used": "219.5" }),
+    );
 
     const content = await quickActions.content({ url: "https://fragno.dev" });
 
-    expect(content).toBe("<h1>Rendered</h1>");
+    expect(content).toEqual({ result: "<h1>Rendered</h1>", browserMsUsed: 219.5 });
     expect(fetchMock).toHaveBeenCalledOnce();
 
     const [input, init] = fetchMock.mock.calls[0]!;
@@ -60,15 +62,24 @@ describe("Browser Run Quick Actions", () => {
     fetchMock.mockResolvedValueOnce(
       new Response(pngBytes, {
         status: 200,
-        headers: { "content-type": "image/png" },
+        headers: { "content-type": "image/png", "x-browser-ms-used": "370" },
       }),
     );
 
     const screenshot = await quickActions.screenshot({ html: "<h1>Hello</h1>" });
 
     expect(screenshot).toBeInstanceOf(Response);
+    assert(screenshot.headers.get("x-browser-ms-used") === "370");
     assert(screenshot.headers.get("content-type") === "image/png");
     expect(new Uint8Array(await screenshot.arrayBuffer())).toEqual(pngBytes);
+  });
+
+  test("a Quick Action whose browser time Cloudflare did not report fails, since it cannot be billed", async () => {
+    fetchMock.mockResolvedValueOnce(createCloudflareResponse("# Rendered"));
+
+    await expect(quickActions.markdown({ url: "https://fragno.dev" })).rejects.toThrow(
+      "Browser Run reported no browser time for the request.",
+    );
   });
 
   test("starts, reads, and cancels crawl jobs", async () => {
