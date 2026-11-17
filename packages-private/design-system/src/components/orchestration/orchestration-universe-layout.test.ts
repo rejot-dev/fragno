@@ -34,6 +34,7 @@ function atRest(size: Size) {
     seedUniverse(UNIVERSE.scopes, layout.forwards, new Map()),
     universeLinks(layout.forwards),
     universeRoom(UNIVERSE.scopes.length, aspect),
+    1,
   );
   const arranged = arrangeAtRest(layout, resting, size);
   const planet = (scopeId: string) => arranged.planets.find(({ scope }) => scope.id === scopeId)!;
