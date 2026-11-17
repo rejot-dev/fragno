@@ -326,6 +326,13 @@ export type FakeWorkersAi = {
   fetch: FetchFunction;
 };
 
+/** Cloudflare Browser Run's Quick Actions on the deployment's account. */
+type FakeBrowserRun = {
+  /** Every Quick Action, in order, with its body. */
+  requests: { action: string; body: unknown }[];
+  fetch: typeof fetch;
+};
+
 /** Websites the runtime downloads from, keyed by URL. */
 type FakeWebApi = {
   /** Every request, in order, with the headers it carried. */
@@ -335,6 +342,7 @@ type FakeWebApi = {
 
 export type ScenarioFakes = {
   web?: FakeWebApi;
+  browserRun?: FakeBrowserRun;
   telegram?: FakeTelegramApi;
   pi?: FakePiManagerApi;
   resend?: FakeResendApi;
@@ -348,6 +356,11 @@ export type ScenarioFakes = {
 type ScenarioFakeFactory = {
   /** Answers each URL with a fresh response from `responses`; any other URL answers 404. */
   web(input: { responses: Record<string, () => Response> }): FakeWebApi;
+  /**
+   * Renders each page in `pages`, keyed by URL, as its HTML or Markdown, and captures any page as
+   * a PNG. Every Quick Action reports `browserMsUsed`; extracting another URL fails.
+   */
+  browserRun(input: { pages: Record<string, string>; browserMsUsed: number }): FakeBrowserRun;
   telegram(input?: { files?: FakeTelegramFile[] }): FakeTelegramApi;
   pi(input?: {
     assistantText?: (input: { agentName: string; content: string }) => string;
@@ -1766,6 +1779,43 @@ function createFakeWebApi({ responses }: Parameters<ScenarioFakeFactory["web"]>[
   };
 }
 
+/** The bytes of a 1×1 PNG, which every capture answers with. */
+const FAKE_BROWSER_RUN_PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+function createFakeBrowserRun({
+  pages,
+  browserMsUsed,
+}: Parameters<ScenarioFakeFactory["browserRun"]>[0]): FakeBrowserRun {
+  const requests: FakeBrowserRun["requests"] = [];
+  return {
+    requests,
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      const action = new URL(request.url).pathname.split("/browser-rendering/")[1] ?? "";
+      const body = (await request.json()) as { url?: string };
+      requests.push({ action, body });
+      const headers = { "x-browser-ms-used": String(browserMsUsed) };
+      if (action === "screenshot") {
+        return new Response(FAKE_BROWSER_RUN_PNG.slice(), {
+          headers: { ...headers, "content-type": "image/png" },
+        });
+      }
+      const page = body.url === undefined ? undefined : pages[body.url];
+      return page === undefined
+        ? Response.json(
+            {
+              success: false,
+              errors: [{ code: 2001, message: `Could not load ${body.url}` }],
+              messages: [],
+              result: null,
+            },
+            { status: 422 },
+          )
+        : Response.json({ success: true, errors: [], messages: [], result: page }, { headers });
+    },
+  };
+}
+
 const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   telegram: createFakeTelegramApi,
   pi: createFakePiManagerApi,
@@ -1776,6 +1826,7 @@ const createScenarioFakeFactory = (): ScenarioFakeFactory => ({
   openaiResponses: createFakeOpenAIResponsesApi,
   workersAi: createFakeWorkersAi,
   web: createFakeWebApi,
+  browserRun: createFakeBrowserRun,
 });
 
 const readSnapshotContent = async (fs: IFileSystem, path: string): Promise<string | null> => {
@@ -4560,6 +4611,20 @@ const fakeTelegramFile = (fakeTelegram: FakeTelegramApi, fileId: string): FakeTe
 
 const createFakeObjectOverrides = async (fakes: ScenarioFakes): Promise<LocalBackofficeObjects> => {
   const overrides: LocalBackofficeObjects = {};
+
+  if (fakes.browserRun) {
+    const { CloudflareObject } = await import("../../../workers/cloudflare-object");
+    const fakeBrowserRun = fakes.browserRun;
+    overrides.CLOUDFLARE = (input) =>
+      new CloudflareObject({
+        ...input,
+        env: {
+          CLOUDFLARE_WORKERS_ACCOUNT_ID: "scenario-account",
+          CLOUDFLARE_WORKERS_API_TOKEN: "scenario-cloudflare-token",
+        },
+        fetch: fakeBrowserRun.fetch,
+      });
+  }
 
   if (fakes.telegram) {
     const { TelegramObject } = await import("../../../workers/telegram-object");

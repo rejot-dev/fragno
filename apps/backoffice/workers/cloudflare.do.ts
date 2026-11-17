@@ -18,6 +18,7 @@ export class Cloudflare extends DurableObject<CloudflareEnv> implements Cloudfla
         state,
         env,
         runtime: createCloudflareDurableObjectRuntimeServices(env, state),
+        fetch,
       });
     });
   }

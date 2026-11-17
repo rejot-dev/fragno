@@ -5,6 +5,8 @@ import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/frag
 export type CloudflareFragmentSource = {
   accountId: string;
   apiToken: string;
+  /** Reaches Cloudflare's API. */
+  fetch: typeof globalThis.fetch;
 };
 
 export type CloudflareFragment = ReturnType<typeof createCloudflareFragment>;
@@ -17,6 +19,7 @@ export const createCloudflareServer = (
     {
       accountId: source.accountId,
       apiToken: source.apiToken,
+      fetchImplementation: source.fetch,
     },
     {
       databaseAdapter: runtime.adapters.createAdapter({ kind: "cloudflare" }),

@@ -3,6 +3,9 @@ import { afterEach, describe, expect, test, vi, assert } from "vitest";
 import { NotConfiguredError } from "../runtime-errors";
 import { createCloudflareRuntime } from "./cloudflare-runtime";
 
+// Recording is covered by the Browser Run scenario.
+const unrecorded = () => async () => {};
+
 const createNotConfiguredHttp = () => ({
   fetch: async () =>
     Response.json(
@@ -31,7 +34,7 @@ describe("createCloudflareRuntime", () => {
         });
       },
     };
-    const runtime = createCloudflareRuntime({ http });
+    const runtime = createCloudflareRuntime({ http, meterBrowserRun: unrecorded });
 
     await runtime.browserRunCapture({
       action: "screenshot",
@@ -44,7 +47,10 @@ describe("createCloudflareRuntime", () => {
   });
 
   test("classifies missing capture configuration as NotConfiguredError", async () => {
-    const runtime = createCloudflareRuntime({ http: createNotConfiguredHttp() });
+    const runtime = createCloudflareRuntime({
+      http: createNotConfiguredHttp(),
+      meterBrowserRun: unrecorded,
+    });
 
     await expect(
       runtime.browserRunCapture({

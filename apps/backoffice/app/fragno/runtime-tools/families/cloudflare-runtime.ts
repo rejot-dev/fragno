@@ -16,6 +16,7 @@ import {
   throwOnHttpResponseError,
   throwOnRouteRuntimeError,
 } from "../runtime-errors";
+import type { BrowserRunMeter } from "./browser-run-usage";
 
 export type CloudflareRuntime = {
   browserRunCapture(input: BrowserRunCaptureInput): Promise<Response>;
@@ -28,8 +29,10 @@ type CloudflareHttpTransport = Pick<BackofficeObjectHandle<CloudflareCommands>["
 
 export const createCloudflareRuntime = ({
   http,
+  meterBrowserRun,
 }: {
   http: CloudflareHttpTransport;
+  meterBrowserRun: BrowserRunMeter;
 }): CloudflareRuntime => {
   const callRoute = createRouteCaller<CloudflareFragment>({
     baseUrl: "https://cloudflare.do",
@@ -39,6 +42,7 @@ export const createCloudflareRuntime = ({
 
   return {
     browserRunCapture: async (input) => {
+      const recordBrowserTime = meterBrowserRun(input.action);
       const response = await http.fetch(
         new Request("https://cloudflare.do/api/cloudflare/browser-run/capture", {
           method: "POST",
@@ -57,6 +61,7 @@ export const createCloudflareRuntime = ({
         });
       }
 
+      await recordBrowserTime(response.headers);
       return response;
     },
     browserRunCrawl: async (input) => {

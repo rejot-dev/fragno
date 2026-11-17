@@ -23,6 +23,9 @@ Recorders have no optional callback or nullable payer. System work explicitly ha
 - Prerecorded Reson8 transcription awaits recording its request and reported duration. This
   synchronous producer has no durable outbox; provider success followed by a recording failure fails
   the call rather than pretending it was recorded.
+- Browser Run Quick Actions, `web.extract` and `cloudflare.browserRunCapture`, record the
+  `browser-run.time` milliseconds Cloudflare reports in each response's `x-browser-ms-used`, the
+  unit it bills by. They record like Reson8, after the provider succeeds and without an outbox.
 - Sandboxes record `sandbox.instance.<instance type>` seconds, from the attempt to start a container
   until it stops. Each run's meter in the sandbox manager bills at least hourly through durable
   hooks, splits usage at UTC month starts, and stops at the container's lease if the manager never
@@ -30,8 +33,9 @@ Recorders have no optional callback or nullable payer. System work explicitly ha
   container could report, and its user could forge.
 
 Browser dictation streams directly to Reson8 and is not measured here. Workflow ticks do not yet
-record their own executions. Sandbox network egress is not measured. These are measurement gaps, not
-exceptions allowing customer usage with a missing billing dependency.
+record their own executions. Sandbox network egress is not measured. Browser Run crawls are not
+measured: a crawl is a job whose browser time accrues after the call that starts it. These are
+measurement gaps, not exceptions allowing customer usage with a missing billing dependency.
 
 ## Usage limits
 

@@ -11,6 +11,7 @@ import type { CloudflareFragment } from "@/fragno/cloudflare";
 import { readBoundedBytes } from "@/lib/bounded-bytes";
 
 import { isSuccessStatus, NotConfiguredError, throwOnRouteRuntimeError } from "../runtime-errors";
+import type { BrowserRunMeter } from "./browser-run-usage";
 
 export type WebExtractInput = Extract<BrowserRunExtractInput, { action: "content" | "markdown" }>;
 export type WebExtractResult = Extract<BrowserRunExtractResult, { action: "content" | "markdown" }>;
@@ -126,11 +127,13 @@ async function download(fetch: typeof globalThis.fetch, url: string): Promise<Ui
 
 export const createWebRuntime = ({
   cloudflare,
+  meterBrowserRun,
   fetch,
   search,
 }: {
   /** Browser Run extracts pages; null when the deployment has no Cloudflare binding. */
   cloudflare: FetchCommands | null;
+  meterBrowserRun: BrowserRunMeter;
   /** Reaches the public internet for downloads; null where the runtime cannot download. */
   fetch: typeof globalThis.fetch | null;
   /** The scope's PiManager, which bills each search to the scope's owner. */
@@ -149,11 +152,13 @@ export const createWebRuntime = ({
       if (!callRoute) {
         throw new NotConfiguredError("Web extraction is not configured.");
       }
+      const recordBrowserTime = meterBrowserRun(input.action);
       const response = await callRoute("POST", "/browser-run/extract", {
         body: input,
       });
 
       if (response.type === "json" && isSuccessStatus(response.status)) {
+        await recordBrowserTime(response.headers);
         return response.data as WebExtractResult;
       }
 
