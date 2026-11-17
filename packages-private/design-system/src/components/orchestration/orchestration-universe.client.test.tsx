@@ -2,7 +2,7 @@
 
 import { afterEach, assert, beforeEach, test, vi } from "vitest";
 
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 
 import { UNIVERSE } from "./orchestration-graph-story-support";
 import { OrchestrationUniverseGraph } from "./orchestration-universe";
@@ -81,6 +81,20 @@ test("a universe opened while scopes are read shows once they are, without what 
     UNIVERSE.scopes.map((scope) => scope.id).sort(),
   );
   assert.isNull(view.container.querySelector(".bo-planet-status-leave"));
+});
+
+test("a workflow acting as its user says so instead of what it may call", () => {
+  const view = render(<OrchestrationUniverseGraph universe={UNIVERSE} />);
+  const card = (label: string) => {
+    fireEvent.click(view.getByRole("button", { name: label }));
+    return view.getByRole("status").textContent;
+  };
+
+  assert.include(
+    card("telegram-user-pi-linking workflow, acts as its user"),
+    "Acts as its user, so it may call whatever they may",
+  );
+  assert.include(card("telegram-user-linking workflow"), "May call Telegram");
 });
 
 test("a project found empty once read fades where it was, and then is gone", async () => {

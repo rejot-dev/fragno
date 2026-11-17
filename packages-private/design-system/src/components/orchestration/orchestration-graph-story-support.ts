@@ -507,7 +507,6 @@ export const UNIVERSE: OrchestrationUniverse = {
     { scopeId: "system", workflowId: "workspace-file-initialization", externalId: "drive" },
     { scopeId: "system", workflowId: "nightly-cleanup", externalId: "slack" },
     { scopeId: "org", workflowId: "telegram-user-linking", externalId: "telegram" },
-    { scopeId: "org", workflowId: "telegram-user-pi-linking", externalId: "telegram" },
     { scopeId: "org", workflowId: "organization-onboarding", externalId: "email" },
     { scopeId: "org", workflowId: "organization-onboarding", externalId: "slack" },
     { scopeId: "website", workflowId: "intake-triage", externalId: "email" },
@@ -519,6 +518,7 @@ export const UNIVERSE: OrchestrationUniverse = {
     { scopeId: "user", workflowId: "pi-session", externalId: "models" },
     { scopeId: "user", workflowId: "pi-session", externalId: "telegram" },
   ],
+  inheriting: [{ scopeId: "org", workflowId: "telegram-user-pi-linking" }],
 };
 
 export function usePulses() {

@@ -674,6 +674,10 @@ async function readUniverse(
         return `${scopeId} ${workflowId} → ${externalId} "${external.label}" ${external.icon}`;
       }),
     ),
+    // Workflows that act as their user, which call whatever their user may instead.
+    inheriting: sorted(
+      universe.inheriting.map(({ scopeId, workflowId }) => `${scopeId} ${workflowId}`),
+    ),
   };
 }
 
@@ -1229,6 +1233,7 @@ describe("dashboard", () => {
                   "user:user-1 → org:org-1 carrying ledger:deposit.received",
                 ],
                 calls: [],
+                inheriting: [],
               });
               // Read, Books adds the forward its route names, and the person looking sees all of
               // their own routes, which the organization never does, the ledger route on its
@@ -1253,6 +1258,7 @@ describe("dashboard", () => {
                   "user:user-1 → org:org-1 carrying ledger:*",
                 ],
                 calls: [],
+                inheriting: [],
               });
             },
           ),
@@ -1291,8 +1297,10 @@ describe("dashboard", () => {
       scope: { kind: "user", userId: "user-1", jurisdiction: null } as const,
       label: "Ada",
     };
-    const calls = async (ctx: BackofficeScenarioContext) =>
-      (await readUniverse(ctx, { projects, viewer, read: false })).calls;
+    const calls = async (ctx: BackofficeScenarioContext) => {
+      const { calls, inheriting } = await readUniverse(ctx, { projects, viewer, read: false });
+      return { calls, inheriting };
+    };
 
     await runBackofficeScenario(
       defineBackofficeScenario({
@@ -1341,13 +1349,11 @@ describe("dashboard", () => {
         ],
         steps: ({ when, then }) => [
           then.assert(
-            "each workflow may call what its enabled routes grant, connections by scope",
+            "each workflow may call what its enabled routes name, connections by scope, and one acting as its user names nothing",
             async (ctx) => {
-              assert.deepEqual(await calls(ctx), [
-                `org:org-1 workflow:${workflow("chat")} → any-connection "Any connection" link`,
-                `org:org-1 workflow:${workflow("chat")} → browser-run "Browser Run" monitor`,
-                `org:org-1 workflow:${workflow("chat")} → models "Models" cpu`,
-                `org:org-1 workflow:${workflow("chat")} → web "Web" globe`,
+              const { calls: drawn, inheriting } = await calls(ctx);
+              assert.deepEqual(inheriting, [`org:org-1 workflow:${workflow("chat")}`]);
+              assert.deepEqual(drawn, [
                 `org:org-1 workflow:${workflow("notify-member")} → connection:org:org-2|api#crm "org:org-2 · crm" code`,
                 `org:org-1 workflow:${workflow("notify-member")} → connection:user:user-2|api#crm "user:user-2 · crm" code`,
                 `org:org-1 workflow:${workflow("research-lead")} → connection:org:org-1|api#crm "crm" code`,
@@ -1361,7 +1367,7 @@ describe("dashboard", () => {
             connectionEvent("crm-ready", "ready", "api#crm", Date.now(), "CRM"),
           ),
           then.assert("the organization's connection goes by its name", async (ctx) => {
-            expect(await calls(ctx)).toContain(
+            expect((await calls(ctx)).calls).toContain(
               `org:org-1 workflow:${workflow("research-lead")} → connection:org:org-1|api#crm "CRM" code`,
             );
           }),

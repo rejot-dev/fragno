@@ -81,6 +81,7 @@ export function NothingYet() {
           forwards: [],
           externals: UNIVERSE.externals,
           calls: [],
+          inheriting: [],
         }}
       />
     </div>

@@ -86,6 +86,7 @@ function unroutedUniverse(count: number): OrchestrationUniverse {
     })),
     externals: [],
     calls: [],
+    inheriting: [],
   };
 }
 
@@ -183,6 +184,7 @@ describe("forwards that nothing listens to", () => {
       ],
       externals: [],
       calls: [],
+      inheriting: [],
     };
     const { planets, forwards } = layoutUniverse(universe);
     const positions = [
