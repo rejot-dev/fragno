@@ -50,7 +50,7 @@ const UPLOAD = "upload";
 const uploadSchema = z.object({
   intent: z.literal(UPLOAD),
   documentId: z.uuid(),
-  file: z.instanceof(File, { message: "Choose a file to upload." }),
+  file: z.instanceof(File, { error: "Choose a file to upload." }),
 });
 
 /**

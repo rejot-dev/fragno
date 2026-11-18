@@ -13,8 +13,10 @@ function mediaQueryList(media: string, matches: boolean): MediaQueryList {
     onchange: null,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
+    // oxlint-disable typescript/no-deprecated -- MediaQueryList still requires the legacy listener methods.
     addListener: vi.fn(),
     removeListener: vi.fn(),
+    // oxlint-enable typescript/no-deprecated
     dispatchEvent: vi.fn(() => true),
   };
 }

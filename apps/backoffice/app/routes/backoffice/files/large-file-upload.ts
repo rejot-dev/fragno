@@ -66,7 +66,7 @@ async function postUploadStep(
       error: (await response.text()) || `Leyway answered ${response.status}.`,
     };
   }
-  return (await response.json()) as LargeFileUploadResult;
+  return await response.json<LargeFileUploadResult>();
 }
 
 /** S3 explains a refusal in an XML `<Error>`; Miniflare's own checks answer in plain text. */

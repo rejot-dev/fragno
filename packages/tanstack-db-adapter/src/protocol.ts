@@ -55,7 +55,7 @@ export type FragnoCollectionChange<TRow extends object> =
     };
 
 export function decodeFragnoOutboxPayload(payload: unknown): OutboxPayload {
-  const decoded = superjson.deserialize(payload as SuperJSONResult) as unknown;
+  const decoded = superjson.deserialize(payload as SuperJSONResult);
 
   if (!isRecord(decoded)) {
     throw new Error("Invalid Fragno outbox payload.");

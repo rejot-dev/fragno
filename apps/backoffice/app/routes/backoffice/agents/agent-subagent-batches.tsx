@@ -94,9 +94,7 @@ function useAgentSubagents(agentPath: string, revision: number): AgentSubagents 
           throw new Error(`Listing subagents failed with status ${response.status}.`);
         }
         // This application-owned resource route returns its loader data unchanged.
-        const { subagents } = (await response.json()) as Awaited<
-          ReturnType<typeof subagentsLoader>
-        >;
+        const { subagents } = await response.json<Awaited<ReturnType<typeof subagentsLoader>>>();
         // A read that finished as its agent changed would show and poll the previous agent.
         if (controller.signal.aborted) {
           return;
@@ -255,9 +253,7 @@ function useRunningHeadlines(agentPath: string, running: readonly string[]) {
             if (!response.ok) {
               return null;
             }
-            const { view } = (await response.json()) as Awaited<
-              ReturnType<typeof subagentViewLoader>
-            >;
+            const { view } = await response.json<Awaited<ReturnType<typeof subagentViewLoader>>>();
             return view === null ? null : ([requestId, subagentHeadline(view)] as const);
           } catch {
             // A headline is a hint; the row says it runs without one.

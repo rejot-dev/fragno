@@ -241,9 +241,9 @@ function simplifyCompositions(schema: JsonSchema): JsonSchema {
     if (value === null || typeof value !== "object") {
       return value;
     }
-    const node = Object.fromEntries(
+    const node: JsonSchema = Object.fromEntries(
       Object.entries(value).map(([key, child]) => [key, simplify(child)]),
-    ) as JsonSchema;
+    );
     for (const keyword of ["anyOf", "oneOf"] as const) {
       const members = node[keyword];
       if (!Array.isArray(members)) {

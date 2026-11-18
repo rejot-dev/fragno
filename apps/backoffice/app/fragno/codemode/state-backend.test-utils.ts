@@ -176,7 +176,7 @@ export class MemoryUploadObject implements FetchCommands {
   }
 
   async #applyEdits(request: Request): Promise<Response> {
-    const input = (await request.json()) as { provider: string; edits: FileEditOperation[] };
+    const input = await request.json<{ provider: string; edits: FileEditOperation[] }>();
     const originalContent = new Map<string, string | null>();
     const currentContent = new Map<string, string | null>();
     const results = [];
@@ -372,12 +372,12 @@ export class MemoryUploadObject implements FetchCommands {
   }
 
   async #createPreparedUpload(request: Request): Promise<Response> {
-    const body = (await request.json()) as {
+    const body = await request.json<{
       fileKey: string;
       filename: string;
       contentType: string;
       publicationMode?: string;
-    };
+    }>();
     if (!body.fileKey || body.publicationMode !== "batch") {
       return Response.json(
         { message: "Invalid request", code: "INVALID_REQUEST" },
@@ -428,7 +428,7 @@ export class MemoryUploadObject implements FetchCommands {
   }
 
   async #commitPreparedFiles(request: Request): Promise<Response> {
-    const body = (await request.json()) as { entries: MemoryPreparedBatchEntry[] };
+    const body = await request.json<{ entries: MemoryPreparedBatchEntry[] }>();
     const beforeWrite = this.#beforeNextWrite;
     this.#beforeNextWrite = undefined;
     await beforeWrite?.();
@@ -500,12 +500,12 @@ export class MemoryUploadObject implements FetchCommands {
   }
 
   async #searchCandidates(request: Request): Promise<Response> {
-    const body = (await request.json()) as {
+    const body = await request.json<{
       glob: string;
       keywords: string[];
       maxCandidateFiles?: number;
       cursor?: { pass: number; indexCursor?: string };
-    };
+    }>();
     const expression = globToRegExp(body.glob);
     const keywords = body.keywords.map((keyword) => keyword.toLocaleLowerCase());
     // Unlike the index, this fake finds every keyword in one pass, so nothing is excluded.
@@ -541,12 +541,12 @@ export class MemoryUploadObject implements FetchCommands {
   }
 
   async #hydrateSearch(request: Request): Promise<Response> {
-    const body = (await request.json()) as {
+    const body = await request.json<{
       candidateKeys: string[];
       keywords: string[];
       options?: Parameters<typeof searchTextContent>[3];
       searchOffset?: number;
-    };
+    }>();
     const maxMatches = body.options?.maxMatches ?? 50;
     const matches: ReturnType<typeof searchTextContent> = [];
     const skippedCandidates: Array<{ key: string; reason: "not_found" }> = [];

@@ -25,10 +25,12 @@ export async function loader({ request, context, params }: Route.LoaderArgs) {
   if (!response.ok) {
     throw response;
   }
-  const invitation = (await response.json()) as Invitation & {
-    organizationName: string;
-    organizationSlug: string;
-  };
+  const invitation = await response.json<
+    Invitation & {
+      organizationName: string;
+      organizationSlug: string;
+    }
+  >();
   return {
     invitation,
     organization: {

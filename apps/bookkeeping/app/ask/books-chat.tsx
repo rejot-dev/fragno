@@ -159,7 +159,7 @@ async function postToAgent(agentPath: string, fields: Record<string, string>) {
     return "Bookkeeping could not be reached. Try again shortly.";
   }
   // Bookkeeping's own resource route answers in this shape.
-  const answer = (await response.json()) as BooksAgentAnswer;
+  const answer = await response.json<BooksAgentAnswer>();
   return answer.error;
 }
 

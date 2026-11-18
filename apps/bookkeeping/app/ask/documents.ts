@@ -8,7 +8,7 @@ import type { BooksAgentAnswer } from "./agent";
 
 const uploadSchema = z.object({
   documentId: z.uuid(),
-  file: z.instanceof(File, { message: "Choose a file to upload." }),
+  file: z.instanceof(File, { error: "Choose a file to upload." }),
 });
 
 /**

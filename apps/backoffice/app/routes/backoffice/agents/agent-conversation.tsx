@@ -164,7 +164,7 @@ async function waitForPiCompaction(url: string, signal: AbortSignal) {
       throw new Error(`Pi compaction status request failed with status ${response.status}.`);
     }
     // This application-owned resource route returns the manager's public compaction projection.
-    const status = (await response.json()) as PiAgentCompactionStatus;
+    const status = await response.json<PiAgentCompactionStatus>();
     if (status.status !== "running") {
       return status;
     }
@@ -197,7 +197,7 @@ async function startPiCompaction(url: string, instructions: string, signal: Abor
     throw new Error(`Pi compaction request failed with status ${response.status}.`);
   }
   // This application-owned resource route returns its action data unchanged.
-  const result = (await response.json()) as Awaited<ReturnType<typeof compactionsAction>>;
+  const result = await response.json<Awaited<ReturnType<typeof compactionsAction>>>();
   if (!result.ok) {
     throw new Error(result.error);
   }

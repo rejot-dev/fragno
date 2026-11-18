@@ -1562,7 +1562,7 @@ const createFakeResendApi = (input: { threads?: FakeResendThreadSeed[] } = {}): 
       }
 
       if (request.method === "POST" && suffix === "reply") {
-        const body = (await request.json()) as Record<string, unknown>;
+        const body = await request.json<Record<string, unknown>>();
         replyCalls.push({ threadId, body });
         const message = createFakeResendMessage(
           {
@@ -1634,7 +1634,7 @@ const createFakeOpenAIImagesApi: ScenarioFakeFactory["openaiImages"] = ({
     requests,
     fetch: async (input, init) => {
       const request = new Request(input, init);
-      const body = (await request.json()) as { output_format: string };
+      const body = await request.json<{ output_format: string }>();
       requests.push({ url: request.url, body });
       const imageTokens = request.url.endsWith("/images/edits") ? imageInputTokens : 0;
       return Response.json({
@@ -1792,7 +1792,7 @@ function createFakeBrowserRun({
     fetch: async (input, init) => {
       const request = new Request(input, init);
       const action = new URL(request.url).pathname.split("/browser-rendering/")[1] ?? "";
-      const body = (await request.json()) as { url?: string };
+      const body = await request.json<{ url?: string }>();
       requests.push({ action, body });
       const headers = { "x-browser-ms-used": String(browserMsUsed) };
       if (action === "screenshot") {
@@ -3001,7 +3001,7 @@ const buildStepBuilders = <
               );
             }
             if (input.captureOrganizationIdAs) {
-              const organization = (await response.json()) as { id?: unknown };
+              const organization = await response.json<{ id?: unknown }>();
               if (typeof organization.id !== "string") {
                 throw new Error("Auth organization creation returned no organization id.");
               }
@@ -3029,7 +3029,7 @@ const buildStepBuilders = <
               );
             }
             if (input.captureInvitationIdAs) {
-              const invitation = (await response.json()) as { id?: unknown };
+              const invitation = await response.json<{ id?: unknown }>();
               if (typeof invitation.id !== "string") {
                 throw new Error("Auth member invitation returned no invitation id.");
               }
@@ -3318,7 +3318,7 @@ const buildStepBuilders = <
             }
 
             if (input.captureIdAs) {
-              const project = (await response.json()) as { id: unknown };
+              const project = await response.json<{ id: unknown }>();
               ctx.vars[input.captureIdAs] = scenarioIdString(project.id);
             }
           },

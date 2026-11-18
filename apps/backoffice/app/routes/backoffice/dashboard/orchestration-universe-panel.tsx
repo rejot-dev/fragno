@@ -174,9 +174,9 @@ export function OrganizationUniverseAt({
   const readScopes = useMemo(() => {
     // The loader describes runtime scopes the person can read, never System.
     const describe = ({ label, source }: UniverseScopeSource) => {
-      const scope = backofficeRuntimeScopeFromResolvedScope(
+      const scope: BackofficeContextScope = backofficeRuntimeScopeFromResolvedScope(
         source.resolvedScope,
-      ) as BackofficeContextScope;
+      );
       return { label, source, scope, scopeId: scopeIdentity(scope) };
     };
     return {

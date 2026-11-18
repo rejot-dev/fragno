@@ -74,7 +74,7 @@ const IMPORT = "import";
 
 const importSchema = z.object({
   intent: z.literal(IMPORT),
-  file: z.instanceof(File, { message: "Choose a statement file to import." }),
+  file: z.instanceof(File, { error: "Choose a statement file to import." }),
 });
 
 /** How many imported transactions the bookkeeping agent was asked about, or why it was not. */

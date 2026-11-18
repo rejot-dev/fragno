@@ -104,6 +104,7 @@ test("Node proxy accepts public HTTPS and direct localhost or 127.0.0.1 HTTP whi
                 assetsBuildDirectory: "build",
                 future: {},
                 ssr: true,
+                // oxlint-disable-next-line typescript/no-deprecated -- ServerBuild still requires it.
                 isSpaMode: false,
                 prerender: [],
                 routeDiscovery: { mode: "initial", manifestPath: "/__manifest" },

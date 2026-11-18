@@ -157,7 +157,7 @@ function useAgentDrawerData(url: string, open: boolean) {
           throw new Error(`The agent could not be loaded (status ${response.status}).`);
         }
         // This application-owned resource route returns its loader data unchanged.
-        const data = (await response.json()) as AgentDrawerData;
+        const data = await response.json<AgentDrawerData>();
         if (!ignore) {
           setState({ status: "ready", data });
         }

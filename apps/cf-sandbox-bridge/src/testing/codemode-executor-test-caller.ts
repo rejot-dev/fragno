@@ -16,7 +16,7 @@ import {
  */
 export default {
   async fetch(request: Request, env: { EXECUTOR: Fetcher }): Promise<Response> {
-    const parsed = (await request.json()) as CodemodeActivation;
+    const parsed = await request.json<CodemodeActivation>();
     // JSON carries the workflow event's timestamp as text; the activation contract takes a Date.
     const activation: CodemodeActivation =
       parsed.kind === "workflow"

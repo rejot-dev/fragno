@@ -110,13 +110,13 @@ export class Auth extends DurableObject<CloudflareEnv> {
                     `Backoffice userinfo request to ${backofficeURL}/api/auth/oauth2/userinfo failed: HTTP ${response.status} ${response.statusText}`,
                   );
                 }
-                const profile = (await response.json()) as {
+                const profile = await response.json<{
                   sub: string;
                   name: string;
                   email: string;
                   email_verified: boolean;
                   picture: string | null;
-                };
+                }>();
                 return {
                   sub: profile.sub,
                   name: profile.name,

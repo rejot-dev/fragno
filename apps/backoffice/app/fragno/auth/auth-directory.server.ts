@@ -81,7 +81,7 @@ export async function loadOrganizationInvitations(input: DirectoryRequest, slug:
   if (!response.ok) {
     throw response;
   }
-  const invitations = (await response.json()) as Invitations;
+  const invitations = await response.json<Invitations>();
   return {
     invitations: invitations.map((invitation) => ({
       ...invitation,
@@ -114,7 +114,7 @@ export async function loadUserInvitations({ request, context }: DirectoryRequest
   if (!response.ok) {
     throw response;
   }
-  const invitations = (await response.json()) as Array<Invitation & { organizationName: string }>;
+  const invitations = await response.json<Array<Invitation & { organizationName: string }>>();
   return {
     status: "listed",
     invitations: invitations.map((invitation) => ({
@@ -141,7 +141,7 @@ export async function loadSystemUsers({ request, context }: DirectoryRequest) {
   if (!response.ok) {
     throw response;
   }
-  const result = (await response.json()) as Users;
+  const result = await response.json<Users>();
   return {
     users: result.users.map((user) => ({
       id: user.id,

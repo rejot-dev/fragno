@@ -105,7 +105,7 @@ export class ScenarioBrowser {
       method: "POST",
       body: { provider: "backoffice", callbackURL: returnTo, errorCallbackURL: "/login" },
     });
-    const { url } = (await started.json()) as { url: string };
+    const { url } = await started.json<{ url: string }>();
     const callback = new URL(this.#scenario.backoffice.completeSignIn(url, email));
     const returned = await this.auth(callback.pathname + callback.search);
     if (returned.status !== 302) {

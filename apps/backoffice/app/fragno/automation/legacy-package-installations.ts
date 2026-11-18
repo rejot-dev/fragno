@@ -46,7 +46,7 @@ async function readLegacyLock(upload: UploadHttp) {
   if (!metadata.ok) {
     throw new Error(`${MARKETPLACE_LOCK_PATH} could not be read (${metadata.status}).`);
   }
-  const file = (await metadata.json()) as { status: string; revision: number };
+  const file = await metadata.json<{ status: string; revision: number }>();
   if (file.status === "deleted") {
     return null;
   }

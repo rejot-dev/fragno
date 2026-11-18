@@ -9,7 +9,7 @@ type ActionData = {
 };
 
 export function CommunitySection({ turnstileSitekey }: { turnstileSitekey: string }) {
-  const actionData = useActionData() as ActionData | undefined;
+  const actionData = useActionData<ActionData>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
 

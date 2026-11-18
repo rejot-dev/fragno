@@ -126,7 +126,7 @@ const requestMarketplacePackageBytes = async (http: UploadHttpTransport, fileKey
     let code: string | null = null;
     let message = "Upload returned an unexpected response.";
     try {
-      const error = (await response.json()) as { code?: unknown; message?: unknown };
+      const error = await response.json<{ code?: unknown; message?: unknown }>();
       if (typeof error.code === "string" && error.code.trim()) {
         code = error.code;
       }

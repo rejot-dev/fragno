@@ -54,7 +54,7 @@ export async function sendEmail(
     };
   }
 
-  const data = (await res.json()) as { id: string };
+  const data = await res.json<{ id: string }>();
 
   return {
     type: "ok",

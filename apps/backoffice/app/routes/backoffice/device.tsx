@@ -128,10 +128,10 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     body: JSON.stringify({ userCode: authorization.userCode }),
   });
   if (!response.ok) {
-    const error = (await response.json()) as {
+    const error = await response.json<{
       error_description?: string;
       message?: string;
-    };
+    }>();
     return data(
       {
         status: "error",

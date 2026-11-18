@@ -75,7 +75,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       return redirect("/backoffice/login?passwordReset=success", { headers: responseHeaders });
     }
     if (response.status === 400) {
-      const error = (await response.json()) as { code: string };
+      const error = await response.json<{ code: string }>();
       if (error.code === "INVALID_TOKEN" || error.code === "USER_NOT_FOUND") {
         return data({ state: "invalid" as const }, { status: 400, headers: headers() });
       }
