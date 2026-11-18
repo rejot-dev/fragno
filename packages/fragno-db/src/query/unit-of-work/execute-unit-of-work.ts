@@ -1807,7 +1807,6 @@ export class ServiceTxBuilder<
     };
 
     // Use the existing createServiceTx implementation
-    // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- createServiceTx returns TxResult<unknown, unknown>, which build()'s return type does not accept.
     return createServiceTx<
       TSchema,
       TRetrieveResults,
