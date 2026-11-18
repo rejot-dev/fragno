@@ -5,12 +5,14 @@
   // @fragno-apps/* so @fragno-dev/* can stay public to Fallow.
   "publicPackages": ["@fragno-dev/*", "@fragno-example/*"],
 
-  // Tooling config: Prettier resolves these plugins by name at runtime.
+  // Tooling config: Prettier resolves these plugins by name at runtime, and Oxlint runs tsrs-lint
+  // from node_modules/.bin.
   "ignoreDependencies": [
     "prettier-plugin-astro",
     "prettier-plugin-sql",
     "prettier-plugin-svelte",
     "prettier-plugin-tailwindcss",
+    "tsrs",
   ],
 
   // Tooling config: Prettier plugin names are resolved dynamically by Prettier. Backoffice content
