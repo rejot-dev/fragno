@@ -1,9 +1,5 @@
-import {
-  isRemoteWorkflowSuspension,
-  RemoteWorkflowSuspendedError,
-  type RemoteWorkflowStepScope,
-} from "@fragno-dev/workflows/remote-workflow";
 import type { WorkflowDuration, WorkflowStepConfig } from "@fragno-dev/workflows/workflow";
+import type { WorkflowStepCallOutcome } from "@fragno-dev/workflows/workflow-tick";
 import { RpcTarget, type RpcStub } from "capnweb";
 import { z } from "zod";
 
@@ -13,7 +9,6 @@ import {
   codemodeHookIntentSchema,
   codemodeStepConfigSchema,
   codemodeStepNameSchema,
-  codemodeSuspensionReasonSchema,
   codemodeWorkflowOperationsSchema,
   type CodemodeHost,
   type CodemodeStepCapability,
@@ -22,7 +17,6 @@ import {
   type CodemodeWorkflowHost,
   type CodemodeWorkflowTransactionHost,
   type CodemodeEventCallback,
-  type CodemodeSuspensionReason,
   type CodemodeProviderCapability,
   type CodemodeToolResult,
 } from "../execution/codemode-activation-contract";
@@ -34,8 +28,6 @@ type HostLifetime = {
   closed: boolean;
   pending: Set<Promise<unknown>>;
   revocations: Set<() => void>;
-  suspension: CodemodeSuspensionReason | null;
-  issuedSuspensions: Set<string>;
 };
 
 function assertCodemodeHostOpen(lifetime: HostLifetime) {
@@ -68,31 +60,33 @@ function unwrapCodemodeCallbackResult(value: unknown) {
   }
   return result.value;
 }
-function recordCodemodeHostOutcome(lifetime: HostLifetime, value: unknown) {
-  if (isRemoteWorkflowSuspension(value)) {
-    const reason = codemodeSuspensionReasonSchema.parse(value.reason);
-    // Steps started side by side can each suspend; the runner ends the tick by the first.
-    lifetime.suspension ??= reason;
-    lifetime.issuedSuspensions.add(JSON.stringify(reason));
-    return { status: "suspended", reason } as const;
-  }
-  return { status: "ok", value } as const;
-}
+/**
+ * Runs one step operation and reports how it ended. Every failure, including invalid arguments, is
+ * a settled step failure without a settle order, so the guest never mistakes one for a lost call.
+ */
 async function runCodemodeWorkflowOperation(
-  lifetime: HostLifetime,
-  operation: () => Promise<unknown>,
+  operation: () => Promise<WorkflowStepCallOutcome>,
 ): Promise<CodemodeStepResult> {
+  let outcome: WorkflowStepCallOutcome;
   try {
-    return recordCodemodeHostOutcome(lifetime, await operation());
+    outcome = await operation();
   } catch (error) {
-    if (error instanceof RemoteWorkflowSuspendedError) {
-      return recordCodemodeHostOutcome(lifetime, {
-        __fragnoRemoteWorkflowSuspended: true,
-        reason: error.reason,
-      });
-    }
-    return { status: "error", error: encodeCodemodeError(error) };
+    return {
+      status: "settled",
+      result: { status: "error", error: encodeCodemodeError(error) },
+      order: null,
+    };
   }
+  if (outcome.type === "parked") {
+    return { status: "parked" };
+  }
+  return {
+    status: "settled",
+    result: outcome.ok
+      ? { status: "ok", value: outcome.value }
+      : { status: "error", error: encodeCodemodeError(outcome.error) },
+    order: outcome.order,
+  };
 }
 
 class CodemodeProviderTarget extends RpcTarget implements CodemodeProviderCapability {
@@ -360,83 +354,67 @@ function createCodemodeTransaction(
   return { target: new CodemodeTransactionTarget(), release };
 }
 
-function createCodemodeStep(
-  lifetime: HostLifetime,
-  source: CodemodeWorkflowHost,
-  parentScope: RemoteWorkflowStepScope,
-) {
+function createCodemodeStep(lifetime: HostLifetime, source: CodemodeWorkflowHost) {
   let active = true;
   const release = registerCodemodeRevocation(lifetime, () => {
     active = false;
   });
   class CodemodeStepTarget extends RpcTarget implements CodemodeStepCapability {
-    #call(operation: () => Promise<unknown>) {
+    #call(operation: () => Promise<WorkflowStepCallOutcome>) {
       if (!active) {
         throw new Error("CODEMODE_WORKFLOW_SCOPE_NOT_ACTIVE");
       }
-      return trackCodemodeHostCall(lifetime, () =>
-        runCodemodeWorkflowOperation(lifetime, operation),
-      );
+      return trackCodemodeHostCall(lifetime, () => runCodemodeWorkflowOperation(operation));
     }
     do(
       name: string,
       config: WorkflowStepConfig | undefined,
       callback: Parameters<CodemodeStepCapability["do"]>[2],
     ) {
-      const stepName = codemodeStepNameSchema.parse(name);
-      const stepConfig = codemodeStepConfigSchema.optional().parse(config);
-      if (typeof callback !== "function") {
-        throw new Error("WORKFLOW_STEP_CALLBACK_REQUIRED");
-      }
-      return this.#call(() =>
-        source.do(parentScope, stepName, stepConfig, async (sourceTx, scope) => {
+      return this.#call(async () => {
+        const stepName = codemodeStepNameSchema.parse(name);
+        const stepConfig = codemodeStepConfigSchema.optional().parse(config);
+        if (typeof callback !== "function") {
+          throw new Error("WORKFLOW_STEP_CALLBACK_REQUIRED");
+        }
+        return await source.do(stepName, stepConfig, async (sourceTx) => {
           const tx = createCodemodeTransaction(lifetime, sourceTx);
           try {
-            const step = createCodemodeStep(lifetime, source, scope);
-            try {
-              const result = unwrapCodemodeCallbackResult(await callback(tx.target, step.target));
-              if (
-                isRemoteWorkflowSuspension(result) &&
-                !lifetime.issuedSuspensions.has(
-                  JSON.stringify(codemodeSuspensionReasonSchema.parse(result.reason)),
-                )
-              ) {
-                throw new Error("CODEMODE_UNISSUED_SUSPENSION");
-              }
-              return result;
-            } finally {
-              step.release();
-            }
+            return unwrapCodemodeCallbackResult(await callback(tx.target));
           } finally {
             tx.release();
           }
-        }),
-      );
+        });
+      });
     }
     sleep(name: string, duration: WorkflowDuration) {
-      const stepName = codemodeStepNameSchema.parse(name);
-      const delay = codemodeDurationSchema.parse(duration);
-      return this.#call(() => source.sleep(parentScope, stepName, delay));
+      return this.#call(async () => {
+        const stepName = codemodeStepNameSchema.parse(name);
+        const delay = codemodeDurationSchema.parse(duration);
+        return await source.sleep(stepName, delay);
+      });
     }
     sleepUntil(name: string, timestamp: Date | number) {
-      const stepName = codemodeStepNameSchema.parse(name);
-      const time = z.union([z.date(), z.number()]).parse(timestamp);
-      return this.#call(() => source.sleepUntil(parentScope, stepName, time));
+      return this.#call(async () => {
+        const stepName = codemodeStepNameSchema.parse(name);
+        const time = z.union([z.date(), z.number()]).parse(timestamp);
+        return await source.sleepUntil(stepName, time);
+      });
     }
     waitForEvent(name: string, options: Parameters<CodemodeStepCapability["waitForEvent"]>[1]) {
-      const stepName = codemodeStepNameSchema.parse(name);
-      const parsed = z
-        .strictObject({
-          type: codemodeStepNameSchema,
-          timeout: codemodeDurationSchema.optional(),
-          onConsume: z
-            .custom<NonNullable<typeof options.onConsume>>((value) => typeof value === "function")
-            .optional(),
-        })
-        .parse(options);
-      const callback = parsed.onConsume;
-      return this.#call(() =>
-        source.waitForEvent(parentScope, stepName, {
+      return this.#call(async () => {
+        const stepName = codemodeStepNameSchema.parse(name);
+        const parsed = z
+          .strictObject({
+            type: codemodeStepNameSchema,
+            timeout: codemodeDurationSchema.optional(),
+            onConsume: z
+              .custom<NonNullable<typeof options.onConsume>>((value) => typeof value === "function")
+              .optional(),
+          })
+          .parse(options);
+        const callback = parsed.onConsume;
+        return await source.waitForEvent(stepName, {
           type: parsed.type,
           timeout: parsed.timeout,
           onConsume: callback
@@ -449,8 +427,8 @@ function createCodemodeStep(
                 }
               }
             : undefined,
-        }),
-      );
+        });
+      });
     }
   }
   return { target: new CodemodeStepTarget(), release };
@@ -469,8 +447,6 @@ export function createCodemodeHost(
     closed: false,
     pending: new Set(),
     revocations: new Set(),
-    suspension: null,
-    issuedSuspensions: new Set(),
   };
   const dispatchers = Object.fromEntries(
     Object.entries(result.dispatchers).map(([name, provider]) => [
@@ -481,7 +457,7 @@ export function createCodemodeHost(
   return {
     capabilities: {
       dispatchers,
-      stepTarget: workflow ? createCodemodeStep(lifetime, workflow, null).target : null,
+      stepTarget: workflow ? createCodemodeStep(lifetime, workflow).target : null,
     },
     async close() {
       if (lifetime.closed) {
@@ -497,7 +473,6 @@ export function createCodemodeHost(
       while (lifetime.pending.size) {
         await Promise.allSettled(lifetime.pending);
       }
-      return lifetime.suspension;
     },
   };
 }

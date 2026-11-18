@@ -294,14 +294,18 @@ const createToolCallStreamFn =
 describe("Interactive chat workflow scenarios", () => {
   test("runs one interactive chat prompt through AgentHarness and persists workflow transcript", async () => {
     const observedSystemPrompts: string[] = [];
-    const resolveOptions = vi.fn(() => ({
-      systemPrompt: "You are resolved for this session.",
-      model: mockModel,
-      models: createModelsForStreamFn(mockModel, (_model, context) => {
-        observedSystemPrompts.push(context.systemPrompt ?? "");
-        return createTextStreamFn("hello from harness")();
-      }),
-    }));
+    // Resolving takes a timer turn, like loading resources over I/O.
+    const resolveOptions = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      return {
+        systemPrompt: "You are resolved for this session.",
+        model: mockModel,
+        models: createModelsForStreamFn(mockModel, (_model, context) => {
+          observedSystemPrompts.push(context.systemPrompt ?? "");
+          return createTextStreamFn("hello from harness")();
+        }),
+      };
+    });
     const interactiveChatWorkflow = createInteractiveChatWorkflow({ options: resolveOptions });
     const config: PiFragmentConfig = {
       workflows: [interactiveChatWorkflow],
@@ -1481,7 +1485,7 @@ describe("Interactive chat workflow scenarios", () => {
     );
   });
 
-  test("marks an interactive chat workflow errored when resolving options throws", async () => {
+  test("errors an interactive chat workflow at its first command when resolving options throws", async () => {
     const resolveOptions = vi.fn(() => {
       throw new Error("RESOLVE_OPTIONS_FAILED");
     });
@@ -1528,6 +1532,20 @@ describe("Interactive chat workflow scenarios", () => {
             workflow: interactiveChatWorkflow.name,
             instanceId: (ctx) => ctx.vars.sessionId!,
             reason: "create",
+          }),
+          workflow.read({
+            read: async (ctx) => {
+              assert(ctx.vars.sessionId, "session id should be set");
+              return await clients.user.useCommandSession.mutateQuery({
+                path: { workflowName: interactiveChatWorkflow.name, sessionId: ctx.vars.sessionId },
+                body: { kind: "prompt", input: { text: "hello harness" } },
+              });
+            },
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
           }),
           workflow.read({
             read: async (ctx) => ({

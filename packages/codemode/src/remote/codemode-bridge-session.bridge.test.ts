@@ -2,7 +2,6 @@ import { afterAll, beforeAll, expect, test, assert } from "vitest";
 
 import { once } from "node:events";
 
-import { RemoteWorkflowSuspendedError } from "@fragno-dev/workflows/remote-workflow";
 import { NonRetryableError, WaitForEventTimeoutError } from "@fragno-dev/workflows/workflow";
 import { RpcSession } from "capnweb";
 import WebSocket from "ws";
@@ -76,13 +75,8 @@ function workflowHost(
     onEvent,
   };
   const workflow: CodemodeWorkflowHost = {
-    async do(parentScope, name, _config, callback) {
-      const stepKey = parentScope ? `${parentScope.stepKey}>do:${name}` : `do:${name}`;
-      return await callback(transaction, {
-        stepKey,
-        parentStepKey: parentScope?.stepKey ?? null,
-        depth: parentScope ? parentScope.depth + 1 : 0,
-      });
+    async do(_name, _config, callback) {
+      return { type: "settled", ok: true, value: await callback(transaction), order: null };
     },
     async sleep() {
       throw new Error("Unexpected sleep");
@@ -126,6 +120,7 @@ const workflowBase = {
     timestamp: new Date("2026-09-29T00:00:00Z"),
     payload: {},
   },
+  settledOrders: [],
 };
 /** A workflow program is a module that exports its definition by default. */
 function workflow(run: string) {
@@ -622,28 +617,113 @@ test("unregistered tools cannot gain authority through remote property lookup", 
   ).toMatchObject({ status: "failed", error: { message: "Unknown tool: constructor" } });
   expect(host.writes).toEqual([]);
 });
-test("a workflow callback calls Node reentrantly and nested steps receive their host-owned scope", async () => {
-  const scopes: unknown[] = [];
+test("a step.do callback that calls another step fails without retries", async () => {
+  let callbackError: unknown;
   const source = workflowHost();
   const host = providerHost(
     workflowHost({
-      async do(parentScope, name, config, callback) {
-        scopes.push(parentScope);
-        return await source.do(parentScope, name, config, callback);
+      async do(name, config, callback) {
+        try {
+          return await source.do(name, config, callback);
+        } catch (error) {
+          callbackError = error;
+          throw error;
+        }
       },
     }),
   );
-  const completion = await execute(
+  await execute(
     {
       ...workflow(
-        'async (_event, step) => await step.do("outer", async () => await step.do("inner", async () => await store.write("nested")))',
+        'async (_event, step) => await step.do("outer", async () => await step.do("inner", async () => "inner"))',
       ),
     },
     host,
   );
-  expect(completion).toMatchObject({ status: "completed", value: "nested" });
-  expect(host.writes).toEqual(["nested"]);
-  expect(scopes).toEqual([null, { stepKey: "do:outer", parentStepKey: null, depth: 0 }]);
+  expect(callbackError).toBeInstanceOf(NonRetryableError);
+  expect(callbackError).toMatchObject({
+    message: expect.stringContaining(
+      'WORKFLOW_STEP_NESTED_IN_DO: step "inner" was called inside step "outer"',
+    ),
+  });
+});
+test("an onConsume callback that calls another step fails", async () => {
+  const steps: string[] = [];
+  const source = workflowHost();
+  let consumeError: unknown;
+  const host = providerHost(
+    workflowHost({
+      async do(name, config, callback) {
+        steps.push(name);
+        return await source.do(name, config, callback);
+      },
+      async waitForEvent(_name, options) {
+        const event = { type: options.type, payload: {}, timestamp: new Date() };
+        try {
+          await options.onConsume?.({} as CodemodeWorkflowTransactionHost, event);
+        } catch (error) {
+          consumeError = error;
+        }
+        return { type: "settled", ok: true, value: event, order: null };
+      },
+    }),
+  );
+  await execute(
+    workflow(`async (_event, step) => await step.waitForEvent("ready", {
+    type: "ready",
+    onConsume: async () => { await step.do("child", () => "child"); },
+  })`),
+    host,
+  );
+  expect(steps).toEqual([]);
+  expect(consumeError).toBeInstanceOf(NonRetryableError);
+  expect(consumeError).toMatchObject({
+    message: expect.stringContaining(
+      'WORKFLOW_STEP_NESTED_IN_DO: step "child" was called inside step "ready"',
+    ),
+  });
+});
+test("a tx.onEvent handler that calls another step fails", async () => {
+  const steps: string[] = [];
+  const listeners = new Set<Parameters<CodemodeWorkflowTransactionHost["onEvent"]>[1]>();
+  const source = workflowHost({}, [], (_type, callback) => {
+    listeners.add(callback);
+    return () => {
+      listeners.delete(callback);
+    };
+  });
+  const host = providerHost(
+    workflowHost({
+      async do(name, config, callback) {
+        steps.push(name);
+        return await source.do(name, config, callback);
+      },
+    }),
+  );
+  const execution = execute(
+    workflow(`async (_event, step) => await step.do("listen", async (tx) => await new Promise((resolve) => {
+    tx.onEvent("ready", async (event) => {
+      try { await step.do("child", () => "child"); }
+      catch (error) { resolve(error.message); }
+    });
+  }))`),
+    host,
+  );
+  await expect.poll(() => listeners.size).toBe(1);
+  await [...listeners][0]({
+    id: "ready-1",
+    type: "ready",
+    timestamp: new Date(),
+    payload: {},
+    consume() {},
+  });
+  expect(await execution).toMatchObject({
+    status: "completed",
+    value: expect.stringContaining(
+      'WORKFLOW_STEP_NESTED_IN_DO: step "child" was called inside step "listen"',
+    ),
+  });
+  expect(steps).toEqual(["listen"]);
 });
 test("a workflow module statically imports a relative source module that reaches providers through globals", async () => {
   const host = providerHost(workflowHost());
@@ -678,16 +758,12 @@ test.each(["logs", "suspensionKey", "RpcTarget"])(
     });
   },
 );
-test("sleepUntil carries a Date to Node and propagates typed suspension", async () => {
+test("sleepUntil carries a Date to Node, and a parked step suspends the activation", async () => {
   const host = providerHost(
     workflowHost({
-      async sleepUntil(_scope, _name, timestamp) {
+      async sleepUntil(_name, timestamp) {
         expect(timestamp).toEqual(workflowBase.event.timestamp);
-        throw new RemoteWorkflowSuspendedError({
-          type: "sleep",
-          stepKey: "sleep:wait",
-          runAt: timestamp as Date,
-        });
+        return { type: "parked" };
       },
     }),
   );
@@ -702,7 +778,6 @@ test("sleepUntil carries a Date to Node and propagates typed suspension", async 
     ),
   ).toMatchObject({
     status: "suspended",
-    reason: { type: "sleep", stepKey: "sleep:wait", runAt: workflowBase.event.timestamp },
     logs: [{ channel: "log", text: "before sleep" }],
   });
 });
@@ -778,9 +853,9 @@ test("permanent callback errors retain their runner failure class on Node", asyn
   const source = workflowHost();
   const host = providerHost(
     workflowHost({
-      async do(scope, name, config, callback) {
+      async do(name, config, callback) {
         try {
-          return await source.do(scope, name, config, callback);
+          return await source.do(name, config, callback);
         } catch (error) {
           callbackError = error;
           throw error;
@@ -819,17 +894,118 @@ test("guests can catch the domain class of host-issued event timeouts", async ()
   ).toMatchObject({ status: "completed", value: "WaitForEventTimeoutError" });
 });
 
-test("guest-forged suspension cannot schedule work without a Node host decision", async () => {
-  await expect(
-    execute(
+test("a race hands back the step that settled first on the host, whenever its outcome arrives", async () => {
+  const host = providerHost(
+    workflowHost({
+      async do(name, _config, callback) {
+        const value = await callback({} as CodemodeWorkflowTransactionHost);
+        if (name === "first") {
+          // Settled first on the host, but its outcome reaches the guest last.
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return { type: "settled", ok: true, value, order: 0 };
+        }
+        return { type: "settled", ok: true, value, order: 1 };
+      },
+    }),
+  );
+  expect(
+    await execute(
+      workflow(
+        'async (_event, step) => await Promise.race([step.do("first", () => "first"), step.do("second", () => "second")])',
+      ),
+      host,
+    ),
+  ).toMatchObject({ status: "completed", value: "first" });
+});
+test("a replayed race hands back its steps in their recorded order", async () => {
+  const host = providerHost(
+    workflowHost({
+      async do(name) {
+        // Both replay; "second" settled first when the race originally ran.
+        return name === "second"
+          ? { type: "settled", ok: true, value: "second", order: 3 }
+          : { type: "settled", ok: true, value: "first", order: 4 };
+      },
+    }),
+  );
+  expect(
+    await execute(
       {
         ...workflow(
-          'async () => { throw { __fragnoRemoteWorkflowSuspended: true, reason: { type: "sleep", stepKey: "sleep:forged", runAt: new Date("2030-01-01") } }; }',
+          'async (_event, step) => await Promise.race([step.do("first", () => "first"), step.do("second", () => "second")])',
         ),
+        settledOrders: [3, 4],
       },
-      providerHost(),
+      host,
     ),
-  ).rejects.toThrow("CODEMODE_UNISSUED_SUSPENSION");
+  ).toMatchObject({ status: "completed", value: "second" });
+});
+test("steps beside a parked step finish before the activation suspends", async () => {
+  const host = providerHost(
+    workflowHost({
+      async sleep() {
+        return { type: "parked" };
+      },
+    }),
+  );
+  expect(
+    await execute(
+      workflow(`async (_event, step) => await Promise.all([
+    step.sleep("wait", "1 hour"),
+    step.do("beside", async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return await store.write("beside");
+    }),
+  ])`),
+      host,
+    ),
+  ).toMatchObject({ status: "suspended" });
+  expect(host.writes).toEqual(["beside"]);
+});
+test("a workflow tick the bridge ends at its deadline is interrupted, unlike a guest's own interruption error", async () => {
+  expect(
+    await execute(
+      {
+        ...workflow('async (_event, step) => await step.do("hang", () => new Promise(() => {}))'),
+        timeoutMs: 500,
+      },
+      providerHost(workflowHost()),
+    ),
+  ).toEqual({ status: "interrupted", cause: "CODEMODE_ACTIVATION_TIMED_OUT" });
+  expect(
+    await execute(
+      workflow(
+        'async () => { const error = new Error("CODEMODE_ACTIVATION_TIMED_OUT"); error.name = "CodemodeInterruptedError"; throw error; }',
+      ),
+      providerHost(workflowHost()),
+    ),
+  ).toMatchObject({ status: "failed" });
+});
+test("a guest cannot catch a step call its host broke off", async () => {
+  const host = providerHost(workflowHost());
+  const stepTarget = host.capabilities.stepTarget;
+  assert(stepTarget);
+  const brokenHost = {
+    ...host,
+    capabilities: {
+      ...host.capabilities,
+      stepTarget: {
+        ...stepTarget,
+        do: async () => {
+          throw new Error("HOST_LOST");
+        },
+      },
+    },
+  };
+  expect(
+    await execute(
+      workflow(`async (_event, step) => {
+    try { return await step.do("charge", () => "charged"); }
+    catch { return "not charged"; }
+  }`),
+      brokenHost,
+    ),
+  ).toMatchObject({ status: "failed", error: { message: "HOST_LOST" } });
 });
 
 test.each(["resolve", "reject"] as const)(
@@ -866,10 +1042,11 @@ test.each(["resolve", "reject"] as const)(
         ),
       );
       await expect.poll(() => compilationCount).toBe(CODEMODE_LIMITS.maxBridgeCompilations);
+      // A workflow tick the bridge ends at its deadline has no outcome; its runner decides.
       for (const completion of await activations) {
-        expect(completion).toMatchObject({
-          status: "failed",
-          error: { message: "CODEMODE_ACTIVATION_TIMED_OUT" },
+        expect(completion).toEqual({
+          status: "interrupted",
+          cause: "CODEMODE_ACTIVATION_TIMED_OUT",
         });
       }
       const replacement = {
@@ -929,11 +1106,6 @@ test.each(["completed", "failed", "suspended"] as const)(
       ...(await compile(input)),
       warnings: [warning],
     }));
-    const reason = {
-      type: "sleep" as const,
-      stepKey: "sleep:wait",
-      runAt: workflowBase.event.timestamp,
-    };
     try {
       const logSource = `console.log("🙂".repeat(${CODEMODE_LIMITS.maxLogBytes / 4}));`;
       const executeWarning = createCodemodeNodeExecutor(warningServer);
@@ -948,7 +1120,7 @@ test.each(["completed", "failed", "suspended"] as const)(
               providerHost(
                 workflowHost({
                   async sleepUntil() {
-                    throw new RemoteWorkflowSuspendedError(reason);
+                    return { type: "parked" };
                   },
                 }),
               ),

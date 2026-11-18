@@ -30,7 +30,7 @@ test("a service-binding caller runs source with its own providers", async () => 
   });
 });
 
-test("workflow step capabilities and guest callbacks survive the caller, bridge, and guest hops", async () => {
+test("workflow step capabilities, guest callbacks, and settle order survive the caller, bridge, and guest hops", async () => {
   const result = await server.executeThroughService({
     ...base,
     kind: "workflow",
@@ -40,6 +40,7 @@ test("workflow step capabilities and guest callbacks survive the caller, bridge,
       timestamp: "2026-01-01T00:00:00.000Z",
       payload: {},
     },
+    settledOrders: [],
     entry: "/workflow.js",
     modules: {
       "/workflow.js": `export default defineWorkflow({ name: "bridge-hops" }, async (_event, step) => {
@@ -55,14 +56,17 @@ test("workflow step capabilities and guest callbacks survive the caller, bridge,
         });
         return { emissions, payload };
       });
-      const nested = await step.do("outer", async () => await step.do("inner", async () => "nested"));
+      const raced = await Promise.race([
+        step.do("first", async () => "first"),
+        step.do("second", async () => "second"),
+      ]);
       const approval = await step.waitForEvent("approval", {
         type: "approved",
         onConsume: async (tx, event) => {
           await tx.emit({ consumed: event.type });
         },
       });
-      return { listened, nested, approved: approval.payload.approved };
+      return { listened, raced, approved: approval.payload.approved };
     });`,
     },
   });
@@ -71,14 +75,15 @@ test("workflow step capabilities and guest callbacks survive the caller, bridge,
       status: "completed",
       value: {
         listened: { emissions: [{ phase: "listening" }], payload: { value: 42 } },
-        nested: "nested",
+        // "first" settled first on the host, so it wins although its outcome arrived last.
+        raced: "first",
         approved: true,
       },
     }),
     writes: ["subscribed"],
     emitted: [{ phase: "listening" }, { consumed: "approved" }],
     consumed: ["ready-1"],
-    scopes: [null, null, { stepKey: "do:outer", parentStepKey: null, depth: 0 }],
+    steps: ["listen", "first", "second"],
     // The subscription ends with its step, and the host revokes it.
     listeners: 0,
   });

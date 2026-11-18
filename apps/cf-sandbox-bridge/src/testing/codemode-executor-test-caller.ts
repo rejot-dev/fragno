@@ -25,7 +25,8 @@ export default {
     const writes: unknown[] = [];
     const emitted: unknown[] = [];
     const consumed: string[] = [];
-    const scopes: unknown[] = [];
+    const steps: string[] = [];
+    let nextOrder = 0;
     const listeners = new Set<Parameters<CodemodeWorkflowTransactionHost["onEvent"]>[1]>();
     const transaction: CodemodeWorkflowTransactionHost = {
       emit(payload) {
@@ -47,14 +48,17 @@ export default {
       },
     };
     const workflow: CodemodeWorkflowHost = {
-      async do(parentScope, name, _config, callback) {
-        scopes.push(parentScope);
-        const stepKey = parentScope ? `${parentScope.stepKey}>do:${name}` : `do:${name}`;
-        return await callback(transaction, {
-          stepKey,
-          parentStepKey: parentScope?.stepKey ?? null,
-          depth: parentScope ? parentScope.depth + 1 : 0,
-        });
+      async do(name, _config, callback) {
+        steps.push(name);
+        const value = await callback(transaction);
+        const order = nextOrder++;
+        if (name === "first") {
+          // Settled first, but its outcome reaches the guest after a later step's.
+          await new Promise<void>((resolve) => {
+            setTimeout(resolve, 50);
+          });
+        }
+        return { type: "settled", ok: true, value, order };
       },
       async sleep() {
         throw new Error("Unexpected sleep");
@@ -62,7 +66,7 @@ export default {
       async sleepUntil() {
         throw new Error("Unexpected sleepUntil");
       },
-      async waitForEvent(_parentScope, name, options) {
+      async waitForEvent(name, options) {
         const event = {
           id: `${name}-1`,
           type: options.type,
@@ -70,7 +74,7 @@ export default {
           timestamp: new Date("2026-01-01T00:00:00.000Z"),
         };
         await options.onConsume?.(transaction, event);
-        return event;
+        return { type: "settled", ok: true, value: event, order: nextOrder++ };
       },
     };
     const host = createCodemodeHost(
@@ -110,7 +114,7 @@ export default {
       writes,
       emitted,
       consumed,
-      scopes,
+      steps,
       listeners: listeners.size,
     });
   },

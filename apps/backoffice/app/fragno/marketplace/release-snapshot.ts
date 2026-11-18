@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   marketplaceListingIdSchema,
   marketplaceListingMetadataSchema,
@@ -160,10 +162,13 @@ export async function verifyMarketplaceReleaseSnapshot(
   }
 }
 
-/** Commit the publisher-owned guard alongside authored files, including metadata-only replacements. */
-export async function marketplaceReleasePackageFiles(
+/**
+ * Commit the publisher-owned guard alongside authored files, including metadata-only replacements.
+ * Synchronous, because the publish workflow calls it outside a step.
+ */
+export function marketplaceReleasePackageFiles(
   release: MarketplaceReleaseSnapshot,
-): Promise<MarketplaceReleaseFile[]> {
+): MarketplaceReleaseFile[] {
   const content = new TextEncoder().encode(JSON.stringify({ snapshotId: release.snapshotId }));
   return [
     ...release.files,
@@ -171,7 +176,7 @@ export async function marketplaceReleasePackageFiles(
       relativePath: MARKETPLACE_RELEASE_GUARD_PATH,
       content: encodeMarketplaceReleaseBytes(content),
       sizeBytes: content.length,
-      checksum: await sha256Hex(content),
+      checksum: createHash("sha256").update(content).digest("hex"),
     },
   ].sort((left, right) =>
     left.relativePath < right.relativePath ? -1 : left.relativePath > right.relativePath ? 1 : 0,

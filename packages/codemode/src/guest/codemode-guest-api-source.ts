@@ -25,8 +25,8 @@ function __codemodeCallbackFailure(error) {
     metadata: validMetadata ? metadata : null,
   } };
 }
-function __throwCodemodeProviderError(encoded) {
-  if (!encoded || typeof encoded !== "object") throw new Error(String(encoded));
+function __codemodeProviderError(encoded) {
+  if (!encoded || typeof encoded !== "object") return new Error(String(encoded));
   const error = new Error(typeof encoded.message === "string" ? encoded.message : "Codemode provider failed.");
   if (typeof encoded.name === "string") error.name = encoded.name;
   if (encoded.details && typeof encoded.details === "object") {
@@ -34,7 +34,10 @@ function __throwCodemodeProviderError(encoded) {
     if (typeof encoded.details.code === "string") error.code = encoded.details.code;
   }
   if (encoded.metadata !== null) error.metadata = encoded.metadata;
-  throw error;
+  return error;
+}
+function __throwCodemodeProviderError(encoded) {
+  throw __codemodeProviderError(encoded);
 }
 function defineWorkflow(options, run) {
   if (!options || typeof options !== "object" || typeof options.name !== "string" || options.name.trim() === "") {

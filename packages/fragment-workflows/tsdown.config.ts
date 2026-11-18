@@ -14,6 +14,7 @@ export default defineConfig([
       "./src/pending-waits.ts",
       "./src/step-emission-control.ts",
       "./src/remote-workflow.ts",
+      "./src/workflow-tick.ts",
       "./src/instance-ref.ts",
       "./src/runner/step-live-pump.ts",
       "./src/scenario.ts",

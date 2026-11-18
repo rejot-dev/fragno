@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import {
   isMarketplaceLockPath,
   MARKETPLACE_LOCK_PATH,
@@ -93,7 +95,6 @@ type PreparedWorkspaceWrite = PreparedFileWrite & { precondition: UploadFileWrit
 
 const MARKETPLACE_PACKAGE_LIST_PAGE_SIZE = 500;
 const MARKETPLACE_PACKAGE_MAX_LIST_PAGES = 5;
-const TEXT_ENCODER = new TextEncoder();
 const TEXT_DECODER = new TextDecoder();
 const MARKETPLACE_EXTERNAL_STEP_RETRIES = {
   retries: { limit: 3, delay: "1 s", backoff: "exponential" },
@@ -581,7 +582,8 @@ export function defineMarketplacePackageInstallWorkflow(
       for (const planned of installationPlan.writes) {
         const { source } = planned;
         const targetPath = `${input.installationRoot}/${source.relativePath}`;
-        const stepKey = await sha256Hex(TEXT_ENCODER.encode(source.relativePath));
+        // Synchronous: workflow code may await only steps.
+        const stepKey = createHash("sha256").update(source.relativePath).digest("hex");
 
         const uploadSession = await step.do(
           `create marketplace package upload ${stepKey}`,

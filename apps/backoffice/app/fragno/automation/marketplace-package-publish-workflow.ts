@@ -151,7 +151,7 @@ export function defineMarketplacePackagePublishWorkflow(
         return result;
       }
       const filePrefix = `${release.version}/`;
-      const files = await marketplaceReleasePackageFiles(release);
+      const files = marketplaceReleasePackageFiles(release);
       await publishMarketplacePackageFiles({
         step,
         routes: createUploadRouteCaller(

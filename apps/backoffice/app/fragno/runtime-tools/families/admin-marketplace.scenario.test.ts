@@ -149,7 +149,7 @@ describe("static Marketplace publication scenarios", () => {
             );
             assert(entry);
             const release = await captureBundledMarketplaceRelease(entry);
-            const files = await marketplaceReleasePackageFiles(release);
+            const files = marketplaceReleasePackageFiles(release);
             const publisherExecution = createBackofficeSystemExecution({ kind: "system" });
             const scopes: BackofficeContextScope[] = [
               { kind: "org", orgId: "org-1", jurisdiction: null },

@@ -1,6 +1,7 @@
 import { assert, expect, test } from "vitest";
 
 import { getRemoteWorkflowStepHost } from "./remote-workflow";
+import { runRemotely } from "./remote-workflow-test-client";
 import { defineScenario, runScenario } from "./scenario";
 import { defineRemoteWorkflow, defineWorkflow } from "./workflow";
 
@@ -10,21 +11,25 @@ import { defineRemoteWorkflow, defineWorkflow } from "./workflow";
  */
 function defineFlakyWorkflow(interruptedTicks: number) {
   const progress = { ticks: 0, stepRuns: 0 };
-  const workflow = defineRemoteWorkflow({ name: "flaky" }, async (_event, remote) => {
-    await remote.do(null, "prepare", undefined, () => {
-      progress.stepRuns += 1;
-      return "prepared";
-    });
-    progress.ticks += 1;
-    if (progress.ticks <= interruptedTicks) {
-      try {
-        remote.interruptTick("EXECUTOR_UNREACHABLE");
-      } catch {
-        return "swallowed";
-      }
-    }
-    return "done";
-  });
+  const workflow = defineRemoteWorkflow(
+    { name: "flaky" },
+    async (_event, remote) =>
+      await runRemotely(remote, async (step) => {
+        await step.do("prepare", undefined, () => {
+          progress.stepRuns += 1;
+          return "prepared";
+        });
+        progress.ticks += 1;
+        if (progress.ticks <= interruptedTicks) {
+          try {
+            remote.interruptTick("EXECUTOR_UNREACHABLE");
+          } catch {
+            return "swallowed";
+          }
+        }
+        return "done";
+      }),
+  );
   return { progress, workflows: { FLAKY: workflow } };
 }
 
@@ -199,30 +204,34 @@ test("a workflow that is not remote cannot interrupt its tick", async () => {
 
 test("an interruption inside a step discards the attempt and stops further steps", async () => {
   const progress = { attempts: 0, afterRuns: 0 };
-  const workflow = defineRemoteWorkflow({ name: "in-step" }, async (_event, remote) => {
-    const value = await remote
-      .do(null, "work", { retries: { limit: 1, delay: "1 second" } }, () => {
-        progress.attempts += 1;
-        if (progress.attempts === 1) {
-          remote.interruptTick("EXECUTOR_UNREACHABLE");
-        }
-        if (progress.attempts === 2) {
-          throw new Error("flaky");
-        }
-        return "worked";
-      })
-      .catch((error: unknown) => {
-        if (error instanceof Error && error.name === "WorkflowTickInterrupted") {
-          return "swallowed";
-        }
-        throw error;
-      });
-    await remote.do(null, "after", undefined, () => {
-      progress.afterRuns += 1;
-      return null;
-    });
-    return value;
-  });
+  const workflow = defineRemoteWorkflow(
+    { name: "in-step" },
+    async (_event, remote) =>
+      await runRemotely(remote, async (step) => {
+        const value = await step
+          .do("work", { retries: { limit: 1, delay: "1 second" } }, () => {
+            progress.attempts += 1;
+            if (progress.attempts === 1) {
+              remote.interruptTick("EXECUTOR_UNREACHABLE");
+            }
+            if (progress.attempts === 2) {
+              throw new Error("flaky");
+            }
+            return "worked";
+          })
+          .catch((error: unknown) => {
+            if (error instanceof Error && error.name === "WorkflowTickInterrupted") {
+              return "swallowed";
+            }
+            throw error;
+          });
+        await step.do("after", undefined, () => {
+          progress.afterRuns += 1;
+          return null;
+        });
+        return value;
+      }),
+  );
   await runScenario(
     defineScenario({
       name: "an interrupted step attempt leaves no trace",
@@ -255,18 +264,22 @@ test("an interruption inside a step discards the attempt and stops further steps
 
 test("an interruption while consuming an event leaves the event for the rerun", async () => {
   let consumptions = 0;
-  const workflow = defineRemoteWorkflow({ name: "approval" }, async (_event, remote) => {
-    const approval = await remote.waitForEvent<{ by: string }>(null, "approval", {
-      type: "approved",
-      onConsume: () => {
-        consumptions += 1;
-        if (consumptions === 1) {
-          remote.interruptTick("EXECUTOR_UNREACHABLE");
-        }
-      },
-    });
-    return approval.payload.by;
-  });
+  const workflow = defineRemoteWorkflow(
+    { name: "approval" },
+    async (_event, remote) =>
+      await runRemotely(remote, async (step) => {
+        const approval = await step.waitForEvent<{ by: string }>("approval", {
+          type: "approved",
+          onConsume: () => {
+            consumptions += 1;
+            if (consumptions === 1) {
+              remote.interruptTick("EXECUTOR_UNREACHABLE");
+            }
+          },
+        });
+        return approval.payload.by;
+      }),
+  );
   await runScenario(
     defineScenario({
       name: "an interrupted event consumption is retried",
@@ -303,14 +316,18 @@ test("an interruption while consuming an event leaves the event for the rerun", 
 
 test("a healthy tick resets the interruption count that a stale retry would carry", async () => {
   const executor = { down: true, ticks: 0 };
-  const workflow = defineRemoteWorkflow({ name: "recovering" }, async (_event, remote) => {
-    executor.ticks += 1;
-    if (executor.down) {
-      remote.interruptTick("EXECUTOR_UNREACHABLE");
-    }
-    await remote.waitForEvent(null, "ready", { type: "ready" });
-    return await remote.waitForEvent(null, "done", { type: "done" });
-  });
+  const workflow = defineRemoteWorkflow(
+    { name: "recovering" },
+    async (_event, remote) =>
+      await runRemotely(remote, async (step) => {
+        executor.ticks += 1;
+        if (executor.down) {
+          remote.interruptTick("EXECUTOR_UNREACHABLE");
+        }
+        await step.waitForEvent("ready", { type: "ready" });
+        return await step.waitForEvent("done", { type: "done" });
+      }),
+  );
   await runScenario(
     defineScenario({
       name: "interruptions separated by a healthy tick are not consecutive",
@@ -357,16 +374,20 @@ test("a healthy tick resets the interruption count that a stale retry would carr
 
 test("an interrupted attempt's emissions are cleaned up like a failed attempt's", async () => {
   const attempts: { previousEmissions: unknown[] }[] = [];
-  const workflow = defineRemoteWorkflow({ name: "emitter" }, async (_event, remote) => {
-    return await remote.do(null, "work", undefined, async (tx) => {
-      attempts.push({ previousEmissions: await tx.previousEmissions() });
-      tx.emit({ attempt: attempts.length });
-      if (attempts.length === 1) {
-        remote.interruptTick("EXECUTOR_UNREACHABLE");
-      }
-      return "done";
-    });
-  });
+  const workflow = defineRemoteWorkflow(
+    { name: "emitter" },
+    async (_event, remote) =>
+      await runRemotely(remote, async (step) => {
+        return await step.do("work", undefined, async (tx) => {
+          attempts.push({ previousEmissions: await tx.previousEmissions() });
+          tx.emit({ attempt: attempts.length });
+          if (attempts.length === 1) {
+            remote.interruptTick("EXECUTOR_UNREACHABLE");
+          }
+          return "done";
+        });
+      }),
+  );
   await runScenario(
     defineScenario({
       name: "an interrupted attempt leaves no emissions behind",
@@ -398,6 +419,48 @@ test("an interrupted attempt's emissions are cleaned up like a failed attempt's"
             expect(status).toMatchObject({ status: "complete", output: "done" });
             // The rerun starts the step afresh, without the interrupted attempt's emissions.
             expect(attempts).toEqual([{ previousEmissions: [] }, { previousEmissions: [] }]);
+          },
+        }),
+      ],
+    }),
+  );
+});
+
+test("a step left waiting by an interrupted tick still resumes", async () => {
+  let ticks = 0;
+  const workflow = defineRemoteWorkflow(
+    { name: "sleeper" },
+    async (_event, remote) =>
+      await runRemotely(remote, async (step) => {
+        ticks += 1;
+        const interruptedTick = ticks === 1;
+        await Promise.all([
+          step.sleep("pause", "1 minute"),
+          (async () => {
+            if (interruptedTick) {
+              remote.interruptTick("EXECUTOR_UNREACHABLE");
+            }
+          })(),
+        ]);
+        return "woke";
+      }),
+  );
+  await runScenario(
+    defineScenario({
+      name: "a sleep first reached by an interrupted tick wakes on time",
+      workflows: { SLEEPER: workflow },
+      harness: { adapter: { type: "in-memory" }, autoTickHooks: true },
+      steps: ({ workflow, runner }) => [
+        workflow.create({ workflow: "SLEEPER", id: "sleeper-1", remoteWorkflowName: "sleeper" }),
+        runner.drainHooks(),
+        // The rerun finds the sleep already waiting, so only the interrupted tick can schedule it.
+        runner.advanceTimeAndDrainHooks({ advanceBy: "30 seconds" }),
+        runner.advanceTimeAndDrainHooks({ advanceBy: "1 minute" }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("SLEEPER", "sleeper-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({ status: "complete", output: "woke" });
+            assert.equal(ticks, 3);
           },
         }),
       ],

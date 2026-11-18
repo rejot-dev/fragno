@@ -11,8 +11,7 @@ description: >
 
 Fragno Workflows are database-backed, replayable programs. Every runner tick can invoke the workflow
 function again from the beginning; completed steps normally return persisted results instead of
-rerunning their callbacks. A full restart discards every checkpoint, and retrying a failed top-level
-step discards and reruns all nested checkpoints beneath that step.
+rerunning their callbacks. A full restart discards every checkpoint.
 
 ## Replay gate
 
@@ -33,8 +32,11 @@ A workflow change passes only when every applicable rule has been checked:
 - `event.payload` remains immutable; instance params stay the original creation input.
 - Step names and repeated-step order are deterministic. Names cannot contain `>`, `#`, or a null
   character.
-- `Promise.race` and `Promise.any` decisions are persisted by an enclosing step. Losing branches are
-  not cancelled and remain idempotent.
+- Workflow code awaits only steps; other I/O lives in a `step.do` callback, which calls no steps.
+  Awaiting anything else between steps fails the run with `WorkflowStalledError`.
+- `Promise.race` and `Promise.any` race steps directly in the workflow code; replay keeps the
+  winner. Losing branches are not cancelled and remain idempotent.
+- A `catch` around a step sees only how it finally ends; a waiting step's promise stays pending.
 - Instance IDs uniquely identify one invocation within a workflow name. Plain create with an
   existing ID returns that instance and ignores new params. `restartOrCreate` restarts it only when
   the explicit terminal-status precondition matches, while still preserving its original params.

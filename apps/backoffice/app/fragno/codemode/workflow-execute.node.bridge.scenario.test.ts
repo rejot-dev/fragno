@@ -45,7 +45,7 @@ test("Node checkpoints and replays workflow codemode across fresh Worker WebSock
             await context.current.store.set({ key: "checkpoint-count", value: String(count) });
             return count;
           });
-          const second = await step.do("second", async () => await step.do("first", async () => first + 1));
+          const second = await step.do("second", async () => first + 1);
           return await step.do("third", async () => second + 1);
         },
       );`,
@@ -209,7 +209,12 @@ test("interruption preserves host retry scheduling without falsely committing to
           },
         }),
         then.store.entry({ orgId: "org-1", key: "interrupted-effects", value: "1" }),
+        // The timed-out attempt follows the step's own retry delay.
         when.time.advance("2 seconds"),
+        then.store.entry({ orgId: "org-1", key: "interrupted-effects", value: "2" }),
+        // The second timeout exhausts the step; the interrupted tick runs again, and the workflow
+        // code sees the step's failure.
+        when.time.advance("1 minute"),
         then.workflow.instance({
           remoteWorkflowName: "remote-interrupted",
           instanceId: "remote-interrupted-1",

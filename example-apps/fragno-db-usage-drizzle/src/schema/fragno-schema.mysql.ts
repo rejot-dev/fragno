@@ -550,7 +550,8 @@ export const workflow_step_workflows = mysqlTable("workflow_step_workflows", {
   createdAt: datetime("createdAt").notNull().default(sql`(now())`),
   updatedAt: datetime("updatedAt").notNull().default(sql`(now())`),
   _internalId: bigint("_internalId", { mode: "number" }).primaryKey().autoincrement().notNull(),
-  _version: int("_version").notNull().default(0)
+  _version: int("_version").notNull().default(0),
+  settledOrder: int("settledOrder")
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -658,5 +659,5 @@ export const workflows_schema = {
   workflow_step_emission_workflowsRelations: workflow_step_emission_workflowsRelations,
   workflow_step_emission: workflow_step_emission_workflows,
   workflow_step_emissionRelations: workflow_step_emission_workflowsRelations,
-  schemaVersion: 8
+  schemaVersion: 9
 }

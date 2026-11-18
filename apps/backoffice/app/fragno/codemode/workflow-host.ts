@@ -1,13 +1,8 @@
 import {
-  createRemoteWorkflowSuspension,
-  isRemoteWorkflowSuspension,
-  RemoteWorkflowSuspendedError,
   resolveRemoteWorkflowHookIntent,
   type RemoteWorkflowAllowedHook,
   type RemoteWorkflowHookIntent,
   type RemoteWorkflowStepHost,
-  type RemoteWorkflowStepScope,
-  type WorkflowStepIdentity,
 } from "@fragno-dev/workflows/remote-workflow";
 import {
   NonRetryableError,
@@ -23,29 +18,6 @@ import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 const unsupportedRemoteTxFeature = (feature: string): never => {
   throw new Error(`REMOTE_WORKFLOW_TX_${feature}_UNSUPPORTED`);
 };
-
-const isWorkflowSuspensionError = (
-  error: unknown,
-): error is { reason: ConstructorParameters<typeof RemoteWorkflowSuspendedError>[0] } => {
-  if (!error || typeof error !== "object" || !("reason" in error)) {
-    return false;
-  }
-
-  const errorName = (error as { name?: unknown }).name;
-  return errorName === "RunnerStepSuspended" || errorName === "RemoteWorkflowSuspendedError";
-};
-
-function returnRemoteWorkflowSuspensionOrThrow(
-  error: unknown,
-): never | ReturnType<typeof createRemoteWorkflowSuspension> {
-  if (isRemoteWorkflowSuspension(error)) {
-    return error;
-  }
-  if (isWorkflowSuspensionError(error)) {
-    return createRemoteWorkflowSuspension(error.reason);
-  }
-  throw error;
-}
 
 class BackofficeWorkflowTransactionHost {
   readonly #tx: WorkflowStepTx | WorkflowStepConsumeTx;
@@ -124,71 +96,33 @@ export class BackofficeWorkflowStepHost {
   }
 
   async do<T>(
-    parentScope: RemoteWorkflowStepScope,
     name: string,
     config: WorkflowStepConfig | undefined,
-    callback: (
-      tx: BackofficeWorkflowTransactionHost,
-      scope: WorkflowStepIdentity,
-    ) => Promise<T> | T,
-  ): Promise<T> {
-    try {
-      return await this.#host.do(parentScope, name, config, async (tx, scope) => {
-        try {
-          const result = await callback(
-            new BackofficeWorkflowTransactionHost(tx, this.#allowedHooks),
-            scope,
-          );
-          if (isRemoteWorkflowSuspension(result)) {
-            throw new RemoteWorkflowSuspendedError(result.reason);
-          }
-          // An invalid interface can never collect the input a later waitForEvent awaits, and the
-          // same deterministic callback would rebuild it on retry.
-          const generatedUi = parseBackofficeUiResult(result);
-          if (generatedUi.kind === "invalid") {
-            throw new NonRetryableError(
-              `Step "${name}" returned an invalid generated UI: ${generatedUi.message}`,
-            );
-          }
-          return result;
-        } catch (error) {
-          if (isRemoteWorkflowSuspension(error)) {
-            throw new RemoteWorkflowSuspendedError(error.reason);
-          }
-          throw error;
-        }
-      });
-    } catch (error) {
-      return returnRemoteWorkflowSuspensionOrThrow(error) as T;
-    }
+    callback: (tx: BackofficeWorkflowTransactionHost) => Promise<T> | T,
+  ) {
+    return await this.#host.do(name, config, async (tx) => {
+      const result = await callback(new BackofficeWorkflowTransactionHost(tx, this.#allowedHooks));
+      // An invalid interface can never collect the input a later waitForEvent awaits, and the same
+      // deterministic callback would rebuild it on retry.
+      const generatedUi = parseBackofficeUiResult(result);
+      if (generatedUi.kind === "invalid") {
+        throw new NonRetryableError(
+          `Step "${name}" returned an invalid generated UI: ${generatedUi.message}`,
+        );
+      }
+      return result;
+    });
   }
 
-  async sleep(
-    parentScope: RemoteWorkflowStepScope,
-    name: string,
-    duration: WorkflowDuration,
-  ): Promise<void | ReturnType<typeof createRemoteWorkflowSuspension>> {
-    try {
-      await this.#host.sleep(parentScope, name, duration);
-    } catch (error) {
-      return returnRemoteWorkflowSuspensionOrThrow(error);
-    }
+  async sleep(name: string, duration: WorkflowDuration) {
+    return await this.#host.sleep(name, duration);
   }
 
-  async sleepUntil(
-    parentScope: RemoteWorkflowStepScope,
-    name: string,
-    timestamp: Date | number,
-  ): Promise<void | ReturnType<typeof createRemoteWorkflowSuspension>> {
-    try {
-      await this.#host.sleepUntil(parentScope, name, timestamp);
-    } catch (error) {
-      return returnRemoteWorkflowSuspensionOrThrow(error);
-    }
+  async sleepUntil(name: string, timestamp: Date | number) {
+    return await this.#host.sleepUntil(name, timestamp);
   }
 
   async waitForEvent<T = unknown>(
-    parentScope: RemoteWorkflowStepScope,
     name: string,
     options: {
       type: string;
@@ -198,26 +132,18 @@ export class BackofficeWorkflowStepHost {
         event: { type: string; payload: Readonly<T>; timestamp: Date },
       ) => Promise<void> | void;
     },
-  ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> {
-    try {
-      return await this.#host.waitForEvent<T>(parentScope, name, {
-        type: options.type,
-        timeout: options.timeout,
-        onConsume: options.onConsume
-          ? async (tx, event) => {
-              await options.onConsume?.(
-                new BackofficeWorkflowTransactionHost(tx, this.#allowedHooks),
-                event,
-              );
-            }
-          : undefined,
-      });
-    } catch (error) {
-      return returnRemoteWorkflowSuspensionOrThrow(error) as unknown as {
-        type: string;
-        payload: Readonly<T>;
-        timestamp: Date;
-      };
-    }
+  ) {
+    return await this.#host.waitForEvent<T>(name, {
+      type: options.type,
+      timeout: options.timeout,
+      onConsume: options.onConsume
+        ? async (tx, event) => {
+            await options.onConsume?.(
+              new BackofficeWorkflowTransactionHost(tx, this.#allowedHooks),
+              event,
+            );
+          }
+        : undefined,
+    });
   }
 }

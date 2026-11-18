@@ -110,10 +110,6 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
         ...event,
         payload: params,
       };
-      // AgentHarness options are runtime dependencies, so resolve them outside durable model steps
-      // and reconstruct them whenever the workflow replays.
-      const harnessOptions =
-        typeof config.options === "function" ? await config.options(initialEvent) : config.options;
       let sessionState = createPiHarnessSessionState({
         metadata: {
           id: event.instanceId,
@@ -145,6 +141,13 @@ export const createInteractiveChatWorkflow = (config: CreateInteractiveChatWorkf
           operationId: `${workflowName}:${event.instanceId}:command:${command.commandId}`,
         };
         const committedResult = await step.do(invocation.stepName, async (tx) => {
+          // AgentHarness options are runtime dependencies that a step result cannot hold, so each
+          // command attempt resolves them afresh. Inside the step, because resolving may do I/O
+          // and workflow code may await only steps.
+          const harnessOptions =
+            typeof config.options === "function"
+              ? await config.options(initialEvent)
+              : config.options;
           const restored = restoreWorkflowBackedSession({
             operationId: invocation.operationId,
             state: sessionState,

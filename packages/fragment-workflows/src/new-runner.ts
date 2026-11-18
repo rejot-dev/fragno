@@ -15,7 +15,7 @@ import {
   type RunnerTaskOutcome,
 } from "./runner/plan-writes";
 import { createRunnerState, type RunnerState } from "./runner/state";
-import { isRunnerStepSuspended, RunnerStep } from "./runner/step";
+import { RunnerStep, type RunnerTickEnd } from "./runner/step";
 import type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 import type {
   RunnerTask,
@@ -36,11 +36,6 @@ import {
   WORKFLOW_SYSTEM_PAUSE_EVENT_TYPE,
 } from "./system-events";
 import type { WorkflowEnqueuedHookPayload, WorkflowsRegistry } from "./workflow";
-
-function resolveWorkflowsNamespace(uow: IUnitOfWork): string {
-  const ns = uow.forSchema(workflowsSchema).namespace;
-  return ns ?? workflowsSchema.name;
-}
 
 const isTerminalRunnerStatus = (status: string) =>
   status === "complete" || status === "terminated" || status === "errored";
@@ -244,81 +239,6 @@ function planPauseOrTerminal(
   return null;
 }
 
-function planEarlyReschedule(
-  selectionResult: RunnerTickSelectionResult,
-  payload: WorkflowEnqueuedHookPayload & { timestamp: Date },
-): RunnerTickPlan | null {
-  if (payload.reason === "wake") {
-    let wakeAt: Date | null = null;
-    for (const step of selectionResult.steps) {
-      if (step.status !== "waiting" || !step.wakeAt) {
-        continue;
-      }
-      if (!wakeAt || step.wakeAt < wakeAt) {
-        wakeAt = step.wakeAt;
-      }
-    }
-
-    if (wakeAt && payload.timestamp < wakeAt) {
-      return {
-        processed: 1,
-        operations: [
-          (uow) => {
-            const ns = resolveWorkflowsNamespace(uow);
-            uow.triggerHook(
-              ns,
-              "onWorkflowEnqueued",
-              {
-                workflowName: selectionResult.instance.workflowName,
-                instanceId: selectionResult.instance.instanceId,
-                instanceRef: String(selectionResult.instance.id),
-                reason: "wake",
-              },
-              { processAt: wakeAt },
-            );
-          },
-        ],
-      };
-    }
-  }
-
-  if (payload.reason === "retry") {
-    let nextRetryAt: Date | null = null;
-    for (const step of selectionResult.steps) {
-      if (step.status !== "waiting" || !step.nextRetryAt) {
-        continue;
-      }
-      if (!nextRetryAt || step.nextRetryAt < nextRetryAt) {
-        nextRetryAt = step.nextRetryAt;
-      }
-    }
-
-    if (nextRetryAt && payload.timestamp < nextRetryAt) {
-      return {
-        processed: 1,
-        operations: [
-          (uow) => {
-            const ns = resolveWorkflowsNamespace(uow);
-            uow.triggerHook(
-              ns,
-              "onWorkflowEnqueued",
-              {
-                workflowName: selectionResult.instance.workflowName,
-                instanceId: selectionResult.instance.instanceId,
-                instanceRef: String(selectionResult.instance.id),
-                reason: "retry",
-              },
-              { processAt: nextRetryAt },
-            );
-          },
-        ],
-      };
-    }
-  }
-
-  return null;
-}
-
 function addStepCommittedEmissions(uow: IUnitOfWork, state: RunnerState, executionId: string) {
   const mutatedStepKeys = new Set<string>([
     ...state.mutations.stepCreates.keys(),
@@ -386,6 +306,39 @@ function buildWorkflowEvent(instance: WorkflowInstanceRecord) {
   };
 }
 
+class WorkflowStalledError extends Error {
+  constructor() {
+    super(
+      "WORKFLOW_STALLED: the workflow stopped without settling or waiting on a step. Workflow code may await only steps; do other asynchronous work inside a step.do callback.",
+    );
+    this.name = "WorkflowStalledError";
+  }
+}
+
+async function outcomeOf(
+  workflowName: string,
+  outputSchema: StandardSchemaV1 | undefined,
+  end: RunnerTickEnd,
+): Promise<RunnerTaskOutcome> {
+  if (end.type === "returned") {
+    try {
+      return {
+        type: "completed",
+        output: await validateWorkflowOutput(workflowName, outputSchema, end.value),
+      };
+    } catch (error) {
+      return { type: "errored", error: toError(error) };
+    }
+  }
+  if (end.type === "threw") {
+    return { type: "errored", error: toError(end.error) };
+  }
+  if (end.type === "parked") {
+    return { type: "suspended", checkpoint: end.checkpoint };
+  }
+  return { type: "errored", error: new WorkflowStalledError() };
+}
+
 /**
  * Execute workflow code for a single tick using RunnerStep and return an outcome.
  * Bigger picture: converts user code into buffered mutations plus a scheduling decision.
@@ -415,22 +368,14 @@ async function runTask(
     stepEmissions: ctx.stepEmissions,
     workflowsByName: ctx.workflowsByName,
     checkpoint: workflow.checkpoint,
+    execution: workflow.remote ? "remote" : "local",
   });
   const initialEvent = buildWorkflowEvent(instance);
 
-  let outcome: RunnerTaskOutcome;
-  try {
-    const rawOutput = await workflow.run(initialEvent, step);
-    const output = await validateWorkflowOutput(instance.workflowName, outputSchema, rawOutput);
-    outcome = { type: "completed", output };
-  } catch (err) {
-    outcome = isRunnerStepSuspended(err)
-      ? { type: "suspended", reason: err.reason }
-      : { type: "errored", error: toError(err) };
-  }
-  // Steps started beside a branch that suspended or failed still run; their outcomes belong to
-  // this tick.
-  await step.settle();
+  const end = await step.runTick(
+    async (): Promise<unknown> => await workflow.run(initialEvent, step),
+  );
+  let outcome = await outcomeOf(instance.workflowName, outputSchema, end);
   // Outranks whatever the workflow returned or threw: the host saw that the tick did not run.
   if (workflow.remote && step.tickInterruption) {
     outcome = { type: "interrupted", error: step.tickInterruption, jitter: ctx.random() };
@@ -469,13 +414,9 @@ async function buildTickPlan(
     return pausePlan;
   }
 
-  // Phase 2: early wake/retry hooks reschedule to the persisted deadline.
-  const earlyPlan = planEarlyReschedule(selectionResult, payload);
-  if (earlyPlan) {
-    return earlyPlan;
-  }
-
-  // Phase 3: execute user workflow code and apply buffered mutations/outcome.
+  // Phase 2: execute user workflow code and apply buffered mutations/outcome. A wake or retry tick
+  // that arrives early resumes only the steps due by its time, so it runs too: a checkpoint's
+  // continuation must not wait for an unrelated sleep's deadline.
   return await planRunTask(selectionResult, ctx, payload);
 }
 
