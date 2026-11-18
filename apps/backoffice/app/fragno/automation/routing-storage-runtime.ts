@@ -12,6 +12,7 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import type { AutomationInternalHooks } from "./internal-hooks";
+import { rewireProject } from "./project-wiring";
 import { legacyMarketplaceRouteListingId, normalizeAutomationRoute } from "./route-records";
 import {
   AUTOMATION_SCHEDULE_EVENT_TYPE,
@@ -156,6 +157,7 @@ export const createAutomationRouteServices = (
               );
             }
           }
+          rewireProject(uow, ownerScope);
 
           return {
             ...route,
@@ -341,6 +343,7 @@ export const createAutomationRouteServices = (
               { processAt: uow.now() },
             );
           }
+          rewireProject(uow, ownerScope);
 
           return {
             ...merged,
@@ -389,6 +392,7 @@ export const createAutomationRouteServices = (
           }
           if (route) {
             uow.delete("automation_route", route.id, (b) => b.check());
+            rewireProject(uow, ownerScope);
           }
           return true as const;
         })

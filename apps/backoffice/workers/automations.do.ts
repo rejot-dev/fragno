@@ -29,6 +29,7 @@ import type {
   ListExternalIdentityBindingsInput,
 } from "@/fragno/automation/external-identities";
 import type { PackageInstallationInput } from "@/fragno/automation/package-installations";
+import type { ProjectWiringTelling } from "@/fragno/automation/project-wiring";
 import type { DurableHookQueueOptions } from "@/fragno/durable-hooks";
 import type { GitHubInstallationMoveParams } from "@/fragno/github-installation-move-workflow";
 import type { MarketplacePackagePublishRequest } from "@/fragno/marketplace/package-publishing";
@@ -70,6 +71,10 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
 
   async seedStarterAutomationRoutes() {
     return await this.#object.seedStarterAutomationRoutes();
+  }
+
+  async recordProjectWiring(telling: ProjectWiringTelling) {
+    await this.#object.recordProjectWiring(telling);
   }
 
   async startUserOnboarding(input: { userId: string }) {

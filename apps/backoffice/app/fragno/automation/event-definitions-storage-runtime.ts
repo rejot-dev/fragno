@@ -6,6 +6,7 @@ import {
   type AutomationEventDefinitionCreateInput,
   type AutomationEventDefinitionUpdateInput,
 } from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
@@ -17,10 +18,12 @@ import {
   buildAutomationEventDefinitionId,
 } from "./event-definitions";
 import { assertEventKeyPathFitsExample } from "./event-state";
+import type { AutomationInternalHooks } from "./internal-hooks";
+import { rewireProject } from "./project-wiring";
 import { automationFragmentSchema } from "./schema";
 import { assertStewardWrite, MEMBERS_STEWARD, stewardsEqual } from "./stewards";
 
-type AutomationEventDefinitionServiceContext = DatabaseServiceContext<Record<string, never>>;
+type AutomationEventDefinitionServiceContext = DatabaseServiceContext<AutomationInternalHooks>;
 
 type AutomationEventDefinitionRow = {
   id: { valueOf(): string };
@@ -89,6 +92,7 @@ export const createAutomationEventDefinitionServices = (
   defineService: <TService>(
     service: TService & ThisType<AutomationEventDefinitionServiceContext>,
   ) => TService,
+  { ownerScope }: { ownerScope: BackofficeContextScope },
 ) =>
   defineService({
     listEventDefinitions() {
@@ -152,6 +156,7 @@ export const createAutomationEventDefinitionServices = (
             createdAt: now,
             updatedAt: now,
           });
+          rewireProject(uow, ownerScope);
           return { id, ...values, capabilityId: "dynamic" };
         })
         .build();
@@ -231,6 +236,7 @@ export const createAutomationEventDefinitionServices = (
               })
               .check(),
           );
+          rewireProject(uow, ownerScope);
           // The update time is only known once the write commits.
           const { updatedAt: _previousUpdate, ...updated } = next;
           return { ...updated, steward };
@@ -261,6 +267,7 @@ export const createAutomationEventDefinitionServices = (
             adoptsIdentical: true,
           });
           uow.delete("automation_event_definition", existing.id, (b) => b.check());
+          rewireProject(uow, ownerScope);
           return true;
         })
         .build();

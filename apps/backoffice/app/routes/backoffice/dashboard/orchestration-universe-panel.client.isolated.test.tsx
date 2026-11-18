@@ -9,14 +9,14 @@ import { cleanup, render, screen } from "@testing-library/react";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 
-const { graphReads, deliveryReads, connectionReads, noConnections } = vi.hoisted(() => ({
+const { graphReads, deliveryReads, connectionReads, nothing } = vi.hoisted(() => ({
   // What each replica's graph, delivery, and connection reads return, by the replica's name.
   graphReads: new Map<string, unknown>(),
   deliveryReads: new Map<string, unknown>(),
   connectionReads: new Map<string, unknown>(),
-  // There are no connections. A read returns the same data until it changes, as a replica view
-  // does.
-  noConnections: { status: "ready", data: [] },
+  // There are no connections and no project wirings. A read returns the same data until it
+  // changes, as a replica view does.
+  nothing: { status: "ready", data: [] },
 }));
 
 // A replica here is only its name, which picks the reads above.
@@ -28,9 +28,11 @@ vi.mock("@/fragno/automation/lofi/replica", () => ({
     error: null,
   }),
   useAutomationRead: (replica: string | null, read: string) =>
-    read === "integrationConnections"
-      ? ((replica && connectionReads.get(replica)) ?? noConnections)
-      : ((replica && deliveryReads.get(replica)) ?? { status: "loading" }),
+    read === "projectWirings"
+      ? nothing
+      : read === "integrationConnections"
+        ? ((replica && connectionReads.get(replica)) ?? nothing)
+        : ((replica && deliveryReads.get(replica)) ?? { status: "loading" }),
 }));
 vi.mock("./scope-orchestration-graph", () => ({
   useScopeOrchestrationGraph: (replica: string | null) =>
@@ -54,7 +56,7 @@ const selectedScope = {
   kind: "org",
   organization,
   label: "Ada Labs",
-} as unknown as BackofficeScopeSelection;
+} as unknown as Extract<BackofficeScopeSelection, { kind: "org" }>;
 
 function graph(scopeLabel: string): OrchestrationGraph {
   return { scopeLabel, inlets: [], sources: [], events: [], routes: [], targets: [] };
@@ -70,16 +72,13 @@ function readyGraph(scopeLabel: string, recordErrors: string[] = []) {
   };
 }
 
-const books = {
-  label: "Books",
+// The person looking, whose scope is read from its own replica.
+const ada = {
+  label: "Ada",
   source: {
-    replicaName: "books",
-    resolvedScope: {
-      kind: "project",
-      owner: { kind: "org", organization },
-      project: { id: "books" },
-    },
-    adapterIdentity: "books",
+    replicaName: "ada",
+    resolvedScope: { kind: "user", userId: "user-1", jurisdiction: null },
+    adapterIdentity: "ada",
   },
 };
 
@@ -88,7 +87,12 @@ function renderUniverse() {
     <OrganizationUniverse
       replica={"organization" as never}
       selectedScope={selectedScope}
-      scopes={{ projects: [books] as never, viewer: null, memberNames: {}, problems: [] }}
+      scopes={{
+        projects: [{ id: "books", label: "Books" }],
+        viewer: ada as never,
+        memberNames: {},
+        problems: [],
+      }}
     />,
   );
 }
@@ -115,31 +119,32 @@ test("names why the universe could not be read when the organization's deliverie
 test("warns that planets drawn without some of their records may be incomplete", () => {
   const unread = ["Event sources", "event definitions", "running workflows"];
   graphReads.set("organization", readyGraph("Ada Labs", unread));
-  graphReads.set("books", readyGraph("Books", unread));
+  graphReads.set("ada", readyGraph("Ada", unread));
   deliveryReads.set("organization", { status: "ready", data: [] });
-  deliveryReads.set("books", { status: "ready", data: [] });
+  deliveryReads.set("ada", { status: "ready", data: [] });
 
   renderUniverse();
 
   screen.getByText(
-    "Event sources, event definitions, running workflows of Ada Labs and Books could not be " +
+    "Event sources, event definitions, running workflows of Ada Labs and Ada could not be " +
       "read, so the universe may be incomplete.",
   );
-  // What was read is still drawn.
+  // What was read is still drawn, and Books, which has not told how it is wired, by its name.
+  screen.getByText("Ada Labs");
   screen.getByText("Books");
 });
 
 test("draws a planet whose connections could not be read, and says so", () => {
   graphReads.set("organization", readyGraph("Ada Labs"));
-  graphReads.set("books", readyGraph("Books"));
+  graphReads.set("ada", readyGraph("Ada"));
   deliveryReads.set("organization", { status: "ready", data: [] });
-  deliveryReads.set("books", { status: "ready", data: [] });
-  connectionReads.set("books", { status: "error", message: "The replica is corrupt." });
+  deliveryReads.set("ada", { status: "ready", data: [] });
+  connectionReads.set("organization", { status: "error", message: "The replica is corrupt." });
 
   renderUniverse();
 
   screen.getByText(
-    "integration connections of Books could not be read, so the universe may be incomplete.",
+    "integration connections of Ada Labs could not be read, so the universe may be incomplete.",
   );
-  screen.getByText("Books");
+  screen.getByText("Ada Labs");
 });

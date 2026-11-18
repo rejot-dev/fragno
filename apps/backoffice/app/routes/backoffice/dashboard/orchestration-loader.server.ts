@@ -24,9 +24,9 @@ const EMPTY_WORKFLOW_SOURCE = { script: null, scriptError: null };
 const UNIVERSE_MEMBER_NAMES = 200;
 
 /**
- * The organization's projects and the person looking, each with where its replica is served, which
- * the universe opens beside the organization's. A scope that cannot be described is left out and
- * named.
+ * The organization's projects, which its replica draws from how they told it they are wired, and
+ * the person looking, with where their replica is served, which the universe opens beside the
+ * organization's. A scope that cannot be described is left out and named.
  */
 async function loadUniverseScopes(
   request: Request,
@@ -46,27 +46,11 @@ async function loadUniverseScopes(
       problems: [list.message, ...viewer.problems, ...members.problems],
     };
   }
-  const described = await Promise.allSettled(
-    list.projects.map(async (project) => ({
-      label: project.name,
-      source: await fetchAutomationReplicaSource(request, context, {
-        kind: "project",
-        owner: { kind: "org", organization: organization.organization },
-        project: { id: project.id, slug: project.slug },
-      }),
-    })),
-  );
   return {
-    projects: described.flatMap((result) => (result.status === "fulfilled" ? [result.value] : [])),
+    projects: list.projects.map((project) => ({ id: project.id, label: project.name })),
     viewer: viewer.scope,
     memberNames: members.names,
-    problems: [
-      ...described.flatMap((result, index) =>
-        result.status === "rejected" ? [`${list.projects[index]?.name} could not be read.`] : [],
-      ),
-      ...viewer.problems,
-      ...members.problems,
-    ],
+    problems: [...viewer.problems, ...members.problems],
   };
 }
 

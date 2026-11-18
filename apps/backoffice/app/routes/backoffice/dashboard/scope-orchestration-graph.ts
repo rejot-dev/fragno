@@ -31,6 +31,37 @@ const NO_ORCHESTRATION_RECORDS: OrchestrationRecords = {
 };
 
 /**
+ * What a scope can receive: what registered capabilities describe for every scope, and the scope's
+ * own sources and definitions, which add to them and take precedence.
+ */
+export function orchestrationCatalog(scope: {
+  eventSources: readonly OrchestrationCatalogSource[];
+  eventDefinitions: readonly OrchestrationCatalogEvent[];
+}): OrchestrationCatalog {
+  const sources = new Map<string, OrchestrationCatalogSource>();
+  for (const source of listCapabilityEventSources()) {
+    sources.set(normalizedSourceId(source.source), {
+      id: normalizedSourceId(source.source),
+      label: source.label,
+      description: source.description,
+    });
+  }
+  for (const source of scope.eventSources) {
+    sources.set(normalizedSourceId(source.id), { ...source, id: normalizedSourceId(source.id) });
+  }
+  const eventDefinitions = new Map<string, OrchestrationCatalogEvent>();
+  for (const definition of [...listAutomationEventDescriptors(), ...scope.eventDefinitions]) {
+    eventDefinitions.set(orchestrationEventId(definition.source, definition.eventType), {
+      source: definition.source,
+      eventType: definition.eventType,
+      label: definition.label,
+      payloadSchema: definition.payloadSchema ?? null,
+    });
+  }
+  return { sources: [...sources.values()], eventDefinitions: [...eventDefinitions.values()] };
+}
+
+/**
  * One scope's orchestration graph, as the Map draws it from the scope's replica, with what it was
  * projected from. Until the replica opens it is loading. `recordErrors` names the records that
  * could not be read, which the graph is drawn without.
@@ -59,31 +90,14 @@ export function useScopeOrchestrationGraph(
   const recordsRead = useAutomationRead(replica, "orchestrationRecords", undefined);
   const records = recordsRead.status === "ready" ? recordsRead.data : NO_ORCHESTRATION_RECORDS;
 
-  // Registered capabilities describe what every scope can receive; a scope's own definitions add
-  // to them and take precedence.
-  const catalog = useMemo((): OrchestrationCatalog => {
-    const sources = new Map<string, OrchestrationCatalogSource>();
-    for (const source of listCapabilityEventSources()) {
-      sources.set(normalizedSourceId(source.source), {
-        id: normalizedSourceId(source.source),
-        label: source.label,
-        description: source.description,
-      });
-    }
-    for (const source of records.eventSources) {
-      sources.set(normalizedSourceId(source.id), { ...source, id: normalizedSourceId(source.id) });
-    }
-    const eventDefinitions = new Map<string, OrchestrationCatalogEvent>();
-    for (const definition of [...listAutomationEventDescriptors(), ...records.eventDefinitions]) {
-      eventDefinitions.set(orchestrationEventId(definition.source, definition.eventType), {
-        source: definition.source,
-        eventType: definition.eventType,
-        label: definition.label,
-        payloadSchema: definition.payloadSchema ?? null,
-      });
-    }
-    return { sources: [...sources.values()], eventDefinitions: [...eventDefinitions.values()] };
-  }, [records.eventSources, records.eventDefinitions]);
+  const catalog = useMemo(
+    () =>
+      orchestrationCatalog({
+        eventSources: records.eventSources,
+        eventDefinitions: records.eventDefinitions,
+      }),
+    [records.eventSources, records.eventDefinitions],
+  );
 
   const inputsData = inputs.status === "ready" ? inputs.data : null;
   const graph = useMemo(

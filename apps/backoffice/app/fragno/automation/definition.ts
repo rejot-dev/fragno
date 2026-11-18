@@ -52,6 +52,7 @@ import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import { piAgentNotificationEvent } from "@/fragno/pi/agent/pi-agent-contract";
 import { createPiManagerRuntime } from "@/fragno/pi/manager/pi-manager-runtime";
+import { isIntegrationConnectionEvent } from "@/fragno/runtime-tools/families/integrations/integration-events";
 
 import {
   actForScheduledRouteUser,
@@ -101,6 +102,13 @@ import type {
   EventStateEntry,
 } from "./internal-hooks";
 import { createPackageInstallationServices } from "./package-installations-storage-runtime";
+import {
+  isProjectWiringStateType,
+  PROJECT_WIRING_STATE,
+  rewireProject,
+  type ProjectWiring,
+  type ProjectWiringTelling,
+} from "./project-wiring";
 import { createAutomationProjectServices } from "./projects-storage-runtime";
 import {
   AUTOMATION_ROUTE_FAILED_EVENT_TYPE,
@@ -819,9 +827,15 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
     const eventServices = createAutomationEventServices(defineService);
     const eventProjectionServices = createEventProjectionServices(defineService);
     const eventFoldReplayServices = createEventFoldReplayServices(defineService);
-    const eventStateServices = createEventStateServices(defineService);
-    const eventSourceServices = createAutomationEventSourceServices(defineService);
-    const eventDefinitionServices = createAutomationEventDefinitionServices(defineService);
+    const eventStateServices = createEventStateServices(defineService, {
+      ownerScope: config.ownerScope,
+    });
+    const eventSourceServices = createAutomationEventSourceServices(defineService, {
+      ownerScope: config.ownerScope,
+    });
+    const eventDefinitionServices = createAutomationEventDefinitionServices(defineService, {
+      ownerScope: config.ownerScope,
+    });
     const externalIdentityBindingServices = createExternalIdentityBindingServices(defineService);
     const routeDispatchServices = createAutomationRouteDispatchServices(defineService);
     const packageInstallationServices = createPackageInstallationServices(defineService);
@@ -845,6 +859,75 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...packageInstallationServices,
       ...shareServices,
       ...forwardAcceptServices,
+      /**
+       * Keeps how one of the owner's projects is wired as that project's wiring state, unless the
+       * state holds a later telling. A state no event stands behind: its event ID names the telling
+       * whose wiring it holds.
+       *
+       * Tellings are ordered by the order of the project's hooks that sent them, not by when they
+       * read, as a clock can step back. A hook runs after the change that queued it, so the hook of
+       * the project's last change sends last in that order and reads its latest wiring.
+       *
+       * Every change has the project tell its wiring, and most leave it as it was, such as a
+       * connection going unavailable. A later telling of the same wiring moves only the state's
+       * order, so an earlier telling of an older wiring stays out; the wiring itself is written
+       * only when it changed, as the owner's replicas download every write.
+       */
+      recordProjectWiring: function ({ wiring, occurredAt, sequence }: ProjectWiringTelling) {
+        return this.serviceTx(automationFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("automation_event_state", (b) =>
+              b.whereIndex(STATE_INDEX, (eb) =>
+                eb.and(
+                  eb("source", "=", PROJECT_WIRING_STATE.source),
+                  eb("eventType", "=", PROJECT_WIRING_STATE.eventType),
+                  eb("key", "=", wiring.projectId),
+                ),
+              ),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [state] }) => {
+            if (config.ownerScope.kind !== "org" && config.ownerScope.kind !== "user") {
+              throw new Error("Only a project's owner keeps its wiring.");
+            }
+            if (state?.sequence && sequence <= state.sequence) {
+              return;
+            }
+            const storedAt = new Date();
+            // Projects build their wiring alike each time, so an unchanged one serializes alike; a
+            // wiring that does not only writes itself again.
+            if (state && JSON.stringify(state.payload) === JSON.stringify(wiring)) {
+              uow.update("automation_event_state", state.id, (b) =>
+                b.set({ occurredAt, sequence, storedAt }).check(),
+              );
+              return;
+            }
+            const values = {
+              keyPath: PROJECT_WIRING_STATE.keyPath,
+              eventId: `project-wiring:${wiring.projectId}:${sequence}`,
+              payload: wiring,
+              occurredAt,
+              sequence,
+              storedAt,
+            };
+            if (state) {
+              uow.update("automation_event_state", state.id, (b) => b.set(values).check());
+              return;
+            }
+            // Two first tellings race to create the state; the one that retries compares them.
+            uow.create(
+              "automation_event_state",
+              {
+                source: PROJECT_WIRING_STATE.source,
+                eventType: PROJECT_WIRING_STATE.eventType,
+                key: wiring.projectId,
+                ...values,
+              },
+              { retryOnUniqueConflict: ({ error }) => error.kind === "unique" },
+            );
+          })
+          .build();
+      },
       seedStarterAutomationRoutes: function () {
         return this.serviceTx(automationFragmentSchema)
           .retrieve((uow) =>
@@ -946,6 +1029,13 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
             if (existingEvent) {
               return true;
             }
+            // Every event enters here, so refusing the type here keeps project wiring states
+            // written only by `recordProjectWiring`.
+            if (isProjectWiringStateType(event)) {
+              throw new AutomationEventDefinitionValidationError(
+                `Automation event ${event.source}/${event.eventType} is reserved: Backoffice keeps project wiring itself.`,
+              );
+            }
             const { causation } = event;
             if (
               causation.kind === "forward" &&
@@ -974,13 +1064,82 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
   .provideHooks(({ defineHook, services, serviceDeps, config }) => {
     return {
       internalReplayEventFold: defineHook(async function (pass: EventFoldReplayPass) {
-        await replayEventFold(pass, this.handlerTx.bind(this));
+        await replayEventFold(pass, this.handlerTx.bind(this), config.ownerScope);
       }),
       internalKeepEventState: defineHook(async function (entry: EventStateEntry) {
         const builtIn = config.builtInEventDefinitions.find(
           ({ source, eventType }) => source === entry.source && eventType === entry.eventType,
         );
         await keepEventState(entry, this.handlerTx.bind(this), builtIn?.keyPath ?? null);
+        // A project's connections are part of its wiring, read from these states once kept.
+        if (config.ownerScope.kind === "project" && isIntegrationConnectionEvent(entry)) {
+          const handlerTx: DatabaseHandlerTx<AutomationInternalHooks> = this.handlerTx.bind(this);
+          await handlerTx({ name: "automations.rewireProject" })
+            .mutate(({ forSchema }) => {
+              rewireProject(forSchema(automationFragmentSchema), config.ownerScope);
+            })
+            .execute();
+        }
+      }),
+      /**
+       * Tells the project's owner how the project is wired now. Every telling reads the latest
+       * wiring, and the owner keeps the one this hook's `order` puts last, which the last change
+       * queued; see `recordProjectWiring`. A retry tells the owner again, which keeps what it has.
+       */
+      internalPublishProjectWiring: defineHook(async function () {
+        const { ownerScope, runtime } = config;
+        if (ownerScope.kind !== "project") {
+          throw new Error("Only projects publish their wiring.");
+        }
+        if (!runtime) {
+          throw new Error("Publishing project wiring requires Backoffice runtime services.");
+        }
+        const handlerTx: DatabaseHandlerTx<AutomationInternalHooks> = this.handlerTx.bind(this);
+        const sequence = this.order;
+        const { wiring, occurredAt } = await handlerTx({ name: "automations.readProjectWiring" })
+          .withServiceCalls(
+            () =>
+              [
+                services.listRoutes(),
+                services.listForwardAccepts(),
+                services.listEventSources(),
+                services.listEventDefinitions(),
+                services.listIntegrationConnections(),
+              ] as const,
+          )
+          .transform(
+            ({
+              serviceResult: [routes, forwardAccepts, sources, definitions, connections],
+            }): { wiring: ProjectWiring; occurredAt: Date } => ({
+              wiring: {
+                projectId: ownerScope.projectId,
+                // Schedules advance without rewiring the project, so when one fires next is left out.
+                routes: routes.map((route) => ({ ...route, nextOccurrenceAt: null })),
+                forwardAccepts,
+                eventSources: sources.map(({ source, label, description }) => ({
+                  id: source,
+                  label,
+                  description,
+                })),
+                eventDefinitions: definitions.map(({ source, eventType, label }) => ({
+                  source,
+                  eventType,
+                  label,
+                })),
+                connections: connections.map(({ connectionId, service, displayName }) => ({
+                  connectionId,
+                  service,
+                  displayName,
+                })),
+              },
+              // When it was read, which the state shows; tellings are ordered by `sequence`.
+              occurredAt: new Date(),
+            }),
+          )
+          .execute();
+        await runtime.objects.automations
+          .for(ownerScope.owner)
+          .commands.recordProjectWiring({ wiring, occurredAt, sequence });
       }),
       internalDispatchRouteSchedule: defineHook(async function (payload) {
         await dispatchAutomationRouteSchedule({

@@ -4,9 +4,12 @@ import type {
   AutomationEventStateDeleteResult,
   AutomationEventStateGetResult,
 } from "@fragno-dev/backoffice-api/v0/events";
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragnoId } from "@fragno-dev/db/schema";
 
 import type { Cursor, DatabaseHandlerTx, DatabaseServiceContext } from "@fragno-dev/db";
+
+import { isIntegrationConnectionEvent } from "@/fragno/runtime-tools/families/integrations/integration-events";
 
 import {
   AutomationEventDefinitionValidationError,
@@ -18,6 +21,7 @@ import type {
   AutomationInternalHooks,
   EventStateEntry,
 } from "./internal-hooks";
+import { rewireProject } from "./project-wiring";
 import { automationFragmentSchema } from "./schema";
 
 /**
@@ -228,6 +232,7 @@ export const createEventStateServices = (
   defineService: <TService>(
     service: TService & ThisType<DatabaseServiceContext<AutomationInternalHooks>>,
   ) => TService,
+  { ownerScope }: { ownerScope: BackofficeContextScope },
 ) =>
   defineService({
     /** A type's states, by key. */
@@ -310,6 +315,10 @@ export const createEventStateServices = (
               states.map((state) => state.id),
               (b) => b.check(),
             );
+            // A project's connections are part of its wiring, read from these states.
+            if (isIntegrationConnectionEvent({ source, eventType })) {
+              rewireProject(uow, ownerScope);
+            }
           }
           return { deleted: states.map((state) => state.key) };
         })

@@ -29,7 +29,8 @@ type UniverseScopeSource = { label: string; source: AutomationReplicaSource };
 
 /** The scopes the loader describes for an organization's universe besides the organization. */
 export type OrchestrationUniverseScopes = {
-  projects: readonly UniverseScopeSource[];
+  /** The organization's projects, which tell it how they are wired. */
+  projects: readonly { id: string; label: string }[];
   /** The person looking, whose personal scope they can read; null before they have one. */
   viewer: UniverseScopeSource | null;
   /** The names of the organization's members, by user ID, for the members who forward into it. */
@@ -132,16 +133,17 @@ function ScopeGraphReader({
 
 type OrganizationUniverseProps = {
   replica: LofiSqliteClient;
-  selectedScope: BackofficeScopeSelection;
+  selectedScope: Extract<BackofficeScopeSelection, { kind: "org" }>;
   scopes: OrchestrationUniverseScopes;
 };
 
 /**
  * The organization as one planet among its projects, the members who forward into it, and the
- * person looking, with the forwards between them. The organization's projects and the person's
- * own scope open with the universe, which shows at once: their planets ring while their replicas
- * download, and draw their graphs once caught up. Other members' planets are what the organization
- * knows of them. The replicas close once the universe is left.
+ * person looking, with the forwards between them. Projects are drawn from how they told the
+ * organization they are wired, so its replica holds them. The person's own scope opens with the
+ * universe, which shows at once: their planet rings while its replica downloads, and draws its
+ * graph once caught up; the replica closes once the universe is left. Other members' planets are
+ * what the organization knows of them.
  */
 export function OrganizationUniverse(props: OrganizationUniverseProps) {
   return <OrganizationUniverseAt {...props} now={useClock(CLOCK_TICK_MS)} />;
@@ -171,19 +173,18 @@ export function OrganizationUniverseAt({
   const deliveries = useAutomationRead(replica, "recentForwardDeliveries", { since });
   const kept = useScopeConnections(replica);
   const organizationConnections = kept.connections;
-  const readScopes = useMemo(() => {
-    // The loader describes runtime scopes the person can read, never System.
-    const describe = ({ label, source }: UniverseScopeSource) => {
-      const scope: BackofficeContextScope = backofficeRuntimeScopeFromResolvedScope(
-        source.resolvedScope,
-      );
-      return { label, source, scope, scopeId: scopeIdentity(scope) };
-    };
-    return {
-      projects: scopes.projects.map(describe),
-      viewer: scopes.viewer && describe(scopes.viewer),
-    };
-  }, [scopes.projects, scopes.viewer]);
+  const wirings = useAutomationRead(replica, "projectWirings", undefined);
+  const wiringsData = wirings.status === "ready" ? wirings.data : null;
+  const viewer = useMemo(() => {
+    if (!scopes.viewer) {
+      return null;
+    }
+    // The loader describes the person's own scope, never System.
+    const scope: BackofficeContextScope = backofficeRuntimeScopeFromResolvedScope(
+      scopes.viewer.source.resolvedScope,
+    );
+    return { ...scopes.viewer, scope, scopeId: scopeIdentity(scope) };
+  }, [scopes.viewer]);
   const [scopeReads, setScopeReads] = useState<ReadonlyMap<string, ScopeRead>>(new Map());
   const onScopeRead = useCallback((scopeId: string, read: ScopeRead) => {
     setScopeReads((current) => new Map(current).set(scopeId, read));
@@ -194,14 +195,21 @@ export function OrganizationUniverseAt({
   const organizationInputs = organization.status === "ready" ? organization.inputs : null;
   const deliveriesData = deliveries.status === "ready" ? deliveries.data : null;
   const universe = useMemo(() => {
-    if (!organizationGraph || !organizationInputs || !deliveriesData || !organizationConnections) {
+    if (
+      !organizationGraph ||
+      !organizationInputs ||
+      !deliveriesData ||
+      !organizationConnections ||
+      !wiringsData
+    ) {
       return null;
     }
-    const readScope = ({
-      scope,
-      scopeId,
-      label,
-    }: (typeof readScopes.projects)[number]): UniverseReadScope => {
+    const wiringOf = new Map(wiringsData.map((wiring) => [wiring.projectId, wiring]));
+    const readViewer = (): UniverseReadScope | null => {
+      if (!viewer) {
+        return null;
+      }
+      const { scope, scopeId, label } = viewer;
       const read = scopeReads.get(scopeId) ?? OPENING;
       return "graph" in read ? { scope, label, read } : { scope, label, read: null, status: read };
     };
@@ -213,8 +221,12 @@ export function OrganizationUniverseAt({
         deliveries: deliveriesData,
         connections: organizationConnections,
       },
-      projects: readScopes.projects.map(readScope),
-      viewer: readScopes.viewer && readScope(readScopes.viewer),
+      projects: scopes.projects.map(({ id, label }) => ({
+        scope: { kind: "project", owner: organizationScope, projectId: id },
+        label,
+        wiring: wiringOf.get(id) ?? null,
+      })),
+      viewer: readViewer(),
       recentForwards: organizationInputs.recentForwards,
       memberNames: scopes.memberNames,
     });
@@ -224,32 +236,34 @@ export function OrganizationUniverseAt({
     organizationInputs,
     deliveriesData,
     organizationConnections,
-    readScopes,
+    wiringsData,
+    viewer,
     scopeReads,
+    scopes.projects,
     scopes.memberNames,
   ]);
 
-  // Scopes start reading with the universe, before the organization's graph is drawn.
-  const readers = [...readScopes.projects, ...(readScopes.viewer ? [readScopes.viewer] : [])].map(
-    (read) => (
-      <ScopeGraphReader
-        key={read.scopeId}
-        scopeId={read.scopeId}
-        scope={read.scope}
-        label={read.label}
-        source={read.source}
-        since={since}
-        onRead={onScopeRead}
-      />
-    ),
-  );
-  // The organization's routes and deliveries are what the universe is drawn around.
+  // The person's scope starts reading with the universe, before the organization's graph is drawn.
+  const readers = viewer ? (
+    <ScopeGraphReader
+      key={viewer.scopeId}
+      scopeId={viewer.scopeId}
+      scope={viewer.scope}
+      label={viewer.label}
+      source={viewer.source}
+      since={since}
+      onRead={onScopeRead}
+    />
+  ) : null;
+  // The organization's routes, deliveries, and projects are what the universe is drawn around.
   const readError =
     organization.status === "error"
       ? organization.message
       : deliveries.status === "error"
         ? deliveries.message
-        : null;
+        : wirings.status === "error"
+          ? wirings.message
+          : null;
   if (readError !== null) {
     return (
       <BackofficeSystemState
@@ -272,14 +286,9 @@ export function OrganizationUniverseAt({
       selectedScope.label,
     );
   }
-  for (const { scopeId, label } of [
-    ...readScopes.projects,
-    ...(readScopes.viewer ? [readScopes.viewer] : []),
-  ]) {
-    const read = scopeReads.get(scopeId);
-    if (read && "graph" in read) {
-      missed(read.unreadRecords, label);
-    }
+  const viewerRead = viewer && scopeReads.get(viewer.scopeId);
+  if (viewer && viewerRead && "graph" in viewerRead) {
+    missed(viewerRead.unreadRecords, viewer.label);
   }
   // Scopes that missed the same records are named together.
   const incomplete = [...missedBy].map(([unread, labels]) => `${unread} of ${listed(labels)}`);
