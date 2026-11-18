@@ -477,7 +477,7 @@ export async function recordWorkflowStepRunForTest<TOutput = unknown>(
   const stepEmissions = options.stepEmissions ?? new BufferedPumpRegistry<WorkflowStepLivePump>();
   const step = new RunnerStep({
     state,
-    taskKind: "run",
+    task: { kind: "run" },
     workflowName: options.workflowName,
     instanceId: options.instanceId,
     handlerTx,
@@ -510,7 +510,7 @@ export async function recordWorkflowStepRunForTest<TOutput = unknown>(
       } as unknown as IUnitOfWork;
       applyRunnerMutations(uow, state, new Map(options.workflowsByName ?? []), executionId);
       // Only an interrupted outcome reads its trigger, and this helper never produces one.
-      applyOutcome(uow, instance, outcome, "create");
+      applyOutcome(uow, instance, outcome, "create", state.mutations);
     })
     .execute();
 

@@ -13,7 +13,7 @@ import type {
   WorkflowTerminalHookPayload,
 } from "../workflow";
 import { validateAndNormalizeWorkflowOperation } from "../workflow-operation";
-import type { RunnerState, WorkflowStepTxMutation } from "./state";
+import type { RunnerMutationBuffer, RunnerState, WorkflowStepTxMutation } from "./state";
 import type { RunnerStepSuspended } from "./step";
 import type {
   WorkflowInstanceRecord,
@@ -299,6 +299,7 @@ export function applyOutcome(
   instance: WorkflowInstanceRecord,
   taskOutcome: RunnerTaskOutcome,
   trigger: WorkflowEnqueuedHookPayload["reason"],
+  mutations: RunnerMutationBuffer,
 ) {
   const schemaUow = uow.forSchema(workflowsSchema);
   const outcome = resolveInterruptedTick(taskOutcome, instance);
@@ -367,32 +368,48 @@ export function applyOutcome(
     return;
   }
 
-  const { reason } = outcome;
-  const runAt =
-    reason.type === "sleep" || reason.type === "waitForEvent" ? (reason.runAt ?? null) : null;
-  const delayMs = reason.delayMs ?? null;
-
-  if (runAt === null && delayMs === null) {
-    // No timeout provided (e.g., waitForEvent with no deadline). We stay waiting and rely on
-    // external event delivery to enqueue the next tick via onWorkflowEnqueued.
-    return;
-  }
-
-  const kind = reason.type === "retry" ? "retry" : "wake";
-  const processAt = runAt ?? schemaUow.now().plus({ ms: delayMs ?? 0 });
+  // Every step this tick left waiting schedules the tick that resumes it, since one tick can leave
+  // steps waiting for different kinds of tick, such as a retry beside a sleep. A step that waits
+  // again on replay already has its tick, so it schedules none.
   const namespace = schemaUow.namespace ?? workflowsSchema.name;
-
-  uow.triggerHook(
-    namespace,
-    "onWorkflowEnqueued",
-    {
-      workflowName: instance.workflowName,
-      instanceId: instance.instanceId,
-      instanceRef: String(instance.id),
-      reason: kind,
-    },
-    { processAt },
-  );
+  const scheduled = new Set<string>();
+  function scheduleTick(reason: "wake" | "retry", at: { delayMs: number } | { date: Date }) {
+    const key = `${reason}:${"delayMs" in at ? `+${at.delayMs}` : at.date.getTime()}`;
+    if (scheduled.has(key)) {
+      return;
+    }
+    scheduled.add(key);
+    uow.triggerHook(
+      namespace,
+      "onWorkflowEnqueued",
+      {
+        workflowName: instance.workflowName,
+        instanceId: instance.instanceId,
+        instanceRef: String(instance.id),
+        reason,
+      },
+      { processAt: "delayMs" in at ? schemaUow.now().plus({ ms: at.delayMs }) : at.date },
+    );
+  }
+  if (outcome.reason.type === "checkpoint") {
+    scheduleTick("wake", { delayMs: 0 });
+  }
+  const drafts = [
+    ...mutations.stepCreates.values(),
+    ...Array.from(mutations.stepUpdates.values(), (update) => update.data),
+  ];
+  for (const draft of drafts) {
+    if (draft.status !== "waiting") {
+      continue;
+    }
+    if (draft.nextRetryDelayMs !== undefined && draft.nextRetryDelayMs !== null) {
+      scheduleTick("retry", { delayMs: draft.nextRetryDelayMs });
+    } else if (draft.wakeDelayMs !== undefined && draft.wakeDelayMs !== null) {
+      scheduleTick("wake", { delayMs: draft.wakeDelayMs });
+    } else if (draft.wakeAt instanceof Date) {
+      scheduleTick("wake", { date: draft.wakeAt });
+    }
+  }
 }
 
 export function triggerWorkflowTerminalHook(

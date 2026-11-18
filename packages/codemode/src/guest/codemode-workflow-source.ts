@@ -48,7 +48,23 @@ const unwrap = (result) => {
 };
 const unsupported = (name) => () => { throw new Error(name); };
 function createRemoteWorkflowStep(stepTarget) {
+  // A scope is the workflow body or one step's callback, with the steps started in it still running.
+  const root = { target: stepTarget, running: new Set() };
   const scopeStorage = new AsyncLocalStorage();
+  const currentScope = () => scopeStorage.getStore() ?? root;
+  const track = (scope, operation) => {
+    const call = Promise.resolve(operation(scope.target));
+    scope.running.add(call);
+    const untrack = () => scope.running.delete(call);
+    call.then(untrack, untrack);
+    return call;
+  };
+  // A scope ends only once the steps started in it settle. One branch of a Promise.all suspending
+  // or failing must not end its siblings' steps: the host revokes the scope's capabilities when it
+  // ends, and their results would be lost with the tick.
+  const settle = async (scope) => {
+    while (scope.running.size > 0) await Promise.allSettled(scope.running);
+  };
   const wrapTx = (target) => {
     const pending = [];
     const queue = (operation) => {
@@ -95,14 +111,15 @@ function createRemoteWorkflowStep(stepTarget) {
       },
     };
   };
-  return {
+  const step = {
     do: async (name, configOrCallback, maybeCallback) => {
       const config = typeof configOrCallback === "function" ? undefined : configOrCallback;
       const callback = typeof configOrCallback === "function" ? configOrCallback : maybeCallback;
       if (typeof callback !== "function") throw new Error("WORKFLOW_STEP_CALLBACK_REQUIRED");
-      return unwrap(await (scopeStorage.getStore() ?? stepTarget).do(name, config, async (target, scopedStep) => {
-        return await scopeStorage.run(scopedStep, async () => {
-          const tx = wrapTx(target);
+      return unwrap(await track(currentScope(), (target) => target.do(name, config, async (txTarget, scopedStep) => {
+        const scope = { target: scopedStep, running: new Set() };
+        return await scopeStorage.run(scope, async () => {
+          const tx = wrapTx(txTarget);
           let value;
           try {
             try { value = await callback(tx); }
@@ -110,14 +127,17 @@ function createRemoteWorkflowStep(stepTarget) {
               if (isSuspension(error)) value = error;
               else if (error?.name === "RemoteWorkflowSuspendedError" && error.reason) value = { [suspensionKey]: true, reason: error.reason };
               else throw error;
-            } finally { await tx.__flush(); }
+            } finally {
+              await settle(scope);
+              await tx.__flush();
+            }
             return { status: "ok", value };
           } catch (error) { return __codemodeCallbackFailure(error); }
         });
-      }));
+      })));
     },
-    sleep: async (name, duration) => unwrap(await (scopeStorage.getStore() ?? stepTarget).sleep(name, duration)),
-    sleepUntil: async (name, timestamp) => unwrap(await (scopeStorage.getStore() ?? stepTarget).sleepUntil(name, timestamp)),
+    sleep: async (name, duration) => unwrap(await track(currentScope(), (target) => target.sleep(name, duration))),
+    sleepUntil: async (name, timestamp) => unwrap(await track(currentScope(), (target) => target.sleepUntil(name, timestamp))),
     waitForEvent: async (name, options) => {
       const remoteOptions = { type: options.type, timeout: options.timeout };
       if (typeof options.onConsume === "function") {
@@ -130,9 +150,10 @@ function createRemoteWorkflowStep(stepTarget) {
           } catch (error) { return __codemodeCallbackFailure(error); }
         };
       }
-      return unwrap(await (scopeStorage.getStore() ?? stepTarget).waitForEvent(name, remoteOptions));
+      return unwrap(await track(currentScope(), (target) => target.waitForEvent(name, remoteOptions)));
     },
   };
+  return { step, settle: () => settle(root) };
 }
 export default class RemoteWorkflowEntrypoint extends WorkerEntrypoint {
   async run(event, stepTarget, dispatchers = {}) {
@@ -143,9 +164,12 @@ export default class RemoteWorkflowEntrypoint extends WorkerEntrypoint {
     if (!__isFragnoCodemodeWorkflowDefinition(definition)) {
       throw new Error("CODEMODE_WORKFLOW_DEFINITION_MISSING: the workflow module must export default defineWorkflow(...).");
     }
+    const workflow = createRemoteWorkflowStep(stepTarget);
     try {
-      const step = createRemoteWorkflowStep(stepTarget);
-      return { ok: true, result: await definition.run(event, step), logs };
+      let result;
+      try { result = await definition.run(event, workflow.step); }
+      finally { await workflow.settle(); }
+      return { ok: true, result, logs };
     } catch (error) {
       if (isSuspension(error)) return { ok: false, suspension: error, logs };
       if (error?.name === "RemoteWorkflowSuspendedError" && error.reason) return { ok: false, suspension: { [suspensionKey]: true, reason: error.reason }, logs };
