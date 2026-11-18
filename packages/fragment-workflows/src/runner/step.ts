@@ -47,7 +47,7 @@ import type { RunnerState, WorkflowStepSnapshot, WorkflowStepTxMutation } from "
 import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./step-live-pump";
 import type { WorkflowStepLivePump, WorkflowStepLivePumpRegistry } from "./step-live-pump";
 import type {
-  RunnerTaskKind,
+  RunnerTask,
   WorkflowEventRecord,
   WorkflowEventUpdate,
   WorkflowStepCreateDraft,
@@ -69,7 +69,7 @@ export class RunnerStepSuspended extends Error {
 
 type RunnerStepOptions = {
   state: RunnerState;
-  taskKind: RunnerTaskKind;
+  task: RunnerTask;
   workflowName: string;
   instanceId: string;
   handlerTx: DatabaseRequestContext["handlerTx"];
@@ -193,7 +193,7 @@ function restoreEntry<T>(map: Map<string, T>, key: string, value: T | undefined)
 
 export class RunnerStep implements WorkflowStep {
   readonly #state: RunnerState;
-  readonly #taskKind: RunnerTaskKind;
+  readonly #task: RunnerTask;
   readonly #stepOccurrences = new Map<string, number>();
   readonly #scopeStorage = new AsyncLocalStorage<StepExecutionContext>();
   readonly #workflowName: string;
@@ -206,11 +206,12 @@ export class RunnerStep implements WorkflowStep {
   readonly #checkpoint: "step" | undefined;
   #concurrencyConflict: BufferedPumpScopeAlreadyOpenError | null = null;
   #tickInterruption: Error | null = null;
+  readonly #running = new Set<Promise<unknown>>();
   #completedTopLevelSteps = 0;
 
   constructor(options: RunnerStepOptions) {
     this.#state = options.state;
-    this.#taskKind = options.taskKind;
+    this.#task = options.task;
     this.#workflowName = options.workflowName;
     this.#instanceId = options.instanceId;
     this.#handlerTx = options.handlerTx;
@@ -252,6 +253,14 @@ export class RunnerStep implements WorkflowStep {
         };
 
     return identity;
+  }
+
+  /**
+   * Whether this tick resumes a step of `kind` due at `dueAt`. Each waiting step schedules its own
+   * tick, so a tick resumes only the steps due by its time, not every step of its kind.
+   */
+  #resumes(kind: "wake" | "retry", dueAt: Date | null): boolean {
+    return this.#task.kind === kind && (dueAt === null || dueAt <= this.#task.at);
   }
 
   #previousEmissionsFor(stepKey: string): WorkflowStepEmission[] {
@@ -394,6 +403,16 @@ export class RunnerStep implements WorkflowStep {
     return this.#tickInterruption;
   }
 
+  /**
+   * Waits for the steps this tick started. When one branch of a `Promise.all` suspends, the
+   * workflow ends while its siblings' steps still run; their outcomes belong to this tick.
+   */
+  async settle(): Promise<void> {
+    while (this.#running.size > 0) {
+      await Promise.allSettled(this.#running);
+    }
+  }
+
   #openEmissionScope<TScope>(open: () => TScope): TScope {
     try {
       return open();
@@ -481,7 +500,21 @@ export class RunnerStep implements WorkflowStep {
     return await this.#doInternal(name, config, async (tx) => await callback(tx));
   }
 
-  async #doInternal<T>(
+  #doInternal<T>(
+    name: string,
+    config: WorkflowStepConfig | undefined,
+    callback: (tx: WorkflowStepTx, identity: WorkflowStepIdentity) => Promise<T> | T,
+  ): Promise<T> {
+    const running = this.#runDo(name, config, callback);
+    this.#running.add(running);
+    const untrack = () => {
+      this.#running.delete(running);
+    };
+    running.then(untrack, untrack);
+    return running;
+  }
+
+  async #runDo<T>(
     name: string,
     config: WorkflowStepConfig | undefined,
     callback: (tx: WorkflowStepTx, identity: WorkflowStepIdentity) => Promise<T> | T,
@@ -498,7 +531,11 @@ export class RunnerStep implements WorkflowStep {
       throw buildErrorFromSnapshot(snapshot);
     }
 
-    if (snapshot?.status === "waiting" && snapshot.nextRetryAt && this.#taskKind !== "retry") {
+    if (
+      snapshot?.status === "waiting" &&
+      snapshot.nextRetryAt &&
+      !this.#resumes("retry", snapshot.nextRetryAt)
+    ) {
       throw new RunnerStepSuspended({ type: "retry", stepKey, delayMs: null });
     }
 
@@ -799,7 +836,7 @@ export class RunnerStep implements WorkflowStep {
       return;
     }
 
-    if (this.#taskKind === "wake" && snapshot?.status === "waiting") {
+    if (snapshot?.status === "waiting" && this.#resumes("wake", snapshot.wakeAt ?? null)) {
       this.#upsertStep(stepKey, {
         name,
         type: "sleep",
@@ -851,7 +888,7 @@ export class RunnerStep implements WorkflowStep {
       return;
     }
 
-    if (this.#taskKind === "wake" && snapshot?.status === "waiting") {
+    if (snapshot?.status === "waiting" && this.#resumes("wake", snapshot.wakeAt ?? null)) {
       this.#upsertStep(stepKey, {
         name,
         type: "sleep",
@@ -1038,16 +1075,7 @@ export class RunnerStep implements WorkflowStep {
     const timeoutMs = options.timeout ? parseDurationMs(options.timeout) : null;
 
     if (snapshot?.status === "waiting") {
-      if (this.#taskKind !== "wake") {
-        throw new RunnerStepSuspended({
-          type: "waitForEvent",
-          stepKey,
-          eventType: options.type,
-          delayMs: null,
-        });
-      }
-
-      if (!snapshot.wakeAt) {
+      if (!snapshot.wakeAt || !this.#resumes("wake", snapshot.wakeAt)) {
         throw new RunnerStepSuspended({
           type: "waitForEvent",
           stepKey,

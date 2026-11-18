@@ -298,9 +298,10 @@ await step.do("use selected provider response", async () => {
 });
 ```
 
-The losing branch is not cancelled. It may remain waiting, finish later, or run again during a later
-passage. Keep every branch idempotent. Also take care with `Promise.all`: if one branch suspends or
-retries before a sibling commits, the sibling callback can run again.
+The losing branch is not cancelled. A passage ends only once every step it started has settled, so
+the loser finishes in the same passage, or is left waiting. When one branch of `Promise.all`
+suspends or retries, its siblings' steps still finish and keep their results. Keep every branch
+idempotent all the same: a step that fails runs again.
 
 ## Use unique instance IDs
 

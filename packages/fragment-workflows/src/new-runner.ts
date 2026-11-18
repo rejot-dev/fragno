@@ -18,7 +18,7 @@ import { createRunnerState, type RunnerState } from "./runner/state";
 import { isRunnerStepSuspended, RunnerStep } from "./runner/step";
 import type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 import type {
-  RunnerTaskKind,
+  RunnerTask,
   WorkflowEventRecord,
   WorkflowInstanceRecord,
   WorkflowStepEmissionRecord,
@@ -118,14 +118,10 @@ async function validateWorkflowOutput(
  * Bigger picture: keep initial/event/resume ticks on the normal run path, and reserve
  * wake/retry paths for scheduled wakeups and retry hooks.
  */
-function coerceTaskKind(reason: WorkflowEnqueuedHookPayload["reason"]): RunnerTaskKind {
-  if (reason === "retry") {
-    return "retry";
-  }
-  if (reason === "wake") {
-    return "wake";
-  }
-  return "run";
+function taskOf(payload: WorkflowEnqueuedHookPayload & { timestamp: Date }): RunnerTask {
+  return payload.reason === "retry" || payload.reason === "wake"
+    ? { kind: payload.reason, at: payload.timestamp }
+    : { kind: "run" };
 }
 
 /**
@@ -364,7 +360,7 @@ async function planRunTask(
     events,
     canonicalStepEmissions,
   );
-  const outcome = await runTask(selection.instance, coerceTaskKind(payload.reason), state, ctx);
+  const outcome = await runTask(selection.instance, taskOf(payload), state, ctx);
 
   return {
     processed: 1,
@@ -372,7 +368,7 @@ async function planRunTask(
       (uow) => {
         applyRunnerMutations(uow, state, ctx.workflowsByName, ctx.executionId);
         addStepCommittedEmissions(uow, state, ctx.executionId);
-        applyOutcome(uow, selection.instance, outcome, payload.reason);
+        applyOutcome(uow, selection.instance, outcome, payload.reason, state.mutations);
       },
     ],
   };
@@ -396,7 +392,7 @@ function buildWorkflowEvent(instance: WorkflowInstanceRecord) {
  */
 async function runTask(
   instance: WorkflowInstanceRecord,
-  taskKind: RunnerTaskKind,
+  task: RunnerTask,
   state: ReturnType<typeof createRunnerState>,
   ctx: RunnerTickContext,
 ): Promise<RunnerTaskOutcome> {
@@ -410,7 +406,7 @@ async function runTask(
 
   const step = new RunnerStep({
     state,
-    taskKind,
+    task,
     workflowName: instance.workflowName,
     instanceId: instance.instanceId,
     handlerTx: ctx.busHandlerTx,
@@ -432,6 +428,9 @@ async function runTask(
       ? { type: "suspended", reason: err.reason }
       : { type: "errored", error: toError(err) };
   }
+  // Steps started beside a branch that suspended or failed still run; their outcomes belong to
+  // this tick.
+  await step.settle();
   // Outranks whatever the workflow returned or threw: the host saw that the tick did not run.
   if (workflow.remote && step.tickInterruption) {
     outcome = { type: "interrupted", error: step.tickInterruption, jitter: ctx.random() };

@@ -1,10 +1,12 @@
 import { assert, expect, expectTypeOf, test } from "vitest";
 
+import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import { defineScenario, runScenario } from "@fragno-dev/workflows/scenario";
 import { createWorkflowsTestRuntime } from "@fragno-dev/workflows/test";
 import { defineRemoteWorkflow } from "@fragno-dev/workflows/workflow";
 import { parseBackofficeUiResult } from "@fragno-private/backoffice-ui/result";
 import { env } from "cloudflare:workers";
+import { z } from "zod";
 
 import { buildDatabaseFragmentsTest } from "@fragno-dev/test";
 
@@ -15,7 +17,11 @@ import type {
   CodemodeRunFinishedHookPayload,
 } from "@/fragno/codemode/codemode-fragment";
 import { codemodeRunnerFor, type CodemodeRunner } from "@/fragno/codemode/codemode-object-execute";
-import { createTrustedSystemBackofficeToolContext } from "@/fragno/runtime-tools/runtime-tools";
+import {
+  createTrustedSystemBackofficeToolContext,
+  defineBackofficeRuntimeTool,
+  defineBackofficeRuntimeToolFamily,
+} from "@/fragno/runtime-tools/runtime-tools";
 
 import { defineCodemodeWorkflowRun, runBackofficeCodemodeWorkflow } from "./workflow-execute";
 import { testWorkflowProgram } from "./workflow-program.test-utils";
@@ -209,6 +215,154 @@ test.each(["throw", "return"] as const)(
     );
   },
 );
+
+/** Codemode workflows as Automations run them: checkpointed, with a host tool that takes its time. */
+function defineSideBySideWorkflow(name: string, code: string) {
+  const calls: string[] = [];
+  const waitTool = defineBackofficeRuntimeTool({
+    id: "clock.wait",
+    namespace: "clock",
+    name: "wait",
+    activity: { label: "Wait", target: () => null },
+    description: "Wait a while.",
+    requiredPermissions: [],
+    inputSchema: z.object({ ms: z.number(), label: z.string() }),
+    outputSchema: z.object({ label: z.string(), call: z.number() }),
+    execute: async ({ ms, label }) => {
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      calls.push(label);
+      return { label, call: calls.filter((call) => call === label).length };
+    },
+  });
+  const Workflow = defineRemoteWorkflow(
+    { name, checkpoint: "step" },
+    defineCodemodeWorkflowRun(testWorkflowProgram(code), codemode, {
+      allowedHooks: [],
+      origin: { kind: "inline" } as const,
+      families: [defineBackofficeRuntimeToolFamily({ namespace: "clock", tools: [waitTool] })],
+      toolContext: createTrustedSystemBackofficeToolContext({ runtimes: {} }),
+    }),
+  );
+  return { calls, workflows: { WORKFLOW: Workflow } };
+}
+
+test("steps run side by side finish, however long the slowest outlasts the first", async () => {
+  // "after fast" suspends the tick at its checkpoint while "slow" runs on past the host's drain
+  // timeout, then calls a tool again.
+  const { calls, workflows } = defineSideBySideWorkflow(
+    "side-by-side-spread",
+    `async (_event, step) => {
+      return await Promise.all([
+        (async () => {
+          await step.do("fast", async () => "fast");
+          return await step.do("after fast", async () => "after fast");
+        })(),
+        step.do("slow", async () => {
+          await clock.wait({ ms: ${CODEMODE_LIMITS.hostDrainTimeoutMs + 1000}, label: "slow" });
+          return (await clock.wait({ ms: 0, label: "slow again" })).label;
+        }),
+      ]);
+    }`,
+  );
+  await runScenario(
+    defineScenario({
+      name: "a step outlasts its sibling's checkpoint by more than the drain timeout",
+      workflows,
+      harness: {
+        adapter: { type: "in-memory" },
+        testBuilder: buildDatabaseFragmentsTest(),
+        autoTickHooks: true,
+      },
+      steps: ({ workflow, runner }) => [
+        workflow.create({
+          workflow: "WORKFLOW",
+          id: "side-by-side-spread-1",
+          remoteWorkflowName: "side-by-side-spread",
+        }),
+        runner.drainHooks(),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("WORKFLOW", "side-by-side-spread-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: ["after fast", "slow again"],
+            });
+          },
+        }),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("WORKFLOW", "side-by-side-spread-1"),
+          assert: (steps) => {
+            expect(steps).toMatchObject([
+              { stepKey: "do:fast", status: "completed", attempts: 1 },
+              { stepKey: "do:slow", status: "completed", attempts: 1 },
+              { stepKey: "do:after fast", status: "completed", attempts: 1 },
+            ]);
+            expect(calls).toEqual(["slow", "slow again"]);
+          },
+        }),
+      ],
+    }),
+  );
+}, 30_000);
+
+test("a step that fails after its sibling's checkpoint is still retried", async () => {
+  const { workflows } = defineSideBySideWorkflow(
+    "side-by-side-retry",
+    `async (_event, step) => {
+      return await Promise.all([
+        (async () => {
+          await step.do("fast", async () => "fast");
+          return await step.do("after fast", async () => "after fast");
+        })(),
+        step.do("flaky", { retries: { limit: 1, delay: "1 second" } }, async () => {
+          const { call } = await clock.wait({ ms: 500, label: "flaky" });
+          if (call === 1) throw new Error("Flaky the first time");
+          return "recovered";
+        }),
+      ]);
+    }`,
+  );
+  await runScenario(
+    defineScenario({
+      name: "a retry recorded after a checkpoint in the same tick",
+      workflows,
+      harness: {
+        adapter: { type: "in-memory" },
+        testBuilder: buildDatabaseFragmentsTest(),
+        autoTickHooks: true,
+      },
+      steps: ({ workflow, runner }) => [
+        workflow.create({
+          workflow: "WORKFLOW",
+          id: "side-by-side-retry-1",
+          remoteWorkflowName: "side-by-side-retry",
+        }),
+        runner.drainHooks(),
+        workflow.read({
+          read: (ctx) => ctx.state.getSteps("WORKFLOW", "side-by-side-retry-1"),
+          assert: (steps) => {
+            // The checkpoint's tick ran "after fast"; "flaky" waits for its own.
+            expect(steps).toMatchObject([
+              { stepKey: "do:fast", status: "completed" },
+              { stepKey: "do:flaky", status: "waiting", attempts: 1 },
+              { stepKey: "do:after fast", status: "completed" },
+            ]);
+          },
+        }),
+        runner.advanceTimeAndDrainHooks({ advanceBy: "1 second" }),
+        workflow.read({
+          read: (ctx) => ctx.state.getStatus("WORKFLOW", "side-by-side-retry-1"),
+          assert: (status) => {
+            expect(status).toMatchObject({
+              status: "complete",
+              output: ["after fast", "recovered"],
+            });
+          },
+        }),
+      ],
+    }),
+  );
+});
 
 test("suspension history uses ISO timestamps while the live runner sleeps and resumes", async () => {
   const scope = { kind: "user", userId: "suspension-history", jurisdiction: null } as const;

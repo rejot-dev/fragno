@@ -457,13 +457,10 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("Promise.all short-circuits before a sibling step result is persisted", async () => {
+  test("Promise.all keeps a sibling step's result when another branch suspends first", async () => {
     let betaRuns = 0;
 
-    // This is intentionally a weird workflow shape. In durable workflow code,
-    // waitForEvent is a suspension point, not a long-lived JS promise waiting in memory.
-    // We keep this test because it demonstrates what raw Promise.all does when one
-    // branch suspends before a sibling branch has durably committed its result.
+    // The wait suspends before "beta" returns; the tick still waits for "beta" and keeps its result.
     const ParallelShortCircuitWorkflow = defineWorkflow(
       { name: "parallel-short-circuit-workflow" },
       async (_event, step) => {
@@ -507,9 +504,9 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 }),
                 expect.objectContaining({
                   stepKey: "do:beta",
-                  status: "waiting",
+                  status: "completed",
                   attempts: 1,
-                  result: null,
+                  result: "B",
                 }),
               ]),
             );
@@ -545,7 +542,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 expect.objectContaining({
                   stepKey: "do:beta",
                   status: "completed",
-                  attempts: 2,
+                  attempts: 1,
                   result: "B",
                 }),
               ]),
@@ -553,7 +550,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           },
         }),
         workflow.assert(() => {
-          expect(betaRuns).toBe(2);
+          expect(betaRuns).toBe(1);
         }),
       ],
     });
@@ -561,7 +558,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("Promise.all short-circuits between two do steps before a sibling result is persisted", async () => {
+  test("Promise.all keeps a sibling step's result when another step's retry suspends first", async () => {
     let alphaRuns = 0;
     let betaRuns = 0;
 
@@ -622,9 +619,9 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 }),
                 expect.objectContaining({
                   stepKey: "do:beta",
-                  status: "waiting",
+                  status: "completed",
                   attempts: 1,
-                  result: null,
+                  result: "B",
                 }),
               ]),
             );
@@ -664,7 +661,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 expect.objectContaining({
                   stepKey: "do:beta",
                   status: "completed",
-                  attempts: 2,
+                  attempts: 1,
                   result: "B",
                 }),
               ]),
@@ -673,7 +670,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
         }),
         workflow.assert(() => {
           expect(alphaRuns).toBe(2);
-          expect(betaRuns).toBe(2);
+          expect(betaRuns).toBe(1);
         }),
       ],
     });
@@ -1655,7 +1652,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("event runner wins a nested Promise.race against a normal promise sleep", async () => {
+  test("a nested Promise.race keeps the branch the first tick finished while an event arrives", async () => {
     const runtime = createWorkflowsTestRuntime();
 
     const RaceRunnerWorkflow = defineWorkflow(
@@ -1721,7 +1718,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
           assert: (status) => {
             expect(status).toMatchObject({
               status: "complete",
-              output: { raceReturn: "event", cached: "event" },
+              output: { raceReturn: "sleep", cached: "sleep" },
             });
           },
         }),
@@ -1734,13 +1731,14 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 parentStepKey: null,
                 depth: 0,
                 status: "completed",
-                result: "event",
+                result: "sleep",
               },
               {
+                // The create tick waits for this branch, so the event tick's race replays its result.
                 stepKey: "do:Promise race>do:promise sleep branch",
                 parentStepKey: "do:Promise race",
                 depth: 1,
-                status: "waiting",
+                status: "completed",
               },
               {
                 stepKey: "do:Promise race>waitForEvent:event branch",
@@ -1753,7 +1751,7 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 parentStepKey: null,
                 depth: 0,
                 status: "completed",
-                result: "event",
+                result: "sleep",
               },
             ]);
           },
