@@ -8,7 +8,8 @@ import type {
 
 import type { workflowsSchema } from "../schema";
 
-export type RunnerTaskKind = "run" | "wake" | "retry";
+/** What a tick does: run the workflow, or also resume the waits and retries due by its time. */
+export type RunnerTask = { kind: "run" } | { kind: "wake" | "retry"; at: Date };
 
 export type WorkflowInstanceRecord = TableToColumnValues<
   (typeof workflowsSchema)["tables"]["workflow_instance"]

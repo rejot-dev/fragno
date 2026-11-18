@@ -70,9 +70,11 @@ function unwrapCodemodeCallbackResult(value: unknown) {
 }
 function recordCodemodeHostOutcome(lifetime: HostLifetime, value: unknown) {
   if (isRemoteWorkflowSuspension(value)) {
-    lifetime.suspension = codemodeSuspensionReasonSchema.parse(value.reason);
-    lifetime.issuedSuspensions.add(JSON.stringify(lifetime.suspension));
-    return { status: "suspended", reason: lifetime.suspension } as const;
+    const reason = codemodeSuspensionReasonSchema.parse(value.reason);
+    // Steps started side by side can each suspend; the runner ends the tick by the first.
+    lifetime.suspension ??= reason;
+    lifetime.issuedSuspensions.add(JSON.stringify(reason));
+    return { status: "suspended", reason } as const;
   }
   return { status: "ok", value } as const;
 }
