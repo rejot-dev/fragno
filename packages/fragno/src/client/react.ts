@@ -428,7 +428,7 @@ export function useStore<SomeStore extends Store>(
       emitChange(readStoreValue());
       if (keys?.length) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return listenKeys(store as any, keys, emitChange);
+        return listenKeys<any>(store, keys, emitChange);
       }
       return store.listen(emitChange);
     },

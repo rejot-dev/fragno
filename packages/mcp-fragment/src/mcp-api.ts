@@ -1,6 +1,7 @@
 import {
   Client,
   StreamableHTTPClientTransport,
+  type ListToolsResult,
   type OAuthClientProvider,
 } from "@modelcontextprotocol/client";
 
@@ -112,7 +113,7 @@ export async function listMcpTools<TAuthChanges = unknown>(args: {
   auth?: McpClientAuth<TAuthChanges>;
   timeoutMs?: number;
   fetchImplementation?: typeof fetch;
-}) {
+}): Promise<McpOperationResult<ListToolsResult, TAuthChanges>> {
   return await withMcpClient({
     ...args,
     operation: (client) => client.listTools(undefined, { timeout: args.timeoutMs }),

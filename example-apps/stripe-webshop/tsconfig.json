@@ -3,7 +3,9 @@
   "include": ["**/*.ts", "**/*.tsx"],
   "extends": "@fragno-private/typescript-config/tsconfig.node.json",
   "compilerOptions": {
-    "composite": true,
+    // Vite bundles the app; nothing consumes its declarations.
+    "declaration": false,
+    "declarationMap": false,
     "types": ["vite/client"],
     "paths": {
       "@/*": ["./src/*"]

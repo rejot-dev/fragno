@@ -15,3 +15,11 @@ export type {
   BrowserRunExtractInput,
   BrowserRunExtractResult,
 } from "./contracts";
+// The schemas' types reference these, so consumers can name them in their declarations.
+export type {
+  CrawlCreateParams,
+  CrawlDeleteResponse,
+  CrawlGetResponse,
+} from "cloudflare/resources/browser-rendering/crawl";
+export type { PDFCreateParams } from "cloudflare/resources/browser-rendering/pdf";
+export type { ScreenshotCreateParams } from "cloudflare/resources/browser-rendering/screenshot";

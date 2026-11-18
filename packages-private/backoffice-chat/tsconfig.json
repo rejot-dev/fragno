@@ -2,6 +2,9 @@
   "extends": "@fragno-private/typescript-config/tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
+    // Consumers import the sources, so nothing consumes its declarations.
+    "declaration": false,
+    "declarationMap": false,
     // Matches the apps that consume these sources and type-check them themselves.
     "noPropertyAccessFromIndexSignature": false,
     "types": ["vite/client"]
