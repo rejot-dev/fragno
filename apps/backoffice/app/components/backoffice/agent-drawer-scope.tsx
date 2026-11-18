@@ -5,9 +5,11 @@ import { Icon } from "@fragno-private/design-system/icon";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
+import { isPiAssistant } from "@/fragno/pi/agent/agent-definitions";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import { AgentConversation } from "@/routes/backoffice/agents/agent-conversation";
 import type { loader as agentDrawerLoader } from "@/routes/backoffice/agents/agent-drawer-data";
+import { describePiAgentWithCategory } from "@/routes/backoffice/agents/agent-labels";
 import { AgentStartComposer } from "@/routes/backoffice/agents/agent-start-composer";
 import type { PiAgentDirectoryState } from "@/routes/backoffice/agents/agent-types";
 import { usePiAgentDirectory } from "@/routes/backoffice/agents/agents-workspace";
@@ -78,6 +80,14 @@ export function AgentDrawerScope({
     );
   }
   const { agent } = data.lookup;
+  if (!agent.provisioned && !isPiAssistant(agent)) {
+    return (
+      <>
+        {header(null)}
+        <PaneMessage tone="muted">{describePiAgentWithCategory(agent.agentName)}</PaneMessage>
+      </>
+    );
+  }
   if (!agent.provisioned) {
     return (
       <>
@@ -192,10 +202,15 @@ function AgentSelect({
   agentName: string;
   onChange: (agentName: string) => void;
 }) {
-  // Until the directory is read, the selected agent is the only one known.
+  // Until the directory is read, the selected agent is the only one known. People write to
+  // assistants, so the others are listed only while one is open.
   const agentNames =
     directory.status === "ready"
-      ? directory.agents.map(({ definition }) => definition.agentName)
+      ? directory.agents
+          .filter(
+            ({ definition }) => isPiAssistant(definition) || definition.agentName === agentName,
+          )
+          .map(({ definition }) => definition.agentName)
       : [agentName];
   return (
     <Select

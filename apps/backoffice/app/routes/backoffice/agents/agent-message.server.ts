@@ -3,11 +3,17 @@ import { renderPiAgentPrompt } from "@fragno-dev/backoffice-api/v0/pi-conversati
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
-import { readPiAgentAttachments } from "./agent-attachments.server";
-import { agentModelChoiceFromFormData } from "./agent-model-menu";
-import { submitPiManagerPrompt } from "./data";
+import { isPiAssistant } from "@/fragno/pi/agent/agent-definitions";
 
-/** Submits the reader's message from a composer's form: its text, files, and model. */
+import { readPiAgentAttachments } from "./agent-attachments.server";
+import { describePiAgentWithCategory } from "./agent-labels";
+import { agentModelChoiceFromFormData } from "./agent-model-menu";
+import { fetchPiManagerAgent, submitPiManagerPrompt } from "./data";
+
+/**
+ * Submits the reader's message from a composer's form: its text, files, and model. Only assistants
+ * take messages from people.
+ */
 export async function sendPiAgentMessage({
   request,
   context,
@@ -23,6 +29,13 @@ export async function sendPiAgentMessage({
   requestId: string;
   formData: FormData;
 }): Promise<{ ok: true; receipt: PiPromptReceipt } | { ok: false; error: string }> {
+  const lookup = await fetchPiManagerAgent(request, context, scope, agentName);
+  if (!lookup.found) {
+    return { ok: false, error: lookup.message };
+  }
+  if (!isPiAssistant(lookup.agent)) {
+    return { ok: false, error: describePiAgentWithCategory(agentName) };
+  }
   const content = formData.get("content");
   const text = typeof content === "string" ? content.trim() : "";
   const read = await readPiAgentAttachments({

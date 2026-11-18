@@ -3,15 +3,19 @@ import {
   createSessionWorkspaceState,
   type SessionWorkspaceStateUpdate,
 } from "@fragno-private/backoffice-chat/workspace/workspace-model";
+import { ChatStartPanel } from "@fragno-private/design-system/agents/chat-start";
 import { PaneMessage } from "@fragno-private/design-system/feedback/pane-message";
 import { useCallback, type ReactNode } from "react";
 import { useOutletContext, type ShouldRevalidateFunctionArgs } from "react-router";
 
+import { isPiAssistant } from "@/fragno/pi/agent/agent-definitions";
+import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
 
 import type { Route } from "./+types/agent-detail";
 import { AgentConversation, type PiAgentActionData } from "./agent-conversation";
 import { isPiConversationSubmission } from "./agent-conversation-submission";
+import { describePiAgentWithCategory } from "./agent-labels";
 import { sendPiAgentMessage } from "./agent-message.server";
 import { AgentPermissions } from "./agent-permissions";
 import { AgentStartComposer } from "./agent-start-composer";
@@ -89,7 +93,7 @@ export default function BackofficeOrganizationPiAgentDetail({
         <AgentsHeader
           basePath={basePath}
           directory={directory}
-          selectedAgentName={params.agentName}
+          selected={{ agentName: params.agentName, page: "conversation" }}
           options={null}
         />
         <PaneMessage tone="failed">{loaderData.message}</PaneMessage>
@@ -104,24 +108,39 @@ export default function BackofficeOrganizationPiAgentDetail({
         <AgentsHeader
           basePath={basePath}
           directory={directory}
-          selectedAgentName={agent.agentName}
+          selected={{ agentName: agent.agentName, page: "conversation" }}
           options={null}
         />
-        <AgentStartComposer
-          // Files uploaded for one agent cannot go to another.
-          key={agentPath}
-          action={agentPath}
-          agentName={agent.agentName}
-          builtIn={agent.steward.kind === "backoffice"}
-          availableModelOptions={availableModelOptions}
-          description={agent.description}
-          permissions={agent.permissions}
-          usageLabel={usageLabel}
-          resolvedScope={resolvedScope}
-          draft={null}
-          // Starting revalidates this route, which then shows the conversation.
-          onStarted={() => undefined}
-        />
+        {isPiAssistant(agent) ? (
+          <AgentStartComposer
+            // Files uploaded for one agent cannot go to another.
+            key={agentPath}
+            action={agentPath}
+            agentName={agent.agentName}
+            builtIn={agent.steward.kind === "backoffice"}
+            availableModelOptions={availableModelOptions}
+            description={agent.description}
+            permissions={agent.permissions}
+            usageLabel={usageLabel}
+            resolvedScope={resolvedScope}
+            draft={null}
+            // Starting revalidates this route, which then shows the conversation.
+            onStarted={() => undefined}
+          />
+        ) : (
+          <ChatStartPanel
+            title={formatPiAgentName(agent.agentName)}
+            description={agent.description}
+            details={
+              <AgentPermissions permissions={agent.permissions} className="font-mono text-xs" />
+            }
+          >
+            <p className="text-sm text-pretty text-[var(--bo-muted)]">
+              {describePiAgentWithCategory(agent.agentName)} Its conversation appears here once an
+              agent or workflow gives it work.
+            </p>
+          </ChatStartPanel>
+        )}
       </div>
     );
   }
@@ -155,18 +174,8 @@ function PiAgentDetailConversation({
     <AgentsHeader
       basePath={basePath}
       directory={directory}
-      selectedAgentName={agent.agentName}
-      options={
-        options === null ? null : (
-          <>
-            <AgentPermissions
-              permissions={agent.permissions}
-              className="hidden max-w-72 truncate text-sm sm:block"
-            />
-            {options}
-          </>
-        )
-      }
+      selected={{ agentName: agent.agentName, page: "conversation" }}
+      options={options}
     />
   );
 
