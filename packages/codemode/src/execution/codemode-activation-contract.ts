@@ -1,13 +1,11 @@
-import type {
-  RemoteWorkflowHookIntent,
-  RemoteWorkflowStepScope,
-} from "@fragno-dev/workflows/remote-workflow";
+import type { RemoteWorkflowHookIntent } from "@fragno-dev/workflows/remote-workflow";
 import type {
   WorkflowDuration,
   WorkflowStepConfig,
   WorkflowStepEvent,
   WorkflowStepWorkflowOperation,
 } from "@fragno-dev/workflows/workflow";
+import type { WorkflowStepCallOutcome } from "@fragno-dev/workflows/workflow-tick";
 import { z } from "zod";
 
 import { CODEMODE_LIMITS } from "../codemode-limits";
@@ -119,6 +117,8 @@ export const codemodeActivationSchema = z.discriminatedUnion("kind", [
       event: z
         .object({ payload: z.unknown(), timestamp: z.date(), instanceId: name, id: name })
         .catchall(z.unknown()),
+      /** Settle orders of the steps that settled in earlier ticks, which the guest replays. */
+      settledOrders: z.array(z.number().int().nonnegative()),
     })
     .refine(isModuleProgramEntry),
 ]);
@@ -130,32 +130,24 @@ export const codemodeExecutionRequestSchema = z.strictObject({
   activation: codemodeActivationSchema,
 });
 
-const suspensionBase = { stepKey: name, delayMs: z.number().nullable().optional() };
-export const codemodeSuspensionReasonSchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("sleep"), ...suspensionBase, runAt: z.date().optional() }),
-  z.strictObject({
-    type: z.literal("waitForEvent"),
-    ...suspensionBase,
-    eventType: name,
-    runAt: z.date().optional(),
-  }),
-  z.strictObject({ type: z.literal("retry"), ...suspensionBase }),
-  z.strictObject({ type: z.literal("checkpoint"), stepKey: name, delayMs: z.literal(0) }),
-]);
-export type CodemodeSuspensionReason = z.infer<typeof codemodeSuspensionReasonSchema>;
 /** Domain failures stay explicit across native RPC and Cap'n Web rather than relying on Error subclasses. */
 export const codemodeCallbackResultSchema = z.discriminatedUnion("status", [
   z.strictObject({ status: z.literal("ok"), value: z.unknown() }),
   z.strictObject({ status: z.literal("error"), error: codemodeWireErrorSchema }),
 ]);
 export type CodemodeToolResult = z.infer<typeof codemodeCallbackResultSchema>;
-/** Step failures and suspension survive both transports without depending on native Error properties. */
-export type CodemodeStepResult =
-  | CodemodeToolResult
-  | { status: "suspended"; reason: CodemodeSuspensionReason };
 /**
- * The bridge's answer for one activation: the guest's completion, or `unavailable` when the bridge
- * declined to run it, such as with a full compile queue. Guests cannot produce `unavailable`.
+ * How a step call ended, which survives both transports without depending on native Error
+ * properties: settled with its place in the settle order, or parked until a later tick.
+ */
+export type CodemodeStepResult =
+  | { status: "settled"; result: CodemodeToolResult; order: number | null }
+  | { status: "parked" };
+/**
+ * The bridge's answer for one activation: the guest's completion; `unavailable` when the bridge
+ * declined to run it, such as with a full compile queue; or `interrupted` when the bridge ended a
+ * workflow tick, such as at its deadline, before the tick had an outcome of its own. Only the
+ * bridge's own signals produce the last two, never a guest.
  */
 export const codemodeBridgeAnswerSchema = z.discriminatedUnion("status", [
   z.strictObject({
@@ -169,16 +161,20 @@ export const codemodeBridgeAnswerSchema = z.discriminatedUnion("status", [
     error: codemodeWireErrorSchema,
     logs: z.array(codemodeLogLineSchema).max(CODEMODE_LIMITS.maxLogs),
   }),
+  // A workflow guest's code stopped without settling: its tick ended idle.
   z.strictObject({
     status: z.literal("suspended"),
-    reason: codemodeSuspensionReasonSchema,
     logs: z.array(codemodeLogLineSchema).max(CODEMODE_LIMITS.maxLogs),
   }),
   z.strictObject({ status: z.literal("unavailable"), cause: z.string().max(1024) }),
+  z.strictObject({ status: z.literal("interrupted"), cause: z.string().max(1024) }),
 ]);
 export type CodemodeBridgeAnswer = z.infer<typeof codemodeBridgeAnswerSchema>;
 /** How the guest's execution ended. */
-export type CodemodeCompletion = Exclude<CodemodeBridgeAnswer, { status: "unavailable" }>;
+export type CodemodeCompletion = Exclude<
+  CodemodeBridgeAnswer,
+  { status: "unavailable" | "interrupted" }
+>;
 
 /** A provider capability exposes only explicitly registered tool names. */
 export interface CodemodeProviderCapability {
@@ -195,15 +191,12 @@ export interface CodemodeTransactionCapability {
   triggerHook(intent: RemoteWorkflowHookIntent): Promise<void>;
   onEvent(type: string, callback: CodemodeEventCallback): Promise<() => Promise<void>>;
 }
-/** Nested steps receive a scoped capability; guests never supply or forge parent step identities. */
+/** A guest's steps; a step's callback receives only its transaction, since it cannot call steps. */
 export interface CodemodeStepCapability {
   do(
     name: string,
     config: WorkflowStepConfig | undefined,
-    callback: (
-      tx: CodemodeTransactionCapability,
-      step: CodemodeStepCapability,
-    ) => Promise<CodemodeToolResult>,
+    callback: (tx: CodemodeTransactionCapability) => Promise<CodemodeToolResult>,
   ): Promise<CodemodeStepResult>;
   sleep(name: string, duration: WorkflowDuration): Promise<CodemodeStepResult>;
   sleepUntil(name: string, timestamp: Date | number): Promise<CodemodeStepResult>;
@@ -229,29 +222,16 @@ export interface CodemodeExecutionCapability {
     capabilities: CodemodeCapabilities,
   ): Promise<CodemodeBridgeAnswer>;
 }
-/** Trusted workflow collaborator; its parent scopes are supplied by the capability owner, never the guest. */
+/** Trusted workflow collaborator; revocable capabilities wrap it before anything reaches the guest. */
 export interface CodemodeWorkflowHost {
   do(
-    parentScope: RemoteWorkflowStepScope,
     name: string,
     config: WorkflowStepConfig | undefined,
-    callback: (
-      tx: CodemodeWorkflowTransactionHost,
-      scope: NonNullable<RemoteWorkflowStepScope>,
-    ) => Promise<unknown>,
-  ): Promise<unknown>;
-  sleep(
-    parentScope: RemoteWorkflowStepScope,
-    name: string,
-    duration: WorkflowDuration,
-  ): Promise<unknown>;
-  sleepUntil(
-    parentScope: RemoteWorkflowStepScope,
-    name: string,
-    timestamp: Date | number,
-  ): Promise<unknown>;
+    callback: (tx: CodemodeWorkflowTransactionHost) => Promise<unknown>,
+  ): Promise<WorkflowStepCallOutcome>;
+  sleep(name: string, duration: WorkflowDuration): Promise<WorkflowStepCallOutcome>;
+  sleepUntil(name: string, timestamp: Date | number): Promise<WorkflowStepCallOutcome>;
   waitForEvent(
-    parentScope: RemoteWorkflowStepScope,
     name: string,
     options: {
       type: string;
@@ -260,7 +240,7 @@ export interface CodemodeWorkflowHost {
         | ((tx: CodemodeWorkflowTransactionHost, event: unknown) => Promise<void>)
         | undefined;
     },
-  ): Promise<unknown>;
+  ): Promise<WorkflowStepCallOutcome>;
 }
 export interface CodemodeWorkflowTransactionHost {
   emit(payload: unknown): void;
@@ -271,17 +251,19 @@ export interface CodemodeWorkflowTransactionHost {
   onEvent(type: string, callback: (event: WorkflowStepEvent) => Promise<void>): () => void;
 }
 /**
- * Host settlement preserves runner retry decisions after a disconnect; closing never implies
- * rollback. Closing resolves once revocation holds, which over Workers RPC is a later round trip.
+ * Settling waits for the calls the host forwarded, so none outlives the activation; closing never
+ * implies rollback. Closing resolves once revocation holds, which over Workers RPC is a later round
+ * trip.
  */
 export type CodemodeHost = {
   capabilities: CodemodeCapabilities;
   close(): Promise<void>;
-  settle(): Promise<CodemodeSuspensionReason | null>;
+  settle(): Promise<void>;
 };
 /**
- * The executor never learned how the activation ended, such as when it lost the bridge. Only the
- * caller's executor reports it: bridge completions cannot express it, so guests cannot forge it.
+ * The activation has no outcome of its own, such as when the executor lost the bridge or the bridge
+ * ended a workflow tick at its deadline. Only executors and the bridge report it, from their own
+ * deadlines and connections, so guests cannot forge it.
  */
 export type CodemodeInterruption = { status: "interrupted"; cause: string };
 /** Runs one activation against its caller's host; implementations never retry it implicitly. */

@@ -798,6 +798,68 @@ describe("Workflows Runner", () => {
     ]);
   });
 
+  test("a tx.onEvent handler cannot call another step", async () => {
+    const stepEntered = deferred();
+    const handled = deferred();
+    let childRuns = 0;
+    let handlerError: unknown;
+
+    const NestedHandlerWorkflow = defineWorkflow(
+      { name: "step-message-nested-handler-workflow" },
+      async (_event, step) => {
+        await step.do("interactive", async (tx) => {
+          tx.onEvent("command", async (event) => {
+            try {
+              await step.do("child", () => {
+                childRuns += 1;
+              });
+            } catch (error) {
+              handlerError = error;
+            }
+            event.consume();
+            handled.resolve();
+          });
+          stepEntered.resolve();
+          await handled.promise;
+        });
+        return { ok: true };
+      },
+    );
+
+    const harness = await createWorkflowsTestHarness({
+      workflows: { NESTED_HANDLER: NestedHandlerWorkflow },
+      adapter: { type: "in-memory" },
+      testBuilder: buildDatabaseFragmentsTest(),
+      autoTickHooks: false,
+      fragmentConfig: { stepEmissions: createStepEmissions() },
+    });
+
+    const instanceId = await harness.createInstance("NESTED_HANDLER");
+    const [instance] = (
+      await harness.db
+        .createUnitOfWork("read-nested-handler-instance")
+        .forSchema(workflowsSchema)
+        .find("workflow_instance", (b) => b.whereIndex("primary"))
+        .executeRetrieve()
+    )[0];
+    assert(instance);
+
+    const tick = harness.tick(buildPayload(instance, "create"));
+    await stepEntered.promise;
+    await sendEventAndFlush(harness, {
+      workflowName: "step-message-nested-handler-workflow",
+      instanceId,
+      event: { type: "command", payload: {} },
+    });
+    await tick;
+
+    expect(childRuns).toBe(0);
+    expect(handlerError).toMatchObject({
+      name: "NonRetryableError",
+      message: expect.stringContaining('WORKFLOW_STEP_NESTED_IN_DO: step "child"'),
+    });
+  });
+
   test("step completion waits for a racing live-event consumption", async () => {
     const stepEntered = deferred();
     const handlerEntered = deferred();
@@ -2591,93 +2653,21 @@ describe("Workflows Runner", () => {
     assert(status.status === "terminated");
   });
 
-  test("cached parent subtree skip does not renumber later sibling steps", async () => {
-    const NestedKeyWorkflow = defineWorkflow(
-      { name: "nested-key-workflow" },
-      async (_event, step) => {
-        await step.do("parent", async () => {
-          await step.do("shared", async () => "nested-value");
-          return "parent-value";
-        });
-
-        await step.waitForEvent("ready", { type: "ready" });
-        const shared = await step.do("shared", async () => "top-level-value");
-        return { shared };
-      },
-    );
-
-    const harness = await createWorkflowsTestHarness({
-      workflows: { NESTED: NestedKeyWorkflow },
-      adapter: { type: "kysely-sqlite" },
-      testBuilder: buildDatabaseFragmentsTest(),
-      autoTickHooks: false,
-    });
-
-    const instanceId = await harness.createInstance("NESTED");
-    const [instance] = (
-      await harness.db
-        .createUnitOfWork("read")
-        .forSchema(workflowsSchema)
-        .find("workflow_instance", (b) => b.whereIndex("primary"))
-        .executeRetrieve()
-    )[0];
-    expect(instance).toBeTruthy();
-
-    await harness.tick(buildPayload(instance!, "create"));
-    await harness.sendEvent("NESTED", instanceId, { type: "ready" });
-    await harness.tick(buildPayload(instance!, "event"));
-
-    const status = await harness.getStatus("NESTED", instanceId);
-    expect(status).toMatchObject({
-      status: "complete",
-      output: { shared: "top-level-value" },
-    });
-
-    const steps = (
-      await harness.db
-        .createUnitOfWork("read")
-        .forSchema(workflowsSchema)
-        .find("workflow_step", (b) =>
-          b
-            .whereIndex("idx_workflow_step_instanceRef_createdAt", (eb) =>
-              eb("instanceRef", "=", instance!.id),
-            )
-            .orderByIndex("idx_workflow_step_instanceRef_createdAt", "asc"),
-        )
-        .executeRetrieve()
-    )[0];
-
-    expect(steps.map((step) => step.stepKey)).toEqual([
-      "do:parent",
-      "do:parent>do:shared",
-      "waitForEvent:ready",
-      "do:shared",
-    ]);
-    expect(steps[1]).toMatchObject({
-      parentStepKey: "do:parent",
-      depth: 1,
-      result: "nested-value",
-    });
-    expect(steps[3]).toMatchObject({
-      parentStepKey: null,
-      depth: 0,
-      result: "top-level-value",
-    });
-  });
-
-  test("late descendant failure does not override an observed race winner", async () => {
+  test("a late failure of a race's loser does not override the winner", async () => {
     const LateFailureWorkflow = defineWorkflow(
-      { name: "late-descendant-failure-workflow" },
+      { name: "late-loser-failure-workflow" },
       async (_event, step) => {
-        const raceReturn = await step.do("race", async () => {
-          return await Promise.race([
-            step.do("slow failure", async () => {
-              await step.sleep("slow failure delay", 1000);
-              throw new Error("LATE_DESCENDANT_FAILURE");
-            }),
-            step.do("fast success", async () => "fast"),
-          ]);
-        });
+        const raceReturn = await Promise.race([
+          (async () => {
+            await step.sleep("slow failure delay", 1000);
+            return await step.do("slow failure", async () => {
+              throw new NonRetryableError("LATE_LOSER_FAILURE");
+            });
+          })(),
+          step.do("fast success", async () => "fast"),
+        ]);
+        // Keeps the run going until after the loser fails.
+        await step.sleep("cool down", 2000);
         return { raceReturn };
       },
     );
@@ -2700,6 +2690,11 @@ describe("Workflows Runner", () => {
     expect(instance).toBeTruthy();
 
     await harness.tick(buildPayload(instance!, "create"));
+    harness.clock.advanceBy(1000);
+    await harness.runUntilIdle(buildPayload(instance!, "wake"));
+    expect(await harness.getStatus("LATE_FAILURE", instanceId)).toMatchObject({
+      status: "waiting",
+    });
     harness.clock.advanceBy(1000);
     await harness.runUntilIdle(buildPayload(instance!, "wake"));
 

@@ -28,7 +28,7 @@ import {
 
 There is intentionally no package-root barrel export.
 
-Interactive chat workflows reconstruct normal `AgentHarness` options for every workflow replay:
+Interactive chat workflows reconstruct normal `AgentHarness` options for every command attempt:
 
 ```ts
 createInteractiveChatWorkflow({
@@ -42,10 +42,11 @@ createInteractiveChatWorkflow({
 });
 ```
 
-The `options` callback runs outside durable workflow steps, so it may return non-serializable
-runtime resources such as session-scoped tool `execute` functions. Session creation may include an
-arbitrary `metadata` object; Pi Harness stores it with the session, forwards it as
-`event.payload.metadata`, and includes it in operation accounting.
+The `options` callback runs inside each command step attempt, so it may do I/O, and its result is
+never persisted, so it may return non-serializable runtime resources such as session-scoped tool
+`execute` functions. A resolver that throws fails the command and errors the session. Session
+creation may include an arbitrary `metadata` object; Pi Harness stores it with the session, forwards
+it as `event.payload.metadata`, and includes it in operation accounting.
 
 Custom workflows own their durable steps and use real Pi `Session` and `AgentHarness` objects. Fold
 each completed step result into workflow-local state before starting the next operation:

@@ -77,6 +77,7 @@ type PageRelations = {
     errorMessage: string | null;
     createdAt: PageSqlTime;
     updatedAt: PageSqlTime;
+    settledOrder: number | null;
     position: number;
   };
   /** Events delivered to workflow runs; runId is the run's id. */

@@ -320,7 +320,7 @@ test("generic workflow creation cannot forge the release publisher's provenance"
           "create a structurally valid workflow that claims a different original publisher",
           async (ctx) => {
             const release = await captureBundledMarketplaceRelease(bundledEntry());
-            const files = await marketplaceReleasePackageFiles(release);
+            const files = marketplaceReleasePackageFiles(release);
             const work: Omit<MarketplacePackagePublishRequest, "workflowInstanceId"> = {
               intent: {
                 marketplace: { kind: "system" },

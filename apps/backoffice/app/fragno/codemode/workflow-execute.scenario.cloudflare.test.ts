@@ -1,4 +1,4 @@
-import { assert, expect, expectTypeOf, test } from "vitest";
+import { assert, expect, test } from "vitest";
 
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import { defineScenario, runScenario } from "@fragno-dev/workflows/scenario";
@@ -364,7 +364,7 @@ test("a step that fails after its sibling's checkpoint is still retried", async 
   );
 });
 
-test("suspension history uses ISO timestamps while the live runner sleeps and resumes", async () => {
+test("run history records each suspended tick while the live runner sleeps and resumes", async () => {
   const scope = { kind: "user", userId: "suspension-history", jurisdiction: null } as const;
   const object = createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.for(
     scope,
@@ -421,17 +421,9 @@ test("suspension history uses ISO timestamps while the live runner sleeps and re
           read: async () => {
             expect(executions).toHaveLength(1);
             const { runId, completion } = executions[0];
-            assert(completion.status === "suspended" && completion.reason.type === "sleep");
-            expect(completion.reason.runAt).toBeInstanceOf(Date);
-            expect(completion.reason.runAt?.toISOString()).toBe(wakeAt.toISOString());
+            assert(completion.status === "suspended");
             const run = await object.getRun(runId);
-            assert(run?.status === "suspended" && run.reason.type === "sleep");
-            expectTypeOf(run.reason.runAt).toEqualTypeOf<string | undefined>();
-            expect(run.reason).toEqual({
-              type: "sleep",
-              stepKey: "sleep:scheduled",
-              runAt: wakeAt.toISOString(),
-            });
+            assert(run?.status === "suspended");
             const page = await object.listRuns({ page: "first", pageSize: 10 });
             // A listed run omits the tool calls that getRun reads with it.
             const { toolCalls: _toolCalls, toolCallsTruncated: _truncated, ...listedRun } = run;
@@ -440,9 +432,7 @@ test("suspension history uses ISO timestamps while the live runner sleeps and re
             const finishedHook = hooks.items.find((hook) => hook.hookName === "onRunFinished");
             assert(finishedHook);
             const finished = finishedHook.payload as CodemodeRunFinishedHookPayload;
-            assert(finished.status === "suspended" && finished.reason.type === "sleep");
-            expectTypeOf(finished.reason.runAt).toEqualTypeOf<string | undefined>();
-            expect(finished.reason).toEqual(run.reason);
+            assert(finished.status === "suspended");
           },
         }),
         runner.restart(),
@@ -456,15 +446,7 @@ test("suspension history uses ISO timestamps while the live runner sleeps and re
           read: async () => {
             expect(executions).toHaveLength(2);
             const run = await object.getRun(executions[1].runId);
-            assert(run?.status === "suspended" && run.reason.type === "waitForEvent");
-            expectTypeOf(run.reason.runAt).toEqualTypeOf<string | undefined>();
-            expect(run.reason).toEqual({
-              type: "waitForEvent",
-              stepKey: "waitForEvent:approval",
-              eventType: "approved",
-              delayMs: 3_600_000,
-            });
-            expect(run.reason).not.toHaveProperty("runAt");
+            assert(run?.status === "suspended");
           },
         }),
         runner.eventAndRunUntilIdle({
@@ -484,7 +466,6 @@ test("suspension history uses ISO timestamps while the live runner sleeps and re
             expect(page.runs).toHaveLength(3);
             expect(page.runs.find((run) => run.id === executions[0].runId)).toMatchObject({
               status: "suspended",
-              reason: { type: "sleep", runAt: wakeAt.toISOString() },
             });
             expect(page.runs.find((run) => run.id === executions[2].runId)).toMatchObject({
               status: "completed",

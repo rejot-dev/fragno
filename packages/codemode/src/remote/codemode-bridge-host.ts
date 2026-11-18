@@ -68,9 +68,7 @@ export function createCodemodeBridgeHost(source: CodemodeCapabilities): Codemode
     class BridgeStep extends RpcTarget implements CodemodeStepCapability {
       do(...[name, config, callback]: Parameters<CodemodeStepCapability["do"]>) {
         return trackBridgeHostCall(() =>
-          step.do(name, config, (tx, nested) =>
-            callback(forwardTransaction(tx), forwardStep(nested)),
-          ),
+          step.do(name, config, (tx) => callback(forwardTransaction(tx))),
         );
       }
       sleep(...args: Parameters<CodemodeStepCapability["sleep"]>) {
@@ -110,7 +108,6 @@ export function createCodemodeBridgeHost(source: CodemodeCapabilities): Codemode
       while (pending.size > 0) {
         await Promise.allSettled(pending);
       }
-      return null;
     },
   };
 }

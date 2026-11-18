@@ -1,9 +1,8 @@
 import { CODEMODE_LIMITS } from "@fragno-dev/codemode/codemode-limits";
 import { decodeCodemodeError } from "@fragno-dev/codemode/execution/codemode-errors";
-import {
-  RemoteWorkflowSuspendedError,
-  type RemoteWorkflowAllowedHook,
-  type RemoteWorkflowStepHost,
+import type {
+  RemoteWorkflowAllowedHook,
+  RemoteWorkflowStepHost,
 } from "@fragno-dev/workflows/remote-workflow";
 import type { RemoteWorkflowRunFn, WorkflowEvent } from "@fragno-dev/workflows/workflow";
 import { withBackofficeUiBuilderModule } from "@fragno-private/backoffice-ui/builder";
@@ -75,6 +74,7 @@ async function runCodemodeWorkflowTick<TParams>(
         providers: codemodeProviderManifest(tools.providers),
         timeoutMs: CODEMODE_LIMITS.activationTimeoutMs,
         event: { ...event, id: event.id ?? event.instanceId },
+        settledOrders: [...remote.settledOrders],
       },
       origin,
       runHost,
@@ -85,13 +85,14 @@ async function runCodemodeWorkflowTick<TParams>(
   return completion;
 }
 
-/** Hands a tick's completion to the runner: its output, or a suspension, interruption, or guest error. */
+/** Hands a tick's completion to the runner: its output, an idle report, an interruption, or a guest error. */
 function workflowTickOutput(
   completion: WorkflowTickCompletion,
   remote: RemoteWorkflowStepHost,
 ): unknown {
   if (completion.status === "suspended") {
-    throw new RemoteWorkflowSuspendedError(completion.reason);
+    // The workflow code stopped without settling; the runner knows which steps it parked.
+    return remote.reportIdle();
   }
   if (completion.status === "interrupted") {
     // Without an outcome from the bridge the tick may not have run, so the runner tries it again.

@@ -50,6 +50,10 @@
       "types": "./dist/node/remote-workflow.d.ts",
       "default": "./dist/node/remote-workflow.js"
     },
+    "./workflow-tick": {
+      "types": "./dist/node/workflow-tick.d.ts",
+      "default": "./dist/node/workflow-tick.js"
+    },
     "./instance-ref": {
       "types": "./dist/node/instance-ref.d.ts",
       "default": "./dist/node/instance-ref.js"

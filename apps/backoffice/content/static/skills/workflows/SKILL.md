@@ -43,6 +43,13 @@ Use `defineWorkflow` for work that must survive retries, time, or an external co
     address those names. Use `step.sleep` or `step.sleepUntil` for time and `step.waitForEvent` for
     external continuation.
 
+    Workflow code awaits only steps: awaiting a provider call or other I/O between steps errors the
+    run. A `step.do` callback does its step's work and calls no other steps; compose steps in the
+    workflow code, such as `Promise.all` over steps, or `Promise.race` between a `step.waitForEvent`
+    and a `step.sleep` as a deadline. A race keeps its winner when the run resumes. A step that
+    waits for time, an event, or its next retry stays pending until the run resumes, so a
+    `try`/`catch` around it sees only how it finally ends.
+
     **Complete when** every non-deterministic operation has a durable step and every continuation
     has an exact event type.
 
@@ -136,7 +143,6 @@ Read "/static/codemode/providers/workflow.d.ts" for exact inputs:
 - `workflow.retryFailedStep({ instanceId, delayMs })` retries the latest failed top-level step.
 
 For a waiting instance, send the exact event `type` expected by `step.waitForEvent`. Failed-step
-retry requires the latest top-level step to be the only failed top-level step. Retrying a `do` step
-reruns all of its nested steps, including completed steps, so their effects and mutations must be
-repeatable. Retrying a failed event wait starts a fresh timeout window and considers pending events
-before the new deadline.
+retry requires the latest step to be the only failed step. Retrying a `do` step runs its callback
+again, so its effects and mutations must be repeatable. Retrying a failed event wait starts a fresh
+timeout window and considers pending events before the new deadline.

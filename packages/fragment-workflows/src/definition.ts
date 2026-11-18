@@ -1282,6 +1282,9 @@ export const workflowsFragmentDefinition = defineFragment<WorkflowsFragmentConfi
                     errorMessage: null,
                     nextRetryAt: scheduledAt,
                     wakeAt: null,
+                    // The step settles again, later; a stale order would hold back the steps
+                    // that settled after it, which the new attempt may be waiting on.
+                    settledOrder: null,
                     updatedAt: b.now(),
                   })
                   .check(),

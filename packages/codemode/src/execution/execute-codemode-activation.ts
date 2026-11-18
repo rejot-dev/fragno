@@ -17,7 +17,6 @@ import {
   type ResolvedProvider,
 } from "../runtime-api";
 import {
-  codemodeSuspensionReasonSchema,
   type CodemodeActivation,
   type CodemodeCapabilities,
   type CodemodeCompletion,
@@ -31,7 +30,8 @@ export type CodemodeActivationServices = { loader: WorkerLoader; compile: Worker
 
 type WorkflowResult =
   | { ok: true; result: unknown; logs: CodemodeLogLine[] }
-  | { ok: false; suspension: { reason: unknown }; logs: CodemodeLogLine[] };
+  // The workflow code stopped without settling: its tick ended idle.
+  | { ok: false; logs: CodemodeLogLine[] };
 
 /** Compiler warnings precede guest output; the byte limit counts line text only. */
 function collectCodemodeCompletionLogs(
@@ -207,6 +207,7 @@ export async function executeCodemodeActivation(
           event: unknown,
           step: unknown,
           dispatchers: unknown,
+          settledOrders: readonly number[],
         ): DynamicWorkerRpcCall<WorkflowResult>;
       },
       WorkflowResult
@@ -214,7 +215,12 @@ export async function executeCodemodeActivation(
       {
         ...common,
         run: (entrypoint) =>
-          entrypoint.run(activation.event, rpcTargets.stepTarget, rpcTargets.dispatchers),
+          entrypoint.run(
+            activation.event,
+            rpcTargets.stepTarget,
+            rpcTargets.dispatchers,
+            activation.settledOrders,
+          ),
       },
       execution,
     );
@@ -226,11 +232,7 @@ export async function executeCodemodeActivation(
           logs,
           workflowDefinition: null,
         }
-      : {
-          status: "suspended",
-          reason: codemodeSuspensionReasonSchema.parse(output.suspension.reason),
-          logs,
-        };
+      : { status: "suspended", logs };
   }
   const evaluation = await executor.runEntrypoint<
     { evaluate(targets: unknown): DynamicWorkerRpcCall<CodemodeWorkerEvaluation> },

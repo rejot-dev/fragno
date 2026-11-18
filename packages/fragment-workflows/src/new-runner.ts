@@ -15,7 +15,7 @@ import {
   type RunnerTaskOutcome,
 } from "./runner/plan-writes";
 import { createRunnerState, type RunnerState } from "./runner/state";
-import { isRunnerStepSuspended, RunnerStep } from "./runner/step";
+import { RunnerStep, type RunnerTickEnd } from "./runner/step";
 import type { WorkflowStepLivePumpRegistry } from "./runner/step-live-pump";
 import type {
   RunnerTask,
@@ -386,6 +386,39 @@ function buildWorkflowEvent(instance: WorkflowInstanceRecord) {
   };
 }
 
+class WorkflowStalledError extends Error {
+  constructor() {
+    super(
+      "WORKFLOW_STALLED: the workflow stopped without settling or waiting on a step. Workflow code may await only steps; do other asynchronous work inside a step.do callback.",
+    );
+    this.name = "WorkflowStalledError";
+  }
+}
+
+async function outcomeOf(
+  workflowName: string,
+  outputSchema: StandardSchemaV1 | undefined,
+  end: RunnerTickEnd,
+): Promise<RunnerTaskOutcome> {
+  if (end.type === "returned") {
+    try {
+      return {
+        type: "completed",
+        output: await validateWorkflowOutput(workflowName, outputSchema, end.value),
+      };
+    } catch (error) {
+      return { type: "errored", error: toError(error) };
+    }
+  }
+  if (end.type === "threw") {
+    return { type: "errored", error: toError(end.error) };
+  }
+  if (end.type === "parked") {
+    return { type: "suspended", checkpoint: end.checkpoint };
+  }
+  return { type: "errored", error: new WorkflowStalledError() };
+}
+
 /**
  * Execute workflow code for a single tick using RunnerStep and return an outcome.
  * Bigger picture: converts user code into buffered mutations plus a scheduling decision.
@@ -415,22 +448,14 @@ async function runTask(
     stepEmissions: ctx.stepEmissions,
     workflowsByName: ctx.workflowsByName,
     checkpoint: workflow.checkpoint,
+    execution: workflow.remote ? "remote" : "local",
   });
   const initialEvent = buildWorkflowEvent(instance);
 
-  let outcome: RunnerTaskOutcome;
-  try {
-    const rawOutput = await workflow.run(initialEvent, step);
-    const output = await validateWorkflowOutput(instance.workflowName, outputSchema, rawOutput);
-    outcome = { type: "completed", output };
-  } catch (err) {
-    outcome = isRunnerStepSuspended(err)
-      ? { type: "suspended", reason: err.reason }
-      : { type: "errored", error: toError(err) };
-  }
-  // Steps started beside a branch that suspended or failed still run; their outcomes belong to
-  // this tick.
-  await step.settle();
+  const end = await step.runTick(
+    async (): Promise<unknown> => await workflow.run(initialEvent, step),
+  );
+  let outcome = await outcomeOf(instance.workflowName, outputSchema, end);
   // Outranks whatever the workflow returned or threw: the host saw that the tick did not run.
   if (workflow.remote && step.tickInterruption) {
     outcome = { type: "interrupted", error: step.tickInterruption, jitter: ctx.random() };

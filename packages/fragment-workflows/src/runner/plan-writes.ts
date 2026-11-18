@@ -14,7 +14,6 @@ import type {
 } from "../workflow";
 import { validateAndNormalizeWorkflowOperation } from "../workflow-operation";
 import type { RunnerMutationBuffer, RunnerState, WorkflowStepTxMutation } from "./state";
-import type { RunnerStepSuspended } from "./step";
 import type {
   WorkflowInstanceRecord,
   WorkflowStepCreate,
@@ -26,7 +25,8 @@ import { isMutateOnlyTx } from "./utils";
 
 export type RunnerTaskOutcome =
   | { type: "completed"; output: unknown }
-  | { type: "suspended"; reason: RunnerStepSuspended["reason"] }
+  // `checkpoint`: workflow code asked to continue in a new tick right away.
+  | { type: "suspended"; checkpoint: boolean }
   | { type: "errored"; error: Error }
   // `jitter` is a uniform draw in [0, 1) that spreads the retries of ticks interrupted together.
   | { type: "interrupted"; error: Error; jitter: number };
@@ -347,10 +347,7 @@ export function applyOutcome(
       },
       { processAt: schemaUow.now().plus({ ms: outcome.delayMs }) },
     );
-    return;
-  }
-
-  if (outcome.type !== "suspended") {
+  } else if (outcome.type !== "suspended") {
     if (outcome.type === "completed") {
       triggerWorkflowTerminalHook(uow, instance, {
         status: "complete",
@@ -370,7 +367,8 @@ export function applyOutcome(
 
   // Every step this tick left waiting schedules the tick that resumes it, since one tick can leave
   // steps waiting for different kinds of tick, such as a retry beside a sleep. A step that waits
-  // again on replay already has its tick, so it schedules none.
+  // again on replay already has its tick, so it schedules none, which is why an interrupted tick
+  // schedules its steps' ticks too: its rerun finds them already waiting.
   const namespace = schemaUow.namespace ?? workflowsSchema.name;
   const scheduled = new Set<string>();
   function scheduleTick(reason: "wake" | "retry", at: { delayMs: number } | { date: Date }) {
@@ -391,7 +389,7 @@ export function applyOutcome(
       { processAt: "delayMs" in at ? schemaUow.now().plus({ ms: at.delayMs }) : at.date },
     );
   }
-  if (outcome.reason.type === "checkpoint") {
+  if (outcome.type === "suspended" && outcome.checkpoint) {
     scheduleTick("wake", { delayMs: 0 });
   }
   const drafts = [

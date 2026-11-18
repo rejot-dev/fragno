@@ -10,11 +10,7 @@ import {
 import type { DatabaseRequestContext } from "@fragno-dev/db";
 
 import { WorkflowsLogger } from "../debug-log";
-import type {
-  RemoteWorkflowStepHost,
-  RemoteWorkflowStepScope,
-  RemoteWorkflowStepSuspendReason,
-} from "../remote-workflow";
+import type { RemoteWorkflowStepHost, RemoteWorkflowWaitForEventOptions } from "../remote-workflow";
 import {
   isWorkflowEventConsumedControlPayload,
   selectWorkflowStepReplayEpochs,
@@ -41,8 +37,13 @@ import type {
   WorkflowStepTx,
   WorkflowStepWorkflowOperation,
 } from "../workflow";
-import { WaitForEventTimeoutError } from "../workflow";
+import { NonRetryableError, WaitForEventTimeoutError } from "../workflow";
 import { validateAndNormalizeWorkflowOperation } from "../workflow-operation";
+import {
+  createWorkflowTick,
+  type WorkflowStepCallOutcome,
+  type WorkflowTick,
+} from "../workflow-tick";
 import type { RunnerState, WorkflowStepSnapshot, WorkflowStepTxMutation } from "./state";
 import { createWorkflowStepLivePump, workflowStepLivePumpKey } from "./step-live-pump";
 import type { WorkflowStepLivePump, WorkflowStepLivePumpRegistry } from "./step-live-pump";
@@ -55,7 +56,18 @@ import type {
 } from "./types";
 import { isMutateOnlyTx, isNonRetryableError, toError } from "./utils";
 
-export type RunnerStepSuspendReason = RemoteWorkflowStepSuspendReason;
+/** Why a step waits for a later tick. */
+export type RunnerStepSuspendReason =
+  | { type: "sleep"; stepKey: string; delayMs?: number | null; runAt?: Date }
+  | {
+      type: "waitForEvent";
+      stepKey: string;
+      eventType: string;
+      delayMs?: number | null;
+      runAt?: Date;
+    }
+  | { type: "retry"; stepKey: string; delayMs?: number | null }
+  | { type: "checkpoint"; stepKey: string; delayMs: 0 };
 
 export class RunnerStepSuspended extends Error {
   readonly reason: RunnerStepSuspendReason;
@@ -67,9 +79,24 @@ export class RunnerStepSuspended extends Error {
   }
 }
 
+/** How a tick of workflow code ended. */
+export type RunnerTickEnd =
+  | { type: "returned"; value: unknown }
+  | { type: "threw"; error: unknown }
+  | { type: "parked"; checkpoint: boolean }
+  // Nothing settled the run and no step waits: the code awaited something other than a step.
+  | { type: "stalled" };
+
+/**
+ * Where workflow code runs. Local code runs here, under this tick's driver. Remote code runs in
+ * another realm under its own driver, which ends the tick and reports how through the remote host.
+ */
+type RunnerStepExecution = "local" | "remote";
+
 type RunnerStepOptions = {
   state: RunnerState;
   task: RunnerTask;
+  execution: RunnerStepExecution;
   workflowName: string;
   instanceId: string;
   handlerTx: DatabaseRequestContext["handlerTx"];
@@ -89,6 +116,10 @@ type StepTxQueue = {
 type StepExecutionContext = {
   identity: WorkflowStepIdentity;
 };
+
+function isSettledStatus(status: string | null | undefined): boolean {
+  return status === "completed" || status === "errored";
+}
 
 /**
  * Normalize timestamps to a Date instance.
@@ -206,12 +237,24 @@ export class RunnerStep implements WorkflowStep {
   readonly #checkpoint: "step" | undefined;
   #concurrencyConflict: BufferedPumpScopeAlreadyOpenError | null = null;
   #tickInterruption: Error | null = null;
+  /** Remote step calls not yet settled or parked. */
   readonly #running = new Set<Promise<unknown>>();
   #completedTopLevelSteps = 0;
+  readonly #execution: RunnerStepExecution;
+  readonly #replayedOrders: readonly number[];
+  readonly #tick: WorkflowTick;
+  readonly #parked: RunnerStepSuspendReason[] = [];
+  /** Whether remote code reported that it stopped without settling. */
+  #idleReported = false;
 
   constructor(options: RunnerStepOptions) {
     this.#state = options.state;
     this.#task = options.task;
+    this.#execution = options.execution;
+    this.#replayedOrders = Array.from(options.state.stepsByKey.values()).flatMap((step) =>
+      typeof step.settledOrder === "number" ? [step.settledOrder] : [],
+    );
+    this.#tick = createWorkflowTick(this.#replayedOrders);
     this.#workflowName = options.workflowName;
     this.#instanceId = options.instanceId;
     this.#handlerTx = options.handlerTx;
@@ -376,16 +419,6 @@ export class RunnerStep implements WorkflowStep {
     return draft;
   }
 
-  #runInRemoteParentScope<T>(
-    parentScope: RemoteWorkflowStepScope,
-    execute: () => Promise<T> | T,
-  ): Promise<T> {
-    if (!parentScope) {
-      return Promise.resolve(execute());
-    }
-    return this.#runInStepContext(parentScope, execute);
-  }
-
   /**
    * The conflict this tick met when another tick of its instance was already running one of its
    * steps. Workflow code can catch the error, and remote code receives it as a failed call, so
@@ -404,13 +437,118 @@ export class RunnerStep implements WorkflowStep {
   }
 
   /**
-   * Waits for the steps this tick started. When one branch of a `Promise.all` suspends, the
-   * workflow ends while its siblings' steps still run; their outcomes belong to this tick.
+   * Runs workflow code for one tick. Local code runs under this tick's driver. Remote code reports
+   * how its own driver ended the tick: by returning, throwing, or reporting itself idle.
    */
-  async settle(): Promise<void> {
+  async runTick(run: () => Promise<unknown>): Promise<RunnerTickEnd> {
+    if (this.#execution === "remote") {
+      return await this.#runRemoteTick(run);
+    }
+    const end = await this.#tick.run(run);
+    return end.type === "idle" ? this.#parkedOrStalled() : end;
+  }
+
+  async #runRemoteTick(run: () => Promise<unknown>): Promise<RunnerTickEnd> {
+    let end: RunnerTickEnd;
+    try {
+      end = { type: "returned", value: await run() };
+    } catch (error) {
+      end = { type: "threw", error };
+    }
+    // Remote code ends its tick only once its step calls are done, but a host that lost the remote
+    // realm still must not commit while one of them runs.
     while (this.#running.size > 0) {
       await Promise.allSettled(this.#running);
     }
+    return this.#idleReported ? this.#parkedOrStalled() : end;
+  }
+
+  /** How a tick ended whose code stopped without settling: waiting, or awaiting something else. */
+  #parkedOrStalled(): RunnerTickEnd {
+    return this.#parked.length > 0
+      ? { type: "parked", checkpoint: this.#parked.some((reason) => reason.type === "checkpoint") }
+      : { type: "stalled" };
+  }
+
+  /** Runs one step call of local workflow code. */
+  async #call<T>(
+    type: string,
+    name: string,
+    run: (identity: WorkflowStepIdentity) => Promise<T>,
+  ): Promise<T> {
+    const ended = this.#tick.ended();
+    if (ended !== null) {
+      if (ended === "unsettled") {
+        // The tick already decided its outcome, so this call can neither run nor be recorded.
+        console.error("fragno.workflow_step_called_after_tick", {
+          workflowName: this.#workflowName,
+          instanceId: this.#instanceId,
+          type,
+          name,
+          reason: "Workflow code awaited something other than a step before calling this step.",
+        });
+      }
+      return await new Promise<never>(() => {});
+    }
+    const parent = this.#scopeStorage.getStore();
+    if (parent) {
+      throw new NonRetryableError(
+        `WORKFLOW_STEP_NESTED_IN_DO: step "${name}" was called inside step "${parent.identity.stepKey}". A step.do callback does the step's work and cannot call other steps.`,
+      );
+    }
+    const identity = this.#createStepIdentity(type, name);
+    // The tick hands back only the value this step settled with.
+    return (await this.#tick.call(async () => await this.#settle(identity, run))) as T;
+  }
+
+  /** Runs one step call of remote workflow code, whose own tick hands the outcome back. */
+  #remoteCall<T>(
+    type: string,
+    name: string,
+    run: (identity: WorkflowStepIdentity) => Promise<T>,
+  ): Promise<WorkflowStepCallOutcome<T>> {
+    const call = (async () => await this.#settle(this.#createStepIdentity(type, name), run))();
+    this.#running.add(call);
+    const untrack = () => {
+      this.#running.delete(call);
+    };
+    call.then(untrack, untrack);
+    return call;
+  }
+
+  /**
+   * Runs one step and reports how it ended: parked, or settled with its place in the settle order.
+   * A step that settles now records its order before the tick can see it done, so the tick cannot
+   * commit the step without it.
+   */
+  async #settle<T>(
+    identity: WorkflowStepIdentity,
+    run: (identity: WorkflowStepIdentity) => Promise<T>,
+  ): Promise<WorkflowStepCallOutcome<T>> {
+    const earlier = this.#state.stepsByKey.get(identity.stepKey);
+    let result: { ok: true; value: T } | { ok: false; error: unknown };
+    try {
+      result = { ok: true, value: await run(identity) };
+    } catch (error) {
+      if (isRunnerStepSuspended(error)) {
+        this.#parked.push(error.reason);
+        return { type: "parked" };
+      }
+      result = { ok: false, error };
+    }
+    if (isSettledStatus(earlier?.status)) {
+      // Steps settled before settle orders were recorded have no turn to wait for.
+      const order = typeof earlier?.settledOrder === "number" ? earlier.settledOrder : null;
+      return { type: "settled", ...result, order };
+    }
+    // Only an outcome the step recorded is a settlement. An error raised before the step recorded
+    // anything, such as an invalid duration, repeats identically on replay and needs no turn.
+    if (!isSettledStatus(this.#state.stepsByKey.get(identity.stepKey)?.status)) {
+      return { type: "settled", ...result, order: null };
+    }
+    const order = this.#tick.record();
+    this.#upsertStep(identity.stepKey, { settledOrder: order });
+    return { type: "settled", ...result, order };
   }
 
   #openEmissionScope<TScope>(open: () => TScope): TScope {
@@ -426,50 +564,27 @@ export class RunnerStep implements WorkflowStep {
 
   get remote(): RemoteWorkflowStepHost {
     return {
-      do: async <T>(
-        parentScope: RemoteWorkflowStepScope,
+      settledOrders: this.#replayedOrders,
+      do: <T>(
         name: string,
         config: WorkflowStepConfig | undefined,
-        callback: (tx: WorkflowStepTx, scope: WorkflowStepIdentity) => Promise<T> | T,
-      ): Promise<T> =>
-        await this.#runInRemoteParentScope(
-          parentScope,
-          async () => await this.#doInternal(name, config, callback),
+        callback: (tx: WorkflowStepTx) => Promise<T> | T,
+      ) =>
+        this.#remoteCall("do", name, (identity) =>
+          this.#runDo(identity, name, config, async (tx) => await callback(tx)),
         ),
-      sleep: async (
-        parentScope: RemoteWorkflowStepScope,
-        name: string,
-        duration: WorkflowDuration,
-      ): Promise<void> => {
-        await this.#runInRemoteParentScope(parentScope, async () => {
-          await this.sleep(name, duration);
-        });
-      },
-      sleepUntil: async (
-        parentScope: RemoteWorkflowStepScope,
-        name: string,
-        timestamp: Date | number,
-      ): Promise<void> => {
-        await this.#runInRemoteParentScope(parentScope, async () => {
-          await this.sleepUntil(name, timestamp);
-        });
-      },
-      waitForEvent: async <T = unknown>(
-        parentScope: RemoteWorkflowStepScope,
-        name: string,
-        options: {
-          type: string;
-          timeout?: WorkflowDuration;
-          onConsume?: (
-            tx: WorkflowStepConsumeTx,
-            event: { type: string; payload: Readonly<T>; timestamp: Date },
-          ) => Promise<void> | void;
-        },
-      ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> =>
-        await this.#runInRemoteParentScope(
-          parentScope,
-          async () => await this.waitForEvent<T>(name, options),
+      sleep: (name: string, duration: WorkflowDuration) =>
+        this.#remoteCall("sleep", name, (identity) => this.#sleep(identity, name, duration)),
+      sleepUntil: (name: string, timestamp: Date | number) =>
+        this.#remoteCall("sleep", name, (identity) => this.#sleepUntil(identity, name, timestamp)),
+      waitForEvent: <T = unknown>(name: string, options: RemoteWorkflowWaitForEventOptions<T>) =>
+        this.#remoteCall("waitForEvent", name, (identity) =>
+          this.#waitForEvent(identity, name, options),
         ),
+      reportIdle: (): never => {
+        this.#idleReported = true;
+        throw new Error("WORKFLOW_TICK_IDLE");
+      },
       interruptTick: (cause: string): never => {
         const interruption = new Error(cause);
         interruption.name = "WorkflowTickInterrupted";
@@ -497,29 +612,17 @@ export class RunnerStep implements WorkflowStep {
       throw new Error("WORKFLOW_STEP_CALLBACK_REQUIRED");
     }
 
-    return await this.#doInternal(name, config, async (tx) => await callback(tx));
-  }
-
-  #doInternal<T>(
-    name: string,
-    config: WorkflowStepConfig | undefined,
-    callback: (tx: WorkflowStepTx, identity: WorkflowStepIdentity) => Promise<T> | T,
-  ): Promise<T> {
-    const running = this.#runDo(name, config, callback);
-    this.#running.add(running);
-    const untrack = () => {
-      this.#running.delete(running);
-    };
-    running.then(untrack, untrack);
-    return running;
+    return await this.#call("do", name, (identity) =>
+      this.#runDo(identity, name, config, async (tx) => await callback(tx)),
+    );
   }
 
   async #runDo<T>(
+    identity: WorkflowStepIdentity,
     name: string,
     config: WorkflowStepConfig | undefined,
-    callback: (tx: WorkflowStepTx, identity: WorkflowStepIdentity) => Promise<T> | T,
+    callback: (tx: WorkflowStepTx) => Promise<T> | T,
   ): Promise<T> {
-    const identity = this.#createStepIdentity("do", name);
     const { stepKey } = identity;
     const snapshot = this.#state.stepsByKey.get(stepKey);
 
@@ -626,9 +729,13 @@ export class RunnerStep implements WorkflowStep {
         const nextCount = (emissionScope.meta.eventTypeCounts.get(type) ?? 0) + 1;
         emissionScope.meta.eventTypeCounts.set(type, nextCount);
         const unsubscribeDelivery = emissionScope.onDelivery((event) => {
-          if (event.type === type) {
-            return handler(event);
-          }
+          // Delivery arrives outside the step's own calls; the handler still belongs to the step,
+          // so it cannot call other steps either.
+          return event.type === type
+            ? this.#runInStepContext(identity, async () => {
+                await handler(event);
+              })
+            : undefined;
         });
         return () => {
           unsubscribeDelivery();
@@ -660,7 +767,7 @@ export class RunnerStep implements WorkflowStep {
     try {
       callbackResult = await this.#runInStepContext(
         identity,
-        async () => await callback(tx as WorkflowStepTx, identity),
+        async () => await callback(tx as WorkflowStepTx),
       );
     } catch (error) {
       callbackThrew = true;
@@ -826,8 +933,11 @@ export class RunnerStep implements WorkflowStep {
     throw error;
   }
 
-  async sleep(name: string, duration: WorkflowDuration): Promise<void> {
-    const identity = this.#createStepIdentity("sleep", name);
+  sleep(name: string, duration: WorkflowDuration): Promise<void> {
+    return this.#call("sleep", name, (identity) => this.#sleep(identity, name, duration));
+  }
+
+  async #sleep(identity: WorkflowStepIdentity, name: string, duration: WorkflowDuration) {
     const delayMs = parseDurationMs(duration);
     const { stepKey } = identity;
     const snapshot = this.#state.stepsByKey.get(stepKey);
@@ -878,8 +988,11 @@ export class RunnerStep implements WorkflowStep {
     throw new RunnerStepSuspended({ type: "sleep", stepKey, delayMs });
   }
 
-  async sleepUntil(name: string, timestamp: Date | number): Promise<void> {
-    const identity = this.#createStepIdentity("sleep", name);
+  sleepUntil(name: string, timestamp: Date | number): Promise<void> {
+    return this.#call("sleep", name, (identity) => this.#sleepUntil(identity, name, timestamp));
+  }
+
+  async #sleepUntil(identity: WorkflowStepIdentity, name: string, timestamp: Date | number) {
     const { stepKey } = identity;
     const target = coerceTimestamp(timestamp);
     const snapshot = this.#state.stepsByKey.get(stepKey);
@@ -929,18 +1042,20 @@ export class RunnerStep implements WorkflowStep {
     throw new RunnerStepSuspended({ type: "sleep", stepKey, runAt: target });
   }
 
-  async waitForEvent<T = unknown>(
+  waitForEvent<T = unknown>(
     name: string,
-    options: {
-      type: string;
-      timeout?: WorkflowDuration;
-      onConsume?: (
-        tx: WorkflowStepConsumeTx,
-        event: { type: string; payload: Readonly<T>; timestamp: Date },
-      ) => Promise<void> | void;
-    },
+    options: RemoteWorkflowWaitForEventOptions<T>,
   ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> {
-    const identity = this.#createStepIdentity("waitForEvent", name);
+    return this.#call("waitForEvent", name, (identity) =>
+      this.#waitForEvent(identity, name, options),
+    );
+  }
+
+  async #waitForEvent<T>(
+    identity: WorkflowStepIdentity,
+    name: string,
+    options: RemoteWorkflowWaitForEventOptions<T>,
+  ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }> {
     const { stepKey } = identity;
     const snapshot = this.#state.stepsByKey.get(stepKey);
 
@@ -1006,7 +1121,11 @@ export class RunnerStep implements WorkflowStep {
       };
 
       try {
-        await options.onConsume?.(consumeTx, result);
+        // In step context, so a step called from it is rejected like one nested in a `do`.
+        await this.#runInStepContext(
+          identity,
+          async () => await options.onConsume?.(consumeTx, result),
+        );
       } catch (error) {
         // As with a `do` attempt, an interrupted consumption never happened: the step keeps
         // waiting and the event stays unconsumed for the rerun.
@@ -1312,6 +1431,7 @@ export class RunnerStep implements WorkflowStep {
       result: data.result ?? null,
       errorName: data.errorName ?? null,
       errorMessage: data.errorMessage ?? null,
+      settledOrder: data.settledOrder ?? null,
       nextRetryDelayMs: data.nextRetryDelayMs,
       wakeDelayMs: data.wakeDelayMs,
     };

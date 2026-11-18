@@ -4,7 +4,6 @@ import type {
   CodemodeActivation,
   CodemodeCompletion,
   CodemodeInterruption,
-  CodemodeSuspensionReason,
 } from "@fragno-dev/codemode/execution/codemode-activation-contract";
 import type { CodemodeWireError } from "@fragno-dev/codemode/execution/codemode-error-contract";
 import {
@@ -43,17 +42,6 @@ export type CodemodeExecution<TActivation extends CodemodeRunActivation = Codemo
   completion: CodemodeRunCompletion<TActivation>;
 };
 
-/** History and durable hooks use ISO timestamps; live completions retain the runner's Dates. */
-type CodemodeRunSuspensionReason = ReturnType<typeof serializeCodemodeRunSuspensionReason>;
-
-function serializeCodemodeRunSuspensionReason(reason: CodemodeSuspensionReason) {
-  if (reason.type === "sleep" || reason.type === "waitForEvent") {
-    const { runAt, ...details } = reason;
-    return { ...details, ...(runAt === undefined ? {} : { runAt: runAt.toISOString() }) };
-  }
-  return reason;
-}
-
 // Guests may log up to CODEMODE_LIMITS.maxLogBytes, but a run's outcome is one Durable Object SQLite
 // row, which Cloudflare limits to 2 MB.
 const MAX_RECORDED_LOG_BYTES = 1024 * 1024;
@@ -77,7 +65,7 @@ function recordedLogs(logs: CodemodeLogLine[]): CodemodeLogLine[] {
 type CodemodeRunOutcome =
   | { status: "completed"; logs: CodemodeLogLine[] }
   | { status: "failed"; error: CodemodeWireError; logs: CodemodeLogLine[] }
-  | { status: "suspended"; reason: CodemodeRunSuspensionReason; logs: CodemodeLogLine[] };
+  | { status: "suspended"; logs: CodemodeLogLine[] };
 
 type CodemodeActivationKind = CodemodeRunActivation["kind"];
 
@@ -111,7 +99,7 @@ export type CodemodeRunFinishedHookPayload = CodemodeRunStartedHookPayload & {
 } & (
     | { status: "completed" }
     | { status: "failed"; error: CodemodeWireError }
-    | { status: "suspended"; reason: CodemodeRunSuspensionReason }
+    | { status: "suspended" }
   );
 
 /** Hooks fire after their run transition commits and retry until the handler succeeds. */
@@ -407,11 +395,7 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
                     error: encodeCodemodeError(new CodemodeInterruptedError(completion.cause)),
                     logs: [],
                   }
-                : {
-                    status: "suspended",
-                    reason: serializeCodemodeRunSuspensionReason(completion.reason),
-                    logs: recordedLogs(completion.logs),
-                  };
+                : { status: "suspended", logs: recordedLogs(completion.logs) };
         return this.serviceTx(codemodeSchema)
           .retrieve((uow) =>
             uow.findFirst("run", (b) => b.whereIndex("primary", (eb) => eb("id", "=", runId))),
@@ -436,7 +420,7 @@ const codemodeFragmentDefinition = defineFragment<CodemodeFragmentConfig>("codem
                 ? { ...finished, status: "completed" }
                 : outcome.status === "failed"
                   ? { ...finished, status: "failed", error: outcome.error }
-                  : { ...finished, status: "suspended", reason: outcome.reason },
+                  : { ...finished, status: "suspended" },
             );
           })
           .build();

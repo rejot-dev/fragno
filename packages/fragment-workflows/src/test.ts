@@ -39,7 +39,7 @@ import { runWorkflowsTick } from "./new-runner";
 import { workflowsRoutesFactory } from "./routes";
 import { applyOutcome, applyRunnerMutations, type RunnerTaskOutcome } from "./runner/plan-writes";
 import { createRunnerState } from "./runner/state";
-import { isRunnerStepSuspended, RunnerStep } from "./runner/step";
+import { RunnerStep } from "./runner/step";
 import type { WorkflowStepLivePump } from "./runner/step-live-pump";
 import { workflowsSchema } from "./schema";
 import { parseDurationMs } from "./utils";
@@ -478,6 +478,7 @@ export async function recordWorkflowStepRunForTest<TOutput = unknown>(
   const step = new RunnerStep({
     state,
     task: { kind: "run" },
+    execution: "local",
     workflowName: options.workflowName,
     instanceId: options.instanceId,
     handlerTx,
@@ -487,19 +488,21 @@ export async function recordWorkflowStepRunForTest<TOutput = unknown>(
     workflowsByName: new Map(options.workflowsByName ?? []),
   });
 
-  let outcome: RunnerTaskOutcome;
-  try {
-    outcome = { type: "completed", output: await options.run(step) };
-  } catch (error) {
-    if (isRunnerStepSuspended(error)) {
-      outcome = { type: "suspended", reason: error.reason };
-    } else {
-      outcome = {
-        type: "errored",
-        error: error instanceof Error ? error : new Error(String(error)),
-      };
-    }
-  }
+  const end = await step.runTick(async () => await options.run(step));
+  const outcome: RunnerTaskOutcome =
+    end.type === "returned"
+      ? { type: "completed", output: end.value }
+      : end.type === "parked"
+        ? { type: "suspended", checkpoint: end.checkpoint }
+        : {
+            type: "errored",
+            error:
+              end.type === "stalled"
+                ? new Error("WORKFLOW_STALLED")
+                : end.error instanceof Error
+                  ? end.error
+                  : new Error(String(end.error)),
+          };
 
   await handlerTx()
     .mutate((ctx) => {

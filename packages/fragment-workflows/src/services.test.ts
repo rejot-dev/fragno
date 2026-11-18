@@ -7,6 +7,7 @@ import { buildDatabaseFragmentsTest, drainDurableHooks } from "@fragno-dev/test"
 
 import { workflowsFragmentDefinition } from "./definition";
 import { buildScopedInstanceRowId } from "./instance-ref";
+import { runRemotely } from "./remote-workflow-test-client";
 import { workflowsSchema } from "./schema";
 import { defineRemoteWorkflow, defineWorkflow } from "./workflow";
 import type { WorkflowInstanceCurrentStep, WorkflowInstanceMetadata } from "./workflow";
@@ -17,8 +18,8 @@ const demoWorkflow = defineWorkflow({ name: "demo-workflow" }, async (_event, st
 
 const remoteDemoWorkflow = defineRemoteWorkflow(
   { name: "remote-demo-workflow" },
-  async (_event, step) => {
-    await step.do(null, "noop", undefined, () => ({}));
+  async (_event, remote) => {
+    await runRemotely(remote, async (step) => await step.do("noop", undefined, () => ({})));
   },
 );
 

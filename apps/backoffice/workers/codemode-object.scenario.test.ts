@@ -870,7 +870,6 @@ test("each workflow tick is a billed run that publishes no run events", async ()
               activationKind: "workflow",
               workflowInstanceId: "cool-down-1",
               status: "suspended",
-              reason: expect.objectContaining({ type: "sleep", stepKey: "sleep:cool down" }),
               logs: [{ at: expect.any(Number), channel: "log", text: "cooling down" }],
             }),
           ]);

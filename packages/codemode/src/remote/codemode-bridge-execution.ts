@@ -84,6 +84,15 @@ export async function runCodemodeBridgeActivation(
     if (error instanceof CodemodeCompilerBusyError) {
       return { status: "unavailable", cause: error.message };
     }
+    // The bridge broke off a workflow tick, such as at its deadline: the tick has no outcome of its
+    // own, and its runner decides from the steps it recorded. Only the bridge's own signal says so;
+    // whatever a guest throws stays a failure.
+    if (activation.kind === "workflow" && signal.aborted) {
+      return {
+        status: "interrupted",
+        cause: signal.reason instanceof Error ? signal.reason.message : String(signal.reason),
+      };
+    }
     return { status: "failed", error: encodeCodemodeError(error), logs: [] };
   }
 }
