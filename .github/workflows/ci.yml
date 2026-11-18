@@ -37,6 +37,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The graph is generated from Backoffice's static content, so no package's tests run when only
+      # that content changes; check it on every run instead.
+      - name: Check Backoffice context graph
+        run: pnpm backoffice:context:check
+
       - name: Check quality and build
         run: pnpm exec turbo run format:check lint types:check build static:check
 

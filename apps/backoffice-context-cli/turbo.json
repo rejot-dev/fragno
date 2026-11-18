@@ -1,0 +1,17 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "test": {
+      // The tests check the repository's generated context graph against Backoffice's static
+      // content, which this package does not depend on; without these, a cached pass hides a stale
+      // graph.
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/backoffice/content/static/**",
+        "$TURBO_ROOT$/content/CONTEXT-GRAPH.md",
+        "$TURBO_ROOT$/scripts/generate-backoffice-context-graph.ts",
+        "$TURBO_ROOT$/.oxfmtrc.json"
+      ]
+    }
+  }
+}
