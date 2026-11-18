@@ -24,7 +24,9 @@ import type { WorkflowTriggerItem, WorkflowTriggerLayout } from "./workflow-trig
 
 /** The frame one planet fits in with its labels, for a graph that shows it alone. */
 export const PLANET_EXTENT = { width: 1200, height: 960 };
-const HUB_RADIUS = 92;
+/** The hub in the middle of a planet, which is all a planet with no events draws. */
+export const PLANET_HUB_RADIUS = 92;
+const HUB_RADIUS = PLANET_HUB_RADIUS;
 const SOURCE_INNER = 104;
 const SOURCE_OUTER = 162;
 const EVENT_INNER = 166;

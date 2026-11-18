@@ -12,6 +12,7 @@ import {
 } from "./orchestration-universe-model";
 import { orbitLandings, routeForwards, universeField } from "./orchestration-universe-routes";
 import { normalizeAngle } from "./radial-geometry";
+import { PLANET_HUB_RADIUS } from "./workflow-trigger-planet";
 
 /** The calls and outside systems lit when `focused` is. */
 function litCallsAndSystems(focused: ReadonlySet<string> | undefined) {
@@ -75,13 +76,16 @@ function graph(scopeLabel: string, eventIds: readonly string[] = []): Orchestrat
   };
 }
 
-/** A member forwarding `count` events to an organization that listens to none of them. */
+/**
+ * A member forwarding `count` events to an organization that listens to none of them, though it
+ * starts a workflow on an event of its own.
+ */
 function unroutedUniverse(count: number): OrchestrationUniverse {
   const eventIds = Array.from({ length: count }, (_, index) => `bank:event-${index}`);
   return {
     scopes: [
       { id: "member", graph: graph("Member", eventIds) },
-      { id: "org", graph: graph("Org") },
+      { id: "org", graph: workflowGraph("Org") },
     ],
     forwards: eventIds.map((eventId) => ({
       routeId: `forward-${eventId}`,
@@ -180,7 +184,7 @@ describe("forwards that nothing listens to", () => {
     const universe: OrchestrationUniverse = {
       scopes: [
         { id: "member", graph: graph("Member", ["bank:expense", "bank:meeting"]) },
-        { id: "org", graph: graph("Org") },
+        { id: "org", graph: workflowGraph("Org") },
       ],
       forwards: [
         { routeId: "forward-bank:expense", fromScopeId: "member", toScopeId: "org" },
@@ -209,5 +213,21 @@ describe("forwards that nothing listens to", () => {
         landed: landed.map(({ id }) => id),
       })),
     ).toEqual([{ scopeId: "org", landed: drawn.map(({ forward }) => forward.id) }]);
+  });
+
+  test("land on the hub of a planet with no events, far inside its orbit", () => {
+    const universe = unroutedUniverse(2);
+    const { drawn, landed } = routedUnrouted({
+      ...universe,
+      scopes: [universe.scopes[0], { id: "org", graph: graph("Org") }],
+    });
+    expect(landed).toEqual([]);
+    for (const { path, landing } of drawn) {
+      expect(landing).toBeNull();
+      const [x, y] = [...path.matchAll(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g)].slice(-2).map(Number);
+      const reach = Math.hypot(x - ORGANIZATION_CENTER.x, y - ORGANIZATION_CENTER.y);
+      expect(reach).toBeGreaterThan(PLANET_HUB_RADIUS);
+      expect(reach).toBeLessThan(PLANET_HUB_RADIUS + 10);
+    }
   });
 });

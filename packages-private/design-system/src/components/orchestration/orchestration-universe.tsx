@@ -68,6 +68,7 @@ import {
 } from "./workflow-trigger-graph-model";
 import {
   PLANET_EVENT_EDGE_RADIUS,
+  PLANET_HUB_RADIUS,
   PLANET_ORBIT_RADIUS,
   PLANET_STATUS_RING_RADIUS,
   PLANET_STATUS_RING_WIDTH,
@@ -185,8 +186,16 @@ const PlanetBody = memo(function PlanetBody({
   return (
     <>
       <circle r={PLANET_HIT_RADIUS} className="fill-transparent" />
-      {/* Solid behind the rings and workflows, so lines passing under a faded planet stay hidden. */}
-      <circle r={PLANET_EVENT_EDGE_RADIUS + 2} className="fill-[var(--bo-bg)]" />
+      {/* Solid behind the rings and workflows, so lines passing under a faded planet stay hidden. A
+          planet with no events is only its hub, which forwards reach, so its backdrop is too. */}
+      <circle
+        r={
+          planet.layout.events.length > 0 || planet.scope.status
+            ? PLANET_EVENT_EDGE_RADIUS + 2
+            : PLANET_HUB_RADIUS
+        }
+        className="fill-[var(--bo-bg)]"
+      />
       {/* Under the workflows' backdrops, so the orbit passes behind each workflow. */}
       {focusRingWidth !== null ? (
         <circle
