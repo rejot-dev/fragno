@@ -8,7 +8,10 @@ import { Icon } from "../icon";
 // The composer's form and buttons spread their props so a chat runtime can render them as its own
 // primitives (for example through `asChild`), which supply submission and disabled state.
 
-/** The composer's frame: waiting messages, the input, then a toolbar. */
+/**
+ * The composer's frame: waiting messages, the input, then a toolbar. A disabled one holds a
+ * notice instead of the input, saying why, and a toolbar only for stopping work.
+ */
 export function ChatComposer({
   disabled,
   ...props
@@ -19,12 +22,14 @@ export function ChatComposer({
       {...props}
       // Shares the selected navigation item's surface, like the other prompt fields. A container,
       // because the composer is narrow both on phones and in a drawer beside a wide page.
-      className={cn(
-        "bo-input @container/composer p-2",
-        disabled && "cursor-not-allowed opacity-50",
-      )}
+      className="bo-input @container/composer p-2"
     />
   );
+}
+
+/** Why nobody writes here, in place of the input. */
+export function ChatComposerNotice({ children }: { children: string }) {
+  return <p className="px-3 py-3 text-sm text-pretty text-[var(--bo-muted)]">{children}</p>;
 }
 
 /**

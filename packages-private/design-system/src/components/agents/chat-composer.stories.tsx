@@ -12,7 +12,7 @@ function Column({ children }: { children: ReactNode }) {
 export function Idle() {
   return (
     <Column>
-      <SampleComposer running={false} disabledReason={null} queue={[]} />
+      <SampleComposer running={false} disabled={null} queue={[]} />
     </Column>
   );
 }
@@ -22,7 +22,7 @@ export function RunningWithQueue() {
     <Column>
       <SampleComposer
         running
-        disabledReason={null}
+        disabled={null}
         queue={[
           { label: "Steering", text: "Skip Acme, they paid this morning." },
           { label: "Up next", text: "Then summarize this week's revenue." },
@@ -33,10 +33,40 @@ export function RunningWithQueue() {
   );
 }
 
+const NOT_MESSAGED = "Receipt Filer takes work from agents and workflows, not messages.";
+
 export function Disabled() {
   return (
     <Column>
-      <SampleComposer running={false} disabledReason="This agent is read-only for you" queue={[]} />
+      <SampleComposer
+        running={false}
+        disabled={{ reason: NOT_MESSAGED, paused: false }}
+        queue={[]}
+      />
+    </Column>
+  );
+}
+
+export function DisabledWhileWorking() {
+  return (
+    <Column>
+      <SampleComposer
+        running
+        disabled={{ reason: NOT_MESSAGED, paused: false }}
+        queue={[{ label: "Queued", text: "File the receipt Ada forwarded at 9:14." }]}
+      />
+    </Column>
+  );
+}
+
+export function DisabledWhileStopped() {
+  return (
+    <Column>
+      <SampleComposer
+        running={false}
+        disabled={{ reason: NOT_MESSAGED, paused: true }}
+        queue={[{ label: "Paused", text: "File the receipt Ada forwarded at 9:14." }]}
+      />
     </Column>
   );
 }

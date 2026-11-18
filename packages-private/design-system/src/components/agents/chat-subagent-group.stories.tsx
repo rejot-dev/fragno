@@ -359,7 +359,7 @@ export function InTurn() {
                 }}
               />
             )}
-            <SampleComposer running={!settled} disabledReason={null} queue={[]} />
+            <SampleComposer running={!settled} disabled={null} queue={[]} />
           </ChatViewportFooter>
         </ChatViewport>
       </ChatThread>
@@ -401,7 +401,7 @@ export function StartedElsewhere() {
             <ChatTurnSpacer />
           </ChatColumn>
           <ChatViewportFooter alert={null}>
-            <SampleComposer running={false} disabledReason={null} queue={[]} />
+            <SampleComposer running={false} disabled={null} queue={[]} />
           </ChatViewportFooter>
         </ChatViewport>
       </ChatThread>

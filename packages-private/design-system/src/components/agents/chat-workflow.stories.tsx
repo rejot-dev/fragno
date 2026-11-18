@@ -570,7 +570,7 @@ export function InConversation() {
               }
               onShow={showWorkflow}
             />
-            <SampleComposer running={false} disabledReason={null} queue={[]} />
+            <SampleComposer running={false} disabled={null} queue={[]} />
           </ChatViewportFooter>
         </ChatViewport>
       </ChatThread>

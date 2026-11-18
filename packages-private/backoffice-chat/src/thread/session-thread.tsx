@@ -15,6 +15,7 @@ import {
   ChatComposer,
   ChatComposerButton,
   ChatComposerDictationButton,
+  ChatComposerNotice,
   ChatComposerQueueItem,
   ChatComposerSplit,
   ChatComposerStatus,
@@ -186,25 +187,23 @@ function anchorDrift(viewport: HTMLElement, { messages, fromBottom }: ScrollAnch
 function SendButton({
   label,
   joined,
-  disabled,
   sendFiles,
 }: {
   label: string;
   joined: boolean;
-  disabled: boolean;
   /** Null while no files wait in the composer. */
   sendFiles: (() => void) | null;
 }) {
   const empty = useAuiState((state) => state.composer.isEmpty);
   if (empty && sendFiles !== null) {
     return (
-      <ChatComposerButton tone="accent" joined={joined} disabled={disabled} onClick={sendFiles}>
+      <ChatComposerButton tone="accent" joined={joined} onClick={sendFiles}>
         {label}
       </ChatComposerButton>
     );
   }
   return (
-    <ComposerPrimitive.Send disabled={disabled} asChild>
+    <ComposerPrimitive.Send asChild>
       <ChatComposerButton tone="accent" joined={joined}>
         {label}
       </ChatComposerButton>
@@ -215,14 +214,12 @@ function SendButton({
 /** A paused queue resumes with an empty composer; a message resumes it too, at the queue's end. */
 function SendOrResume({
   joined,
-  disabled,
   paused,
   onResume,
   sendFiles,
 }: {
   /** Joined to the menu of what the composer sends. */
   joined: boolean;
-  disabled: boolean;
   paused: boolean;
   onResume: () => unknown;
   sendFiles: (() => void) | null;
@@ -230,23 +227,17 @@ function SendOrResume({
   const empty = useAuiState((state) => state.composer.isEmpty);
   if (paused && empty && sendFiles === null) {
     return (
-      <ChatComposerButton
-        tone="accent"
-        joined={joined}
-        disabled={disabled}
-        onClick={() => void onResume()}
-      >
+      <ChatComposerButton tone="accent" joined={joined} onClick={() => void onResume()}>
         Resume
       </ChatComposerButton>
     );
   }
-  return <SendButton label="Send" joined={joined} disabled={disabled} sendFiles={sendFiles} />;
+  return <SendButton label="Send" joined={joined} sendFiles={sendFiles} />;
 }
 
 /** Sends or compacts, as the reader chose from its menu, which also clears the context. */
 function ComposerActionSplit({
   context,
-  disabled,
   readyForInput,
   compacting,
   paused,
@@ -254,7 +245,6 @@ function ComposerActionSplit({
   sendFiles,
 }: {
   context: ContextControls;
-  disabled: boolean;
   readyForInput: boolean;
   compacting: boolean;
   paused: boolean;
@@ -267,26 +257,20 @@ function ComposerActionSplit({
         <ChatComposerButton
           tone="accent"
           joined
-          disabled={disabled || !readyForInput || compacting}
+          disabled={!readyForInput || compacting}
           onClick={() => void context.onCompact()}
         >
           Compact
         </ChatComposerButton>
       ) : (
-        <SendOrResume
-          joined
-          disabled={disabled}
-          paused={paused}
-          onResume={onResume}
-          sendFiles={sendFiles}
-        />
+        <SendOrResume joined paused={paused} onResume={onResume} sendFiles={sendFiles} />
       )}
       <RadioMenu
         label="Choose composer action"
         heading="Composer action"
         trigger={{ kind: "accent" }}
         side="top"
-        disabled={disabled}
+        disabled={false}
         value={context.action}
         options={composerActionOptions(readyForInput, context.usage.tokens === 0)}
         onValueChange={(value) => {
@@ -302,11 +286,11 @@ function ComposerActionSplit({
 }
 
 /** Speech lands in the composer as the user talks; nothing is sent until they send it. */
-function DictationButton({ disabled }: { disabled: boolean }) {
+function DictationButton() {
   const dictation = useAuiState((state) => state.composer.dictation?.status.type ?? null);
   if (dictation === null) {
     return (
-      <ComposerPrimitive.Dictate disabled={disabled} asChild>
+      <ComposerPrimitive.Dictate asChild>
         <ChatComposerDictationButton state="idle" aria-label="Dictate" title="Dictate" />
       </ComposerPrimitive.Dictate>
     );
@@ -567,111 +551,144 @@ export function SessionThread({
                       {attachments === null ? null : (
                         <ChatComposerAttachments attachments={attachments.items} />
                       )}
-                      <ComposerPrimitive.Input
-                        disabled={disabled}
-                        submitMode="enter"
-                        placeholder={
-                          disabled
-                            ? disabledReason
-                            : composerAction === "compact"
-                              ? `Tell ${agentLabel} what the compaction summary must preserve`
-                              : steering
-                                ? `Steer ${agentLabel}; it reads this after the current step`
-                                : running
-                                  ? `Message ${agentLabel}; it reads this once compaction ends`
-                                  : `Message ${agentLabel}`
-                        }
-                        rows={1}
-                        className={chatComposerInputClassName}
-                      />
-                      <ChatComposerToolbar
-                        start={
-                          <>
-                            {attachments === null ? null : (
-                              <ChatComposerAttachButton
-                                disabled={attachingDisabled}
-                                onFiles={attachments.add}
-                              />
-                            )}
-                            {model}
-                            {context === null ? null : (
-                              <ContextUsageMeter
-                                tokens={context.usage.tokens}
-                                contextWindow={context.usage.window}
-                              />
-                            )}
-                            {disabled ? (
-                              <ChatComposerStatus working={false}>
-                                {disabledReason}
-                              </ChatComposerStatus>
-                            ) : running ? (
-                              <ChatComposerStatus working>
-                                {statusText ?? "Working…"}
-                              </ChatComposerStatus>
-                            ) : attachments?.sending ? (
-                              <ChatComposerStatus working>Uploading files…</ChatComposerStatus>
-                            ) : null}
-                          </>
-                        }
-                        end={
-                          <>
-                            {dictation ? <DictationButton disabled={disabled} /> : null}
-                            {needsNudge ? (
-                              <Button variant="ghost" onClick={() => void onContinue()}>
-                                Continue
-                              </Button>
-                            ) : null}
-                            {running ? (
+                      {disabledReason === null ? (
+                        <>
+                          <ComposerPrimitive.Input
+                            submitMode="enter"
+                            placeholder={
+                              composerAction === "compact"
+                                ? `Tell ${agentLabel} what the compaction summary must preserve`
+                                : steering
+                                  ? `Steer ${agentLabel}; it reads this after the current step`
+                                  : running
+                                    ? `Message ${agentLabel}; it reads this once compaction ends`
+                                    : `Message ${agentLabel}`
+                            }
+                            rows={1}
+                            className={chatComposerInputClassName}
+                          />
+                          <ChatComposerToolbar
+                            start={
                               <>
-                                <ChatComposerButton
-                                  tone="neutral"
-                                  joined={false}
-                                  onClick={() => void onStop()}
-                                >
-                                  Stop
-                                </ChatComposerButton>
-                                <SendButton
-                                  label={steering ? "Steer" : "Send"}
-                                  joined={false}
-                                  disabled={disabled}
-                                  sendFiles={sendFiles}
-                                />
-                              </>
-                            ) : (
-                              <>
-                                {subagentsRunning ? (
-                                  <ChatComposerButton
-                                    tone="neutral"
-                                    joined={false}
-                                    onClick={() => void onStop()}
-                                  >
-                                    Stop
-                                  </ChatComposerButton>
-                                ) : null}
-                                {context === null ? (
-                                  <SendOrResume
-                                    joined={false}
-                                    disabled={disabled}
-                                    paused={paused}
-                                    onResume={onResume}
-                                    sendFiles={sendFiles}
-                                  />
-                                ) : (
-                                  <ComposerActionSplit
-                                    context={context}
-                                    disabled={disabled}
-                                    readyForInput={readyForInput}
-                                    compacting={compacting}
-                                    paused={paused}
-                                    onResume={onResume}
-                                    sendFiles={sendFiles}
+                                {attachments === null ? null : (
+                                  <ChatComposerAttachButton
+                                    disabled={attachingDisabled}
+                                    onFiles={attachments.add}
                                   />
                                 )}
+                                {model}
+                                {context === null ? null : (
+                                  <ContextUsageMeter
+                                    tokens={context.usage.tokens}
+                                    contextWindow={context.usage.window}
+                                  />
+                                )}
+                                {running ? (
+                                  <ChatComposerStatus working>
+                                    {statusText ?? "Working…"}
+                                  </ChatComposerStatus>
+                                ) : attachments?.sending ? (
+                                  <ChatComposerStatus working>Uploading files…</ChatComposerStatus>
+                                ) : null}
                               </>
-                            )}
-                          </>
-                        }
-                      />
+                            }
+                            end={
+                              <>
+                                {dictation ? <DictationButton /> : null}
+                                {needsNudge ? (
+                                  <Button variant="ghost" onClick={() => void onContinue()}>
+                                    Continue
+                                  </Button>
+                                ) : null}
+                                {running ? (
+                                  <>
+                                    <ChatComposerButton
+                                      tone="neutral"
+                                      joined={false}
+                                      onClick={() => void onStop()}
+                                    >
+                                      Stop
+                                    </ChatComposerButton>
+                                    <SendButton
+                                      label={steering ? "Steer" : "Send"}
+                                      joined={false}
+                                      sendFiles={sendFiles}
+                                    />
+                                  </>
+                                ) : (
+                                  <>
+                                    {subagentsRunning ? (
+                                      <ChatComposerButton
+                                        tone="neutral"
+                                        joined={false}
+                                        onClick={() => void onStop()}
+                                      >
+                                        Stop
+                                      </ChatComposerButton>
+                                    ) : null}
+                                    {context === null ? (
+                                      <SendOrResume
+                                        joined={false}
+                                        paused={paused}
+                                        onResume={onResume}
+                                        sendFiles={sendFiles}
+                                      />
+                                    ) : (
+                                      <ComposerActionSplit
+                                        context={context}
+                                        readyForInput={readyForInput}
+                                        compacting={compacting}
+                                        paused={paused}
+                                        onResume={onResume}
+                                        sendFiles={sendFiles}
+                                      />
+                                    )}
+                                  </>
+                                )}
+                              </>
+                            }
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <ChatComposerNotice>{disabledReason}</ChatComposerNotice>
+                          {/* Stopping and resuming govern the agent's queue, not what the
+                          reader may write, so they stay. */}
+                          {running || subagentsRunning || paused ? (
+                            <ChatComposerToolbar
+                              start={
+                                running ? (
+                                  <ChatComposerStatus working>
+                                    {statusText ?? "Working…"}
+                                  </ChatComposerStatus>
+                                ) : null
+                              }
+                              end={
+                                <>
+                                  {running || subagentsRunning ? (
+                                    <ChatComposerButton
+                                      tone="neutral"
+                                      joined={false}
+                                      onClick={() => void onStop()}
+                                    >
+                                      Stop
+                                    </ChatComposerButton>
+                                  ) : null}
+                                  {paused ? (
+                                    <ChatComposerButton
+                                      tone="accent"
+                                      joined={false}
+                                      onClick={() => void onResume()}
+                                    >
+                                      Resume
+                                    </ChatComposerButton>
+                                  ) : null}
+                                </>
+                              }
+                            />
+                          ) : null}
+                        </>
+                      )}
                     </ChatComposer>
                   </ComposerPrimitive.Root>
                 </ChatViewportFooter>
