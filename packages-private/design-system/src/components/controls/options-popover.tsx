@@ -1,13 +1,20 @@
 import { Popover } from "@base-ui/react/popover";
 import type { ReactNode } from "react";
 
+import { Icon } from "../icon";
 import { Button } from "./button";
 
 /** A text button that opens a small panel of settings, such as what a view shows. */
 export function OptionsPopover({ label, children }: { label: string; children: ReactNode }) {
   return (
     <Popover.Root>
-      <Popover.Trigger render={<Button variant="ghost" />}>{label}</Popover.Trigger>
+      <Popover.Trigger render={<Button variant="ghost" className="group/options gap-1" />}>
+        {label}
+        <Icon
+          name="chevron-down"
+          className="size-3.5 transition-transform duration-150 ease-out group-data-[popup-open]/options:rotate-180"
+        />
+      </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner side="bottom" align="end" sideOffset={4} className="z-50">
           <Popover.Popup
