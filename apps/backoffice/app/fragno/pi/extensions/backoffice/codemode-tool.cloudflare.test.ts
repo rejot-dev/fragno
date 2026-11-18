@@ -1004,6 +1004,7 @@ const createCodemodeTool = async ({
     execution: createPiSystemFileContext().execution,
     instructions: "",
     skills: null,
+    skillSelection: { skills: [], disabledSkills: [] },
     codemode: codemodeRunnerFor(
       createCloudflareBackofficeObjectRegistry(env as CloudflareEnv).codemode.singleton().commands,
       createBackofficeSystemExecution({ kind: "system" }),

@@ -50,6 +50,9 @@ const parseAgentGet = defineCliArgsParser<PiManagerAgentInput>("pi.agent.get", {
 const parseAgentReload = defineCliArgsParser<PiManagerAgentInput>("pi.agent.reload", {
   agentName: { option: "agent", required: true },
 });
+const parseAgentSkills = defineCliArgsParser<PiManagerAgentInput>("pi.agent.skills", {
+  agentName: { option: "agent", required: true },
+});
 const parsePromptSubmit = defineCliArgsParser<PiManagerSubmitPromptInput>("pi.prompt.submit", {
   agentName: { option: "agent", required: true },
   content: { required: true },
@@ -281,6 +284,37 @@ const agentReloadTool = defineBackofficeRuntimeTool({
         examples: ["pi.agent.reload --agent assistant"],
       },
       parse: parseAgentReload,
+      format: (data) => ({ data }),
+    },
+  },
+});
+
+const agentSkillsTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("pi.agent.skills"),
+  namespace: "pi",
+  name: "listAgentSkills",
+  activity: { label: "List agent skills", target: (input) => input.agentName },
+  execute: async (input, context: PiToolContext) => {
+    return await requirePiManagerRuntime(context.runtimes.pi).listAgentSkills(input);
+  },
+  adapters: {
+    bash: {
+      command: "pi.agent.skills",
+      help: {
+        summary:
+          "pi.agent.skills lists every skill an agent finds, where it found it, and whether it is offered.",
+        options: [
+          {
+            name: "agent",
+            required: true,
+            valueRequired: true,
+            valueName: "agent-name",
+            description: "Agent name",
+          },
+        ],
+        examples: ["pi.agent.skills --agent assistant --format json"],
+      },
+      parse: parseAgentSkills,
       format: (data) => ({ data }),
     },
   },
@@ -805,6 +839,7 @@ export const piRuntimeTools = [
   agentUpdateTool,
   agentDeleteTool,
   agentReloadTool,
+  agentSkillsTool,
   promptSubmitTool,
   promptGetTool,
   agentStopTool,

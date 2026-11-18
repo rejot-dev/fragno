@@ -59,8 +59,16 @@ export type RecordedPiAgentDefinition = {
  * and turn-end events the queue their change left, except those stored before events carried it.
  */
 type PiAgentStatePayload =
-  // States stored before definitions named skill folders lack them; their agents named none.
-  | { agentName: string; definition: Omit<PiAgentDefinition, "skills"> & { skills?: string[] } }
+  // States stored before definitions named skill folders, disabled skills, or a category lack
+  // them; their agents named none, disabled none, and were assistants.
+  | {
+      agentName: string;
+      definition: Omit<PiAgentDefinition, "skills" | "disabledSkills" | "category"> & {
+        skills?: string[];
+        disabledSkills?: string[];
+        category?: string | null;
+      };
+    }
   | { agentName: string; queue: PiAgentQueueCounts }
   | { agentName: string };
 
@@ -130,8 +138,13 @@ function definitionOfState(state: PiAgentEventState): PiAgentDefinition | null {
   ) {
     return null;
   }
-  const { skills = [], ...definition } = state.payload.definition;
-  return { ...definition, skills };
+  const {
+    skills = [],
+    disabledSkills = [],
+    category = null,
+    ...definition
+  } = state.payload.definition;
+  return { ...definition, skills, disabledSkills, category };
 }
 
 /**

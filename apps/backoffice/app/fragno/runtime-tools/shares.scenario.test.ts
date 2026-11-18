@@ -168,7 +168,10 @@ test("a folder one organization shares opens read-only in the other once it acce
 
           // A shared SKILL.md becomes one of the firm's skills only through an agent definition that
           // names its folder.
-          assert.notProperty(await loadBackofficePiSkills(firm.state), "planted");
+          assert.notProperty(
+            await loadBackofficePiSkills(firm.state, { skills: [], disabledSkills: [] }),
+            "planted",
+          );
 
           await expect(client.call("shares.list", {})).resolves.toMatchObject({
             shared: [{ shareId: share.shareId }],

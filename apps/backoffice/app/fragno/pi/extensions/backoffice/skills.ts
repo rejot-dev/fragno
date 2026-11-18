@@ -1,4 +1,8 @@
-import type { PiAgentSkillReload } from "@fragno-dev/backoffice-api/v0/pi";
+import type {
+  PiAgentDefinition,
+  PiAgentSkillListing,
+  PiAgentSkillReload,
+} from "@fragno-dev/backoffice-api/v0/pi";
 
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import { parseFrontmatter } from "@/lib/frontmatter";
@@ -70,16 +74,25 @@ async function globSkills(state: PiSkillState, pattern: string): Promise<string[
   }
 }
 
+type PiSkillSource = PiAgentSkillListing["skills"][number]["source"];
+type PiSkillStatus = PiAgentSkillListing["skills"][number]["status"];
+
+/** Where an agent finds its skills: the definition's folders and built-in skills it disables. */
+export type PiSkillSelection = Pick<PiAgentDefinition, "skills" | "disabledSkills">;
+
 /**
  * Reads every skill under `/static/skills`, the agent's `folders`, and `/workspace`'s `skills`
- * folders, by name, with the files and folders it could not read. Of skills sharing a name, the
- * later wins: a scope's own over a folder's, as it is the more specific, and a folder's over
- * Backoffice's.
+ * folders, each with its source and status, and the files and folders it could not read. Of skills
+ * sharing a name, the later wins: a scope's own over a folder's, as it is the more specific, and a
+ * folder's over Backoffice's. A disabled built-in skill replaces nothing.
  */
 async function scanBackofficePiSkills(
   state: PiSkillState,
-  folders: readonly string[],
-): Promise<{ registry: BackofficePiSkillRegistry; problems: PiAgentSkillReload["problems"] }> {
+  { skills: folders, disabledSkills }: PiSkillSelection,
+): Promise<{
+  skills: (BackofficePiSkillDefinition & { source: PiSkillSource; status: PiSkillStatus })[];
+  problems: PiAgentSkillReload["problems"];
+}> {
   const [staticPaths, folderPaths, workspacePaths] = await Promise.all([
     globSkills(state, "/static/skills/**/SKILL.md"),
     Promise.all(folders.map((folder) => globSkills(state, `${folder}/**/SKILL.md`))),
@@ -93,46 +106,119 @@ async function scanBackofficePiSkills(
       problems.push({ path: folder, message: "Folder not found." });
     }
   }
-  const paths = [...staticPaths, ...folderPaths.flat(), ...workspacePaths];
-  const contents = await Promise.allSettled(paths.map((path) => state.readFile(path)));
-  const registry: BackofficePiSkillRegistry = {};
-  for (const [index, path] of paths.entries()) {
+  const builtIn = new Set(staticPaths);
+  for (const location of disabledSkills) {
+    if (!builtIn.has(location)) {
+      problems.push({ path: location, message: "Disabled skill not found." });
+    }
+  }
+  // A folder under `/workspace` is found twice. The file is one skill, from its last source and at
+  // its place there, so it still replaces a folder's skill named after it.
+  const sourced = new Map<string, PiSkillSource>();
+  function source(path: string, from: PiSkillSource) {
+    sourced.delete(path);
+    sourced.set(path, from);
+  }
+  for (const path of staticPaths) {
+    source(path, { kind: "static" });
+  }
+  for (const [index, folder] of folders.entries()) {
+    for (const path of folderPaths[index]) {
+      source(path, { kind: "folder", folder });
+    }
+  }
+  for (const path of workspacePaths) {
+    source(path, { kind: "workspace" });
+  }
+  const entries = [...sourced];
+  const contents = await Promise.allSettled(entries.map(([path]) => state.readFile(path)));
+  const found: (BackofficePiSkillDefinition & { source: PiSkillSource })[] = [];
+  for (const [index, [path, source]] of entries.entries()) {
     const content = contents[index];
     try {
       if (content.status === "rejected") {
         throw content.reason;
       }
-      const skill = parseStateSkill(path, content.value);
-      const shadowed = registry[skill.name];
-      if (shadowed) {
-        problems.push({
-          path: shadowed.location,
-          message: `Skill '${skill.name}' is offered from ${path} instead.`,
-        });
-      }
-      registry[skill.name] = skill;
+      found.push({ ...parseStateSkill(path, content.value), source });
     } catch (error) {
       problems.push({ path, message: error instanceof Error ? error.message : String(error) });
     }
   }
-  return { registry, problems };
+  const disabled = new Set(disabledSkills);
+  const winners = new Map<string, BackofficePiSkillDefinition>();
+  for (const skill of found) {
+    if (!disabled.has(skill.location)) {
+      winners.set(skill.name, skill);
+    }
+  }
+  return {
+    skills: found.map((skill) => ({ ...skill, status: skillStatus(skill, disabled, winners) })),
+    problems,
+  };
 }
 
-/** The skills an agent finds as the files are now, for a turn whose reload failed. */
-export const loadBackofficePiSkills = async (
-  state: PiSkillState,
-): Promise<BackofficePiSkillRegistry> => (await scanBackofficePiSkills(state, [])).registry;
+function skillStatus(
+  skill: BackofficePiSkillDefinition,
+  disabled: ReadonlySet<string>,
+  winners: ReadonlyMap<string, BackofficePiSkillDefinition>,
+): PiSkillStatus {
+  if (disabled.has(skill.location)) {
+    return { kind: "disabled" };
+  }
+  const winner = winners.get(skill.name);
+  if (winner && winner !== skill) {
+    return { kind: "replaced", by: winner.location };
+  }
+  return skill.disableModelInvocation ? { kind: "hidden" } : { kind: "offered" };
+}
 
-/** What a reload offers an agent whose definition names `folders`: frontmatter, never bodies. */
+/** The skills an agent is offered as the files are now, by name, for a turn whose reload failed. */
+export async function loadBackofficePiSkills(
+  state: PiSkillState,
+  selection: PiSkillSelection,
+): Promise<BackofficePiSkillRegistry> {
+  const { skills } = await scanBackofficePiSkills(state, selection);
+  return Object.fromEntries(
+    skills.filter(({ status }) => status.kind === "offered").map((skill) => [skill.name, skill]),
+  );
+}
+
+/** What a reload offers an agent: the frontmatter of the skills its definition selects. */
 export async function reloadBackofficePiSkills(
   state: PiSkillState,
-  folders: readonly string[],
+  selection: PiSkillSelection,
 ): Promise<PiAgentSkillReload> {
-  const { registry, problems } = await scanBackofficePiSkills(state, folders);
+  const { skills, problems } = await scanBackofficePiSkills(state, selection);
   return {
-    skills: Object.values(registry)
-      .filter((skill) => !skill.disableModelInvocation)
+    skills: skills
+      .filter(({ status }) => status.kind === "offered")
       .map(({ name, description, location }) => ({ name, description, location })),
+    // The agent hears which skill it is offered instead; a listing says so in the status.
+    problems: [
+      ...problems,
+      ...skills.flatMap(({ name, location, status }) =>
+        status.kind === "replaced"
+          ? [{ path: location, message: `Skill '${name}' is offered from ${status.by} instead.` }]
+          : [],
+      ),
+    ],
+  };
+}
+
+/** Every skill an agent finds, with where it found it and whether it is offered. */
+export async function listBackofficePiSkills(
+  state: PiSkillState,
+  selection: PiSkillSelection,
+): Promise<PiAgentSkillListing> {
+  const { skills, problems } = await scanBackofficePiSkills(state, selection);
+  return {
+    skills: skills.map(({ name, description, location, source, status }) => ({
+      name,
+      description,
+      location,
+      source,
+      status,
+    })),
     problems,
   };
 }

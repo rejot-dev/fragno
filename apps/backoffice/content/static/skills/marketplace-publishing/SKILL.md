@@ -92,7 +92,8 @@ definitions, and agents Backoffice keeps in sync for each installation:
       "description": "Writes the daily operations report.",
       "model": null,
       "permissions": ["*"],
-      "instructions": "Summarize yesterday's failures first."
+      "instructions": "Summarize yesterday's failures first.",
+      "category": "Reporting"
     }
   ]
 }
@@ -106,7 +107,8 @@ definitions, and agents Backoffice keeps in sync for each installation:
 - Event definitions use the `events.catalog.create` input, and can't redefine built-in events.
 - Agents use the `pi.createAgent` input. An agent's turns run with the prompter's permissions,
   narrowed by its own, so `["*"]` needs no declared permission. A routine that prompts the agent
-  still needs grants for what the agent should do.
+  still needs grants for what the agent should do. Give an agent that only routines and agents
+  prompt a `category`; one without is an assistant people write to.
 - Installing creates or updates the declared routes, event definitions, and agents, and deletes
   those an earlier version declared. Members can turn routes and event definitions on or off but not
   change them, and can't change the agents. Uninstalling deletes them all.

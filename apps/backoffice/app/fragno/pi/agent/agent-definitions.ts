@@ -15,16 +15,26 @@ export const BUILT_IN_PI_AGENT_DEFINITIONS: readonly PiAgentDefinition[] = [
   {
     agentName: MAIN_PI_AGENT_NAME,
     description:
-      "General-purpose Backoffice assistant that works with everything the person prompting it may use.",
+      "General-purpose Leyway assistant that works with everything the person prompting it may use.",
     model: null,
     // Unused: the built-in agent runs the effort its prompts choose.
     thinkingLevel: "medium",
     permissions: ["*"],
     instructions: "",
     skills: [],
+    disabledSkills: [],
+    category: null,
     steward: { kind: "backoffice" },
   },
 ];
+
+/**
+ * Whether people write to the agent in Leyway: an agent without a category is an assistant. People
+ * reach an agent of any category only through agents and workflows, which call `pi.submitPrompt`.
+ */
+export function isPiAssistant(definition: Pick<PiAgentDefinition, "category">): boolean {
+  return definition.category === null;
+}
 
 export function builtInPiAgentDefinition(agentName: string): PiAgentDefinition | null {
   return BUILT_IN_PI_AGENT_DEFINITIONS.find((agent) => agent.agentName === agentName) ?? null;
@@ -238,6 +248,8 @@ export function piAgentTurnOf(
       instructions: definition.instructions,
       permissions: expandPiAgentPermissions(definition.permissions),
       skills: definition.reloadedSkills,
+      skillFolders: definition.skills,
+      disabledSkills: definition.disabledSkills,
     },
   };
 }

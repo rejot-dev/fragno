@@ -88,7 +88,11 @@ function preparePromptParts(
   );
   const parts: PromptParts = {
     systemMd: Promise.all([turn, runtimeToolContext]).then(([turn, runtimeToolContext]) =>
-      buildBackofficePiSystemPrompt({ runtimeToolContext, skills: turn.skills }),
+      buildBackofficePiSystemPrompt({
+        runtimeToolContext,
+        skills: turn.skills,
+        skillSelection: turn.skillSelection,
+      }),
     ),
     agentsMd: runtimeToolContext.then((context) =>
       readWorkspaceInstructions(requirePiStateBackend(context)),

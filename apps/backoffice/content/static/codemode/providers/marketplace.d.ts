@@ -435,6 +435,10 @@ type MarketplaceViewOutput = {
       instructions: string;
       /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
       skills: string[];
+      /** Locations of /static/skills SKILL.md files the agent is not offered, such as /static/skills/<name>/SKILL.md, from its next turn. It can still read them. */
+      disabledSkills: string[];
+      /** The group the agent is listed under, such as Finance. Null makes it an assistant, which people write to in Leyway; people reach an agent of any other category only through agents and workflows, with `pi.submitPrompt`. */
+      category: string | null;
       agentName: string;
     }[];
     version: string;

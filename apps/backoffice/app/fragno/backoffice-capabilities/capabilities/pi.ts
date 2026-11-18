@@ -177,6 +177,10 @@ const agentDefinitionSchema = z.object({
     thinkingLevel: piAgentDefinitionSchema._zod.innerType.shape.thinkingLevel.default("low"),
     // Events recorded before agents named skill folders lack them; their agents named none.
     skills: piAgentDefinitionSchema._zod.innerType.shape.skills.default([]),
+    // Events recorded before agents could disable skills lack them; their agents disabled none.
+    disabledSkills: piAgentDefinitionSchema._zod.innerType.shape.disabledSkills.default([]),
+    // Events recorded before agents had categories lack one; their agents were assistants.
+    category: piAgentDefinitionSchema._zod.innerType.shape.category.default(null),
   }),
 });
 

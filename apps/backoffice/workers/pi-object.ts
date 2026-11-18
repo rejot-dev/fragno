@@ -424,7 +424,8 @@ export class PiObject extends RpcTarget implements PiAgent {
 
   /**
    * A turn admitted without skills belongs to an agent never reloaded, or whose definition changed
-   * since, so it reloads them first. One whose reload fails finds skills as the files are now.
+   * since, so it reloads them first. One whose reload fails finds the skills its definition selected
+   * as the files are now.
    */
   async #withSkills(opened: OpenPiAgent, turn: PiAgentTurn): Promise<PiAgentTurn> {
     if (turn.agent.skills !== null) {

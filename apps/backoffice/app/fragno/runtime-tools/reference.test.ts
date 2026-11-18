@@ -415,6 +415,16 @@ describe("runtime tool reference generation", () => {
           bashOptions: ["agent"],
         },
         {
+          id: "pi.agent.skills",
+          namespace: "pi",
+          codemodeProvider: "pi",
+          codemodeTool: "listAgentSkills",
+          inputType: "PiListAgentSkillsInput",
+          outputType: "PiListAgentSkillsOutput",
+          bashCommand: "pi.agent.skills",
+          bashOptions: ["agent"],
+        },
+        {
           id: "pi.prompt.submit",
           namespace: "pi",
           codemodeProvider: "pi",

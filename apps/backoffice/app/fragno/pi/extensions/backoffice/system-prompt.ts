@@ -7,7 +7,7 @@ import {
   type PiRuntimeToolContext,
 } from "@/fragno/pi/agent/backoffice-agent-context";
 
-import { loadBackofficePiSkills } from "./skills";
+import { loadBackofficePiSkills, type PiSkillSelection } from "./skills";
 
 const PI_SYSTEM_PROMPT = STATIC_FILE_CONTENT["SYSTEM.md"];
 
@@ -46,18 +46,19 @@ function formatPiSkillsForSystemPrompt(skills: readonly PiAgentSkill[]): string 
 
 /**
  * Builds the Backoffice prompt section from the skills the turn's agent was reloaded with, and the
- * scope's declarations. A turn whose reload failed finds its skills as the files are now.
+ * scope's declarations. A turn whose reload failed finds the skills its agent selects as the files are now.
  */
 export async function buildBackofficePiSystemPrompt(options: {
   runtimeToolContext: PiRuntimeToolContext;
   skills: readonly PiAgentSkill[] | null;
+  skillSelection: PiSkillSelection;
 }): Promise<string> {
   const state = requirePiStateBackend(options.runtimeToolContext);
   const skills =
     options.skills ??
-    Object.values(await loadBackofficePiSkills(state))
-      .filter((skill) => !skill.disableModelInvocation)
-      .map(({ name, description, location }) => ({ name, description, location }));
+    Object.values(await loadBackofficePiSkills(state, options.skillSelection)).map(
+      ({ name, description, location }) => ({ name, description, location }),
+    );
   const baseSystemPrompt = [PI_SYSTEM_PROMPT, formatPiSkillsForSystemPrompt(skills)]
     .filter((part) => part.trim().length > 0)
     .join("\n\n");

@@ -20,6 +20,7 @@ describe("Backoffice static file collection", () => {
         systemFileCollection: createStaticFileCollection({}),
         staticFileCollection: collection,
       }),
+      { skills: [], disabledSkills: [] },
     );
     expect(skills["marketplace-publishing"]).toMatchObject({
       name: "marketplace-publishing",

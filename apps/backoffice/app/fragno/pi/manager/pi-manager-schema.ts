@@ -133,6 +133,13 @@ export const piAgentDirectorySchema = schema("pi_manager", (s) =>
     // no definition row, so the cache is a table of its own.
     .addTable("agent_skills", (t) =>
       t.addColumn("id", idColumn()).addColumn("skills", jsonColumn<PiAgentSkill[]>()),
+    )
+    // Built-in skills the agent is not offered; null for definitions written before agents could
+    // disable any. A null category makes the agent an assistant, as every agent was before.
+    .alterTable("agent_definition", (t) =>
+      t
+        .addColumn("disabledSkills", jsonColumn<string[]>().nullable())
+        .addColumn("category", column("string").nullable()),
     ),
 );
 
@@ -144,6 +151,8 @@ export type AgentDefinitionRow = {
   permissions: string[];
   instructions: string;
   skills: string[] | null;
+  disabledSkills: string[] | null;
+  category: string | null;
   managedBy: LegacyMarketplaceManagedBy | null;
   steward: AutomationSteward | null;
 };
@@ -158,6 +167,8 @@ export function definitionFromRow(row: AgentDefinitionRow): PiAgentDefinition {
     permissions: row.permissions,
     instructions: row.instructions,
     skills: row.skills ?? [],
+    disabledSkills: row.disabledSkills ?? [],
+    category: row.category,
     steward: row.steward ?? { kind: "members" },
   };
 }

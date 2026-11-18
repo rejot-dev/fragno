@@ -12,6 +12,10 @@ An agent is a definition in its scope: its instructions are extra system guidanc
 permissions narrow what its turns may do. Each agent keeps one ongoing conversation per scope,
 compacted automatically, and runs one turn at a time. `assistant` is built in everywhere.
 
+An agent without a category is an assistant: people write to it in Leyway. An agent with a category,
+such as `Finance`, is listed under it and takes work only from agents and workflows, through
+`pi.submitPrompt`; people read its conversation but cannot write to it.
+
 ## Define an agent
 
 ```ts
@@ -23,6 +27,7 @@ await pi.createAgent({
   permissions: ["*"],
   instructions:
     "Investigate the failure you are given before changing anything. Report the cause and the fix.",
+  category: "Operations",
 });
 ```
 
@@ -43,6 +48,11 @@ await pi.createAgent({
 - `skills` lists up to 16 more folders whose skills the agent is offered, such as a share's
   `/shared/<name>/skills`; omitted is none. Naming a folder trusts everyone who can write to it. See
   Skills below.
+- `disabledSkills` lists built-in skills the agent is not offered, by their `SKILL.md` location,
+  such as `/static/skills/<name>/SKILL.md`; omitted is none.
+- `category` groups the agent, up to 48 characters; null or omitted makes it an assistant, which
+  people write to. Agents with a category take work only from agents and workflows. `assistant` is
+  not a category: use null.
 - An agent's `steward` says who may change it: `members` for agents defined this way, a `package`
   for agents a Marketplace package declares, as `/static/skills/marketplace-publishing/SKILL.md`
   shows, and `backoffice` for built-in agents.
@@ -62,11 +72,15 @@ package is installed again and go when it is uninstalled, and built-in agents ne
 
 ## Skills
 
-Every agent is offered `/static/skills`, the `SKILL.md` files in the workspace's `skills` folders,
-and those in the folders its definition's `skills` names. Of skills with the same name, the
-workspace's wins over a named folder's, which wins over `/static`'s. For a procedure only this agent
-follows, write a skill with `disable-model-invocation: true` in its frontmatter, which no agent is
-offered, and name its path in the instructions.
+Every agent is offered `/static/skills`, except those its definition's `disabledSkills` names, the
+`SKILL.md` files in the workspace's `skills` folders, and those in the folders its definition's
+`skills` names. Of skills with the same name, the workspace's wins over a named folder's, which wins
+over `/static`'s. `pi.listAgentSkills({ agentName })` lists every skill an agent finds, where it
+found it, and whether it is offered, disabled, hidden, or replaced. A disabled skill is only left
+out of the skills the agent is offered: it can still read the file. The built-in `assistant` cannot
+disable skills; define an assistant of your own (no category) that does. For a procedure only this
+agent follows, write a skill with `disable-model-invocation: true` in its frontmatter, which no
+agent is offered, and name its path in the instructions.
 
 An agent is offered each skill's name and description as of its last reload, and reads the body from
 the file when it uses the skill, so bodies are always current. A new skill, a changed name or

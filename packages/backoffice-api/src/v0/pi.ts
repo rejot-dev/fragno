@@ -92,6 +92,64 @@ export const piAgentSkillReloadSchema = z.lazy(() =>
 );
 export type PiAgentSkillReload = z.infer<typeof piAgentSkillReloadSchema>;
 
+/**
+ * A `SKILL.md` an agent finds, where it found it, and whether it is offered. A skill of a later
+ * source replaces one of the same name: a folder's replaces `/static`'s, and `/workspace`'s both.
+ */
+export const piAgentSkillListingSchema = z.lazy(() =>
+  z.object({
+    skills: z.array(
+      piAgentSkillSchema._zod.innerType.extend({
+        source: z
+          .discriminatedUnion("kind", [
+            z.object({ kind: z.literal("static") }),
+            z.object({ kind: z.literal("workspace") }),
+            z.object({ kind: z.literal("folder"), folder: z.string() }),
+          ])
+          .describe(
+            "Where the agent found the skill: /static/skills, a skills folder of /workspace, or a folder its definition's `skills` names.",
+          ),
+        status: z
+          .discriminatedUnion("kind", [
+            z.object({ kind: z.literal("offered") }),
+            z.object({ kind: z.literal("disabled") }),
+            z.object({ kind: z.literal("hidden") }),
+            z.object({ kind: z.literal("replaced"), by: z.string() }),
+          ])
+          .describe(
+            "`offered` from the agent's next reload; `disabled` by its definition's `disabledSkills`; `hidden` by `disable-model-invocation: true`; `replaced` by the skill of the same name at `by`. Only offered skills are listed to the agent, though it can read any of them.",
+          ),
+      }),
+    ),
+    problems: piAgentSkillReloadSchema._zod.innerType.shape.problems,
+  }),
+);
+export type PiAgentSkillListing = z.infer<typeof piAgentSkillListingSchema>;
+
+const piAgentCategorySchema = z.lazy(() =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(48)
+    .refine((category) => category.toLowerCase() !== "assistant", "Use null for an assistant.")
+    .nullable()
+    .describe(
+      "The group the agent is listed under, such as Finance. Null makes it an assistant, which people write to in Leyway; people reach an agent of any other category only through agents and workflows, with `pi.submitPrompt`.",
+    ),
+);
+
+/** A built-in skill an agent is not offered. */
+const piAgentDisabledSkillSchema = z.lazy(() =>
+  z
+    .string()
+    .regex(
+      /^\/static\/skills\/[^*?[\]{}]+\/SKILL\.md$/,
+      "Expected the location of a built-in skill, such as /static/skills/<name>/SKILL.md.",
+    )
+    .refine((path) => !path.split("/").includes(".."), "Expected a path without '..'."),
+);
+
 const piAgentDefinitionFieldsSchema = z.lazy(() =>
   z.object({
     description: z.string().trim().min(1),
@@ -119,6 +177,14 @@ const piAgentDefinitionFieldsSchema = z.lazy(() =>
       .describe(
         "Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it.",
       ),
+    /** Built-in skills the agent is not offered, by the location of their `SKILL.md`. */
+    disabledSkills: z
+      .array(piAgentDisabledSkillSchema)
+      .max(64)
+      .describe(
+        "Locations of /static/skills SKILL.md files the agent is not offered, such as /static/skills/<name>/SKILL.md, from its next turn. It can still read them.",
+      ),
+    category: piAgentCategorySchema,
   }),
 );
 
@@ -149,6 +215,8 @@ export const piAgentDefinitionUpdateSchema = z.lazy(() =>
   piAgentDefinitionFieldsSchema._zod.innerType.extend({
     thinkingLevel: piThinkingLevelSchema.default("low"),
     skills: piAgentDefinitionFieldsSchema._zod.innerType.shape.skills.default([]),
+    disabledSkills: piAgentDefinitionFieldsSchema._zod.innerType.shape.disabledSkills.default([]),
+    category: piAgentDefinitionFieldsSchema._zod.innerType.shape.category.default(null),
     permissions: piAgentDefinitionFieldsSchema._zod.innerType.shape.permissions.min(
       1,
       'Grant at least one permission; use ["*"] to let the agent do whatever its prompter may.',
@@ -606,6 +674,13 @@ export const piOperations = {
     permissions: [BACKOFFICE_PERMISSION.pi.read, BACKOFFICE_PERMISSION.pi.modify],
     input: agentInputSchema,
     output: piAgentSkillReloadSchema,
+  },
+  "pi.agent.skills": {
+    description:
+      "List the skills an agent finds as the files are now, by the agent's name: every SKILL.md under /static/skills, the skills folders of /workspace, and the folders its definition names, each with where it was found and whether it is offered, disabled by the definition's `disabledSkills`, hidden, or replaced by a skill of the same name. The agent sees changes from its next reload. Lists only for a caller who may read files.",
+    permissions: [BACKOFFICE_PERMISSION.pi.read, BACKOFFICE_PERMISSION.upload.read],
+    input: agentInputSchema,
+    output: piAgentSkillListingSchema,
   },
   "pi.agent.watchTicket": {
     description:
