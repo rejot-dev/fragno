@@ -123,6 +123,7 @@ import {
   type PackageInstallationOutcome,
 } from "@/fragno/automation/package-installations";
 import type { PackageInstallationRecord } from "@/fragno/automation/package-installations-storage-runtime";
+import type { ProjectWiringTelling } from "@/fragno/automation/project-wiring";
 import { readBackofficeAutomationSource } from "@/fragno/automation/read-backoffice-automation-source";
 import type { AcceptShareOutcome } from "@/fragno/automation/shares-storage-runtime";
 import { MEMBERS_STEWARD } from "@/fragno/automation/stewards";
@@ -712,6 +713,16 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
 
     return await runtime.automationFragment.callServices(() =>
       runtime.automationFragment.services.seedStarterAutomationRoutes(),
+    );
+  }
+
+  async recordProjectWiring(telling: ProjectWiringTelling): Promise<void> {
+    const scope = this.#requireScope();
+    await this.#ensureConfigured({ scope });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.recordProjectWiring(telling),
     );
   }
 

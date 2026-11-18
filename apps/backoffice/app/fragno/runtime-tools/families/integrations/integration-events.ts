@@ -84,6 +84,14 @@ export const connectionEventStates = {
   "connection.disconnected": "disconnected",
 } as const satisfies Record<string, IntegrationConnectionState | "disconnected">;
 
+/** Whether events of this type report a connection's state. */
+export function isIntegrationConnectionEvent(type: { source: string; eventType: string }) {
+  return (
+    type.source === INTEGRATIONS_EVENT_SOURCE &&
+    Object.hasOwn(connectionEventStates, type.eventType)
+  );
+}
+
 /**
  * Reads a stored event as a connection state change, or null if it is not one. Any principal that
  * may emit events can use this source, so stored events are validated rather than trusted.
@@ -95,11 +103,7 @@ export function readIntegrationConnectionEvent(event: {
   subject: unknown;
 }) {
   const subject = integrationConnectionSubjectSchema.safeParse(event.subject);
-  if (
-    event.source !== INTEGRATIONS_EVENT_SOURCE ||
-    !Object.hasOwn(connectionEventStates, event.eventType) ||
-    !subject.success
-  ) {
+  if (!isIntegrationConnectionEvent(event) || !subject.success) {
     return null;
   }
   // Reads the label off a payload that also names the connection.

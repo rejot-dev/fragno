@@ -12,9 +12,11 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import { forwardSendersFitScope } from "./forward-accepts";
+import type { AutomationInternalHooks } from "./internal-hooks";
+import { rewireProject } from "./project-wiring";
 import { automationFragmentSchema } from "./schema";
 
-type ForwardAcceptServiceContext = DatabaseServiceContext<Record<string, never>>;
+type ForwardAcceptServiceContext = DatabaseServiceContext<AutomationInternalHooks>;
 
 type ForwardAcceptRow = {
   id: { externalId: string };
@@ -78,6 +80,7 @@ export const createForwardAcceptServices = (
             createdAt: uow.now(),
             updatedAt: uow.now(),
           });
+          rewireProject(uow, ownerScope);
           return { ok: true, accept };
         })
         .build();
@@ -111,6 +114,7 @@ export const createForwardAcceptServices = (
           uow.update("automation_forward_accept", existing.id, (b) =>
             b.set({ ...columns, senders, updatedAt: uow.now() }).check(),
           );
+          rewireProject(uow, ownerScope);
           return { ok: true, accept };
         })
         .build();
@@ -129,6 +133,7 @@ export const createForwardAcceptServices = (
             return false;
           }
           uow.delete("automation_forward_accept", existing.id);
+          rewireProject(uow, ownerScope);
           return true;
         })
         .build();

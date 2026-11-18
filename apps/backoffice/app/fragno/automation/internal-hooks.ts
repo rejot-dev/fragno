@@ -57,6 +57,7 @@ export type AutomationInternalHooks = {
   internalDispatchRouteSchedule: HookFn<AutomationRouteScheduleDispatchPayload>;
   internalReplayEventFold: HookFn<EventFoldReplayPass>;
   internalKeepEventState: HookFn<EventStateEntry>;
+  internalPublishProjectWiring: HookFn<Record<string, never>>;
 };
 
 export type AutomationHookUnitOfWork = TypedUnitOfWork<

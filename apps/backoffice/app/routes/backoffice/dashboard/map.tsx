@@ -69,7 +69,7 @@ export default function BackofficeDashboardMap({ loaderData }: Route.ComponentPr
         ) : null}
         <DashboardReplica>
           {(replica) =>
-            universe ? (
+            universe && selectedScope.kind === "org" ? (
               <OrganizationUniverse
                 replica={replica}
                 selectedScope={selectedScope}

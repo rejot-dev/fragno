@@ -46,7 +46,7 @@ function replayedScopes(manifest: UniverseReplayManifest) {
     slug: manifest.organization.slug,
     jurisdiction: manifest.organization.jurisdiction,
   };
-  const selectedScope: BackofficeScopeSelection = {
+  const selectedScope: Extract<BackofficeScopeSelection, { kind: "org" }> = {
     kind: "org",
     organization,
     label: manifest.organization.name,
@@ -57,17 +57,7 @@ function replayedScopes(manifest: UniverseReplayManifest) {
   };
   const { viewer } = manifest;
   const scopes: OrchestrationUniverseScopes = {
-    projects: manifest.projects.map((project) => ({
-      label: project.name,
-      source: {
-        resolvedScope: {
-          kind: "project",
-          owner: { kind: "org", organization },
-          project: { id: project.id, slug: project.slug },
-        },
-        adapterIdentity: project.adapterIdentity,
-      },
-    })),
+    projects: manifest.projects.map((project) => ({ id: project.id, label: project.name })),
     viewer: {
       label: viewer.label,
       source: {

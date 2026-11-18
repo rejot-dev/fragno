@@ -345,3 +345,89 @@ test("the replay keeps stored events in their states as ingestion did, and keepi
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("a project's replay tells its organization the connections it keeps again", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-event-fold-replay-"));
+  const books = (projectId: unknown) =>
+    ({ kind: "project", owner: scope, projectId: String(projectId) }) as const;
+  /** The name the organization last heard Books' ledger by, or null for no ledger. */
+  const ledgerName = async (ctx: BackofficeScenarioContext) => {
+    const [wiring] = await queryAutomationReplica(
+      ctx.lofi.automations.forOrg(orgId),
+      `SELECT payload ->> '$.connections[0].displayName' AS name FROM event_state
+       WHERE source = 'automations' AND eventType = 'project.wiring'`,
+    );
+    return wiring?.name ?? null;
+  };
+  const route = (name: string) =>
+    `async () => router.create({
+      id: "book-receipts",
+      name: "${name}",
+      trigger: { kind: "event", source: "shop", eventType: "received" },
+      action: {
+        kind: "start_workflow",
+        workflowScriptPath: "/workspace/automations/book-receipt.workflow.js",
+        instanceIdTemplate: "book-\${event.id}",
+        authority: { kind: "organization-automation", grants: [] },
+      },
+    })`;
+  try {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: allLocalObjects,
+        name: "Books' ledger connected before ingestion kept connection states",
+        options: { sqliteDataDirectory: directory },
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then, runner }) => [
+          when.project.create({
+            owner: scope,
+            name: "Books",
+            slug: "books",
+            createdByUserId: "owner-1",
+            captureIdAs: "books",
+          }),
+          then.assert("Books connects its ledger", async (ctx) => {
+            const booksScope = books(ctx.vars.books);
+            await ctx.runtime.objects.automations.for(booksScope).commands.ingestEvent({
+              ...connectionEvent("ledger-ready", "ready", "api#ledger", 1),
+              scope: booksScope,
+              payload: {
+                connectionId: "api#ledger",
+                service: "api",
+                name: "Ledger",
+                authMethod: null,
+              },
+              subject: { scope: booksScope, service: "api", connectionId: "api#ledger" },
+            });
+          }),
+          runner.drain(),
+          then.assert("its state is gone, and Books routes without its ledger", async (ctx) => {
+            assert.equal(await ledgerName(ctx), "Ledger");
+            await eachAutomationsDatabase(directory, (database) => {
+              database
+                .prepare(
+                  `DELETE FROM ${automationsTable("automation_event_state")} WHERE "source" = 'integrations'`,
+                )
+                .run();
+              database.prepare(`DELETE FROM ${automationsTable("event_fold_replay")}`).run();
+            });
+            await ctx.runCodemode({ scope: books(ctx.vars.books), code: route("Book receipts") });
+            await ctx.drain();
+            assert.equal(await ledgerName(ctx), null);
+          }),
+          then.assert("the replay keeps the ledger again, which Books tells", async (ctx) => {
+            await ctx.runtime.restartObject({
+              binding: "AUTOMATIONS",
+              scope: books(ctx.vars.books),
+            });
+            await ctx.drain();
+            assert.equal(await ledgerName(ctx), "Ledger");
+          }),
+          then.hooks.noFailed({ orgId, fragments: ["automations"] }),
+        ],
+      }),
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});

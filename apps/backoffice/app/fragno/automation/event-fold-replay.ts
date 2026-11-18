@@ -1,3 +1,5 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import { decodeCursor, type DatabaseHandlerTx, type DatabaseServiceContext } from "@fragno-dev/db";
 
 import {
@@ -14,11 +16,13 @@ import { readIntegrationConnectionStateChange } from "@/fragno/runtime-tools/fam
 import {
   INTEGRATION_CONNECTION_KEY_PATH,
   integrationConnectionEvents,
+  isIntegrationConnectionEvent,
   type IntegrationConnectionStatePayload,
 } from "@/fragno/runtime-tools/families/integrations/integration-events";
 
 import { occurredAfter, STATE_INDEX, writeEventState } from "./event-state";
 import type { AutomationInternalHooks } from "./internal-hooks";
+import { rewireProject } from "./project-wiring";
 import { automationFragmentSchema, type EventFoldReplayPass } from "./schema";
 
 /**
@@ -201,6 +205,7 @@ function latestStates(
 export async function replayEventFold(
   pass: EventFoldReplayPass,
   handlerTx: DatabaseHandlerTx<AutomationInternalHooks>,
+  ownerScope: BackofficeContextScope,
 ) {
   let current = pass;
   for (;;) {
@@ -261,6 +266,10 @@ export async function replayEventFold(
         const states = new Map(stateRows.map((state) => [state.key, state]));
         for (const [key, event] of latest) {
           writeEventState(uow, { ...current, key, keyPath }, event, states.get(key) ?? null);
+        }
+        // A project's connections are part of its wiring, read from these states.
+        if (latest.size > 0 && isIntegrationConnectionEvent(current)) {
+          rewireProject(uow, ownerScope);
         }
         uow.update("event_fold_replay", replay.id, (b) => b.set({ next }).check());
         if (next !== null) {

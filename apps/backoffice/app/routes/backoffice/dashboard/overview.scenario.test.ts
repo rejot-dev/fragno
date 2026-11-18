@@ -38,6 +38,7 @@ import {
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
+import { createNodeBackofficeDurableHooks } from "@/backoffice-runtime/node/node-durable-hooks";
 import { GENERAL_SKILL_CONTENT } from "@/files/content/skills";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import {
@@ -595,8 +596,9 @@ async function readMap(ctx: BackofficeScenarioContext) {
 
 /**
  * The organization's universe, as the person `viewer` sees it on its Map: a planet per scope, with
- * the routes on it, and the forwards between planets. Each project's planet, and the person's own,
- * is read from its replica if `read`.
+ * the routes on it, and the forwards between planets. Projects' planets are drawn from the wiring
+ * they told the organization, from its replica alone; the person's own is read from its replica if
+ * `read`.
  */
 async function readUniverse(
   ctx: BackofficeScenarioContext,
@@ -605,7 +607,7 @@ async function readUniverse(
     viewer,
     read,
   }: {
-    projects: readonly { scope: BackofficeContextScope; label: string }[];
+    projects: readonly { projectId: string; label: string }[];
     viewer: { scope: BackofficeContextScope; label: string };
     read: boolean;
   },
@@ -630,6 +632,7 @@ async function readUniverse(
     };
   };
   const organization = await readScopeGraph(ctx, scope, "Ada Labs");
+  const wirings = await readAutomationReplica(organization.replica, "projectWirings", undefined);
   const universe = projectOrchestrationUniverse({
     organization: {
       scope,
@@ -644,7 +647,11 @@ async function readUniverse(
         undefined,
       ),
     },
-    projects: await Promise.all(projects.map(readScope)),
+    projects: projects.map(({ projectId, label }) => ({
+      scope: { kind: "project", owner: scope, projectId },
+      label,
+      wiring: wirings.find((wiring) => wiring.projectId === projectId) ?? null,
+    })),
     viewer: await readScope(viewer),
     recentForwards: organization.inputs.recentForwards,
     // Only the person looking forwards in, and they go by their own name.
@@ -1206,30 +1213,32 @@ describe("dashboard", () => {
             "the person looking and Books are planets beside the organization, and System is not",
             async (ctx) => {
               const booksId = `project:org:${scope.orgId}:${String(ctx.vars.books)}`;
-              const projects = [{ scope: books(ctx.vars.books), label: "Books" }];
+              const projects = [{ projectId: String(ctx.vars.books), label: "Books" }];
               const organizationDrawn = [
                 `org:org-1 → ${booksId} carrying crm:received`,
                 `org:org-1 → ${booksId} carrying inbox:received`,
               ];
-              // Until Books is read, its planet is its name, which the organization's forwards
-              // still reach; until the person looking is read, they show as the organization
-              // knows them: their ledger route once for each type it forwarded.
+              // Books told the organization how it is wired, so its route and the forward it names
+              // show from the organization alone. Until the person looking is read, they show as
+              // the organization knows them: their ledger route once for each type it forwarded.
               const viewer = { scope: personal, label: "Ada" };
               assert.deepEqual(await readUniverse(ctx, { projects, viewer, read: false }), {
                 planets: [
                   "org:org-1 Ada Labs: Documents to their project, Leads to Books",
-                  `${booksId} Books: no routes`,
+                  `${booksId} Books: Receipts to Ada Labs`,
                   "user:user-1 Ada: Balances to Ada Labs, Ledger to Ada Labs, Ledger to Ada Labs",
                 ],
                 forwards: [
                   `org:org-1 → ${booksId} by documents-to-project`,
                   `org:org-1 → ${booksId} by leads-to-books`,
+                  `${booksId} → org:org-1 by receipts-to-org`,
                   "user:user-1 → org:org-1 by balances-to-org|bank:received",
                   "user:user-1 → org:org-1 by ledger-to-org|ledger:balance.updated",
                   "user:user-1 → org:org-1 by ledger-to-org|ledger:deposit.received",
                 ],
                 drawn: [
                   ...organizationDrawn,
+                  `${booksId} → org:org-1 carrying shop:received`,
                   "user:user-1 → org:org-1 carrying bank:received",
                   "user:user-1 → org:org-1 carrying ledger:balance.updated",
                   "user:user-1 → org:org-1 carrying ledger:deposit.received",
@@ -1237,9 +1246,8 @@ describe("dashboard", () => {
                 calls: [],
                 inheriting: [],
               });
-              // Read, Books adds the forward its route names, and the person looking sees all of
-              // their own routes, which the organization never does, the ledger route on its
-              // wildcard event.
+              // Read, the person looking sees all of their own routes, which the organization
+              // never does, the ledger route on its wildcard event.
               assert.deepEqual(await readUniverse(ctx, { projects, viewer, read: true }), {
                 planets: [
                   "org:org-1 Ada Labs: Documents to their project, Leads to Books",
@@ -1294,7 +1302,7 @@ describe("dashboard", () => {
       permission: "execute" as const,
       connections,
     });
-    const projects: { scope: BackofficeContextScope; label: string }[] = [];
+    const projects: { projectId: string; label: string }[] = [];
     const viewer = {
       scope: { kind: "user", userId: "user-1", jurisdiction: null } as const,
       label: "Ada",
@@ -1477,6 +1485,404 @@ describe("dashboard", () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  });
+
+  test("projects tell the organization how they are wired as that changes", async () => {
+    const books = (projectId: unknown) =>
+      ({ kind: "project", owner: scope, projectId: String(projectId) }) as const;
+    const viewer = {
+      scope: { kind: "user", userId: "user-1", jurisdiction: null } as const,
+      label: "Ada",
+    };
+    const universe = async (ctx: BackofficeScenarioContext) => {
+      const { planets, forwards, calls } = await readUniverse(ctx, {
+        projects: [{ projectId: String(ctx.vars.books), label: "Books" }],
+        viewer,
+        read: false,
+      });
+      // The organization's own planet is drawn from its own records, as before.
+      return { planets: planets.slice(1), forwards, calls };
+    };
+    const inBooks = (ctx: BackofficeScenarioContext, code: string) =>
+      ctx.runCodemode({ scope: books(ctx.vars.books), code: `async () => { ${code} }` });
+    const until = async (check: () => Promise<boolean>) => {
+      for (const deadline = Date.now() + 10_000; !(await check()); ) {
+        if (Date.now() > deadline) {
+          throw new Error("Timed out waiting for Books' hooks.");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+    /** The telling the organization keeps of Books' wiring, as a page over its replica reads it. */
+    const toldBooks = async (ctx: BackofficeScenarioContext) =>
+      await queryAutomationReplica(
+        ctx.lofi.automations.forScope(scope),
+        `SELECT eventId FROM event_state WHERE source = 'automations' AND eventType = 'project.wiring'`,
+      );
+    const bookReceipts = (name: string) =>
+      `await router.create({
+        id: "book-receipts",
+        name: "${name}",
+        trigger: { kind: "event", source: "shop", eventType: "received" },
+        action: {
+          kind: "start_workflow",
+          workflowScriptPath: "/workspace/automations/book-receipt.workflow.js",
+          instanceIdTemplate: "book-\${event.id}",
+          authority: { kind: "organization-automation", grants: [] },
+        },
+      });`;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "Books gets routes and a connection, then loses a route",
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          when.project.create({
+            owner: scope,
+            name: "Books",
+            slug: "books",
+            createdByUserId: "owner-1",
+            captureIdAs: "books",
+          }),
+          then.assert("Books has told nothing yet, so it is its name", async (ctx) => {
+            assert.deepEqual(await universe(ctx), {
+              planets: [`project:org:org-1:${String(ctx.vars.books)} Books: no routes`],
+              forwards: [],
+              calls: [],
+            });
+          }),
+          then.assert("Books routes, and connects to its ledger", async (ctx) => {
+            const booksScope = books(ctx.vars.books);
+            await inBooks(
+              ctx,
+              `await router.create({
+                id: "receipts-to-org",
+                name: "Receipts to Ada Labs",
+                trigger: { kind: "event", source: "shop", eventType: "received" },
+                action: {
+                  kind: "forward_event",
+                  targetScope: { kind: "org", orgIdTemplate: "${orgId}" },
+                },
+              });
+              await router.create({
+                id: "book-receipts",
+                name: "Book receipts",
+                trigger: { kind: "event", source: "shop", eventType: "received" },
+                action: {
+                  kind: "start_workflow",
+                  workflowScriptPath: "/workspace/automations/book-receipt.workflow.js",
+                  instanceIdTemplate: "book-\${event.id}",
+                  authority: {
+                    kind: "organization-automation",
+                    grants: [{
+                      namespace: "integrations",
+                      permission: "execute",
+                      connections: [{ scope: { kind: "current" }, connectionId: "api#ledger" }],
+                    }],
+                  },
+                },
+              });`,
+            );
+            await ctx.runtime.objects.automations.for(booksScope).commands.ingestEvent({
+              ...connectionEvent("ledger-ready", "ready", "api#ledger", Date.now(), "Ledger"),
+              scope: booksScope,
+              subject: { scope: booksScope, service: "api", connectionId: "api#ledger" },
+            });
+            await ctx.drain();
+          }),
+          then.assert(
+            "the organization draws Books' routes, forwards, and connection",
+            async (ctx) => {
+              const booksId = `project:org:org-1:${String(ctx.vars.books)}`;
+              assert.deepEqual(await universe(ctx), {
+                planets: [`${booksId} Books: Book receipts, Receipts to Ada Labs`],
+                forwards: [`${booksId} → org:org-1 by receipts-to-org`],
+                calls: [
+                  `${booksId} workflow:/workspace/automations/book-receipt.workflow.js → connection:${booksId}|api#ledger "Ledger" code`,
+                ],
+              });
+            },
+          ),
+          then.assert("Books stops forwarding receipts", async (ctx) => {
+            await inBooks(ctx, `await router.delete({ id: "receipts-to-org" });`);
+            await ctx.drain();
+          }),
+          then.assert("the organization no longer draws the forward", async (ctx) => {
+            const booksId = `project:org:org-1:${String(ctx.vars.books)}`;
+            assert.deepEqual(await universe(ctx), {
+              planets: [`${booksId} Books: Book receipts`],
+              forwards: [],
+              calls: [
+                `${booksId} workflow:/workspace/automations/book-receipt.workflow.js → connection:${booksId}|api#ledger "Ledger" code`,
+              ],
+            });
+          }),
+          then.assert("Books deletes its ledger's connection state", async (ctx) => {
+            await inBooks(
+              ctx,
+              `await events.stateDelete({
+                source: "integrations",
+                eventType: "connection.ready",
+                keys: ["api#ledger"],
+              });`,
+            );
+            await ctx.drain();
+          }),
+          then.assert("the organization no longer draws the ledger's name", async (ctx) => {
+            const booksId = `project:org:org-1:${String(ctx.vars.books)}`;
+            assert.deepEqual((await universe(ctx)).calls, [
+              `${booksId} workflow:/workspace/automations/book-receipt.workflow.js → connection:${booksId}|api#ledger "ledger" code`,
+            ]);
+          }),
+        ],
+      }),
+    );
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "Books changes eight times in one instant, then the clock steps back",
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          when.project.create({
+            owner: scope,
+            name: "Books",
+            slug: "books",
+            createdByUserId: "owner-1",
+            captureIdAs: "books",
+          }),
+          then.assert("the organization draws each change once told", async (ctx) => {
+            const booksId = `project:org:org-1:${String(ctx.vars.books)}`;
+            // Every telling is read and stored in the same instant, so only its order tells which
+            // came last.
+            vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+            try {
+              const names: string[] = [];
+              for (let step = 1; step <= 8; step++) {
+                names.push(`Step ${step}`);
+                await inBooks(
+                  ctx,
+                  `await router.create({
+                    id: "step-${step}",
+                    name: "Step ${step}",
+                    trigger: { kind: "event", source: "shop", eventType: "received" },
+                    action: {
+                      kind: "start_workflow",
+                      workflowScriptPath: "/workspace/automations/step-${step}.workflow.js",
+                      instanceIdTemplate: "step-\${event.id}",
+                      authority: { kind: "organization-automation", grants: [] },
+                    },
+                  });`,
+                );
+                await ctx.drain();
+                const { planets } = await universe(ctx);
+                assert.deepEqual(planets, [`${booksId} Books: ${names.join(", ")}`]);
+              }
+              // As a server's clock does when it is corrected.
+              vi.setSystemTime(Date.now() - 60 * 60 * 1000);
+              await inBooks(ctx, `await router.delete({ id: "step-1" });`);
+              await ctx.drain();
+              const { planets } = await universe(ctx);
+              assert.deepEqual(planets, [`${booksId} Books: ${names.slice(1).join(", ")}`]);
+            } finally {
+              vi.useRealTimers();
+            }
+          }),
+        ],
+      }),
+    );
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "Books' ledger connection comes and goes",
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          when.project.create({
+            owner: scope,
+            name: "Books",
+            slug: "books",
+            createdByUserId: "owner-1",
+            captureIdAs: "books",
+          }),
+          then.assert("only what changes Books' wiring tells the organization", async (ctx) => {
+            const booksScope = books(ctx.vars.books);
+            // The state names the telling whose wiring it holds, so an unchanged name means the
+            // organization did not write the wiring again.
+            const told = async () => await toldBooks(ctx);
+            const ledger = async (state: "ready" | "unavailable", at: number) => {
+              await ctx.runtime.objects.automations.for(booksScope).commands.ingestEvent({
+                ...connectionEvent(`ledger-${at}`, state, "api#ledger", at, "Ledger"),
+                scope: booksScope,
+                subject: { scope: booksScope, service: "api", connectionId: "api#ledger" },
+              });
+              await ctx.drain();
+            };
+            const start = Date.now();
+            await ledger("ready", start);
+            const connected = await told();
+            // The connection's state is no part of the wiring, only that it exists and its name.
+            await ledger("unavailable", start + 1);
+            await ledger("ready", start + 2);
+            await ledger("unavailable", start + 3);
+            assert.deepEqual(await told(), connected);
+            await inBooks(
+              ctx,
+              `await router.create({
+                id: "book-receipts",
+                name: "Book receipts",
+                trigger: { kind: "event", source: "shop", eventType: "received" },
+                action: {
+                  kind: "start_workflow",
+                  workflowScriptPath: "/workspace/automations/book-receipt.workflow.js",
+                  instanceIdTemplate: "book-\${event.id}",
+                  authority: { kind: "organization-automation", grants: [] },
+                },
+              });`,
+            );
+            await ctx.drain();
+            assert.notDeepEqual(await told(), connected);
+          }),
+        ],
+      }),
+    );
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "someone fires an event as if Books told its wiring",
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          when.project.create({
+            owner: scope,
+            name: "Books",
+            slug: "books",
+            createdByUserId: "owner-1",
+            captureIdAs: "books",
+          }),
+          then.assert("the organization refuses it and draws Books as Books told", async (ctx) => {
+            await inBooks(ctx, bookReceipts("Book receipts"));
+            await ctx.drain();
+            // As anyone who may define event types could, so its events would be kept as states.
+            await ctx.runCodemode({
+              scope,
+              code: `async () => events.catalogCreate({
+                source: "automations",
+                eventType: "project.wiring",
+                label: "Project wiring",
+                keyPath: "$.projectId",
+              })`,
+            });
+            const forged = await ctx
+              .runCodemode({
+                scope,
+                code: `async () => events.fire({
+                  source: "automations",
+                  eventType: "project.wiring",
+                  payload: {
+                    projectId: ${JSON.stringify(String(ctx.vars.books))},
+                    routes: [{}],
+                    forwardAccepts: [],
+                    eventSources: [],
+                    eventDefinitions: [],
+                    connections: [],
+                  },
+                })`,
+              })
+              .then(
+                () => "stored",
+                (error: unknown) => String(error),
+              );
+            assert.match(forged, /keeps project wiring/);
+            // Its routes need router.read, which the event state API does not ask for.
+            for (const code of [
+              `events.stateList({ source: "automations", eventType: "project.wiring" })`,
+              `events.stateGet({ source: "automations", eventType: "project.wiring", keys: [${JSON.stringify(String(ctx.vars.books))}] })`,
+              `events.stateDelete({ source: "automations", eventType: "project.wiring", keys: [${JSON.stringify(String(ctx.vars.books))}] })`,
+            ]) {
+              const read = await ctx.runCodemode({ scope, code: `async () => ${code}` }).then(
+                () => "allowed",
+                (error: unknown) => String(error),
+              );
+              assert.match(read, /keeps project wiring/);
+            }
+            await ctx.drain();
+            const booksId = `project:org:org-1:${String(ctx.vars.books)}`;
+            assert.deepEqual((await universe(ctx)).planets, [`${booksId} Books: Book receipts`]);
+          }),
+        ],
+      }),
+    );
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "Books renames a route and back while telling the rename is slow",
+        // Node's hooks run as they are due, also beside a hook that is still running.
+        durableHooks: createNodeBackofficeDurableHooks({ pollIntervalMs: 10 }),
+        options: { drain: false },
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          when.project.create({
+            owner: scope,
+            name: "Books",
+            slug: "books",
+            createdByUserId: "owner-1",
+            captureIdAs: "books",
+          }),
+          then.assert("the organization ends on the name Books ended on", async (ctx) => {
+            const booksId = `project:org:org-1:${String(ctx.vars.books)}`;
+            const publications = async () =>
+              (
+                await ctx.runtime.objects.automations
+                  .for(books(ctx.vars.books))
+                  .commands.getDurableHookQueue("automation", { pageSize: 100 })
+              ).items
+                .filter(({ hookName }) => hookName === "internalPublishProjectWiring")
+                .map(({ status }) => status);
+            const completed = async () =>
+              (await publications()).filter((status) => status === "completed").length;
+            await inBooks(ctx, bookReceipts("Book receipts"));
+            await until(async () => (await completed()) === 1);
+
+            const record = AutomationsObject.prototype.recordProjectWiring;
+            let release = () => {};
+            const held = new Promise<void>((resolve) => {
+              release = resolve;
+            });
+            let reach = () => {};
+            const reached = new Promise<void>((resolve) => {
+              reach = resolve;
+            });
+            // Holds the rename's telling after it read the renamed wiring, before the organization
+            // keeps it.
+            const spy = vi
+              .spyOn(AutomationsObject.prototype, "recordProjectWiring")
+              .mockImplementation(async function (this: AutomationsObject, telling) {
+                if (telling.wiring.routes.some(({ name }) => name === "Receipts booked")) {
+                  reach();
+                  await held;
+                }
+                await record.call(this, telling);
+              });
+            try {
+              const rename = (name: string) =>
+                inBooks(ctx, `await router.update({ id: "book-receipts", name: "${name}" });`);
+              await rename("Receipts booked");
+              await reached;
+              await rename("Book receipts");
+              await until(async () => (await completed()) === 2);
+            } finally {
+              release();
+              spy.mockRestore();
+            }
+            await until(async () => (await completed()) === 3);
+            assert.deepEqual((await universe(ctx)).planets, [`${booksId} Books: Book receipts`]);
+          }),
+        ],
+      }),
+    );
   });
 
   test("a workflow needs attention for the failures since it last completed", async () => {

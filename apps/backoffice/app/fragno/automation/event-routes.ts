@@ -22,6 +22,7 @@ import { decodeCursor } from "@fragno-dev/db";
 import { automationFragmentDefinition } from "./definition";
 import { STATE_INDEX } from "./event-state";
 import { EVENTS_BY_TIME_INDEX } from "./events-storage-runtime";
+import { isProjectWiringStateType } from "./project-wiring";
 import {
   eventRouteDispatchesOfRows,
   ROUTES_BY_STATUS_INDEX,
@@ -35,6 +36,15 @@ type AutomationEventRow = Omit<AutomationEvent, "id" | "occurredAt" | "causation
 };
 
 /** Stored events always have a creation time; the public record leaves it optional. */
+/**
+ * Project wiring states hold each project's routes, which reading needs `router.read` for, and only
+ * Backoffice writes them; the Map reads them from the owner's replica.
+ */
+const reservedEventStateError = {
+  message: "Backoffice keeps project wiring states itself; they are not read or deleted here.",
+  code: "EVENT_STATE_RESERVED",
+} as const;
+
 export function automationEventRecord(
   event: AutomationEventRow,
 ): AutomationEventRecord & { createdAt: string } {
@@ -132,7 +142,7 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
       path: "/event-state",
       queryParameters: ["source", "eventType", "limit", "cursor"],
       outputSchema: automationEventStateListResultSchema,
-      errorCodes: ["EVENT_STATE_LIST_INPUT_INVALID"],
+      errorCodes: ["EVENT_STATE_LIST_INPUT_INVALID", "EVENT_STATE_RESERVED"],
       handler: async function ({ query }, { json, error }) {
         const limitRaw = query.get("limit")?.trim();
         const parsed = automationEventStateListInputSchema.safeParse({
@@ -165,6 +175,9 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
             400,
           );
         }
+        if (isProjectWiringStateType(parsed.data)) {
+          return error(reservedEventStateError, 403);
+        }
 
         const result = await this.handlerTx()
           .withServiceCalls(
@@ -193,8 +206,12 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
       path: "/event-state/get",
       inputSchema: automationEventStateGetInputSchema,
       outputSchema: automationEventStateGetResultSchema,
-      handler: async function ({ input }, { json }) {
+      errorCodes: ["EVENT_STATE_RESERVED"],
+      handler: async function ({ input }, { json, error }) {
         const payload = await input.valid();
+        if (isProjectWiringStateType(payload)) {
+          return error(reservedEventStateError, 403);
+        }
         return json(
           await this.handlerTx()
             .withServiceCalls(() => [services.getEventStates(payload)] as const)
@@ -208,8 +225,12 @@ export const automationEventRoutes = defineRoutes(automationFragmentDefinition).
       path: "/event-state/delete",
       inputSchema: automationEventStateDeleteInputSchema,
       outputSchema: automationEventStateDeleteResultSchema,
-      handler: async function ({ input }, { json }) {
+      errorCodes: ["EVENT_STATE_RESERVED"],
+      handler: async function ({ input }, { json, error }) {
         const payload = await input.valid();
+        if (isProjectWiringStateType(payload)) {
+          return error(reservedEventStateError, 403);
+        }
         return json(
           await this.handlerTx()
             .withServiceCalls(() => [services.deleteEventState(payload)] as const)

@@ -16,9 +16,15 @@ import type {
 } from "@fragno-private/design-system/orchestration/orchestration-universe-model";
 
 import { scopeIdentity } from "@/fragno/automation/forward-accepts";
+import type { ProjectWiring } from "@/fragno/automation/project-wiring";
 
-import { orchestrationEventId, type OrchestrationForward } from "./orchestration-graph";
+import {
+  orchestrationEventId,
+  projectOrchestrationGraph,
+  type OrchestrationForward,
+} from "./orchestration-graph";
 import { grantedOutsideSystems, type ScopeConnections } from "./orchestration-outside-systems";
+import { orchestrationCatalog } from "./scope-orchestration-graph";
 
 /** Where a scope's routes forwarded to since the universe's window began. */
 type UniverseDeliveries = readonly { routeId: string; scope: BackofficeContextScope }[];
@@ -33,8 +39,8 @@ type UniverseScopeRecords = {
 };
 
 /**
- * A scope the universe reads from its own replica, as it does the organization's projects and the
- * person looking: what it holds once read, or null until then, with how far reading got.
+ * A scope the universe reads from its own replica, as it does the person looking: what it holds
+ * once read, or null until then, with how far reading got.
  */
 export type UniverseReadScope = {
   scope: BackofficeContextScope;
@@ -42,6 +48,50 @@ export type UniverseReadScope = {
   read: UniverseScopeRecords | null;
   status?: OrchestrationUniverseScopeStatus;
 };
+
+/** A project as the organization knows it: how it last told it is wired, or null before it has. */
+export type UniverseProject = {
+  scope: BackofficeContextScope;
+  label: string;
+  wiring: ProjectWiring | null;
+};
+
+/**
+ * A project's planet, drawn from how it is wired. Projects tell their organization how they are
+ * wired, not what they did, so its planet shows no recent events, runs, or deliveries.
+ */
+function wiredProject({ scope, label, wiring }: UniverseProject): UniverseReadScope {
+  if (wiring === null) {
+    return { scope, label, read: null };
+  }
+  const catalog = orchestrationCatalog({
+    eventSources: wiring.eventSources,
+    // The universe shows no payloads, so wirings carry no schemas.
+    eventDefinitions: wiring.eventDefinitions.map((definition) => ({
+      ...definition,
+      payloadSchema: null,
+    })),
+  });
+  return {
+    scope,
+    label,
+    read: {
+      graph: projectOrchestrationGraph({
+        scopeLabel: label,
+        sources: catalog.sources,
+        eventDefinitions: catalog.eventDefinitions,
+        routes: wiring.routes,
+        forwardAccepts: wiring.forwardAccepts,
+        activeWorkflows: [],
+        recentEvents: [],
+        recentForwards: [],
+      }),
+      routes: wiring.routes,
+      deliveries: [],
+      connections: wiring.connections,
+    },
+  };
+}
 
 /**
  * A planet the universe has not read yet: only its name. What reaches it still lands on it, since
@@ -189,23 +239,24 @@ function memberGraph(
 
 /**
  * The organization, its projects, the members who forwarded into it, and the person looking, with
- * the forwards between them. The organization, its projects, and the person looking are read from
- * their own replicas: each shows its own graph once read, and only its name before, and adds the
- * forwards its routes name or delivered. Other members' planets come from what the organization
- * recorded, so a member shows once they forward something. The person looking shows when their
+ * the forwards between them. The organization and the person looking are read from their own
+ * replicas: each shows its own graph once read, and only its name before, and adds the forwards
+ * its routes name or delivered. Projects are drawn from how they told the organization they are
+ * wired, with the forwards their routes name. Other members' planets come from what the
+ * organization recorded, so a member shows once they forward something. The person looking shows when their
  * scope and the organization's forward to each other. System, which forwards into every
  * organization, stays out. Workflows on read planets reach out to what their routes grant them.
  */
 export function projectOrchestrationUniverse({
   organization,
-  projects,
+  projects: wiredProjects,
   viewer,
   recentForwards,
   memberNames,
 }: {
   /** The organization, which is always read: the universe opens with it. */
   organization: UniverseScopeRecords & { scope: BackofficeContextScope };
-  projects: readonly UniverseReadScope[];
+  projects: readonly UniverseProject[];
   /** The person looking, whose personal scope they can read, unlike other members'. */
   viewer: UniverseReadScope | null;
   /** What was forwarded into the organization. */
@@ -217,6 +268,7 @@ export function projectOrchestrationUniverse({
   const memberLabel = (scope: BackofficeContextScope) =>
     (scope.kind === "user" ? memberNames[scope.userId] : undefined) ??
     backofficeScopePathSegment(scope);
+  const projects = wiredProjects.map(wiredProject);
   const organizationId = scopeIdentity(organization.scope);
   const viewerId = viewer ? scopeIdentity(viewer.scope) : null;
   const readScopes = [...projects, ...(viewer ? [viewer] : [])];

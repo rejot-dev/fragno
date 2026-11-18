@@ -1,3 +1,5 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import type { DatabaseServiceContext } from "@fragno-dev/db";
 
 import {
@@ -5,14 +7,17 @@ import {
   buildAutomationEventSourceId,
   type AutomationEventSourceInput,
 } from "./event-sources";
+import type { AutomationInternalHooks } from "./internal-hooks";
+import { rewireProject } from "./project-wiring";
 import { automationFragmentSchema } from "./schema";
 
-type AutomationEventSourceServiceContext = DatabaseServiceContext<Record<string, never>>;
+type AutomationEventSourceServiceContext = DatabaseServiceContext<AutomationInternalHooks>;
 
 export function createAutomationEventSourceServices(
   defineService: <TService>(
     service: TService & ThisType<AutomationEventSourceServiceContext>,
   ) => TService,
+  { ownerScope }: { ownerScope: BackofficeContextScope },
 ) {
   return defineService({
     listEventSources() {
@@ -69,6 +74,7 @@ export function createAutomationEventSourceServices(
               updatedAt: now,
             });
           }
+          rewireProject(uow, ownerScope);
 
           return { id, ...source };
         })

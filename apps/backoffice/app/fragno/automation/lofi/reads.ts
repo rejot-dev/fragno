@@ -45,6 +45,7 @@ import type { OrchestrationForward } from "@/routes/backoffice/dashboard/orchest
 
 import { CODEMODE_WORKFLOW } from "../engine/codemode-invocation";
 import { forwardAcceptLetsIn, forwardNeedsAccept } from "../forward-accepts";
+import { PROJECT_WIRING_STATE, type ProjectWiring } from "../project-wiring";
 import {
   automationRouteSteward,
   normalizeStoredAutomationRouteAction,
@@ -621,6 +622,20 @@ export function readIntegrationConnections(
   });
   // Only connection events of these types, which name their connection, keep these states.
   return integrationConnectionsOfStates(states as IntegrationConnectionEventState[]);
+}
+
+/** How each of the scope's projects last told it it is wired. */
+export function readProjectWirings(reader: LofiSqliteReader): ProjectWiring[] {
+  const state = automationFragmentSchema.tables.automation_event_state.columns;
+  const states = reader.query({
+    sql: `SELECT "payload"
+          FROM ${automationTable("automation_event_state")}
+          WHERE "source" = ? AND "eventType" = ?`,
+    params: [PROJECT_WIRING_STATE.source, PROJECT_WIRING_STATE.eventType],
+    columns: { payload: state.payload },
+  });
+  // Only Backoffice writes these states, with the wiring projects read; see `project-wiring`.
+  return states.map(({ payload }) => payload as ProjectWiring);
 }
 
 /**
