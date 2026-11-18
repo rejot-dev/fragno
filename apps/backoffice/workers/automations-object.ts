@@ -716,6 +716,26 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     );
   }
 
+  async askProjectsForWiring(): Promise<{ asked: number }> {
+    const scope = this.#requireScope();
+    await this.#ensureConfigured({ scope });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    return await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.askProjectsForWiring(),
+    );
+  }
+
+  async publishProjectWiring(): Promise<void> {
+    const scope = this.#requireScope();
+    await this.#ensureConfigured({ scope });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+
+    await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.publishProjectWiring(),
+    );
+  }
+
   async recordProjectWiring(telling: ProjectWiringTelling): Promise<void> {
     const scope = this.#requireScope();
     await this.#ensureConfigured({ scope });

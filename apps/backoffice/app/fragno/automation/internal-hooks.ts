@@ -58,6 +58,7 @@ export type AutomationInternalHooks = {
   internalReplayEventFold: HookFn<EventFoldReplayPass>;
   internalKeepEventState: HookFn<EventStateEntry>;
   internalPublishProjectWiring: HookFn<Record<string, never>>;
+  internalAskProjectWiring: HookFn<{ projectId: string }>;
 };
 
 export type AutomationHookUnitOfWork = TypedUnitOfWork<

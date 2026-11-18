@@ -860,6 +860,33 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
       ...shareServices,
       ...forwardAcceptServices,
       /**
+       * Asks each of the owner's active projects to tell it how the project is wired, as projects
+       * changed before they told their owner do only when asked. Returns how many were asked.
+       */
+      askProjectsForWiring: function () {
+        return this.serviceTx(automationFragmentSchema)
+          .retrieve((uow) => uow.find("project", (b) => b.whereIndex("primary")))
+          .mutate(({ uow, retrieveResult: [projects] }) => {
+            const active = projects.filter((project) => project.archivedAt === null);
+            for (const project of active) {
+              uow.triggerHook("internalAskProjectWiring", { projectId: project.id.externalId });
+            }
+            return { asked: active.length };
+          })
+          .build();
+      },
+      /** Has the project tell its owner how it is wired now. */
+      publishProjectWiring: function () {
+        return this.serviceTx(automationFragmentSchema)
+          .mutate(({ uow }) => {
+            if (config.ownerScope.kind !== "project") {
+              throw new Error("Only projects publish their wiring.");
+            }
+            rewireProject(uow, config.ownerScope);
+          })
+          .build();
+      },
+      /**
        * Keeps how one of the owner's projects is wired as that project's wiring state, unless the
        * state holds a later telling. A state no event stands behind: its event ID names the telling
        * whose wiring it holds.
@@ -1140,6 +1167,18 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
         await runtime.objects.automations
           .for(ownerScope.owner)
           .commands.recordProjectWiring({ wiring, occurredAt, sequence });
+      }),
+      internalAskProjectWiring: defineHook(async function ({ projectId }) {
+        const { ownerScope, runtime } = config;
+        if (ownerScope.kind !== "org" && ownerScope.kind !== "user") {
+          throw new Error("Only a project's owner asks it for its wiring.");
+        }
+        if (!runtime) {
+          throw new Error("Asking projects for their wiring requires Backoffice runtime services.");
+        }
+        await runtime.objects.automations
+          .for({ kind: "project", owner: ownerScope, projectId })
+          .commands.publishProjectWiring();
       }),
       internalDispatchRouteSchedule: defineHook(async function (payload) {
         await dispatchAutomationRouteSchedule({
