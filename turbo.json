@@ -55,6 +55,7 @@
         "$TURBO_ROOT$/package.json",
         "$TURBO_ROOT$/packages-private/oxlint-plugins/**",
         "!$TURBO_ROOT$/packages-private/oxlint-plugins/.turbo/**",
+        "!$TURBO_ROOT$/packages-private/oxlint-plugins/node_modules/**",
         "$TURBO_ROOT$/pnpm-lock.yaml",
         "$TURBO_ROOT$/prettier.unsupported.config.mjs",
         "$TURBO_ROOT$/scripts/run-package-quality.mjs"
