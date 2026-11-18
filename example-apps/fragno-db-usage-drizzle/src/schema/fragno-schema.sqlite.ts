@@ -567,7 +567,8 @@ export const workflow_step_workflows = sqliteTable("workflow_step_workflows", {
   createdAt: integer("createdAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).notNull().default(sql`(cast((julianday('now') - 2440587.5)*86400000 as integer))`),
   _internalId: integer("_internalId").primaryKey({ autoIncrement: true }).notNull(),
-  _version: integer("_version").notNull().default(0)
+  _version: integer("_version").notNull().default(0),
+  settledOrder: integer("settledOrder")
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -678,5 +679,5 @@ export const workflows_schema = {
   workflow_step_emission_workflowsRelations: workflow_step_emission_workflowsRelations,
   workflow_step_emission: workflow_step_emission_workflows,
   workflow_step_emissionRelations: workflow_step_emission_workflowsRelations,
-  schemaVersion: 8
+  schemaVersion: 9
 }

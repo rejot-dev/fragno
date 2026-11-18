@@ -66,7 +66,9 @@ itself by absolute path: `const { echo } = await import("/workspace/integrations
 Saved files, including `.workflow.js` files, are modules with static imports instead.
 
 Complete the closed-world preflight below before calling `defineWorkflow`. Define a durable workflow
-directly at the top level, with non-deterministic work and side effects inside `step.do`:
+directly at the top level, with non-deterministic work and side effects inside `step.do`. Workflow
+code awaits only steps, so tool calls and other I/O go inside a `step.do` callback, which calls no
+other steps:
 
 ```js
 defineWorkflow({ name: "process-request" }, async (event, step) => {

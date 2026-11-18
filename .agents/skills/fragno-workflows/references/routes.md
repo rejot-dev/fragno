@@ -69,10 +69,9 @@ restart increments it.
 
 `waitingFor` lists the event types the run needs sent to continue, each once, or nothing once the
 run is finished. A run waiting for several events at once, such as with `Promise.all`, lists each.
-An event already sent but not yet taken by its wait covers it, so it is not listed again; neither is
-a wait inside a step that finished without it. `pendingWaitEventTypes` from
-`@fragno-dev/workflows/pending-waits` derives the same list from a run's steps and events, such as a
-client's synchronized copy of them.
+An event already sent but not yet taken by its wait covers it, so it is not listed again.
+`pendingWaitEventTypes` from `@fragno-dev/workflows/pending-waits` derives the same list from a
+run's steps and events, such as a client's synchronized copy of them.
 
 ### Get current-step emissions
 
@@ -146,10 +145,9 @@ The failed-step retry route accepts an optional body:
 
 It accepts an errored instance when its latest top-level step is the only failed top-level step.
 Earlier completed top-level steps remain cached. Retrying a `do` step grants it one additional
-attempt, discards all nested step state beneath it, and reruns completed and failed nested steps.
-Events consumed by that subtree become pending again. Retrying a failed `waitForEvent` starts a
-fresh wait and timeout window, so pending events created before the new deadline are eligible.
-Nested step callbacks, external effects, event-consumption handlers, and buffered mutations can
+attempt, and events it consumed become pending again. Retrying a failed `waitForEvent` starts a
+fresh wait and timeout window, so pending events created before the new deadline are eligible. The
+retried step's callback, external effects, event-consumption handlers, and buffered mutations can
 therefore run again. The run generation is unchanged, and `delayMs` is limited to 30 days.
 
 ### Send an event

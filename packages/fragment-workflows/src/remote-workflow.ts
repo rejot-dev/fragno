@@ -1,4 +1,3 @@
-import type { WorkflowStepIdentity } from "./step-identity";
 import type {
   WorkflowDuration,
   WorkflowStep,
@@ -7,8 +6,8 @@ import type {
   WorkflowStepHookOperation,
   WorkflowStepTx,
 } from "./workflow";
+import type { WorkflowStepCallOutcome } from "./workflow-tick";
 
-export type { WorkflowStepIdentity } from "./step-identity";
 export type { WorkflowStepWorkflowOperation } from "./workflow";
 
 /** Hook intent sent over RPC; the target names a mount in the trusted host's scope. */
@@ -55,59 +54,6 @@ export function resolveRemoteWorkflowHookIntent(
   };
 }
 
-export type RemoteWorkflowStepScope = WorkflowStepIdentity | null;
-
-export type RemoteWorkflowStepSuspendReason =
-  | { type: "sleep"; stepKey: string; delayMs?: number | null; runAt?: Date }
-  | {
-      type: "waitForEvent";
-      stepKey: string;
-      eventType: string;
-      delayMs?: number | null;
-      runAt?: Date;
-    }
-  | { type: "retry"; stepKey: string; delayMs?: number | null }
-  | { type: "checkpoint"; stepKey: string; delayMs: 0 };
-
-export type RemoteWorkflowSuspension = {
-  __fragnoRemoteWorkflowSuspended: true;
-  reason: RemoteWorkflowStepSuspendReason;
-};
-
-export class RemoteWorkflowSuspendedError extends Error {
-  readonly reason: RemoteWorkflowStepSuspendReason;
-
-  constructor(reason: RemoteWorkflowStepSuspendReason) {
-    super("WORKFLOW_STEP_SUSPENDED");
-    this.name = "RemoteWorkflowSuspendedError";
-    this.reason = reason;
-  }
-}
-
-export const createRemoteWorkflowSuspension = (
-  reason: RemoteWorkflowStepSuspendReason,
-): RemoteWorkflowSuspension => ({
-  __fragnoRemoteWorkflowSuspended: true,
-  reason,
-});
-
-export const isRemoteWorkflowSuspension = (value: unknown): value is RemoteWorkflowSuspension => {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  return (
-    "__fragnoRemoteWorkflowSuspended" in value &&
-    (value as { __fragnoRemoteWorkflowSuspended?: unknown }).__fragnoRemoteWorkflowSuspended ===
-      true &&
-    "reason" in value
-  );
-};
-
-export type RemoteWorkflowStepDoCallback<T> = (
-  tx: WorkflowStepTx,
-  scope: WorkflowStepIdentity,
-) => Promise<T> | T;
-
 export type RemoteWorkflowWaitForEventOptions<T = unknown> = {
   type: string;
   timeout?: WorkflowDuration;
@@ -118,33 +64,32 @@ export type RemoteWorkflowWaitForEventOptions<T = unknown> = {
 };
 
 /**
- * Host-side control surface for running workflow code in another JS realm/process.
- *
- * Implementations own durable runner state; remote clients pass the current parent scope explicitly
- * when invoking step helpers so nested step identities remain deterministic across RPC boundaries.
+ * Host-side control surface for running workflow code in another realm, such as a sandboxed
+ * isolate. The host owns durable runner state; the remote realm runs the workflow code under its
+ * own `createWorkflowTick`, which hands step outcomes back to the code and decides when the tick
+ * ends. Each step call returns its outcome without waiting for its turn: a step that waits parks,
+ * and a settled step carries its place in the settle order. A `step.do` callback cannot call steps.
  */
 export interface RemoteWorkflowStepHost {
+  /** Settle orders of the steps that settled in earlier ticks, for the remote tick to replay. */
+  readonly settledOrders: readonly number[];
   do<T>(
-    parentScope: RemoteWorkflowStepScope,
     name: string,
     config: WorkflowStepConfig | undefined,
-    callback: RemoteWorkflowStepDoCallback<T>,
-  ): Promise<T>;
-  sleep(
-    parentScope: RemoteWorkflowStepScope,
-    name: string,
-    duration: WorkflowDuration,
-  ): Promise<void | RemoteWorkflowSuspension>;
-  sleepUntil(
-    parentScope: RemoteWorkflowStepScope,
-    name: string,
-    timestamp: Date | number,
-  ): Promise<void | RemoteWorkflowSuspension>;
+    callback: (tx: WorkflowStepTx) => Promise<T> | T,
+  ): Promise<WorkflowStepCallOutcome<T>>;
+  sleep(name: string, duration: WorkflowDuration): Promise<WorkflowStepCallOutcome<void>>;
+  sleepUntil(name: string, timestamp: Date | number): Promise<WorkflowStepCallOutcome<void>>;
   waitForEvent<T = unknown>(
-    parentScope: RemoteWorkflowStepScope,
     name: string,
     options: RemoteWorkflowWaitForEventOptions<T>,
-  ): Promise<{ type: string; payload: Readonly<T>; timestamp: Date }>;
+  ): Promise<WorkflowStepCallOutcome<{ type: string; payload: Readonly<T>; timestamp: Date }>>;
+  /**
+   * Reports that the remote tick ended idle: the workflow code stopped without settling, with no
+   * step call in flight. The runner ends the tick waiting on the steps that parked, or errors the
+   * instance as stalled when none did. Throws, so the remote workflow ends with it.
+   */
+  reportIdle(): never;
   /**
    * Reports that this tick could not run where the host sent it, such as to an unreachable
    * executor. The runner keeps step progress and runs the whole tick again later with growing

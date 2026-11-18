@@ -96,8 +96,12 @@ type WorkflowStepTx = WorkflowStepConsumeTx & {
   ): () => void;
 };
 
+/**
+ * Durable steps. Workflow code awaits only steps; tool calls and other I/O go inside `step.do`.
+ * A step that waits for time, an event, or its next retry stays pending until the run resumes.
+ */
 type WorkflowStep = {
-  /** Run replay-safe work as a durable workflow step. */
+  /** Run replay-safe work as a durable workflow step. The callback calls no other steps. */
   do<T>(name: string, callback: (tx: WorkflowStepTx) => Promise<T> | T): Promise<T>;
   do<T>(
     name: string,

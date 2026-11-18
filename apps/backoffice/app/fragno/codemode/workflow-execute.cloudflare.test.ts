@@ -71,7 +71,7 @@ const createSystemWorkflowOptions = () => ({
 });
 
 describe("codemode workflow execution", () => {
-  test("checkpoints nested steps without repeating committed effects across runner restarts", async () => {
+  test("checkpoints each step without repeating committed effects across runner restarts", async () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-checkpointed", checkpoint: "step" },
       defineCodemodeWorkflowRun<undefined, number>(
@@ -80,8 +80,7 @@ describe("codemode workflow execution", () => {
             tx.emit({ phase: "checkpoint-effect" });
             return 1;
           });
-          const second = await step.do("second", async () =>
-            await step.do("first", async () => first + 1));
+          const second = await step.do("second", async () => first + 1);
           return await step.do("third", async () => second + 1);
         }`),
         codemode,
@@ -114,7 +113,6 @@ describe("codemode workflow execution", () => {
       expect((await harness.getHistory("WORKFLOW", instanceId)).steps).toMatchObject([
         { stepKey: "do:first", status: "completed", result: 1 },
         { stepKey: "do:second", status: "completed", result: 2 },
-        { stepKey: "do:second>do:first", parentStepKey: "do:second", depth: 1, result: 2 },
       ]);
 
       await harness.restart();
@@ -131,7 +129,6 @@ describe("codemode workflow execution", () => {
       expect(history.steps.map((step) => step.stepKey)).toEqual([
         "do:first",
         "do:second",
-        "do:second>do:first",
         "do:third",
       ]);
       expect(history.emissions.filter((emission) => emission.actor === "user")).toEqual([
@@ -145,18 +142,16 @@ describe("codemode workflow execution", () => {
   test("runs a workflow end-to-end in a dynamic worker with real runner steps", async () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-e2e-complete" },
-      defineCodemodeWorkflowRun<{ value: number }, { nested: number }>(
+      defineCodemodeWorkflowRun<{ value: number }, { next: number }>(
         testWorkflowProgram(`async (event, step) => {
           const seed = await step.do("seed", async (tx) => {
             tx.emit({ phase: "seeded", value: event.payload.value });
             return event.payload.value;
           });
 
-          const nested = await step.do("outer", async () => {
-            return await step.do("inner", async () => seed + 1);
-          });
+          const next = await step.do("next", async () => seed + 1);
 
-          return { nested };
+          return { next };
         }`),
         codemode,
         createSystemWorkflowOptions(),
@@ -177,21 +172,14 @@ describe("codemode workflow execution", () => {
 
     await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
       status: "complete",
-      output: { nested: 42 },
+      output: { next: 42 },
     });
 
     const history = await harness.getHistory("WORKFLOW", instanceId);
-    expect(history.steps.map((step) => step.stepKey)).toEqual([
-      "do:seed",
-      "do:outer",
-      "do:outer>do:inner",
+    expect(history.steps).toMatchObject([
+      { stepKey: "do:seed", status: "completed", result: 41 },
+      { stepKey: "do:next", status: "completed", result: 42 },
     ]);
-    expect(history.steps.find((step) => step.stepKey === "do:outer>do:inner")).toMatchObject({
-      parentStepKey: "do:outer",
-      depth: 1,
-      status: "completed",
-      result: 42,
-    });
     expect(history.emissions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -858,40 +846,35 @@ describe("codemode workflow execution", () => {
             step.do("all beta", async () => "B"),
           ]);
 
-          const raceReturn = await step.do("Promise race", async () => {
-            return await Promise.race([
-              step.do("race slow", async () => {
-                await step.sleep("race slow delay", 1000);
-                return "slow";
-              }),
-              step.do("race fast", async () => "fast"),
-            ]);
-          });
+          // A branch that sleeps stays waiting; the fast step wins without it.
+          const raceReturn = await Promise.race([
+            (async () => {
+              await step.sleep("race slow delay", 1000);
+              return await step.do("race slow", async () => "slow");
+            })(),
+            step.do("race fast", async () => "fast"),
+          ]);
 
-          const anyReturn = await step.do("Promise any", async () => {
-            return await Promise.any([
-              step.do("any slow", async () => {
-                await step.sleep("any slow delay", 1000);
-                return "slow";
-              }),
-              step.do("any fast", async () => "fast"),
-            ]);
-          });
+          const anyReturn = await Promise.any([
+            (async () => {
+              await step.sleep("any slow delay", 1000);
+              return await step.do("any slow", async () => "slow");
+            })(),
+            step.do("any fast", async () => "fast"),
+          ]);
 
-          const settled = await step.do("Promise allSettled", async () => {
-            const results = await Promise.allSettled([
-              step.do("settled ok", async () => "ok"),
-              step.do("settled fail", async () => {
-                throw new Error("EXPECTED_SETTLED_FAILURE");
-              }),
-            ]);
-            return results.map((result) => result.status === "fulfilled"
-              ? { status: result.status, value: result.value }
-              : {
-                  status: result.status,
-                  reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
-                });
-          });
+          const results = await Promise.allSettled([
+            step.do("settled ok", async () => "ok"),
+            step.do("settled fail", async () => {
+              throw new Error("EXPECTED_SETTLED_FAILURE");
+            }),
+          ]);
+          const settled = results.map((result) => result.status === "fulfilled"
+            ? { status: result.status, value: result.value }
+            : {
+                status: result.status,
+                reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
+              });
 
           return { all, raceReturn, anyReturn, settled };
         }`),
@@ -937,59 +920,13 @@ describe("codemode workflow execution", () => {
           status: "completed",
           result: "B",
         }),
+        expect.objectContaining({ stepKey: "sleep:race slow delay", status: "waiting" }),
+        expect.objectContaining({ stepKey: "do:race fast", status: "completed", result: "fast" }),
+        expect.objectContaining({ stepKey: "sleep:any slow delay", status: "waiting" }),
+        expect.objectContaining({ stepKey: "do:any fast", status: "completed", result: "fast" }),
+        expect.objectContaining({ stepKey: "do:settled ok", status: "completed", result: "ok" }),
         expect.objectContaining({
-          stepKey: "do:Promise race",
-          status: "completed",
-          result: "fast",
-        }),
-        expect.objectContaining({
-          stepKey: "do:Promise race>do:race slow",
-          parentStepKey: "do:Promise race",
-          depth: 1,
-          status: "waiting",
-        }),
-        expect.objectContaining({
-          stepKey: "do:Promise race>do:race slow>sleep:race slow delay",
-          parentStepKey: "do:Promise race>do:race slow",
-          depth: 2,
-          status: "waiting",
-        }),
-        expect.objectContaining({
-          stepKey: "do:Promise race>do:race fast",
-          parentStepKey: "do:Promise race",
-          depth: 1,
-          status: "completed",
-          result: "fast",
-        }),
-        expect.objectContaining({
-          stepKey: "do:Promise any",
-          status: "completed",
-          result: "fast",
-        }),
-        expect.objectContaining({
-          stepKey: "do:Promise any>do:any slow",
-          parentStepKey: "do:Promise any",
-          depth: 1,
-          status: "waiting",
-        }),
-        expect.objectContaining({
-          stepKey: "do:Promise any>do:any fast",
-          parentStepKey: "do:Promise any",
-          depth: 1,
-          status: "completed",
-          result: "fast",
-        }),
-        expect.objectContaining({
-          stepKey: "do:Promise allSettled",
-          status: "completed",
-        }),
-        expect.objectContaining({
-          stepKey: "do:Promise allSettled>do:settled ok",
-          status: "completed",
-          result: "ok",
-        }),
-        expect.objectContaining({
-          stepKey: "do:Promise allSettled>do:settled fail",
+          stepKey: "do:settled fail",
           status: "errored",
           error: { message: "EXPECTED_SETTLED_FAILURE", name: "Error" },
         }),

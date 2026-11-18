@@ -387,7 +387,7 @@ describe("Pi harness workflow scenarios", () => {
     );
   });
 
-  test("marks an interactive chat workflow errored when resolving options throws", async () => {
+  test("errors an interactive chat workflow at its first command when resolving options throws", async () => {
     const resolveOptions = vi.fn(() => {
       throw new Error("RESOLVE_OPTIONS_FAILED");
     });
@@ -434,6 +434,20 @@ describe("Pi harness workflow scenarios", () => {
             workflow: interactiveChatWorkflow.name,
             instanceId: (ctx) => ctx.vars.sessionId!,
             reason: "create",
+          }),
+          workflow.read({
+            read: async (ctx) => {
+              assert(ctx.vars.sessionId, "session id should be set");
+              return await clients.user.useCommandSession.mutateQuery({
+                path: { workflowName: interactiveChatWorkflow.name, sessionId: ctx.vars.sessionId },
+                body: { kind: "prompt", input: { text: "hello scenario" } },
+              });
+            },
+          }),
+          runners.agent.runUntilIdle({
+            workflow: interactiveChatWorkflow.name,
+            instanceId: (ctx) => ctx.vars.sessionId!,
+            reason: "event",
           }),
           workflow.read({
             read: async (ctx) => ({

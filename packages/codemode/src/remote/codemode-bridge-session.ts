@@ -93,8 +93,8 @@ export function acceptCodemodeBridgeSession(
         workflowInstanceId: activation.kind === "workflow" ? activation.event.instanceId : null,
       };
       clearTimeout(deadline);
-      // Activation deadlines end the guest, not the session, so Node receives a definitive
-      // completion; only a lost session reaches Node as an interruption.
+      // Activation deadlines end the guest, not the session, so Node still receives the bridge's
+      // answer: a failed activation, or an interrupted workflow tick.
       const interruption = new AbortController();
       function interruptOnSessionEnd() {
         interruption.abort(abort.signal.reason);

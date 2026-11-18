@@ -19,7 +19,6 @@ import {
   WaitForEventTimeoutError,
   type AnyTxResult,
   type InstanceStatus,
-  type WorkflowTerminalHookPayload,
 } from "./workflow";
 
 describe("Workflows Runner (Scenario DSL)", () => {
@@ -794,19 +793,12 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("supports nested Promise.race with stable nested identity after a fast winner", async () => {
+  test("supports Promise.race between a sleeping branch and a fast step", async () => {
     const RaceWorkflow = defineWorkflow({ name: "race-workflow" }, async (_event, step) => {
-      const raceReturn = await step.do("Promise step", async () => {
-        return await Promise.race([
-          step.do("Promise first race", async () => {
-            await step.sleep("Promise first delay", 1000);
-            return "first";
-          }),
-          step.do("Promise second race", async () => {
-            return "second";
-          }),
-        ]);
-      });
+      const raceReturn = await Promise.race([
+        step.sleep("Promise first delay", 1000).then(() => "first"),
+        step.do("Promise second race", async () => "second"),
+      ]);
 
       const cached = await step.do("After race", async () => raceReturn);
       return { raceReturn, cached };
@@ -829,39 +821,20 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getSteps("RACE", "race-1"),
           assert: (steps) => {
-            expect(steps).toHaveLength(5);
+            expect(steps).toHaveLength(3);
             expect(steps).toEqual(
               expect.arrayContaining([
                 expect.objectContaining({
-                  stepKey: "do:Promise step",
-                  parentStepKey: null,
-                  depth: 0,
-                  status: "completed",
-                  result: "second",
-                }),
-                expect.objectContaining({
-                  stepKey: "do:Promise step>do:Promise first race",
-                  parentStepKey: "do:Promise step",
-                  depth: 1,
+                  stepKey: "sleep:Promise first delay",
                   status: "waiting",
                 }),
                 expect.objectContaining({
-                  stepKey: "do:Promise step>do:Promise second race",
-                  parentStepKey: "do:Promise step",
-                  depth: 1,
+                  stepKey: "do:Promise second race",
                   status: "completed",
                   result: "second",
-                }),
-                expect.objectContaining({
-                  stepKey: "do:Promise step>do:Promise first race>sleep:Promise first delay",
-                  parentStepKey: "do:Promise step>do:Promise first race",
-                  depth: 2,
-                  status: "waiting",
                 }),
                 expect.objectContaining({
                   stepKey: "do:After race",
-                  parentStepKey: null,
-                  depth: 0,
                   status: "completed",
                   result: "second",
                 }),
@@ -875,19 +848,14 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("supports nested Promise.race between a slow step and an event wait", async () => {
+  test("supports Promise.race between a sleeping branch and an event wait", async () => {
     const RaceEventWorkflow = defineWorkflow(
       { name: "race-event-workflow" },
       async (_event, step) => {
-        const raceReturn = await step.do("Promise race", async () => {
-          return await Promise.race([
-            step.do("slow branch", async () => {
-              await step.sleep("slow delay", 1000);
-              return "slow";
-            }),
-            step.waitForEvent("event branch", { type: "ready" }).then(() => "event"),
-          ]);
-        });
+        const raceReturn = await Promise.race([
+          step.sleep("slow delay", 1000).then(() => "slow"),
+          step.waitForEvent("event branch", { type: "ready" }).then(() => "event"),
+        ]);
 
         const cached = await step.do("After race", async () => raceReturn);
         return { raceReturn, cached };
@@ -924,38 +892,16 @@ describe("Workflows Runner (Scenario DSL)", () => {
         workflow.read({
           read: (ctx) => ctx.state.getSteps("RACE_EVENT", "race-event-1"),
           assert: (steps) => {
-            expect(steps).toHaveLength(5);
+            expect(steps).toHaveLength(3);
             expect(steps).toEqual(
               expect.arrayContaining([
+                expect.objectContaining({ stepKey: "sleep:slow delay", status: "waiting" }),
                 expect.objectContaining({
-                  stepKey: "do:Promise race",
-                  parentStepKey: null,
-                  depth: 0,
+                  stepKey: "waitForEvent:event branch",
                   status: "completed",
-                  result: "event",
-                }),
-                expect.objectContaining({
-                  stepKey: "do:Promise race>do:slow branch",
-                  parentStepKey: "do:Promise race",
-                  depth: 1,
-                  status: "waiting",
-                }),
-                expect.objectContaining({
-                  stepKey: "do:Promise race>waitForEvent:event branch",
-                  parentStepKey: "do:Promise race",
-                  depth: 1,
-                  status: "completed",
-                }),
-                expect.objectContaining({
-                  stepKey: "do:Promise race>do:slow branch>sleep:slow delay",
-                  parentStepKey: "do:Promise race>do:slow branch",
-                  depth: 2,
-                  status: "waiting",
                 }),
                 expect.objectContaining({
                   stepKey: "do:After race",
-                  parentStepKey: null,
-                  depth: 0,
                   status: "completed",
                   result: "event",
                 }),
@@ -969,19 +915,12 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("supports nested Promise.any inside an outer step", async () => {
+  test("Promise.any completes without its branch that still waits", async () => {
     const AnyWorkflow = defineWorkflow({ name: "any-workflow" }, async (_event, step) => {
-      const anyReturn = await step.do("Promise any", async () => {
-        return await Promise.any([
-          step.do("Promise any first", async () => {
-            await step.sleep("Promise any first delay", 1000);
-            return "first";
-          }),
-          step.do("Promise any second", async () => {
-            return "second";
-          }),
-        ]);
-      });
+      const anyReturn = await Promise.any([
+        step.sleep("Promise any first delay", 1000).then(() => "first"),
+        step.do("Promise any second", async () => "second"),
+      ]);
 
       return { anyReturn };
     });
@@ -1004,14 +943,9 @@ describe("Workflows Runner (Scenario DSL)", () => {
           read: (ctx) => ctx.state.getSteps("ANY", "any-1"),
           assert: (steps) => {
             expect(steps.map((step) => step.stepKey)).toEqual(
-              expect.arrayContaining([
-                "do:Promise any",
-                "do:Promise any>do:Promise any first",
-                "do:Promise any>do:Promise any second",
-                "do:Promise any>do:Promise any first>sleep:Promise any first delay",
-              ]),
+              expect.arrayContaining(["sleep:Promise any first delay", "do:Promise any second"]),
             );
-            expect(steps).toHaveLength(4);
+            expect(steps).toHaveLength(2);
           },
         }),
       ],
@@ -1652,22 +1586,20 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("a nested Promise.race keeps the branch the first tick finished while an event arrives", async () => {
+  test("ticks racing a step against an arriving event commit one consistent outcome", async () => {
     const runtime = createWorkflowsTestRuntime();
 
     const RaceRunnerWorkflow = defineWorkflow(
       { name: "scenario-race-event-second-runner-wins" },
       async (_event, step) => {
-        const raceReturn = await step.do("Promise race", async () => {
-          return await Promise.race([
-            step.do("promise sleep branch", async () => {
-              runtime.controls.resolve("sleep:started");
-              await new Promise((resolve) => setTimeout(resolve, 20));
-              return "sleep";
-            }),
-            step.waitForEvent("event branch", { type: "ready" }).then(() => "event"),
-          ]);
-        });
+        const raceReturn = await Promise.race([
+          step.do("promise sleep branch", async () => {
+            runtime.controls.resolve("sleep:started");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            return "sleep";
+          }),
+          step.waitForEvent("event branch", { type: "ready" }).then(() => "event"),
+        ]);
 
         const cached = await step.do("After race", async () => raceReturn);
         return { raceReturn, cached };
@@ -1713,62 +1645,37 @@ describe("Workflows Runner (Scenario DSL)", () => {
             }),
           ],
         }),
+        // Both ticks run the race: the create tick sees its step finish first, and the event tick
+        // sees the event first. Whichever commits first decides the run; the other commits nothing.
         workflow.read({
-          read: (ctx) => ctx.state.getStatus("RACE", "race-runner-1"),
-          assert: (status) => {
-            expect(status).toMatchObject({
-              status: "complete",
-              output: { raceReturn: "sleep", cached: "sleep" },
-            });
-          },
-        }),
-        workflow.read({
-          read: (ctx) => ctx.state.getSteps("RACE", "race-runner-1"),
-          assert: (steps) => {
-            expect(steps).toMatchObject([
+          read: async (ctx) => ({
+            status: await ctx.state.getStatus("RACE", "race-runner-1"),
+            steps: await ctx.state.getSteps("RACE", "race-runner-1"),
+            events: await ctx.state.getEvents("RACE", "race-runner-1"),
+          }),
+          assert: ({ status, steps, events }) => {
+            assert(status.status === "complete");
+            const { raceReturn } = status.output as { raceReturn: string };
+            expect(status.output).toEqual({ raceReturn, cached: raceReturn });
+            expect(steps).toEqual(
+              expect.arrayContaining([
+                expect.objectContaining({ stepKey: "do:After race", result: raceReturn }),
+                expect.objectContaining({
+                  stepKey: "waitForEvent:event branch",
+                  status: raceReturn === "event" ? "completed" : "waiting",
+                }),
+              ]),
+            );
+            expect(events).toMatchObject([
               {
-                stepKey: "do:Promise race",
-                parentStepKey: null,
-                depth: 0,
-                status: "completed",
-                result: "sleep",
-              },
-              {
-                // The create tick waits for this branch, so the event tick's race replays its result.
-                stepKey: "do:Promise race>do:promise sleep branch",
-                parentStepKey: "do:Promise race",
-                depth: 1,
-                status: "completed",
-              },
-              {
-                stepKey: "do:Promise race>waitForEvent:event branch",
-                parentStepKey: "do:Promise race",
-                depth: 1,
-                status: "completed",
-              },
-              {
-                stepKey: "do:After race",
-                parentStepKey: null,
-                depth: 0,
-                status: "completed",
-                result: "sleep",
+                type: "ready",
+                consumedByStepKey: raceReturn === "event" ? "waitForEvent:event branch" : null,
               },
             ]);
           },
         }),
-        workflow.read({
-          read: (ctx) => ctx.state.getEvents("RACE", "race-runner-1"),
-          assert: (events) => {
-            expect(events).toHaveLength(1);
-            expect(events?.[0]).toMatchObject({
-              type: "ready",
-              consumedByStepKey: "do:Promise race>waitForEvent:event branch",
-            });
-          },
-        }),
         workflow.assert((ctx) => {
-          assert(ctx.vars.createTick === 1);
-          assert(ctx.vars.eventTick === 1);
+          assert((ctx.vars.createTick ?? 0) + (ctx.vars.eventTick ?? 0) === 1);
         }),
       ],
     });
@@ -2106,70 +2013,6 @@ describe("Workflows Runner (Scenario DSL)", () => {
           },
           assert: (fragmentWasRecreated) => {
             assert(fragmentWasRecreated);
-          },
-        }),
-      ],
-    });
-
-    await runScenario(scenario);
-  });
-
-  test("step emissions remain queryable while nested wait is suspended and clear after completion", async () => {
-    const EmittingWaitWorkflow = defineWorkflow(
-      { name: "scenario-step-emission-wait" },
-      async (_event, step) => {
-        await step.do("approval", async (tx) => {
-          tx.emit({ phase: "waiting", approved: false });
-
-          await step.waitForEvent("ready", { type: "ready" });
-
-          tx.emit({ phase: "complete", approved: true });
-        });
-        return "done";
-      },
-    );
-
-    const workflows = { EMIT_WAIT: EmittingWaitWorkflow };
-    type ScenarioVars = {
-      messages?: unknown[];
-    };
-
-    const scenario = defineScenario<typeof workflows, ScenarioVars>({
-      name: "scenario-step-emission-wait",
-      workflows,
-      steps: ({ workflow, runner }) => [
-        runner.initializeAndRunUntilIdle({ workflow: "EMIT_WAIT", id: "emit-wait-1" }),
-        workflow.read({
-          read: (ctx) => ctx.state.getEmissions("EMIT_WAIT", "emit-wait-1"),
-          assert: (emissionsAfterSuspend) => {
-            expect(emissionsAfterSuspend).toEqual(
-              expect.arrayContaining([
-                expect.objectContaining({ actor: "system", stepKey: "do:approval" }),
-                expect.objectContaining({
-                  actor: "user",
-                  stepKey: "do:approval",
-                  payload: { phase: "waiting", approved: false },
-                }),
-              ]),
-            );
-          },
-        }),
-        runner.eventAndRunUntilIdle({
-          workflow: "EMIT_WAIT",
-          instanceId: "emit-wait-1",
-          event: { type: "ready" },
-        }),
-        runner.drainHooks(),
-        workflow.read({
-          read: (ctx) => ctx.state.getEmissions("EMIT_WAIT", "emit-wait-1"),
-          assert: (emissionsAfterComplete) => {
-            expect(emissionsAfterComplete).toEqual([]);
-          },
-        }),
-        workflow.read({
-          read: (ctx) => ctx.state.getStatus("EMIT_WAIT", "emit-wait-1"),
-          assert: (status) => {
-            expect(status).toMatchObject({ status: "complete", output: "done" });
           },
         }),
       ],
@@ -4423,278 +4266,6 @@ describe("Workflows Runner (Scenario DSL)", () => {
     await runScenario(scenario);
   });
 
-  test("failed-step retry reruns a failed top-level step and its nested steps", async () => {
-    let parentRuns = 0;
-    let childRuns = 0;
-    const NestedFailureWorkflow = defineWorkflow(
-      { name: "scenario-management-retry-nested-workflow" },
-      async (_event, step) => {
-        return await step.do("parent", async () => {
-          parentRuns += 1;
-          return await step.do("child", () => {
-            childRuns += 1;
-            if (childRuns === 1) {
-              throw new Error("NESTED_CHILD_FAILED");
-            }
-            return "recovered";
-          });
-        });
-      },
-    );
-    const workflows = { NESTED_FAILURE: NestedFailureWorkflow };
-
-    await runScenario(
-      defineScenario({
-        name: "management-retry-reruns-nested-state",
-        workflows,
-        steps: ({ workflow, runner }) => [
-          runner.initializeAndRunUntilIdle({ workflow: "NESTED_FAILURE", id: "nested-failure-1" }),
-          workflow.retryFailedStep({
-            workflow: "NESTED_FAILURE",
-            instanceId: "nested-failure-1",
-          }),
-          runner.retryAndRunUntilIdle({
-            workflow: "NESTED_FAILURE",
-            instanceId: "nested-failure-1",
-          }),
-          workflow.read({
-            read: async (ctx) => ({
-              instance: await ctx.state.getInstance("NESTED_FAILURE", "nested-failure-1"),
-              status: await ctx.state.getStatus("NESTED_FAILURE", "nested-failure-1"),
-              steps: await ctx.state.getSteps("NESTED_FAILURE", "nested-failure-1"),
-              terminalHooks: await ctx.state.internal.getHooks({
-                hookName: "onWorkflowTerminal",
-                workflowName: "scenario-management-retry-nested-workflow",
-                instanceId: "nested-failure-1",
-              }),
-            }),
-            assert: ({ instance, status, steps, terminalHooks }) => {
-              expect(instance).toMatchObject({ runGeneration: 1 });
-              expect(status).toMatchObject({ status: "complete", output: "recovered" });
-              expect(steps).toEqual(
-                expect.arrayContaining([
-                  expect.objectContaining({
-                    stepKey: "do:parent",
-                    status: "completed",
-                    attempts: 2,
-                    maxAttempts: 2,
-                  }),
-                  expect.objectContaining({
-                    stepKey: "do:parent>do:child",
-                    status: "completed",
-                    attempts: 1,
-                  }),
-                ]),
-              );
-
-              const terminalPayloads = terminalHooks.map(
-                ({ payload }) => payload as WorkflowTerminalHookPayload,
-              );
-              expect(terminalPayloads).toHaveLength(2);
-              expect(terminalPayloads).toEqual(
-                expect.arrayContaining([
-                  expect.objectContaining({ runGeneration: 1, status: "errored" }),
-                  expect.objectContaining({ runGeneration: 1, status: "complete" }),
-                ]),
-              );
-              assert.equal(
-                new Set(terminalPayloads.map(({ terminalTransitionId }) => terminalTransitionId))
-                  .size,
-                2,
-              );
-            },
-          }),
-          workflow.assert(() => {
-            expect(parentRuns).toBe(2);
-            expect(childRuns).toBe(2);
-          }),
-        ],
-      }),
-    );
-  });
-
-  test("failed-step retry reruns completed and failed nested parallel steps", async () => {
-    let parentRuns = 0;
-    let stableRuns = 0;
-    let flakyRuns = 0;
-    const NestedParallelWorkflow = defineWorkflow(
-      { name: "scenario-management-retry-nested-parallel-workflow" },
-      async (_event, step) => {
-        return await step.do("parent", async () => {
-          parentRuns += 1;
-          const [stable, flaky] = await Promise.all([
-            step.do("stable", () => {
-              stableRuns += 1;
-              return "stable";
-            }),
-            step.do("flaky", () => {
-              flakyRuns += 1;
-              if (flakyRuns === 1) {
-                throw new Error("NESTED_PARALLEL_FAILURE");
-              }
-              return "recovered";
-            }),
-          ]);
-          return { stable, flaky };
-        });
-      },
-    );
-    const workflows = { NESTED_PARALLEL: NestedParallelWorkflow };
-
-    await runScenario(
-      defineScenario({
-        name: "management-retry-reruns-nested-parallel-state",
-        workflows,
-        steps: ({ workflow, runner }) => [
-          runner.initializeAndRunUntilIdle({
-            workflow: "NESTED_PARALLEL",
-            id: "nested-parallel-1",
-          }),
-          workflow.retryFailedStep({
-            workflow: "NESTED_PARALLEL",
-            instanceId: "nested-parallel-1",
-          }),
-          runner.retryAndRunUntilIdle({
-            workflow: "NESTED_PARALLEL",
-            instanceId: "nested-parallel-1",
-          }),
-          workflow.read({
-            read: async (ctx) => ({
-              status: await ctx.state.getStatus("NESTED_PARALLEL", "nested-parallel-1"),
-              steps: await ctx.state.getSteps("NESTED_PARALLEL", "nested-parallel-1"),
-            }),
-            assert: ({ status, steps }) => {
-              expect(status).toMatchObject({
-                status: "complete",
-                output: { stable: "stable", flaky: "recovered" },
-              });
-              expect(steps).toEqual(
-                expect.arrayContaining([
-                  expect.objectContaining({
-                    stepKey: "do:parent",
-                    status: "completed",
-                    attempts: 2,
-                  }),
-                  expect.objectContaining({
-                    stepKey: "do:parent>do:stable",
-                    status: "completed",
-                    attempts: 1,
-                  }),
-                  expect.objectContaining({
-                    stepKey: "do:parent>do:flaky",
-                    status: "completed",
-                    attempts: 1,
-                  }),
-                ]),
-              );
-            },
-          }),
-          workflow.assert(() => {
-            expect(parentRuns).toBe(2);
-            expect(stableRuns).toBe(2);
-            expect(flakyRuns).toBe(2);
-          }),
-        ],
-      }),
-    );
-  });
-
-  test("failed-step retry reruns multiple failed nested parallel steps", async () => {
-    let firstRuns = 0;
-    let secondRuns = 0;
-    const NestedParallelFailuresWorkflow = defineWorkflow(
-      { name: "scenario-management-retry-nested-parallel-failures-workflow" },
-      async (_event, step) => {
-        return await step.do("parent", async () => {
-          const [first, second] = await Promise.allSettled([
-            step.do("first", () => {
-              firstRuns += 1;
-              if (firstRuns === 1) {
-                throw new Error("FIRST_NESTED_FAILURE");
-              }
-              return "first";
-            }),
-            step.do("second", () => {
-              secondRuns += 1;
-              if (secondRuns === 1) {
-                throw new Error("SECOND_NESTED_FAILURE");
-              }
-              return "second";
-            }),
-          ]);
-
-          if (first.status === "rejected" || second.status === "rejected") {
-            throw new Error("NESTED_PARALLEL_STEPS_FAILED");
-          }
-          return { first: first.value, second: second.value };
-        });
-      },
-    );
-    const workflows = { NESTED_PARALLEL_FAILURES: NestedParallelFailuresWorkflow };
-
-    await runScenario(
-      defineScenario({
-        name: "management-retry-reruns-multiple-nested-parallel-failures",
-        workflows,
-        steps: ({ workflow, runner }) => [
-          runner.initializeAndRunUntilIdle({
-            workflow: "NESTED_PARALLEL_FAILURES",
-            id: "nested-parallel-failures-1",
-          }),
-          workflow.retryFailedStep({
-            workflow: "NESTED_PARALLEL_FAILURES",
-            instanceId: "nested-parallel-failures-1",
-          }),
-          runner.retryAndRunUntilIdle({
-            workflow: "NESTED_PARALLEL_FAILURES",
-            instanceId: "nested-parallel-failures-1",
-          }),
-          workflow.read({
-            read: async (ctx) => ({
-              status: await ctx.state.getStatus(
-                "NESTED_PARALLEL_FAILURES",
-                "nested-parallel-failures-1",
-              ),
-              steps: await ctx.state.getSteps(
-                "NESTED_PARALLEL_FAILURES",
-                "nested-parallel-failures-1",
-              ),
-            }),
-            assert: ({ status, steps }) => {
-              expect(status).toMatchObject({
-                status: "complete",
-                output: { first: "first", second: "second" },
-              });
-              expect(steps).toEqual(
-                expect.arrayContaining([
-                  expect.objectContaining({
-                    stepKey: "do:parent",
-                    status: "completed",
-                    attempts: 2,
-                  }),
-                  expect.objectContaining({
-                    stepKey: "do:parent>do:first",
-                    status: "completed",
-                    attempts: 1,
-                  }),
-                  expect.objectContaining({
-                    stepKey: "do:parent>do:second",
-                    status: "completed",
-                    attempts: 1,
-                  }),
-                ]),
-              );
-            },
-          }),
-          workflow.assert(() => {
-            expect(firstRuns).toBe(2);
-            expect(secondRuns).toBe(2);
-          }),
-        ],
-      }),
-    );
-  });
-
   test("failed-step retry restarts a timed-out top-level event wait", async () => {
     const RetryWaitWorkflow = defineWorkflow(
       { name: "scenario-management-retry-wait-workflow" },
@@ -4866,77 +4437,6 @@ describe("Workflows Runner (Scenario DSL)", () => {
                 expect.objectContaining({ consumedByStepKey: "waitForEvent:approval" }),
               ]);
             },
-          }),
-        ],
-      }),
-    );
-  });
-
-  test("failed-step retry makes events consumed by nested waits eligible again", async () => {
-    let completedParentAttempts = 0;
-    let eventConsumptions = 0;
-    const RetryConsumedEventWorkflow = defineWorkflow(
-      { name: "scenario-management-retry-consumed-event-workflow" },
-      async (_event, step) => {
-        return await step.do("parent", async () => {
-          const approval = await step.waitForEvent<{ approved: boolean }>("approval", {
-            type: "approval",
-            onConsume: () => {
-              eventConsumptions += 1;
-            },
-          });
-          completedParentAttempts += 1;
-          if (completedParentAttempts === 1) {
-            throw new Error("FAIL_AFTER_EVENT");
-          }
-          return approval.payload;
-        });
-      },
-    );
-    const workflows = { RETRY_CONSUMED_EVENT: RetryConsumedEventWorkflow };
-
-    await runScenario(
-      defineScenario({
-        name: "management-retry-reuses-consumed-event",
-        workflows,
-        steps: ({ workflow, runner }) => [
-          runner.initializeAndRunUntilIdle({
-            workflow: "RETRY_CONSUMED_EVENT",
-            id: "retry-consumed-event-1",
-          }),
-          runner.eventAndRunUntilIdle({
-            workflow: "RETRY_CONSUMED_EVENT",
-            instanceId: "retry-consumed-event-1",
-            event: { id: "approval-1", type: "approval", payload: { approved: true } },
-          }),
-          workflow.retryFailedStep({
-            workflow: "RETRY_CONSUMED_EVENT",
-            instanceId: "retry-consumed-event-1",
-          }),
-          runner.retryAndRunUntilIdle({
-            workflow: "RETRY_CONSUMED_EVENT",
-            instanceId: "retry-consumed-event-1",
-          }),
-          workflow.read({
-            read: async (ctx) => ({
-              status: await ctx.state.getStatus("RETRY_CONSUMED_EVENT", "retry-consumed-event-1"),
-              events: await ctx.state.getEvents("RETRY_CONSUMED_EVENT", "retry-consumed-event-1"),
-            }),
-            assert: ({ status, events }) => {
-              expect(status).toMatchObject({
-                status: "complete",
-                output: { approved: true },
-              });
-              expect(events).toEqual([
-                expect.objectContaining({
-                  consumedByStepKey: "do:parent>waitForEvent:approval",
-                }),
-              ]);
-            },
-          }),
-          workflow.assert(() => {
-            expect(completedParentAttempts).toBe(2);
-            expect(eventConsumptions).toBe(2);
           }),
         ],
       }),

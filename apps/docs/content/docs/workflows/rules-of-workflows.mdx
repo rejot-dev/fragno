@@ -11,10 +11,8 @@ icon: ListChecks
 
 A workflow may run from the beginning many times. Each runner tick invokes the workflow callback
 again, while completed steps normally return their persisted results without rerunning their
-callbacks. A full restart discards every checkpoint. Retrying a failed top-level step discards and
-reruns all nested checkpoints beneath that step, including completed ones. Sleeps, event waits,
-retries, process restarts, and concurrent ticks can all create another passage through the workflow
-function.
+callbacks. A full restart discards every checkpoint. Sleeps, event waits, retries, process restarts,
+and concurrent ticks can all create another passage through the workflow function.
 
 These rules keep those passages deterministic and make step attempts safe to repeat.
 
@@ -273,35 +271,36 @@ for (const itemId of itemIds) {
 
 Repeated names in one scope receive occurrence suffixes such as `#1`, so their order must also
 remain deterministic. Step names cannot contain `>`, `#`, or a null character because Fragno
-reserves those characters for nested and repeated step keys.
+reserves those characters for its step keys.
 
-## Persist `Promise.race` and `Promise.any` decisions
+## Race steps in the workflow code
 
-Fragno supports parallel and nested steps, including `Promise.all`, `Promise.race`, and
-`Promise.any`. The winner selected by `race` or `any` is ordinary in-memory state unless an
-enclosing step persists it.
+Fragno supports parallel steps, including `Promise.all`, `Promise.race`, and `Promise.any`. Race
+steps directly in the workflow code. Replay hands settled steps back in the order they first
+settled, so a race picks the same winner on every passage:
 
 ```ts
-const provider = await step.do("select first provider", async () => {
-  return await Promise.race([
-    step.do("call primary provider", async () => {
-      return await primaryProvider.lookup(event.payload.query);
-    }),
-    step.do("call backup provider", async () => {
-      return await backupProvider.lookup(event.payload.query);
-    }),
-  ]);
-});
+const provider = await Promise.race([
+  step.do("call primary provider", async () => {
+    return await primaryProvider.lookup(event.payload.query);
+  }),
+  step.do("call backup provider", async () => {
+    return await backupProvider.lookup(event.payload.query);
+  }),
+]);
 
 await step.do("use selected provider response", async () => {
   return await useProviderResponse(provider);
 });
 ```
 
-The losing branch is not cancelled. A passage ends only once every step it started has settled, so
-the loser finishes in the same passage, or is left waiting. When one branch of `Promise.all`
-suspends or retries, its siblings' steps still finish and keep their results. Keep every branch
-idempotent all the same: a step that fails runs again.
+A race can include waits, such as an event against a sleep that acts as a deadline. A waiting step's
+promise stays pending until a later passage resumes it, so a branch that waits holds back only the
+code awaiting it.
+
+The losing branch is not cancelled: a step it already started finishes in the same passage, and a
+wait it reached stays waiting. Keep every branch idempotent all the same: a step that fails runs
+again.
 
 ## Use unique instance IDs
 
@@ -329,13 +328,13 @@ Do not use a reusable customer or tenant ID when each invocation represents dist
 order, transaction, or task ID, or store a mapping from your domain record to generated workflow
 instance IDs.
 
-## Await every step
+## Await only steps
 
 A step promise is part of workflow control flow, not durable background work. Always await it,
 return it, or include it in an awaited promise combinator.
 
 ```ts
-// 🔴 Bad: errors and suspension escape the workflow's awaited control flow.
+// 🔴 Bad: errors escape the workflow's awaited control flow.
 step.do("send receipt", async () => {
   await receipts.send(event.payload.orderId);
 });
@@ -353,6 +352,26 @@ await Promise.all([
 ```
 
 The same rule applies to `step.sleep`, `step.sleepUntil`, and `step.waitForEvent`.
+
+Workflow code awaits steps and nothing else. A passage ends once no step is running and the code has
+stopped calling new ones, so code that awaits a fetch, a timer, or other I/O between steps fails the
+run with `WorkflowStalledError`. Do that work inside a `step.do` callback, or compute it
+synchronously:
+
+```ts
+// 🔴 Bad: awaits I/O outside a step.
+const rates = await fetchExchangeRates();
+
+// ✅ Good: the I/O is a step.
+const rates = await step.do("load exchange rates", async () => await fetchExchangeRates());
+```
+
+A `step.do` callback does the step's work and calls no other steps. Calling one fails the step with
+`WORKFLOW_STEP_NESTED_IN_DO`, without retries. Compose steps in the workflow code instead.
+
+A `try`/`catch` around a step sees how the step finally ends: its result, a `NonRetryableError`, an
+exhausted retry, or a `WaitForEventTimeoutError`. While the step waits for a sleep, an event, or its
+next retry, its promise stays pending, and the `catch` does not run.
 
 ## Branch only on durable values
 

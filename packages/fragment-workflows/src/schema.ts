@@ -190,5 +190,10 @@ export const workflowsSchema = schema("workflows", (s) => {
         // Consecutive ticks whose host reported they could not run; any other outcome resets it.
         t.addColumn("interruptedTicks", column("integer").defaultTo(0)),
       )
+      .alterTable("workflow_step", (t) =>
+        // The order in which the run saw its steps settle, so replay hands them back in that order
+        // and a race decides the same way every time. Null while the step waits.
+        t.addColumn("settledOrder", column("integer").nullable()),
+      )
   );
 });

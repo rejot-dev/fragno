@@ -276,7 +276,7 @@ export class MarketplaceObject extends RpcTarget implements MarketplaceCommands 
         marketplacePackageUploadName({ marketplace: this.#scope, listingId: release.listingId }),
       ).http,
     );
-    const files = await marketplaceReleasePackageFiles(release);
+    const files = marketplaceReleasePackageFiles(release);
     const existing = await listUploadFiles({ routes, prefix: filePrefix });
     if (plan.state === "published") {
       if (
@@ -388,7 +388,7 @@ export class MarketplaceObject extends RpcTarget implements MarketplaceCommands 
       listingId: request.intent.release.listingId,
     });
     const filePrefix = `${request.intent.release.version}/`;
-    const packageFiles = await marketplaceReleasePackageFiles(request.intent.release);
+    const packageFiles = marketplaceReleasePackageFiles(request.intent.release);
     const files = await listUploadFiles({
       routes: createUploadRouteCaller(this.#runtime.objects.upload.forName(uploadName).http),
       prefix: filePrefix,

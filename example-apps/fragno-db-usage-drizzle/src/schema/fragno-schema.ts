@@ -558,7 +558,8 @@ export const workflow_step_workflows = schema_workflows.table("workflow_step", {
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
   _internalId: bigserial("_internalId", { mode: "number" }).primaryKey().notNull(),
-  _version: integer("_version").notNull().default(0)
+  _version: integer("_version").notNull().default(0),
+  settledOrder: integer("settledOrder")
 }, (table) => [
   foreignKey({
     columns: [table.instanceRef],
@@ -666,5 +667,5 @@ export const workflows_schema = {
   workflow_step_emission_workflowsRelations: workflow_step_emission_workflowsRelations,
   workflow_step_emission: workflow_step_emission_workflows,
   workflow_step_emissionRelations: workflow_step_emission_workflowsRelations,
-  schemaVersion: 8
+  schemaVersion: 9
 }
