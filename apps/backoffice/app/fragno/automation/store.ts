@@ -21,7 +21,7 @@ const asValidatorSchema = (schema: unknown): Schema | boolean => {
     return schema;
   }
   if (schema && typeof schema === "object" && !Array.isArray(schema)) {
-    return schema as Schema;
+    return schema;
   }
   throw new AutomationStoreVerificationError(
     "json-schema verification requires schema to be an object or boolean.",

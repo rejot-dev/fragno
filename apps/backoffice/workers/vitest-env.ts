@@ -30,6 +30,7 @@ export class PiScenarioManager extends DurableObject<CloudflareEnv> {
     this.#object = new PiManagerObject({
       ...createCloudflareBackofficeObjectContext(state, env),
       agent: (config): PiAgent =>
+        // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- Relating the stub to PiAgent exceeds TypeScript's instantiation depth (TS2589).
         env.PI.get(env.PI.idFromName(piAgentObjectName(config))) as unknown as PiAgent,
       supportedAvailableModels: async () => [
         {

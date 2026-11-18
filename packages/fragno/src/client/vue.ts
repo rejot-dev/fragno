@@ -219,7 +219,7 @@ function unwrapVueStoreValue<T extends object>(value: T): FragnoVueStoreValue<T>
 function createVueStore<const T extends object, const TArgs extends unknown[]>(
   hook: FragnoStoreData<T, TArgs>,
 ): FragnoVueStore<T, TArgs> {
-  return ((...args: TArgs) => {
+  return (...args: TArgs) => {
     const value = "factory" in hook ? hook.factory(...args) : hook.obj;
     const disposer = value[Symbol.dispose as keyof typeof value];
 
@@ -230,7 +230,7 @@ function createVueStore<const T extends object, const TArgs extends unknown[]>(
     }
 
     return unwrapVueStoreValue(value);
-  }) as FragnoVueStore<T, TArgs>;
+  };
 }
 
 export function useFragno<T extends Record<string, unknown>>(

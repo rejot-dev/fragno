@@ -972,7 +972,7 @@ export class PiHarnessEventDecoder {
   #decodeEvent(encoded: PiHarnessCompactEvent): PiHarnessFrontendEvent {
     switch (encoded.type) {
       case "raw":
-        return encoded.event as PiHarnessFrontendEvent;
+        return encoded.event;
       case "agent_start":
       case "turn_start":
         return { type: encoded.type };

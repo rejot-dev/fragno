@@ -243,7 +243,7 @@ function createVanillaStore<const TStore extends FragnoStoreData<object, unknown
     const dispose = (value as { [Symbol.dispose]?: (() => void) | undefined })[Symbol.dispose];
     const disposer = typeof dispose === "function" ? dispose.bind(value) : undefined;
     if (!disposer) {
-      return value as ReturnType<typeof hook.factory> & { destroy?: () => void };
+      return value;
     }
 
     Object.defineProperty(value, "destroy", {
@@ -253,7 +253,7 @@ function createVanillaStore<const TStore extends FragnoStoreData<object, unknown
       writable: true,
     });
 
-    return value as ReturnType<typeof hook.factory> & { destroy?: () => void };
+    return value;
   }) as FragnoVanillaStoreFromData<TStore>;
 }
 

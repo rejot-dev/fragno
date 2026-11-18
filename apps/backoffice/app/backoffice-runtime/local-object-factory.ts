@@ -249,7 +249,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
               execution: context.execution,
               propagationContext: context.propagationContext ?? null,
             },
-            env: this.env as unknown as CloudflareEnv,
+            env: this.env,
             nowEpochMs: this.now(),
           }),
         ),
@@ -269,7 +269,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
               execution: context.execution,
               propagationContext: context.propagationContext ?? null,
             },
-            env: this.env as unknown as CloudflareEnv,
+            env: this.env,
             nowEpochMs: this.now(),
           }),
         );
@@ -514,7 +514,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
           piAvailableModels: this.#piAvailableModels,
         });
       },
-    }) as LocalDurableObjectNamespace<unknown>;
+    });
   }
 
   #openPiSessionStore(objectId: string): Promise<Storage> {

@@ -214,7 +214,7 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
           );
           return {
             kind: "published" as const,
-            file: publishFileContent(uow as UploadMutationUnitOfWork, file, {
+            file: publishFileContent(uow, file, {
               ...upload,
               sizeBytes,
               uploadId: upload.id.toString(),
@@ -442,7 +442,7 @@ export const createUploadServices = (config: UploadFragmentConfig) => {
             assertFileWritePrecondition(file, entry.precondition, {
               fileKey: entry.fileKey,
             });
-            return { file: file as StoredFileRow, alreadyDeleted: false as const };
+            return { file: file, alreadyDeleted: false as const };
           });
 
           for (const assertion of assertions) {

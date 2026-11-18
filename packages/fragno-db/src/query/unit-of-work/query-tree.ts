@@ -361,6 +361,7 @@ export class QueryTreeJoinBuilder<
     return this;
   }
 
+  // oxlint-disable typescript/prefer-return-this-type -- The return types record the builder's new type parameters.
   joinOne<
     const TAlias extends string,
     TTableName extends keyof TSchema["tables"] & string,
@@ -390,24 +391,7 @@ export class QueryTreeJoinBuilder<
     }
   > {
     this.#children.push(this.#buildChildNode(alias, tableName, "one", builderFn));
-    return this as unknown as QueryTreeJoinBuilder<
-      TSchema,
-      TTable,
-      TParentTable,
-      TSelect,
-      TJoinOut & {
-        [P in TAlias]: MapCardinality<
-          SelectResult<
-            TSchema["tables"][TTableName],
-            ExtractQueryTreeBuilderOut<TBuilderResult>,
-            Extract<
-              ExtractQueryTreeBuilderSelect<TBuilderResult>,
-              SelectClause<TSchema["tables"][TTableName]>
-            >
-          >
-        >["one"];
-      }
-    >;
+    return this;
   }
 
   joinMany<
@@ -439,25 +423,9 @@ export class QueryTreeJoinBuilder<
     }
   > {
     this.#children.push(this.#buildChildNode(alias, tableName, "many", builderFn));
-    return this as unknown as QueryTreeJoinBuilder<
-      TSchema,
-      TTable,
-      TParentTable,
-      TSelect,
-      TJoinOut & {
-        [P in TAlias]: MapCardinality<
-          SelectResult<
-            TSchema["tables"][TTableName],
-            ExtractQueryTreeBuilderOut<TBuilderResult>,
-            Extract<
-              ExtractQueryTreeBuilderSelect<TBuilderResult>,
-              SelectClause<TSchema["tables"][TTableName]>
-            >
-          >
-        >["many"];
-      }
-    >;
+    return this;
   }
+  // oxlint-enable typescript/prefer-return-this-type
 
   #buildChildNode<TTableName extends keyof TSchema["tables"] & string>(
     alias: string,
@@ -624,6 +592,7 @@ export class QueryTreeFindBuilder<
     return this;
   }
 
+  // oxlint-disable typescript/prefer-return-this-type -- The return types record the builder's new type parameters.
   withOutboxMutations(): QueryTreeFindBuilder<
     TSchema,
     TTable,
@@ -663,12 +632,7 @@ export class QueryTreeFindBuilder<
       children: [],
     });
 
-    return this as unknown as QueryTreeFindBuilder<
-      TSchema,
-      TTable,
-      TSelect,
-      TJoinOut & { $outboxMutations: Array<{ id: FragnoId }> }
-    >;
+    return this;
   }
 
   joinOne<
@@ -699,23 +663,7 @@ export class QueryTreeFindBuilder<
     }
   > {
     this.#children.push(this.#buildChildNode(alias, tableName, "one", builderFn));
-    return this as unknown as QueryTreeFindBuilder<
-      TSchema,
-      TTable,
-      TSelect,
-      TJoinOut & {
-        [P in TAlias]: MapCardinality<
-          SelectResult<
-            TSchema["tables"][TTableName],
-            ExtractQueryTreeBuilderOut<TBuilderResult>,
-            Extract<
-              ExtractQueryTreeBuilderSelect<TBuilderResult>,
-              SelectClause<TSchema["tables"][TTableName]>
-            >
-          >
-        >["one"];
-      }
-    >;
+    return this;
   }
 
   joinMany<
@@ -746,24 +694,9 @@ export class QueryTreeFindBuilder<
     }
   > {
     this.#children.push(this.#buildChildNode(alias, tableName, "many", builderFn));
-    return this as unknown as QueryTreeFindBuilder<
-      TSchema,
-      TTable,
-      TSelect,
-      TJoinOut & {
-        [P in TAlias]: MapCardinality<
-          SelectResult<
-            TSchema["tables"][TTableName],
-            ExtractQueryTreeBuilderOut<TBuilderResult>,
-            Extract<
-              ExtractQueryTreeBuilderSelect<TBuilderResult>,
-              SelectClause<TSchema["tables"][TTableName]>
-            >
-          >
-        >["many"];
-      }
-    >;
+    return this;
   }
+  // oxlint-enable typescript/prefer-return-this-type
 
   #buildChildNode<TTableName extends keyof TSchema["tables"] & string>(
     alias: string,

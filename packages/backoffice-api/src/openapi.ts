@@ -81,7 +81,7 @@ export function createOpenApiDocument(
     });
     const { root: localizedRoot, definitions: localizedDefinitions } = localizeAnonymousDefinitions(
       root,
-      ($defs ?? {}) as Record<string, JsonSchema>,
+      $defs ?? {},
       conversionName,
     );
     for (const [id, definition] of Object.entries(localizedDefinitions)) {

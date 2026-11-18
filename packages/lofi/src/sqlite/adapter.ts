@@ -325,7 +325,7 @@ export class SqliteLofiAdapter implements LofiAdapter {
       writeMutation: (mutation, target) =>
         this.#writeMutation(
           this.#getLayout(target.schema.name, target.table.name),
-          resolveMutation(mutation, baseNow) as ProjectionQueuedMutation,
+          resolveMutation(mutation, baseNow),
         ),
     });
   }

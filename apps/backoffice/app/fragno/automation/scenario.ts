@@ -4227,9 +4227,7 @@ const buildStepBuilders = <
               });
               const stepNames = (history?.steps ?? [])
                 .map((step) =>
-                  step && typeof step === "object" && "name" in step
-                    ? String((step as { name: unknown }).name)
-                    : "",
+                  step && typeof step === "object" && "name" in step ? String(step.name) : "",
                 )
                 .filter(Boolean);
               const missing = input.include.filter((name) => !stepNames.includes(name));

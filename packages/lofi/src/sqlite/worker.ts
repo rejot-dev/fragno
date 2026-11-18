@@ -1,7 +1,6 @@
 import * as SQLite from "@journeyapps/wa-sqlite";
 
 import { serveLofiSqlite, type LofiSqliteHost } from "./host";
-import type { LofiSqlitePort } from "./protocol";
 import type { LofiSqliteReplicaOptions } from "./replica";
 import { wrapWaSqliteDatabase, type LofiSqliteSyncDatabase } from "./sync-connection";
 import type { LofiSqliteViewEngine } from "./views";
@@ -25,7 +24,7 @@ export function serveLofiSqliteWorker(options: {
   return serveLofiSqlite({
     replica: options.replica,
     engines: options.engines,
-    port: globalThis as unknown as LofiSqlitePort,
+    port: globalThis,
     openDatabase: openOpfsDatabase,
     heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
     leaderTimeoutMs: LEADER_TIMEOUT_MS,

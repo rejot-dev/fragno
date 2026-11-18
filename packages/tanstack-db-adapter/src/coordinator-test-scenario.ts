@@ -152,11 +152,7 @@ export async function withFromScratchTestScenario<
         mode: "sync-present",
         schemaVersion: FRAGNO_OUTBOX_LOCAL_SCHEMA_VERSION,
       });
-      return (await persistence.adapter.scanRows!(eagerStorageTarget(collectionId))) as Array<{
-        key: string | number;
-        value: Record<string, unknown>;
-        metadata?: unknown;
-      }>;
+      return await persistence.adapter.scanRows!(eagerStorageTarget(collectionId));
     },
   };
 

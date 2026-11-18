@@ -551,11 +551,7 @@ function read<
   storeAs?: keyof TVars,
 ): ScenarioReadStep<TSchema, TCommandContext, TVars> {
   if (storeAs === undefined) {
-    return { type: "read", client, read } as ScenarioReadStepNoStore<
-      TSchema,
-      TCommandContext,
-      TVars
-    >;
+    return { type: "read", client, read };
   }
   return { type: "read", client, read, storeAs } as ScenarioReadStepWithStore<
     TSchema,
@@ -1328,9 +1324,9 @@ export const runScenario = async <
         client.stores.pendingReactive ??= {};
         client.stores.pendingReactive[step.name] = {
           schema: step.schema ?? schema,
-          table: step.table as keyof TSchema["tables"] & string,
+          table: step.table,
           query: step.query,
-          storeOptions: storeOptions as ScenarioPendingReactiveStore<TSchema>["storeOptions"],
+          storeOptions: storeOptions,
         };
         if (step.mount ?? true) {
           mountScenarioReactiveStore(client, schema, step.name, cleanupCallbacks);

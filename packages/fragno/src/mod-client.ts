@@ -101,18 +101,15 @@ export function instantiate(_definition: unknown) {
   };
 
   // Wrap with Proxy to handle any additional methods
-  const fragmentStub: IFragnoInstantiatedFragment = new Proxy(
-    fragmentStubMethods as IFragnoInstantiatedFragment,
-    {
-      get(target, prop): unknown {
-        if (prop in target) {
-          return target[prop as keyof typeof target];
-        }
-        // Return a function that returns the stub for method chaining
-        return () => fragmentStub;
-      },
+  const fragmentStub: IFragnoInstantiatedFragment = new Proxy(fragmentStubMethods, {
+    get(target, prop): unknown {
+      if (prop in target) {
+        return target[prop as keyof typeof target];
+      }
+      // Return a function that returns the stub for method chaining
+      return () => fragmentStub;
     },
-  );
+  });
 
   const builderStubMethods = {
     withConfig: () => builderStub,

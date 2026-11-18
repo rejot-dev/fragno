@@ -31,26 +31,20 @@ export const instancesCommand = define({
 });
 
 const workflowsSubCommands: Map<string, Command> = new Map();
-workflowsSubCommands.set("list", workflowsListCommand as Command);
+workflowsSubCommands.set("list", workflowsListCommand);
 
 const instancesSubCommands: Map<string, Command> = new Map();
-instancesSubCommands.set("list", instancesListCommand as Command);
-instancesSubCommands.set("get", instancesGetCommand as Command);
-instancesSubCommands.set("history", instancesHistoryCommand as Command);
-instancesSubCommands.set("logs", instancesLogsCommand as Command);
-instancesSubCommands.set("create", instancesCreateCommand as Command);
-instancesSubCommands.set("send-event", instancesSendEventCommand as Command);
-instancesSubCommands.set(
-  "pause",
-  createManageCommand("pause", "Pause a workflow instance") as Command,
-);
-instancesSubCommands.set(
-  "resume",
-  createManageCommand("resume", "Resume a workflow instance") as Command,
-);
+instancesSubCommands.set("list", instancesListCommand);
+instancesSubCommands.set("get", instancesGetCommand);
+instancesSubCommands.set("history", instancesHistoryCommand);
+instancesSubCommands.set("logs", instancesLogsCommand);
+instancesSubCommands.set("create", instancesCreateCommand);
+instancesSubCommands.set("send-event", instancesSendEventCommand);
+instancesSubCommands.set("pause", createManageCommand("pause", "Pause a workflow instance"));
+instancesSubCommands.set("resume", createManageCommand("resume", "Resume a workflow instance"));
 instancesSubCommands.set(
   "terminate",
-  createManageCommand("terminate", "Terminate a workflow instance") as Command,
+  createManageCommand("terminate", "Terminate a workflow instance"),
 );
 
 const printMainHelp = () => {

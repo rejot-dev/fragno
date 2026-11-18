@@ -336,9 +336,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
   }) {
     super();
     this.#env = env as AutomationFragmentConfig["env"];
-    this.#internalRequestEnv = env
-      ? (env as Pick<BackofficeRuntimeEnv, "BACKOFFICE_INTERNAL_REQUEST_SECRET">)
-      : null;
+    this.#internalRequestEnv = env ? env : null;
     this.#state = state;
     this.#runtimeServices = {
       ...runtime,

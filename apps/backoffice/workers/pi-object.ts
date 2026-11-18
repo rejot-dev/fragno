@@ -716,7 +716,7 @@ export class PiObject extends RpcTarget implements PiAgent {
           requestId: `${piNotificationRequestId(notification)}:event`,
           entry: {
             kind: PI_NOTIFICATION_ENTRY_KIND,
-            data: copyJson(notification) as JsonObject,
+            data: copyJson(notification),
             model: [
               {
                 role: "user",

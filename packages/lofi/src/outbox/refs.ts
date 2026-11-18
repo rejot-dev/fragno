@@ -6,14 +6,14 @@ export function resolveOutboxRefs<T extends Record<string, unknown>>(
     return {
       ...mutation,
       values: resolveRecordRefs(mutation["values"], refMap),
-    } as T;
+    };
   }
 
   if ("set" in mutation && isRecord(mutation["set"])) {
     return {
       ...mutation,
       set: resolveRecordRefs(mutation["set"], refMap),
-    } as T;
+    };
   }
 
   return mutation;

@@ -940,7 +940,7 @@ export class AuthObject implements AuthCommands {
       database ??
       new Kysely<AuthDatabase>({
         dialect: new DurableObjectDialect({
-          ctx: state as DurableObjectState,
+          ctx: state,
           queryInstrumentation: null,
         }),
       });

@@ -76,7 +76,7 @@ export function serializeMember<TRole extends string>(
     id: member.id,
     organizationId: member.organizationId,
     userId: member.userId,
-    roles: member.roles as string[],
+    roles: member.roles,
     createdAt: member.createdAt.toISOString(),
     updatedAt: member.updatedAt.toISOString(),
   };
@@ -89,7 +89,7 @@ export function serializeInvitation<TRole extends string>(
     id: invitation.id,
     organizationId: invitation.organizationId,
     email: invitation.email,
-    roles: invitation.roles as string[],
+    roles: invitation.roles,
     status: invitation.status,
     token: invitation.token,
     inviterId: invitation.inviterId,

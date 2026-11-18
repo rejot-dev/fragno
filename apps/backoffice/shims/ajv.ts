@@ -88,7 +88,7 @@ function asValidatorSchema(schema: unknown): Schema | boolean {
     return schema;
   }
   if (schema && typeof schema === "object") {
-    return schema as Schema;
+    return schema;
   }
 
   throw new TypeError("Schema must be an object or boolean.");

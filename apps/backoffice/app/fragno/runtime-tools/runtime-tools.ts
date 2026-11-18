@@ -244,7 +244,7 @@ export const defineBackofficeRuntimeToolFamily = <
 }): BackofficeRuntimeToolFamily => {
   return {
     namespace,
-    tools: tools as readonly AnyBackofficeRuntimeTool[],
+    tools: tools,
     ...(hidden ? { hidden } : {}),
     ...(isAvailable
       ? { isAvailable: (context: BackofficeToolContext) => isAvailable(context as TContext) }
@@ -435,7 +435,7 @@ export const createBackofficeBashCommands = ({
               args,
               context,
               commandOutput,
-              shell: shell as unknown as BackofficeBashShellContext,
+              shell: shell,
             });
           } else if (bash.format) {
             rawResult = bash.format(

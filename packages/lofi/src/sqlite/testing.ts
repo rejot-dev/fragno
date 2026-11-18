@@ -36,7 +36,7 @@ export async function openLofiSqliteMemoryFiles(options: {
   const vfs = await (
     MemoryVFS as unknown as { create(name: string, module: unknown): Promise<MemoryVFS> }
   ).create("lofi-memory", module);
-  sqlite3.vfs_register(vfs as never, false);
+  sqlite3.vfs_register(vfs, false);
 
   return {
     // A property rather than a method, so it can be passed on as the `openDatabase` dependency.

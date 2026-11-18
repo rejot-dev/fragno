@@ -167,11 +167,9 @@ export function createBackofficeAgentContext(input: {
           }),
         }),
       } as const;
-      return (
-        subagent
-          ? createRouteBackedRuntimeContext(options)
-          : createAgentRouteBackedRuntimeContext({ ...options, callingAgent })
-      ) as PiRuntimeToolContext;
+      return subagent
+        ? createRouteBackedRuntimeContext(options)
+        : createAgentRouteBackedRuntimeContext({ ...options, callingAgent });
     }
 
     return {

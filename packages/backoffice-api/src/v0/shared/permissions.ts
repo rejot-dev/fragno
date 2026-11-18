@@ -190,7 +190,7 @@ function createBackofficePermissionRequirementSchema(): BackofficePermissionRequ
         return key ? `Unknown Backoffice permission '${key}'.` : "Unknown Backoffice permission.";
       },
     })
-    .meta({ id: "BackofficePermissionRequirement" }) as BackofficePermissionRequirementSchema;
+    .meta({ id: "BackofficePermissionRequirement" });
 }
 
 /** Validates one canonical namespace-permission pair at an untrusted configuration boundary. */

@@ -87,7 +87,7 @@ export function uowOperationsToLofiMutations(
         schema: operation.schema.name,
         table: operation.table,
         externalId: mutationIdToExternalId(operation.id),
-        set: operation.set as Record<string, unknown>,
+        set: operation.set,
         versionstamp,
       });
       continue;

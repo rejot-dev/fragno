@@ -184,7 +184,7 @@ const resolveLocalRef = (
     current = (current as Record<string, unknown>)[segment];
   }
 
-  return current && typeof current === "object" ? (current as JsonSchemaObject) : undefined;
+  return current && typeof current === "object" ? current : undefined;
 };
 
 const isDeclarationRef = (ref: string) => {

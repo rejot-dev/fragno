@@ -231,7 +231,7 @@ const createReactStoreObjectView = <T extends object>(
 function useReactStoreValue<T extends object>(value: T): FragnoReactStoreValue<T> {
   const atomEntries = useMemo<Array<[string | undefined, Store<unknown>]>>(() => {
     if (isReadableAtom(value)) {
-      return [[undefined, value as Store<unknown>]];
+      return [[undefined, value]];
     }
 
     return Object.keys(value).flatMap((key) => {
@@ -292,7 +292,7 @@ function useReactStoreValue<T extends object>(value: T): FragnoReactStoreValue<T
 function createReactStore<const T extends object, const TArgs extends unknown[]>(
   hook: FragnoStoreData<T, TArgs>,
 ): FragnoReactStore<T, TArgs> {
-  return ((...args: TArgs) => {
+  return (...args: TArgs) => {
     const pendingDisposalsRef = useRef<Map<object, ReturnType<typeof setTimeout>> | null>(null);
     if (pendingDisposalsRef.current === null) {
       pendingDisposalsRef.current = new Map();
@@ -336,7 +336,7 @@ function createReactStore<const T extends object, const TArgs extends unknown[]>
     }, [pendingDisposals, value]);
 
     return useReactStoreValue(value);
-  }) as FragnoReactStore<T, TArgs>;
+  };
 }
 
 // oxlint-enable typescript/no-unsafe-return

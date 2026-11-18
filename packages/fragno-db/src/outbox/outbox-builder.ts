@@ -130,7 +130,7 @@ export function finalizeOutboxPayload(
   const operations: OutboxOperation[] = plan.drafts.map((draft, index) => {
     const versionstamp = versionstampToHex(encodeVersionstamp(transactionVersion, index));
     const materialized = materializeOutboxOperationDbNow(draft, options.now);
-    return { ...materialized, versionstamp } as OutboxOperation;
+    return { ...materialized, versionstamp };
   });
 
   return {

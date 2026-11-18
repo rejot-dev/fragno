@@ -284,7 +284,7 @@ export class LocalDurableObjectNamespace<TObject> {
   }
 
   idFromName(name: string): DurableObjectId {
-    return new LocalDurableObjectId(this.name, name) as unknown as DurableObjectId;
+    return new LocalDurableObjectId(this.name, name);
   }
 
   get(id: DurableObjectId): TObject {

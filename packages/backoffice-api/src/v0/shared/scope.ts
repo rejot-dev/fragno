@@ -518,12 +518,12 @@ export function parseBackofficeScopeSegment<TNames extends BackofficeScopeNames>
         return {
           kind: "org",
           ...codec.organization.parse(readComponent(codec.organization.label)),
-        } as BackofficeOrganizationScope<TNames>;
+        };
       case "user":
         return {
           kind: "user",
           ...codec.user.parse(readComponent(codec.user.label)),
-        } as BackofficeUserScope<TNames>;
+        };
       case "app": {
         const owner = readOwner("App");
         if (owner.kind !== "org" && owner.kind !== "user") {

@@ -2180,7 +2180,7 @@ function cloneNode<T extends WorkflowNode | WorkflowChildNode>(node: T): T {
         })),
       },
       construction: { ...node.construction },
-    } as T;
+    };
   }
   if (node.kind === "condition") {
     return {
@@ -2188,7 +2188,7 @@ function cloneNode<T extends WorkflowNode | WorkflowChildNode>(node: T): T {
       source: cloneSourceRange(node.source),
       construction: { ...node.construction },
       analysis: cloneConditionAnalysis(node.analysis),
-    } as T;
+    };
   }
   if (node.kind === "terminal") {
     return {
@@ -2196,13 +2196,13 @@ function cloneNode<T extends WorkflowNode | WorkflowChildNode>(node: T): T {
       value: { ...node.value },
       source: cloneSourceRange(node.source),
       construction: { ...node.construction },
-    } as T;
+    };
   }
   return {
     ...node,
     source: cloneSourceRange(node.source),
     construction: { ...node.construction },
-  } as T;
+  };
 }
 
 function cloneConditionAnalysis(analysis: ConditionAnalysis): ConditionAnalysis {

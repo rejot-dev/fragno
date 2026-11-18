@@ -890,7 +890,7 @@ export async function createWorkflowsTestHarness<
     clock,
     runtime,
     test,
-    createInstance: (async (
+    createInstance: async (
       workflowNameOrKey: (keyof TRegistry & string) | string,
       instanceOptions?: { id?: string; params?: unknown; remoteWorkflowName?: string },
     ) => {
@@ -899,7 +899,7 @@ export async function createWorkflowsTestHarness<
         getFragment().services.createInstance(workflowName, instanceOptions),
       );
       return result.id;
-    }) as WorkflowsTestHarness<TRegistry, TConfiguredFragments>["createInstance"],
+    },
     restartOrCreateInstance: (async (
       workflowNameOrKey: string,
       options: WorkflowRestartOrCreateOptions,

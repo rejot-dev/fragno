@@ -46,10 +46,10 @@ export const filesUpdateCommand = define({
       payload["visibility"] = ctx.values.visibility;
     }
     if (ctx.values.tags !== undefined) {
-      payload["tags"] = parseJsonValue("tags", ctx.values.tags as string | undefined);
+      payload["tags"] = parseJsonValue("tags", ctx.values.tags);
     }
     if (ctx.values.metadata !== undefined) {
-      payload["metadata"] = parseJsonValue("metadata", ctx.values.metadata as string | undefined);
+      payload["metadata"] = parseJsonValue("metadata", ctx.values.metadata);
     }
 
     if (Object.keys(payload).length === 0) {

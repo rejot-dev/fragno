@@ -277,11 +277,13 @@ export const createFileServices = (config: UploadFragmentConfig) => {
               contentType: file.contentType,
               sizeBytes,
             });
-            return publishFileContent(
-              uow as UploadMutationUnitOfWork,
-              filesByKey.get(fileKey) ?? null,
-              { ...file, key: fileKey, objectKey, sizeBytes, uploadId: null },
-            );
+            return publishFileContent(uow, filesByKey.get(fileKey) ?? null, {
+              ...file,
+              key: fileKey,
+              objectKey,
+              sizeBytes,
+              uploadId: null,
+            });
           });
         })
         .build();
@@ -375,7 +377,7 @@ export const createFileServices = (config: UploadFragmentConfig) => {
               contentType,
               sizeBytes: BigInt(bytes.byteLength),
             });
-            publishFileContent(uow as UploadMutationUnitOfWork, existing, {
+            publishFileContent(uow, existing, {
               key: fileKey,
               uploaderId: original?.uploaderId ?? null,
               filename: original?.filename ?? fileKey.split("/").at(-1)!,
@@ -469,9 +471,9 @@ export const createFileServices = (config: UploadFragmentConfig) => {
           }
 
           if (file.status !== "deleted") {
-            deleteFileContent(uow as UploadMutationUnitOfWork, file);
+            deleteFileContent(uow, file);
           }
-          return { status: "deleted" as FileStatus };
+          return { status: "deleted" };
         })
         .build();
     },

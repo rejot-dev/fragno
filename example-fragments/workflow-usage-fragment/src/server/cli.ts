@@ -249,10 +249,10 @@ const sessionsSendEventCommand = define({
 });
 
 const sessionsSubCommands: Map<string, Command> = new Map();
-sessionsSubCommands.set("list", sessionsListCommand as Command);
-sessionsSubCommands.set("create", sessionsCreateCommand as Command);
-sessionsSubCommands.set("get", sessionsGetCommand as Command);
-sessionsSubCommands.set("send-event", sessionsSendEventCommand as Command);
+sessionsSubCommands.set("list", sessionsListCommand);
+sessionsSubCommands.set("create", sessionsCreateCommand);
+sessionsSubCommands.set("get", sessionsGetCommand);
+sessionsSubCommands.set("send-event", sessionsSendEventCommand);
 
 const printMainHelp = () => {
   console.log("Workflow usage fragment CLI");

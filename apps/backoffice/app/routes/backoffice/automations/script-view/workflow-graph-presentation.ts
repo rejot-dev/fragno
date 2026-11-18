@@ -69,7 +69,7 @@ export function createWorkflowGraphPresentation(
       parentId,
       [...children]
         .sort((left, right) => left.order - right.order)
-        .map((node, order) => ({ ...node, order }) as WorkflowChildNode),
+        .map((node, order) => ({ ...node, order })),
     );
   }
 

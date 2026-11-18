@@ -53,7 +53,7 @@ export const buildReadPlan = <
     tableName,
     table as TSchema["tables"][TTableName],
   );
-  builderFn(builder as LofiFindBuilder<TSchema, TTableName>);
+  builderFn(builder);
   if (resultMode === "findFirst") {
     builder.pageSize(1);
   }

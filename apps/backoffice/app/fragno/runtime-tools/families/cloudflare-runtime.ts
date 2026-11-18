@@ -68,7 +68,7 @@ export const createCloudflareRuntime = ({
       const response = await callRoute("POST", "/browser-run/crawl", { body: input });
 
       if (response.type === "json" && isSuccessStatus(response.status)) {
-        return response.data as BrowserRunCrawlActionResult;
+        return response.data;
       }
 
       return throwOnRouteRuntimeError(response, {

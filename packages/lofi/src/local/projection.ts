@@ -535,7 +535,7 @@ export const createProjectionTx = (options: {
             schema: target.schema,
             tableName,
             table: target.table,
-            values: values as Record<string, unknown>,
+            values: values,
             versionstamp,
           });
           mutations.push(mutation);
@@ -556,7 +556,7 @@ export const createProjectionTx = (options: {
             schema: target.schema.name,
             table: tableName,
             externalId: toExternalId(externalId),
-            set: built.set as Record<string, unknown>,
+            set: built.set,
             checkVersion: built.checkVersion,
             expectedVersion: externalId instanceof FragnoId ? externalId.version : undefined,
             versionstamp,

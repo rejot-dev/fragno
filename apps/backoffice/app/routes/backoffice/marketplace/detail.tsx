@@ -1,6 +1,5 @@
 import {
   marketplaceInstallationRootSchema,
-  type MarketplaceIngestionRequestInput,
   type MarketplaceIngestionTargetScope,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import {
@@ -397,7 +396,7 @@ export async function action({ request, params, context, url }: Route.ActionArgs
         installationRoot: installationRootResult.data,
         version,
         // The schema refuses unknown permissions; the declaration must match exactly.
-        permissions: permissions as MarketplaceIngestionRequestInput["permissions"],
+        permissions: permissions,
       },
       { execution, propagationContext: null },
     );

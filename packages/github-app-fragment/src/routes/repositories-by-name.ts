@@ -10,7 +10,6 @@ import {
   normalizeJoinedLinks,
   normalizeLinkKey,
   toExternalId,
-  type RepoLinkId,
 } from "./shared";
 
 /** What this store knows about one repository name, for callers that address repositories by name. */
@@ -217,7 +216,7 @@ export const githubAppRepositoryByNameRoutesFactory = defineRoutes(
       await this.handlerTx()
         .mutate(({ forSchema }) => {
           const uow = forSchema(githubAppSchema);
-          uow.delete("repo_link", linked.link.id as RepoLinkId);
+          uow.delete("repo_link", linked.link.id);
           uow.triggerHook("onRepositoryLinkStatusChanged", {
             linkKey,
             repositoryId: linked.repositoryId,

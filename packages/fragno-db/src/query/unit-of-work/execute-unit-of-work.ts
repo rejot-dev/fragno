@@ -1036,7 +1036,7 @@ async function executeTx(
       // Get retrieve results from TypedUnitOfWork's retrievalPhase or default to empty array
       const retrieveResult: TRetrieveResults = typedUowFromRetrieve
         ? await typedUowFromRetrieve.retrievalPhase
-        : ([] as unknown as TRetrieveResults);
+        : [];
 
       if (callbacks.afterRetrieve) {
         await callbacks.afterRetrieve(baseUow, retrieveResult);
@@ -1091,7 +1091,7 @@ async function executeTx(
           serviceResults as ExtractServiceRetrieveResults<TServiceCalls>,
         );
       } else {
-        retrieveSuccessResult = retrieveResult as unknown;
+        retrieveSuccessResult = retrieveResult;
       }
 
       let mutateResult: { type: "not-provided" } | { type: "provided"; value: TMutateResult } = {
@@ -1807,6 +1807,7 @@ export class ServiceTxBuilder<
     };
 
     // Use the existing createServiceTx implementation
+    // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- createServiceTx returns TxResult<unknown, unknown>, which build()'s return type does not accept.
     return createServiceTx<
       TSchema,
       TRetrieveResults,
@@ -1815,7 +1816,7 @@ export class ServiceTxBuilder<
       TMutateResult,
       TTransformResult,
       THooks
-    >(state.schema, callbacks, state.baseUow) as unknown as TxResult<
+    >(state.schema, callbacks, state.baseUow) as TxResult<
       InferBuilderResultType<
         TRetrieveResults,
         TRetrieveSuccessResult,

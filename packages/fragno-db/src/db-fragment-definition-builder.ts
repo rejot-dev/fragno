@@ -1426,7 +1426,7 @@ export class DatabaseFragmentDefinitionBuilder<
             options: context.options,
             deps: context.deps,
             services: context.services,
-            serviceDeps: context.serviceDeps ?? ({} as TServiceDependencies),
+            serviceDeps: context.serviceDeps ?? {},
           });
         }
         return cachedHooksConfig;
@@ -1457,7 +1457,7 @@ export class DatabaseFragmentDefinitionBuilder<
               options: context.options,
               deps: context.deps,
               services: context.services,
-              serviceDeps: context.serviceDeps ?? ({} as TServiceDependencies),
+              serviceDeps: context.serviceDeps ?? {},
             })
           : undefined,
         namespace: namespaceKey,

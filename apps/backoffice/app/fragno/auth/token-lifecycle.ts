@@ -366,7 +366,7 @@ const loadBackofficeJwks = async (
   if (!response.ok) {
     throw new Error(`Better Auth JWKS request failed with status ${response.status}.`);
   }
-  return betterAuthJwksSchema.parse(await response.json()) as JSONWebKeySet;
+  return betterAuthJwksSchema.parse(await response.json());
 };
 
 function cacheBackofficeJwks(

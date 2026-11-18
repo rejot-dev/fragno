@@ -165,7 +165,7 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
       recordedValues = {
         ...values,
         [idColumn.name]: externalId,
-      } as TableToInsertValues<TSchema["tables"][TableName]>;
+      };
     }
 
     this.#record({
@@ -281,7 +281,7 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
       this.#schema,
       tableName,
       indexName,
-      values as Record<string, unknown>,
+      values,
     );
 
     this.#record({
@@ -290,7 +290,7 @@ export class SchemaMutationRecorder<TSchema extends AnySchema> {
       namespace: this.#namespace,
       table: tableName,
       indexName: normalizedIndexName,
-      values: values as Record<string, unknown>,
+      values: values,
     });
   }
 }

@@ -75,7 +75,7 @@ const createDefaultGetUserMedia = (): GetReson8UserMedia => {
     throw new Error("Reson8 microphone capture requires navigator.mediaDevices.getUserMedia().");
   }
 
-  return (constraints) => mediaDevices.getUserMedia(constraints) as Promise<Reson8MediaStreamLike>;
+  return (constraints) => mediaDevices.getUserMedia(constraints);
 };
 
 const createDefaultAudioContext = (): CreateReson8AudioContext => {

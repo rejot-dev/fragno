@@ -776,7 +776,7 @@ export const cloudflareFragmentDefinition = defineFragment<CloudflareFragmentCon
               appId: ensuredAppId.valueOf(),
               scriptName,
               status: "queued" as const,
-              format: SUPPORTED_DEPLOYMENT_FORMAT as "esmodule",
+              format: SUPPORTED_DEPLOYMENT_FORMAT,
               entrypoint: request.script.entrypoint,
               sourceByteLength,
               compatibilityDate,

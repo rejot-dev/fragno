@@ -102,7 +102,7 @@ const buildLocalMutations = (
         schema: operation.schema.name,
         table: operation.table,
         externalId: operation.generatedExternalId,
-        values: operation.values as Record<string, unknown>,
+        values: operation.values,
         versionstamp,
       },
     ];
@@ -115,7 +115,7 @@ const buildLocalMutations = (
         schema: operation.schema.name,
         table: operation.table,
         externalId: getExternalId(operation.id),
-        set: operation.set as Record<string, unknown>,
+        set: operation.set,
         versionstamp,
       },
     ];

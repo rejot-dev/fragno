@@ -1,4 +1,3 @@
-import type { AutomationExternalEntityRef } from "@fragno-dev/backoffice-api/v0/automation";
 import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
@@ -84,7 +83,7 @@ export const buildIdentityClaimCompletedAutomationEvent = (input: {
     claimType: input.otp.type,
   },
   actors: {
-    initiator: { ...(input.claim.actor as AutomationExternalEntityRef), role: "initiator" },
+    initiator: { ...input.claim.actor, role: "initiator" },
     principal: null,
     delegation: [],
   },

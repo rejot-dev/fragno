@@ -1204,8 +1204,7 @@ const createScenarioRunnerSteps = <
 ) => {
   const stampRunner = <TStep extends { type: string }>(
     step: TStep,
-  ): RunnerNamedStep<TStep, TRunnerName> =>
-    ({ ...step, runner: runnerName }) as RunnerNamedStep<TStep, TRunnerName>;
+  ): RunnerNamedStep<TStep, TRunnerName> => ({ ...step, runner: runnerName });
   const raw = createRawScenarioStepBuilders<TRegistry, TVars, TFragments>();
   return {
     initializeAndRunUntilIdle: (
@@ -2262,7 +2261,7 @@ export async function runScenario<
       db: workflowsResult.db,
       services: workflowsResult.services as WorkflowsTestHarness<TRegistry>["services"],
       deps: workflowsResult.deps as WorkflowsTestHarness<TRegistry>["deps"],
-      callRoute: workflowsResult.callRoute as WorkflowsTestHarness<TRegistry>["callRoute"],
+      callRoute: workflowsResult.callRoute,
     };
   };
 
@@ -2272,9 +2271,9 @@ export async function runScenario<
       fragment: { services: workflowServices } as AnyFragnoInstantiatedFragment,
       services: workflowServices,
       deps: {},
-      callRoute: (() => {
+      callRoute: () => {
         throw new Error("SCENARIO_CONFIGURE_FRAGMENTS_PROBE_ROUTE_CALLED");
-      }) as AnyFragmentResult["callRoute"],
+      },
       db: undefined as unknown as TestDb,
     };
   };
@@ -2361,7 +2360,7 @@ export async function runScenario<
       | WorkflowScenarioRuntimeFragments<TRegistry, TFragments>
       | Promise<WorkflowScenarioRuntimeFragments<TRegistry, TFragments>>,
   ): WorkflowScenarioClientConfig<TRegistry, TFragments, WorkflowScenarioRunnerName<TRunners>> => {
-    return ((fragmentName, options = {}) => {
+    return (fragmentName, options = {}) => {
       const fallbackFragment = fallbackFragments[fragmentName];
       if (!fallbackFragment) {
         throw new Error(`SCENARIO_CLIENT_FRAGMENT_NOT_FOUND: ${fragmentName}`);
@@ -2387,7 +2386,7 @@ export async function runScenario<
           },
         },
       };
-    }) as WorkflowScenarioClientConfig<TRegistry, TFragments, WorkflowScenarioRunnerName<TRunners>>;
+    };
   };
   const createClients = (
     fragments: WorkflowScenarioRuntimeFragments<TRegistry, TFragments>,
@@ -2412,37 +2411,36 @@ export async function runScenario<
       recreateFragments: runtime.recreateFragments,
     };
   };
-  const createLofiFetch = (): typeof fetch =>
-    (async (input) => {
-      const requestUrl =
-        typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-      const url = new URL(requestUrl);
-      const query: Record<string, string> = {};
-      const afterVersionstamp = url.searchParams.get("afterVersionstamp");
-      const limit = url.searchParams.get("limit");
-      if (afterVersionstamp) {
-        query["afterVersionstamp"] = afterVersionstamp;
-      }
-      if (limit) {
-        query["limit"] = limit;
-      }
+  const createLofiFetch = (): typeof fetch => async (input) => {
+    const requestUrl =
+      typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const url = new URL(requestUrl);
+    const query: Record<string, string> = {};
+    const afterVersionstamp = url.searchParams.get("afterVersionstamp");
+    const limit = url.searchParams.get("limit");
+    if (afterVersionstamp) {
+      query["afterVersionstamp"] = afterVersionstamp;
+    }
+    if (limit) {
+      query["limit"] = limit;
+    }
 
-      const response = await typedHarness.fragments.workflows.fragment.callRoute(
-        "GET",
-        "/_internal/outbox" as never,
-        { query } as never,
-      );
-      if (
-        typeof response !== "object" ||
-        response === null ||
-        !("type" in response) ||
-        response.type !== "json" ||
-        !("data" in response)
-      ) {
-        throw new Error("SCENARIO_LOFI_OUTBOX_RESPONSE_INVALID");
-      }
-      return new Response(JSON.stringify(response.data));
-    }) as typeof fetch;
+    const response = await typedHarness.fragments.workflows.fragment.callRoute(
+      "GET",
+      "/_internal/outbox" as never,
+      { query },
+    );
+    if (
+      typeof response !== "object" ||
+      response === null ||
+      !("type" in response) ||
+      response.type !== "json" ||
+      !("data" in response)
+    ) {
+      throw new Error("SCENARIO_LOFI_OUTBOX_RESPONSE_INVALID");
+    }
+    return new Response(JSON.stringify(response.data));
+  };
   const lofi = createLofiRuntime({
     endpointName: `workflow-scenario:${scenario.name}`,
     adapter: new InMemoryLofiAdapter({
@@ -3150,13 +3148,13 @@ export async function runScenario<
           const response = await currentRunner.callRoute(
             step.method,
             step.path as Parameters<WorkflowsTestRunner["callRoute"]>[1],
-            step.options as Parameters<WorkflowsTestRunner["callRoute"]>[2],
+            step.options,
           );
           if (step.storeAs) {
             (context.vars as Record<string, unknown>)[step.storeAs] = response;
           }
           if (step.assert) {
-            await step.assert(response as WorkflowScenarioRouteResponse);
+            await step.assert(response);
           }
           break;
         }

@@ -13,7 +13,6 @@ import {
   repoSummarySchema,
   repoWithLinksSchema,
   toExternalId,
-  type RepoLinkId,
 } from "./shared";
 
 export const githubAppRepositoryRoutesFactory = defineRoutes(githubAppFragmentDefinition).create(
@@ -292,7 +291,7 @@ export const githubAppRepositoryRoutesFactory = defineRoutes(githubAppFragmentDe
           await this.handlerTx()
             .mutate(({ forSchema }) => {
               const uow = forSchema(githubAppSchema);
-              uow.delete("repo_link", link.id as RepoLinkId);
+              uow.delete("repo_link", link.id);
               uow.triggerHook("onRepositoryLinkStatusChanged", {
                 linkKey,
                 repositoryId: values.repoId,

@@ -950,6 +950,7 @@ export class TableBuilder<
    * Drop an existing index. Its name can be used again, e.g. to recreate the index on other
    * columns. Only available in `alterTable()`.
    */
+  // oxlint-disable typescript/prefer-return-this-type -- The return type records the builder's new type parameters.
   dropIndex<TIndexName extends string & keyof TIndexes>(
     name: TIndexName,
   ): TableBuilder<TColumns, Omit<TIndexes, TIndexName>> {
@@ -964,8 +965,9 @@ export class TableBuilder<
     this.#indexes = remaining as TIndexes;
     this.#alterations.push({ type: "drop-index", name, unique: index.unique });
 
-    return this as unknown as TableBuilder<TColumns, Omit<TIndexes, TIndexName>>;
+    return this;
   }
+  // oxlint-enable typescript/prefer-return-this-type
 
   /**
    * Create an index on the specified columns.
@@ -1331,7 +1333,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     this.#tables = {
       ...this.#tables,
       [name]: builtTable,
-    } as TTables & Record<TTableName, Table<TColumns, TIndexes>>;
+    };
     this.#tableNames.add(name);
     for (const indexName of indexNames) {
       this.#indexNames.add(indexName);
@@ -1521,6 +1523,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
    * )
    * ```
    */
+  // oxlint-disable typescript/prefer-return-this-type -- The return type records the builder's new type parameters.
   dropTable<TTableName extends string & keyof TTables>(
     tableName: TTableName,
   ): SchemaBuilder<DropTable<TTables, TTableName>> {
@@ -1546,8 +1549,9 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
       this.#indexNames.delete(index.name);
     }
 
-    return this as unknown as SchemaBuilder<DropTable<TTables, TTableName>>;
+    return this;
   }
+  // oxlint-enable typescript/prefer-return-this-type
 
   #resolveTableForeignKeys(tables: Record<string, AnyTable>): void {
     for (const table of Object.values(tables)) {
@@ -1620,7 +1624,7 @@ export class SchemaBuilder<TTables extends Record<string, AnyTable> = {}> {
     const version = this.#version;
     const tables = this.#tables;
 
-    this.#resolveTableForeignKeys(tables as Record<string, AnyTable>);
+    this.#resolveTableForeignKeys(tables);
 
     const schema: Schema<TTables> = {
       name: this.#name,

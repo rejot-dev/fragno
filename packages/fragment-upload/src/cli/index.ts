@@ -34,19 +34,19 @@ export const filesCommand = define({
 });
 
 const uploadsSubCommands: Map<string, Command> = new Map();
-uploadsSubCommands.set("create", uploadsCreateCommand as Command);
-uploadsSubCommands.set("get", uploadsGetCommand as Command);
-uploadsSubCommands.set("abort", uploadsAbortCommand as Command);
-uploadsSubCommands.set("content", uploadsContentCommand as Command);
-uploadsSubCommands.set("transfer", uploadsTransferCommand as Command);
+uploadsSubCommands.set("create", uploadsCreateCommand);
+uploadsSubCommands.set("get", uploadsGetCommand);
+uploadsSubCommands.set("abort", uploadsAbortCommand);
+uploadsSubCommands.set("content", uploadsContentCommand);
+uploadsSubCommands.set("transfer", uploadsTransferCommand);
 
 const filesSubCommands: Map<string, Command> = new Map();
-filesSubCommands.set("upload", filesUploadCommand as Command);
-filesSubCommands.set("list", filesListCommand as Command);
-filesSubCommands.set("get", filesGetCommand as Command);
-filesSubCommands.set("update", filesUpdateCommand as Command);
-filesSubCommands.set("delete", filesDeleteCommand as Command);
-filesSubCommands.set("download", filesDownloadCommand as Command);
+filesSubCommands.set("upload", filesUploadCommand);
+filesSubCommands.set("list", filesListCommand);
+filesSubCommands.set("get", filesGetCommand);
+filesSubCommands.set("update", filesUpdateCommand);
+filesSubCommands.set("delete", filesDeleteCommand);
+filesSubCommands.set("download", filesDownloadCommand);
 
 const printMainHelp = () => {
   console.log("Upload management CLI for Fragno");

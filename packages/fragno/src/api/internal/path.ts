@@ -221,7 +221,7 @@ export function matchPathParams<TPath extends string>(
     }
 
     // Mismatch
-    return {} as ExtractPathParams<TPath>;
+    return {};
   }
 
   // If there are remaining pattern segments
@@ -245,12 +245,12 @@ export function matchPathParams<TPath extends string>(
       continue;
     }
     // Non-parameter remaining segment without corresponding actual segment → mismatch
-    return {} as ExtractPathParams<TPath>;
+    return {};
   }
 
   // If there are remaining actual segments without pattern to match → mismatch
   if (j < actualSegments.length) {
-    return {} as ExtractPathParams<TPath>;
+    return {};
   }
 
   return params as ExtractPathParams<TPath>;

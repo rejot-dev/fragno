@@ -3,10 +3,6 @@ import { useNavigate } from "react-router";
 
 import { workflowsClient } from "./workflows-client";
 
-type WorkflowSummary = {
-  name: string;
-};
-
 export function CreateInstanceForm() {
   const navigate = useNavigate();
   const { useWorkflows, useCreateInstance } = workflowsClient;
@@ -26,7 +22,7 @@ export function CreateInstanceForm() {
 
   const workflows = useMemo(() => {
     const list = workflowsData?.workflows ?? [];
-    return list as WorkflowSummary[];
+    return list;
   }, [workflowsData]);
 
   useEffect(() => {

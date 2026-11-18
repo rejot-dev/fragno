@@ -49,7 +49,7 @@ const getAllRows = async (db: IDBPDatabase): Promise<LofiRow[]> => {
   return rows;
 };
 
-const normalizeSchemas = (value: unknown) => {
+const normalizeSchemas = (value: unknown): LofiSchemaRegistration[] | undefined => {
   if (!value) {
     return undefined;
   }
@@ -58,7 +58,7 @@ const normalizeSchemas = (value: unknown) => {
       if (entry && typeof entry === "object" && "schema" in entry) {
         return entry as LofiSchemaRegistration;
       }
-      return { schema: entry } as LofiSchemaRegistration;
+      return { schema: entry };
     });
   }
   if (value && typeof value === "object" && "schema" in value) {

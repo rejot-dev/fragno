@@ -1526,7 +1526,7 @@ export class TypedUnitOfWork<
             type: "count",
             schema: this.#schema,
             namespace: this.#namespace,
-            table: table as TSchema["tables"][TTableName],
+            table: table,
             indexName: queryTree.useIndex,
             options: {
               useIndex: queryTree.useIndex,
@@ -1537,7 +1537,7 @@ export class TypedUnitOfWork<
             type: "find",
             schema: this.#schema,
             namespace: this.#namespace,
-            table: table as TSchema["tables"][TTableName],
+            table: table,
             indexName: queryTree.useIndex,
             options: {
               useIndex: queryTree.useIndex,
@@ -1589,7 +1589,7 @@ export class TypedUnitOfWork<
             type: "count",
             schema: this.#schema,
             namespace: this.#namespace,
-            table: table as TSchema["tables"][TTableName],
+            table: table,
             indexName: queryTree.useIndex,
             options: {
               useIndex: queryTree.useIndex,
@@ -1600,7 +1600,7 @@ export class TypedUnitOfWork<
             type: "find",
             schema: this.#schema,
             namespace: this.#namespace,
-            table: table as TSchema["tables"][TTableName],
+            table: table,
             indexName: queryTree.useIndex,
             options: {
               useIndex: queryTree.useIndex,
@@ -1668,7 +1668,7 @@ export class TypedUnitOfWork<
       type: "find",
       schema: this.#schema,
       namespace: this.#namespace,
-      table: table as TSchema["tables"][TTableName],
+      table: table,
       indexName: queryTree.useIndex,
       options: {
         useIndex: queryTree.useIndex,

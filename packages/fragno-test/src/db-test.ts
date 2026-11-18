@@ -907,7 +907,7 @@ export class DatabaseFragmentsTestBuilder<
           if (!currentFirstFragment) {
             throw new Error("At least one fragment must be added");
           }
-          return currentFirstFragment.inContext(callback as never) as never;
+          return currentFirstFragment.inContext(callback) as never;
         },
       };
 

@@ -354,9 +354,7 @@ const readCliArgsField = <TValue>(
     return undefined;
   }
 
-  return field.transform
-    ? field.transform(value as Exclude<TValue, undefined>, parsed)
-    : (value as TValue);
+  return field.transform ? field.transform(value as Exclude<TValue, undefined>, parsed) : value;
 };
 
 const standardCliOptionNames = new Set(["help", "print", "format", "json"]);

@@ -66,7 +66,7 @@ export const validateAutomationEventPayload = ({
 
   let validator: Validator;
   try {
-    validator = new Validator(definition.payloadSchema as Schema, "2020-12", false);
+    validator = new Validator(definition.payloadSchema, "2020-12", false);
   } catch (cause) {
     throw new AutomationEventDefinitionValidationError(
       `Invalid automation event payload schema for ${event.source}/${event.eventType}: ${cause instanceof Error ? cause.message : String(cause)}`,

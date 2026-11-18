@@ -55,5 +55,5 @@ function withoutMaxima(schema: z.ZodType): z.ZodType {
       options: schema.options.map((option) => withoutMaxima(option as z.ZodType)),
     });
   }
-  return checks ? schema.clone({ ...def, checks } as typeof schema.def) : schema;
+  return checks ? schema.clone({ ...def, checks }) : schema;
 }

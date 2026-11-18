@@ -32,6 +32,7 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
       this.#object = new PiManagerObject({
         ...createCloudflareBackofficeObjectContext(state, env),
         agent: (config): PiAgent =>
+          // oxlint-disable-next-line typescript/no-unnecessary-type-assertion -- Relating the stub to PiAgent exceeds TypeScript's instantiation depth (TS2589).
           env.PI.get(piAgentDurableObjectId(env, config)) as unknown as PiAgent,
         supportedAvailableModels: async () => await listAvailablePiModels(models),
         classifier: createPiClassifier(env, fetch),

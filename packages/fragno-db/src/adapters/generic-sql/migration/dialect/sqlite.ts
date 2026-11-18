@@ -156,11 +156,13 @@ export class SQLiteSQLGenerator extends SQLGenerator {
             );
           }
 
-          const existingInline = (createOp.metadata as SqliteCreateTableMetadata | undefined)
-            ?.inlineForeignKeys;
+          const existingMetadata: SqliteCreateTableMetadata | undefined = createOp.metadata;
           const metadata: SqliteCreateTableMetadata = {
-            ...createOp.metadata,
-            inlineForeignKeys: [...(existingInline ?? []), ...fkOps.map((fkOp) => fkOp.value)],
+            ...existingMetadata,
+            inlineForeignKeys: [
+              ...(existingMetadata?.inlineForeignKeys ?? []),
+              ...fkOps.map((fkOp) => fkOp.value),
+            ],
           };
           result[createTableIdx] = { ...createOp, metadata };
         }
@@ -218,7 +220,7 @@ export class SQLiteSQLGenerator extends SQLGenerator {
     resolver?: NamingResolver,
   ): CompiledQuery {
     const tableName = this.getTableName(operation.name, resolver);
-    const metadata = operation.metadata as SqliteCreateTableMetadata | undefined;
+    const metadata = operation.metadata;
     return this.compileCreateTableForName(
       tableName,
       operation.name,
@@ -271,7 +273,7 @@ export class SQLiteSQLGenerator extends SQLGenerator {
       }
     }
 
-    const metadata = operation.metadata as SqliteAlterTableMetadata | undefined;
+    const metadata: SqliteAlterTableMetadata | undefined = operation.metadata;
     const recreate = metadata?.recreateTable;
     if (!recreate) {
       throw new Error(errors.SQLiteUpdateColumn);

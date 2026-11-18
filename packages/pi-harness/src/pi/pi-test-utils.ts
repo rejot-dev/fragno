@@ -602,7 +602,7 @@ const decodedHarnessEventFromMutation = (
   if (payloadRecord["kind"] !== "harness-event") {
     return null;
   }
-  return decoders.decode(identity, payloadRecord["event"]) as unknown as Record<string, unknown>;
+  return decoders.decode(identity, payloadRecord["event"]);
 };
 
 export type FauxPiHarnessCheckpointResult = {
@@ -870,11 +870,9 @@ export const buildHarness: (
     },
   });
 
-  const workflowsService = (
-    options.wrapWorkflowsService
-      ? options.wrapWorkflowsService(workflowsHarness.fragment.services)
-      : workflowsHarness.fragment.services
-  ) as WorkflowsFragmentServices;
+  const workflowsService = options.wrapWorkflowsService
+    ? options.wrapWorkflowsService(workflowsHarness.fragment.services)
+    : workflowsHarness.fragment.services;
 
   const fragment = instantiate(piHarnessDefinition)
     .withConfig({ ...config, workflows: options.workflows ?? config.workflows })

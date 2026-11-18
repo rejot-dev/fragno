@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const SUPPORTED_DEPLOYMENT_FORMAT = "esmodule";
+export const SUPPORTED_DEPLOYMENT_FORMAT = "esmodule" as const;
 export const DEFAULT_DEPLOYMENT_ENTRYPOINT = "index.mjs";
 
 export const cloudflareCompatibilityDateSchema = z

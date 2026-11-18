@@ -525,12 +525,7 @@ const findRows = (
       continue;
     }
 
-    const baseOutput = selectRow(
-      row,
-      table,
-      op.options.select as readonly string[] | true | undefined,
-      resolver,
-    );
+    const baseOutput = selectRow(row, table, op.options.select, resolver);
 
     results.push(baseOutput);
 
@@ -702,7 +697,7 @@ const updateRow = (
     throw new VersionConflictError(`Version conflict: row "${externalId}" has changed.`);
   }
 
-  const encoded = encodeValues(op.set as Record<string, unknown>, table, false, {}, resolver);
+  const encoded = encodeValues(op.set, table, false, {}, resolver);
   const resolvedValues = options.enforceConstraints
     ? resolveReferenceSubqueriesOrThrow(namespaceStore, table, encoded, resolver)
     : resolveReferenceSubqueries(namespaceStore, encoded, resolver);

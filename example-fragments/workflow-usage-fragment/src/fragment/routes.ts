@@ -213,7 +213,7 @@ export const workflowUsageRoutesFactory = defineRoutes(workflowUsageFragmentDefi
             })
             .execute();
 
-          const outputs = sessions.map((session) => toSessionOutput(session as SessionRow));
+          const outputs = sessions.map((session) => toSessionOutput(session));
           return json(outputs);
         },
       }),
@@ -279,7 +279,7 @@ export const workflowUsageRoutesFactory = defineRoutes(workflowUsageFragmentDefi
               })
               .execute();
 
-            const session = toSessionOutput(result.sessionRow as SessionRow);
+            const session = toSessionOutput(result.sessionRow);
             const includeHistory = query.get("history") === "true" || query.get("history") === "1";
             return json({
               ...session,

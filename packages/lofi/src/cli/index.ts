@@ -17,9 +17,9 @@ const packageJson = JSON.parse(readFileSync(join(__dirname, "../../package.json"
 const version = packageJson.version as string;
 
 const subCommands: Map<string, Command> = new Map();
-subCommands.set("client", clientCommand as Command);
-subCommands.set("serve", serveCommand as Command);
-subCommands.set("scenario", scenarioCommand as Command);
+subCommands.set("client", clientCommand);
+subCommands.set("serve", serveCommand);
+subCommands.set("scenario", scenarioCommand);
 
 const printMainHelp = () => {
   console.log("Fragno Lofi CLI");

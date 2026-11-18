@@ -757,7 +757,7 @@ export class ClientBuilder<
     input: T | ((...args: TArgs) => T),
   ): FragnoStoreData<T, TArgs> {
     if (typeof input === "function") {
-      return { factory: input as (...args: TArgs) => T, [STORE_SYMBOL]: true };
+      return { factory: input, [STORE_SYMBOL]: true };
     }
 
     return { obj: input, [STORE_SYMBOL]: true };

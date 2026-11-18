@@ -141,7 +141,7 @@ export const userOverviewRoutesFactory = defineRoutes<typeof authFragmentDefinit
           const params = {
             search,
             sortBy,
-            sortOrder: parsed.data.sortOrder as SortOrder,
+            sortOrder: parsed.data.sortOrder,
             pageSize: parsed.data.pageSize,
           };
           const cursor = parseCursor(query.get("cursor"));

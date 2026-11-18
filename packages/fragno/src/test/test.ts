@@ -230,7 +230,7 @@ export function createFragmentForTest<
   TRequestStorage,
   TOptions
 > {
-  const { config, options: fragmentOptions = {} as TOptions, serviceImplementations } = options;
+  const { config, options: fragmentOptions = {}, serviceImplementations } = options;
 
   // Use default mountRoute for testing if not provided
   const fullOptions = {

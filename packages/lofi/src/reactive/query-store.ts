@@ -355,12 +355,12 @@ const executeRetrieve = async (
     operations.map((operation) => {
       const query = runtime.adapter.createQueryEngine(operation.schema, operation.options);
       if (operation.method === "findFirst") {
-        return query.findFirst(operation.table, operation.builderFn as never);
+        return query.findFirst(operation.table, operation.builderFn);
       }
       if (operation.method === "findWithCursor") {
-        return query.findWithCursor(operation.table, operation.builderFn as never);
+        return query.findWithCursor(operation.table, operation.builderFn);
       }
-      return query.find(operation.table, operation.builderFn as never);
+      return query.find(operation.table, operation.builderFn);
     }),
   );
 };
@@ -491,7 +491,7 @@ const createManagedLofiQueryStore = <TRetrieveResult, TData>({
           return;
         }
         try {
-          receiveEphemeralMutation(index, mutation as LofiMutation);
+          receiveEphemeralMutation(index, mutation);
         } catch (error) {
           $store.set({ ...$store.get(), error: normalizeLofiQueryError(error) });
         }

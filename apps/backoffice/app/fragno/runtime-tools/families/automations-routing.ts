@@ -286,7 +286,7 @@ const routerUpdateTool = defineBackofficeRuntimeTool({
           "router.update --id telegram-hello --json '{\"priority\":900}' --format json",
         ],
       },
-      parse: parseRouteUpdate as (args: string[]) => AutomationRouteUpdateInput,
+      parse: parseRouteUpdate,
       outputOptions: outputOptionsWithoutJsonPayload,
       format: (route, options) =>
         !route
@@ -464,7 +464,7 @@ const routerAcceptsUpdateTool = defineBackofficeRuntimeTool({
         ],
         examples: ["router.accepts.update --id member-messages --json '{\"enabled\":false}'"],
       },
-      parse: parseRouteUpdate as (args: string[]) => AutomationForwardAcceptUpdateInput,
+      parse: parseRouteUpdate,
       outputOptions: outputOptionsWithoutJsonPayload,
       format: (accept, options) =>
         !accept

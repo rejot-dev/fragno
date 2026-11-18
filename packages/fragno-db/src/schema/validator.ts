@@ -208,7 +208,7 @@ const validateTableInsertValues = <TTable extends Table>(
     return { issues };
   }
 
-  return { value: output as TableInsertValues<TTable> };
+  return { value: output };
 };
 
 export const createTableStandardSchemaProps = <TTable extends Table>(
@@ -232,6 +232,6 @@ export const createTableValidator = <TTable extends Table>(
       throw new FragnoDbValidationError("Validation failed", result.issues);
     }
 
-    return result.value as TableInsertValues<TTable>;
+    return result.value;
   };
 };

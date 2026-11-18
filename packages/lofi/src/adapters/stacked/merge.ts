@@ -1210,8 +1210,7 @@ export const createStackedQueryEngine = <T extends AnySchema>(options: {
       }
 
       if (plan.kind === "find") {
-        const select =
-          selectOverride ?? (plan.queryTree.select as undefined | true | readonly string[]);
+        const select = selectOverride ?? plan.queryTree.select;
         if (select && select !== true) {
           builder.select(select);
         }

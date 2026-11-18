@@ -312,7 +312,7 @@ export class FragnoOutboxSynchronizer {
       const deliveries = deliveriesByTarget.get(targetKey) ?? [];
       deliveries.push({
         checkpoint: { versionstamp: entry.versionstamp, uowId: entry.uowId },
-        changes: changes as FragnoCollectionChange<FragnoSynchronizedRow>[],
+        changes: changes,
       });
       deliveriesByTarget.set(targetKey, deliveries);
     }

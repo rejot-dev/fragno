@@ -21,10 +21,6 @@ type InstanceSummary = {
   details: { status: InstanceStatus["status"]; error?: { name: string; message: string } };
 };
 
-type WorkflowSummary = {
-  name: string;
-};
-
 type HistoryStep = {
   id: string;
   name: string;
@@ -70,7 +66,7 @@ export function InstancesView() {
 
   const workflows = useMemo(() => {
     const list = workflowsData?.workflows ?? [];
-    return list as WorkflowSummary[];
+    return list;
   }, [workflowsData]);
 
   useEffect(() => {
@@ -395,14 +391,14 @@ function InstanceDetailPanel({
     if (!historyData) {
       return [] as HistoryStep[];
     }
-    return historyData.steps as HistoryStep[];
+    return historyData.steps;
   }, [historyData]);
 
   const events = useMemo(() => {
     if (!historyData) {
       return [] as HistoryEvent[];
     }
-    return historyData.events as HistoryEvent[];
+    return historyData.events;
   }, [historyData]);
 
   const showEventError = Boolean(eventError || sendEventError);

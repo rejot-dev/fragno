@@ -155,5 +155,5 @@ export async function loadConfig(path: string): Promise<Record<string, unknown>>
     },
   });
 
-  return config as Record<string, unknown>;
+  return config;
 }

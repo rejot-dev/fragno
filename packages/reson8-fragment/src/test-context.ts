@@ -44,7 +44,7 @@ export const createReson8TestContext = (configOverrides: Partial<Reson8FragmentC
   const fetchMock = vi.fn<typeof fetch>();
   const config: Reson8FragmentConfig = {
     apiKey: "test-api-key",
-    fetch: fetchMock as typeof fetch,
+    fetch: fetchMock,
     ...configOverrides,
   };
 

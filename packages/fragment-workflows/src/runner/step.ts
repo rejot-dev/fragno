@@ -590,7 +590,7 @@ export class RunnerStep implements WorkflowStep {
         emissionScope.meta.eventTypeCounts.set(type, nextCount);
         const unsubscribeDelivery = emissionScope.onDelivery((event) => {
           if (event.type === type) {
-            return handler(event as WorkflowStepEvent);
+            return handler(event);
           }
         });
         return () => {

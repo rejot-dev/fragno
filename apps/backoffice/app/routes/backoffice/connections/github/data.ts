@@ -206,7 +206,7 @@ export async function fetchGitHubInstallations(
 
     if (response.type === "json") {
       return {
-        installations: response.data as GitHubInstallationSummary[],
+        installations: response.data,
         installationsError: null,
       };
     }
@@ -301,7 +301,7 @@ export async function fetchGitHubPulls(
     });
 
     if (response.type === "json") {
-      const data = response.data as GitHubPullsResponse;
+      const data: GitHubPullsResponse = response.data;
       return {
         pulls: data.pulls ?? [],
         pageInfo: data.pageInfo ?? null,

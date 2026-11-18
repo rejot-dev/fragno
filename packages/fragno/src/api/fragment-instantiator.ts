@@ -828,7 +828,7 @@ export class FragnoInstantiatedFragment<
     };
 
     const requestState = new MutableRequestState({
-      pathParams: pathParams as Record<string, string>,
+      pathParams: pathParams,
       searchParams,
       body,
       headers: requestHeaders,

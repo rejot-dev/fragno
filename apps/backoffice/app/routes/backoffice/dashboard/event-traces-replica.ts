@@ -195,7 +195,7 @@ function readEventTraceList(
   const dispatches = readDispatches(reader, rootIds);
   const runs = readDispatchedRuns(reader, dispatches);
   const events: EventTraceEvent[] = [
-    ...origins.map((origin) => ({ ...origin, subject: null }) as EventTraceEvent),
+    ...origins.map((origin) => ({ ...origin, subject: null })),
     ...(derived as EventRow[]).filter(({ id }) => !listedIds.has(id)).map(withoutBody),
   ];
   return { events, dispatches, runs };

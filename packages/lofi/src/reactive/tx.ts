@@ -95,11 +95,12 @@ type LofiRuntimeTxState = {
   transformFn?: (ctx: LofiRuntimeTxTransformContext<unknown>) => unknown;
 };
 
-const createQueryToken = <TResult>(execute: () => Promise<TResult>): LofiRuntimeTxQuery<TResult> =>
-  ({
-    [lofiRuntimeTxQueryBrand]: true,
-    execute,
-  }) as LofiRuntimeTxQuery<TResult>;
+const createQueryToken = <TResult>(
+  execute: () => Promise<TResult>,
+): LofiRuntimeTxQuery<TResult> => ({
+  [lofiRuntimeTxQueryBrand]: true,
+  execute,
+});
 
 const isQueryToken = (value: unknown): value is LofiRuntimeTxQuery<unknown> =>
   typeof value === "object" &&

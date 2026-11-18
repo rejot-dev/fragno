@@ -18,7 +18,7 @@ export const Route = createFileRoute("/_authenticated/checkout")({
     const param = search["checkoutType"];
     if (param === "subscribe" || param === "cancel") {
       return {
-        checkoutType: param as CheckoutType,
+        checkoutType: param,
       };
     }
     return {
