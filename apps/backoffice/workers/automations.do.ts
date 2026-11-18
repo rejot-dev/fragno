@@ -73,6 +73,14 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
     return await this.#object.seedStarterAutomationRoutes();
   }
 
+  async askProjectsForWiring() {
+    return await this.#object.askProjectsForWiring();
+  }
+
+  async publishProjectWiring() {
+    await this.#object.publishProjectWiring();
+  }
+
   async recordProjectWiring(telling: ProjectWiringTelling) {
     await this.#object.recordProjectWiring(telling);
   }

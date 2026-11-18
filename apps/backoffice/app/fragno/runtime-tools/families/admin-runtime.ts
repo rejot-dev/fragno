@@ -77,7 +77,7 @@ type AdminRuntimeDependencies = {
   otp: AdminOtpCommands | null;
   automationsFor: (
     organization: BackofficeOrganizationContextScope,
-  ) => Pick<AutomationsCommands, "deleteEventsOfType">;
+  ) => Pick<AutomationsCommands, "deleteEventsOfType" | "askProjectsForWiring">;
   /** An owner's usage ledger; null without the Billing binding. */
   billingFor:
     | ((
@@ -261,6 +261,12 @@ export function createAdminRuntime({
     verifyUserEmail: async (input) => await auth.verifyAdminUserEmail(input),
     createOrganization: async (input) => await auth.createAdminOrganization(input),
     listOrganizations: async (input) => await auth.listOrganizations(input),
+    askOrganizationProjectsForWiring: async ({ organizationSlug }) => {
+      const organization = await requireAdminOrganization(auth, organizationSlug);
+      return await automationsFor(
+        backofficeOrganizationContextScope(organization),
+      ).askProjectsForWiring();
+    },
     deleteOrganizationEventsOfType: async ({ organizationSlug, ...pass }) => {
       const organization = await requireAdminOrganization(auth, organizationSlug);
       return await automationsFor(

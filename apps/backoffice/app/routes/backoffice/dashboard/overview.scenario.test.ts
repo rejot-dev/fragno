@@ -1696,6 +1696,67 @@ describe("dashboard", () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
+        name: "Books was wired before projects told their organization",
+        setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
+        steps: ({ when, then }) => [
+          when.project.create({
+            owner: scope,
+            name: "Books",
+            slug: "books",
+            createdByUserId: "owner-1",
+            captureIdAs: "books",
+          }),
+          then.assert("Books routes before projects told their owner", async (ctx) => {
+            // As Books did before this deploy: its owner was never told.
+            const spy = vi
+              .spyOn(AutomationsObject.prototype, "recordProjectWiring")
+              .mockResolvedValue(undefined);
+            await inBooks(
+              ctx,
+              `await router.create({
+                id: "book-receipts",
+                name: "Book receipts",
+                trigger: { kind: "event", source: "shop", eventType: "received" },
+                action: {
+                  kind: "start_workflow",
+                  workflowScriptPath: "/workspace/automations/book-receipt.workflow.js",
+                  instanceIdTemplate: "book-\${event.id}",
+                  authority: { kind: "organization-automation", grants: [] },
+                },
+              });`,
+            );
+            try {
+              await ctx.drain();
+            } finally {
+              spy.mockRestore();
+            }
+            const booksId = `project:org:org-1:${String(ctx.vars.books)}`;
+            assert.deepEqual((await universe(ctx)).planets, [`${booksId} Books: no routes`]);
+          }),
+          then.assert(
+            "an administrator asks its projects, twice, and the organization draws Books",
+            async (ctx) => {
+              const booksId = `project:org:org-1:${String(ctx.vars.books)}`;
+              for (const _ of [1, 2]) {
+                const { result } = await ctx.runCodemode({
+                  scope: { kind: "system" },
+                  code: `async () => admin.orgProjectsPublishWiring({ organizationSlug: "${orgId}" })`,
+                });
+                assert.deepEqual(result, { asked: 1 });
+                await ctx.drain();
+                assert.deepEqual((await universe(ctx)).planets, [
+                  `${booksId} Books: Book receipts`,
+                ]);
+              }
+            },
+          ),
+        ],
+      }),
+    );
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
         name: "Books' ledger connection comes and goes",
         setup: ({ given }) => [given.organization.exists({ id: orgId, name: "Ada Labs" })],
         steps: ({ when, then }) => [

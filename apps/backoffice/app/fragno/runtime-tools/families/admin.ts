@@ -142,6 +142,8 @@ export type AdminRuntime = {
     organizationSlug: string;
     managingOrganizationSlug: string | null;
   }): Promise<OrganizationManagerRecord>;
+  /** Asks each of an organization's active projects to tell it how the project is wired. */
+  askOrganizationProjectsForWiring(input: { organizationSlug: string }): Promise<{ asked: number }>;
   deleteOrganizationEventsOfType(
     input: { organizationSlug: string } & EventDeletionPass,
   ): Promise<{ scanned: number; deleted: number; cursor: string | null }>;
@@ -626,12 +628,48 @@ const clearOrganizationManagerTool = defineBackofficeRuntimeTool({
   },
 });
 
+const publishOrganizationProjectWiringTool = defineBackofficeRuntimeTool({
+  id: "admin.org.projects.publish-wiring",
+  namespace: "admin",
+  name: "orgProjectsPublishWiring",
+  activity: { label: "Ask projects for their wiring", target: (input) => input.organizationSlug },
+  description:
+    "Ask each of an organization's active projects to tell the organization how it is wired, which its Map draws the project from. Projects tell their organization whenever their wiring changes; this tells it for projects that have not changed since. Safe to repeat.",
+  requiredPermissions: [BACKOFFICE_PERMISSION.admin.organizationsManage],
+  inputSchema: z.strictObject({ organizationSlug: z.string().trim().min(1) }),
+  outputSchema: z.strictObject({ asked: z.number().int().nonnegative() }),
+  execute: async (input, context: AdminToolContext) =>
+    await getAdminRuntime(context.runtimes.admin).askOrganizationProjectsForWiring(input),
+  adapters: {
+    bash: {
+      command: "admin.org.projects.publish-wiring",
+      help: {
+        summary:
+          "admin.org.projects.publish-wiring asks an organization's active projects to tell it how they are wired. They tell it in the background, shortly after.",
+        options: [organizationSlugOption],
+        examples: ["admin.org.projects.publish-wiring --org acme"],
+      },
+      parse: defineCliArgsParser("admin.org.projects.publish-wiring", {
+        organizationSlug: { kind: "string", required: true, option: "org" },
+      }),
+      format: (result, options) =>
+        options.format === "json" || options.print
+          ? { data: result }
+          : {
+              data: result,
+              stdout: `Asked ${result.asked} ${result.asked === 1 ? "project" : "projects"} for their wiring.\n`,
+            },
+    },
+  },
+});
+
 export const adminRuntimeTools = [
   createOrganizationTool,
   addOrganizationMemberTool,
   removeOrganizationMemberTool,
   setOrganizationManagerTool,
   clearOrganizationManagerTool,
+  publishOrganizationProjectWiringTool,
   listOrganizationsTool,
   getOrganizationTool,
   listOrganizationMembersTool,

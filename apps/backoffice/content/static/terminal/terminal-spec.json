@@ -491,6 +491,37 @@
     ]
   },
   {
+    "command": "admin.org.projects.publish-wiring",
+    "summary": "admin.org.projects.publish-wiring asks an organization's active projects to tell it how they are wired. They tell it in the background, shortly after.",
+    "options": [
+      {
+        "name": "org",
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Organization slug"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "admin.org.list",
     "summary": "admin.org.list lists every organization.",
     "options": [

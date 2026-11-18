@@ -26,6 +26,13 @@ type AdminCodemodeProvider = {
    */
   orgManagerClear(input: AdminOrgManagerClearInput): Promise<AdminOrgManagerClearOutput>;
   /**
+   * Ask each of an organization's active projects to tell the organization how it is wired, which its Map draws the project from. Projects tell their organization whenever their wiring changes; this tells it for projects that have not changed since. Safe to repeat.
+   * Requires `admin.organizations.manage`.
+   */
+  orgProjectsPublishWiring(
+    input: AdminOrgProjectsPublishWiringInput,
+  ): Promise<AdminOrgProjectsPublishWiringOutput>;
+  /**
    * List every organization, using cursor pagination.
    * Requires `admin.organizations.manage`.
    */
@@ -477,6 +484,12 @@ type AdminOrgManagerClearInput = {
 type AdminOrgManagerClearOutput = {
   organizationId: string;
   managingOrganizationId: string | null;
+};
+type AdminOrgProjectsPublishWiringInput = {
+  organizationSlug: string;
+};
+type AdminOrgProjectsPublishWiringOutput = {
+  asked: number;
 };
 type AdminOrgListInput = DirectoryPageInput;
 type AdminOrgListOutput = OrganizationPage;

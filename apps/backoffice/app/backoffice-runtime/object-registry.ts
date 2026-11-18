@@ -789,6 +789,10 @@ export type AutomationsCommands = {
   /** Trusted authority lookup; it must not require the permission it is being used to resolve. */
   getRouteForAuthority(input: { id: string }): ReturnType<AutomationRouteAuthorityLookup>;
   seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
+  /** Asks each of an owner's active projects to tell it how the project is wired. */
+  askProjectsForWiring(): Promise<{ asked: number }>;
+  /** Has a project tell its owner how it is wired now. */
+  publishProjectWiring(): Promise<void>;
   /** Keeps how one of an owner's projects told it it is wired, unless it holds a later read. */
   recordProjectWiring(telling: ProjectWiringTelling): Promise<void>;
   /** Only System's Automations onboard people; starting again finds the onboarding started. */

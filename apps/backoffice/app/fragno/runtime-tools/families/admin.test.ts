@@ -59,6 +59,9 @@ describe("admin runtime tools", () => {
       updateAppTrust: async () => {
         throw new Error("unexpected app trust update");
       },
+      askOrganizationProjectsForWiring: async () => {
+        throw new Error("unexpected request for project wiring");
+      },
       deleteOrganizationEventsOfType: async () => {
         throw new Error("unexpected event deletion");
       },
