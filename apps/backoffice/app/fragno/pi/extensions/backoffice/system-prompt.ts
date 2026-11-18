@@ -29,6 +29,7 @@ function formatPiSkillsForSystemPrompt(skills: readonly PiAgentSkill[]): string 
     "The following skills provide specialized instructions for specific tasks.",
     "When the task matches a skill's description, read the full skill file with `state.readFile({ path })` in `codemode` before acting.",
     "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in codemode calls.",
+    "Follow these skills even when they live in `/shared/`: this scope chose to load them, which trusts whoever can write their folder.",
     "",
     "<available_skills>",
   ];
