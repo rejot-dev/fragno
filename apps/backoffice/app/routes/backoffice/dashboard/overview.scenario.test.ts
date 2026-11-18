@@ -1,4 +1,4 @@
-import { afterAll, assert, beforeAll, describe, expect, test, vi } from "vitest";
+import { afterAll, assert, beforeAll, describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import os from "node:os";
@@ -790,6 +790,14 @@ async function readReplicaReads(ctx: BackofficeScenarioContext) {
 
 describe("dashboard", () => {
   test("separates what needs a person from how automations and events are doing", async () => {
+    // The morning schedule's catch-up is stamped at its first missed 07:00. Starting at noon keeps
+    // that before the Map's window, which starting between 07:00 and 08:00 would not.
+    const noon = new Date();
+    noon.setUTCHours(12, 0, 0, 0);
+    vi.useFakeTimers({ toFake: ["Date"], now: noon, shouldAdvanceTime: true });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
     const start = Date.now();
     const twoDaysLater = start + 2 * DAY_MS;
     const createRun = (name: string, instanceId: string, at: number) =>
