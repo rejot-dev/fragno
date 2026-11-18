@@ -9,6 +9,7 @@ import {
   ChatComposer,
   ChatComposerButton,
   ChatComposerModel,
+  ChatComposerNotice,
   ChatComposerQueueItem,
   ChatComposerSplit,
   ChatComposerStatus,
@@ -201,18 +202,17 @@ export function SampleConversation({
 /** A composer without a chat runtime: a plain form whose submit does nothing. */
 export function SampleComposer({
   running,
-  disabledReason,
+  disabled,
   queue,
 }: {
   running: boolean;
-  disabledReason: string | null;
+  /** Why the reader cannot write, and whether the agent's stopped queue waits to resume. */
+  disabled: { reason: string; paused: boolean } | null;
   queue: readonly { label: string; text: string }[];
 }) {
-  const [action, setAction] = useState<ComposerAction>("message");
-  const disabled = disabledReason !== null;
   return (
     <ChatComposer
-      disabled={disabled}
+      disabled={disabled !== null}
       onSubmit={(event) => {
         event.preventDefault();
       }}
@@ -222,16 +222,28 @@ export function SampleComposer({
           {item.text}
         </ChatComposerQueueItem>
       ))}
+      {disabled === null ? (
+        <SampleComposerInput running={running} />
+      ) : (
+        <SampleComposerNotice running={running} disabled={disabled} />
+      )}
+    </ChatComposer>
+  );
+}
+
+/** What a reader writes with, and the action the composer sends it as. */
+function SampleComposerInput({ running }: { running: boolean }) {
+  const [action, setAction] = useState<ComposerAction>("message");
+  return (
+    <>
       <textarea
         rows={1}
-        disabled={disabled}
         placeholder={
-          disabledReason ??
-          (action === "compact"
+          action === "compact"
             ? "Tell Pi what the compaction summary must preserve"
             : running
               ? "Steer Pi; it reads this after the current step"
-              : "Message Pi")
+              : "Message Pi"
         }
         className={chatComposerInputClassName}
       />
@@ -240,13 +252,7 @@ export function SampleComposer({
           <>
             <ChatComposerModel>Claude Opus 5.5</ChatComposerModel>
             <ContextUsageMeter tokens={42_000} contextWindow={200_000} />
-            {disabledReason === null ? (
-              running ? (
-                <ChatComposerStatus working>Working…</ChatComposerStatus>
-              ) : null
-            ) : (
-              <ChatComposerStatus working={false}>{disabledReason}</ChatComposerStatus>
-            )}
+            {running ? <ChatComposerStatus working>Working…</ChatComposerStatus> : null}
           </>
         }
         end={
@@ -261,7 +267,7 @@ export function SampleComposer({
             </>
           ) : (
             <ChatComposerSplit>
-              <ChatComposerButton tone="accent" joined type="submit" disabled={disabled}>
+              <ChatComposerButton tone="accent" joined type="submit">
                 {action === "compact" ? "Compact" : "Send"}
               </ChatComposerButton>
               <RadioMenu
@@ -269,7 +275,7 @@ export function SampleComposer({
                 heading="Composer action"
                 trigger={{ kind: "accent" }}
                 side="top"
-                disabled={disabled}
+                disabled={false}
                 value={action}
                 options={COMPOSER_ACTIONS}
                 onValueChange={setAction}
@@ -278,6 +284,37 @@ export function SampleComposer({
           )
         }
       />
-    </ChatComposer>
+    </>
+  );
+}
+
+/** Why the reader cannot write, with the controls over the agent's queue that remain. */
+function SampleComposerNotice({
+  running,
+  disabled,
+}: {
+  running: boolean;
+  disabled: { reason: string; paused: boolean };
+}) {
+  return (
+    <>
+      <ChatComposerNotice>{disabled.reason}</ChatComposerNotice>
+      {running || disabled.paused ? (
+        <ChatComposerToolbar
+          start={running ? <ChatComposerStatus working>Working…</ChatComposerStatus> : null}
+          end={
+            running ? (
+              <ChatComposerButton tone="neutral" joined={false}>
+                Stop
+              </ChatComposerButton>
+            ) : (
+              <ChatComposerButton tone="accent" joined={false}>
+                Resume
+              </ChatComposerButton>
+            )
+          }
+        />
+      ) : null}
+    </>
   );
 }

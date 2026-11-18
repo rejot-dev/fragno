@@ -56,7 +56,7 @@ export function Conversation() {
                 <ChatTurnSpacer />
               </ChatColumn>
               <ChatViewportFooter alert={null}>
-                <SampleComposer running={false} disabledReason={null} queue={[]} />
+                <SampleComposer running={false} disabled={null} queue={[]} />
               </ChatViewportFooter>
             </ChatViewport>
           </ChatThread>
@@ -100,7 +100,7 @@ export function Running() {
             <ChatScrollToLatestButton onClick={() => undefined} />
             <SampleComposer
               running
-              disabledReason={null}
+              disabled={null}
               queue={[
                 { label: "Steering", text: "Skip Acme, they paid this morning." },
                 { label: "Up next", text: "Then summarize this week's revenue." },
@@ -139,7 +139,7 @@ export function Failed() {
           <ChatViewportFooter alert="Write a message before sending.">
             <SampleComposer
               running={false}
-              disabledReason="This agent is read-only for you"
+              disabled={{ reason: "This agent is read-only for you", paused: false }}
               queue={[]}
             />
           </ChatViewportFooter>
