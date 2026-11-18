@@ -100,6 +100,7 @@ export default [
         route("agents", "routes/backoffice/agents/agents.tsx", [
           index("routes/backoffice/agents/agents-index.tsx"),
           route(":agentName", "routes/backoffice/agents/agent-detail.tsx"),
+          route(":agentName/profile", "routes/backoffice/agents/agent-profile.tsx"),
           route(":agentName/view-socket", "routes/backoffice/agents/agent-view-socket.ts"),
           route(":agentName/drawer", "routes/backoffice/agents/agent-drawer-data.ts"),
           route(":agentName/entries", "routes/backoffice/agents/agent-entries.ts"),

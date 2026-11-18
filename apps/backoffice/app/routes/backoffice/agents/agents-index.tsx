@@ -1,14 +1,18 @@
-import { SparkBars } from "@fragno-private/design-system/data/spark-bars";
+import {
+  AgentRosterList,
+  AgentRosterSection,
+  type AgentRosterEntry,
+} from "@fragno-private/design-system/agents/agent-roster";
 import { PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import { BackofficeStatusLight } from "@fragno-private/design-system/feedback/status-light";
 import { BackofficeSystemState } from "@fragno-private/design-system/feedback/system-state";
-import { Link, useOutletContext } from "react-router";
+import { useOutletContext } from "react-router";
 
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 
 import { describePiAgentActivity, piAgentQueueStatus, type PiAgentListing } from "./agent-activity";
-import { AgentPermissions } from "./agent-permissions";
+import { describePiAgentSteward } from "./agent-labels";
 import type { PiAgentsOutletContext } from "./agent-types";
 import { AgentsHeader } from "./agents-header";
 
@@ -17,112 +21,116 @@ export default function BackofficePiAgentsIndex() {
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <AgentsHeader
-        basePath={basePath}
-        directory={directory}
-        selectedAgentName={null}
-        options={null}
-      />
+      <AgentsHeader basePath={basePath} directory={directory} selected={null} options={null} />
       <div className="backoffice-scroll min-h-0 flex-1 overflow-y-auto">
         <div className={`${backofficePageBodyClassName} flex flex-col`}>
           <h2 className="text-2xl font-semibold tracking-[-0.025em] text-balance text-[var(--bo-fg)]">
             Agents
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-            Each agent keeps one ongoing conversation with its own instructions and permissions.
-            Marketplace packages install agents, and the assistant can define new ones for you.
+            Write to an assistant. Agents in other groups take their work from assistants,
+            workflows, and each other. Marketplace packages install agents, and the assistant can
+            define new ones for you.
           </p>
 
-          {directory.status === "ready" ? (
-            <ul className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {directory.agents.map((agent) => (
-                <li key={agent.definition.agentName} className="flex">
-                  <AgentCard
-                    agent={agent}
-                    now={directory.now}
-                    to={`${basePath}/${encodeURIComponent(agent.definition.agentName)}`}
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="mt-8">
-              {directory.status === "loading" ? (
-                <PaneSpinner label="Synchronizing agents" />
-              ) : (
-                <BackofficeSystemState
-                  tone="error"
-                  label="Unavailable"
-                  title="Agents could not be synchronized."
-                  description={directory.message}
-                />
-              )}
-            </div>
-          )}
+          <div className="mt-10">
+            {directory.status === "ready" ? (
+              <AgentRoster agents={directory.agents} now={directory.now} basePath={basePath} />
+            ) : directory.status === "loading" ? (
+              <PaneSpinner label="Synchronizing agents" />
+            ) : (
+              <BackofficeSystemState
+                tone="error"
+                label="Unavailable"
+                title="Agents could not be synchronized."
+                description={directory.message}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function AgentCard({ agent, now, to }: { agent: PiAgentListing; now: number; to: string }) {
+/** Assistants first, then each category by name. */
+function AgentRoster({
+  agents,
+  now,
+  basePath,
+}: {
+  agents: readonly PiAgentListing[];
+  now: number;
+  basePath: string;
+}) {
+  const assistants: AgentRosterEntry[] = [];
+  const categories = new Map<string, AgentRosterEntry[]>();
+  for (const agent of agents) {
+    const { category } = agent.definition;
+    const entry = rosterEntry(agent, now, basePath);
+    if (category === null) {
+      assistants.push(entry);
+    } else {
+      categories.set(category, [...(categories.get(category) ?? []), entry]);
+    }
+  }
+  return (
+    <>
+      <AgentRosterSection
+        title="Assistants"
+        description="Write to these in Leyway."
+        count={assistants.length}
+      >
+        <AgentRosterList entries={assistants} />
+      </AgentRosterSection>
+      {[...categories]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([category, entries]) => (
+          <AgentRosterSection
+            key={category}
+            title={category}
+            description="Prompted by agents and workflows."
+            count={entries.length}
+          >
+            <AgentRosterList entries={entries} />
+          </AgentRosterSection>
+        ))}
+    </>
+  );
+}
+
+function rosterEntry(agent: PiAgentListing, now: number, basePath: string): AgentRosterEntry {
   const { definition } = agent;
+  const to = `${basePath}/${encodeURIComponent(definition.agentName)}`;
   const queue = piAgentQueueStatus(agent);
   const turns = agent.turnsPerBucket.reduce((total, count) => total + count, 0);
-  return (
-    <Link
-      to={to}
-      className="group flex min-h-56 w-full flex-col bg-[var(--bo-panel)] p-6 shadow-[inset_0_0_0_1px_var(--bo-border)] transition-[scale,background-color,box-shadow] duration-150 ease-out hover:bg-[var(--bo-panel-2)] hover:shadow-[inset_0_0_0_1px_var(--bo-accent)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:outline-none active:scale-[0.98]"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <h3 className="min-w-0 text-xl font-semibold tracking-[-0.02em] text-balance text-[var(--bo-fg)] transition-colors duration-150 ease-out group-hover:text-[var(--bo-accent-fg)]">
-          {formatPiAgentName(definition.agentName)}
-        </h3>
-        <span className="flex shrink-0 flex-col items-end gap-1.5">
-          {agent.answering ? (
-            <BackofficeStatusLight tone="live" role="status">
-              Answering
-            </BackofficeStatusLight>
-          ) : agent.paused ? (
-            <BackofficeStatusLight tone="waiting" role="status">
-              Stopped
-            </BackofficeStatusLight>
-          ) : null}
-          {queue ? (
-            <BackofficeStatusLight tone={queue.tone} dot={false} role="status">
-              {queue.label}
-            </BackofficeStatusLight>
-          ) : null}
-        </span>
-      </div>
-      <p className="mt-3 line-clamp-4 flex-1 text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-        {definition.description}
-      </p>
-      <AgentPermissions
-        permissions={definition.permissions}
-        className="mt-4 line-clamp-2 font-mono text-xs break-words"
-      />
-      <div className="mt-4 flex items-center justify-between gap-3 text-xs">
-        <span className="min-w-0 truncate text-[var(--bo-muted)]">
-          {describePiAgentActivity(agent, now)}
-        </span>
-        {agent.latestAt !== null ? (
-          <span className="flex shrink-0 items-center gap-2 text-[var(--bo-muted-2)] tabular-nums">
-            <SparkBars
-              values={agent.turnsPerBucket}
-              ariaLabel={`${formatPiAgentName(definition.agentName)} turns over the last 24 hours`}
-            />
-            {turns} {turns === 1 ? "turn" : "turns"} · 24h
-          </span>
+  const status =
+    agent.answering || agent.paused || queue ? (
+      <>
+        {agent.answering ? (
+          <BackofficeStatusLight tone="live" role="status">
+            Answering
+          </BackofficeStatusLight>
+        ) : agent.paused ? (
+          <BackofficeStatusLight tone="waiting" role="status">
+            Stopped
+          </BackofficeStatusLight>
         ) : null}
-      </div>
-      <p className="mt-6 border-t border-[color:var(--bo-border)] pt-4 text-xs text-[var(--bo-muted-2)]">
-        {definition.steward.kind === "backoffice"
-          ? "Built in"
-          : definition.steward.kind === "package"
-            ? `Installed by package ${definition.steward.listingId}`
-            : "Defined in this workspace"}
-      </p>
-    </Link>
-  );
+        {queue ? (
+          <BackofficeStatusLight tone={queue.tone} dot={false} role="status">
+            {queue.label}
+          </BackofficeStatusLight>
+        ) : null}
+      </>
+    ) : null;
+  return {
+    agentName: definition.agentName,
+    displayName: formatPiAgentName(definition.agentName),
+    description: definition.description,
+    to,
+    maintainer: describePiAgentSteward(definition.steward),
+    status,
+    activity: describePiAgentActivity(agent, now),
+    turns: turns === 0 ? null : { perBucket: agent.turnsPerBucket, total: turns },
+  };
 }

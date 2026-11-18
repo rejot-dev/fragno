@@ -59,6 +59,7 @@ import type { ConversationView } from "@earendil-works/pi-durable";
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import type { ComposerDraft } from "@/components/backoffice/ask-agent";
 import { FileScopeProvider } from "@/components/backoffice/file-scope";
+import { isPiAssistant } from "@/fragno/pi/agent/agent-definitions";
 import { estimatePiContextTokens } from "@/fragno/pi/agent/context-usage";
 import type {
   PiAgentCompactionStatus,
@@ -68,6 +69,7 @@ import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 
 import { agentAttachmentTarget, useAgentAttachments } from "./agent-attachments";
 import type { action as compactionsAction } from "./agent-compactions";
+import { describePiAgentWithCategory } from "./agent-labels";
 import type { action as messagesAction } from "./agent-messages";
 import {
   AgentModelMenu,
@@ -655,7 +657,7 @@ function AgentConversationThread({
                 sending: attachments.sending,
               }
         }
-        disabledReason={null}
+        disabledReason={isPiAssistant(agent) ? null : describePiAgentWithCategory(agent.agentName)}
         error={attachments?.refusal ?? attachmentError ?? messageError ?? actionError}
         queueLabels={conversationQueue.labels}
         // Stopping and resuming the agent concern its subagents too.
