@@ -1,13 +1,6 @@
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-
-const { DurableObject, RpcTarget, WorkerEntrypoint } = vi.hoisted(() => ({
-  DurableObject: class {},
-  RpcTarget: class {},
-  WorkerEntrypoint: class {},
-}));
-vi.mock("cloudflare:workers", () => ({ DurableObject, RpcTarget, WorkerEntrypoint }));
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
