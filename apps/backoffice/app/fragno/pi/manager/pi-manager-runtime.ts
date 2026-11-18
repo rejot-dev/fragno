@@ -8,6 +8,7 @@ import {
   type PiManagerAgent,
   type PiAgentHistoryPage,
   type PiAgentMessagePage,
+  type PiAgentSkillListing,
   type PiAgentSkillReload,
   type PiManagerAgentDirectory,
   type PiPromptReceipt,
@@ -16,6 +17,7 @@ import {
   type piPromptWhenPausedSchema,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
+import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { z } from "zod";
@@ -40,7 +42,10 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import { installedAppIdOfActors } from "@/fragno/app-installations/authority";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import type { PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
-import { reloadBackofficePiSkills } from "@/fragno/pi/extensions/backoffice/skills";
+import {
+  listBackofficePiSkills,
+  reloadBackofficePiSkills,
+} from "@/fragno/pi/extensions/backoffice/skills";
 
 import { backfillPiAgentEvents, type PiAgentBackfilledEvent } from "./pi-agent-change-events";
 
@@ -131,6 +136,8 @@ export type PiManagerRuntime = {
   deleteAgent(input: PiManagerAgentInput): Promise<void>;
   /** Offers the agent its skills as the files are now, from its next turn; see `pi.agent.reload`. */
   reloadAgent(input: PiManagerAgentInput): Promise<PiAgentSkillReload>;
+  /** Every skill the agent finds as the files are now; see `pi.agent.skills`. */
+  listAgentSkills(input: PiManagerAgentInput): Promise<PiAgentSkillListing>;
   submitPrompt(input: PiManagerSubmitPromptInput): Promise<PiPromptReceipt>;
   /** Where a submitted prompt stands; null when the agent never received it. */
   getPrompt(input: PiManagerPromptInput): Promise<PiPromptStatus | null>;
@@ -227,6 +234,14 @@ export function createPiManagerRuntime(input: {
     return `/agents/${encodeURIComponent(piAgentNameSchema.parse(agentName.trim()))}`;
   }
 
+  function callerState() {
+    return createRuntimeStateBackend({
+      runtime: input.runtime,
+      kernel: input.kernel,
+      execution: input.execution,
+    });
+  }
+
   return {
     async listAgents() {
       return await request<PiManagerAgentDirectory>("/agents", null);
@@ -264,16 +279,19 @@ export function createPiManagerRuntime(input: {
     // The manager has no files, so the caller reads the skills with its own authority.
     async reloadAgent({ agentName }) {
       const agent = await request<PiManagerAgent>(agentRoute(agentName), null);
-      const reload = await reloadBackofficePiSkills(
-        createRuntimeStateBackend({
-          runtime: input.runtime,
-          kernel: input.kernel,
-          execution: input.execution,
-        }),
-        agent.skills,
-      );
+      const reload = await reloadBackofficePiSkills(callerState(), agent);
       await request(`${agentRoute(agentName)}/skills`, { skills: reload.skills }, "PUT");
       return reload;
+    },
+    async listAgentSkills({ agentName }) {
+      const agent = await request<PiManagerAgent>(agentRoute(agentName), null);
+      // The listing reads workspace and shared files as the caller, so it needs their file access,
+      // which the profile page's loader, calling this directly, would otherwise skip.
+      return await input.kernel.invoke({
+        execution: input.execution,
+        operation: BACKOFFICE_PERMISSION.upload.read,
+        execute: async () => await listBackofficePiSkills(callerState(), agent),
+      });
     },
     async submitPrompt({
       agentName,

@@ -1,5 +1,6 @@
 import type {
   PiAgentConfig,
+  PiAgentDefinition,
   PiAgentSkill,
   PiAgentSkillReload,
 } from "@fragno-dev/backoffice-api/v0/pi";
@@ -48,6 +49,8 @@ export type BackofficeAgentTurnContext = {
   instructions: string;
   /** The skills the agent's last reload found, as read when the turn was admitted. */
   skills: PiAgentSkill[] | null;
+  /** Where the agent finds its skills, as read when the turn was admitted. */
+  skillSelection: Pick<PiAgentDefinition, "skills" | "disabledSkills">;
   /** Null when the runtime has no Worker Loader; codemode-backed extensions fail closed. */
   codemode: CodemodeRunner | null;
   /** Checks live permissions; persisted actors carry identity, not grants. */
@@ -176,6 +179,10 @@ export function createBackofficeAgentContext(input: {
       execution,
       instructions: turn.agent.instructions,
       skills: turn.agent.skills,
+      skillSelection: {
+        skills: turn.agent.skillFolders,
+        disabledSkills: turn.agent.disabledSkills,
+      },
       codemode: runtime.codemodeExecutor
         ? codemodeRunnerFor(
             kernel.scoped("CODEMODE", config.scope, runtime.objects.codemode).commands,

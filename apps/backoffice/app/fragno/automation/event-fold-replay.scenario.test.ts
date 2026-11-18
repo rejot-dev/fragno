@@ -58,6 +58,8 @@ function agentEvent(
     permissions: [],
     instructions: "Review carefully.",
     skills: [],
+    disabledSkills: [],
+    category: null,
     steward: { kind: "members" },
   };
   return event(id, "pi", eventType, second, {

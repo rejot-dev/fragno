@@ -4484,6 +4484,38 @@
     ]
   },
   {
+    "command": "pi.agent.skills",
+    "summary": "pi.agent.skills lists every skill an agent finds, where it found it, and whether it is offered.",
+    "options": [
+      {
+        "name": "agent",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "agent-name",
+        "description": "Agent name"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "pi.prompt.submit",
     "summary": "pi.prompt.submit admits durable agent work without waiting for completion.",
     "options": [

@@ -234,6 +234,8 @@ function piEvent(
     permissions: [],
     instructions: "Review carefully.",
     skills: [],
+    disabledSkills: [],
+    category: null,
   };
   // The queue each turn's settling left, below the revisions of the queue events that follow.
   const queue = { revision: 0, running: 0, queued: 0, steering: 0 };
@@ -897,7 +899,7 @@ describe("dashboard", () => {
                   "unavailable: mcp#agensi",
                 ],
                 conversations: ["approve-refund: no conversation"],
-                agents: ["assistant (General-purpose Back): no activity"],
+                agents: ["assistant (General-purpose Leyw): no activity"],
                 schedules: [
                   `Morning digest: Every day at 07:00 UTC at ${nextMorning(twoDaysLater)}`,
                   `New year digest: Once at ${SCHEDULED_AT}`,
@@ -1664,7 +1666,7 @@ describe("dashboard", () => {
             "built-in agents come first, each agent's latest definition and event stand, and only the last day's turns count",
             async (ctx) => {
               assert.deepEqual((await readDashboard(ctx)).agents, [
-                "assistant (General-purpose Back): queued, 2 turns in 1 hours; 1 queued · paused",
+                "assistant (General-purpose Leyw): queued, 2 turns in 1 hours; 1 queued · paused",
                 "reviewer (Approves changes.): updated, 0 turns in 0 hours",
               ]);
             },

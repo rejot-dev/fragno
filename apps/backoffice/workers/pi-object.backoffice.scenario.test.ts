@@ -1119,6 +1119,8 @@ test("an agent's backfill records agent events as the agent's turn, keeping its 
                   permissions: ["*"],
                   instructions: "",
                   skills: [],
+                  disabledSkills: [],
+                  category: null,
                 },
               },
               actors: execution.actors,
@@ -1391,6 +1393,76 @@ test("an agent's definition narrows every turn and an edited definition applies 
           );
         }),
         then.store.entry({ orgId: "org-1", key: "reader/result", value: "written" }),
+      ],
+    }),
+  );
+});
+
+test("an agent that may not read files cannot list the skills it would find there", async () => {
+  const execution = createBackofficeServiceExecution({
+    scope: { kind: "org", orgId: "org-1", jurisdiction: null },
+    service: { type: "automation", id: "skill-listing-authority" },
+  });
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "durable Pi skill listing authority",
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        ...scriptedAgents([
+          fauxAssistantMessage(
+            [
+              fauxToolCall("codemode", {
+                code: `async () => await pi.listAgentSkills({ agentName: "assistant" })`,
+              }),
+            ],
+            { stopReason: "toolUse" },
+          ),
+          (context) => {
+            const result = toolResults(context).at(-1);
+            assert.equal(result?.isError, true, JSON.stringify(result));
+            expect(JSON.stringify(result)).toContain("is not granted upload.read");
+            expect(JSON.stringify(result)).not.toContain("Partner fees");
+            return fauxAssistantMessage("The watcher may not list skills.");
+          },
+        ]),
+      },
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      setup: ({ given }) => [
+        given.organization.exists({ id: "org-1" }),
+        given.codemode.writeFile({
+          orgId: "org-1",
+          path: "/workspace/skills/fees/SKILL.md",
+          content: [
+            "---",
+            "name: fees",
+            "description: Partner fees, for partners only",
+            "disable-model-invocation: true",
+            "---",
+            "",
+            "Charge partners less.",
+          ].join("\n"),
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert(
+          "a watcher granted only pi.read is refused the listing",
+          async ({ runtime }) => {
+            const defined = await request(runtime, execution, "/agents", {
+              agentName: "watcher",
+              description: "Watches agents.",
+              model: null,
+              permissions: ["pi.read"],
+              instructions: "",
+            });
+            assert.equal(defined.status, 201, await defined.clone().text());
+            await prompt(runtime, execution, { agentName: "watcher", requestId: "listing" });
+            await runtime.drain();
+            expect(JSON.stringify((await view(runtime, execution, "watcher")).entries)).toContain(
+              "The watcher may not list skills.",
+            );
+          },
+        ),
       ],
     }),
   );

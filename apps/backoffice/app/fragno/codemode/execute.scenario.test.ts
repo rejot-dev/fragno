@@ -52,6 +52,8 @@ function executionTool(ctx: BackofficeScenarioContext, execution: BackofficeExec
           instructions: "",
           permissions: [...allBackofficePermissionRequirements],
           skills: null,
+          skillFolders: [],
+          disabledSkills: [],
         },
       }),
     }),

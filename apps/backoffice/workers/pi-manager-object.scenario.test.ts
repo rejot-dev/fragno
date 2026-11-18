@@ -1138,6 +1138,8 @@ test("agent changes and the turns a stop cuts off are recorded as pi events of w
     permissions: ["*"],
     instructions: "Review carefully.",
     skills: [],
+    disabledSkills: [],
+    category: null,
   };
   const { agentName: _agentName, ...fields } = reviewer;
   const revised = { ...reviewer, description: "Reviews and approves changes." };
@@ -1525,6 +1527,8 @@ test("a backfill records what the agent events lack, once, so they list the defi
     permissions: ["*"],
     instructions: "Work carefully.",
     skills: [],
+    disabledSkills: [],
+    category: null,
   });
 
   /** An event that disagrees with the directory, as one recorded before the agent changed. */

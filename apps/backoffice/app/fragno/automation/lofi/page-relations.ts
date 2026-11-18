@@ -468,7 +468,7 @@ const QUERY_RELATIONS: (PageRelation & { sql: string })[] = [
   {
     name: "agents",
     description:
-      "Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. activity is what the agent does or did last, such as Answered. definition is JSON holding description, permissions, and steward.",
+      "Pi agents, built-in ones included, as their events record them now; latestKind and latestAt are null for an agent with no recorded activity. activity is what the agent does or did last, such as Answered. definition is JSON holding description, permissions, steward, and category, which is null or absent for an assistant.",
     sql: agentsSql(),
     columns: [
       { name: "agentName", type: "text", nullable: false },

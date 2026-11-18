@@ -56,6 +56,11 @@ type PiCodemodeProvider = {
    */
   reloadAgent(input: PiReloadAgentInput): Promise<PiReloadAgentOutput>;
   /**
+   * List the skills an agent finds as the files are now, by the agent's name: every SKILL.md under /static/skills, the skills folders of /workspace, and the folders its definition names, each with where it was found and whether it is offered, disabled by the definition's `disabledSkills`, hidden, or replaced by a skill of the same name. The agent sees changes from its next reload. Lists only for a caller who may read files.
+   * Requires `pi.read` and `upload.read`.
+   */
+  listAgentSkills(input: PiListAgentSkillsInput): Promise<PiListAgentSkillsOutput>;
+  /**
    * Durably queue a prompt for an agent, or steer its running turn, and return a receipt saying which. A request ID still queued is not queued twice. The prompt's outcome is recorded as a pi turn.completed, turn.failed, turn.aborted, or queue.dropped event, each with the request ID in its subject. With `subagent`, the prompt runs in a new conversation of the agent instead of its own, and ends with it. With `notifyWhenDone`, that event is also delivered to the calling agent as a notification; read the answer with `pi.getPrompt` in the prompted agent's scope. The turn runs with the caller's current permissions, narrowed by the agent's definition. Usage belongs to the agent scope's root owner, independently of the caller or their active organization.
    * Requires `pi.modify`.
    */
@@ -106,6 +111,10 @@ type PiListAgentsOutput = {
     instructions: string;
     /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
     skills: string[];
+    /** Locations of /static/skills SKILL.md files the agent is not offered, such as /static/skills/<name>/SKILL.md, from its next turn. It can still read them. */
+    disabledSkills: string[];
+    /** The group the agent is listed under, such as Finance. Null makes it an assistant, which people write to in Leyway; people reach an agent of any other category only through agents and workflows, with `pi.submitPrompt`. */
+    category: string | null;
     agentName: string;
     steward: PiAgentSteward;
   }[];
@@ -121,6 +130,10 @@ type PiGetAgentOutput = {
   instructions: string;
   /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
   skills: string[];
+  /** Locations of /static/skills SKILL.md files the agent is not offered, such as /static/skills/<name>/SKILL.md, from its next turn. It can still read them. */
+  disabledSkills: string[];
+  /** The group the agent is listed under, such as Finance. Null makes it an assistant, which people write to in Leyway; people reach an agent of any other category only through agents and workflows, with `pi.submitPrompt`. */
+  category: string | null;
   agentName: string;
   steward: PiAgentSteward;
   provisioned: boolean;
@@ -348,6 +361,10 @@ type PiCreateAgentInput = {
   instructions: string;
   /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
   skills?: string[];
+  /** Locations of /static/skills SKILL.md files the agent is not offered, such as /static/skills/<name>/SKILL.md, from its next turn. It can still read them. */
+  disabledSkills?: string[];
+  /** The group the agent is listed under, such as Finance. Null makes it an assistant, which people write to in Leyway; people reach an agent of any other category only through agents and workflows, with `pi.submitPrompt`. */
+  category?: string | null;
   agentName: string;
 };
 type PiCreateAgentOutput = {
@@ -358,6 +375,10 @@ type PiCreateAgentOutput = {
   instructions: string;
   /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
   skills: string[];
+  /** Locations of /static/skills SKILL.md files the agent is not offered, such as /static/skills/<name>/SKILL.md, from its next turn. It can still read them. */
+  disabledSkills: string[];
+  /** The group the agent is listed under, such as Finance. Null makes it an assistant, which people write to in Leyway; people reach an agent of any other category only through agents and workflows, with `pi.submitPrompt`. */
+  category: string | null;
   agentName: string;
   steward: PiAgentSteward;
   /** The model the agent runs, as provider/modelId: its `model`, or the preferred available model when `model` is null. Null when that model is not available. */
@@ -371,6 +392,10 @@ type PiUpdateAgentInput = {
   instructions: string;
   /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
   skills?: string[];
+  /** Locations of /static/skills SKILL.md files the agent is not offered, such as /static/skills/<name>/SKILL.md, from its next turn. It can still read them. */
+  disabledSkills?: string[];
+  /** The group the agent is listed under, such as Finance. Null makes it an assistant, which people write to in Leyway; people reach an agent of any other category only through agents and workflows, with `pi.submitPrompt`. */
+  category?: string | null;
   agentName: string;
 };
 type PiUpdateAgentOutput = {
@@ -381,6 +406,10 @@ type PiUpdateAgentOutput = {
   instructions: string;
   /** Folders, such as /shared/<name>/skills, whose SKILL.md files the agent is offered from its next turn, and after each `pi.agent.reload`, besides /static/skills and the skills folders of /workspace. Naming a folder trusts everyone who can write to it. */
   skills: string[];
+  /** Locations of /static/skills SKILL.md files the agent is not offered, such as /static/skills/<name>/SKILL.md, from its next turn. It can still read them. */
+  disabledSkills: string[];
+  /** The group the agent is listed under, such as Finance. Null makes it an assistant, which people write to in Leyway; people reach an agent of any other category only through agents and workflows, with `pi.submitPrompt`. */
+  category: string | null;
   agentName: string;
   steward: PiAgentSteward;
 };
@@ -398,6 +427,38 @@ type PiReloadAgentOutput = {
     name: string;
     description: string;
     location: string;
+  }[];
+  problems: {
+    path: string;
+    message: string;
+  }[];
+};
+type PiListAgentSkillsInput = {
+  agentName: string;
+};
+type PiListAgentSkillsOutput = {
+  skills: {
+    name: string;
+    description: string;
+    location: string;
+    /** Where the agent found the skill: /static/skills, a skills folder of /workspace, or a folder its definition's `skills` names. */
+    source:
+      | {
+          kind: "static" | "workspace";
+        }
+      | {
+          kind: "folder";
+          folder: string;
+        };
+    /** `offered` from the agent's next reload; `disabled` by its definition's `disabledSkills`; `hidden` by `disable-model-invocation: true`; `replaced` by the skill of the same name at `by`. Only offered skills are listed to the agent, though it can read any of them. */
+    status:
+      | {
+          kind: "offered" | "disabled" | "hidden";
+        }
+      | {
+          kind: "replaced";
+          by: string;
+        };
   }[];
   problems: {
     path: string;

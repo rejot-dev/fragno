@@ -152,6 +152,8 @@ function seededTurn(config: PiAgentConfig): PiAgentTurn {
       instructions: "",
       permissions: [...allBackofficePermissionRequirements],
       skills: null,
+      skillFolders: [],
+      disabledSkills: [],
     },
   };
 }

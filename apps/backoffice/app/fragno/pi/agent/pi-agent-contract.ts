@@ -186,6 +186,10 @@ export const piAgentTurnSchema = z.object({
     // which the turn reloads before it starts; it stays null only when that reload fails, or for
     // turns recorded before reloads, which find skills as they are when the prompt is prepared.
     skills: z.array(piAgentSkillSchema).nullable().default(null),
+    // The definition's skill folders and disabled built-in skills, which a turn whose reload failed
+    // finds its skills with. Turns recorded before these were kept named none.
+    skillFolders: z.array(z.string()).default([]),
+    disabledSkills: z.array(z.string()).default([]),
   }),
 });
 export type PiAgentTurn = z.infer<typeof piAgentTurnSchema>;
