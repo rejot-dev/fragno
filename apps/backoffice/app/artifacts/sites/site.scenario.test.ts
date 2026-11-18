@@ -1043,8 +1043,9 @@ export default {
 };
 `;
 
-const MENU_MODULE =
-  'export const readMenu = async () => await state.readJson({ path: "/workspace/data/menu.json" });';
+// It takes the tool while it loads, as modules programs import may.
+const MENU_MODULE = `const readJson = state.readJson;
+export const readMenu = async () => await readJson({ path: "/workspace/data/menu.json" });`;
 
 async function readFiles(ctx: BackofficeScenarioContext, path: string): Promise<unknown> {
   return await (await request(ctx, FILES_SITE_PATH, path)).json();

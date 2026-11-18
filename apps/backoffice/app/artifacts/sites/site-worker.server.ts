@@ -16,45 +16,38 @@ import { SITE_TOOL_NAMESPACES } from "./site-tools.server";
  * build instead of replacing a working one. The site gets `env.DATA` as `sql` and `fire`, which
  * read and fire through the binding the host gave it; a request that reads while the scope's data
  * is still being copied is answered 503. Each namespace of the tools sites call, such as `state`,
- * is a global as in programs, so saved modules a site imports call tools as they do there. It
- * lives under `.build`, where no saved module can take its path.
+ * is a global as in programs, so saved modules a site imports call tools as they do there. The
+ * entry and the module that sets those globals live under `.build`, where no saved module can take
+ * their paths.
  */
 export function siteWorkerEntry(
   sitePath: string,
   worker: "worker.js" | "files only",
-): { path: string; source: string } {
-  // Only the names reach the guest; the tools stay with the host, which `env.DATA` calls.
-  const providers = SITE_TOOL_NAMESPACES.map((name) => ({ name, fns: {} }));
+): { path: string; modules: Record<string, string> } {
+  const directory = siteBuildDirectory(sitePath);
+  const tools = `${directory}/tools.js`;
+  const path = `${directory}/entry.js`;
   const site =
     worker === "worker.js"
       ? `import site from ${JSON.stringify(`${sitePath}/worker.js`)};`
       : "const site = { fetch: (request, env) => env.ASSETS.fetch(request) };";
   return {
-    path: `${siteBuildDirectory(sitePath)}/entry.js`,
-    source: `import { WorkerEntrypoint } from "cloudflare:workers";
+    path,
+    modules: {
+      [tools]: siteToolsSource(),
+      // Imports run in order: the globals are set before worker.js and the modules it imports load.
+      [path]: `import { WorkerEntrypoint } from "cloudflare:workers";
+import { useSiteTools } from ${JSON.stringify(tools)};
 ${site}
 
 const siteData = ${siteDataClientSource};
-
-// Codemode's guest API, over dispatchers that call each namespace's tools through the binding.
-const siteTools = (binding) => {
-  const __dispatchers = Object.fromEntries(
-    ${JSON.stringify(SITE_TOOL_NAMESPACES)}.map((namespace) => [
-      namespace,
-      { call: (tool, args) => binding.call(namespace, tool, args) },
-    ]),
-  );
-${CODEMODE_GUEST_API_SOURCE}
-${createCodemodeProviderProxySource(providers)}
-${createCodemodeProviderGlobalsSource(providers)}
-};
 
 const UNAVAILABLE = "This site is unavailable while its data is copied. Try again in a moment.";
 
 export default class Site extends WorkerEntrypoint {
   async fetch(request) {
     // Every request of this Worker calls tools as the one builder, so they share the globals.
-    if (this.env.DATA) siteTools(this.env.DATA);
+    if (this.env.DATA) useSiteTools(this.env.DATA);
     const data = this.env.DATA ? siteData(this.env.DATA) : null;
     const env = data ? { ...this.env, DATA: data.data } : this.env;
     let response;
@@ -82,7 +75,41 @@ export default class Site extends WorkerEntrypoint {
   }
 }
 `,
+    },
   };
+}
+
+/**
+ * Codemode's guest API, whose dispatchers call each namespace's tools through the binding of the
+ * Worker's requests. Modules take tool functions while they load, as in programs, but call them
+ * only once a request has given the binding.
+ */
+function siteToolsSource(): string {
+  // Only the names reach the guest; the tools stay with the host, which `env.DATA` calls.
+  const providers = SITE_TOOL_NAMESPACES.map((name) => ({ name, fns: {} }));
+  return `let binding = null;
+
+export function useSiteTools(next) {
+  binding = next;
+}
+
+const __dispatchers = Object.fromEntries(
+  ${JSON.stringify(SITE_TOOL_NAMESPACES)}.map((namespace) => [
+    namespace,
+    {
+      call: async (tool, args) => {
+        if (binding === null) {
+          throw new Error(\`\${namespace}.\${tool} can only be called while the site answers a request.\`);
+        }
+        return await binding.call(namespace, tool, args);
+      },
+    },
+  ]),
+);
+${CODEMODE_GUEST_API_SOURCE}
+${createCodemodeProviderProxySource(providers)}
+${createCodemodeProviderGlobalsSource(providers)}
+`;
 }
 
 /**

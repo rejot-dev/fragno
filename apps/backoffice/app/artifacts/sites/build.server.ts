@@ -292,7 +292,7 @@ async function readSiteWorkerSource(
   const entry = `${sitePath}/worker.js`;
   if ((await state.stat(entry))?.type !== "file") {
     const main = siteWorkerEntry(sitePath, "files only");
-    return { kind: "files only", entry: main.path, modules: { [main.path]: main.source } };
+    return { kind: "files only", entry: main.path, modules: main.modules };
   }
   try {
     // Package imports are left for the compiler, which installs those `site.json` lists.
@@ -304,7 +304,7 @@ async function readSiteWorkerSource(
     return {
       kind: "worker.js",
       entry: main.path,
-      modules: { ...modules, [main.path]: main.source },
+      modules: { ...modules, ...main.modules },
     };
   } catch (error) {
     if (!(error instanceof SavedModuleImportError)) {
