@@ -200,6 +200,14 @@ test("an organization out of allowance cannot start model work until an administ
           await ctx.drain();
           expect(ctx.fakes.workersAi?.runs).toHaveLength(1);
         }),
+        then.assert("the administrator reads the organization's effective limits", async (ctx) => {
+          const result = await (
+            await administratorTerminal(ctx)
+          ).exec("admin.usage-limits.get --org ada-labs");
+          expect(result.exitCode, result.stderr).toBe(0);
+          expect(result.stdout).toContain("ai.cost.total: $0.000013 used of $0.00001 (custom)");
+          expect(result.stdout).toContain("email.sent: 0 emails used of 100 emails (default)");
+        }),
         then.assert(
           "once the limit is used up, neither a run nor a web search reaches Cloudflare",
           async (ctx) => {
@@ -262,6 +270,31 @@ test("an organization out of allowance cannot start model work until an administ
             ),
           });
         }),
+        then.assert(
+          "the administrator reads the personal account's limits as JSON",
+          async (ctx) => {
+            const result = await (
+              await administratorTerminal(ctx)
+            ).exec(`admin.usage-limits.get --user ${ctx.vars.graceId} --format json`);
+            expect(result.exitCode, result.stderr).toBe(0);
+            expect(JSON.parse(result.stdout)).toMatchObject({
+              period: expect.stringMatching(/^\d{4}-\d{2}$/u),
+              limits: expect.arrayContaining([
+                expect.objectContaining({
+                  meter: "ai.cost.total",
+                  limit: { kind: "limited", quantity: "0" },
+                  setting: "custom",
+                }),
+                expect.objectContaining({
+                  meter: "email.sent",
+                  limit: { kind: "limited", quantity: "100" },
+                  setting: "default",
+                  used: "0",
+                }),
+              ]),
+            });
+          },
+        ),
         then.assert(
           "a message sent before the limit was reached still gets its receipt",
           async (ctx) => {

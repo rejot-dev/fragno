@@ -19,6 +19,7 @@ import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
 
 import type { AdminAccessCode, AdminRuntime } from "./admin";
+import type { AdminUsageLimitOwner } from "./admin-usage-limits";
 import { compileIntegrationActionSchema } from "./integrations/integration-action-json-schema";
 
 /**
@@ -82,7 +83,7 @@ type AdminRuntimeDependencies = {
   billingFor:
     | ((
         owner: BackofficeRootOwner<BackofficeScopeIdNames>,
-      ) => Pick<BillingCommands, "setUsageLimit">)
+      ) => Pick<BillingCommands, "getUsageLimits" | "setUsageLimit">)
     | null;
   /** Gives a person a new inbound address; null without the inbound email domain. */
   replaceInboundEmailAddress:
@@ -143,6 +144,19 @@ export function createAdminRuntime({
       );
     }
     return { otp, publicBaseUrl };
+  }
+
+  async function requireBillingFor(owner: AdminUsageLimitOwner) {
+    if (!billingFor) {
+      throw new Error("Admin usage limits require the BILLING binding.");
+    }
+    const ownerScope =
+      owner.kind === "org"
+        ? backofficeOrganizationContextScope(
+            await requireAdminOrganization(auth, owner.organizationSlug),
+          )
+        : await requireAdminUserScope(auth, owner.userId);
+    return billingFor(ownerScope);
   }
 
   return {
@@ -293,18 +307,9 @@ export function createAdminRuntime({
         ...input,
         organizationId: await requireAdminOrganizationId(auth, organizationSlug),
       }),
-    setUsageLimit: async ({ owner, ...limit }) => {
-      if (!billingFor) {
-        throw new Error("Admin usage limits require the BILLING binding.");
-      }
-      const ownerScope =
-        owner.kind === "org"
-          ? backofficeOrganizationContextScope(
-              await requireAdminOrganization(auth, owner.organizationSlug),
-            )
-          : await requireAdminUserScope(auth, owner.userId);
-      return await billingFor(ownerScope).setUsageLimit(limit);
-    },
+    getUsageLimits: async ({ owner }) => await (await requireBillingFor(owner)).getUsageLimits(),
+    setUsageLimit: async ({ owner, ...limit }) =>
+      await (await requireBillingFor(owner)).setUsageLimit(limit),
     replaceInboundEmailAddress: async ({ userId }) => {
       if (!replaceInboundEmailAddress) {
         throw new Error(

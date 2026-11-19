@@ -8,6 +8,7 @@ import {
   usageLimitedMeterSchema,
   type UsageLimits,
 } from "@/fragno/billing/usage-limits";
+import type { AutomationCommandOutputOptions } from "@/fragno/runtime-tools/automation-types";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import { defineBackofficeRuntimeTool, type BackofficeToolContext } from "../runtime-tools";
@@ -20,30 +21,38 @@ export type AdminUsageLimitOwner =
   | { kind: "org"; organizationSlug: string }
   | { kind: "user"; userId: string };
 
-const setUsageLimitInputSchema = z
+const usageLimitOwnerInputSchema = z
   .strictObject({
     organizationSlug: z.string().trim().min(1).optional(),
     userId: z.string().trim().min(1).optional(),
+  })
+  .refine(
+    ({ organizationSlug, userId }) => (organizationSlug === undefined) !== (userId === undefined),
+    { message: "Name exactly one of --org and --user." },
+  );
+
+function selectUsageLimitOwner({
+  organizationSlug,
+  userId,
+}: z.output<typeof usageLimitOwnerInputSchema>): AdminUsageLimitOwner {
+  return organizationSlug === undefined
+    ? { kind: "user", userId: userId! }
+    : { kind: "org", organizationSlug };
+}
+
+const setUsageLimitInputSchema = usageLimitOwnerInputSchema
+  .safeExtend({
     meter: usageLimitedMeterSchema,
     limit: z.string().trim().min(1),
   })
-  .transform(({ organizationSlug, userId, meter, limit }, context) => {
-    if ((organizationSlug === undefined) === (userId === undefined)) {
-      context.addIssue({ code: "custom", message: "Name exactly one of --org and --user." });
-      return z.NEVER;
-    }
-    let setting;
+  .transform(({ meter, limit, ...owner }, context) => {
     try {
-      setting = parseUsageLimitSetting(meter, limit);
+      const setting = parseUsageLimitSetting(meter, limit);
+      return { owner: selectUsageLimitOwner(owner), meter, setting };
     } catch (error) {
       context.addIssue({ code: "custom", message: (error as Error).message, path: ["limit"] });
       return z.NEVER;
     }
-    const owner: AdminUsageLimitOwner =
-      organizationSlug === undefined
-        ? { kind: "user", userId: userId! }
-        : { kind: "org", organizationSlug };
-    return { owner, meter, setting };
   });
 
 const usageLimitSchema = z.discriminatedUnion("kind", [
@@ -74,6 +83,75 @@ function formatUsageLimitsText({ period, limits }: UsageLimits): string {
   ].join("\n");
 }
 
+function formatUsageLimits(result: UsageLimits, options: AutomationCommandOutputOptions) {
+  return options.format === "json" || options.print
+    ? { data: result }
+    : { data: result, stdout: `${formatUsageLimitsText(result)}\n` };
+}
+
+const usageLimitPermissions = [
+  BACKOFFICE_PERMISSION.admin.organizationsManage,
+  BACKOFFICE_PERMISSION.admin.usersManage,
+] as const;
+
+const usageLimitOwnerOptions = [
+  {
+    name: "org",
+    valueRequired: true,
+    valueName: "slug",
+    description: "Slug of the organization, or use --user",
+  },
+  {
+    name: "user",
+    valueRequired: true,
+    valueName: "id",
+    description: "ID of the user whose personal account is limited, or use --org",
+  },
+];
+
+const usageLimitOwnerArgs = {
+  organizationSlug: { kind: "string", option: "org" },
+  userId: { kind: "string", option: "user" },
+} as const;
+
+const getUsageLimitsTool = defineBackofficeRuntimeTool({
+  id: "admin.usage-limits.get",
+  namespace: "admin",
+  name: "usageLimitsGet",
+  activity: {
+    label: "Read usage limits",
+    target: (owner) => (owner.kind === "org" ? owner.organizationSlug : owner.userId),
+  },
+  description:
+    "Read an organization's or a user's effective usage limits, current usage, and default or custom settings for the current UTC month.",
+  requiredPermissions: usageLimitPermissions,
+  inputSchema: usageLimitOwnerInputSchema.transform(selectUsageLimitOwner),
+  outputSchema: usageLimitsSchema,
+  execute: async (owner, context: AdminUsageLimitsToolContext) => {
+    const admin = context.runtimes.admin;
+    if (!admin) {
+      throw new Error("Admin runtime is not available in this execution context.");
+    }
+    return await admin.getUsageLimits({ owner });
+  },
+  adapters: {
+    bash: {
+      command: "admin.usage-limits.get",
+      help: {
+        summary:
+          "admin.usage-limits.get reads an organization's or a user's limits and usage for the current UTC month.",
+        options: usageLimitOwnerOptions,
+        examples: [
+          "admin.usage-limits.get --org acme",
+          "admin.usage-limits.get --user user_123 --format json",
+        ],
+      },
+      parse: defineCliArgsParser("admin.usage-limits.get", usageLimitOwnerArgs),
+      format: formatUsageLimits,
+    },
+  },
+});
+
 const setUsageLimitTool = defineBackofficeRuntimeTool({
   id: "admin.usage-limits.set",
   namespace: "admin",
@@ -85,10 +163,7 @@ const setUsageLimitTool = defineBackofficeRuntimeTool({
   },
   description:
     "Set an organization's or a user's monthly limit on a metered resource: ai.cost.total, the cost of models and Workers AI in USD, or email.sent, the emails a person sends from their own address. Once the owner's usage this UTC month reaches it, new agent prompts and model calls, or new emails, are refused; work already running finishes. `default` restores the deployment's limit.",
-  requiredPermissions: [
-    BACKOFFICE_PERMISSION.admin.organizationsManage,
-    BACKOFFICE_PERMISSION.admin.usersManage,
-  ],
+  requiredPermissions: usageLimitPermissions,
   inputSchema: setUsageLimitInputSchema,
   outputSchema: usageLimitsSchema,
   execute: async (input, context: AdminUsageLimitsToolContext) => {
@@ -105,18 +180,7 @@ const setUsageLimitTool = defineBackofficeRuntimeTool({
         summary:
           "admin.usage-limits.set sets an organization's or a user's monthly limit on ai.cost.total (USD) or email.sent (emails).",
         options: [
-          {
-            name: "org",
-            valueRequired: true,
-            valueName: "slug",
-            description: "Slug of the organization, or use --user",
-          },
-          {
-            name: "user",
-            valueRequired: true,
-            valueName: "id",
-            description: "ID of the user whose personal account is limited, or use --org",
-          },
+          ...usageLimitOwnerOptions,
           {
             name: "meter",
             required: true,
@@ -140,17 +204,13 @@ const setUsageLimitTool = defineBackofficeRuntimeTool({
         ],
       },
       parse: defineCliArgsParser("admin.usage-limits.set", {
-        organizationSlug: { kind: "string", option: "org" },
-        userId: { kind: "string", option: "user" },
+        ...usageLimitOwnerArgs,
         meter: { kind: "string", required: true },
         limit: { kind: "string", required: true },
       }),
-      format: (result, options) =>
-        options.format === "json" || options.print
-          ? { data: result }
-          : { data: result, stdout: `${formatUsageLimitsText(result)}\n` },
+      format: formatUsageLimits,
     },
   },
 });
 
-export const adminUsageLimitsRuntimeTools = [setUsageLimitTool] as const;
+export const adminUsageLimitsRuntimeTools = [getUsageLimitsTool, setUsageLimitTool] as const;

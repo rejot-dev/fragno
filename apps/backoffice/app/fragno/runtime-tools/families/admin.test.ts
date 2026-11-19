@@ -62,6 +62,9 @@ describe("admin runtime tools", () => {
       deleteOrganizationEventsOfType: async () => {
         throw new Error("unexpected event deletion");
       },
+      getUsageLimits: async () => {
+        throw new Error("unexpected usage limit read");
+      },
       setUsageLimit: async () => {
         throw new Error("unexpected usage limit change");
       },
