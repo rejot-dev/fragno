@@ -1318,6 +1318,18 @@ const SITE_BUILDER = {
   role: "assistant",
 } as const;
 
+/** Decides as the scenario does, with the agent granted only `grants`, which may hold more. */
+function agentGrants(
+  ctx: BackofficeScenarioContext,
+  grants: readonly BackofficePermissionRequirement[] = LINK_GRANTS,
+): BackofficeAuthorityResolver {
+  return withBackofficeActorCapabilityGrants({
+    resolver: ctx.runtime.services.authorityResolver,
+    actor: SITE_BUILDER,
+    grants,
+  });
+}
+
 /** Calls an `artifacts` tool as an agent granted only `grants`, which may hold more. */
 async function callAsAgent(
   ctx: BackofficeScenarioContext,
@@ -1325,16 +1337,11 @@ async function callAsAgent(
   tool: string,
   input: Record<string, unknown>,
 ): Promise<unknown> {
-  const actor = SITE_BUILDER;
   const system = createBackofficeSystemExecution(scope);
-  const execution = { ...system, actors: { ...system.actors, delegation: [actor] } };
+  const execution = { ...system, actors: { ...system.actors, delegation: [SITE_BUILDER] } };
   const kernel = new BackofficeKernel({
     ...ctx.runtime.services,
-    authorityResolver: withBackofficeActorCapabilityGrants({
-      resolver: ctx.runtime.services.authorityResolver,
-      actor,
-      grants,
-    }),
+    authorityResolver: agentGrants(ctx, grants),
   });
   const context = createBackofficeToolContext(
     createRouteBackedRuntimeContext({
@@ -1411,7 +1418,7 @@ export default { fetch() { return new Response(); } };`,
           },
         ),
         then.assert(
-          "an agent with only workspace grants cannot request a site or read its logs",
+          "an agent with only workspace grants cannot request a site, link it, or read its logs",
           async (ctx) => {
             assert.equal((await buildSite(ctx, DATA_SITE_PATH)).status, "built");
             const workspaceOnly = [
@@ -1421,6 +1428,7 @@ export default { fetch() { return new Response(); } };`,
             for (const [tool, input] of [
               ["requestSite", { path: DATA_SITE_PATH, url: "/keys" }],
               ["siteLogs", { path: DATA_SITE_PATH }],
+              ["createSiteLink", { path: DATA_SITE_PATH }],
             ] as const) {
               await expect(callAsAgent(ctx, workspaceOnly, tool, input)).rejects.toThrow(
                 /not granted workflow\.read/u,
@@ -1693,23 +1701,34 @@ async function signedIn(
   viewer: SiteViewer = VIEWER,
   authority = authorityOf(viewer),
 ) {
-  const nonce = "nonce-of-this-browser-1234";
-  const ticket = await signSiteTicket(
-    { secret: runtime.siteSecret(), origin, now: Date.now() },
-    { viewer, authority },
-    await siteNonceHash(nonce),
-  );
-  const response = await hostRequest(runtime, `${origin}/__ley/sign-in`, {
-    method: "POST",
-    headers: { cookie: `__Host-ley-sign-in=${nonce}` },
-    body: new URLSearchParams({ ticket, next: "/tools/shop.site/" }),
-  });
+  const response = await signIn(runtime, origin, "", viewer, authority);
   assert.equal(response.status, 303);
   const session = response.headers
     .getSetCookie()
     .find((cookie) => cookie.startsWith("__Host-ley-session="));
   assert(session);
   return session.split(";")[0];
+}
+
+/** Posts Backoffice's ticket for `viewer` to the host of `origin`, from a browser with `cookie`. */
+async function signIn(
+  runtime: BackofficeRuntimeServices,
+  origin: string,
+  cookie: string,
+  viewer: SiteViewer = VIEWER,
+  authority = authorityOf(viewer),
+) {
+  const nonce = "nonce-of-this-browser-1234";
+  const ticket = await signSiteTicket(
+    { secret: runtime.siteSecret(), origin, now: Date.now() },
+    { viewer, authority },
+    await siteNonceHash(nonce),
+  );
+  return await hostRequest(runtime, `${origin}/__ley/sign-in`, {
+    method: "POST",
+    headers: { cookie: [`__Host-ley-sign-in=${nonce}`, cookie].filter(Boolean).join("; ") },
+    body: new URLSearchParams({ ticket, next: "/tools/shop.site/" }),
+  });
 }
 
 test("a scope's sites are served at its own subdomain, to viewers Backoffice signed in", async () => {
@@ -2067,7 +2086,8 @@ test("a scope's sites are served at its own subdomain, to viewers Backoffice sig
               await status(`${publicOrigin}/__ley/sign-in`, { method: "POST", body: "" }),
               404,
             );
-            assert.equal(await status(`${publicOrigin}/__ley/sign-out`), 404);
+            // It signs out a link's visit, which a public site's link opens there.
+            assert.equal(await status(`${publicOrigin}/__ley/sign-out`), 200);
 
             await writeFile(ctx, settings, JSON.stringify({ public: "yes" }));
             const invalid = await buildSite(ctx, SHOP_SITE_PATH);
@@ -2404,6 +2424,289 @@ test("a site's Worker fires events that only routes acting on their own authorit
             });
             assert.deepInclude(await buildSite(ctx, EVENTS_SITE_PATH), { firesEvents: true });
             assert.hasAllKeys(await fired(ctx, "/order?sku=again", VIEWER), ["eventId"]);
+          },
+        ),
+      ],
+    }),
+  );
+});
+
+/** What an agent needs to link a site: to request it. */
+const LINK_GRANTS = [BACKOFFICE_PERMISSION.upload.read, ...ARTIFACT_SITE_DATA_PERMISSIONS];
+
+type SiteLinkResult = { url: string; link: string; expiresAt: string };
+
+/** What the shop's `/whoami` answers: who the host told its Worker views the site. */
+type WhoAmI = { id: string | null; email: string | null };
+
+/** Opens `url` in a browser holding `cookie`, as the host decides with `resolver`. */
+async function open(
+  runtime: BackofficeRuntimeServices,
+  url: string,
+  resolver: BackofficeAuthorityResolver,
+  cookie = "",
+) {
+  return await hostRequest(runtime, url, { headers: { cookie }, resolver });
+}
+
+/** Opens a site link in a new browser: where it leads, and the cookie the browser keeps. */
+async function follow(
+  runtime: BackofficeRuntimeServices,
+  link: SiteLinkResult,
+  resolver: BackofficeAuthorityResolver,
+) {
+  const opened = await open(runtime, link.url, resolver);
+  assert.equal(opened.status, 303);
+  const visit = /^(__Host-ley-visit=[^;]+);/u.exec(opened.headers.get("set-cookie") ?? "")?.[1];
+  assert(visit);
+  return { location: opened.headers.get("location") ?? "", cookie: visit, opened };
+}
+
+test("a site link opens a private site in any browser, and the site's logs tell its visits apart", async () => {
+  let origin = "";
+  const link = async (ctx: BackofficeScenarioContext, input: Record<string, unknown>) =>
+    (await callAsAgent(ctx, LINK_GRANTS, "createSiteLink", input)) as SiteLinkResult;
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      objects: allLocalObjects,
+      env: {
+        SITES_ENABLED: "true",
+        SITES_DOMAIN: "ley.run",
+        DOCS_PUBLIC_BASE_URL: "https://backoffice.example/",
+        siteStorage: { buckets, fetch: r2.fetch },
+      },
+      name: "site links",
+      setup: ({ given }) => [
+        given.organization.exists({ id: orgId }),
+        given.codemode.writeFile({
+          orgId,
+          path: `${SHOP_SITE_PATH}/worker.js`,
+          content: SHOP_WORKER,
+        }),
+        given.codemode.writeFile({
+          orgId,
+          path: `${EVENTS_SITE_PATH}/worker.js`,
+          content: EVENTS_WORKER,
+        }),
+      ],
+      steps: ({ then }) => [
+        then.assert(
+          "a link opens its page in a browser that never signed in, as the viewer it names",
+          async (ctx) => {
+            const built = await buildSite(ctx, SHOP_SITE_PATH);
+            assert(built.status === "built" && built.url !== null);
+            origin = new URL(built.url).origin;
+            assert.equal((await buildSite(ctx, EVENTS_SITE_PATH)).status, "built");
+
+            const shop = await link(ctx, {
+              path: SHOP_SITE_PATH,
+              url: "/whoami?city=東京",
+              viewer: VIEWER,
+            });
+            assert.match(shop.url, new RegExp(`^${origin}/__ley/link\\?token=[\\w.-]+$`, "u"));
+            assert.closeTo(Date.parse(shop.expiresAt) - Date.now(), 10 * 60 * 1000, 5000);
+
+            const runtime = ctx.runtime.services;
+            const { location, cookie, opened } = await follow(runtime, shop, agentGrants(ctx));
+            assert.equal(location, `${origin}/tools/shop.site/whoami?city=%E6%9D%B1%E4%BA%AC`);
+            assert.match(
+              opened.headers.get("set-cookie") ?? "",
+              // Without Max-Age, so it outlives its link until the browser closes.
+              /^__Host-ley-visit=[\w.-]+; Path=\/; Secure; HttpOnly; SameSite=Lax$/u,
+            );
+            // The page's requests carry the link's token nowhere else.
+            assert.equal(opened.headers.get("referrer-policy"), "no-referrer");
+            const page = await open(runtime, location, agentGrants(ctx), cookie);
+            assert.equal(page.status, 200);
+            // The Worker sees neither the visit nor the host's other cookies.
+            assert.deepEqual(await page.json(), {
+              id: VIEWER.id,
+              email: VIEWER.email,
+              ley: ["ley-viewer-email", "ley-viewer-id"],
+              cookie: null,
+              method: "GET",
+            });
+          },
+        ),
+        then.assert(
+          "each opening is a visit, whose requests and kept events the site's logs show apart",
+          async (ctx) => {
+            const runtime = ctx.runtime.services;
+            const orders = await link(ctx, { path: EVENTS_SITE_PATH, url: "/order?sku=linked" });
+            const visits = [];
+            for (const browser of [1, 2]) {
+              const { location, cookie } = await follow(runtime, orders, agentGrants(ctx));
+              const page = await open(runtime, location, agentGrants(ctx), cookie);
+              // What a visit's page fires reaches no automation.
+              assert.deepEqual(await page.json(), { eventId: null }, `browser ${browser}`);
+              visits.push(cookie);
+            }
+            // Another link's visits show only in its own logs.
+            const other = await link(ctx, { path: EVENTS_SITE_PATH, url: "/order?sku=other" });
+            const elsewhere = await follow(runtime, other, agentGrants(ctx));
+            await open(runtime, elsewhere.location, agentGrants(ctx), elsewhere.cookie);
+
+            const logs = (await callAsAgent(ctx, LINK_GRANTS, "siteLogs", {
+              path: EVENTS_SITE_PATH,
+              link: orders.link,
+            })) as {
+              entries: { visit: string | null; path: string | null; status: number | null }[];
+              events: { visit: string; type: string; payload: unknown; viewer: string | null }[];
+            };
+            const [first, second] = logs.entries.map(({ visit }) => visit);
+            assert(first && second && first !== second);
+            assert.deepEqual(
+              logs.entries.map(({ path, status }) => ({ path, status })),
+              [
+                { path: "/order?sku=linked", status: 200 },
+                { path: "/order?sku=linked", status: 200 },
+              ],
+            );
+            assert.deepEqual(
+              logs.events.map(({ visit, type, payload, viewer }) => ({
+                visit,
+                type,
+                payload,
+                viewer,
+              })),
+              [first, second].map((visit) => ({
+                visit,
+                type: "order.placed",
+                payload: { sku: "linked", at: new Date(0).toISOString() },
+                viewer: null,
+              })),
+            );
+          },
+        ),
+        then.assert(
+          "a link's visit opens no other site, and nothing once it expires",
+          async (ctx) => {
+            const runtime = ctx.runtime.services;
+            const shop = await link(ctx, { path: SHOP_SITE_PATH });
+            const { location, cookie } = await follow(runtime, shop, agentGrants(ctx));
+            const other = await open(
+              runtime,
+              `${origin}/events.site/order?sku=elsewhere`,
+              agentGrants(ctx),
+              cookie,
+            );
+            assert.equal(other.status, 403);
+            assert.equal(
+              await other.text(),
+              `The site link this browser opened may not open ${EVENTS_SITE_PATH}.`,
+            );
+
+            vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+            vi.setSystemTime(Date.now() + 10 * 60 * 1000);
+            const lapsed = await open(runtime, location, agentGrants(ctx), cookie);
+            assert.equal(lapsed.status, 401);
+            assert.equal(
+              await lapsed.text(),
+              "The site link this browser opened expired; open a new one, or sign out at /__ley/sign-out to see the site as yourself.",
+            );
+            assert.equal((await open(runtime, shop.url, agentGrants(ctx))).status, 403);
+          },
+        ),
+        then.assert(
+          "a viewer's browser that opened a link stays its visit, expired too, until it signs out or in",
+          async (ctx) => {
+            const runtime = ctx.runtime.services;
+            const session = await signedIn(runtime, origin);
+            const shop = await link(ctx, { path: SHOP_SITE_PATH, url: "/whoami" });
+            const visit = await follow(runtime, shop, agentGrants(ctx));
+            const both = `${session}; ${visit.cookie}`;
+            const linked = await open(runtime, visit.location, agentGrants(ctx), both);
+            assert.include((await linked.json()) as WhoAmI, { id: null, email: null });
+
+            vi.setSystemTime(Date.now() + 10 * 60 * 1000);
+            // The page the link opened fires nothing as the viewer once the link expires.
+            assert.equal((await open(runtime, visit.location, agentGrants(ctx), both)).status, 401);
+
+            const cleared = ["__Host-ley-session=;", "__Host-ley-visit=;"];
+            const signedOut = await open(
+              runtime,
+              `${origin}/__ley/sign-out`,
+              agentGrants(ctx),
+              both,
+            );
+            assert.deepEqual(
+              signedOut.headers.getSetCookie().map((cookie) => cookie.split(" ")[0]),
+              cleared,
+            );
+            assert.include(
+              (await signIn(runtime, origin, visit.cookie)).headers.getSetCookie(),
+              "__Host-ley-visit=; Path=/; Secure; HttpOnly; SameSite=Lax; Max-Age=0",
+            );
+          },
+        ),
+        then.assert("a link's visits keep at most 60 events every 10 seconds", async (ctx) => {
+          const runtime = ctx.runtime.services;
+          const burst = await link(ctx, { path: EVENTS_SITE_PATH, url: "/burst?n=61" });
+          const { location, cookie } = await follow(runtime, burst, agentGrants(ctx));
+          const page = await open(runtime, location, agentGrants(ctx), cookie);
+          assert.deepEqual(await page.json(), {
+            error: "A site link's visits keep at most 60 events every 10 seconds.",
+          });
+          const logs = (await callAsAgent(ctx, LINK_GRANTS, "siteLogs", {
+            path: EVENTS_SITE_PATH,
+            link: burst.link,
+          })) as { events: unknown[] };
+          assert.lengthOf(logs.events, 60);
+        }),
+        then.assert(
+          "a link opens the site only while whoever made it may still request it",
+          async (ctx) => {
+            const runtime = ctx.runtime.services;
+            const shop = await link(ctx, { path: SHOP_SITE_PATH });
+            const { location, cookie } = await follow(runtime, shop, agentGrants(ctx));
+            const workspaceOnly = agentGrants(ctx, [BACKOFFICE_PERMISSION.upload.read]);
+            assert.equal((await open(runtime, location, workspaceOnly, cookie)).status, 403);
+          },
+        ),
+        then.assert(
+          "a public site's link opens it at the public host, as a visit there, with no viewer",
+          async (ctx) => {
+            const runtime = ctx.runtime.services;
+            const publicOrigin = origin.replace(/^(https:\/\/[a-z-]+)\./u, "$1-public.");
+            const before = await link(ctx, { path: SHOP_SITE_PATH, url: "/whoami" });
+            const opened = await follow(runtime, before, agentGrants(ctx));
+            await writeFile(ctx, `${SHOP_SITE_PATH}/site.json`, JSON.stringify({ public: true }));
+            assert.equal((await buildSite(ctx, SHOP_SITE_PATH)).status, "built");
+
+            // A visit opened before cannot follow the site to the public host, where its cookie is
+            // not sent.
+            const moved = await open(runtime, opened.location, agentGrants(ctx), opened.cookie);
+            assert.equal(moved.status, 409);
+            assert.equal(
+              await moved.text(),
+              "This site became public after this browser opened its link; open a new link.",
+            );
+            const named = await link(ctx, { path: SHOP_SITE_PATH, viewer: VIEWER });
+            const refused = await open(runtime, named.url, agentGrants(ctx));
+            assert.equal(refused.status, 409);
+            assert.equal(
+              await refused.text(),
+              "A public site names no viewer: make its link without one.",
+            );
+
+            const shop = await link(ctx, { path: SHOP_SITE_PATH, url: "/whoami" });
+            const there = await open(runtime, shop.url, agentGrants(ctx));
+            assert.equal(there.status, 303);
+            assert.deepEqual(there.headers.getSetCookie(), []);
+            const publicLink = there.headers.get("location") ?? "";
+            assert.match(publicLink, new RegExp(`^${publicOrigin}/__ley/link\\?token=`, "u"));
+            const visit = await follow(runtime, { ...shop, url: publicLink }, agentGrants(ctx));
+            assert.equal(visit.location, `${publicOrigin}/tools/shop.site/whoami`);
+            const page = await open(runtime, visit.location, agentGrants(ctx), visit.cookie);
+            assert.include((await page.json()) as WhoAmI, { id: null, email: null });
+            const logs = (await callAsAgent(ctx, LINK_GRANTS, "siteLogs", {
+              path: SHOP_SITE_PATH,
+              link: shop.link,
+            })) as { entries: { path: string | null; visit: string | null }[] };
+            assert.deepEqual(
+              logs.entries.map(({ path, visit: by }) => ({ path, linked: by !== null })),
+              [{ path: "/whoami", linked: true }],
+            );
           },
         ),
       ],

@@ -1,9 +1,13 @@
 import type {
   ArtifactSiteDataStatus,
-  ArtifactSiteLogEntry,
+  ArtifactSiteLink,
+  ArtifactSiteLinkInput,
   ArtifactSiteResponse,
+  ArtifactSiteVisitedLogEntry,
+  ArtifactSiteVisitEvent,
   artifactPageBuildInputSchema,
   artifactSiteBuildInputSchema,
+  artifactSiteLinkInputSchema,
   artifactSiteLogsInputSchema,
   artifactSiteRequestInputSchema,
 } from "@fragno-dev/backoffice-api/v0/artifacts";
@@ -25,10 +29,13 @@ export type ArtifactsRuntime = {
   buildSite(sitePath: string): Promise<SiteBuildResult>;
   /** Reports the copy of the scope's automation data its sites read. */
   siteDataStatus(): Promise<ArtifactSiteDataStatus>;
-  siteLogs(input: z.output<typeof artifactSiteLogsInputSchema>): Promise<ArtifactSiteLogEntry[]>;
+  siteLogs(
+    input: z.output<typeof artifactSiteLogsInputSchema>,
+  ): Promise<{ entries: ArtifactSiteVisitedLogEntry[]; events: ArtifactSiteVisitEvent[] }>;
   requestSite(
     input: z.output<typeof artifactSiteRequestInputSchema>,
   ): Promise<ArtifactSiteResponse>;
+  createSiteLink(input: ArtifactSiteLinkInput): Promise<ArtifactSiteLink>;
 };
 
 type ArtifactsToolContext = BackofficeToolContext<{ artifacts?: ArtifactsRuntime }>;
@@ -96,10 +103,8 @@ const siteLogsTool = defineBackofficeRuntimeTool({
   name: "siteLogs",
   activity: { label: "Read site logs", target: (input) => input.path },
   getResource: ({ path }: z.output<typeof artifactSiteLogsInputSchema>) => ({ path }),
-  execute: async (input, context: ArtifactsToolContext) => {
-    const entries = await requireArtifactsRuntime(context).siteLogs(input);
-    return { entries };
-  },
+  execute: async (input, context: ArtifactsToolContext) =>
+    await requireArtifactsRuntime(context).siteLogs(input),
 });
 
 const requestSiteTool = defineBackofficeRuntimeTool({
@@ -115,9 +120,26 @@ const requestSiteTool = defineBackofficeRuntimeTool({
     await requireArtifactsRuntime(context).requestSite(input),
 });
 
+const createSiteLinkTool = defineBackofficeRuntimeTool({
+  ...backofficeApiOperationToolFields("artifacts.sites.link"),
+  namespace: "artifacts",
+  name: "createSiteLink",
+  activity: { label: "Link site", target: (input) => `${input.url ?? "/"} on ${input.path}` },
+  getResource: ({ path }: z.output<typeof artifactSiteLinkInputSchema>) => ({ path }),
+  execute: async (input, context: ArtifactsToolContext) =>
+    await requireArtifactsRuntime(context).createSiteLink(input),
+});
+
 /** Runtime tool family for building the artifacts Backoffice opens. */
 export const artifactsToolFamily = defineBackofficeRuntimeToolFamily({
   namespace: "artifacts",
-  tools: [buildPageTool, buildSiteTool, siteDataStatusTool, siteLogsTool, requestSiteTool],
+  tools: [
+    buildPageTool,
+    buildSiteTool,
+    siteDataStatusTool,
+    siteLogsTool,
+    requestSiteTool,
+    createSiteLinkTool,
+  ],
   isAvailable: (context: ArtifactsToolContext) => Boolean(context.runtimes.artifacts),
 });

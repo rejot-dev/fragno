@@ -1,6 +1,8 @@
 import type { ArtifactSiteLogEntry } from "@fragno-dev/backoffice-api/v0/artifacts";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
+import type { SiteProbe } from "./site-data";
+
 /** What is kept of a site's requests, so its logs stay small however much its Worker prints. */
 export const SITE_LOG_LIMITS = {
   /** Requests kept per site; older ones are dropped as new ones arrive. */
@@ -16,9 +18,13 @@ export const SITE_LOG_LIMITS = {
 
 /**
  * What the host tells a site's tail about the Worker it watches. A Worker loaded for one request an
- * agent sends carries that request's `probe`, so its record reaches the agent even when quiet.
+ * agent sends carries that request's `probe`, so its record reaches the agent even when quiet; one
+ * loaded for a link's visit carries the visit, whose requests are all kept.
  */
-export type SiteTailProps = { scope: BackofficeContextScope; sitePath: string; probe?: string };
+export type SiteTailProps = { scope: BackofficeContextScope; sitePath: string; probe?: SiteProbe };
+
+/** A visit of a site link, which the requests and events it made are kept under. */
+export type SiteLinkVisit = { link: string; visit: string };
 
 /** The parts of a Workers trace item, which a tail receives for each request, that logs keep. */
 export type SiteTraceItem = {
@@ -38,6 +44,7 @@ export type SiteLogsSink = {
     sitePath: string,
     entries: ArtifactSiteLogEntry[],
     probe: SiteProbeReport | null,
+    visit: SiteLinkVisit | null,
   ): Promise<void>;
 };
 
@@ -47,7 +54,7 @@ export type SiteProbeReport = { id: string; entry: ArtifactSiteLogEntry };
 /**
  * Keeps the requests among `traces` that logged, threw, exceeded a limit, or answered 5xx; requests
  * that went well and printed nothing are not kept. A probe's request reaches the agent who sent it
- * either way.
+ * either way, and a link's visit keeps every request it made.
  */
 export async function recordSiteTraces(
   traces: readonly SiteTraceItem[],
@@ -55,6 +62,13 @@ export async function recordSiteTraces(
   sink: SiteLogsSink,
 ): Promise<void> {
   const reported = traces.map(siteLogEntry);
+  if (props.probe?.kind === "visit") {
+    if (reported.length > 0) {
+      const { id: visit, link } = props.probe;
+      await sink.append(props.scope, props.sitePath, reported, null, { link, visit });
+    }
+    return;
+  }
   const entries = reported.filter(
     (entry) =>
       entry.outcome !== "ok" ||
@@ -64,9 +78,9 @@ export async function recordSiteTraces(
   );
   // A probe's Worker is loaded for its one request.
   const [probed] = reported;
-  const probe = props.probe && probed ? { id: props.probe, entry: probed } : null;
+  const probe = props.probe && probed ? { id: props.probe.id, entry: probed } : null;
   if (entries.length > 0 || probe) {
-    await sink.append(props.scope, props.sitePath, entries, probe);
+    await sink.append(props.scope, props.sitePath, entries, probe, null);
   }
 }
 

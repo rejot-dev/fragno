@@ -35,6 +35,14 @@ const siteDirectorySchema = () =>
       "Expected a normalized path, without empty, . or .. segments.",
     );
 
+// A page's path within its site, which a browser cannot read as another host's.
+const sitePageSchema = () =>
+  z
+    .string()
+    .regex(/^\/(?!\/)/u, "Expected a path within the site, such as / or /api/books?page=2.");
+
+const siteViewerSchema = () => z.strictObject({ id: z.string().min(1), email: z.string() });
+
 export const artifactSiteBuildInputSchema = z.lazy(() =>
   z.strictObject({
     path: siteDirectorySchema(),
@@ -116,6 +124,12 @@ export const artifactSiteLogsInputSchema = z.lazy(() =>
       .datetime({ offset: true })
       .optional()
       .describe("Only requests from this time on, such as when the site was last built."),
+    link: z
+      .string()
+      .optional()
+      .describe(
+        "Only the visits of this link from artifacts.createSiteLink: every request they made, quiet ones too, and the events their Worker kept.",
+      ),
     errorsOnly: z
       .boolean()
       .optional()
@@ -130,31 +144,57 @@ export const artifactSiteLogsInputSchema = z.lazy(() =>
   }),
 );
 
-const artifactSiteLogEntrySchema = z.lazy(() =>
-  z.strictObject({
-    at: z.string().describe("When the request started."),
-    method: z.string().nullable(),
-    path: z.string().nullable().describe("The path within the site, with its query."),
-    status: z
-      .number()
-      .nullable()
-      .describe("The response's status, or null when the Worker answered none."),
-    outcome: z
-      .string()
-      .describe(
-        "ok, exception when the Worker threw, or the limit it exceeded, such as exceededCpu.",
-      ),
-    cpuMs: z.number().nullable(),
-    wallMs: z.number().nullable(),
-    logs: z.array(z.strictObject({ level: z.string(), message: z.string() })),
-    exceptions: z.array(
-      z.strictObject({ name: z.string(), message: z.string(), stack: z.string().nullable() }),
+const siteLogEntryShape = () => ({
+  at: z.string().describe("When the request started."),
+  method: z.string().nullable(),
+  path: z.string().nullable().describe("The path within the site, with its query."),
+  status: z
+    .number()
+    .nullable()
+    .describe("The response's status, or null when the Worker answered none."),
+  outcome: z
+    .string()
+    .describe(
+      "ok, exception when the Worker threw, or the limit it exceeded, such as exceededCpu.",
     ),
-  }),
-);
+  cpuMs: z.number().nullable(),
+  wallMs: z.number().nullable(),
+  logs: z.array(z.strictObject({ level: z.string(), message: z.string() })),
+  exceptions: z.array(
+    z.strictObject({ name: z.string(), message: z.string(), stack: z.string().nullable() }),
+  ),
+});
+
+const artifactSiteLogEntrySchema = z.lazy(() => z.strictObject(siteLogEntryShape()));
 
 /** One request a site's Worker handled that logged, threw, exceeded a limit, or answered 5xx. */
 export type ArtifactSiteLogEntry = z.output<typeof artifactSiteLogEntrySchema>;
+
+const artifactSiteVisitedLogEntrySchema = z.lazy(() =>
+  z.strictObject({
+    ...siteLogEntryShape(),
+    visit: z
+      .string()
+      .nullable()
+      .describe("The visit of a link that made the request; null for anyone else's."),
+  }),
+);
+
+/** A request in a site's logs, with the visit of a link that made it. */
+export type ArtifactSiteVisitedLogEntry = z.output<typeof artifactSiteVisitedLogEntrySchema>;
+
+const artifactSiteVisitEventSchema = z.lazy(() =>
+  z.strictObject({
+    visit: z.string(),
+    at: z.string().describe("When the Worker fired it."),
+    type: z.string(),
+    payload: z.record(z.string(), z.unknown()),
+    viewer: z.string().nullable(),
+  }),
+);
+
+/** An event a site's Worker fired during a link's visit, kept rather than fired. */
+export type ArtifactSiteVisitEvent = z.output<typeof artifactSiteVisitEventSchema>;
 
 /** The largest request body `artifacts.sites.request` sends. */
 export const ARTIFACT_SITE_REQUEST_MAX_BODY_CHARS = 1_000_000;
@@ -163,9 +203,7 @@ export const artifactSiteRequestInputSchema = z.lazy(() =>
   z
     .strictObject({
       path: siteDirectorySchema(),
-      url: z
-        .string()
-        .regex(/^\/(?!\/)/u, "Expected a path within the site, such as / or /api/books?page=2.")
+      url: sitePageSchema()
         .optional()
         .describe("The path within the site, with its query; / unless given."),
       method: z
@@ -181,8 +219,7 @@ export const artifactSiteRequestInputSchema = z.lazy(() =>
         )
         .optional(),
       body: z.string().max(ARTIFACT_SITE_REQUEST_MAX_BODY_CHARS).optional(),
-      viewer: z
-        .strictObject({ id: z.string().min(1), email: z.string() })
+      viewer: siteViewerSchema()
         .optional()
         .describe(
           "Who the Worker is told views the site, in ley-viewer-id and ley-viewer-email; nobody unless given.",
@@ -268,6 +305,32 @@ const artifactSiteResponseSchema = z.lazy(() =>
 /** A site's answer to `artifacts.sites.request`, with what its Worker logged and threw. */
 export type ArtifactSiteResponse = z.output<typeof artifactSiteResponseSchema>;
 
+export const artifactSiteLinkInputSchema = z.lazy(() =>
+  z.strictObject({
+    path: siteDirectorySchema(),
+    url: sitePageSchema()
+      .optional()
+      .describe("The page within the site the link opens, with its query; / unless given."),
+    viewer: siteViewerSchema()
+      .optional()
+      .describe(
+        "Who the Worker is told views the site, in ley-viewer-id and ley-viewer-email; nobody unless given. A public site names no viewer, so its link opens it only without one.",
+      ),
+  }),
+);
+
+export type ArtifactSiteLinkInput = z.output<typeof artifactSiteLinkInputSchema>;
+
+const artifactSiteLinkOutputSchema = z.lazy(() =>
+  z.strictObject({
+    url: z.string(),
+    link: z.string().describe("The link's id, which artifacts.siteLogs reads its visits by."),
+    expiresAt: z.string(),
+  }),
+);
+
+export type ArtifactSiteLink = z.output<typeof artifactSiteLinkOutputSchema>;
+
 export const artifactsOperations = {
   "artifacts.pages.build": {
     description:
@@ -292,10 +355,19 @@ export const artifactsOperations = {
   },
   "artifacts.sites.logs": {
     description:
-      "Read what a site's Worker logged and threw, oldest first, for the latest requests that logged, threw, exceeded a limit, or answered 5xx. Read them after building a site and requesting it, and when a site fails or answers wrongly. Requests are kept for a day, the latest 200 per site.",
+      "Read what a site's Worker logged and threw, oldest first, for the latest requests that logged, threw, exceeded a limit, or answered 5xx, and every request a link's visits made. Read them after building a site and requesting it, after a browser or service opened a link to it, and when a site fails or answers wrongly. A request shows here shortly after its answer. Requests are kept for a day, the latest 200 per site.",
     permissions: [BACKOFFICE_PERMISSION.upload.read, ...ARTIFACT_SITE_DATA_PERMISSIONS],
     input: artifactSiteLogsInputSchema,
-    output: z.lazy(() => z.strictObject({ entries: z.array(artifactSiteLogEntrySchema) })),
+    output: z.lazy(() =>
+      z.strictObject({
+        entries: z.array(artifactSiteVisitedLogEntrySchema),
+        events: z
+          .array(artifactSiteVisitEventSchema)
+          .describe(
+            "With link, the events its visits' Worker fired, kept rather than fired, oldest first; otherwise empty.",
+          ),
+      }),
+    ),
   },
   "artifacts.sites.request": {
     description:
@@ -303,5 +375,12 @@ export const artifactsOperations = {
     permissions: [BACKOFFICE_PERMISSION.upload.read, ...ARTIFACT_SITE_DATA_PERMISSIONS],
     input: artifactSiteRequestInputSchema,
     output: artifactSiteResponseSchema,
+  },
+  "artifacts.sites.link": {
+    description:
+      "Create a temporary URL that opens a built site without signing in, at the page `url` names, for browsers and services outside Backoffice: cloudflare.browserRunCapture, web.extract, and cloudflare.browserRunCrawl take it as their url, and curl follows it with a cookie jar: `curl -sSL -c jar -b jar \"$url\"`. Each opening is a visit, whose requests reach the site's latest build and whose Worker's events are kept rather than fired; artifacts.siteLogs({ path, link }) reads them. Anyone holding the URL can open the site as `viewer` until it expires, in 10 minutes, while you may still request the site; a browser that opened it stays its visit until it signs out at /__ley/sign-out.",
+    permissions: [BACKOFFICE_PERMISSION.upload.read, ...ARTIFACT_SITE_DATA_PERMISSIONS],
+    input: artifactSiteLinkInputSchema,
+    output: artifactSiteLinkOutputSchema,
   },
 } satisfies Record<string, BackofficeApiOperation>;

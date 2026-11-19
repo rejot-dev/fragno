@@ -2,12 +2,14 @@ import type {
   ArtifactSiteLogEntry,
   ArtifactSiteRequestInput,
   ArtifactSiteResponse,
+  ArtifactSiteVisitedLogEntry,
+  ArtifactSiteVisitEvent,
 } from "@fragno-dev/backoffice-api/v0/artifacts";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { DurableObject } from "cloudflare:workers";
 
-import type { SiteProbeEvent } from "@/artifacts/sites/site-events";
-import type { SiteProbeReport } from "@/artifacts/sites/site-logs";
+import type { SiteEvent, SiteProbeEvent } from "@/artifacts/sites/site-events";
+import type { SiteLinkVisit, SiteProbeReport } from "@/artifacts/sites/site-logs";
 import type { SiteRequestsCommands, SiteRequestsQuery } from "@/backoffice-runtime/object-registry";
 
 import type { SiteRequestsObject } from "./site-requests-object";
@@ -57,14 +59,24 @@ export class SiteRequests extends DurableObject<CloudflareEnv> implements SiteRe
     sitePath: string,
     entries: ArtifactSiteLogEntry[],
     probe: SiteProbeReport | null,
+    visit: SiteLinkVisit | null,
   ): Promise<void> {
-    await this.#object.append(scope, sitePath, entries, probe);
+    await this.#object.append(scope, sitePath, entries, probe, visit);
+  }
+
+  async keepVisitEvent(
+    scope: BackofficeContextScope,
+    sitePath: string,
+    visit: SiteLinkVisit,
+    event: SiteEvent,
+  ): Promise<void> {
+    await this.#object.keepVisitEvent(scope, sitePath, visit, event);
   }
 
   async read(
     scope: BackofficeContextScope,
     query: SiteRequestsQuery,
-  ): Promise<ArtifactSiteLogEntry[]> {
+  ): Promise<{ entries: ArtifactSiteVisitedLogEntry[]; events: ArtifactSiteVisitEvent[] }> {
     return await this.#object.read(scope, query);
   }
 

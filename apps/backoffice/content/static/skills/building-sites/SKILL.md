@@ -47,8 +47,17 @@ inside another site.
    null when the host answered before the Worker ran, such as a 404 for a site without a build; and
    `events`: what the Worker fired, kept instead of fired unless the request sets `fire: true`, as
    Writing data describes. Fix what a 4xx or 5xx status, a wrong body, an exception in `log`, or a
-   missing event names, then build and check again. Complete when every route answers as the pages
-   expect and fires what it should, and no `log` has an exception.
+   missing event names, then build and check again. To see a page as viewers do, open it in a real
+   browser: `artifacts.createSiteLink({ path, url })`, adding `viewer` as for `requestSite` unless
+   the site is public, returns a `url` that opens the site without signing in, for anyone who holds
+   it during its 10 minutes, so pass it only to the tool; pass it to
+   `cloudflare.browserRunCapture({ action: "screenshot", input: { url, gotoOptions: { waitUntil: "networkidle0" } } })`,
+   so the page's scripts finish what they fetch, save the base64 `data`, decoded to bytes, with
+   `state.writeFileBytes`, and look at it with `state.viewImage`. Then read what that visit
+   requested and what its page would have fired, which is kept rather than fired, with
+   `artifacts.siteLogs({ path, link })`; every opening of the link is a `visit` of its own. Browser
+   Run reaches only sites whose build `url` starts with `https://`. Complete when every route
+   answers as the pages expect and fires what it should, and no `log` has an exception.
 5. **Hand off.** Give the user the `url` the build returned; selecting the directory in Files also
    shows an "Open site" link. Where `url` is null, tell them the site is built and checked, but this
    Backoffice cannot show it to people. Complete when the user has the URL, or knows why there is

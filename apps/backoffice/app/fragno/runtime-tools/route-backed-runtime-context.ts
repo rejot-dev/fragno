@@ -528,7 +528,7 @@ const createRuntimeContext = ({
                 .scoped("SITE_REPLICA", scope, runtime.objects.siteReplica)
                 .commands.status(scope);
             },
-            siteLogs: async ({ path, since, errorsOnly, limit }) => {
+            siteLogs: async ({ path, since, link, errorsOnly, limit }) => {
               if (!runtime.config.sites) {
                 throw new Error("This deployment does not serve sites.");
               }
@@ -542,6 +542,7 @@ const createRuntimeContext = ({
                 .commands.read(scope, {
                   sitePath: path,
                   since: since === undefined ? null : Date.parse(since),
+                  link: link ?? null,
                   errorsOnly: errorsOnly ?? false,
                   limit: limit ?? 50,
                 });
@@ -570,6 +571,10 @@ const createRuntimeContext = ({
               return await kernel
                 .scoped("SITE_REQUESTS", scope, runtime.objects.siteRequests)
                 .commands.request(scope, input);
+            },
+            createSiteLink: async (input) => {
+              const { createSiteLink } = await import("@/artifacts/sites/site-link.server");
+              return await createSiteLink({ runtime, execution, input });
             },
           },
         }

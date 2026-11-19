@@ -46,8 +46,13 @@ export type SiteDataProps = {
   probe?: SiteProbe;
 };
 
-/** The request an agent sent, and whether its events fire as a viewer's do. */
-export type SiteProbe = { id: string; fire: boolean };
+/**
+ * What a Worker is loaded for alone: the request an agent sent, whose events fire as a viewer's do
+ * only when it asked to; or a visit of a site link, whose events are kept in the site's logs.
+ */
+export type SiteProbe =
+  | { kind: "request"; id: string; fire: boolean }
+  | { kind: "visit"; id: string; link: string };
 
 /**
  * The site Worker's binding that `env.DATA` reads and fires events through, and its tool globals,

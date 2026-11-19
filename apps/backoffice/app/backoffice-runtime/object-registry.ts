@@ -6,6 +6,8 @@ import type {
 import type {
   ArtifactSiteDataStatus,
   ArtifactSiteLogEntry,
+  ArtifactSiteVisitedLogEntry,
+  ArtifactSiteVisitEvent,
   ArtifactSiteRequestInput,
   ArtifactSiteResponse,
 } from "@fragno-dev/backoffice-api/v0/artifacts";
@@ -90,8 +92,8 @@ import type { ClassifierResult } from "@earendil-works/pi-ai";
 import type { SiteBuildResult } from "@/artifacts/sites/build.server";
 import type { SiteBuilderAuthority } from "@/artifacts/sites/site-builder-authority.server";
 import type { SiteDataQuery, SiteDataResult } from "@/artifacts/sites/site-data";
-import type { SiteProbeEvent } from "@/artifacts/sites/site-events";
-import type { SiteProbeReport } from "@/artifacts/sites/site-logs";
+import type { SiteEvent, SiteProbeEvent } from "@/artifacts/sites/site-events";
+import type { SiteLinkVisit, SiteProbeReport } from "@/artifacts/sites/site-logs";
 import type { BackofficeRootOwnerReference } from "@/backoffice-runtime/resolved-scope";
 import type { TelegramAutomationFileMetadata } from "@/backoffice-runtime/telegram-file-response";
 import type { AccessCodeCommands } from "@/fragno/access-codes/contracts";
@@ -1074,20 +1076,31 @@ export type SiteReplicaCommands = {
 export type SiteRequestsQuery = {
   sitePath: string;
   since: number | null;
+  /** Only the requests and kept events of this site link's visits. */
+  link: string | null;
   errorsOnly: boolean;
   limit: number;
 };
 
 export type SiteRequestsCommands = {
   /**
-   * Keeps requests a site's tail reported, and drops what is older than the logs keep; a `probe`
-   * is the record of a request an agent sent, which reaches the agent whether or not it is kept.
+   * Keeps requests a site's tail reported, which a link's `visit` made, if any, and drops what is
+   * older than the logs keep; a `probe` is the record of a request an agent sent, which reaches the
+   * agent whether or not it is kept.
    */
   append(
     scope: BackofficeContextScope,
     sitePath: string,
     entries: ArtifactSiteLogEntry[],
     probe: SiteProbeReport | null,
+    visit: SiteLinkVisit | null,
+  ): Promise<void>;
+  /** Keeps an event the Worker of a link's visit fired, which is kept rather than fired. */
+  keepVisitEvent(
+    scope: BackofficeContextScope,
+    sitePath: string,
+    visit: SiteLinkVisit,
+    event: SiteEvent,
   ): Promise<void>;
   /**
    * Keeps an event that the Worker of a request an agent sent fired, for the agent; false when the
@@ -1106,8 +1119,11 @@ export type SiteRequestsCommands = {
     scope: BackofficeContextScope,
     input: ArtifactSiteRequestInput,
   ): Promise<ArtifactSiteResponse>;
-  /** The latest requests a site logged, oldest first. */
-  read(scope: BackofficeContextScope, query: SiteRequestsQuery): Promise<ArtifactSiteLogEntry[]>;
+  /** The latest requests a site logged, and the events a link's visits kept, oldest first. */
+  read(
+    scope: BackofficeContextScope,
+    query: SiteRequestsQuery,
+  ): Promise<{ entries: ArtifactSiteVisitedLogEntry[]; events: ArtifactSiteVisitEvent[] }>;
 };
 
 type SandboxCommands = {
