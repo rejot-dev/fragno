@@ -11,7 +11,6 @@ import {
 } from "@/artifacts/sites/site-host-names";
 import { runtimeSiteHosts } from "@/artifacts/sites/site-hosts.server";
 import { signSiteTicket } from "@/artifacts/sites/site-session.server";
-import { resolveBackofficeInternalRequestSecret } from "@/backoffice-runtime/internal-object-request";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { reopenWithBackofficeCredential } from "@/fragno/auth/browser-credential.server";
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
@@ -42,7 +41,7 @@ export async function openSiteHost({
   if (new URL(request.url).pathname !== url.pathname) {
     throw redirectDocument(`${url.pathname}${url.search}`);
   }
-  const { runtime, env } = context.get(BackofficeWorkerContext);
+  const { runtime } = context.get(BackofficeWorkerContext);
   const sites = runtimeSiteHosts(runtime);
   if (!runtime.config.sites || sites === null) {
     return new Response("Not Found", { status: 404 });
@@ -65,7 +64,7 @@ export async function openSiteHost({
   const { userAuthority: authority } = await requireBackofficeContext(request, context, scope);
   const { user } = await requireBackofficePrincipal(request, context);
   const ticket = await signSiteTicket(
-    { secret: resolveBackofficeInternalRequestSecret(env), origin, now: Date.now() },
+    { secret: runtime.siteSecret(), origin, now: Date.now() },
     { viewer: { id: user.id, email: user.email }, authority },
     nonceHash,
   );

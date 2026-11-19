@@ -47,6 +47,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
     siteStorage: null,
     siteFilesCache: null,
     siteEventLimiter: createInMemorySiteEventLimiter(Date.now),
+    siteSecret: () => "site-secret-of-these-tests-at-least-32-characters",
     reson8: null,
     webFetch: fetch,
     adapters: {} as BackofficeRuntimeServices["adapters"],

@@ -32,6 +32,7 @@ import {
   type BackofficeDatabaseAdapterFactory,
   type BackofficeDatabaseAdapterScope,
 } from "./database-adapters";
+import { resolveBackofficeInternalRequestSecret } from "./internal-object-request";
 import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "./kernel";
 import type { BackofficeObjectRegistry } from "./object-registry";
 
@@ -102,6 +103,11 @@ export type BackofficeRuntimeServices = {
   siteStorage: BlobsR2Access | null;
   /** Counts the events each viewer of a site fires, which its Worker fires through this runtime. */
   siteEventLimiter: SiteEventLimiter;
+  /**
+   * What site hosts sign and check their tickets, sessions, and links with. Read when used, as only
+   * a deployment that serves sites needs it.
+   */
+  siteSecret(): string;
   /** The cache site files are kept in once read, or null where the runtime has none, as in Node. */
   siteFilesCache: Cache | null;
   /** Speech-to-text under the platform key; null when the deployment has none. */
@@ -283,6 +289,7 @@ export const createCloudflareBackofficeRuntimeServices = (
     workerLoader: env.LOADER ?? null,
     siteStorage: cloudflareSiteStorage(env),
     siteEventLimiter: cloudflareSiteEventLimiter(env.SITE_EVENTS),
+    siteSecret: () => resolveBackofficeInternalRequestSecret(env),
     siteFilesCache: cloudflareSiteFilesCache(),
     reson8: env.RESON8_API_KEY ? createReson8Server(env.RESON8_API_KEY) : null,
     // Deployed Workers cannot connect to private addresses, so their fetch stays public.

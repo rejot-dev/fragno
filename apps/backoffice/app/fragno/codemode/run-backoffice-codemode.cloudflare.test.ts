@@ -818,6 +818,7 @@ const createScopedMcpRuntimeServices = (
     siteStorage: null,
     siteFilesCache: null,
     siteEventLimiter: createInMemorySiteEventLimiter(Date.now),
+    siteSecret: () => "site-secret-of-these-tests-at-least-32-characters",
     reson8: null,
     webFetch: fetch,
     config: {
