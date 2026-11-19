@@ -51,6 +51,8 @@ export type SiteFireResult =
 /** The message of an event over its viewer's limit. */
 export const SITE_EVENTS_LIMITED = `A viewer fires at most ${SITE_EVENT_LIMITS.perViewer} events every ${SITE_EVENT_LIMITS.periodSeconds} seconds on a site.`;
 
+export const SITE_LINK_EVENTS_LIMITED = `A site link's visits keep at most ${SITE_EVENT_LIMITS.perViewer} events every ${SITE_EVENT_LIMITS.periodSeconds} seconds.`;
+
 /**
  * The event as automations receive it, its payload as JSON reads it, or why a site cannot fire it.
  * The site's `env.DATA` checks it too; this is what holds.

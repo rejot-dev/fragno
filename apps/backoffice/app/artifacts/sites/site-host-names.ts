@@ -6,6 +6,9 @@ export const SITE_HOST_PATHS = "/__ley/";
 /** Where Backoffice posts a viewer's ticket to a site host. */
 export const SITE_SIGN_IN_PATH = `${SITE_HOST_PATHS}sign-in`;
 
+/** Where a site link opens its site, with the link's token in `token`. */
+export const SITE_LINK_PATH = `${SITE_HOST_PATHS}link`;
+
 const PUBLIC_HOST_SUFFIX = "-public";
 
 /**

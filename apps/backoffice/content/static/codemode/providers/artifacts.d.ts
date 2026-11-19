@@ -16,7 +16,7 @@ type ArtifactsCodemodeProvider = {
    */
   siteDataStatus(input: ArtifactsSiteDataStatusInput): Promise<ArtifactsSiteDataStatusOutput>;
   /**
-   * Read what a site's Worker logged and threw, oldest first, for the latest requests that logged, threw, exceeded a limit, or answered 5xx. Read them after building a site and requesting it, and when a site fails or answers wrongly. Requests are kept for a day, the latest 200 per site.
+   * Read what a site's Worker logged and threw, oldest first, for the latest requests that logged, threw, exceeded a limit, or answered 5xx, and every request a link's visits made. Read them after building a site and requesting it, after a browser or service opened a link to it, and when a site fails or answers wrongly. A request shows here shortly after its answer. Requests are kept for a day, the latest 200 per site.
    * Requires `upload.read` and `workflow.read` and `events.read` and `router.read` and `projects.read` and `store.read` and `connections.read` and `pi.read`.
    */
   siteLogs(input: ArtifactsSiteLogsInput): Promise<ArtifactsSiteLogsOutput>;
@@ -25,6 +25,11 @@ type ArtifactsCodemodeProvider = {
    * Requires `upload.read` and `workflow.read` and `events.read` and `router.read` and `projects.read` and `store.read` and `connections.read` and `pi.read`.
    */
   requestSite(input: ArtifactsRequestSiteInput): Promise<ArtifactsRequestSiteOutput>;
+  /**
+   * Create a temporary URL that opens a built site without signing in, at the page `url` names, for browsers and services outside Backoffice: cloudflare.browserRunCapture, web.extract, and cloudflare.browserRunCrawl take it as their url, and curl follows it with a cookie jar: `curl -sSL -c jar -b jar "$url"`. Each opening is a visit, whose requests reach the site's latest build and whose Worker's events are kept rather than fired; artifacts.siteLogs({ path, link }) reads them. Anyone holding the URL can open the site as `viewer` until it expires, in 10 minutes, while you may still request the site; a browser that opened it stays its visit until it signs out at /__ley/sign-out.
+   * Requires `upload.read` and `workflow.read` and `events.read` and `router.read` and `projects.read` and `store.read` and `connections.read` and `pi.read`.
+   */
+  createSiteLink(input: ArtifactsCreateSiteLinkInput): Promise<ArtifactsCreateSiteLinkOutput>;
 };
 declare const artifacts: ArtifactsCodemodeProvider;
 
@@ -84,6 +89,8 @@ type ArtifactsSiteLogsInput = {
   path: string;
   /** Only requests from this time on, such as when the site was last built. */
   since?: string;
+  /** Only the visits of this link from artifacts.createSiteLink: every request they made, quiet ones too, and the events their Worker kept. */
+  link?: string;
   /** Only requests that threw, exceeded a limit, answered 5xx, or logged an error. */
   errorsOnly?: boolean;
   /** How many of the latest requests to return, 50 unless given. */
@@ -111,6 +118,19 @@ type ArtifactsSiteLogsOutput = {
       message: string;
       stack: string | null;
     }[];
+    /** The visit of a link that made the request; null for anyone else's. */
+    visit: string | null;
+  }[];
+  /** With link, the events its visits' Worker fired, kept rather than fired, oldest first; otherwise empty. */
+  events: {
+    visit: string;
+    /** When the Worker fired it. */
+    at: string;
+    type: string;
+    payload: {
+      [key: string]: unknown;
+    };
+    viewer: string | null;
   }[];
 };
 type ArtifactsRequestSiteInput = {
@@ -186,4 +206,20 @@ type ArtifactsRequestSiteOutput = {
     /** The fired event's id, for events.get, when the request set fire; null when the event was kept instead, as env.DATA.fire then returned. */
     eventId: string | null;
   }[];
+};
+type ArtifactsCreateSiteLinkInput = {
+  path: string;
+  /** The page within the site the link opens, with its query; / unless given. */
+  url?: string;
+  /** Who the Worker is told views the site, in ley-viewer-id and ley-viewer-email; nobody unless given. A public site names no viewer, so its link opens it only without one. */
+  viewer?: {
+    id: string;
+    email: string;
+  };
+};
+type ArtifactsCreateSiteLinkOutput = {
+  url: string;
+  /** The link's id, which artifacts.siteLogs reads its visits by. */
+  link: string;
+  expiresAt: string;
 };

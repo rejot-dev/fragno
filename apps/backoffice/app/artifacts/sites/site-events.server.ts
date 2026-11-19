@@ -12,6 +12,7 @@ import type { SiteEventLimiter } from "./site-event-limiter";
 import {
   checkedSiteEvent,
   SITE_EVENTS_LIMITED,
+  SITE_LINK_EVENTS_LIMITED,
   siteEventSource,
   siteInitiator,
   type SiteEvent,
@@ -53,7 +54,8 @@ export async function mayFireSiteEvents({
  * `site:<sitePath>`. The site initiates it and no one is its principal, so only routes that act on
  * their own authority act on it; the viewer is its subject. A build fires only if whoever built it
  * may emit events. A Worker loaded for a request an agent sends keeps its events for the agent, and
- * fires them only when the agent asked to.
+ * fires them only when the agent asked to. A Worker loaded for a link's visit keeps its events in
+ * the site's logs.
  */
 export async function fireSiteEvent({
   objects,
@@ -75,6 +77,22 @@ export async function fireSiteEvent({
       status: "error",
       message: `This build of ${sitePath} may not fire events: build it again as someone allowed events.emit.`,
     };
+  }
+  if (probe?.kind === "visit") {
+    // A link's visits share one count, as each keeps what it fires in the scope's site logs.
+    const key = `${backofficeContextScopeRoutePath(scope)}${sitePath}\nlink\n${probe.link}`;
+    if (!(await limiter.limit(key))) {
+      return { status: "error", message: SITE_LINK_EVENTS_LIMITED };
+    }
+    await objects.siteRequests
+      .for(scope)
+      .commands.keepVisitEvent(
+        scope,
+        sitePath,
+        { link: probe.link, visit: probe.id },
+        checked.event,
+      );
+    return { status: "recorded" };
   }
   const keep = async (eventId: string | null) =>
     probe === undefined

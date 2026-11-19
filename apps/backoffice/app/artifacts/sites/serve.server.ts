@@ -205,7 +205,7 @@ export async function loadSiteWorker({
           ...(probe ? { probe } : {}),
         }),
       },
-      [siteTail({ scope, sitePath, ...(probe ? { probe: probe.id } : {}) }) as Fetcher],
+      [siteTail({ scope, sitePath, ...(probe ? { probe } : {}) }) as Fetcher],
     );
   });
   return { kind: "worker", worker };

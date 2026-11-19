@@ -40,7 +40,7 @@ describe("site requests fragment", async () => {
 
   const record = async (site: string, entries: ArtifactSiteLogEntry[], now: number) =>
     await fragment.callServices(() =>
-      services.recordSiteRequests({ site, entries, now: new Date(now) }),
+      services.recordSiteRequests({ site, entries, visit: null, now: new Date(now) }),
     );
   const read = async (
     now: number,
@@ -51,6 +51,7 @@ describe("site requests fragment", async () => {
         services.readSiteRequests({
           site: query.site ?? "/workspace/a.site",
           since: query.since === undefined ? null : new Date(query.since),
+          link: null,
           errorsOnly: query.errorsOnly ?? false,
           limit: query.limit ?? 1000,
           now: new Date(now),

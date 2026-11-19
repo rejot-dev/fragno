@@ -1,5 +1,10 @@
-import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import { ARTIFACT_SITE_DATA_PERMISSIONS } from "@fragno-dev/backoffice-api/v0/artifacts";
 import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import {
+  backofficeContextScopesEqual,
   backofficeScopePathSegment,
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
@@ -25,23 +30,33 @@ import {
   publicSiteHost,
   readSiteHost,
   SITE_HOST_PATHS,
+  SITE_LINK_PATH,
   SITE_SIGN_IN_PATH,
   siteHostDestination,
   siteHostOrigin,
+  siteUrl,
 } from "./site-host-names";
 import { runtimeSiteHosts, type SiteHosts } from "./site-hosts.server";
 import { siteRequestTarget } from "./site-path";
 import {
   readCookie,
   SITE_SESSION_COOKIE,
+  SITE_VISIT_COOKIE,
   SITE_SIGN_IN_COOKIE,
   signSiteSession,
   siteNonceHash,
   siteSessionCookie,
   siteSignInCookie,
+  signSiteLink,
+  signSiteVisit,
+  siteVisitCookie,
+  verifySiteLink,
   verifySiteSession,
   verifySiteTicket,
+  verifySiteVisit,
   type SiteSignIn,
+  type SiteVisit,
+  type SiteTokenContext,
 } from "./site-session.server";
 import type { SitePointerRead } from "./site-store.server";
 
@@ -149,14 +164,28 @@ async function answer({
   const origin = siteHostOrigin(host, domain);
   const tokens = { secret, origin, now: now() };
   const url = new URL(request.url);
+  const storeOf = (sitePath: string) => siteStoreForServing({ runtime, scope, sitePath, cache });
+  const pointerOf = async (sitePath: string) =>
+    await readSitePointer({ store: storeOf(sitePath), pointers: state.pointers, scope, sitePath });
 
   if (!onPublicHost && url.pathname === SITE_SIGN_IN_PATH) {
     return await signIn(request, tokens, origin);
   }
-  if (!onPublicHost && url.pathname === SITE_SIGN_OUT_PATH) {
-    return new Response("Signed out of this scope's sites.", {
-      headers: { "set-cookie": siteSessionCookie(null), "cache-control": "no-store" },
+  if (url.pathname === SITE_LINK_PATH) {
+    return await openLink({
+      request,
+      url,
+      tokens,
+      onPublicHost,
+      publicOrigin: siteHostOrigin(publicSiteHost(claimed), domain),
+      pointerOf,
     });
+  }
+  if (url.pathname === SITE_SIGN_OUT_PATH) {
+    const headers = new Headers({ "cache-control": "no-store" });
+    headers.append("set-cookie", siteSessionCookie(null));
+    headers.append("set-cookie", siteVisitCookie(null));
+    return new Response("Signed out of this scope's sites.", { headers });
   }
   if (url.pathname.startsWith(SITE_HOST_PATHS)) {
     return text("Not Found", 404);
@@ -167,22 +196,21 @@ async function answer({
   }
 
   const target = siteRequestTarget(url.pathname.split("/").slice(1));
-  const storeOf = (sitePath: string) => siteStoreForServing({ runtime, scope, sitePath, cache });
   // Read once: the site is served from this read, so the build it serves is the one checked here.
   const read: SitePointerRead =
-    target === null
-      ? { status: "none" }
-      : await readSitePointer({
-          store: storeOf(target.sitePath),
-          pointers: state.pointers,
-          scope,
-          sitePath: target.sitePath,
-        });
+    target === null ? { status: "none" } : await pointerOf(target.sitePath);
   // Each site is served only at the host of its kind, so a public site's pages, and what its
   // visitors put in them, never run at an origin a viewer's session reaches.
   const isPublic = read.status === "built" && read.pointer.served.public;
   if (onPublicHost && !isPublic) {
     return text("No public site at this path.", 404);
+  }
+  // A visit's cookie stays at this host, so following the site would leave the visit behind.
+  if (!onPublicHost && isPublic && readCookie(request, SITE_VISIT_COOKIE) !== null) {
+    return text(
+      "This site became public after this browser opened its link; open a new link.",
+      409,
+    );
   }
   // Not permanently, as the site may be built private again.
   if (!onPublicHost && isPublic) {
@@ -194,11 +222,17 @@ async function answer({
       },
     });
   }
-  // Anyone may open a public site, so its requests name no viewer.
-  const session = onPublicHost ? null : readCookie(request, SITE_SESSION_COOKIE);
-  const signedIn = session === null ? null : await verifySiteSession(tokens, session);
-  if (!onPublicHost && signedIn === null) {
+  // Anyone may open a public site, so its requests name no viewer, unless they are a link's visit.
+  const access = await readAccess(request, tokens, onPublicHost);
+  if (access?.kind === "none") {
     return await signInFirst(request, url, host, runtime);
+  }
+  // A browser that opened a link is likely driven by an agent, which needs to know why instead.
+  if (access?.kind === "lapsed") {
+    return text(
+      `The site link this browser opened expired; open a new one, or sign out at ${SITE_SIGN_OUT_PATH} to see the site as yourself.`,
+      401,
+    );
   }
 
   if (target === null) {
@@ -212,10 +246,30 @@ async function answer({
     });
   }
   if (
-    signedIn !== null &&
-    !(await mayRead({ kernel, state, scope, signedIn, sitePath: target.sitePath, now: now() }))
+    access?.kind === "viewer" &&
+    !(await mayRead({
+      kernel,
+      state,
+      scope,
+      signedIn: access.signedIn,
+      sitePath: target.sitePath,
+      now: now(),
+    }))
   ) {
-    return text(`${signedIn.viewer.email} may not open ${target.sitePath}.`, 403);
+    return text(`${access.signedIn.viewer.email} may not open ${target.sitePath}.`, 403);
+  }
+  if (
+    access?.kind === "visit" &&
+    !(await mayVisit({
+      kernel,
+      state,
+      scope,
+      visit: access.visit,
+      sitePath: target.sitePath,
+      now: now(),
+    }))
+  ) {
+    return text(`The site link this browser opened may not open ${target.sitePath}.`, 403);
   }
   return await serveSite({
     request,
@@ -225,8 +279,122 @@ async function answer({
     scope,
     sitePath: target.sitePath,
     pathname: target.pathname,
-    viewer: signedIn?.viewer ?? null,
+    viewer:
+      access === null
+        ? null
+        : access.kind === "viewer"
+          ? access.signedIn.viewer
+          : access.visit.viewer,
+    // Each visit's requests share a Worker of their own, whose events are kept from automations.
+    ...(access?.kind === "visit"
+      ? { probe: { kind: "visit" as const, id: access.visit.visit, link: access.visit.link } }
+      : {}),
   });
+}
+
+/**
+ * Opens a site link in the browser that followed it, as a visit of its own: the browser keeps the
+ * visit in its cookie and continues at the link's page. A public site's link continues at the
+ * public host, where the site is served. The responses name no Referer, so the page's requests do
+ * not carry the link's token elsewhere.
+ */
+async function openLink({
+  request,
+  url,
+  tokens,
+  onPublicHost,
+  publicOrigin,
+  pointerOf,
+}: {
+  request: Request;
+  url: URL;
+  tokens: SiteTokenContext;
+  onPublicHost: boolean;
+  publicOrigin: string;
+  pointerOf: (sitePath: string) => Promise<SitePointerRead>;
+}): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return text("Method Not Allowed", 405);
+  }
+  const opened = await verifySiteLink(tokens, url.searchParams.get("token") ?? "");
+  if (opened === null) {
+    return text("This site link expired, or is for another address.", 403);
+  }
+  const { link, expiresAt } = opened;
+  const read = await pointerOf(link.sitePath);
+  const isPublic = read.status === "built" && read.pointer.served.public;
+  if (isPublic && link.viewer !== null) {
+    return text("A public site names no viewer: make its link without one.", 409);
+  }
+  if (onPublicHost && !isPublic) {
+    return text("No public site at this path.", 404);
+  }
+  if (!onPublicHost && isPublic) {
+    const there = new URL(SITE_LINK_PATH, publicOrigin);
+    there.searchParams.set(
+      "token",
+      await signSiteLink({ ...tokens, origin: publicOrigin }, link, expiresAt),
+    );
+    return seeOther(there.toString(), null);
+  }
+  const token = await signSiteVisit(
+    tokens,
+    {
+      link: link.id,
+      visit: crypto.randomUUID(),
+      sitePath: link.sitePath,
+      viewer: link.viewer,
+      execution: link.execution,
+    },
+    expiresAt,
+  );
+  // Serialized, as a header holds only what a URL encodes: the page may name any text.
+  return seeOther(
+    new URL(`${siteUrl(tokens.origin, link.sitePath).slice(0, -1)}${link.page}`).toString(),
+    siteVisitCookie(token),
+  );
+}
+
+function seeOther(location: string, cookie: string | null): Response {
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location,
+      ...(cookie === null ? {} : { "set-cookie": cookie }),
+      "cache-control": "no-store",
+      "referrer-policy": "no-referrer",
+    },
+  });
+}
+
+/** Who a request to a scope's private sites comes from, as its cookies say. */
+type SiteAccess =
+  | { kind: "viewer"; signedIn: SiteSignIn }
+  | { kind: "visit"; visit: SiteVisit }
+  | { kind: "lapsed" }
+  | { kind: "none" };
+
+/**
+ * A visit comes first, even once it expired: a viewer signed in who opens a link sees the site as
+ * the link shows it, and its requests show among the link's, until they sign out or in again. The
+ * public host signs no one in, so a request there is a visit's or anyone's: null.
+ */
+async function readAccess(
+  request: Request,
+  tokens: SiteTokenContext,
+  onPublicHost: boolean,
+): Promise<SiteAccess | null> {
+  const kept = readCookie(request, SITE_VISIT_COOKIE);
+  if (kept !== null) {
+    const visit = await verifySiteVisit(tokens, kept);
+    return visit === null ? { kind: "lapsed" } : { kind: "visit", visit };
+  }
+  if (onPublicHost) {
+    return null;
+  }
+  const session = readCookie(request, SITE_SESSION_COOKIE);
+  const signedIn = session === null ? null : await verifySiteSession(tokens, session);
+  return signedIn === null ? { kind: "none" } : { kind: "viewer", signedIn };
 }
 
 /**
@@ -292,6 +460,8 @@ async function signIn(
     );
   }
   headers.append("set-cookie", siteSessionCookie(await signSiteSession(tokens, signedIn)));
+  // Signing in ends a link's visit, which would otherwise show the site in the viewer's place.
+  headers.append("set-cookie", siteVisitCookie(null));
   const next = form.get("next");
   headers.set(
     "location",
@@ -328,6 +498,7 @@ async function mayRead({
         verifiedRequestAuthority: { ...verified, expiresAt: new Date(expiresAtEpochMs) },
       }),
       sitePath,
+      VIEWER_PERMISSIONS,
     );
   }
   const key = JSON.stringify([viewer.id, backofficeScopePathSegment(scope), sitePath]);
@@ -339,6 +510,7 @@ async function mayRead({
       kernel,
       createBackofficeUserExecution({ scope, userId: viewer.id }),
       sitePath,
+      VIEWER_PERMISSIONS,
     ))
   ) {
     return false;
@@ -350,17 +522,58 @@ async function mayRead({
   return true;
 }
 
+/**
+ * Whether a link's visit may open the site: only the one the link was made for, in its scope,
+ * while whoever made it may still request it, as making the link required. A check is kept
+ * briefly, as the page's requests share one.
+ */
+async function mayVisit({
+  kernel,
+  state,
+  scope,
+  visit,
+  sitePath,
+  now,
+}: {
+  kernel: BackofficeKernel;
+  state: SiteHostState;
+  scope: BackofficeContextScope;
+  visit: SiteVisit;
+  sitePath: string;
+  now: number;
+}): Promise<boolean> {
+  if (sitePath !== visit.sitePath || !backofficeContextScopesEqual(visit.execution.scope, scope)) {
+    return false;
+  }
+  const key = JSON.stringify(["link", visit.link]);
+  if ((state.authorized.get(key) ?? 0) > now) {
+    return true;
+  }
+  if (!(await authorized(kernel, visit.execution, sitePath, LINK_PERMISSIONS))) {
+    return false;
+  }
+  if (state.authorized.size >= AUTHORIZATIONS_KEPT) {
+    state.authorized.clear();
+  }
+  state.authorized.set(key, now + AUTHORIZATION_KEPT_MS);
+  return true;
+}
+
+const VIEWER_PERMISSIONS = [BACKOFFICE_PERMISSION.upload.read];
+
+/** What making a site link takes, as requesting the site does. */
+const LINK_PERMISSIONS = [BACKOFFICE_PERMISSION.upload.read, ...ARTIFACT_SITE_DATA_PERMISSIONS];
+
 async function authorized(
   kernel: BackofficeKernel,
   execution: BackofficeExecutionContext,
   sitePath: string,
+  permissions: readonly BackofficePermissionRequirement[],
 ): Promise<boolean> {
   try {
     await kernel.assertAuthorizedAll({
       execution,
-      requirements: [
-        { operation: BACKOFFICE_PERMISSION.upload.read, resource: { path: sitePath } },
-      ],
+      requirements: permissions.map((operation) => ({ operation, resource: { path: sitePath } })),
     });
     return true;
   } catch (error) {

@@ -3,6 +3,8 @@ import {
   type ArtifactSiteLogEntry,
   type ArtifactSiteRequestInput,
   type ArtifactSiteResponse,
+  type ArtifactSiteVisitedLogEntry,
+  type ArtifactSiteVisitEvent,
 } from "@fragno-dev/backoffice-api/v0/artifacts";
 import {
   backofficeContextScopesEqual,
@@ -15,8 +17,12 @@ import {
   loadProbedSiteWorker,
   type SiteWorkerBindings,
 } from "@/artifacts/sites/serve.server";
-import { SITE_EVENT_LIMITS, type SiteProbeEvent } from "@/artifacts/sites/site-events";
-import type { SiteProbeReport } from "@/artifacts/sites/site-logs";
+import {
+  SITE_EVENT_LIMITS,
+  type SiteEvent,
+  type SiteProbeEvent,
+} from "@/artifacts/sites/site-events";
+import type { SiteLinkVisit, SiteProbeReport } from "@/artifacts/sites/site-logs";
 import { aborted, siteProbeRequest, siteProbeResponse } from "@/artifacts/sites/site-request";
 import {
   requireBackofficeContextScopeFromDurableObjectId,
@@ -120,7 +126,7 @@ export class SiteRequestsObject implements SiteRequestsCommands {
       bindings: this.#siteWorkerBindings,
       scope,
       sitePath: input.path,
-      probe: { id: probe, fire: input.fire ?? false },
+      probe: { kind: "request", id: probe, fire: input.fire ?? false },
     });
     // The host answered: the site has no build to run.
     if (loaded.kind === "answered") {
@@ -176,6 +182,7 @@ export class SiteRequestsObject implements SiteRequestsCommands {
     sitePath: string,
     entries: ArtifactSiteLogEntry[],
     probe: SiteProbeReport | null,
+    visit: SiteLinkVisit | null,
   ): Promise<void> {
     const fragment = this.#getFragment(scope);
     if (probe) {
@@ -186,26 +193,55 @@ export class SiteRequestsObject implements SiteRequestsCommands {
         fragment.services.recordSiteRequests({
           site: sitePath,
           entries,
+          visit,
           now: new Date(this.#nowEpochMs()),
         }),
       );
     }
   }
 
-  async read(
+  async keepVisitEvent(
     scope: BackofficeContextScope,
-    query: SiteRequestsQuery,
-  ): Promise<ArtifactSiteLogEntry[]> {
+    sitePath: string,
+    visit: SiteLinkVisit,
+    event: SiteEvent,
+  ): Promise<void> {
     const fragment = this.#getFragment(scope);
-    return await fragment.callServices(() =>
-      fragment.services.readSiteRequests({
-        site: query.sitePath,
-        since: query.since === null ? null : new Date(query.since),
-        errorsOnly: query.errorsOnly,
-        limit: query.limit,
+    await fragment.callServices(() =>
+      fragment.services.recordSiteVisitEvent({
+        site: sitePath,
+        visit,
+        event,
         now: new Date(this.#nowEpochMs()),
       }),
     );
+  }
+
+  async read(
+    scope: BackofficeContextScope,
+    query: SiteRequestsQuery,
+  ): Promise<{ entries: ArtifactSiteVisitedLogEntry[]; events: ArtifactSiteVisitEvent[] }> {
+    const fragment = this.#getFragment(scope);
+    const now = new Date(this.#nowEpochMs());
+    const { sitePath: site, link } = query;
+    const requests = () =>
+      fragment.services.readSiteRequests({
+        site,
+        since: query.since === null ? null : new Date(query.since),
+        link,
+        errorsOnly: query.errorsOnly,
+        limit: query.limit,
+        now,
+      });
+    // Only a link's visits keep events.
+    if (link === null) {
+      return { entries: await fragment.callServices(requests), events: [] };
+    }
+    const [entries, events] = await fragment.callServices(() => [
+      requests(),
+      fragment.services.readSiteVisitEvents({ site, link, now }),
+    ]);
+    return { entries, events };
   }
 
   async alarm(): Promise<void> {
