@@ -9,7 +9,6 @@ import {
   createBackofficeUserExecution,
   type BackofficeExecutionContext,
 } from "@/backoffice-runtime/context";
-import { resolveBackofficeInternalRequestSecret } from "@/backoffice-runtime/internal-object-request";
 import { isBackofficeForbiddenError, type BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
@@ -71,14 +70,12 @@ const isolateState = createSiteHostState(() => Date.now());
 /** Serves a request to a subdomain of the sites domain in the Worker that received it. */
 export async function serveSiteHostRequest({
   request,
-  env,
   ctx,
   runtime,
   kernel,
   host,
 }: {
   request: Request;
-  env: CloudflareEnv;
   ctx: ExecutionContext;
   runtime: BackofficeRuntimeServices;
   kernel: BackofficeKernel;
@@ -95,7 +92,7 @@ export async function serveSiteHostRequest({
     hosts: sites.hosts,
     domain: sites.domain,
     host,
-    secret: resolveBackofficeInternalRequestSecret(env),
+    secret: runtime.siteSecret(),
     bindings: exportedSiteWorkerBindings(runtime.workerLoader, ctx.exports),
     cache: siteFilesCacheFor(runtime, request, (promise) => {
       ctx.waitUntil(promise);

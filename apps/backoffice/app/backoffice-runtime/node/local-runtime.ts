@@ -19,6 +19,7 @@ import type { BackofficeRuntimeEnv } from "../backoffice-runtime-env";
 import { discardBackofficeTelemetry, type BackofficeTelemetry } from "../backoffice-telemetry";
 import type { BackofficeDatabaseAdapterFactory } from "../database-adapters";
 import { createInMemoryBackofficeDatabaseAdapters } from "../in-memory-database-adapters";
+import { resolveBackofficeInternalRequestSecret } from "../internal-object-request";
 import { noopBackofficeKernelObserver, type BackofficeKernelObserver } from "../kernel";
 import { LocalObjectFactory, type LocalBackofficeObjects } from "../local-object-factory";
 import { createBackofficeObjectRegistry } from "../object-registry";
@@ -155,6 +156,7 @@ export async function createLocalBackofficeRuntime(
     workerLoader: options.runtimeEnv.workerLoader,
     siteStorage: options.runtimeEnv.siteStorage,
     siteEventLimiter: createInMemorySiteEventLimiter(() => objectFactory.now()),
+    siteSecret: () => resolveBackofficeInternalRequestSecret(options.runtimeEnv),
     siteFilesCache: null,
     reson8: options.runtimeEnv.RESON8_API_KEY
       ? createReson8Server(options.runtimeEnv.RESON8_API_KEY)

@@ -71,7 +71,7 @@ export default {
           siteHost !== undefined
             ? await (
                 await loadSiteHost()
-              )({ request, env, ctx, runtime, kernel, host: siteHost })
+              )({ request, ctx, runtime, kernel, host: siteHost })
             : isBackofficeApiPath(url.pathname)
               ? await (await loadBackofficeApiRouter()).fetch(request, { runtime, kernel })
               : await requestHandler(request, context);

@@ -1588,7 +1588,6 @@ test("a deployment with buckets keeps each site's builds and pointer in R2", asy
 });
 
 const SHOP_SITE_PATH = "/workspace/tools/shop.site";
-const SITE_SECRET = "site-host-test-secret-at-least-32-characters";
 const VIEWER: SiteViewer = { id: "viewer-1", email: "viewer@example.com" };
 
 /**
@@ -1679,7 +1678,7 @@ async function hostRequest(
     hosts: sites.hosts,
     domain: sites.domain,
     host: siteHostOf(new URL(url), sites.domain) ?? null,
-    secret: SITE_SECRET,
+    secret: runtime.siteSecret(),
     bindings: inProcessSiteWorkerBindings(runtime),
     cache: null,
     state,
@@ -1696,7 +1695,7 @@ async function signedIn(
 ) {
   const nonce = "nonce-of-this-browser-1234";
   const ticket = await signSiteTicket(
-    { secret: SITE_SECRET, origin, now: Date.now() },
+    { secret: runtime.siteSecret(), origin, now: Date.now() },
     { viewer, authority },
     await siteNonceHash(nonce),
   );
@@ -1801,7 +1800,7 @@ test("a scope's sites are served at its own subdomain, to viewers Backoffice sig
               authority = authorityOf(VIEWER),
             ) =>
               await signSiteTicket(
-                { secret: SITE_SECRET, origin: forOrigin, now },
+                { secret: runtime.siteSecret(), origin: forOrigin, now },
                 { viewer: VIEWER, authority },
                 await siteNonceHash(nonce),
               );
