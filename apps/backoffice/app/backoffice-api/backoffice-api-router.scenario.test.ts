@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 
+import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import { createBackofficeApiClient } from "@fragno-dev/backoffice-api/v0/client";
 import { piAgentWatchTicketSchema } from "@fragno-dev/backoffice-api/v0/pi";
 import {
@@ -15,6 +16,7 @@ import type { McpTool } from "@fragno-dev/mcp-fragment/types";
 import * as ts from "typescript";
 import { z } from "zod";
 
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler, fromJsonSchema, McpServer } from "@modelcontextprotocol/server";
 
@@ -109,6 +111,36 @@ async function callApi(
 
 function orgOperation(orgId: string, operationId: string) {
   return `/api/v0/scopes/org:${encodeURIComponent(orgId)}/${operationId}`;
+}
+
+/** Connects over Streamable HTTP to the same Hono entry point as the deployed client. */
+async function withMcpClient(
+  ctx: Ctx,
+  credential: string,
+  mode: "auto" | "legacy",
+  run: (client: Client) => Promise<void>,
+) {
+  const client = new Client(
+    { name: "bookkeeping", version: "1.0.0" },
+    { versionNegotiation: { mode } },
+  );
+  const transport = new StreamableHTTPClientTransport(
+    new URL(orgOperation(ctx.vars.orgId, "mcp"), origin),
+    {
+      requestInit: { headers: { authorization: `Bearer ${credential}` } },
+      fetch: async (url, init) =>
+        await backofficeApiRouter.fetch(new Request(url, init), {
+          runtime: ctx.runtime.services,
+          kernel: new BackofficeKernel(ctx.runtime.services),
+        }),
+    },
+  );
+  try {
+    await client.connect(transport);
+    await run(client);
+  } finally {
+    await client.close();
+  }
 }
 
 async function expectOk(response: Response): Promise<unknown> {
@@ -1012,6 +1044,94 @@ describe("Backoffice API v0 SQLite scenarios", () => {
           403,
           "forbidden",
         );
+      }),
+    ]);
+  });
+
+  test("MCP clients use the API contract and live installation authority", async () => {
+    await runApiScenario("scoped MCP with execution credentials", (then) => [
+      then("an unauthenticated client receives a bearer challenge", async (ctx) => {
+        const response = await callApi(ctx, {
+          path: orgOperation(ctx.vars.orgId, "mcp"),
+          body: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+        });
+        assert.equal(response.headers.get("www-authenticate"), "Bearer");
+        await expectError(response, 401, "authentication_failed");
+      }),
+      then("a user discovers the v0 tools and calls a tool with no arguments", async (ctx) => {
+        await withMcpClient(ctx, ctx.vars.ownerCredential, "legacy", async (client) => {
+          const { tools } = await client.listTools();
+          expect(tools.map(({ name }) => name).sort()).toEqual(
+            Object.keys(backofficeApiV0.operations).sort(),
+          );
+          assert.equal(
+            tools.find(({ name }) => name === "web.extract")?.inputSchema.type,
+            "object",
+          );
+          expect(await client.callTool({ name: "org.get" })).toMatchObject({
+            content: [
+              {
+                type: "text",
+                text: expect.stringContaining(ctx.vars.orgId),
+              },
+            ],
+          });
+        });
+      }),
+      then("an installed app can emit only as itself and within its scope", async (ctx) => {
+        await installBookkeeping(ctx, [BACKOFFICE_PERMISSION.events.emit]);
+        const credential = await installedAppCredential(
+          ctx,
+          await requestOAuthToken(ctx, {
+            grant_type: "client_credentials",
+            scope: "backoffice",
+            resource: origin,
+          }),
+        );
+        await expectError(
+          await callApi(ctx, {
+            path: orgOperation(ctx.vars.memberOrgId, "mcp"),
+            credential,
+            body: { jsonrpc: "2.0", id: 1, method: "tools/list" },
+          }),
+          403,
+          "forbidden",
+        );
+        await withMcpClient(ctx, credential, "auto", async (client) => {
+          assert.equal(client.getNegotiatedProtocolVersion(), "2026-07-28");
+          expect(
+            await client.callTool({
+              name: "events.fire",
+              arguments: { eventType: "invoice.paid" },
+            }),
+          ).toMatchObject({
+            content: [
+              {
+                type: "text",
+                text: expect.stringContaining(`"source":"app:${ctx.vars.appId}"`),
+              },
+            ],
+          });
+          expect(
+            await client.callTool({
+              name: "events.fire",
+              arguments: { eventType: "invoice.paid", source: "another-app" },
+            }),
+          ).toMatchObject({ isError: true });
+          const uninstalled = await ctx.runtime.objects.appInstallations
+            .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
+            .commands.uninstallApp({ appId: ctx.vars.appId });
+          assert(uninstalled.ok);
+          expect(
+            await client.callTool({
+              name: "events.fire",
+              arguments: { eventType: "invoice.paid" },
+            }),
+          ).toMatchObject({
+            isError: true,
+            content: [{ type: "text", text: expect.stringContaining('"code":"forbidden"') }],
+          });
+        });
       }),
     ]);
   });

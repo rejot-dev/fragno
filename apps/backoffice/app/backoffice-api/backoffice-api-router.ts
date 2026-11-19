@@ -1,4 +1,5 @@
 import type { BackofficeApi, BackofficeApiImplementation } from "@fragno-dev/backoffice-api/api";
+import type { BackofficeApiError } from "@fragno-dev/backoffice-api/errors";
 import { createOpenApiDocument } from "@fragno-dev/backoffice-api/openapi";
 import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
@@ -44,6 +45,12 @@ import { backofficeApiV0Adapters } from "./v0-adapters";
 /** Per-request services; both hosts create them before dispatching here. */
 type BackofficeApiBindings = { runtime: BackofficeRuntimeServices; kernel: BackofficeKernel };
 
+type AuthorizedBackofficeApiRequest = {
+  ok: true;
+  execution: BackofficeExecutionContext;
+  emittedEventSource: string | undefined;
+};
+
 /**
  * Turns a bearer credential into an execution for the requested scope. User credentials act with
  * the user's live permissions; installed-app credentials act through the installation, whose
@@ -54,14 +61,7 @@ async function authorizeApiRequest(
   request: Request,
   scope: BackofficeContextScope,
   runtime: BackofficeRuntimeServices,
-): Promise<
-  | {
-      ok: true;
-      execution: BackofficeExecutionContext;
-      emittedEventSource: string | undefined;
-    }
-  | { ok: false; response: Response }
-> {
+): Promise<AuthorizedBackofficeApiRequest | { ok: false; response: Response }> {
   const authorization = request.headers.get("authorization");
   const bearer = authorization ? /^Bearer\s+([^\s]+)$/iu.exec(authorization.trim()) : null;
   if (!bearer?.[1]) {
@@ -192,6 +192,46 @@ function createVersionRouter<TApi extends BackofficeApi>(
 ) {
   const router = new Hono<{ Bindings: BackofficeApiBindings }>();
 
+  async function runOperation(
+    operationId: string,
+    input: unknown,
+    { runtime, kernel }: BackofficeApiBindings,
+    authorization: AuthorizedBackofficeApiRequest,
+  ): Promise<{ ok: true; output: unknown } | { ok: false; error: BackofficeApiError["error"] }> {
+    // Both transports match the handler to the operation and validate its input first.
+    const handle = handlers[operationId] as (
+      input: unknown,
+      context: BackofficeToolContext,
+    ) => Promise<unknown>;
+    let output: unknown;
+    try {
+      output = await handle(
+        input,
+        createBackofficeToolContext(
+          createRouteBackedRuntimeContext({
+            emitter: { kind: "caller" },
+            runtime,
+            kernel,
+            execution: authorization.execution,
+            emittedEventSource: authorization.emittedEventSource,
+          }),
+        ),
+      );
+    } catch (error) {
+      // Kernel denials preserve their error name across object RPC.
+      const forbidden = isBackofficeForbiddenError(error);
+      const code = forbidden
+        ? "forbidden"
+        : error instanceof BackofficeOperationError
+          ? error.kind
+          : "operation_failed";
+      const message = forbidden || error instanceof Error ? error.message : "The operation failed.";
+      return { ok: false, error: { code, message } };
+    }
+    // Let output schema violations surface as server errors.
+    return { ok: true, output: api.operations[operationId].output.parse(output) };
+  }
+
   router.get("/openapi.json", (c) =>
     c.json(createOpenApiDocument(api, { serverUrl: new URL(c.req.url).origin })),
   );
@@ -227,6 +267,64 @@ function createVersionRouter<TApi extends BackofficeApi>(
     });
   });
 
+  router.all("/scopes/:scope/mcp", async (c) => {
+    const request = c.req.raw;
+    const origin = request.headers.get("origin");
+    if (origin !== null && origin !== new URL(request.url).origin) {
+      return apiError("forbidden", "The request origin is not allowed.");
+    }
+    const scope = requestScope(c.req.path);
+    if (scope instanceof Response) {
+      return scope;
+    }
+    const authorization = await authorizeApiRequest(request, scope, c.env.runtime);
+    if (!authorization.ok) {
+      if (authorization.response.status === 401) {
+        authorization.response.headers.set("www-authenticate", "Bearer");
+      }
+      return authorization.response;
+    }
+
+    const { createMcpHandler, McpServer } = await import("@modelcontextprotocol/server");
+    const mcp = createMcpHandler(() => {
+      const server = new McpServer(
+        { name: "leyway", version: api.version },
+        { capabilities: { tools: { listChanged: false } } },
+      );
+      const emptyInput = z.strictObject({});
+      for (const [operationId, operation] of Object.entries(api.operations)) {
+        const noInput = operation.input.def.type === "void";
+        server.registerTool(
+          operationId,
+          {
+            description: operation.description,
+            inputSchema: noInput ? emptyInput : operation.input,
+          },
+          async (input) => {
+            const result = await runOperation(
+              operationId,
+              noInput ? undefined : input,
+              c.env,
+              authorization,
+            );
+            return result.ok
+              ? {
+                  content: [{ type: "text", text: JSON.stringify(result.output) ?? "OK" }],
+                }
+              : {
+                  isError: true,
+                  content: [{ type: "text", text: JSON.stringify(result.error) }],
+                };
+          },
+        );
+      }
+      return server;
+    });
+    const response = await mcp.fetch(request);
+    response.headers.set("cache-control", "no-store");
+    return response;
+  });
+
   router.post("/scopes/:scope/:operationId", async (c) => {
     const operationId = c.req.param("operationId");
     if (!Object.hasOwn(api.operations, operationId)) {
@@ -238,8 +336,7 @@ function createVersionRouter<TApi extends BackofficeApi>(
     if (scope instanceof Response) {
       return scope;
     }
-    const { runtime, kernel } = c.env;
-    const authorization = await authorizeApiRequest(c.req.raw, scope, runtime);
+    const authorization = await authorizeApiRequest(c.req.raw, scope, c.env.runtime);
     if (!authorization.ok) {
       return authorization.response;
     }
@@ -257,44 +354,13 @@ function createVersionRouter<TApi extends BackofficeApi>(
       input = parsed.data;
     }
 
-    // The handler was matched to this operation, and `input` was parsed by its schema.
-    const handle = handlers[operationId] as (
-      input: unknown,
-      context: BackofficeToolContext,
-    ) => Promise<unknown>;
-    let output: unknown;
-    try {
-      output = await handle(
-        input,
-        createBackofficeToolContext(
-          createRouteBackedRuntimeContext({
-            emitter: { kind: "caller" },
-            runtime,
-            kernel,
-            execution: authorization.execution,
-            emittedEventSource: authorization.emittedEventSource,
-          }),
-        ),
-      );
-    } catch (error) {
-      // Kernel denials can cross object RPC, which keeps their name but not their class.
-      if (isBackofficeForbiddenError(error)) {
-        return apiError("forbidden", error.message);
-      }
-      if (error instanceof BackofficeOperationError) {
-        return apiError(error.kind, error.message);
-      }
-      // Untyped failures still carry user-facing messages, as in Bash and Codemode.
-      return apiError(
-        "operation_failed",
-        error instanceof Error ? error.message : "The operation failed.",
-      );
+    const result = await runOperation(operationId, input, c.env, authorization);
+    if (!result.ok) {
+      return apiError(result.error.code, result.error.message);
     }
-    // Output that breaks the contract is a server bug, not a caller error.
-    const response = operation.output.parse(output);
     return operation.output.def.type === "void"
       ? c.body(null, 204, { "cache-control": "no-store" })
-      : c.json(response, 200, { "cache-control": "no-store" });
+      : c.json(result.output, 200, { "cache-control": "no-store" });
   });
 
   return router;
