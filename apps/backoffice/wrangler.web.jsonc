@@ -192,6 +192,11 @@
         "script_name": "rejot-backoffice",
       },
       {
+        "name": "FEATURE_FLAGS",
+        "class_name": "FeatureFlags",
+        "script_name": "rejot-backoffice",
+      },
+      {
         "name": "APP_INSTALLATIONS",
         "class_name": "AppInstallations",
         "script_name": "rejot-backoffice",

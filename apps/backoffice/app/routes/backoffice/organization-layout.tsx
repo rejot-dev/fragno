@@ -1,6 +1,8 @@
 import { Callout } from "@fragno-private/design-system/feedback/callout";
 import { Outlet } from "react-router";
 
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
+import { isOrganizationFeatureEnabled } from "@/fragno/feature-flags/evaluate.server";
 import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -25,15 +27,23 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     throwBackofficeOrganizationNotFound(params.orgSlug);
   }
 
-  const relations = await context
-    .get(BackofficeWorkerContext)
-    .runtime.objects.auth.singleton()
-    .commands.getOrganizationRelations({ organizationId: entry.organization.id });
+  const { runtime } = context.get(BackofficeWorkerContext);
+  const [relations, showsAccessSummary] = await Promise.all([
+    runtime.objects.auth.singleton().commands.getOrganizationRelations({
+      organizationId: entry.organization.id,
+    }),
+    isOrganizationFeatureEnabled(
+      runtime,
+      backofficeOrganizationContextScope(entry.organization),
+      "organization-access-summary",
+    ),
+  ]);
 
   return {
     organization: entry.organization,
     membership: entry,
     me,
+    showsAccessSummary,
     relations:
       entry.through.kind === "membership"
         ? relations
@@ -56,7 +66,7 @@ export default function BackofficeOrganizationLayout({
   loaderData,
   matches,
 }: Route.ComponentProps) {
-  const { organization, membership, me, relations } = loaderData;
+  const { organization, membership, me, relations, showsAccessSummary } = loaderData;
 
   let activeTab: OrganizationTab = "overview";
   const currentPath = (matches[matches.length - 1]?.pathname || "").replace(/\/+$/, "");
@@ -88,7 +98,7 @@ export default function BackofficeOrganizationLayout({
             &rsquo;s own owners and admins manage its name, members, and invitations.
           </Callout>
         ) : null}
-        <Outlet context={{ organization, membership, me, relations }} />
+        <Outlet context={{ organization, membership, me, relations, showsAccessSummary }} />
       </div>
     </div>
   );
@@ -99,4 +109,5 @@ export type OrganizationLayoutContext = {
   membership: Route.ComponentProps["loaderData"]["membership"];
   me: NonNullable<Route.ComponentProps["loaderData"]["me"]>;
   relations: Route.ComponentProps["loaderData"]["relations"];
+  showsAccessSummary: boolean;
 };

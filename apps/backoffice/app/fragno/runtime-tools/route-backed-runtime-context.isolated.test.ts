@@ -66,6 +66,7 @@ const createRuntime = (): BackofficeRuntimeServices => {
         auth: false,
         automations: true,
         billing: false,
+        featureFlags: false,
         marketplace: false,
         telegram: false,
         otp: false,

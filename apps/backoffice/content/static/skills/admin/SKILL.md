@@ -8,9 +8,19 @@ description: >
 # Backoffice Administration
 
 Read `/static/codemode/providers/admin.d.ts` before authoring admin calls. It defines the available
-invitation, organization, app, OAuth client, and Marketplace administration operations.
+invitation, organization, feature flag, app, OAuth client, and Marketplace administration
+operations.
 
 For Marketplace operations, also read `/static/codemode/providers/marketplace.d.ts`.
+
+## Organization feature flags
+
+From System context, list the flags for an organization with `admin.feature-flags.list --org acme`.
+Use `admin.feature-flags.get --org acme --key organization-access-summary` to see one flag's
+effective value, default, and override. To change it, run
+`admin.feature-flags.set --org acme --key organization-access-summary --value off`. Use `on` to
+enable it or `default` to clear the override. The corresponding JavaScript methods are
+`admin.featureFlagsList`, `admin.featureFlagsGet`, and `admin.featureFlagsSet`.
 
 ## Featuring listings
 

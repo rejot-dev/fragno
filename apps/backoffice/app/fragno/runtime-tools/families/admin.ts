@@ -53,6 +53,7 @@ import type {
   UsageLimitedMeter,
   UsageLimits,
 } from "@/fragno/billing/usage-limits";
+import type { FeatureFlagKey, FeatureFlagStatus } from "@/fragno/feature-flags/contracts";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
@@ -62,6 +63,7 @@ import {
 } from "../runtime-tools";
 import { adminAccessCodesRuntimeTools } from "./admin-access-codes";
 import { adminAppsRuntimeTools } from "./admin-apps";
+import { adminFeatureFlagRuntimeTools } from "./admin-feature-flags";
 import { adminInboundEmailRuntimeTools } from "./admin-inbound-email";
 import { adminOAuthClientsRuntimeTools } from "./admin-oauth-clients";
 import { adminUsageLimitsRuntimeTools, type AdminUsageLimitOwner } from "./admin-usage-limits";
@@ -145,6 +147,16 @@ export type AdminRuntime = {
   deleteOrganizationEventsOfType(
     input: { organizationSlug: string } & EventDeletionPass,
   ): Promise<{ scanned: number; deleted: number; cursor: string | null }>;
+  getFeatureFlag(input: {
+    organizationSlug: string;
+    key: FeatureFlagKey;
+  }): Promise<FeatureFlagStatus>;
+  listFeatureFlags(input: { organizationSlug: string }): Promise<FeatureFlagStatus[]>;
+  setFeatureFlag(input: {
+    organizationSlug: string;
+    key: FeatureFlagKey;
+    override: boolean | null;
+  }): Promise<FeatureFlagStatus>;
   setUsageLimit(input: {
     owner: AdminUsageLimitOwner;
     meter: UsageLimitedMeter;
@@ -640,6 +652,7 @@ export const adminRuntimeTools = [
   ...adminAppsRuntimeTools,
   ...adminOAuthClientsRuntimeTools,
   ...adminUsageLimitsRuntimeTools,
+  ...adminFeatureFlagRuntimeTools,
   ...adminInboundEmailRuntimeTools,
 ] as const;
 

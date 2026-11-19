@@ -122,6 +122,21 @@ type AdminCodemodeProvider = {
    */
   usageLimitsSet(input: AdminUsageLimitsSetInput): Promise<AdminUsageLimitsSetOutput>;
   /**
+   * Get one feature flag's effective value, default, and override for an organization.
+   * Requires `admin.organizations.manage`.
+   */
+  featureFlagsGet(input: AdminFeatureFlagsGetInput): Promise<AdminFeatureFlagsGetOutput>;
+  /**
+   * Set a feature flag on or off for an organization, or restore its default.
+   * Requires `admin.organizations.manage`.
+   */
+  featureFlagsSet(input: AdminFeatureFlagsSetInput): Promise<AdminFeatureFlagsSetOutput>;
+  /**
+   * List the available feature flags and their effective values for an organization.
+   * Requires `admin.organizations.manage`.
+   */
+  featureFlagsList(input: AdminFeatureFlagsListInput): Promise<AdminFeatureFlagsListOutput>;
+  /**
    * Give a person a new inbound email address, three random words, such as after their address gets spam. People keep one address for good and cannot replace it themselves. The old address stops receiving at once and is never issued again.
    * Requires `admin.users.manage`.
    */
@@ -661,6 +676,39 @@ type AdminUsageLimitsSetOutput = {
     used: string;
   }[];
 };
+type AdminFeatureFlagsGetInput = {
+  organizationSlug: string;
+  key: "organization-access-summary";
+};
+type AdminFeatureFlagsGetOutput = {
+  key: "organization-access-summary";
+  description: string;
+  defaultEnabled: boolean;
+  override: boolean | null;
+  enabled: boolean;
+};
+type AdminFeatureFlagsSetInput = {
+  organizationSlug: string;
+  key: "organization-access-summary";
+  value: "on" | "off" | "default";
+};
+type AdminFeatureFlagsSetOutput = {
+  key: "organization-access-summary";
+  description: string;
+  defaultEnabled: boolean;
+  override: boolean | null;
+  enabled: boolean;
+};
+type AdminFeatureFlagsListInput = {
+  organizationSlug: string;
+};
+type AdminFeatureFlagsListOutput = {
+  key: "organization-access-summary";
+  description: string;
+  defaultEnabled: boolean;
+  override: boolean | null;
+  enabled: boolean;
+}[];
 type AdminInboundEmailReplaceInput = {
   userId: string;
 };

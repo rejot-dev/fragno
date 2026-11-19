@@ -169,6 +169,10 @@
         "class_name": "Apps",
       },
       {
+        "name": "FEATURE_FLAGS",
+        "class_name": "FeatureFlags",
+      },
+      {
         "name": "APP_INSTALLATIONS",
         "class_name": "AppInstallations",
       },
@@ -269,6 +273,7 @@
     "Auth": { "type": "durable-object", "storage": "sqlite" },
     "Apps": { "type": "durable-object", "storage": "sqlite" },
     "AppInstallations": { "type": "durable-object", "storage": "sqlite" },
+    "FeatureFlags": { "type": "durable-object", "storage": "sqlite" },
     "Telegram": { "type": "durable-object", "storage": "sqlite" },
     "Resend": { "type": "durable-object", "storage": "sqlite" },
     // Reson8 runs statelessly under the platform key; its per-organization keys are gone.

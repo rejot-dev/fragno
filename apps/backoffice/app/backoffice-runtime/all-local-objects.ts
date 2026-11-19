@@ -17,6 +17,7 @@ import { BillingObject } from "../../workers/billing-object";
 import { BlobsObject } from "../../workers/blobs-object";
 import { CloudflareObject } from "../../workers/cloudflare-object";
 import { CodemodeObject } from "../../workers/codemode-object";
+import { FeatureFlagsObject } from "../../workers/feature-flags-object";
 import { GitHubObject } from "../../workers/github-object";
 import { GitHubWebhookRouterObject } from "../../workers/github-webhook-router-object";
 import { MarketplaceObject } from "../../workers/marketplace-object";
@@ -247,5 +248,6 @@ export const allLocalObjects = {
   CODEMODE: (input) => new CodemodeObject(input),
   APPS: (input) => new AppsObject(input),
   APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
+  FEATURE_FLAGS: (input) => new FeatureFlagsObject(input),
   MARKETPLACE: (input) => new MarketplaceObject(input),
 } satisfies Record<LocalObjectBindingName, LocalBackofficeObjectFactory<unknown>>;

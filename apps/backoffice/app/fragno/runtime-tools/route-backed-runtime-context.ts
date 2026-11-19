@@ -376,6 +376,9 @@ const createRuntimeContext = ({
               otp: runtime.config.bindings.otp ? runtime.objects.otp.singleton().commands : null,
               automationsFor: (organization) =>
                 runtime.objects.automations.for(organization).commands,
+              featureFlagsFor: runtime.config.bindings.featureFlags
+                ? (organization) => runtime.objects.featureFlags.for(organization).commands
+                : null,
               billingFor: runtime.config.bindings.billing
                 ? (owner) => runtime.objects.billing.for(owner).commands
                 : null,
