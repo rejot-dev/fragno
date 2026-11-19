@@ -46,7 +46,9 @@ shared domain's reputation. Workers AI counts toward the cost by its neurons, an
 its search engine's list price, so neither has a limit of its own. The owner's Billing object keeps
 limits an administrator set in `billing_limit`; a meter without a row has the default.
 `admin.usage-limits.set --org <slug> | --user <id> --meter <meter> --limit <amount | unlimited | default>`
-sets them, in USD or whole emails.
+sets them, in USD or whole emails. `admin.usage-limits.get --org <slug> | --user <id>` shows the
+effective limits, current usage, and whether each limit is default or custom. Add `--format json`
+for structured output.
 
 Work that records usage on a limited meter checks the owner's limits before it starts, through
 `checkUsageLimits`: Pi prompts, manual compactions, `models.classify`, `models.generateImage`,

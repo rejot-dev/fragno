@@ -145,6 +145,7 @@ export type AdminRuntime = {
   deleteOrganizationEventsOfType(
     input: { organizationSlug: string } & EventDeletionPass,
   ): Promise<{ scanned: number; deleted: number; cursor: string | null }>;
+  getUsageLimits(input: { owner: AdminUsageLimitOwner }): Promise<UsageLimits>;
   setUsageLimit(input: {
     owner: AdminUsageLimitOwner;
     meter: UsageLimitedMeter;

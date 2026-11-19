@@ -1178,6 +1178,43 @@
     ]
   },
   {
+    "command": "admin.usage-limits.get",
+    "summary": "admin.usage-limits.get reads an organization's or a user's limits and usage for the current UTC month.",
+    "options": [
+      {
+        "name": "org",
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Slug of the organization, or use --user"
+      },
+      {
+        "name": "user",
+        "valueRequired": true,
+        "valueName": "id",
+        "description": "ID of the user whose personal account is limited, or use --org"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "admin.usage-limits.set",
     "summary": "admin.usage-limits.set sets an organization's or a user's monthly limit on ai.cost.total (USD) or email.sent (emails).",
     "options": [
