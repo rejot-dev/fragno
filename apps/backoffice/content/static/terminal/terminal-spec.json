@@ -1229,6 +1229,123 @@
     ]
   },
   {
+    "command": "admin.feature-flags.get",
+    "summary": "Get an organization's feature flag.",
+    "options": [
+      {
+        "name": "org",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Organization slug"
+      },
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "flag",
+        "description": "Feature flag key"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.feature-flags.set",
+    "summary": "Set or clear an organization's feature flag override.",
+    "options": [
+      {
+        "name": "org",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Organization slug"
+      },
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "flag",
+        "description": "Feature flag key"
+      },
+      {
+        "name": "value",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "setting",
+        "description": "on, off, or default"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.feature-flags.list",
+    "summary": "List an organization's feature flags.",
+    "options": [
+      {
+        "name": "org",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "slug",
+        "description": "Organization slug"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "admin.inbound-email.replace",
     "summary": "admin.inbound-email.replace gives a person a new inbound email address.",
     "options": [

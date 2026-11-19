@@ -197,6 +197,7 @@ import type {
   DurableHookQueueOptions,
   DurableHookQueueResponse,
 } from "@/fragno/durable-hooks";
+import type { FeatureFlagsCommands } from "@/fragno/feature-flags/contracts";
 import type { GitHubInstallationOwner } from "@/fragno/github";
 import type {
   GitHubInstallationMoveParams,
@@ -1204,6 +1205,7 @@ export type BackofficeObjectBindingName =
   | "SITE_REQUESTS"
   | "APPS"
   | "APP_INSTALLATIONS"
+  | "FEATURE_FLAGS"
   | "API"
   | "AUTH"
   | "AUTOMATIONS"
@@ -1246,6 +1248,7 @@ export const backofficeObjectScopePolicy = {
   AUTH: ["singleton"],
   APPS: ["singleton"],
   APP_INSTALLATIONS: ["org", "user"],
+  FEATURE_FLAGS: ["org"],
 
   // An installed app's workspace keeps its data: store, files, events, routes, and workflows.
   AUTOMATIONS: ["singleton", "org", "user", "app", "project"],
@@ -1452,6 +1455,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
     binding<BackofficeAppInstallationsCommands>("APP_INSTALLATIONS"),
   ),
 
+  featureFlags: scoped(factory, binding<FeatureFlagsCommands>("FEATURE_FLAGS")),
   automations: scoped(factory, binding<AutomationsCommands>("AUTOMATIONS")),
   piManager: scoped(factory, binding<PiManagerCommands>("PI_MANAGER")),
   piAgent: (agent: PiAgentAddress) => factory.piAgent(agent),

@@ -62,6 +62,15 @@ describe("admin runtime tools", () => {
       deleteOrganizationEventsOfType: async () => {
         throw new Error("unexpected event deletion");
       },
+      getFeatureFlag: async () => {
+        throw new Error("unexpected feature flag read");
+      },
+      listFeatureFlags: async () => {
+        throw new Error("unexpected feature flag listing");
+      },
+      setFeatureFlag: async () => {
+        throw new Error("unexpected feature flag change");
+      },
       setUsageLimit: async () => {
         throw new Error("unexpected usage limit change");
       },

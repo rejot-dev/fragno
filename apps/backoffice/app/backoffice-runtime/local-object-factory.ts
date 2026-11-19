@@ -429,6 +429,7 @@ export class LocalObjectFactory implements BackofficeObjectFactory {
         automations: this.#isConfigured("AUTOMATIONS"),
         piManager: this.#isConfigured("PI_MANAGER"),
         billing: this.#isConfigured("BILLING"),
+        featureFlags: this.#isConfigured("FEATURE_FLAGS"),
         marketplace: this.#isConfigured("MARKETPLACE"),
         telegram: this.#isConfigured("TELEGRAM"),
         otp: this.#isConfigured("OTP"),

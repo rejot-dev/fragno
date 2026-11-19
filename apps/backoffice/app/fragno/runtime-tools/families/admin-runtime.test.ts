@@ -63,6 +63,7 @@ function createAdminRuntimeDependencies() {
       throw new Error("These tests do not reach an organization's automations.");
     },
     billingFor: null,
+    featureFlagsFor: null,
     replaceInboundEmailAddress: null,
     setInboundEmailSending: null,
     publicBaseUrl: "https://backoffice.example/",

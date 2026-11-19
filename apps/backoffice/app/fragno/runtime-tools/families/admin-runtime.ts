@@ -17,6 +17,7 @@ import { buildAccessCodeSignUpUrl } from "@/fragno/access-codes/access-code";
 import type { AccessCodeRecord } from "@/fragno/access-codes/contracts";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
+import type { FeatureFlagsCommands } from "@/fragno/feature-flags/contracts";
 
 import type { AdminAccessCode, AdminRuntime } from "./admin";
 import { compileIntegrationActionSchema } from "./integrations/integration-action-json-schema";
@@ -78,6 +79,9 @@ type AdminRuntimeDependencies = {
   automationsFor: (
     organization: BackofficeOrganizationContextScope,
   ) => Pick<AutomationsCommands, "deleteEventsOfType">;
+  featureFlagsFor:
+    | ((organization: BackofficeOrganizationContextScope) => FeatureFlagsCommands)
+    | null;
   /** An owner's usage ledger; null without the Billing binding. */
   billingFor:
     | ((
@@ -128,10 +132,19 @@ export function createAdminRuntime({
   otp,
   automationsFor,
   billingFor,
+  featureFlagsFor,
   replaceInboundEmailAddress,
   setInboundEmailSending,
   publicBaseUrl,
 }: AdminRuntimeDependencies): AdminRuntime {
+  async function featureFlagsForOrganization(organizationSlug: string) {
+    if (!featureFlagsFor) {
+      throw new Error("Admin feature flags require the FEATURE_FLAGS binding.");
+    }
+    const organization = await requireAdminOrganization(auth, organizationSlug);
+    return featureFlagsFor(backofficeOrganizationContextScope(organization));
+  }
+
   /** Access codes are shared as sign-up links, which need the public origin. */
   function requireAccessCodeLinks(operation: string) {
     if (!otp) {
@@ -293,6 +306,12 @@ export function createAdminRuntime({
         ...input,
         organizationId: await requireAdminOrganizationId(auth, organizationSlug),
       }),
+    getFeatureFlag: async ({ organizationSlug, key }) =>
+      await (await featureFlagsForOrganization(organizationSlug)).getFlag(key),
+    listFeatureFlags: async ({ organizationSlug }) =>
+      await (await featureFlagsForOrganization(organizationSlug)).listFlags(),
+    setFeatureFlag: async ({ organizationSlug, ...setting }) =>
+      await (await featureFlagsForOrganization(organizationSlug)).setFlag(setting),
     setUsageLimit: async ({ owner, ...limit }) => {
       if (!billingFor) {
         throw new Error("Admin usage limits require the BILLING binding.");

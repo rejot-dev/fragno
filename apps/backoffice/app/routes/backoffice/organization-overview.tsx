@@ -22,7 +22,8 @@ export function meta() {
 }
 
 export default function BackofficeOrganizationOverview() {
-  const { organization, membership, me, relations } = useOutletContext<OrganizationLayoutContext>();
+  const { organization, membership, me, relations, showsAccessSummary } =
+    useOutletContext<OrganizationLayoutContext>();
   const managed = membership.through.kind === "managing-organization";
   const revalidator = useRevalidator();
   const currentUserRole = me.user.role;
@@ -99,11 +100,13 @@ export default function BackofficeOrganizationOverview() {
         />
       </SurfacePanel>
 
-      <OrganizationAccessPanel
-        organizationName={organization.name}
-        basePath={`/backoffice/organizations/${encodeURIComponent(organization.slug)}`}
-        relations={relations}
-      />
+      {showsAccessSummary ? (
+        <OrganizationAccessPanel
+          organizationName={organization.name}
+          basePath={`/backoffice/organizations/${encodeURIComponent(organization.slug)}`}
+          relations={relations}
+        />
+      ) : null}
 
       {/* Managers are told who renames the organization above the page instead. */}
       {managed ? null : (
