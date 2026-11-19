@@ -64,9 +64,15 @@ export default {
 
       try {
         const url = new URL(request.url);
-        const { sitesDomain } = runtime.config;
+        const { sitesDomain, docsPublicBaseUrl } = runtime.config;
         // The sites domain serves only sites, never Backoffice, whose cookies it must not see.
-        const siteHost = sitesDomain === null ? undefined : siteHostOf(url, sitesDomain);
+        // Backoffice's own host is never a site's, even within the sites domain, as when a dev
+        // server serves both under one domain; claimed hosts are three words, so none is it.
+        const siteHost =
+          sitesDomain === null ||
+          (docsPublicBaseUrl !== undefined && url.host === new URL(docsPublicBaseUrl).host)
+            ? undefined
+            : siteHostOf(url, sitesDomain);
         const response =
           siteHost !== undefined
             ? await (
