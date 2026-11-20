@@ -19,6 +19,17 @@ export interface ApiFragmentConfig {
 
 const tokenEndpointAuthMethodSchema = z.enum(["client_secret_basic", "client_secret_post", "none"]);
 
+const apiKeyLocationSchema = z
+  .enum(["header", "query"])
+  .describe("Where every request carries the key.");
+const apiKeyParameterSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .describe(
+    "The header or query parameter that carries the key, such as the header x-api-key or the query parameter api_key.",
+  );
+
 export const authConfigSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("none") }),
   z.object({ type: z.literal("bearer"), token: z.string().min(1) }),
@@ -51,14 +62,8 @@ export const authConfigSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("apiKey"),
-    location: z.enum(["header", "query"]).describe("Where every request carries the key."),
-    parameter: z
-      .string()
-      .trim()
-      .min(1)
-      .describe(
-        "The header or query parameter that carries the key, such as the header x-api-key or the query parameter api_key.",
-      ),
+    location: apiKeyLocationSchema,
+    parameter: apiKeyParameterSchema,
     key: z.string().min(1),
   }),
 ]);
@@ -102,7 +107,16 @@ export const apiAuthStatusSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("bearer"), credentials: apiCredentialsPresenceSchema }),
   z.object({ mode: z.literal("basic"), credentials: apiCredentialsPresenceSchema }),
   z.object({ mode: z.literal("client_credentials"), credentials: apiCredentialsPresenceSchema }),
-  z.object({ mode: z.literal("apiKey"), credentials: apiCredentialsPresenceSchema }),
+  // Where the key goes is stored with the key, so it is known only while the key is.
+  z.discriminatedUnion("credentials", [
+    z.object({
+      mode: z.literal("apiKey"),
+      credentials: z.literal("present"),
+      location: apiKeyLocationSchema,
+      parameter: apiKeyParameterSchema,
+    }),
+    z.object({ mode: z.literal("apiKey"), credentials: z.literal("missing") }),
+  ]),
   z.object({
     mode: z.literal("oauth"),
     state: z

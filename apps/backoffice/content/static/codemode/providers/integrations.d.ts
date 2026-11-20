@@ -46,6 +46,11 @@ type IntegrationsCodemodeProvider = {
    */
   execute(input: IntegrationsExecuteInput): Promise<IntegrationsExecuteOutput>;
   /**
+   * Ask the user for a connection's secrets in a form card in your reply, then submit them with input as setup or reconfigure. Secrets reach a connection only this way, never through the conversation. Name only fields from the check's secretFields, and leave them out of input.
+   * Requires `integrations.manage`.
+   */
+  requestInput(input: IntegrationsRequestInputInput): Promise<IntegrationsRequestInputOutput>;
+  /**
    * Write a JavaScript module with one typed async function per action of the selected connection, for codemode and saved modules to import. Each function calls integrations.execute; its JSDoc types snapshot the action contracts, so regenerate after the connection's actions change.
    * Requires `integrations.read` and `upload.modify`.
    */
@@ -239,6 +244,10 @@ type IntegrationActionValidation =
       /** Why the published schemas cannot be validated. */
       reason: string;
     };
+type IntegrationInputRequest = {
+  /** The form's workflow run, shown as a card in your reply. Its instance.completed event carries the setup progress as output. */
+  instanceId: string;
+};
 type IntegrationClient = {
   path: string;
   exports: {
@@ -326,6 +335,25 @@ type IntegrationsExecuteInput = {
   unchecked?: boolean;
 };
 type IntegrationsExecuteOutput = JsonValue;
+type IntegrationsRequestInputInput = {
+  connectionId: IntegrationConnectionId;
+  /** setup for a connection the check reports needs-input, reconfigure to replace an existing connection's configuration and credentials. */
+  operation: "setup" | "reconfigure";
+  /** Every input value except the secrets, such as baseUrl, type, location, and parameter. The submitted secrets join them. */
+  input: {
+    [key: string]: JsonValue;
+  };
+  /** The form's heading and submit label, such as Connect GIPHY. */
+  title: string;
+  secrets: {
+    /** A field from the check's secretFields. */
+    field: string;
+    label: string;
+    /** Where the user creates the value, with that page's URL from the provider's documentation. */
+    description: string;
+  }[];
+};
+type IntegrationsRequestInputOutput = IntegrationInputRequest;
 type IntegrationsGenerateClientInput = {
   connectionId: IntegrationConnectionId;
   /** Absolute path of the .js module to write under /workspace. Only a module this operation generated is replaced. */

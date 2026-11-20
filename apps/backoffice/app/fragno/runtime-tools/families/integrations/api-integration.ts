@@ -647,14 +647,19 @@ export function createApiIntegration({
         },
         async settings() {
           // Stored auth modes are the input's type names; credentials and OAuth client details are
-          // never read back.
-          return (
-            resolved && {
-              ...(resolved.name ? { name: resolved.name } : {}),
-              baseUrl: resolved.baseUrl,
-              type: resolved.authMode,
-            }
-          );
+          // never read back. Where an API key goes is not secret, so a replacement needs only the key.
+          if (!resolved) {
+            return null;
+          }
+          const auth = resolved.authMode === "apiKey" ? await access.authStatus(localId) : null;
+          return {
+            ...(resolved.name ? { name: resolved.name } : {}),
+            baseUrl: resolved.baseUrl,
+            type: resolved.authMode,
+            ...(auth?.mode === "apiKey" && auth.credentials === "present"
+              ? { location: auth.location, parameter: auth.parameter }
+              : {}),
+          };
         },
         async actions() {
           return [

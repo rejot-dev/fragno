@@ -119,50 +119,38 @@ reconfiguration.
 
 ### Setup form
 
-A setup form is an inline workflow that shows the missing fields as a form card in the conversation,
-waits for the user to submit it, and submits the setup input. Secrets reach setup only through a
-setup form: the card masks them and keeps them out of the conversation.
-
-- Give each missing field one control, with `secret: true` for every field in `secretFields`.
-- Say in each secret control's `description` where the user creates it, with that page's URL from
-  the documentation. Interfaces render URLs as plain text.
-- Name fields and their purpose in labels, step names, and output; values stay in the payload.
+A setup form is a form card in your reply that asks the user for a connection's secrets, then
+submits them with the rest of the input. Secrets reach a connection only through a setup form, so
+they never pass through the conversation. `integrations.requestInput` starts one:
 
 ```js
-defineWorkflow({ name: "connect-acme" }, async (event, step) => {
-  const credentials = ui.form("acme-credentials", { token: "" });
-  await step.do("ask for the Acme API key", async () => ({
-    $ui: ui.render(
-      ui.stack({ gap: "md" }, [
-        ui.text({ text: "Acme signs every request with an API key." }),
-        ui.textInput({
-          label: "Acme API key",
-          value: credentials.bind("token"),
-          secret: true,
-          required: true,
-          description: "Create one on Acme's API keys page: https://acme.example/settings/api-keys",
-        }),
-        credentials.submit({ label: "Connect Acme" }),
-      ]),
-    ),
-  }));
-  const { payload } = await step.waitForEvent("Acme API key", { type: credentials.eventType });
-  return await step.do("connect Acme", async () => {
-    await integrations.setup({
-      kind: "input",
-      connectionId: "api#acme",
-      input: { baseUrl: "https://api.acme.example", type: "bearer", token: payload.token },
-    });
-    return await integrations.setup({ kind: "check", connectionId: "api#acme" });
+async () =>
+  await integrations.requestInput({
+    connectionId: "api#acme",
+    operation: "setup",
+    input: { baseUrl: "https://api.acme.example", type: "bearer" },
+    title: "Connect Acme",
+    secrets: [
+      {
+        field: "token",
+        label: "Acme API key",
+        description: "Create one on Acme's API keys page: https://acme.example/settings/api-keys",
+      },
+    ],
   });
-});
 ```
+
+- `input` holds every value except the secrets; `secrets` names each field of the check's
+  `secretFields` the input needs.
+- Say in each secret's `description` where the user creates it, with that page's URL from the
+  documentation.
+- `operation` is `reconfigure` when replacing an existing connection's configuration.
 
 The card is the request: start the setup form in the turn the loop reaches `needs-input`, and let
 your reply add only what the card leaves out.
 
-**Complete when** the setup form's run has started; its `instance.completed` event carries the
-check, and the loop continues from it.
+**Complete when** `requestInput` returned the form's `instanceId`; its `instance.completed` event
+carries the setup progress as output, and the loop continues from it.
 
 ### Auth by source
 
@@ -224,12 +212,11 @@ Both operations replace or delete live credentials, so run them on the user's in
   1. `integrations.reconfigure({ kind: "check", connectionId })` returns the replacement
      `inputSchema`.
   2. Start the input from the `settings` that `integrations.get` returns, the stored values that are
-     not secret, and change only what the user asked. Take fields `settings` omits from the
-     provider's documentation.
-  3. In the same turn, start a setup form with a control for every secret field of the replacement,
-     such as the current key and a new one the provider now needs. Its last step submits
-     `integrations.reconfigure({ kind: "input", connectionId, input })` where the setup example
-     calls `integrations.setup`.
+     not secret, such as an API key's `location` and `parameter`, and change only what the user
+     asked. Take fields `settings` omits from the provider's documentation.
+  3. In the same turn, start a setup form with `operation: "reconfigure"`, `input` from step 2, and
+     `secrets` for every secret field of the replacement, such as the current key and a new one the
+     provider now needs.
   4. The submission returns setup progress: rerun the setup loop, step 4, and step 5.
 
   For an `api#` or `mcp#` OAuth connection whose provider revoked access, submit
