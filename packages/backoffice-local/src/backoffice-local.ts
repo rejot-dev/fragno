@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 import { homedir } from "node:os";
 import { posix, resolve } from "node:path";
 
-import type { BackofficeCodemodeInput } from "@fragno-dev/backoffice-api/v0/codemode";
 import {
   type BackofficeContextScope,
   backofficeContextScopeSchema,
@@ -984,45 +983,6 @@ export async function executeBackofficeCodemode(options: {
   const body = await assertOk(response, "Codemode execution");
   assertBackofficeCodemodeSucceeded(body);
   return body;
-}
-
-async function fetchPersonalCodemode(baseUrl: string, init: RequestInit) {
-  const { auth, config } = await ensureOAuthAccessToken(baseUrl);
-  function send(credentials: StoredAuthState) {
-    const headers = new Headers(init.headers);
-    headers.set("authorization", `Bearer ${credentials.oauth.accessToken}`);
-    return fetchBackofficeWithoutRedirect(`${baseUrl}/api/v0/codemode`, { ...init, headers });
-  }
-
-  const response = await send(auth);
-  if (response.status !== 401) {
-    return response;
-  }
-  await response.body?.cancel();
-  return await send(await refreshOAuthAccessToken(auth, config));
-}
-
-export async function fetchPersonalCodemodeSystemPrompt(baseUrl: string): Promise<string> {
-  const response = await fetchPersonalCodemode(baseUrl, {});
-  if (!response.ok) {
-    await assertOk(response, "Fetch SYSTEM.md");
-  }
-  return await response.text();
-}
-
-export async function executePersonalCodemode(
-  options: BackofficeCodemodeInput & { baseUrl: string; signal?: AbortSignal },
-): Promise<unknown> {
-  const { baseUrl, signal, ...body } = options;
-  const response = await fetchPersonalCodemode(baseUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
-  });
-  const result = await assertOk(response, "Codemode execution");
-  assertBackofficeCodemodeSucceeded(result);
-  return result;
 }
 
 function requireSafeBackofficeWorkspaceFileKey(fileKey: string): string {

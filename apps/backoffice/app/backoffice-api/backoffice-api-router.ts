@@ -26,6 +26,12 @@ import {
   BACKOFFICE_TOKEN_EXPIRED_CODE,
 } from "@/fragno/auth/contracts";
 import {
+  LEYWAY_MCP_OAUTH_SCOPES,
+  LEYWAY_MCP_PATH,
+  LEYWAY_MCP_RESOURCE_METADATA_PATH,
+  LEYWAY_OAUTH_SERVER_METADATA_PATH,
+} from "@/fragno/auth/mcp-oauth";
+import {
   ACCESS_TOKEN_AUDIENCE,
   verifyBackofficeApiCredential,
   verifyPiAgentWatchTicket,
@@ -192,11 +198,6 @@ function createVersionRouter<TApi extends BackofficeApi>(
 ) {
   const router = new Hono<{ Bindings: BackofficeApiBindings }>();
 
-  router.on(["GET", "POST"], "/codemode", async (c) => {
-    const { servePersonalCodemode } = await import("./personal-codemode");
-    return await servePersonalCodemode(c.req.raw, c.env);
-  });
-
   router.get("/openapi.json", (c) =>
     c.json(createOpenApiDocument(api, { serverUrl: new URL(c.req.url).origin })),
   );
@@ -305,8 +306,28 @@ function createVersionRouter<TApi extends BackofficeApi>(
   return router;
 }
 
-/** Serves `/api/<version>/…`; every other path belongs to React Router. */
 export const backofficeApiRouter = new Hono<{ Bindings: BackofficeApiBindings }>()
+  .get(LEYWAY_MCP_RESOURCE_METADATA_PATH, (c) => {
+    const { origin } = new URL(c.req.url);
+    return c.json(
+      {
+        resource: new URL(LEYWAY_MCP_PATH, origin).href,
+        resource_name: "Leyway",
+        authorization_servers: [origin],
+        scopes_supported: [...LEYWAY_MCP_OAUTH_SCOPES],
+        bearer_methods_supported: ["header"],
+      },
+      200,
+      { "access-control-allow-origin": "*", "cache-control": "public, max-age=60" },
+    );
+  })
+  .get(LEYWAY_OAUTH_SERVER_METADATA_PATH, (c) =>
+    c.env.runtime.objects.auth.singleton().http.fetch(c.req.raw),
+  )
+  .all(LEYWAY_MCP_PATH, async (c) => {
+    const { serveLeywayMcp } = await import("./leyway-mcp");
+    return await serveLeywayMcp(c.req.raw, c.env);
+  })
   .route(`/api/${backofficeApiV0.version}/provisioning`, backofficeProvisioningRouter)
   .route(
     `/api/${backofficeApiV0.version}`,

@@ -1,8 +1,9 @@
-import { backofficeCodemodeInputSchema } from "@fragno-dev/backoffice-api/v0/codemode";
-
 import { requireBackofficeContextScopeFromRouteParams } from "@/backoffice-runtime/scope-codec";
 import { authorizeBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
-import { executeInteractiveCodemode } from "@/fragno/codemode/interactive-execute";
+import {
+  backofficeCodemodeInputSchema,
+  executeInteractiveCodemode,
+} from "@/fragno/codemode/interactive-execute";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/backoffice-codemode";
@@ -19,7 +20,7 @@ export async function action({ request, context, params }: Route.ActionArgs) {
   }
   const { execution } = authorization;
 
-  const body = backofficeCodemodeInputSchema._zod.innerType.strip().parse(await request.json());
+  const body = backofficeCodemodeInputSchema.strip().parse(await request.json());
 
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
 

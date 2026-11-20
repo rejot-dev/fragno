@@ -150,11 +150,6 @@ OAuth access/refresh tokens through the internal Codemode client, and exchanges 
 the shared execution-token route. Device approval now records a user consent in Better Auth's
 `oauthConsent` model, so it can be reviewed and revoked alongside authorization-code grants.
 
-The CLI's `leyway mcp` stdio command uses the same saved device sign-in. Its Codemode requests use
-the CLI OAuth credential, with current consent and user status checked by Auth. The server starts
-each run in the authenticated user's personal workspace. Codemode context handles resolve current
-user permissions in the workspaces they address.
-
 The selected origin is preserved through configuration, browser approval links, OAuth issuance,
 refresh, and execution-token exchange. `localhost` and `127.0.0.1` are distinct issuer and browser
 session origins; neither is rewritten to the other. Sign in using the same hostname as the CLI.
@@ -227,6 +222,18 @@ authorizes it exactly as it does in Bash and Codemode; installed apps can emit e
 their own `app:<appId>` source. `admin` and `internal` tools are never exposed; `cloudflare` tools
 wait for real Browser Run result schemas in their fragment. Byte-oriented operations exchange base64
 through v0 adapters (`app/backoffice-api/v0-adapters.ts`) until dedicated file transfer APIs exist.
+
+## Remote MCP
+
+Connect a Streamable HTTP MCP client to `/api/v0/mcp` on your Leyway server. The client discovers
+Leyway's OAuth endpoints, registers with the dedicated MCP scopes, and opens browser sign-in and
+consent with OAuth authorization code and PKCE. The MCP resource has its own access-token audience.
+Auth checks the user, client, and current consent on every MCP request.
+
+The `codemode` tool starts each run in the user's personal workspace. Read
+`leyway://codemode/SYSTEM.md` for the available tools and context handles. Use `account.orgsList()`
+to find organization IDs and `context.org(organizationId).projects.list({})` to list projects in an
+organization the user can access. Users can revoke MCP access from Authorized applications.
 
 ## Browser consent and revocation
 

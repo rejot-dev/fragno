@@ -35,15 +35,12 @@
     "test:watch": "vitest --watch"
   },
   "dependencies": {
-    "@fragno-dev/backoffice-api": "workspace:*",
     "@fragno-dev/db": "workspace:*",
-    "@modelcontextprotocol/server": "2.3.1",
     "@rejot-dev/backoffice-local": "workspace:*"
   },
   "devDependencies": {
     "@fragno-private/typescript-config": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
-    "@modelcontextprotocol/client": "2.3.1",
     "@types/node": "^22.19.7",
     "@vitest/coverage-istanbul": "catalog:",
     "vitest": "catalog:"

@@ -1,4 +1,4 @@
-import type { BackofficeCodemodeInput } from "@fragno-dev/backoffice-api/v0/codemode";
+import { z } from "zod";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
@@ -10,13 +10,20 @@ import { runtimeToolFamilies } from "@/fragno/runtime-tools/tool-families";
 import { codemodeRunnerFor } from "./codemode-object-execute";
 import { runBackofficeCodemode } from "./execute";
 
+export const backofficeCodemodeInputSchema = z.strictObject({
+  code: z.string().min(1),
+  dependencies: z.record(z.string().min(1), z.string().min(1)).optional(),
+  // Long-running Pi turns can exceed two minutes while their workflow continues streaming.
+  timeout: z.number().int().positive().max(300_000).optional(),
+});
+
 export async function executeInteractiveCodemode({
   body,
   execution,
   runtime,
   kernel,
 }: {
-  body: BackofficeCodemodeInput;
+  body: z.infer<typeof backofficeCodemodeInputSchema>;
   execution: BackofficeExecutionContext;
   runtime: BackofficeRuntimeServices;
   kernel: BackofficeKernel;

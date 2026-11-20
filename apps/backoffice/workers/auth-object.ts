@@ -105,6 +105,7 @@ import {
   type BackofficeExecutionTokenExchangeInput,
   type BackofficeExecutionTokenResult,
 } from "@/fragno/auth/execution-token";
+import { LEYWAY_MCP_OAUTH_SCOPE } from "@/fragno/auth/mcp-oauth";
 import {
   backofficeOAuthClientCreateInputSchema,
   backofficeOAuthClientListInputSchema,
@@ -149,7 +150,7 @@ import { BACKOFFICE_LOGIN_PATH } from "@/routes/backoffice/auth-navigation";
 
 import {
   authenticateInstalledAppClient,
-  authorizePersonalCodemode,
+  authorizeMcpUser,
   exchangeBackofficeExecutionToken,
 } from "./auth/backoffice-execution-token";
 import {
@@ -1671,14 +1672,19 @@ export class AuthObject implements AuthCommands {
     });
   }
 
-  async authorizePersonalCodemode(input: { requestUrl: string; oauthAccessToken: string }) {
+  async authorizeMcpUser(input: { requestUrl: string; oauthAccessToken: string }) {
     const parsed = backofficeExecutionTokenExchangeInputSchema
       .pick({ requestUrl: true, oauthAccessToken: true })
       .parse(input);
     await this.#ready;
     const auth = this.#getAuth(new URL(parsed.requestUrl).origin);
-    return await authorizePersonalCodemode(auth, parsed, {
-      resolveClientPolicy: this.#resolveOAuthClientPolicy(auth, parsed.requestUrl),
+    return await authorizeMcpUser(auth, parsed, {
+      async isMcpClientEnabled(clientId) {
+        const client = await getBackofficeOAuthClientFacts(auth, clientId);
+        return (
+          client !== null && !client.disabled && client.scopes.includes(LEYWAY_MCP_OAUTH_SCOPE)
+        );
+      },
       resolveUserGrant: (adapter, input) =>
         resolveBackofficeUserTokenGrant(adapter, this.#database, input),
     });

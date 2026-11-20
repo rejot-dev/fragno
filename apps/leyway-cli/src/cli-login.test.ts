@@ -9,10 +9,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-
-import { Client } from "@modelcontextprotocol/client";
-
 const packageDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const executable = resolve(packageDirectory, "bin/run.js");
 
@@ -25,7 +21,6 @@ async function loginServer(onTestFinished: TestContext["onTestFinished"]) {
     deviceRequests: 0,
     polls: [] as URLSearchParams[],
     exchangeAvailable: true,
-    codemodeCalls: [] as unknown[],
   };
   async function respond(request: IncomingMessage, response: ServerResponse): Promise<void> {
     let body = "";
@@ -91,17 +86,6 @@ async function loginServer(onTestFinished: TestContext["onTestFinished"]) {
           );
         } else {
           response.writeHead(401).end("{}");
-        }
-        break;
-      case "/api/v0/codemode":
-        if (request.headers.authorization !== "Bearer oauth-access") {
-          response.writeHead(401).end("{}");
-        } else if (request.method === "GET") {
-          response.setHeader("content-type", "text/markdown");
-          response.end("# Codemode guide");
-        } else {
-          state.codemodeCalls.push(JSON.parse(body));
-          response.end(JSON.stringify({ ok: true, result: { kind: "user", userId: "user-1" } }));
         }
         break;
       case "/api/backoffice/me":
@@ -251,42 +235,3 @@ it("keeps plain login blocking and --force requests fresh approval", async ({ on
   assert.equal((await run("login", "--start", "--force").finished).code, 0);
   assert.equal(state.deviceRequests, 2);
 }, 15_000);
-
-it("serves Codemode over stdio using the CLI's device sign-in", async ({ onTestFinished }) => {
-  const { state, run, authFile, baseUrl } = await loginServer(onTestFinished);
-  const client = new Client({ name: "leyway-mcp-test", version: "1.0.0" });
-  await client.connect(
-    new StdioClientTransport({
-      command: process.execPath,
-      args: [executable, "mcp", "--base-url", baseUrl],
-      cwd: packageDirectory,
-      env: { LEYWAY_AUTH_FILE: authFile },
-    }),
-  );
-  onTestFinished(() => client.close());
-
-  const { tools } = await client.listTools();
-  assert.deepEqual(
-    tools.map(({ name }) => name),
-    ["codemode"],
-  );
-  const args = { name: "codemode", arguments: { code: "async () => context.getCurrentScope()" } };
-  expect(await client.callTool(args)).toMatchObject({
-    isError: true,
-    content: [{ type: "text", text: expect.stringContaining("Run leyway login") }],
-  });
-  assert.deepEqual(state.codemodeCalls, []);
-
-  state.approval = "approved";
-  const login = await run("login").finished;
-  assert.equal(login.code, 0, login.stderr);
-
-  expect(await client.readResource({ uri: "leyway://codemode/SYSTEM.md" })).toMatchObject({
-    contents: [{ text: "# Codemode guide" }],
-  });
-  expect(await client.callTool(args)).toMatchObject({
-    content: [{ type: "text", text: expect.stringContaining('"kind":"user"') }],
-  });
-  assert.deepEqual(state.codemodeCalls, [args.arguments]);
-  assert.equal(state.deviceRequests, 1);
-}, 20_000);

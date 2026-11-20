@@ -80,7 +80,10 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
         expirationTime: "15m",
       },
     }),
-    ...createBackofficeOAuthPlugins({ isUserAdministrator: input.isUserAdministrator }),
+    ...createBackofficeOAuthPlugins({
+      baseURL: input.baseURL,
+      isUserAdministrator: input.isUserAdministrator,
+    }),
     createBackofficeOAuthConsentPlugin({
       listFirstPartyOAuthClientIds: input.listFirstPartyOAuthClientIds,
     }),

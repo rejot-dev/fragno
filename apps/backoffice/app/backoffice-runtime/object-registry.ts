@@ -459,7 +459,7 @@ export type AuthCommands = DurableHookCommands &
       requestUrl: string;
       oauthAccessToken: string;
     }): Promise<{ appId: string }>;
-    authorizePersonalCodemode(input: {
+    authorizeMcpUser(input: {
       requestUrl: string;
       oauthAccessToken: string;
     }): Promise<BackofficeUserContextScope>;

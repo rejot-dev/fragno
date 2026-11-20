@@ -1,5 +1,6 @@
 import { betterAuth, type BetterAuthPlugin } from "better-auth";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
+import { z } from "zod";
 
 import { Cursor, decodeCursor } from "@fragno-dev/db";
 
@@ -11,6 +12,11 @@ import {
 } from "@better-auth/oauth-provider";
 
 import type { LeywayCliOAuthConfig } from "@/fragno/auth/contracts";
+import {
+  LEYWAY_MCP_OAUTH_SCOPE,
+  LEYWAY_MCP_OAUTH_SCOPES,
+  LEYWAY_MCP_PATH,
+} from "@/fragno/auth/mcp-oauth";
 import {
   BACKOFFICE_CLIENT_CREDENTIALS_SCOPES,
   BACKOFFICE_OAUTH_SCOPES,
@@ -225,17 +231,62 @@ async function loadBackofficeCodemodeOAuth(
   return { authContext, client };
 }
 
+const mcpRegistrationBodySchema = z.looseObject({
+  application_type: z.unknown().optional(),
+  redirect_uris: z.array(z.url()),
+});
+
 /** Restricts managed OAuth client operations using live global administrator authority. */
 export function createBackofficeOAuthPlugins(input: {
+  baseURL: string;
   isUserAdministrator: ((userId: string) => Promise<boolean>) | null;
 }): BetterAuthPlugin[] {
+  const mcpResource = new URL(LEYWAY_MCP_PATH, input.baseURL).href;
   return [
+    {
+      id: "backoffice-mcp-registration",
+      hooks: {
+        before: [
+          {
+            matcher: ({ path }) => path === "/oauth2/register",
+            handler: createAuthMiddleware(async (ctx) => {
+              const body = mcpRegistrationBodySchema.safeParse(ctx.body);
+              if (
+                body.success &&
+                body.data.application_type === undefined &&
+                body.data.redirect_uris.some((uri) => {
+                  const url = new URL(uri);
+                  return (
+                    url.protocol === "http:" &&
+                    ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+                  );
+                })
+              ) {
+                // Desktop MCP clients commonly omit application_type for loopback callbacks.
+                return { context: { body: { ...body.data, application_type: "native" } } };
+              }
+              return undefined;
+            }),
+          },
+        ],
+      },
+    },
     oauthProvider({
       loginPage: "/backoffice/login",
       consentPage: "/backoffice/oauth/consent",
-      scopes: [...BACKOFFICE_OAUTH_SCOPES],
+      scopes: [...BACKOFFICE_OAUTH_SCOPES, LEYWAY_MCP_OAUTH_SCOPE],
+      resources: [
+        {
+          identifier: mcpResource,
+          name: "Leyway MCP",
+          allowedScopes: [...LEYWAY_MCP_OAUTH_SCOPES],
+        },
+      ],
       enforcePerClientResources: false,
-      allowDynamicClientRegistration: false,
+      allowDynamicClientRegistration: true,
+      allowUnauthenticatedClientRegistration: true,
+      clientRegistrationDefaultScopes: [...LEYWAY_MCP_OAUTH_SCOPES],
+      clientRegistrationDefaultResources: [mcpResource],
       customTokenResponseFields: enforceBackofficeOAuthTokenResponseConsent,
       clientPrivileges: async function authorizeOAuthClientManagement({ action, user }) {
         if (!user) {

@@ -6,11 +6,21 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import {
+  Client,
+  StreamableHTTPClientTransport,
+  UnauthorizedError,
+  type OAuthClientProvider,
+  type StoredOAuthClientInformation,
+  type StoredOAuthTokens,
+} from "@modelcontextprotocol/client";
+
 import { backofficeApiRouter } from "@/backoffice-api/backoffice-api-router";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { backofficeExecutionTokenResultSchema } from "@/fragno/auth/execution-token";
+import { LEYWAY_MCP_PATH } from "@/fragno/auth/mcp-oauth";
 import {
   BACKOFFICE_JWT_LIFETIME_SECONDS,
   verifyBackofficeJwt,
@@ -149,16 +159,9 @@ async function requestExecutionToken(
   });
 }
 
-function requestPersonalCodemode(ctx: BackofficeScenarioContext, token: string, body: unknown) {
+function mcpGatewayFetch(ctx: BackofficeScenarioContext, request: Request) {
   const runtime = ctx.runtime.services;
-  return backofficeApiRouter.fetch(
-    new Request(`${origin}/api/v0/codemode`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify(body),
-    }),
-    { runtime, kernel: new BackofficeKernel(runtime) },
-  );
+  return backofficeApiRouter.fetch(request, { runtime, kernel: new BackofficeKernel(runtime) });
 }
 
 async function runExecutionTokenScenario(check: (ctx: BackofficeScenarioContext) => Promise<void>) {
@@ -254,38 +257,155 @@ describe("Backoffice execution token SQLite scenarios", () => {
     });
   });
 
-  test("CLI Codemode starts in the personal workspace and can address an organization", async () => {
+  test("a remote MCP client discovers OAuth, gets browser approval, and starts in the personal workspace", async () => {
     await runExecutionTokenScenario(async (ctx) => {
       const { token, user, organization } = await authorizeFirstPartyClient(ctx);
-      const code = `async () => ({
-        current: await context.getCurrentScope(),
-        organization: (await context.org(${JSON.stringify(organization.id)}).org.get()).organization,
-      })`;
-      const response = await requestPersonalCodemode(ctx, token, { code });
-      assert.equal(response.status, 200, await response.clone().text());
-      expect(await response.json()).toMatchObject({
-        ok: true,
-        result: {
-          current: { kind: "user", userId: user.id },
-          organization: { organizationId: organization.id },
+      const endpoint = new URL(LEYWAY_MCP_PATH, origin);
+      const wrongAudience = await mcpGatewayFetch(
+        ctx,
+        new Request(endpoint, { headers: { authorization: `Bearer ${token}` } }),
+      );
+      assert.equal(wrongAudience.status, 401);
+      assert.match(wrongAudience.headers.get("www-authenticate") ?? "", /resource_metadata=/u);
+
+      const redirectUri = "http://127.0.0.1:48526/callback";
+      const disallowedRegistration = await ctx.runtime.objects.auth.singleton().http.fetch(
+        new Request(new URL("/api/auth/oauth2/register", origin), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            redirect_uris: [redirectUri],
+            token_endpoint_auth_method: "none",
+            scope: "backoffice",
+          }),
+        }),
+      );
+      assert.equal(disallowedRegistration.status, 400);
+      expect(await disallowedRegistration.json()).toMatchObject({ error: "invalid_scope" });
+      const flow: { authorization: URL | null } = { authorization: null };
+      let clientInformation: StoredOAuthClientInformation | undefined;
+      let tokens: StoredOAuthTokens | undefined;
+      let codeVerifier = "";
+      const authProvider: OAuthClientProvider = {
+        redirectUrl: redirectUri,
+        clientMetadata: {
+          client_name: "Scenario MCP client",
+          redirect_uris: [redirectUri],
+          grant_types: ["authorization_code", "refresh_token"],
+          response_types: ["code"],
+          token_endpoint_auth_method: "none",
         },
-      });
+        clientInformation: () => clientInformation,
+        saveClientInformation: (value) => {
+          clientInformation = value;
+        },
+        tokens: () => tokens,
+        saveTokens: (value) => {
+          tokens = value;
+        },
+        redirectToAuthorization: (url) => {
+          flow.authorization = url;
+        },
+        state: () => "scenario-mcp-state",
+        codeVerifier: () => codeVerifier,
+        saveCodeVerifier: (value) => {
+          codeVerifier = value;
+        },
+      };
+      const client = new Client(
+        { name: "leyway-mcp-test", version: "1.0.0" },
+        { versionNegotiation: { mode: "auto" } },
+      );
+      function createTransport() {
+        return new StreamableHTTPClientTransport(endpoint, {
+          authProvider,
+          fetch: async (url, init) => {
+            const request = new Request(url, init);
+            return new URL(request.url).pathname.startsWith("/api/auth/")
+              ? await ctx.runtime.objects.auth.singleton().http.fetch(request)
+              : await mcpGatewayFetch(ctx, request);
+          },
+        });
+      }
+      const transport = createTransport();
 
-      const suppliedScope = await requestPersonalCodemode(ctx, token, {
-        code,
-        scope: { kind: "org", orgId: organization.id, jurisdiction: null },
-      });
-      assert.equal(suppliedScope.status, 400);
+      try {
+        await expect(client.connect(transport)).rejects.toBeInstanceOf(UnauthorizedError);
+        const authorization = flow.authorization;
+        assert(authorization);
+        assert.equal(authorization.searchParams.get("resource"), endpoint.href);
+        assert.equal(authorization.searchParams.get("code_challenge_method"), "S256");
+        const authorize = await ctx.runtime.objects.auth
+          .singleton()
+          .http.fetch(new Request(authorization, { headers: { cookie: sessionCookie(ctx) } }));
+        assert.equal(authorize.status, 302, await authorize.clone().text());
+        const consentLocation = authorize.headers.get("location");
+        assert(consentLocation);
+        assert.equal(new URL(consentLocation, origin).pathname, "/backoffice/oauth/consent");
+        const approved = await authRequest(ctx, "/oauth2/consent", {
+          accept: true,
+          oauth_query: new URL(consentLocation, origin).search.slice(1),
+        });
+        assert(approved.ok, await approved.clone().text());
+        const callback = new URL(z.object({ url: z.url() }).parse(await approved.json()).url);
+        assert.equal(callback.searchParams.get("state"), "scenario-mcp-state");
+        await transport.finishAuth(callback.searchParams);
+        assert(tokens?.refresh_token);
+        await transport.close();
+        await client.connect(createTransport());
 
-      await ctx.runtime.objects.auth.singleton().commands.applyScenarioFixture({
-        removedMembers: [{ organizationId: organization.id, userId: user.id }],
-      });
-      const formerOrganization = await requestPersonalCodemode(ctx, token, { code });
-      assert.equal(formerOrganization.status, 200);
-      expect(await formerOrganization.json()).toMatchObject({
-        ok: false,
-        error: expect.stringContaining("Permission denied"),
-      });
+        const { tools } = await client.listTools();
+        assert.deepEqual(
+          tools.map(({ name }) => name),
+          ["codemode"],
+        );
+        const { resources } = await client.listResources();
+        assert.deepEqual(
+          resources.map(({ uri }) => uri),
+          ["leyway://codemode/SYSTEM.md"],
+        );
+        expect(await client.readResource({ uri: resources[0].uri })).toMatchObject({
+          contents: [{ mimeType: "text/markdown", text: expect.stringContaining("Codemode") }],
+        });
+        const code = `async () => ({
+          current: await context.getCurrentScope(),
+          organization: (await context.org(${JSON.stringify(organization.id)}).org.get()).organization,
+        })`;
+        const input = { name: "codemode", arguments: { code } };
+        const result = z
+          .object({ content: z.array(z.object({ text: z.string() })) })
+          .parse(await client.callTool(input));
+        expect(JSON.parse(result.content[0].text)).toMatchObject({
+          ok: true,
+          result: {
+            current: { kind: "user", userId: user.id },
+            organization: { organizationId: organization.id },
+          },
+        });
+        expect(
+          await client.callTool({ ...input, arguments: { code, scope: organization.id } }),
+        ).toMatchObject({ isError: true });
+
+        await ctx.runtime.objects.auth.singleton().commands.applyScenarioFixture({
+          removedMembers: [{ organizationId: organization.id, userId: user.id }],
+        });
+        expect(await client.callTool(input)).toMatchObject({
+          isError: true,
+          content: [{ text: expect.stringContaining("Permission denied") }],
+        });
+
+        const clientId = clientInformation?.client_id;
+        assert(clientId);
+        const revoked = await authRequest(ctx, "/backoffice/oauth/revoke-consent", { clientId });
+        assert(revoked.ok, await revoked.clone().text());
+        const revokedToken = await mcpGatewayFetch(
+          ctx,
+          new Request(endpoint, { headers: { authorization: `Bearer ${tokens.access_token}` } }),
+        );
+        assert.equal(revokedToken.status, 401);
+      } finally {
+        await client.close();
+      }
     });
   });
 
@@ -410,8 +530,6 @@ describe("Backoffice execution token SQLite scenarios", () => {
           resourceScope: wholeOrganization,
         });
       assert(installed.ok);
-      const appCodemode = await requestPersonalCodemode(ctx, token, { code: "async () => 1" });
-      assert.equal(appCodemode.status, 401);
       for (const unavailableScope of [
         null,
         { kind: "system" },
