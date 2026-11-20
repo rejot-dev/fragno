@@ -1,26 +1,26 @@
-import { LeywayWordmark } from "@fragno-private/design-system/brand/leyway-wordmark";
 import { useEffect, useRef, useState } from "react";
 
-import airtableUrl from "./connection-icons/airtable.svg?url";
-import asanaUrl from "./connection-icons/asana.svg?url";
-import discordUrl from "./connection-icons/discord.svg?url";
-import dropboxUrl from "./connection-icons/dropbox.svg?url";
-import figmaUrl from "./connection-icons/figma.svg?url";
-import githubUrl from "./connection-icons/github.svg?url";
-import gmailUrl from "./connection-icons/gmail.svg?url";
-import googleCalendarUrl from "./connection-icons/google-calendar.svg?url";
-import googleDriveUrl from "./connection-icons/google-drive.svg?url";
-import jiraUrl from "./connection-icons/jira.svg?url";
-import linearUrl from "./connection-icons/linear.svg?url";
-import microsoftTeamsUrl from "./connection-icons/microsoft-teams.svg?url";
-import notionUrl from "./connection-icons/notion.svg?url";
-import onedriveUrl from "./connection-icons/onedrive.svg?url";
-import salesforceUrl from "./connection-icons/salesforce.svg?url";
-import shopifyUrl from "./connection-icons/shopify.svg?url";
-import slackUrl from "./connection-icons/slack.svg?url";
-import trelloUrl from "./connection-icons/trello.svg?url";
-import whatsappUrl from "./connection-icons/whatsapp.svg?url";
-import zoomUrl from "./connection-icons/zoom.svg?url";
+import airtableUrl from "../../connection-icons/airtable.svg?url";
+import asanaUrl from "../../connection-icons/asana.svg?url";
+import discordUrl from "../../connection-icons/discord.svg?url";
+import dropboxUrl from "../../connection-icons/dropbox.svg?url";
+import figmaUrl from "../../connection-icons/figma.svg?url";
+import githubUrl from "../../connection-icons/github.svg?url";
+import gmailUrl from "../../connection-icons/gmail.svg?url";
+import googleCalendarUrl from "../../connection-icons/google-calendar.svg?url";
+import googleDriveUrl from "../../connection-icons/google-drive.svg?url";
+import jiraUrl from "../../connection-icons/jira.svg?url";
+import linearUrl from "../../connection-icons/linear.svg?url";
+import microsoftTeamsUrl from "../../connection-icons/microsoft-teams.svg?url";
+import notionUrl from "../../connection-icons/notion.svg?url";
+import onedriveUrl from "../../connection-icons/onedrive.svg?url";
+import salesforceUrl from "../../connection-icons/salesforce.svg?url";
+import shopifyUrl from "../../connection-icons/shopify.svg?url";
+import slackUrl from "../../connection-icons/slack.svg?url";
+import trelloUrl from "../../connection-icons/trello.svg?url";
+import whatsappUrl from "../../connection-icons/whatsapp.svg?url";
+import zoomUrl from "../../connection-icons/zoom.svg?url";
+import { LeywayMark } from "../brand/leyway-mark";
 
 const CONNECTIONS = [
   { name: "Slack", iconUrl: slackUrl },
@@ -53,13 +53,11 @@ const DISCONNECT_MS = 250;
 const SLOT_SPACING = 104;
 const ICON_SIZE = 64;
 const HIGHLIGHTED_ICON_SIZE = 92;
-// The pipe runs past the hero's top and bottom edges, which hide the icons entering and leaving it.
+// The pipe runs past its frame's top and bottom edges, which hide the icons entering and leaving it.
 const HEIGHT = CONNECTIONS.length * SLOT_SPACING + HIGHLIGHTED_ICON_SIZE;
 const CENTER_Y = HEIGHT / 2;
 // Room on the left for the highlighted icon's shadow.
 const PIPE_X = HIGHLIGHTED_ICON_SIZE / 2 + 32;
-// The hub's width at full size; on the landing page it takes the width of the header's last cell,
-// so it fits between that cell's lines.
 const HUB_WIDTH = 128;
 // The wire runs from the highlighted icon's edge to the hub's edge, where pulses arrive. The line
 // itself continues under the hub to its center, so a narrower hub never leaves a gap.
@@ -177,21 +175,16 @@ export function LandingConnectionsCycle() {
       <span
         aria-hidden="true"
         className="absolute flex h-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[14px] bg-white text-[#0b0b0a] shadow-[0_1px_2px_rgba(11,11,10,0.12),0_10px_30px_-12px_rgba(11,11,10,0.35)]"
-        style={{
-          left: HUB_X,
-          top: CENTER_Y,
-          // The header's cell is measured on the page, so it is undone from the carousel's scale.
-          width: `calc(var(--landing-header-open-width, ${HUB_WIDTH}px) / var(--landing-cycle-scale, 1))`,
-        }}
+        style={{ left: HUB_X, top: CENTER_Y, width: HUB_WIDTH }}
       >
-        <LeywayWordmark className="h-6" />
+        <LeywayMark className="h-7 w-auto" />
       </span>
 
       {CONNECTIONS.map((connection, index) => {
         const slot = pipeSlot(index, step);
         const highlighted = slot === 0;
         // An icon leaving at the top re-enters at the bottom, out of sight; animated, it would
-        // sweep down across the hero.
+        // sweep down across the frame.
         const reentering = slot === CONNECTIONS.length / 2;
         const size = highlighted ? HIGHLIGHTED_ICON_SIZE : ICON_SIZE;
         return (

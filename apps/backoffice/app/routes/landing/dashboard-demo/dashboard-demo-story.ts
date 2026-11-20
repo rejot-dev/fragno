@@ -4,11 +4,15 @@
  * first opens the drawer; the rest keep it open.
  * They follow each other: the tools connected first serve the automation last.
  */
+import type { IconName } from "@fragno-private/design-system/icon";
+
 export type DashboardDemoId = "connect" | "page" | "automate";
 
 type DashboardDemo = {
   id: DashboardDemoId;
   title: string;
+  /** Shown beside the title in the timeline, as the app's sidebar shows its destinations. */
+  icon: IconName;
   prompt: string;
   /** When each of the agent's steps starts; the last runs until the work ends. */
   stepStarts: readonly number[];
@@ -39,6 +43,7 @@ export const DASHBOARD_DEMOS: readonly DashboardDemo[] = [
   {
     id: "connect",
     title: "Connect your tools",
+    icon: "link",
     prompt: "Connect our Google Drive and Slack.",
     // Google Drive waits on its permission prompt; Slack follows once it is approved.
     stepStarts: [WORK_STARTS, 5800, 8400],
@@ -49,6 +54,7 @@ export const DASHBOARD_DEMOS: readonly DashboardDemo[] = [
   {
     id: "page",
     title: "Build a page",
+    icon: "layout",
     prompt: "Make a page with this week's signups by plan.",
     stepStarts: [WORK_STARTS, 5800, 8800],
     consent: null,
@@ -58,6 +64,7 @@ export const DASHBOARD_DEMOS: readonly DashboardDemo[] = [
   {
     id: "automate",
     title: "Automate the work",
+    icon: "zap",
     prompt: "When someone signs up on the Business plan, tell #sales on Slack.",
     stepStarts: [WORK_STARTS, 5800, 8800],
     consent: null,

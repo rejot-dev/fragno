@@ -140,6 +140,12 @@ const AGENT_TURNS: Record<DashboardDemoId, AgentTurn> = {
   },
 };
 
+// The demo is drawn in black and white, so the landing page's own colors stay the only ones: the
+// status tones, the accent behind icons and the agent's mark, and the chart's series
+// take the ink and greys in place of the app's colors. Buttons keep theirs.
+const MONOCHROME_CLASS_NAME =
+  "[--bo-accent-bg:#efefef] [--bo-accent-text:#0b0b0a] [--bo-accent:#0b0b0a] [--bo-blue-1:#0b0b0a] [--bo-blue-2:#3d3d3d] [--bo-blue-3:#8a8a8a] [--bo-blue-4:#c8c8c8] [--bo-failed-bg:#efefef] [--bo-failed:#0b0b0a] [--bo-live-bg:#efefef] [--bo-live:#0b0b0a] [--bo-waiting-bg:#efefef] [--bo-waiting:#6b6b6b] dark:[--bo-accent-bg:#262626] dark:[--bo-accent-text:#f5f5f5] dark:[--bo-accent:#f5f5f5] dark:[--bo-blue-1:#f5f5f5] dark:[--bo-blue-2:#d4d4d4] dark:[--bo-blue-3:#a3a3a3] dark:[--bo-blue-4:#6b6b6b] dark:[--bo-failed-bg:#262626] dark:[--bo-failed:#f5f5f5] dark:[--bo-live-bg:#262626] dark:[--bo-live:#f5f5f5] dark:[--bo-waiting-bg:#262626] dark:[--bo-waiting:#a3a3a3]";
+
 /** The Backoffice dashboard, shell and agent drawer included, at one moment of the demo's story. */
 export function DashboardDemo({
   state,
@@ -159,9 +165,14 @@ export function DashboardDemo({
     scene.demo === "automate" && scene.resultShown
       ? [state.automatedRun, ...state.recentActivity]
       : state.recentActivity;
+  // Where the eye should be: on the drawer while the request is typed and the agent works, then on
+  // the app once the result shows. The other side is shaded.
+  const focus = scene.resultShown ? "app" : scene.drawerOpen ? "drawer" : "none";
   return (
-    <div className="relative flex h-full bg-[var(--bo-bg)] text-[var(--bo-fg)]">
-      <div className="flex min-w-0 flex-1 flex-col">
+    <div
+      className={`relative flex h-full bg-[var(--bo-bg)] text-[var(--bo-fg)] ${MONOCHROME_CLASS_NAME}`}
+    >
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <TopBar state={state} drawerOpen={scene.drawerOpen} />
         <div className="flex min-h-0 flex-1">
           <Sidebar active={onIntegrations ? "Integrations" : "Dashboard"} />
@@ -243,8 +254,9 @@ export function DashboardDemo({
             )}
           </main>
         </div>
+        <Shade shown={focus === "drawer"} />
       </div>
-      <AgentDrawer scene={scene} />
+      <AgentDrawer scene={scene} shaded={focus === "app"} />
       <GoogleConsentWindow consent={scene.consent} />
     </div>
   );
@@ -392,7 +404,7 @@ function Sidebar({ active }: { active: string }) {
 }
 
 /** The agent drawer beside the app, as SideDrawer lays it out, holding the story's conversation. */
-function AgentDrawer({ scene }: { scene: DashboardDemoScene }) {
+function AgentDrawer({ scene, shaded }: { scene: DashboardDemoScene; shaded: boolean }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   // Keeps the newest message in view as the conversation grows, as the app's thread does.
   useEffect(() => {
@@ -404,7 +416,7 @@ function AgentDrawer({ scene }: { scene: DashboardDemoScene }) {
   return (
     <aside
       aria-label="Agent conversation"
-      className={`flex shrink-0 flex-col overflow-hidden bg-[var(--bo-panel)] transition-[width] duration-300 ease-out [--bo-bg:var(--bo-panel)] ${scene.drawerOpen ? "w-[400px] border-l border-[color:var(--bo-border)]" : "w-0"}`}
+      className={`relative flex shrink-0 flex-col overflow-hidden bg-[var(--bo-panel)] transition-[width] duration-300 ease-out [--bo-bg:var(--bo-panel)] ${scene.drawerOpen ? "w-[400px] border-l border-[color:var(--bo-border)]" : "w-0"}`}
     >
       {/* Laid out at the open width, so opening reveals the content instead of reflowing it. */}
       <div className="flex min-h-0 w-[400px] flex-1 flex-col self-end">
@@ -457,7 +469,18 @@ function AgentDrawer({ scene }: { scene: DashboardDemoScene }) {
           </ChatViewport>
         </ChatThread>
       </div>
+      <Shade shown={shaded} />
     </aside>
+  );
+}
+
+/** Dims the area it covers, so the story's focus is elsewhere; it fades rather than snaps. */
+function Shade({ shown }: { shown: boolean }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`pointer-events-none absolute inset-0 z-40 bg-[#0b0b0a]/[0.07] transition-opacity duration-500 ease-out ${shown ? "opacity-100" : "opacity-0"}`}
+    />
   );
 }
 
@@ -691,9 +714,9 @@ function SignupsPage({ signups }: { signups: DashboardDemoSignups }) {
             <Metric key={plan.id} tone={null} label={plan.label} value={String(totals[index])} />
           ))}
         </div>
-        {/* The chart's series take the brand's reds, light to deep, in place of the app's
-            status-tinted palette, so the page sits with the landing page around it. */}
-        <div className="[--bo-blue-1:#f4a582] [--bo-live:#e0623f] [--bo-waiting:#9c2f1f]">
+        {/* The chart's first three series, dark to light grey. None is the ink, whose solid
+            black bars would outweigh the rest of the page. */}
+        <div className="[--bo-blue-1:#4a4a4a] [--bo-live:#8a8a8a] [--bo-waiting:#c8c8c8] dark:[--bo-blue-1:#d4d4d4] dark:[--bo-live:#a3a3a3] dark:[--bo-waiting:#6b6b6b]">
           <StackedBarChart
             ariaLabel="Signups per day by plan"
             series={signups.plans}
