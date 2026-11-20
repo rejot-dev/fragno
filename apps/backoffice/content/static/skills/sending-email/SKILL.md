@@ -16,9 +16,10 @@ A person's address, the integration `backoffice#email`, sends to two kinds of re
 - **A verified sender**, at the address of an email the person received: `message.reply`, for email
   whose `senderVerified` is true.
 
-Offer these two; the address refuses every other recipient. Email is plain text, followed by a line
-saying Leyway sent it. Each email counts toward the person's monthly `email.sent` limit, 100 unless
-support set another.
+Offer these two. Only a person support entitled to email anyone may also send to any other address,
+with `message.send`; for everyone else, the address refuses every other recipient. Email is plain
+text, followed by a line saying Leyway sent it. Each email counts toward the person's monthly
+`email.sent` limit, 100 unless support set another.
 
 Sending needs the person's address: `/static/skills/receiving-email/SKILL.md` sets it up. Take the
 steps in order.

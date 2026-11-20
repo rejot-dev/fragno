@@ -29,6 +29,7 @@ import { checkUsageLimits, usageBillingForScope } from "@/fragno/billing/usage-b
 import { MAILBOX_EMAIL_SENT_METER } from "@/fragno/billing/usage-limits";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { StateFileReadLimitError } from "@/fragno/codemode/state-backend";
+import { entitlementInScope } from "@/fragno/entitlements/entitlements.server";
 import {
   INBOUND_EMAIL_CONNECTION_ID,
   inboundEmailOwnerScope,
@@ -159,6 +160,17 @@ const messageSendToSelfActionDefinition = checkedIntegrationActionDefinition({
   description:
     "Send a plain-text email from this person's address to their own verified account email, such as a summary or a workspace file. It counts toward their monthly email.sent limit.",
   input: messageSendToSelfInputSchema,
+  output: sentEmailOutputSchema,
+});
+const messageSendInputSchema = messageSendToSelfInputSchema.extend({
+  to: z.email().describe("The one address to send to."),
+});
+const messageSendActionDefinition = checkedIntegrationActionDefinition({
+  id: "message.send",
+  label: "Send email",
+  description:
+    "Send a plain-text email from this person's address to any address. Only addresses an administrator allowed to email anyone (the email.recipients entitlement) may; others email themselves with message.sendToSelf or reply to verified senders. It needs the email.send permission and counts toward the monthly email.sent limit. Show the person the email and get their confirmation first, unless they built this automation to send it.",
+  input: messageSendInputSchema,
   output: sentEmailOutputSchema,
 });
 const messageReplyInputSchema = z.strictObject({
@@ -385,6 +397,29 @@ export function createEmailIntegration({
         );
       }
     }
+    /** Routes that read mail lack email.send unless granted it, so say which grant sending needs. */
+    async function invokeEmailSend<T>(
+      sending: "Sending" | "Replying",
+      resource: Record<string, string>,
+      execute: () => Promise<T>,
+    ) {
+      // Denials once sending started, such as reading an attachment, name their own permission.
+      let admitted = false;
+      try {
+        return await invoke(BACKOFFICE_PERMISSION.email.send, resource, async () => {
+          admitted = true;
+          return await execute();
+        });
+      } catch (error) {
+        if (!admitted && error instanceof BackofficeForbiddenError) {
+          throw new BackofficeForbiddenError(
+            `${sending} needs the email.send permission: ${error.message}`,
+            error.reason,
+          );
+        }
+        throw error;
+      }
+    }
     /** Read on each send, so a renamed person or a changed account email applies at once. */
     const profile = () =>
       runtime.objects.auth.singleton().commands.getAccountProfile({ userId: owner.userId });
@@ -474,37 +509,43 @@ export function createEmailIntegration({
               }
             : null;
         }),
-      /** The fragment replies only to a verified sender of email the person received. */
-      reply: async (input: z.output<typeof messageReplyInputSchema>) => {
-        try {
-          return await invoke(
-            BACKOFFICE_PERMISSION.email.send,
-            { emailId: input.emailId },
-            async () => {
-              await admitSend();
-              const { name } = await profile();
-              return sentEmail(
-                await inbound.replyFromMailbox(owner, {
-                  emailMessageId: input.emailId,
-                  text: withFooter(input.text),
-                  subject: input.subject ?? null,
-                  fromName: senderName(name),
-                }),
-                input.emailId,
-              );
-            },
-          );
-        } catch (error) {
-          // Routes that read mail lack email.send unless granted it, so say which grant replies need.
-          if (error instanceof BackofficeForbiddenError) {
-            throw new BackofficeForbiddenError(
-              `Replying needs the email.send permission: ${error.message}`,
-              error.reason,
+      /** Any address, once an administrator entitled the person to email anyone. */
+      send: (input: z.output<typeof messageSendInputSchema>) =>
+        invokeEmailSend("Sending", {}, async () => {
+          if ((await entitlementInScope(runtime, owner, "email.recipients")) !== "anyone") {
+            throw new BackofficeOperationError(
+              "forbidden",
+              "This person's address may only email them and reply to verified senders. An administrator can allow it to email anyone.",
             );
           }
-          throw error;
-        }
-      },
+          await admitSend();
+          const { name } = await profile();
+          const attachments = await readAttachments(input.attachments ?? []);
+          return sentEmail(
+            await inbound.sendFromMailbox(owner, {
+              to: input.to,
+              subject: input.subject,
+              text: withFooter(input.text),
+              fromName: senderName(name),
+              attachments,
+            }),
+          );
+        }),
+      /** The fragment replies only to a verified sender of email the person received. */
+      reply: (input: z.output<typeof messageReplyInputSchema>) =>
+        invokeEmailSend("Replying", { emailId: input.emailId }, async () => {
+          await admitSend();
+          const { name } = await profile();
+          return sentEmail(
+            await inbound.replyFromMailbox(owner, {
+              emailMessageId: input.emailId,
+              text: withFooter(input.text),
+              subject: input.subject ?? null,
+              fromName: senderName(name),
+            }),
+            input.emailId,
+          );
+        }),
       /** Resumes the person's mailbox, or gives them one at a fresh address. */
       open: () =>
         invoke(BACKOFFICE_PERMISSION.connections.manage, {}, async () => {
@@ -725,6 +766,12 @@ export function createEmailIntegration({
               definition: messageSendToSelfActionDefinition(),
               async invoke(input) {
                 return await access.sendToSelf(messageSendToSelfInputSchema.parse(input));
+              },
+            },
+            {
+              definition: messageSendActionDefinition(),
+              async invoke(input) {
+                return await access.send(messageSendInputSchema.parse(input));
               },
             },
             {

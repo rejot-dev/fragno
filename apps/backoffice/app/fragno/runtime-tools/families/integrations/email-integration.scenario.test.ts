@@ -1,12 +1,17 @@
 import { assert, expect, test } from "vitest";
 
-import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import {
+  BACKOFFICE_PERMISSION,
+  type BackofficePermissionRequirement,
+} from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeUserContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { Resend } from "resend";
 
+import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";
 import {
   createBackofficeRequestExecution,
   createBackofficeSystemExecution,
+  createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
@@ -30,6 +35,7 @@ import { GitHubObject } from "../../../../../workers/github-object";
 import { GitHubWebhookRouterObject } from "../../../../../workers/github-webhook-router-object";
 import { McpObject } from "../../../../../workers/mcp-object";
 import { OtpObject } from "../../../../../workers/otp-object";
+import { OverridesObject } from "../../../../../workers/overrides-object";
 import { ProjectConnectorObject } from "../../../../../workers/project-connector-object";
 import { ResendObject } from "../../../../../workers/resend-object";
 import { TelegramObject } from "../../../../../workers/telegram-object";
@@ -48,6 +54,7 @@ const scenarioObjects = {
   GITHUB_WEBHOOK_ROUTER: (input) => new GitHubWebhookRouterObject(input),
   MCP: (input) => new McpObject(input),
   OTP: (input) => new OtpObject(input),
+  OVERRIDES: (input) => new OverridesObject(input),
   PROJECT_CONNECTOR: (input) => new ProjectConnectorObject(input),
   TELEGRAM: (input) => new TelegramObject(input),
   UPLOAD: (input) => new UploadObject(input),
@@ -262,6 +269,36 @@ async function supportTerminal(ctx: BackofficeScenarioContext) {
     }),
   });
   return host.bash;
+}
+
+const assistant = {
+  scope: "internal",
+  type: "agent",
+  id: "mail-assistant",
+  role: "assistant",
+} as const;
+
+/** Runs an email action as an assistant acting for Alice, granted only `grants`. */
+async function executeAsAssistant(
+  ctx: BackofficeScenarioContext,
+  grants: readonly BackofficePermissionRequirement[],
+  actionId: string,
+  input: Parameters<ReturnType<typeof createIntegrationsRuntime>["execute"]>[0]["input"],
+) {
+  const execution = createBackofficeUserExecution({ scope: alice, userId: alice.userId });
+  return await createIntegrationsRuntime({
+    runtime: ctx.runtime.services,
+    kernel: new BackofficeKernel({
+      ...ctx.runtime.services,
+      authorityResolver: withBackofficeActorCapabilityGrants({
+        resolver: ctx.runtime.services.authorityResolver,
+        actor: assistant,
+        grants,
+      }),
+    }),
+    execution: { ...execution, actors: { ...execution.actors, delegation: [assistant] } },
+    nowEpochMs: ctx.runtime.now,
+  }).execute({ connectionId: "backoffice#email", actionId, input, unchecked: false });
 }
 
 /** What the connection's detail page loads. */
@@ -819,7 +856,7 @@ function replyRoute(id: string, grants: readonly { namespace: string; permission
   });`;
 }
 
-test("a person sends from their address: to themselves, and replies to verified senders", async () => {
+test("a person sends from their address: to themselves, to verified senders, and once entitled, to anyone", async () => {
   const resend = createResendProvider();
   let address = "";
   const execute = (actionId: string, input: unknown) =>
@@ -1025,6 +1062,60 @@ test("a person sends from their address: to themselves, and replies to verified 
             }),
           ).rejects.toThrow("USAGE_LIMIT_EXCEEDED");
           expect(resend.sent).toHaveLength(4);
+        }),
+        then.assert("only once support entitles the person do they email anyone", async (ctx) => {
+          const bash = await supportTerminal(ctx);
+          const raised = await bash.exec(
+            `admin.usage-limits.set --user ${alice.userId} --meter email.sent --limit 10`,
+          );
+          assert(raised.exitCode === 0, raised.stderr);
+          const email = { to: "carol@elsewhere.example", subject: "Invoice", text: "Attached." };
+          await expect(
+            ctx.runCodemode({ scope: alice, code: execute("message.send", email) }),
+          ).rejects.toThrow("may only email them and reply to verified senders");
+
+          const entitled = await bash.exec(
+            `admin.entitlements.set --scope user:${alice.userId} --key email.recipients --value anyone`,
+          );
+          assert(entitled.exitCode === 0, entitled.stderr);
+          const { result } = await ctx.runCodemode({
+            scope: alice,
+            code: execute("message.send", email),
+          });
+          expect(result).toMatchObject({
+            from: `"alice via Leyway" <${address}>`,
+            to: ["carol@elsewhere.example"],
+            subject: "Invoice",
+          });
+          await ctx.runtime.objects.resend.for({ kind: "system" }).commands.wakeDurableHooks();
+        }),
+        runner.drain(),
+        then.assert("the platform account sends it to that address", async () => {
+          expect(resend.sent).toHaveLength(5);
+          expect(resend.sent[4]).toMatchObject({
+            from: `"alice via Leyway" <${address}>`,
+            to: ["carol@elsewhere.example"],
+            subject: "Invoice",
+          });
+        }),
+        then.assert("a refused send names the permission it lacks", async (ctx) => {
+          const email = {
+            to: "carol@elsewhere.example",
+            subject: "Receipts",
+            text: "Attached.",
+            attachments: [{ path: "/workspace/reports/receipts.csv" }],
+          };
+          const reading = [
+            BACKOFFICE_PERMISSION.integrations.execute,
+            BACKOFFICE_PERMISSION.connections.read,
+          ];
+          await expect(executeAsAssistant(ctx, reading, "message.send", email)).rejects.toThrow(
+            "Sending needs the email.send permission",
+          );
+          const sending = [...reading, BACKOFFICE_PERMISSION.email.send];
+          const withoutUploads = executeAsAssistant(ctx, sending, "message.send", email);
+          await expect(withoutUploads).rejects.toThrow("is not granted upload.read");
+          await expect(withoutUploads).rejects.not.toThrow("needs the email.send permission");
         }),
       ],
     }),
