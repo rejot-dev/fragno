@@ -43,7 +43,8 @@ import {
 
 const apiIntegrationId = "api";
 const apiConnectionShape = createApiConnectionInputSchema.omit({ auth: true }).shape;
-const [noAuth, bearerAuth, basicAuth, clientCredentialsAuth, oauthAuth] = authConfigSchema.options;
+const [noAuth, bearerAuth, basicAuth, clientCredentialsAuth, oauthAuth, apiKeyAuth] =
+  authConfigSchema.options;
 // Flat variants keep secrets top-level, where secretFields can name them for input controls.
 const apiSetupConnectionInputSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...apiConnectionShape, ...noAuth.shape }),
@@ -51,12 +52,19 @@ const apiSetupConnectionInputSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...apiConnectionShape, ...basicAuth.shape }),
   z.strictObject({ ...apiConnectionShape, ...clientCredentialsAuth.shape }),
   z.strictObject({ ...apiConnectionShape, ...oauthAuth.shape }),
+  z.strictObject({ ...apiConnectionShape, ...apiKeyAuth.shape }),
 ]);
 type ApiSetupConnectionInput = z.output<typeof apiSetupConnectionInputSchema>;
-const apiSetupSecretFields = ["token", "password", "clientSecret"] as const satisfies readonly (
+const apiSetupSecretFields = [
+  "token",
+  "password",
+  "clientSecret",
+  "key",
+] as const satisfies readonly (
   | keyof z.input<typeof bearerAuth>
   | keyof z.input<typeof basicAuth>
   | keyof z.input<typeof clientCredentialsAuth>
+  | keyof z.input<typeof apiKeyAuth>
 )[];
 const apiOAuthSetupInputSchema = z.strictObject({
   start: z.literal(true).describe("Explicitly start OAuth consent for this connection."),
@@ -385,6 +393,7 @@ export function createApiIntegration({
         return ready;
       case "basic":
       case "client_credentials":
+      case "apiKey":
         return status.credentials === "present"
           ? ready
           : {
@@ -469,7 +478,7 @@ export function createApiIntegration({
           return {
             connectionId,
             status: "needs-input",
-            instructions: `Submit the base URL, an optional display name, and the auth settings beside them; \`type\` selects none, bearer, basic, client_credentials, or oauth. This address supplies the slug. OAuth submissions start consent immediately. ${describeCallback(
+            instructions: `Submit the base URL, an optional display name, and the auth settings beside them; \`type\` selects none, bearer, basic, client_credentials, oauth, or apiKey, a key every request carries in the header or query parameter the provider documents. This address supplies the slug. OAuth submissions start consent immediately. ${describeCallback(
               await access.oauthCallbackUrl(),
             )}`,
             inputSchema: z.toJSONSchema(apiSetupConnectionInputSchema, { io: "input" }),

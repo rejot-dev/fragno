@@ -49,6 +49,16 @@ export const authConfigSchema = z.discriminatedUnion("type", [
     extraAuthorizationParams: z.record(z.string(), z.string()).optional(),
     extraTokenParams: z.record(z.string(), z.string()).optional(),
   }),
+  z.object({
+    type: z.literal("apiKey"),
+    location: z.enum(["header", "query"]).describe("Where every request carries the key."),
+    parameter: z
+      .string()
+      .trim()
+      .min(1)
+      .describe("The header or query parameter that carries the key, such as x-api-key."),
+    key: z.string().min(1),
+  }),
 ]);
 
 /** Slugs are URL path segments; whitespace and dot segments would make a connection unaddressable. */
@@ -90,6 +100,7 @@ export const apiAuthStatusSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("bearer"), credentials: apiCredentialsPresenceSchema }),
   z.object({ mode: z.literal("basic"), credentials: apiCredentialsPresenceSchema }),
   z.object({ mode: z.literal("client_credentials"), credentials: apiCredentialsPresenceSchema }),
+  z.object({ mode: z.literal("apiKey"), credentials: apiCredentialsPresenceSchema }),
   z.object({
     mode: z.literal("oauth"),
     state: z

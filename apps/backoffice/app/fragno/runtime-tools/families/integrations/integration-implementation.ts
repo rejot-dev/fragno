@@ -129,6 +129,8 @@ export function authMethodOfFragmentAuthMode(authMode: string): IntegrationAuthM
       return authMode;
     case "client_credentials":
       return "client-credentials";
+    case "apiKey":
+      return "api-key";
     default:
       throw new Error(`Fragment auth mode '${authMode}' is unsupported.`);
   }

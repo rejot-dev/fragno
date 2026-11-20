@@ -335,15 +335,16 @@ account ID.
 
 API setup reads the Fragment's sanitized auth status, never secrets or tokens. A missing connection
 returns `needs-input` with flat auth variants beside `baseUrl` and an optional `name`; `type`
-selects `none`, `bearer`, `basic`, `client_credentials`, or `oauth`, and `secretFields` names
-`token`, `password`, and `clientSecret`. The variants are derived from the Fragment's own auth
-schemas. Input cannot choose the slug, owner scope, or OAuth callback: the address supplies the slug
-and the server selects the scope's public callback. That callback is fixed per scope, so the
-`needs-input` and `{ start: true }` instructions state it before any OAuth app exists, and
-`needs-authorization` instructions repeat the one embedded in the link. Without a configured public
-origin, the instructions report OAuth as unavailable and non-OAuth setup still works. Submission
-creates the connection. If a concurrent creation wins, setup reports that connection's state instead
-of overwriting it.
+selects `none`, `bearer`, `basic`, `client_credentials`, `oauth`, or `apiKey`, and `secretFields`
+names `token`, `password`, `clientSecret`, and `key`. An `apiKey` connection sends its key in the
+header or query parameter its `location` and `parameter` name. The variants are derived from the
+Fragment's own auth schemas. Input cannot choose the slug, owner scope, or OAuth callback: the
+address supplies the slug and the server selects the scope's public callback. That callback is fixed
+per scope, so the `needs-input` and `{ start: true }` instructions state it before any OAuth app
+exists, and `needs-authorization` instructions repeat the one embedded in the link. Without a
+configured public origin, the instructions report OAuth as unavailable and non-OAuth setup still
+works. Submission creates the connection. If a concurrent creation wins, setup reports that
+connection's state instead of overwriting it.
 
 Non-OAuth submissions become `ready` without contacting the provider. Submitting an OAuth
 configuration also starts consent, since the submission is already explicit; if starting fails, the
