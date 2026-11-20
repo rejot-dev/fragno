@@ -219,14 +219,23 @@ discovery, so verify before generating.
 
 Both operations replace or delete live credentials, so run them on the user's instruction.
 
-- **Reconfigure**: `integrations.reconfigure({ kind: "check", connectionId })` returns the
-  replacement `inputSchema`. Start the input from the `settings` that `integrations.get` returns,
-  the stored values that are not secret, and change only what the user asked; collect secrets and
-  any field `settings` omits with a setup form as in step 3, submitting with `kind: "input"`. A
-  submission replaces the stored configuration and credentials, then returns setup progress: rerun
-  the setup loop, step 4, and step 5. For an `api#` or `mcp#` OAuth connection whose provider
-  revoked access, submit `{ reauthorize: true }` to consent again with the stored client; changing
-  scopes, endpoints, or the client is a full replacement.
+- **Reconfigure** replaces the stored configuration and credentials in one submission. Stored
+  secrets are never read back, so every replacement collects its secrets again through a setup form:
+  1. `integrations.reconfigure({ kind: "check", connectionId })` returns the replacement
+     `inputSchema`.
+  2. Start the input from the `settings` that `integrations.get` returns, the stored values that are
+     not secret, and change only what the user asked. Take fields `settings` omits from the
+     provider's documentation.
+  3. In the same turn, start a setup form with a control for every secret field of the replacement,
+     such as the current key and a new one the provider now needs. Its last step submits
+     `integrations.reconfigure({ kind: "input", connectionId, input })` where the setup example
+     calls `integrations.setup`.
+  4. The submission returns setup progress: rerun the setup loop, step 4, and step 5.
+
+  For an `api#` or `mcp#` OAuth connection whose provider revoked access, submit
+  `{ reauthorize: true }` to consent again with the stored client; changing scopes, endpoints, or
+  the client is a full replacement.
+
 - **Disconnect**: `integrations.disconnect({ connectionId, confirm: connectionId })` removes the
   configuration and credentials. `not-configured` means nothing was stored. The address stays valid
   for a later setup. Then delete its client with `state.rm({ path })`.
