@@ -88,6 +88,16 @@ export function projectApiAuthStatus(args: {
   if (mode === "none") {
     return { mode };
   }
+  if (mode === "apiKey") {
+    if (!args.authSecret) {
+      return { mode, credentials: "missing" };
+    }
+    const auth = storedAuthPayloadSchema.parse(JSON.parse(args.authSecret.payload));
+    if (auth.type !== "apiKey") {
+      throw new Error("Stored API key auth does not match the connection's auth mode.");
+    }
+    return { mode, credentials: "present", location: auth.location, parameter: auth.parameter };
+  }
   if (mode !== "oauth") {
     return { mode, credentials: args.authSecret ? "present" : "missing" };
   }

@@ -337,7 +337,14 @@ API setup reads the Fragment's sanitized auth status, never secrets or tokens. A
 returns `needs-input` with flat auth variants beside `baseUrl` and an optional `name`; `type`
 selects `none`, `bearer`, `basic`, `client_credentials`, `oauth`, or `apiKey`, and `secretFields`
 names `token`, `password`, `clientSecret`, and `key`. An `apiKey` connection sends its key in the
-header or query parameter its `location` and `parameter` name. The variants are derived from the
+header or query parameter its `location` and `parameter` name, and its settings repeat both, since
+neither is secret.
+
+`integrations.requestInput` collects secrets without passing them through the conversation. It
+checks that every requested field is one of the check's `secretFields` and absent from the given
+input, then starts `/static/automations/integration-input.workflow.js`, shows its form card in the
+agent's reply, and notifies the agent when it ends. The workflow submits the input and the entered
+secrets as setup or reconfigure and returns the progress. The variants are derived from the
 Fragment's own auth schemas. Input cannot choose the slug, owner scope, or OAuth callback: the
 address supplies the slug and the server selects the scope's public callback. That callback is fixed
 per scope, so the `needs-input` and `{ start: true }` instructions state it before any OAuth app

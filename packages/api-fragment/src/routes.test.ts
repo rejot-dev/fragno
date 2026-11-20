@@ -533,7 +533,12 @@ describe("api-fragment", () => {
       pathParams: { slug: "anthropic" },
     });
     assert(status.type === "json");
-    expect(status.data).toEqual({ mode: "apiKey", credentials: "present" });
+    expect(status.data).toEqual({
+      mode: "apiKey",
+      credentials: "present",
+      location: "header",
+      parameter: "x-api-key",
+    });
 
     // A caller's own value under the key's name never reaches the provider.
     for (const slug of ["anthropic", "maps"]) {

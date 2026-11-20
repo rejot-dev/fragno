@@ -463,6 +463,56 @@ export const integrationGenerateClientInputSchema = z.lazy(() =>
   }),
 );
 
+/** Secrets reach a connection through the user's form, never through the conversation. */
+export const integrationRequestInputSchema = z.lazy(() =>
+  integrationConnectionInputSchema._zod.innerType.extend({
+    operation: z
+      .enum(["setup", "reconfigure"])
+      .describe(
+        "setup for a connection the check reports needs-input, reconfigure to replace an existing connection's configuration and credentials.",
+      ),
+    input: z
+      .record(z.string(), jsonValueSchema)
+      .describe(
+        "Every input value except the secrets, such as baseUrl, type, location, and parameter. The submitted secrets join them.",
+      ),
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .max(120)
+      .describe("The form's heading and submit label, such as Connect GIPHY."),
+    secrets: z
+      .array(
+        z.strictObject({
+          field: z.string().min(1).describe("A field from the check's secretFields."),
+          label: z.string().trim().min(1).max(120),
+          description: z
+            .string()
+            .trim()
+            .min(1)
+            .max(500)
+            .describe(
+              "Where the user creates the value, with that page's URL from the provider's documentation.",
+            ),
+        }),
+      )
+      .min(1),
+  }),
+);
+
+export const integrationInputRequestSchema = z
+  .lazy(() =>
+    z.strictObject({
+      instanceId: z
+        .string()
+        .describe(
+          "The form's workflow run, shown as a card in your reply. Its instance.completed event carries the setup progress as output.",
+        ),
+    }),
+  )
+  .meta({ id: "IntegrationInputRequest" });
+
 /** Generated clients are snapshots of the connection's action contracts. */
 export const integrationClientSchema = z
   .lazy(() =>
@@ -513,6 +563,13 @@ export const integrationsOperations = {
     permissions: [BACKOFFICE_PERMISSION.integrations.manage],
     input: integrationSetupInputSchema,
     output: integrationSetupProgressSchema,
+  },
+  "integrations.requestInput": {
+    description:
+      "Ask the user for a connection's secrets in a form card in your reply, then submit them with input as setup or reconfigure. Secrets reach a connection only this way, never through the conversation. Name only fields from the check's secretFields, and leave them out of input.",
+    permissions: [BACKOFFICE_PERMISSION.integrations.manage],
+    input: integrationRequestInputSchema,
+    output: integrationInputRequestSchema,
   },
   "integrations.disconnect": {
     description:
