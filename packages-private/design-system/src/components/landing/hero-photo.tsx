@@ -219,10 +219,10 @@ function Dot({
 }
 
 /**
- * Runs the flash along the line now and then, each run unlike the last: 2.5 to 5.5s to cross, one
- * run in three going right to left, and a pause of 2 to 9s before the next. The first runs as soon
- * as the line has faded in with the photo. Off for reduced motion, where the flash stays out of
- * sight.
+ * Keeps a flash moving along the line, each run unlike the last: 2.5 to 5.5s to cross at a steady
+ * speed, and one run in three going right to left. Each run starts as the last one leaves, so the
+ * light never stops; the first starts as soon as the line has faded in with the photo. Off for
+ * reduced motion, where the flash stays out of sight.
  */
 function useRandomFlashes(flashRef: RefObject<SVGPolylineElement | null>, photoLoaded: boolean) {
   useEffect(() => {
@@ -239,10 +239,10 @@ function useRandomFlashes(flashRef: RefObject<SVGPolylineElement | null>, photoL
         const offsets = leftToRight ? [0.08, -1] : [-1, 0.08];
         run = target.animate(
           offsets.map((offset) => ({ strokeDashoffset: offset })),
-          { duration: 2500 + Math.random() * 3000, easing: "ease-in-out" },
+          { duration: 2500 + Math.random() * 3000, easing: "linear" },
         );
         run.onfinish = () => {
-          scheduleRun(target, 2000 + Math.random() * 7000);
+          scheduleRun(target, 0);
         };
       }, delay);
     }
