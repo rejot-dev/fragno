@@ -127,13 +127,45 @@ Servers with dynamic client registration need no client; otherwise include `clie
 pre-registered client: have the user create an OAuth app with the stated callback URL, then
 reconfigure with its client.
 
-Collect missing values through a durable form unless the request already supplies all of them. Read
-`/static/skills/workflows/SKILL.md` and `/static/skills/generating-backoffice-uis/SKILL.md`, then
-define an inline workflow whose completed `step.do` returns a `$ui` form with one control per
-`inputSchema` field, masked for `secretFields`, and whose `step.waitForEvent` collects the
-submission. Describe each secret control with where the user creates it, linking the provider's page
-from its documentation, such as its API keys settings. Continue the loop and verification in later
-`step.do` calls. Keep secrets out of labels, summaries, and final output.
+Collect missing values through a durable form unless the request already supplies all of them; never
+ask for a secret in chat. Fill in what the documentation already settles, such as `baseUrl` and
+`type`, and ask only for the rest: define an inline workflow that shows the form, waits for its
+submission, and submits the setup input. Mask each `secretFields` control with `secret: true` and
+say in its `description` where the user creates it, with the page's URL from the documentation.
+Interfaces render URLs as plain text, never links.
+
+```js
+defineWorkflow({ name: "connect-acme" }, async (event, step) => {
+  const credentials = ui.form("acme-credentials", { token: "" });
+  await step.do("ask for the Acme API key", async () => ({
+    $ui: ui.render(
+      ui.stack({ gap: "md" }, [
+        ui.text({ text: "Acme signs every request with an API key." }),
+        ui.textInput({
+          label: "Acme API key",
+          value: credentials.bind("token"),
+          secret: true,
+          required: true,
+          description: "Create one on Acme's API keys page: https://acme.example/settings/api-keys",
+        }),
+        credentials.submit({ label: "Connect Acme" }),
+      ]),
+    ),
+  }));
+  const { payload } = await step.waitForEvent("Acme API key", { type: credentials.eventType });
+  return await step.do("connect Acme", async () => {
+    await integrations.setup({
+      kind: "input",
+      connectionId: "api#acme",
+      input: { baseUrl: "https://api.acme.example", type: "bearer", token: payload.token },
+    });
+    return await integrations.setup({ kind: "check", connectionId: "api#acme" });
+  });
+});
+```
+
+The form shows in the conversation as the run's card, so start the workflow in the same turn instead
+of telling the user a form is needed. Keep secrets out of labels, summaries, and final output.
 
 Setup keeps stored credentials: a ready connection ignores new input. Replacing them is
 reconfiguration.
