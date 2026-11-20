@@ -146,8 +146,8 @@ async () =>
   documentation.
 - `operation` is `reconfigure` when replacing an existing connection's configuration.
 
-The card is the request: start the setup form in the turn the loop reaches `needs-input`, and let
-your reply add only what the card leaves out.
+No card exists until you call `integrations.requestInput`: call it in the turn the loop reaches
+`needs-input`, then let your reply add only what the card leaves out.
 
 **Complete when** `requestInput` returned the form's `instanceId`; its `instance.completed` event
 carries the setup progress as output, and the loop continues from it.

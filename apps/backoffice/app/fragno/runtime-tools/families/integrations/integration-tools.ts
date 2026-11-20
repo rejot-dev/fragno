@@ -81,6 +81,23 @@ type IntegrationsToolContext = BackofficeToolContext<{
   workflowRunPresenter?: WorkflowRunPresenter;
 }>;
 
+/**
+ * Agents read a check's instructions just before they act, and took the setup form for a card the
+ * product shows by itself; the instructions name the call that shows it.
+ */
+function pointSecretsAtRequestInput(
+  progress: z.output<typeof integrationSetupProgressSchema>,
+  operation: "setup" | "reconfigure",
+): z.output<typeof integrationSetupProgressSchema> {
+  if (progress.status !== "needs-input" || progress.secretFields.length === 0) {
+    return progress;
+  }
+  return {
+    ...progress,
+    instructions: `${progress.instructions} Ask the user for ${progress.secretFields.join(", ")} with integrations.requestInput({ operation: "${operation}", ... }) in this turn: it shows the form card, and no card exists until you call it.`,
+  };
+}
+
 /** The form card integrations.requestInput starts; it submits the secrets once the user sends them. */
 const INTEGRATION_INPUT_WORKFLOW_PATH = `${AUTOMATION_STATIC_ROOT}/integration-input.workflow.js`;
 
@@ -292,7 +309,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       activity: { label: "Set up connection", target: (input) => input.connectionId },
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
-        await requireIntegrationsRuntime(context).setup(input),
+        pointSecretsAtRequestInput(await requireIntegrationsRuntime(context).setup(input), "setup"),
       adapters: {
         bash: {
           command: "integrations.setup",
@@ -325,7 +342,10 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       activity: { label: "Reconfigure connection", target: (input) => input.connectionId },
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
-        await requireIntegrationsRuntime(context).reconfigure(input),
+        pointSecretsAtRequestInput(
+          await requireIntegrationsRuntime(context).reconfigure(input),
+          "reconfigure",
+        ),
       adapters: {
         bash: {
           command: "integrations.reconfigure",
