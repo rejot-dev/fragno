@@ -116,6 +116,11 @@ the user that URL to register in the provider's OAuth app in the same message th
 create the app, before they send credentials; consent fails with a redirect URI error until the app
 lists it.
 
+Choose the `type` the provider's documentation names. Choose `none` only for an API that takes no
+credential: a connection without the key it needs reports `ready` and fails every request. When the
+documented scheme fits no `type`, such as a key in the request body, tell the user instead of
+submitting.
+
 For `mcp#` addresses, `type` likewise selects the auth mode and an OAuth submission starts consent.
 Servers with dynamic client registration need no client; otherwise include `clientId` and
 `clientSecret`. A `blocked` result naming dynamic client registration means the server needs a
@@ -126,8 +131,9 @@ Collect missing values through a durable form unless the request already supplie
 `/static/skills/workflows/SKILL.md` and `/static/skills/generating-backoffice-uis/SKILL.md`, then
 define an inline workflow whose completed `step.do` returns a `$ui` form with one control per
 `inputSchema` field, masked for `secretFields`, and whose `step.waitForEvent` collects the
-submission. Continue the loop and verification in later `step.do` calls. Keep secrets out of labels,
-summaries, and final output.
+submission. Describe each secret control with where the user creates it, linking the provider's page
+from its documentation, such as its API keys settings. Continue the loop and verification in later
+`step.do` calls. Keep secrets out of labels, summaries, and final output.
 
 Setup keeps stored credentials: a ready connection ignores new input. Replacing them is
 reconfiguration.

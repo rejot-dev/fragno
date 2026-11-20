@@ -264,7 +264,7 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
           await submitConnect(ctx, { intent: "ask-agent", source: "airtable" });
           expect(await userMessages(ctx)).toEqual([
             "Help me connect Jira in this scope. It signs in with OAuth, so set it up through Oomol (the Connector), which has no OAuth configuration for it in this project yet.",
-            "Help me connect Airtable in this scope. Set it up as an API integration (integration api). Search Airtable's API documentation for how to authenticate and which base URL to use.",
+            "Help me connect Airtable in this scope. Set it up as an API integration (integration api). Search Airtable's API documentation for how to authenticate, which base URL to use, and where I create the key or token it needs. Ask me for that credential in a setup form, never in chat, and say in the form where to find it.",
           ]);
         },
       ),
@@ -422,7 +422,7 @@ test("Connect in an organization offers only the catalog providers its agent set
             await submitConnect(ctx, { intent: "ask-agent", source: "jira" }),
           ).not.toHaveProperty("redirectsTo");
           expect(await userMessages(ctx)).toEqual([
-            "Help me connect Airtable in this scope. Set it up as an API integration (integration api). Search Airtable's API documentation for how to authenticate and which base URL to use.",
+            "Help me connect Airtable in this scope. Set it up as an API integration (integration api). Search Airtable's API documentation for how to authenticate, which base URL to use, and where I create the key or token it needs. Ask me for that credential in a setup form, never in chat, and say in the form where to find it.",
           ]);
         },
       ),
