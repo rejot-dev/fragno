@@ -1,9 +1,14 @@
 import type { AppActionsDeclaration } from "@fragno-dev/backoffice-api/v0/apps";
 import type { BackofficeOrganizationContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type {
-  BackofficeRootOwner,
-  BackofficeScopeIdNames,
-  BackofficeUserContextScope,
+import {
+  type BackofficeContextScope,
+  type BackofficePublicScope,
+  type BackofficeRootOwner,
+  type BackofficeScopeIdNames,
+  type BackofficeUserContextScope,
+  backofficePublicScopeCodec,
+  backofficeScopePathSegment,
+  formatBackofficeScopeSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
 import type {
@@ -12,13 +17,19 @@ import type {
   BillingCommands,
   OtpCommands,
 } from "@/backoffice-runtime/object-registry";
-import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
+import {
+  backofficeOrganizationContextScope,
+  resolveBackofficePublicScope,
+} from "@/backoffice-runtime/resolved-scope";
 import { buildAccessCodeSignUpUrl } from "@/fragno/access-codes/access-code";
 import type { AccessCodeRecord } from "@/fragno/access-codes/contracts";
 import type { BackofficeAppsCommands } from "@/fragno/apps/contracts";
 import { requireBackofficeAppOperationValue } from "@/fragno/apps/errors";
+import type { OverrideAddress, OverrideKind } from "@/fragno/overrides/definition";
+import { overrideScopeChain, type OverrideStatus } from "@/fragno/overrides/resolve";
 
 import type { AdminAccessCode, AdminRuntime } from "./admin";
+import type { AdminOverride } from "./admin-overrides";
 import type { AdminUsageLimitOwner } from "./admin-usage-limits";
 import { compileIntegrationActionSchema } from "./integrations/integration-action-json-schema";
 
@@ -79,6 +90,12 @@ type AdminRuntimeDependencies = {
   automationsFor: (
     organization: BackofficeOrganizationContextScope,
   ) => Pick<AutomationsCommands, "deleteEventsOfType" | "askProjectsForWiring">;
+  overrides: {
+    list(kind: OverrideKind, scope: BackofficeContextScope): Promise<OverrideStatus[]>;
+    get(address: OverrideAddress): Promise<OverrideStatus>;
+    set(input: OverrideAddress & { value: unknown }): Promise<void>;
+    clear(address: OverrideAddress): Promise<void>;
+  };
   /** An owner's usage ledger; null without the Billing binding. */
   billingFor:
     | ((
@@ -129,10 +146,57 @@ export function createAdminRuntime({
   otp,
   automationsFor,
   billingFor,
+  overrides,
   replaceInboundEmailAddress,
   setInboundEmailSending,
   publicBaseUrl,
 }: AdminRuntimeDependencies): AdminRuntime {
+  async function requireAdminScope(scope: BackofficePublicScope): Promise<BackofficeContextScope> {
+    if (scope.kind === "system") {
+      return scope;
+    }
+    const resolved = await resolveBackofficePublicScope(auth, scope);
+    if (!resolved) {
+      throw new Error(
+        `Admin scope command could not find '${formatBackofficeScopeSegment(scope, backofficePublicScopeCodec)}'.`,
+      );
+    }
+    return resolved;
+  }
+
+  /** Names a status's overrides as the administrator named the scope they asked about. */
+  function adminOverride(
+    scope: BackofficePublicScope,
+    runtimeScope: BackofficeContextScope,
+    status: OverrideStatus,
+  ): AdminOverride {
+    // Both chains name the same scopes in the same order.
+    const publicChain = overrideScopeChain(scope);
+    const publicNames = new Map(
+      overrideScopeChain(runtimeScope).map((chainScope, index) => [
+        backofficeScopePathSegment(chainScope),
+        formatBackofficeScopeSegment(publicChain[index], backofficePublicScopeCodec),
+      ]),
+    );
+    return {
+      ...status,
+      overrides: status.overrides.map((override) => ({
+        scope: publicNames.get(backofficeScopePathSegment(override.scope))!,
+        value: override.value,
+      })),
+    };
+  }
+
+  /** Makes a change to one override, then reports where it stands. */
+  async function changeOverride(
+    { kind, scope, key }: { kind: OverrideKind; scope: BackofficePublicScope; key: string },
+    change: (address: OverrideAddress) => Promise<void>,
+  ): Promise<AdminOverride> {
+    const address = { kind, key, scope: await requireAdminScope(scope) };
+    await change(address);
+    return adminOverride(scope, address.scope, await overrides.get(address));
+  }
+
   /** Access codes are shared as sign-up links, which need the public origin. */
   function requireAccessCodeLinks(operation: string) {
     if (!otp) {
@@ -314,6 +378,21 @@ export function createAdminRuntime({
         organizationId: await requireAdminOrganizationId(auth, organizationSlug),
       }),
     getUsageLimits: async ({ owner }) => await (await requireBillingFor(owner)).getUsageLimits(),
+    listOverrides: async ({ kind, scope }) => {
+      const runtimeScope = await requireAdminScope(scope);
+      return (await overrides.list(kind, runtimeScope)).map((status) =>
+        adminOverride(scope, runtimeScope, status),
+      );
+    },
+    getOverride: async (input) => await changeOverride(input, async () => {}),
+    setOverride: async ({ value, ...input }) =>
+      await changeOverride(input, async (address) => {
+        await overrides.set({ ...address, value });
+      }),
+    clearOverride: async (input) =>
+      await changeOverride(input, async (address) => {
+        await overrides.clear(address);
+      }),
     setUsageLimit: async ({ owner, ...limit }) =>
       await (await requireBillingFor(owner)).setUsageLimit(limit),
     replaceInboundEmailAddress: async ({ userId }) => {

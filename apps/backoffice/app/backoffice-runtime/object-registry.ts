@@ -244,6 +244,7 @@ import type {
   MarketplacePackagePublishRequest,
 } from "@/fragno/marketplace/package-publishing";
 import type { OnboardingAnswer, UserOnboardingState } from "@/fragno/onboarding/contracts";
+import type { OverridesCommands } from "@/fragno/overrides/definition";
 import type { PiExtractionRequest } from "@/fragno/pi/agent/openai-extraction";
 import type {
   PiAgentAddress,
@@ -1225,6 +1226,7 @@ export type BackofficeObjectBindingName =
   | "SITE_REQUESTS"
   | "APPS"
   | "APP_INSTALLATIONS"
+  | "OVERRIDES"
   | "API"
   | "AUTH"
   | "AUTOMATIONS"
@@ -1267,6 +1269,8 @@ export const backofficeObjectScopePolicy = {
   AUTH: ["singleton"],
   APPS: ["singleton"],
   APP_INSTALLATIONS: ["org", "user"],
+  // A root owner keeps the overrides of every scope it owns; the singleton keeps the system's.
+  OVERRIDES: ["singleton", "org", "user"],
 
   // An installed app's workspace keeps its data: store, files, events, routes, and workflows.
   AUTOMATIONS: ["singleton", "org", "user", "app", "project"],
@@ -1473,6 +1477,7 @@ export const createBackofficeObjectRegistry = (factory: BackofficeObjectFactory)
     binding<BackofficeAppInstallationsCommands>("APP_INSTALLATIONS"),
   ),
 
+  overrides: scoped(factory, binding<OverridesCommands>("OVERRIDES")),
   automations: scoped(factory, binding<AutomationsCommands>("AUTOMATIONS")),
   piManager: scoped(factory, binding<PiManagerCommands>("PI_MANAGER")),
   piAgent: (agent: PiAgentAddress) => factory.piAgent(agent),

@@ -24,6 +24,7 @@ import type { AutomationProjectList } from "@/fragno/automation/project-list";
 import { BackofficeAppearanceMenu } from "./appearance-menu";
 import { StreamedBackofficeProjectMenu } from "./project-menu";
 import { BackofficeScopeSheetSections, currentScopeLabel } from "./scope-menu";
+import { type ScopeProbe, StreamedScopeProbe } from "./scope-probe";
 import type { BackofficeSections } from "./sidebar-nav";
 
 /**
@@ -37,6 +38,7 @@ export function BackofficePhoneChrome({
   resolvedScope,
   administeredMember,
   projectList,
+  scopeProbe,
   isLoading,
 }: {
   sections: BackofficeSections;
@@ -44,6 +46,7 @@ export function BackofficePhoneChrome({
   resolvedScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> | null;
   administeredMember: AdministeredMember | null;
   projectList: Promise<AutomationProjectList> | null;
+  scopeProbe: Promise<ScopeProbe> | null;
   isLoading: boolean;
 }) {
   const location = useLocation();
@@ -75,6 +78,7 @@ export function BackofficePhoneChrome({
           <p className="min-w-0 flex-1 truncate text-base font-semibold">
             {currentSection?.label ?? "Leyway"}
           </p>
+          <StreamedScopeProbe scopeProbe={scopeProbe} presentation="phone" />
           {workspaceLabel === null ? (
             <BackofficeAppearanceMenu me={me} isLoading={isLoading} trigger="icon" />
           ) : (

@@ -2,6 +2,7 @@ import { RouterContextProvider } from "react-router";
 
 import { verifyBackofficeJwt } from "@/fragno/auth/token-lifecycle";
 import { loadAutomationReplicaSource } from "@/fragno/automation/lofi/replica-source.server";
+import { storedOverridesInScope } from "@/fragno/overrides/overrides.server";
 import { BackofficePostHogContext } from "@/posthog.server";
 
 import { BackofficeRequestStateContext } from "./request-state";
@@ -29,6 +30,7 @@ export function createBackofficeRouterContextProvider(
       },
       loadAutomationReplicaSource: (resolvedScope) =>
         loadAutomationReplicaSource(request, workerContext, resolvedScope),
+      loadStoredOverrides: (scope) => storedOverridesInScope(workerContext.runtime, scope),
     }),
   );
   return context;

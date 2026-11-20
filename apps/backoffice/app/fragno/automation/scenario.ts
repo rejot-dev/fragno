@@ -73,6 +73,7 @@ import {
 } from "@/fragno/codemode/execute";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
+import type { FeatureFlagKey } from "@/fragno/feature-flags/definitions";
 import {
   createScenarioReplicaDatabase,
   type ScenarioReplicaDatabase,
@@ -85,6 +86,7 @@ import {
 } from "@/fragno/marketplace/package-declaration";
 import { isMarketplaceInternalPackagePath } from "@/fragno/marketplace/package-files";
 import { getStaticMarketplaceEntry } from "@/fragno/marketplace/static-entries";
+import { setOverrideInScope } from "@/fragno/overrides/overrides.server";
 import { createBackofficeAgentContext } from "@/fragno/pi/agent/backoffice-agent-context";
 import {
   piAgentObjectName,
@@ -859,6 +861,12 @@ type RouterRouteAssertionInput = {
   id: string;
 } & DeepPartial<AutomationRouteDefinition>;
 
+type FeatureFlagInput = {
+  scope: BackofficeContextScope;
+  key: FeatureFlagKey;
+  enabled: boolean;
+};
+
 type RouterRoutesAssertionInput = {
   orgId: string;
   include?: readonly (string | ({ id: string } & DeepPartial<AutomationRouteDefinition>))[];
@@ -876,6 +884,8 @@ export type BackofficeScenarioStepBuilders<TVars extends ScenarioVars = Scenario
     organization: {
       exists(input: OrganizationExistsInput): BackofficeScenarioStep;
     };
+    /** Overrides a flag on exactly this scope, as an administrator would. */
+    featureFlag(input: FeatureFlagInput): BackofficeScenarioStep;
     marketplace: {
       entries(entries: readonly MarketplaceStaticEntry[]): BackofficeScenarioStep;
     };
@@ -2773,6 +2783,20 @@ const buildStepBuilders = <
           { drain: false },
         ),
     },
+    featureFlag: ({ scope, key, enabled }) =>
+      createStep(
+        "given",
+        "featureFlag",
+        `turn ${key} ${enabled ? "on" : "off"} in ${backofficeScopePathSegment(scope)}`,
+        async (ctx) => {
+          await setOverrideInScope(ctx.runtime.services, {
+            kind: "feature-flag",
+            scope,
+            key,
+            value: enabled,
+          });
+        },
+      ),
     telegram: {
       configured: (input) =>
         createStep(

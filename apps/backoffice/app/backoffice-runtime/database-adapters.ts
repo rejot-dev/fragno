@@ -8,6 +8,7 @@ type AnyBackofficeDatabaseAdapter = DatabaseAdapter<any>; // eslint-disable-line
 export type BackofficeDatabaseAdapterKind =
   | "apps"
   | "app-installations"
+  | "overrides"
   | "api"
   | "auth"
   | "automations"

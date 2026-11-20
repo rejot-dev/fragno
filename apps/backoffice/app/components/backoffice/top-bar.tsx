@@ -14,6 +14,7 @@ import { BackofficeAppearanceMenu } from "./appearance-menu";
 import { BackofficePresenceIndicator } from "./presence-indicator";
 import { StreamedBackofficeProjectMenu } from "./project-menu";
 import { BackofficeScopeMenu } from "./scope-menu";
+import { type ScopeProbe, StreamedScopeProbe } from "./scope-probe";
 import { BackofficeMobileNav, type BackofficeSections } from "./sidebar-nav";
 
 type BackofficeTopBarProps = {
@@ -22,6 +23,7 @@ type BackofficeTopBarProps = {
   resolvedScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> | null;
   administeredMember: AdministeredMember | null;
   projectList: Promise<AutomationProjectList> | null;
+  scopeProbe: Promise<ScopeProbe> | null;
   isLoading?: boolean;
   sidebarCollapsed: boolean;
   agentDrawerOpen?: boolean;
@@ -34,6 +36,7 @@ export function BackofficeTopBar({
   resolvedScope,
   administeredMember,
   projectList,
+  scopeProbe,
   isLoading,
   sidebarCollapsed,
   agentDrawerOpen = false,
@@ -74,6 +77,7 @@ export function BackofficeTopBar({
         ) : null}
 
         <div className="ml-auto flex shrink-0 items-stretch">
+          <StreamedScopeProbe scopeProbe={scopeProbe} presentation="bar" />
           {me?.activeOrganizationId ? (
             // Keyed so switching organizations drops the previous organization's members.
             <BackofficePresenceIndicator key={me.activeOrganizationId} />

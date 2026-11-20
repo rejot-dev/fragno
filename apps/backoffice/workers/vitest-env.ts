@@ -15,11 +15,12 @@ import { Billing } from "./billing.do";
 import { Codemode } from "./codemode.do";
 import { createCloudflareBackofficeObjectContext } from "./lib/cloudflare-backoffice-object-implementation";
 import { Mcp } from "./mcp.do";
+import { Overrides } from "./overrides.do";
 import { PiScenarioAgent } from "./pi-durable-scenario.test-support";
 import { PiManagerObject } from "./pi-manager-object";
 import { Upload } from "./upload.do";
 
-export { PiScenarioAgent, Auth, Automations, Billing, Codemode, Mcp, Upload };
+export { PiScenarioAgent, Auth, Automations, Billing, Codemode, Mcp, Overrides, Upload };
 
 /** Cloudflare test manager exposes the faux catalog used by PiScenarioAgent. */
 export class PiScenarioManager extends DurableObject<CloudflareEnv> {

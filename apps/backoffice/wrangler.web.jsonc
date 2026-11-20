@@ -192,6 +192,11 @@
         "script_name": "rejot-backoffice",
       },
       {
+        "name": "OVERRIDES",
+        "class_name": "Overrides",
+        "script_name": "rejot-backoffice",
+      },
+      {
         "name": "APP_INSTALLATIONS",
         "class_name": "AppInstallations",
         "script_name": "rejot-backoffice",

@@ -2,13 +2,11 @@ import {
   type BackofficePublicScope,
   type BackofficeRoutable,
   type BackofficeRoutableScope,
-  type BackofficeScopeIdNames,
-  backofficeScopeRootOwner,
-  mapBackofficeScopeNames,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { RouterContextProvider } from "react-router";
 
 import type { BackofficeObjectHandle } from "@/backoffice-runtime/object-registry";
+import { resolveBackofficePublicScope } from "@/backoffice-runtime/resolved-scope";
 import {
   backofficePublicScopeFromPathSegment,
   type BackofficeRoutableRouteScope,
@@ -115,36 +113,6 @@ function parsePublicRouteScope(scopePathSegment: string | undefined) {
   }
 }
 
-async function resolvePublicRouteScope(
-  context: Readonly<RouterContextProvider>,
-  routeScope: BackofficeRoutable<BackofficePublicScope>,
-): Promise<BackofficeRoutableScope | null> {
-  const auth = context.get(BackofficeWorkerContext).runtime.objects.auth.singleton().commands;
-  const reference = backofficeScopeRootOwner(routeScope);
-  // Public URLs name root owners without jurisdictions; Auth knows where their objects are kept.
-  const rootOwner =
-    reference.kind === "org"
-      ? await auth.getOrganizationBySlug(reference.orgSlug).then(
-          (organization) =>
-            organization && {
-              kind: "org" as const,
-              orgId: organization.id,
-              jurisdiction: organization.jurisdiction,
-            },
-        )
-      : await auth.findRootOwnerScope({ kind: "user", userId: reference.userId });
-  if (!rootOwner) {
-    return null;
-  }
-  const { kind: _kind, ...rootOwnerNames } = rootOwner;
-  // The map visits only the kind of root owner found above.
-  return mapBackofficeScopeNames(routeScope, {
-    organization: () => rootOwnerNames as BackofficeScopeIdNames["organization"],
-    user: () => rootOwnerNames as BackofficeScopeIdNames["user"],
-    project: ({ projectId }) => ({ projectId }),
-  });
-}
-
 /**
  * Names a public route's scope as Backoffice pages do. Public URLs name projects by ID so they
  * survive renames; pages name them by slug. An archived project falls back to its organization.
@@ -156,7 +124,10 @@ async function pageScopeForPublicRoute(
   if (routeScope.kind !== "project") {
     return routeScope;
   }
-  const scope = await resolvePublicRouteScope(context, routeScope);
+  const scope = await resolveBackofficePublicScope(
+    context.get(BackofficeWorkerContext).runtime.objects.auth.singleton().commands,
+    routeScope,
+  );
   // Projects are stored with their owner.
   const project =
     scope?.kind === "project"
@@ -183,7 +154,10 @@ async function handleScopedOAuthCallback<TCommands>({
     oauth: NonNullable<PublicFragmentRoute<TCommands>["oauth"]>;
   };
 }) {
-  const scope = await resolvePublicRouteScope(context, routeScope);
+  const scope = await resolveBackofficePublicScope(
+    context.get(BackofficeWorkerContext).runtime.objects.auth.singleton().commands,
+    routeScope,
+  );
   if (!scope || (route.isScopeSupported && !route.isScopeSupported(scope))) {
     return new Response("Not Found", { status: 404 });
   }
@@ -266,7 +240,10 @@ export async function forwardPublicFragmentRequest<TCommands>({
     });
   }
 
-  const scope = await resolvePublicRouteScope(context, parsed.routeScope);
+  const scope = await resolveBackofficePublicScope(
+    context.get(BackofficeWorkerContext).runtime.objects.auth.singleton().commands,
+    parsed.routeScope,
+  );
   if (!scope || (route.isScopeSupported && !route.isScopeSupported(scope))) {
     return new Response("Not Found", { status: 404 });
   }

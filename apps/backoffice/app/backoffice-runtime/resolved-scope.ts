@@ -98,6 +98,34 @@ export async function lookupOrganizationContextScope(
   return owner?.kind === "org" ? owner : null;
 }
 
+/**
+ * Resolves a public scope to the runtime scope it names; null when its root owner does not exist.
+ * Public scopes name apps and projects by ID, which are not looked up.
+ */
+export async function resolveBackofficePublicScope(
+  auth: Pick<AuthCommands, "getOrganizationBySlug" | "findRootOwnerScope">,
+  scope: BackofficeRoutable<BackofficePublicScope>,
+): Promise<BackofficeRoutableScope | null> {
+  const reference = backofficeScopeRootOwner(scope);
+  // Public scopes name root owners without jurisdictions; Auth knows where their objects are kept.
+  const rootOwner =
+    reference.kind === "org"
+      ? await auth
+          .getOrganizationBySlug(reference.orgSlug)
+          .then((organization) => organization && backofficeOrganizationContextScope(organization))
+      : await auth.findRootOwnerScope({ kind: "user", userId: reference.userId });
+  if (!rootOwner) {
+    return null;
+  }
+  const { kind: _kind, ...rootOwnerNames } = rootOwner;
+  // The map visits only the kind of root owner found above.
+  return mapBackofficeScopeNames(scope, {
+    organization: () => rootOwnerNames as BackofficeScopeIdNames["organization"],
+    user: () => rootOwnerNames as BackofficeScopeIdNames["user"],
+    project: ({ projectId }) => ({ projectId }),
+  });
+}
+
 /** Projects a canonical organization record to the identity required by Backoffice scopes. */
 export function backofficeOrganizationIdentity(
   organization: BackofficeOrganizationIdentity,

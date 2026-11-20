@@ -11,17 +11,37 @@ import {
 import { useEffect, useState, type SubmitEvent } from "react";
 import { Link, useOutletContext, useRevalidator } from "react-router";
 
+import { backofficeOrganizationContextScope } from "@/backoffice-runtime/resolved-scope";
 import { authClient } from "@/fragno/auth/auth-client";
+import { getBackofficeShellRequest } from "@/layouts/backoffice-shell-request.server";
+import { getBackofficeRequestState } from "@/worker-runtime/request-state";
 
+import type { Route } from "./+types/organization-overview";
 import type { OrganizationLayoutContext } from "./organization-layout";
 import { Notice } from "./organization-shared";
 import { type ActionNotice, formatDate, formatRoles, getErrorMessage } from "./organization-utils";
+import { throwBackofficeOrganizationNotFound } from "./route-errors";
+
+/** Only the overview shows the access summary, so only it waits for the flag. */
+export async function loader({ params, context }: Route.LoaderArgs) {
+  const { me } = getBackofficeShellRequest(context);
+  const entry = me.organizations.find(({ organization }) => organization.slug === params.orgSlug);
+  if (!entry) {
+    throwBackofficeOrganizationNotFound(params.orgSlug);
+  }
+  const accessSummary = await getBackofficeRequestState(context).getFeatureFlag(
+    backofficeOrganizationContextScope(entry.organization),
+    "organization-access-summary",
+  );
+  return { showsAccessSummary: accessSummary.value };
+}
 
 export function meta() {
   return [{ title: "Organization Overview" }];
 }
 
-export default function BackofficeOrganizationOverview() {
+export default function BackofficeOrganizationOverview({ loaderData }: Route.ComponentProps) {
+  const { showsAccessSummary } = loaderData;
   const { organization, membership, me, relations } = useOutletContext<OrganizationLayoutContext>();
   const managed = membership.through.kind === "managing-organization";
   const revalidator = useRevalidator();
@@ -99,11 +119,13 @@ export default function BackofficeOrganizationOverview() {
         />
       </SurfacePanel>
 
-      <OrganizationAccessPanel
-        organizationName={organization.name}
-        basePath={`/backoffice/organizations/${encodeURIComponent(organization.slug)}`}
-        relations={relations}
-      />
+      {showsAccessSummary ? (
+        <OrganizationAccessPanel
+          organizationName={organization.name}
+          basePath={`/backoffice/organizations/${encodeURIComponent(organization.slug)}`}
+          relations={relations}
+        />
+      ) : null}
 
       {/* Managers are told who renames the organization above the page instead. */}
       {managed ? null : (

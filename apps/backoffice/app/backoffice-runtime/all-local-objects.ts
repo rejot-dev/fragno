@@ -22,6 +22,7 @@ import { GitHubWebhookRouterObject } from "../../workers/github-webhook-router-o
 import { MarketplaceObject } from "../../workers/marketplace-object";
 import { McpObject } from "../../workers/mcp-object";
 import { OtpObject } from "../../workers/otp-object";
+import { OverridesObject } from "../../workers/overrides-object";
 import { PiManagerObject } from "../../workers/pi-manager-object";
 import { PiObject } from "../../workers/pi-object";
 import { PresenceObject } from "../../workers/presence-object";
@@ -247,5 +248,6 @@ export const allLocalObjects = {
   CODEMODE: (input) => new CodemodeObject(input),
   APPS: (input) => new AppsObject(input),
   APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
+  OVERRIDES: (input) => new OverridesObject(input),
   MARKETPLACE: (input) => new MarketplaceObject(input),
 } satisfies Record<LocalObjectBindingName, LocalBackofficeObjectFactory<unknown>>;

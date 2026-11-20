@@ -25,6 +25,7 @@ import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { MemberWorkspaceBanner } from "./member-workspace-banner";
 import { BackofficePhoneChrome } from "./phone-chrome";
+import type { ScopeProbe } from "./scope-probe";
 import { BackofficeSidebarNav, useBackofficeSections } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
 
@@ -47,6 +48,8 @@ type BackofficeShellProps = {
   automationReplicaSource: CurrentBackofficeContext["automationReplicaSource"] | null;
   /** The project owner's projects, streamed in after the page; null without a project owner. */
   projectList: Promise<AutomationProjectList> | null;
+  /** Streamed after the page; null where the layout's loader did not run. */
+  scopeProbe: Promise<ScopeProbe> | null;
   sitesDomain: string | null;
   isLoading?: boolean;
 };
@@ -157,6 +160,7 @@ function BackofficeShellFrame({
   accessTokenExpiresAt,
   automationReplicaSource,
   projectList,
+  scopeProbe,
   isLoading,
 }: BackofficeShellProps) {
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
@@ -253,6 +257,7 @@ function BackofficeShellFrame({
           resolvedScope={resolvedScope}
           administeredMember={administeredMember}
           projectList={projectList}
+          scopeProbe={scopeProbe}
           isLoading={isLoading ?? false}
         />
         <BackofficeTopBar
@@ -261,6 +266,7 @@ function BackofficeShellFrame({
           resolvedScope={resolvedScope}
           administeredMember={administeredMember}
           projectList={projectList}
+          scopeProbe={scopeProbe}
           isLoading={isLoading}
           sidebarCollapsed={sidebarCollapsed}
           agentDrawerOpen={agentDrawerOpen}
