@@ -97,8 +97,13 @@ function connectRequest(
   };
 }
 
-const openConnect = (ctx: Ctx, search: string) =>
-  behindBackofficeLayout(connectLoader)(connectRequest(ctx, { source: null, search }));
+/** The Connect page's catalog, once it has streamed in. */
+async function openConnect(ctx: Ctx, search: string) {
+  const page = await behindBackofficeLayout(connectLoader)(
+    connectRequest(ctx, { source: null, search }),
+  );
+  return await page.catalog;
+}
 
 /**
  * Opens a source from a link into it, such as a catalog card's or a provider's return. The browser
@@ -113,7 +118,9 @@ async function openSource(ctx: Ctx, link: string) {
     pattern: `${request.pattern}/:source`,
     params: { ...request.params, source },
   };
-  await behindBackofficeLayout(connectLoader)(args);
+  await (
+    await behindBackofficeLayout(connectLoader)(args)
+  ).catalog;
   return behindBackofficeLayout(sourceLoader)(args);
 }
 

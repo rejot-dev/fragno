@@ -3,8 +3,10 @@ import {
   SourceCatalog,
   type SourceCatalogItem,
 } from "@fragno-private/design-system/controls/source-catalog";
+import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import type { IconName } from "@fragno-private/design-system/icon";
-import { data, Outlet, redirect, useParams } from "react-router";
+import { Suspense } from "react";
+import { Await, data, Outlet, redirect, useParams, type RouterContextProvider } from "react-router";
 
 import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
@@ -62,19 +64,18 @@ function connectSourcePath(connectPath: string, service: IntegrationOverview): s
   return connectionId === null ? path : `${path}?${new URLSearchParams({ target: connectionId })}`;
 }
 
-/** The catalog, read once: opening and closing a source only loads the open source's route. */
+/**
+ * The page renders at once and streams its catalog, which the Connector's gateway can hold up.
+ * The catalog is read once: opening and closing a source only loads the open source's route.
+ */
 export async function loader({ request, context }: Route.LoaderArgs) {
   const selectedScope = requireScopeSelection(context);
-  const integrations = connectIntegrations(context);
-  const [services, connections, providers] = await Promise.all([
-    integrations.discover(),
-    listConnections(integrations),
-    listConnectorProviders(context),
-  ]);
 
-  // A provider's return names the connection it confirmed; its service opens again.
+  // A provider's return names the connection it confirmed; its service opens again. A redirect
+  // cannot follow a streamed page, so only a return waits for discovery.
   const returned = new URL(request.url).searchParams.get("connection");
   if (returned !== null) {
+    const services = await connectIntegrations(context).discover();
     const owner = services.find((candidate) =>
       candidate.setupTargets.some((target) => target.connectionId === returned),
     );
@@ -82,10 +83,23 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     throw redirect(owner ? connectSourcePath(connectPath, owner) : connectPath);
   }
 
+  return { selectedScope, catalog: readCatalog(context, selectedScope) };
+}
+
+/** Every source the scope can connect, with those it already has marked. */
+async function readCatalog(
+  context: Readonly<RouterContextProvider>,
+  selectedScope: BackofficeScopeSelection,
+) {
+  const integrations = connectIntegrations(context);
+  const [services, connections, providers] = await Promise.all([
+    integrations.discover(),
+    listConnections(integrations),
+    listConnectorProviders(context),
+  ]);
   const connected = new Set(connections.map((connection) => connection.integrationId));
   const discovered = new Set(services.map((service) => service.id));
   return {
-    selectedScope,
     services: services.map((service) => ({ ...service, connected: connected.has(service.id) })),
     // Catalog providers the project has no OAuth configuration for, which cannot be connected yet.
     // Discovery already lists the configured ones, and built-in services such as GitHub win.
@@ -291,9 +305,47 @@ export default function BackofficeIntegrationsConnect({
   loaderData,
   actionData,
 }: Route.ComponentProps) {
-  const { selectedScope, services, unavailable } = loaderData;
+  const { selectedScope, catalog } = loaderData;
+  return (
+    <div className={`${backofficePageBodyClassName} flex flex-col gap-6`}>
+      <header className="flex flex-col gap-2">
+        <h1 className="text-xl font-semibold text-[var(--bo-fg)]">Connect a source</h1>
+        <p className="text-sm text-[var(--bo-muted)]">
+          Connected apps become available to your agents, and can run workflows of their own.
+        </p>
+      </header>
+      <Suspense fallback={<PaneSpinner label="Loading sources" />}>
+        <Await
+          resolve={catalog}
+          errorElement={
+            <PaneMessage tone="failed">
+              Sources could not be loaded. Reload the page to try again.
+            </PaneMessage>
+          }
+        >
+          {(resolved) => (
+            <ConnectCatalog
+              catalog={resolved}
+              connectPath={integrationsConnectPath(selectedScope)}
+              actionError={actionData?.error ?? null}
+            />
+          )}
+        </Await>
+      </Suspense>
+    </div>
+  );
+}
+
+function ConnectCatalog({
+  catalog: { services, unavailable },
+  connectPath,
+  actionError,
+}: {
+  catalog: Awaited<Route.ComponentProps["loaderData"]["catalog"]>;
+  connectPath: string;
+  actionError: string | null;
+}) {
   const { source } = useParams();
-  const connectPath = integrationsConnectPath(selectedScope);
   const open =
     services.find((service) => service.id === source) ??
     unavailable.find((provider) => provider.id === source) ??
@@ -330,36 +382,28 @@ export default function BackofficeIntegrationsConnect({
   ];
 
   return (
-    <div className={`${backofficePageBodyClassName} flex flex-col gap-6`}>
-      <header className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold text-[var(--bo-fg)]">Connect a source</h1>
-        <p className="text-sm text-[var(--bo-muted)]">
-          Connected apps become available to your agents, and can run workflows of their own.
-        </p>
-      </header>
-      <SourceCatalog
-        label="Sources to connect"
-        items={items}
-        leadingCategoryId={POPULAR.id}
-        expanded={
-          open === null
-            ? null
-            : {
-                id: open.id,
-                content: (
-                  <Outlet
-                    context={
-                      {
-                        service: open,
-                        connectPath,
-                        actionError: actionData?.error ?? null,
-                      } satisfies ConnectSourceContext
-                    }
-                  />
-                ),
-              }
-        }
-      />
-    </div>
+    <SourceCatalog
+      label="Sources to connect"
+      items={items}
+      leadingCategoryId={POPULAR.id}
+      expanded={
+        open === null
+          ? null
+          : {
+              id: open.id,
+              content: (
+                <Outlet
+                  context={
+                    {
+                      service: open,
+                      connectPath,
+                      actionError,
+                    } satisfies ConnectSourceContext
+                  }
+                />
+              ),
+            }
+      }
+    />
   );
 }
