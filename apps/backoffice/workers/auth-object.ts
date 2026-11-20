@@ -149,6 +149,7 @@ import { BACKOFFICE_LOGIN_PATH } from "@/routes/backoffice/auth-navigation";
 
 import {
   authenticateInstalledAppClient,
+  authorizePersonalCodemode,
   exchangeBackofficeExecutionToken,
 } from "./auth/backoffice-execution-token";
 import {
@@ -1667,6 +1668,19 @@ export class AuthObject implements AuthCommands {
     const auth = this.#getAuth(new URL(parsed.requestUrl).origin);
     return await authenticateInstalledAppClient(auth, parsed, {
       resolveClientPolicy: this.#resolveOAuthClientPolicy(auth, parsed.requestUrl),
+    });
+  }
+
+  async authorizePersonalCodemode(input: { requestUrl: string; oauthAccessToken: string }) {
+    const parsed = backofficeExecutionTokenExchangeInputSchema
+      .pick({ requestUrl: true, oauthAccessToken: true })
+      .parse(input);
+    await this.#ready;
+    const auth = this.#getAuth(new URL(parsed.requestUrl).origin);
+    return await authorizePersonalCodemode(auth, parsed, {
+      resolveClientPolicy: this.#resolveOAuthClientPolicy(auth, parsed.requestUrl),
+      resolveUserGrant: (adapter, input) =>
+        resolveBackofficeUserTokenGrant(adapter, this.#database, input),
     });
   }
 

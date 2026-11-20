@@ -6,6 +6,7 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { backofficeApiRouter } from "@/backoffice-api/backoffice-api-router";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
@@ -25,6 +26,7 @@ import { AppInstallationsObject } from "../../../workers/app-installations-objec
 import { AppsObject } from "../../../workers/apps-object";
 import { AuthObject } from "../../../workers/auth-object";
 import { AutomationsObject } from "../../../workers/automations-object";
+import { CodemodeObject } from "../../../workers/codemode-object";
 import { OtpObject } from "../../../workers/otp-object";
 import { UploadObject } from "../../../workers/upload-object";
 import { action } from "./backoffice-execution-token";
@@ -34,6 +36,7 @@ const scenarioObjects = {
   APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
   OTP: (input) => new OtpObject(input),
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
@@ -146,6 +149,18 @@ async function requestExecutionToken(
   });
 }
 
+function requestPersonalCodemode(ctx: BackofficeScenarioContext, token: string, body: unknown) {
+  const runtime = ctx.runtime.services;
+  return backofficeApiRouter.fetch(
+    new Request(`${origin}/api/v0/codemode`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    { runtime, kernel: new BackofficeKernel(runtime) },
+  );
+}
+
 async function runExecutionTokenScenario(check: (ctx: BackofficeScenarioContext) => Promise<void>) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-execution-token-"));
   try {
@@ -236,6 +251,41 @@ describe("Backoffice execution token SQLite scenarios", () => {
       expect(backofficeExecutionTokenResultSchema.parse(await defaults.json()).scope).toEqual(
         scope,
       );
+    });
+  });
+
+  test("CLI Codemode starts in the personal workspace and can address an organization", async () => {
+    await runExecutionTokenScenario(async (ctx) => {
+      const { token, user, organization } = await authorizeFirstPartyClient(ctx);
+      const code = `async () => ({
+        current: await context.getCurrentScope(),
+        organization: (await context.org(${JSON.stringify(organization.id)}).org.get()).organization,
+      })`;
+      const response = await requestPersonalCodemode(ctx, token, { code });
+      assert.equal(response.status, 200, await response.clone().text());
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        result: {
+          current: { kind: "user", userId: user.id },
+          organization: { organizationId: organization.id },
+        },
+      });
+
+      const suppliedScope = await requestPersonalCodemode(ctx, token, {
+        code,
+        scope: { kind: "org", orgId: organization.id, jurisdiction: null },
+      });
+      assert.equal(suppliedScope.status, 400);
+
+      await ctx.runtime.objects.auth.singleton().commands.applyScenarioFixture({
+        removedMembers: [{ organizationId: organization.id, userId: user.id }],
+      });
+      const formerOrganization = await requestPersonalCodemode(ctx, token, { code });
+      assert.equal(formerOrganization.status, 200);
+      expect(await formerOrganization.json()).toMatchObject({
+        ok: false,
+        error: expect.stringContaining("Permission denied"),
+      });
     });
   });
 
@@ -360,6 +410,8 @@ describe("Backoffice execution token SQLite scenarios", () => {
           resourceScope: wholeOrganization,
         });
       assert(installed.ok);
+      const appCodemode = await requestPersonalCodemode(ctx, token, { code: "async () => 1" });
+      assert.equal(appCodemode.status, 401);
       for (const unavailableScope of [
         null,
         { kind: "system" },

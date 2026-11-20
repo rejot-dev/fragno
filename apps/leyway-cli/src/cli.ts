@@ -42,6 +42,7 @@ Usage:
 
 Commands:
   login                  Reuse stored authentication or sign in through the browser
+  mcp                    Serve Leyway Codemode over MCP stdio
   scopes                 Print scopes available to the authenticated user
   probe                  Print the selected Leyway server URL
   doctor                 Verify authentication, SYSTEM.md, and read-only execution
@@ -493,6 +494,13 @@ export async function runLeywayCli(argv = process.argv.slice(2)): Promise<void> 
       console.log(cliVersion);
     } else if (command === "login") {
       await login(args);
+    } else if (command === "mcp") {
+      const baseUrl = getFlag(args, "--base-url", configuredBaseUrl);
+      if (args.length > 0) {
+        usage();
+      }
+      const { serveLeywayMcp } = await import("./mcp.js");
+      serveLeywayMcp({ baseUrl: await resolveCliBaseUrl(baseUrl), version: cliVersion });
     } else if (command === "scopes") {
       await printAvailableScopes(args);
     } else if (command === "probe") {

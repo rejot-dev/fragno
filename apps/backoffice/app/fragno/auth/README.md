@@ -88,8 +88,8 @@ member, banning the user, or uninstalling therefore affects already-issued crede
 Each reinstallation increments the activation, so credentials and deferred work from an earlier
 activation stay invalid. Installation management (`apps.*`) is never available to an app.
 
-The [versioned API](#versioned-http-api), including its [MCP endpoint](#mcp), accepts installed-app
-credentials within the scope they were issued for. For example:
+Installed-app credentials are accepted only by the [versioned HTTP API](#versioned-http-api), in
+organization or project scopes inside the credential's scope:
 
 ```http
 POST /api/v0/scopes/:scope/events.fire
@@ -149,6 +149,11 @@ The CLI still discovers its device-flow configuration through `/api/backoffice/c
 OAuth access/refresh tokens through the internal Codemode client, and exchanges an access token at
 the shared execution-token route. Device approval now records a user consent in Better Auth's
 `oauthConsent` model, so it can be reviewed and revoked alongside authorization-code grants.
+
+The CLI's `leyway mcp` stdio command uses the same saved device sign-in. Its Codemode requests use
+the CLI OAuth credential, with current consent and user status checked by Auth. The server starts
+each run in the authenticated user's personal workspace. Codemode context handles resolve current
+user permissions in the workspaces they address.
 
 The selected origin is preserved through configuration, browser approval links, OAuth issuance,
 refresh, and execution-token exchange. `localhost` and `127.0.0.1` are distinct issuer and browser
@@ -223,21 +228,6 @@ their own `app:<appId>` source. `admin` and `internal` tools are never exposed; 
 wait for real Browser Run result schemas in their fragment. Byte-oriented operations exchange base64
 through v0 adapters (`app/backoffice-api/v0-adapters.ts`) until dedicated file transfer APIs exist.
 
-### MCP
-
-Connect a Streamable HTTP MCP client to `/api/v0/scopes/<scope>/mcp`, using the same scope path
-segment as the versioned API, for example `org:<orgId>`. Send
-`Authorization: Bearer <execution credential>` with every request. An installed app obtains the
-credential through [execution-token exchange](#oauth-execution-token-exchange) and uses the same
-exchange to replace it when it expires. If a client sends an `Origin` header, it must match the
-endpoint origin.
-
-`tools/list` advertises the scoped v0 operations by operation ID. Pass the operation's JSON input as
-tool arguments, or omit arguments for an operation with no input. Results come back as JSON in the
-tool's text content, with `OK` for a successful operation with no output. Operation errors set
-`isError` and include the API error code and message. The kernel checks the credential's current
-authority on every tool call, including installation grants, scope, and revocation.
-
 ## Browser consent and revocation
 
 `/backoffice/device` handles first-party device approval; `/backoffice/oauth/consent` handles
@@ -299,8 +289,8 @@ tokens.
   management, and client-policy resolution.
 - `app/fragno/app-installations/authority.ts`: installed-app execution and live installation grant
   and resource resolution.
-- `app/backoffice-api/backoffice-api-router.ts`: the versioned API and its scoped MCP endpoint, both
-  of which accept installed-app credentials.
+- `app/backoffice-api/backoffice-api-router.ts`: the versioned HTTP API, the only endpoint that
+  accepts installed-app credentials.
 - `app/routes/backoffice/app-install.tsx` and `app-install.server.ts`: the app-initiated install
   page.
 - `app/routes/api/backoffice-app-installation-claim.ts`: installation claims by the app's server.

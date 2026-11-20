@@ -50,3 +50,25 @@ Set `LEYWAY_URL` to select a server, `LEYWAY_AUTH_FILE` to override credential s
 
 The credential file keeps one sign-in per server, so signing in to one server, such as another
 worktree's dev server or Leyway Cloud, keeps the others signed in.
+
+## MCP
+
+Sign in with `leyway login --open` and configure your MCP client to launch `leyway mcp` over stdio.
+The command uses the sign-in saved by the CLI, including its OAuth device approval and refresh flow.
+Use `--base-url` or `LEYWAY_URL` to select the same server you signed in to.
+
+```json
+{
+  "mcpServers": {
+    "leyway": {
+      "command": "leyway",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The `codemode` tool starts each run in your personal workspace. Read the Codemode guide at
+`leyway://codemode/SYSTEM.md` for the available tools and context handles. Use `account.orgsList()`
+to find organization IDs, then call `context.org(organizationId).projects.list({})` to list that
+organization's projects.

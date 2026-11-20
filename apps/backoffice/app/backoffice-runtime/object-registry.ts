@@ -459,6 +459,10 @@ export type AuthCommands = DurableHookCommands &
       requestUrl: string;
       oauthAccessToken: string;
     }): Promise<{ appId: string }>;
+    authorizePersonalCodemode(input: {
+      requestUrl: string;
+      oauthAccessToken: string;
+    }): Promise<BackofficeUserContextScope>;
     /** Exchanges OAuth identity under a server-controlled execution policy, not app registration alone. */
     exchangeBackofficeExecutionToken(
       input: BackofficeExecutionTokenExchangeInput,

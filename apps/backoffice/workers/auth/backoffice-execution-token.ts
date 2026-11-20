@@ -64,9 +64,14 @@ type BackofficeExecutionTokenDependencies = {
 
 type BetterAuthContext = Awaited<BetterAuthInstance["$context"]>;
 
+type BackofficeOAuthRequest = Pick<
+  BackofficeExecutionTokenExchangeInput,
+  "requestUrl" | "oauthAccessToken"
+>;
+
 async function verifyBackofficeOAuthAccessToken(
   auth: BetterAuthInstance,
-  input: Pick<BackofficeExecutionTokenExchangeInput, "requestUrl" | "oauthAccessToken">,
+  input: BackofficeOAuthRequest,
 ) {
   const audience = new URL(input.requestUrl).origin;
   try {
@@ -99,12 +104,11 @@ async function verifyBackofficeOAuthAccessToken(
   }
 }
 
-/** Exchanges OAuth identity for scoped execution authority under an explicit server client policy. */
-export async function exchangeBackofficeExecutionToken(
+async function authorizeOAuthExecution(
   auth: BetterAuthInstance,
-  input: BackofficeExecutionTokenExchangeInput,
-  dependencies: BackofficeExecutionTokenDependencies,
-): Promise<BackofficeExecutionTokenResult> {
+  input: BackofficeOAuthRequest,
+  dependencies: Pick<BackofficeExecutionTokenDependencies, "resolveClientPolicy">,
+) {
   const payload = await verifyBackofficeOAuthAccessToken(auth, input);
   const policy = await dependencies.resolveClientPolicy(payload.client_id);
   if (policy === null) {
@@ -134,6 +138,16 @@ export async function exchangeBackofficeExecutionToken(
       throw error;
     }
   }
+  return { policy, userId, authContext };
+}
+
+/** Exchanges OAuth identity for scoped execution authority under an explicit server client policy. */
+export async function exchangeBackofficeExecutionToken(
+  auth: BetterAuthInstance,
+  input: BackofficeExecutionTokenExchangeInput,
+  dependencies: BackofficeExecutionTokenDependencies,
+): Promise<BackofficeExecutionTokenResult> {
+  const { policy, userId, authContext } = await authorizeOAuthExecution(auth, input, dependencies);
   if (policy.kind === "installed-app") {
     return await exchangeInstalledAppToken(
       authContext,
@@ -150,10 +164,38 @@ export async function exchangeBackofficeExecutionToken(
   return await exchangeFirstPartyUserToken(authContext, input, userId, dependencies);
 }
 
+/** The CLI may run Codemode from its signed-in user's personal workspace. */
+export async function authorizePersonalCodemode(
+  auth: BetterAuthInstance,
+  input: BackofficeOAuthRequest,
+  dependencies: Pick<
+    BackofficeExecutionTokenDependencies,
+    "resolveClientPolicy" | "resolveUserGrant"
+  >,
+) {
+  const { policy, userId, authContext } = await authorizeOAuthExecution(auth, input, dependencies);
+  if (policy.kind !== "first-party-user" || userId === null) {
+    throw new BackofficeExecutionTokenAuthenticationError(
+      "Codemode requires a Leyway CLI user sign-in.",
+    );
+  }
+  const authority = await resolveUserAuthority(
+    authContext,
+    { userId, scope: null, organizationSelection: "preferred" },
+    dependencies,
+  );
+  if (!authority.personalScope) {
+    throw new BackofficeExecutionTokenScopeError(
+      "Finish setting up Leyway in the browser before running Codemode.",
+    );
+  }
+  return authority.personalScope;
+}
+
 async function resolveUserAuthority(
   authContext: BetterAuthContext,
   input: Parameters<ResolveBackofficeUserTokenGrant>[1],
-  dependencies: BackofficeExecutionTokenDependencies,
+  dependencies: Pick<BackofficeExecutionTokenDependencies, "resolveUserGrant">,
 ): Promise<BackofficeUserTokenAuthority> {
   try {
     return await dependencies.resolveUserGrant(authContext.adapter, input);
@@ -266,7 +308,7 @@ async function exchangeInstalledAppToken(
  */
 export async function authenticateInstalledAppClient(
   auth: BetterAuthInstance,
-  input: Pick<BackofficeExecutionTokenExchangeInput, "requestUrl" | "oauthAccessToken">,
+  input: BackofficeOAuthRequest,
   dependencies: Pick<BackofficeExecutionTokenDependencies, "resolveClientPolicy">,
 ): Promise<{ appId: string }> {
   const payload = await verifyBackofficeOAuthAccessToken(auth, input);

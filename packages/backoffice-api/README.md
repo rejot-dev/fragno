@@ -53,14 +53,6 @@ transfer APIs will replace it for large files. Errors return `{ error: { code, m
 `operation_failed` 422. `not_found` also covers things the request names, such as an unknown id, and
 `operation_failed` is reserved for failures no other code describes.
 
-## Calling operations over MCP
-
-Connect a Streamable HTTP MCP client to `/api/v0/scopes/<scope>/mcp` and send
-`Authorization: Bearer <execution credential>` on every request. The endpoint accepts the same user
-and installed-app credentials as the HTTP operations. Tool names are the operation IDs, and tool
-arguments follow the same input schemas. Use `tools/list` to discover the tools. Each call checks
-the credential's scope and permissions before running the operation.
-
 ## Watching an agent
 
 `pi.agent.watch` follows an agent's conversation and queue live over a WebSocket, which is not an
