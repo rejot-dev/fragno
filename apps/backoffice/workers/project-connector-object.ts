@@ -1,5 +1,5 @@
 import {
-  backofficeUserScopeSchema,
+  backofficeRootOwnerSchema,
   backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
@@ -91,6 +91,7 @@ export class ProjectConnectorObject extends RpcTarget implements ProjectConnecto
           config,
           implementation.fragmentDatabase,
           new BackofficeKernel(runtime),
+          scopedRuntime.requireOwnerScope().kind,
         ),
       onProcessError: (error) => {
         console.error("Connector hook processor error", error);
@@ -104,12 +105,13 @@ export class ProjectConnectorObject extends RpcTarget implements ProjectConnecto
       state,
       ownerScope: backofficeContextScopeFromDurableObjectId(state.id, "PROJECT_CONNECTOR"),
       host,
-      scopeSchema: backofficeUserScopeSchema,
+      scopeSchema: backofficeRootOwnerSchema,
       createSource: function createScopedProjectConnectorConfig(
         scope,
       ): ProjectConnectorFragmentConfig {
         // Provider accounts are user-owned. Use the ID-backed user scope upstream; caller-supplied
-        // identities and organization slugs are not authoritative account owners.
+        // identities and organization slugs are not authoritative account owners. An organization's
+        // Connector serves only the catalog, so it never acts for this identity.
         const externalUserId = backofficeScopePathSegment(scope);
         return {
           baseUrl,

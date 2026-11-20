@@ -1259,7 +1259,8 @@ export const backofficeObjectScopePolicy = {
   OTP: ["singleton", "org"],
   RESEND: ["singleton", "org"],
   MCP: ["org", "user", "project"],
-  PROJECT_CONNECTOR: ["user"],
+  // Provider accounts are user-owned; an organization's Connector only reads the catalog.
+  PROJECT_CONNECTOR: ["user", "org"],
   UPLOAD: ["org", "named", "user", "app", "project"],
   BLOBS: ["org", "user", "app", "project"],
   GITHUB: ["org", "user"],
