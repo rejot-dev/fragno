@@ -56,7 +56,9 @@ export const authConfigSchema = z.discriminatedUnion("type", [
       .string()
       .trim()
       .min(1)
-      .describe("The header or query parameter that carries the key, such as x-api-key."),
+      .describe(
+        "The header or query parameter that carries the key, such as the header x-api-key or the query parameter api_key.",
+      ),
     key: z.string().min(1),
   }),
 ]);

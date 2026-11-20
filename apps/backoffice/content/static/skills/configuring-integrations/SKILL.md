@@ -167,12 +167,15 @@ check, and the loop continues from it.
 ### Auth by source
 
 For `api#` addresses, the input's `type` selects the auth mode the provider's documentation names,
-and an OAuth submission starts consent at once. `none` is for an API that takes no credential: a
-connection without the key it needs reports `ready` and fails every request. When the documented
-scheme fits no `type`, such as a key in the request body, tell the user instead of submitting. The
-first check's `instructions` state the scope's exact OAuth callback URL. Give the user that URL to
-register in the provider's OAuth app in the same message that asks them to create the app, before
-they send credentials; consent fails with a redirect URI error until the app lists it.
+and an OAuth submission starts consent at once. A key the documentation sends in a header or a query
+parameter is `apiKey`, with `location` and `parameter` taken from the documentation, such as
+`{ type: "apiKey", location: "query", parameter: "api_key", key }`; its setup form asks only for
+`key`. `none` is for an API that takes no credential: a connection without the key it needs reports
+`ready` and fails every request. When the documented scheme fits no `type`, such as a key in the
+request body, tell the user instead of submitting. The first check's `instructions` state the
+scope's exact OAuth callback URL. Give the user that URL to register in the provider's OAuth app in
+the same message that asks them to create the app, before they send credentials; consent fails with
+a redirect URI error until the app lists it.
 
 For `mcp#` addresses, `type` likewise selects the auth mode and an OAuth submission starts consent.
 Servers with dynamic client registration need no client; otherwise include `clientId` and
