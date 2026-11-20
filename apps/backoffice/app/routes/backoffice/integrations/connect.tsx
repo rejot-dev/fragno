@@ -166,7 +166,7 @@ function unconfiguredProviderPrompt(
     return `${request} It signs in with OAuth, so set it up through Oomol (the Connector), which has no OAuth configuration for it in this project yet.`;
   }
   if (setup === "api") {
-    return `${request} Set it up as an API integration (integration api). Search ${provider.displayName}'s API documentation for how to authenticate, which base URL to use, and where I create the key or token it needs. Ask me for that credential in a setup form, never in chat, and say in the form where to find it.`;
+    return `${request} Follow the configuring-integrations skill to set it up as an API integration (integration api): find in ${provider.displayName}'s API documentation how it authenticates, its base URL, and where I create its key or token, then ask me for the key with a setup form that says where to find it.`;
   }
   return `${request} Connector lists it, but this project cannot sign in to it yet, so it needs another way to connect.`;
 }
