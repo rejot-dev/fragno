@@ -31,6 +31,7 @@ export default function BackofficeLayout({
     administeredMember,
     automationReplicaSource,
     projectList,
+    scopeProbe,
     sitesDomain,
   } = loaderData;
 
@@ -57,6 +58,7 @@ export default function BackofficeLayout({
       accessTokenExpiresAt={accessTokenExpiresAt}
       automationReplicaSource={automationReplicaSource}
       projectList={projectList}
+      scopeProbe={scopeProbe}
       sitesDomain={sitesDomain}
       isLoading={false}
     >
@@ -104,6 +106,7 @@ export function ErrorBoundary() {
       accessTokenExpiresAt={layoutData?.accessTokenExpiresAt ?? null}
       automationReplicaSource={layoutData?.automationReplicaSource ?? null}
       projectList={layoutData?.projectList ?? null}
+      scopeProbe={layoutData?.scopeProbe ?? null}
       sitesDomain={layoutData?.sitesDomain ?? null}
       isLoading={false}
     >

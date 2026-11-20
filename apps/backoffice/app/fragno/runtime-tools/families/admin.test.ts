@@ -68,6 +68,18 @@ describe("admin runtime tools", () => {
       getUsageLimits: async () => {
         throw new Error("unexpected usage limit read");
       },
+      listOverrides: async () => {
+        throw new Error("unexpected override listing");
+      },
+      getOverride: async () => {
+        throw new Error("unexpected override read");
+      },
+      setOverride: async () => {
+        throw new Error("unexpected override change");
+      },
+      clearOverride: async () => {
+        throw new Error("unexpected override clearing");
+      },
       setUsageLimit: async () => {
         throw new Error("unexpected usage limit change");
       },

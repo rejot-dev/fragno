@@ -46,6 +46,7 @@
       { "name": "UPLOAD", "class_name": "Upload" },
       { "name": "CODEMODE", "class_name": "Codemode" },
       { "name": "BILLING", "class_name": "Billing" },
+      { "name": "OVERRIDES", "class_name": "Overrides" },
       {
         "name": "PI",
         "class_name": "PiScenarioAgent",
@@ -80,6 +81,10 @@
     {
       "tag": "v6",
       "new_sqlite_classes": ["Billing"],
+    },
+    {
+      "tag": "v7",
+      "new_sqlite_classes": ["Overrides"],
     },
   ],
 }

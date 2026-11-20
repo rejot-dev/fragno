@@ -10,6 +10,7 @@ import {
   type DirectoryPageInput,
 } from "@fragno-dev/backoffice-api/v0/shared/pagination";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
+import type { BackofficePublicScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
 import type {
@@ -53,6 +54,7 @@ import type {
   UsageLimitedMeter,
   UsageLimits,
 } from "@/fragno/billing/usage-limits";
+import type { OverrideKind } from "@/fragno/overrides/definition";
 import { defineCliArgsParser } from "@/fragno/runtime-tools/bash-cli";
 
 import {
@@ -64,6 +66,7 @@ import { adminAccessCodesRuntimeTools } from "./admin-access-codes";
 import { adminAppsRuntimeTools } from "./admin-apps";
 import { adminInboundEmailRuntimeTools } from "./admin-inbound-email";
 import { adminOAuthClientsRuntimeTools } from "./admin-oauth-clients";
+import { adminOverrideRuntimeTools, type AdminOverride } from "./admin-overrides";
 import { adminUsageLimitsRuntimeTools, type AdminUsageLimitOwner } from "./admin-usage-limits";
 import {
   formatOrganizationMemberPageText,
@@ -83,6 +86,8 @@ export type AdminAccessCodePage = {
 export type AdminAccessCodeRedemptions = AccessCodeRedemptionPage & {
   accessCode: AdminAccessCode;
 };
+
+type AdminOverrideAddress = { kind: OverrideKind; scope: BackofficePublicScope; key: string };
 
 export type AdminRuntime = {
   createOAuthClient(
@@ -148,6 +153,13 @@ export type AdminRuntime = {
     input: { organizationSlug: string } & EventDeletionPass,
   ): Promise<{ scanned: number; deleted: number; cursor: string | null }>;
   getUsageLimits(input: { owner: AdminUsageLimitOwner }): Promise<UsageLimits>;
+  listOverrides(input: {
+    kind: OverrideKind;
+    scope: BackofficePublicScope;
+  }): Promise<AdminOverride[]>;
+  getOverride(input: AdminOverrideAddress): Promise<AdminOverride>;
+  setOverride(input: AdminOverrideAddress & { value: unknown }): Promise<AdminOverride>;
+  clearOverride(input: AdminOverrideAddress): Promise<AdminOverride>;
   setUsageLimit(input: {
     owner: AdminUsageLimitOwner;
     meter: UsageLimitedMeter;
@@ -679,6 +691,7 @@ export const adminRuntimeTools = [
   ...adminAppsRuntimeTools,
   ...adminOAuthClientsRuntimeTools,
   ...adminUsageLimitsRuntimeTools,
+  ...adminOverrideRuntimeTools,
   ...adminInboundEmailRuntimeTools,
 ] as const;
 

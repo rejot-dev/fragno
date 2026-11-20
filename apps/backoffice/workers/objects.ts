@@ -14,6 +14,7 @@ import { GitHub } from "./github.do";
 import { Marketplace } from "./marketplace.do";
 import { Mcp } from "./mcp.do";
 import { Otp } from "./otp.do";
+import { Overrides } from "./overrides.do";
 import { PiManager } from "./pi-manager.do";
 import { Pi } from "./pi.do";
 import { Presence } from "./presence.do";
@@ -54,6 +55,7 @@ export {
   GitHub,
   GitHubWebhookRouter,
   Marketplace,
+  Overrides,
   Mcp,
   ProjectConnectorDurableObject,
   Otp,

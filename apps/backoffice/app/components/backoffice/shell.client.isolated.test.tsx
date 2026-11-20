@@ -81,6 +81,7 @@ describe("BackofficeShell resolved scope", () => {
           message: "Workflow synchronization is unavailable.",
         }}
         projectList={null}
+        scopeProbe={null}
         sitesDomain={null}
       >
         <div>Backoffice</div>

@@ -102,6 +102,7 @@ function NavigationScenario({ navigation }: { navigation: Navigation }) {
           resolvedScope={scope}
           administeredMember={null}
           projectList={null}
+          scopeProbe={null}
           isLoading={false}
         />
       )}

@@ -1297,6 +1297,318 @@
     ]
   },
   {
+    "command": "admin.feature-flags.get",
+    "summary": "Get a feature flag in a scope.",
+    "options": [
+      {
+        "name": "scope",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "scope",
+        "description": "system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId>"
+      },
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "The key, as list shows it"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.feature-flags.set",
+    "summary": "Override a feature flag on a scope.",
+    "options": [
+      {
+        "name": "scope",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "scope",
+        "description": "system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId>"
+      },
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "The key, as list shows it"
+      },
+      {
+        "name": "value",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "value",
+        "description": "on or off"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.feature-flags.clear",
+    "summary": "Clear a scope's feature flag override.",
+    "options": [
+      {
+        "name": "scope",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "scope",
+        "description": "system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId>"
+      },
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "The key, as list shows it"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.feature-flags.list",
+    "summary": "List the feature flags in a scope.",
+    "options": [
+      {
+        "name": "scope",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "scope",
+        "description": "system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId>"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.entitlements.get",
+    "summary": "Get a entitlement in a scope.",
+    "options": [
+      {
+        "name": "scope",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "scope",
+        "description": "system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId>"
+      },
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "The key, as list shows it"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.entitlements.set",
+    "summary": "Override a entitlement on a scope.",
+    "options": [
+      {
+        "name": "scope",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "scope",
+        "description": "system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId>"
+      },
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "The key, as list shows it"
+      },
+      {
+        "name": "value",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "value",
+        "description": "A value the entitlement accepts, as list describes it"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.entitlements.clear",
+    "summary": "Clear a scope's entitlement override.",
+    "options": [
+      {
+        "name": "scope",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "scope",
+        "description": "system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId>"
+      },
+      {
+        "name": "key",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "key",
+        "description": "The key, as list shows it"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
+    "command": "admin.entitlements.list",
+    "summary": "List the entitlements in a scope.",
+    "options": [
+      {
+        "name": "scope",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "scope",
+        "description": "system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId>"
+      },
+      {
+        "name": "help",
+        "description": "Show this help text",
+        "valueRequired": false,
+        "valueName": ""
+      },
+      {
+        "name": "print",
+        "description": "Extract a nested JSON field (kebab-case path) from command result",
+        "valueRequired": true,
+        "valueName": "selector",
+        "required": false
+      },
+      {
+        "name": "format",
+        "description": "Output format: text (default) or json",
+        "valueRequired": true,
+        "valueName": "format"
+      }
+    ]
+  },
+  {
     "command": "admin.inbound-email.replace",
     "summary": "admin.inbound-email.replace gives a person a new inbound email address.",
     "options": [

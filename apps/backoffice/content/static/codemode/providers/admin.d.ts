@@ -134,6 +134,46 @@ type AdminCodemodeProvider = {
    */
   usageLimitsSet(input: AdminUsageLimitsSetInput): Promise<AdminUsageLimitsSetOutput>;
   /**
+   * Get one feature flag's value in a scope, its default, and the overrides that decide it.
+   * Requires `admin.organizations.manage` and `admin.users.manage`.
+   */
+  featureFlagsGet(input: AdminFeatureFlagsGetInput): Promise<AdminFeatureFlagsGetOutput>;
+  /**
+   * Override a feature flag on a scope. The most specific override on a scope's chain decides: project, then app, then organization or user, then system.
+   * Requires `admin.organizations.manage` and `admin.users.manage`.
+   */
+  featureFlagsSet(input: AdminFeatureFlagsSetInput): Promise<AdminFeatureFlagsSetOutput>;
+  /**
+   * Clear a scope's feature flag override, so the scopes that own it decide again.
+   * Requires `admin.organizations.manage` and `admin.users.manage`.
+   */
+  featureFlagsClear(input: AdminFeatureFlagsClearInput): Promise<AdminFeatureFlagsClearOutput>;
+  /**
+   * List the feature flags and their values in a scope.
+   * Requires `admin.organizations.manage` and `admin.users.manage`.
+   */
+  featureFlagsList(input: AdminFeatureFlagsListInput): Promise<AdminFeatureFlagsListOutput>;
+  /**
+   * Get one entitlement's value in a scope, its default, and the overrides that decide it.
+   * Requires `admin.organizations.manage` and `admin.users.manage`.
+   */
+  entitlementsGet(input: AdminEntitlementsGetInput): Promise<AdminEntitlementsGetOutput>;
+  /**
+   * Override a entitlement on a scope. The most specific override on a scope's chain decides: project, then app, then organization or user, then system.
+   * Requires `admin.organizations.manage` and `admin.users.manage`.
+   */
+  entitlementsSet(input: AdminEntitlementsSetInput): Promise<AdminEntitlementsSetOutput>;
+  /**
+   * Clear a scope's entitlement override, so the scopes that own it decide again.
+   * Requires `admin.organizations.manage` and `admin.users.manage`.
+   */
+  entitlementsClear(input: AdminEntitlementsClearInput): Promise<AdminEntitlementsClearOutput>;
+  /**
+   * List the entitlements and their values in a scope.
+   * Requires `admin.organizations.manage` and `admin.users.manage`.
+   */
+  entitlementsList(input: AdminEntitlementsListInput): Promise<AdminEntitlementsListOutput>;
+  /**
    * Give a person a new inbound email address, three random words, such as after their address gets spam. People keep one address for good and cannot replace it themselves. The old address stops receiving at once and is never issued again.
    * Requires `admin.users.manage`.
    */
@@ -700,6 +740,136 @@ type AdminUsageLimitsSetOutput = {
     used: string;
   }[];
 };
+type AdminFeatureFlagsGetInput = {
+  /** system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId> */
+  scope: string;
+  key: "organization-access-summary" | "scope-probe";
+};
+type AdminFeatureFlagsGetOutput = {
+  key: "organization-access-summary" | "scope-probe";
+  description: string;
+  default: boolean;
+  value: boolean;
+  /** Overrides on the scope and the scopes that own it, most specific first; the first decides. */
+  overrides: {
+    scope: string;
+    value: boolean;
+  }[];
+};
+type AdminFeatureFlagsSetInput = {
+  /** system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId> */
+  scope: string;
+  key: "organization-access-summary" | "scope-probe";
+  /** on or off */
+  value: "on" | "off";
+};
+type AdminFeatureFlagsSetOutput = {
+  key: "organization-access-summary" | "scope-probe";
+  description: string;
+  default: boolean;
+  value: boolean;
+  /** Overrides on the scope and the scopes that own it, most specific first; the first decides. */
+  overrides: {
+    scope: string;
+    value: boolean;
+  }[];
+};
+type AdminFeatureFlagsClearInput = {
+  /** system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId> */
+  scope: string;
+  key: "organization-access-summary" | "scope-probe";
+};
+type AdminFeatureFlagsClearOutput = {
+  key: "organization-access-summary" | "scope-probe";
+  description: string;
+  default: boolean;
+  value: boolean;
+  /** Overrides on the scope and the scopes that own it, most specific first; the first decides. */
+  overrides: {
+    scope: string;
+    value: boolean;
+  }[];
+};
+type AdminFeatureFlagsListInput = {
+  /** system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId> */
+  scope: string;
+};
+type AdminFeatureFlagsListOutput = {
+  key: "organization-access-summary" | "scope-probe";
+  description: string;
+  default: boolean;
+  value: boolean;
+  /** Overrides on the scope and the scopes that own it, most specific first; the first decides. */
+  overrides: {
+    scope: string;
+    value: boolean;
+  }[];
+}[];
+type AdminEntitlementsGetInput = {
+  /** system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId> */
+  scope: string;
+  key: "email.recipients";
+};
+type AdminEntitlementsGetOutput = {
+  key: "email.recipients";
+  description: string;
+  default: "own-and-verified-senders" | "anyone";
+  value: "own-and-verified-senders" | "anyone";
+  /** Overrides on the scope and the scopes that own it, most specific first; the first decides. */
+  overrides: {
+    scope: string;
+    value: "own-and-verified-senders" | "anyone";
+  }[];
+};
+type AdminEntitlementsSetInput = {
+  /** system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId> */
+  scope: string;
+  key: "email.recipients";
+  /** A value the entitlement accepts, as list describes it */
+  value: string;
+};
+type AdminEntitlementsSetOutput = {
+  key: "email.recipients";
+  description: string;
+  default: "own-and-verified-senders" | "anyone";
+  value: "own-and-verified-senders" | "anyone";
+  /** Overrides on the scope and the scopes that own it, most specific first; the first decides. */
+  overrides: {
+    scope: string;
+    value: "own-and-verified-senders" | "anyone";
+  }[];
+};
+type AdminEntitlementsClearInput = {
+  /** system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId> */
+  scope: string;
+  key: "email.recipients";
+};
+type AdminEntitlementsClearOutput = {
+  key: "email.recipients";
+  description: string;
+  default: "own-and-verified-senders" | "anyone";
+  value: "own-and-verified-senders" | "anyone";
+  /** Overrides on the scope and the scopes that own it, most specific first; the first decides. */
+  overrides: {
+    scope: string;
+    value: "own-and-verified-senders" | "anyone";
+  }[];
+};
+type AdminEntitlementsListInput = {
+  /** system, org:<slug>, user:<userId>, app:org:<slug>:<appId>, or project:org:<slug>:<projectId> */
+  scope: string;
+};
+type AdminEntitlementsListOutput = {
+  key: "email.recipients";
+  description: string;
+  default: "own-and-verified-senders" | "anyone";
+  value: "own-and-verified-senders" | "anyone";
+  /** Overrides on the scope and the scopes that own it, most specific first; the first decides. */
+  overrides: {
+    scope: string;
+    value: "own-and-verified-senders" | "anyone";
+  }[];
+}[];
 type AdminInboundEmailReplaceInput = {
   userId: string;
 };

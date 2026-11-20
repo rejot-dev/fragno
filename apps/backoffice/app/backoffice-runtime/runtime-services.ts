@@ -74,6 +74,7 @@ export type BackofficeRuntimeConfig = {
     automations: boolean;
     piManager: boolean;
     billing: boolean;
+    overrides: boolean;
     marketplace: boolean;
     telegram: boolean;
     otp: boolean;
@@ -219,6 +220,7 @@ const createCloudflareBackofficeRuntimeConfig = (env: CloudflareEnv): Backoffice
     automations: Boolean(env.AUTOMATIONS),
     piManager: Boolean(env.PI_MANAGER),
     billing: Boolean(env.BILLING),
+    overrides: Boolean(env.OVERRIDES),
     marketplace: Boolean(env.MARKETPLACE),
     telegram: Boolean(env.TELEGRAM),
     otp: Boolean(env.OTP),

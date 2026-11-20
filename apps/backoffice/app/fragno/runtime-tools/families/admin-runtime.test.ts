@@ -63,6 +63,20 @@ function createAdminRuntimeDependencies() {
       throw new Error("These tests do not reach an organization's automations.");
     },
     billingFor: null,
+    overrides: {
+      list: async () => {
+        throw new Error("unexpected override listing");
+      },
+      get: async () => {
+        throw new Error("unexpected override read");
+      },
+      set: async () => {
+        throw new Error("unexpected override change");
+      },
+      clear: async () => {
+        throw new Error("unexpected override clearing");
+      },
+    },
     replaceInboundEmailAddress: null,
     setInboundEmailSending: null,
     publicBaseUrl: "https://backoffice.example/",

@@ -53,6 +53,12 @@ import {
   type BackofficeStateBackend,
 } from "@/fragno/codemode/state-backend";
 import { readSavedWorkflowProgram } from "@/fragno/codemode/workflow-program";
+import {
+  clearOverrideInScope,
+  overrideInScope,
+  overridesInScope,
+  setOverrideInScope,
+} from "@/fragno/overrides/overrides.server";
 import type { PiAgentAddress } from "@/fragno/pi/agent/pi-agent-contract";
 import {
   createPiManagerRuntime,
@@ -376,6 +382,12 @@ const createRuntimeContext = ({
               otp: runtime.config.bindings.otp ? runtime.objects.otp.singleton().commands : null,
               automationsFor: (organization) =>
                 runtime.objects.automations.for(organization).commands,
+              overrides: {
+                list: (kind, scope) => overridesInScope(runtime, kind, scope),
+                get: (address) => overrideInScope(runtime, address),
+                set: (input) => setOverrideInScope(runtime, input),
+                clear: (address) => clearOverrideInScope(runtime, address),
+              },
               billingFor: runtime.config.bindings.billing
                 ? (owner) => runtime.objects.billing.for(owner).commands
                 : null,

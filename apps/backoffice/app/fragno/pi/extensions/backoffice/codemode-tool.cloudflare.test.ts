@@ -69,6 +69,7 @@ const testRuntimeConfig: BackofficeRuntimeConfig = {
     auth: false,
     automations: false,
     billing: false,
+    overrides: false,
     marketplace: false,
     telegram: false,
     otp: false,

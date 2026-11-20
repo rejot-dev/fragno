@@ -64,8 +64,11 @@ function createAuthenticatedDependencies(
     }
     return { resolvedScope, adapterIdentity: "adapter-test" };
   }
+  const loadStoredOverrides = async () => {
+    throw new Error("Authentication must not read feature flags.");
+  };
   return {
-    dependencies: { getAuthObject, verifyJwt, loadAutomationReplicaSource },
+    dependencies: { getAuthObject, verifyJwt, loadAutomationReplicaSource, loadStoredOverrides },
     getAuthObject,
     verifyJwt,
     loadAutomationReplicaSourceCall,
@@ -275,11 +278,17 @@ describe("Backoffice request state", () => {
       getAuthObject,
       verifyJwt,
       loadAutomationReplicaSource,
+      loadStoredOverrides: async () => {
+        throw new Error("Authentication must not read feature flags.");
+      },
     }).resolveAuthentication();
     const bearerAuthentication = await createBackofficeRequestState(bearerRequest, {
       getAuthObject,
       verifyJwt,
       loadAutomationReplicaSource,
+      loadStoredOverrides: async () => {
+        throw new Error("Authentication must not read feature flags.");
+      },
     }).resolveAuthentication();
 
     expect(cookieAuthentication).toMatchObject({ ok: false, reason: "expired" });

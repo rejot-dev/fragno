@@ -52,6 +52,9 @@ function createAuthenticationContext(
     async getAutomationReplicaSource() {
       throw new Error("Authentication middleware must not initialize Automations.");
     },
+    async getFeatureFlag() {
+      throw new Error("Authentication middleware must not read feature flags.");
+    },
   });
   return context;
 }

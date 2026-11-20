@@ -8,9 +8,30 @@ description: >
 # Backoffice Administration
 
 Read `/static/codemode/providers/admin.d.ts` before authoring admin calls. It defines the available
-invitation, organization, app, OAuth client, and Marketplace administration operations.
+invitation, organization, feature flag, app, OAuth client, and Marketplace administration
+operations.
 
 For Marketplace operations, also read `/static/codemode/providers/marketplace.d.ts`.
+
+## Feature flags and entitlements
+
+Feature flags turn code on and off while it rolls out. Entitlements are what an account may do
+beyond the defaults, such as `email.recipients`, which lets a person's address email anyone. Both
+are overrides of a default, set on a scope: `system`, `org:<slug>`, `user:<userId>`,
+`app:org:<slug>:<appId>`, or `project:org:<slug>:<projectId>`. Flags accept every scope; each
+entitlement names the scopes it accepts. The most specific override on a scope's chain decides: a
+project's, then its app's, then its organization's or user's, then the system's.
+
+From System context, list the flags in a scope with `admin.feature-flags.list --scope org:acme`, and
+see one, with the overrides that decide it, with
+`admin.feature-flags.get --scope org:acme --key scope-probe`. Override it with
+`admin.feature-flags.set --scope org:acme --key scope-probe --value on` (or `off`), and remove the
+scope's override with `admin.feature-flags.clear --scope org:acme --key scope-probe`.
+
+Entitlements have the same commands under `admin.entitlements`, and take any value the entitlement
+accepts: `admin.entitlements.set --scope user:<userId> --key email.recipients --value anyone`. The
+JavaScript methods are `admin.featureFlagsList`, `admin.featureFlagsGet`, `admin.featureFlagsSet`,
+`admin.featureFlagsClear`, and the same for `admin.entitlements…`.
 
 ## Featuring listings
 

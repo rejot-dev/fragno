@@ -1,3 +1,4 @@
+import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { createContext, type RouterContext, type RouterContextProvider } from "react-router";
 
 import type {
@@ -7,6 +8,8 @@ import type {
 import type { BackofficeAuthPrincipal, BackofficeMeData } from "@/fragno/auth/contracts";
 import type { BackofficeJwtPayload } from "@/fragno/auth/token-lifecycle";
 import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
+import type { FeatureFlagKey } from "@/fragno/feature-flags/definitions";
+import type { OverrideStatus } from "@/fragno/overrides/resolve";
 
 /** Identifies why a Backoffice request credential could not establish authentication. */
 export type BackofficeAuthenticationFailureReason = "missing" | "expired" | "invalid";
@@ -48,6 +51,11 @@ export type BackofficeRequestState = {
   getAutomationReplicaSource<TOrganization extends BackofficeOrganizationIdentity>(
     resolvedScope: BackofficeResolvedScope<TOrganization>,
   ): Promise<AutomationReplicaSource<TOrganization>>;
+  /** Overrides are read once per scope, so the shell and the page share the read. */
+  getFeatureFlag(
+    scope: BackofficeContextScope,
+    key: FeatureFlagKey,
+  ): Promise<OverrideStatus<boolean>>;
 };
 
 const backofficeRequestStateContextKey = Symbol.for("fragno.backoffice.request-state-context");

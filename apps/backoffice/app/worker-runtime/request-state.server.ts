@@ -1,3 +1,8 @@
+import {
+  type BackofficeContextScope,
+  backofficeScopePathSegment,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
+
 import type { AuthCommands, FetchCommands } from "@/backoffice-runtime/object-registry";
 import {
   backofficeResolvedScopeId,
@@ -15,6 +20,9 @@ import {
   type BackofficeJwtVerificationResult,
 } from "@/fragno/auth/token-lifecycle";
 import type { AutomationReplicaSource } from "@/fragno/automation/lofi/replica-source";
+import type { FeatureFlagKey } from "@/fragno/feature-flags/definitions";
+import { resolveFeatureFlag } from "@/fragno/feature-flags/feature-flags.server";
+import type { StoredOverride } from "@/fragno/overrides/definition";
 
 import type {
   BackofficeAuthenticationResult,
@@ -39,6 +47,7 @@ export type BackofficeRequestStateDependencies = {
   loadAutomationReplicaSource<TOrganization extends BackofficeOrganizationIdentity>(
     resolvedScope: BackofficeResolvedScope<TOrganization>,
   ): Promise<AutomationReplicaSource<TOrganization>>;
+  loadStoredOverrides(scope: BackofficeContextScope): Promise<StoredOverride[]>;
 };
 
 export function principalFromBackofficeJwt(
@@ -84,6 +93,7 @@ export function createBackofficeRequestState(
   let principalPromise: Promise<BackofficePrincipalResult> | null = null;
   let backofficeMePromise: Promise<BackofficeMeLookupResult> | null = null;
   const automationReplicaSourcePromises = new Map<string, Promise<AutomationReplicaSource>>();
+  const storedOverridePromises = new Map<string, Promise<StoredOverride[]>>();
 
   function getAuthObject(): BackofficeRequestAuthObject {
     authObject ??= dependencies.getAuthObject();
@@ -176,10 +186,22 @@ export function createBackofficeRequestState(
     return sourcePromise as Promise<AutomationReplicaSource<TOrganization>>;
   }
 
+  /** Resolves only the flag asked for, so one unreadable flag fails no other. */
+  async function getFeatureFlag(scope: BackofficeContextScope, key: FeatureFlagKey) {
+    const operationKey = backofficeScopePathSegment(scope);
+    let storedPromise = storedOverridePromises.get(operationKey);
+    if (!storedPromise) {
+      storedPromise = dependencies.loadStoredOverrides(scope);
+      storedOverridePromises.set(operationKey, storedPromise);
+    }
+    return resolveFeatureFlag(scope, key, await storedPromise);
+  }
+
   return {
     resolveAuthentication,
     getPrincipal,
     getBackofficeMe,
     getAutomationReplicaSource,
+    getFeatureFlag,
   };
 }
