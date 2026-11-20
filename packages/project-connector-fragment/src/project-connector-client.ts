@@ -35,6 +35,9 @@ const projectConnectorConnectionRequestSchema = z
   .and(projectConnectorConnectionStateSchema);
 
 const projectConnectorCallOptions = { retries: 0 } satisfies ProjectCallOptions;
+// The gateway answers in a few seconds even with its whole catalog; a hung gateway should not hold
+// a page for the SDK's default 30 seconds.
+const PROJECT_CONNECTOR_TIMEOUT_MS = 10_000;
 const projectConnectorDiscoveryEnvelopeSchema = z.object({
   success: z.literal(true),
   data: projectConnectorGatewayProviderConfigsSchema,
@@ -184,7 +187,7 @@ async function sendProjectConnectorSaas(
   config: Pick<ProjectConnectorClientConfig, "baseUrl" | "apiKey">,
   request: { method: "GET" | "DELETE"; path: string; headers: Record<string, string> },
 ) {
-  const signal = AbortSignal.timeout(30_000);
+  const signal = AbortSignal.timeout(PROJECT_CONNECTOR_TIMEOUT_MS);
   try {
     const response = await fetchProjectConnectorWithoutRedirects(
       `${config.baseUrl}/saas${request.path}`,
@@ -268,7 +271,12 @@ export function createProjectConnectorClient(
 ) {
   const apiKey = parseProjectConnectorApiKey(config.apiKey);
   const baseUrl = parseProjectConnectorApiBaseUrl(config.baseUrl);
-  const client = createSdk({ apiKey, baseUrl, maxRetries: 0 });
+  const client = createSdk({
+    apiKey,
+    baseUrl,
+    maxRetries: 0,
+    timeoutMs: PROJECT_CONNECTOR_TIMEOUT_MS,
+  });
   // Project credentials and catalog credentials have different authority; never substitute one for the other.
   const catalog =
     config.catalogApiKey === null
@@ -277,6 +285,7 @@ export function createProjectConnectorClient(
           apiKey: parseProjectConnectorApiKey(config.catalogApiKey),
           baseUrl,
           maxRetries: 0,
+          timeoutMs: PROJECT_CONNECTOR_TIMEOUT_MS,
           fetch: fetchProjectConnectorWithoutRedirects,
         }).catalog;
   // The gateway serves its whole catalog unpaginated, well over a thousand providers, so the last
