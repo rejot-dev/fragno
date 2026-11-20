@@ -52,13 +52,22 @@ const objects = {
   },
 } satisfies LocalBackofficeObjects;
 
-type Vars = { session: string; cookie: string; userId: string; gmailLink: string };
+type Vars = {
+  session: string;
+  cookie: string;
+  userId: string;
+  orgId: string;
+  /** The scope whose Connect page the person works in, as its URL names it. */
+  scope: { kind: "user" | "org"; id: string };
+  gmailLink: string;
+};
 type Ctx = BackofficeScenarioContext<Vars>;
 
-const connectPage = (ctx: Ctx) => `/backoffice/integrations/user/${ctx.vars.userId}/connect`;
+const connectPage = (ctx: Ctx) =>
+  `/backoffice/integrations/${ctx.vars.scope.kind}/${ctx.vars.scope.id}/connect`;
 
 /**
- * The route arguments React Router passes for one request to the user's Connect page, or with
+ * The route arguments React Router passes for one request to the scope's Connect page, or with
  * `source` to the source opened in it.
  */
 function connectRequest(
@@ -78,7 +87,7 @@ function connectRequest(
     request,
     url,
     pattern: "/backoffice/integrations/:scopeKind/:scopeId/connect",
-    params: { scopeKind: "user", scopeId: ctx.vars.userId },
+    params: { scopeKind: ctx.vars.scope.kind, scopeId: ctx.vars.scope.id },
     context: createBackofficeRouterContextProvider(request, {
       runtime: ctx.runtime.services,
       kernel: new BackofficeKernel(ctx.runtime.services),
@@ -145,11 +154,10 @@ async function followConnectorReturn(ctx: Ctx, returnUri: string): Promise<strin
 
 /** What the person has said to the scope's main agent. */
 async function userMessages(ctx: Ctx): Promise<string[]> {
-  const scope: BackofficeContextScope = {
-    kind: "user",
-    userId: ctx.vars.userId,
-    jurisdiction: null,
-  };
+  const scope: BackofficeContextScope =
+    ctx.vars.scope.kind === "user"
+      ? { kind: "user", userId: ctx.vars.userId, jurisdiction: null }
+      : { kind: "org", orgId: ctx.vars.orgId, jurisdiction: null };
   const response = await ctx.runtime.objects.piManager
     .for(scope)
     .http.fetchAuthorized(new Request(`${ORIGIN}/api/pi-manager/agents/assistant/view`), {
@@ -176,12 +184,20 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
     name: "Connect wizard",
     objects,
     env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
-    vars: () => ({ session: "", cookie: "", userId: "", gmailLink: "" }),
+    vars: () => ({
+      session: "",
+      cookie: "",
+      userId: "",
+      orgId: "",
+      scope: { kind: "user", id: "" },
+      gmailLink: "",
+    }),
     steps: ({ when, then }) => [
       when.auth.signUp({ email: "ada@example.test", captureSessionCookieAs: "session" }),
       then.assert("Ada signs in to her own scope", async (ctx) => {
         ctx.vars.userId = await sessionUserId(ctx, ctx.vars.session);
         ctx.vars.cookie = await withBackofficeAccessToken(ctx, ctx.vars.session, null);
+        ctx.vars.scope = { kind: "user", id: ctx.vars.userId };
       }),
       then.assert("the catalog presents Gmail as the Connector's catalog does", async (ctx) => {
         const page = await openConnect(ctx, "");
@@ -331,6 +347,104 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
           expect(prompt).toContain("My time zone is Europe/Amsterdam.");
         },
       ),
+    ],
+  }));
+});
+
+test("Connect in an organization offers only the catalog providers its agent sets up with an API key", async () => {
+  await runProjectConnectorScenario<Vars>((gateway) => ({
+    name: "Connect wizard in an organization",
+    objects,
+    env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false" },
+    vars: () => ({
+      session: "",
+      cookie: "",
+      userId: "",
+      orgId: "",
+      scope: { kind: "org", id: "ada-labs" },
+      gmailLink: "",
+    }),
+    steps: ({ when, then }) => [
+      when.auth.signUp({ email: "ada@example.test", captureSessionCookieAs: "session" }),
+      when.auth.createOrganization({
+        cookie: ({ vars }) => vars.session,
+        name: "Ada Labs",
+        slug: "ada-labs",
+        captureOrganizationIdAs: "orgId",
+      }),
+      then.assert("Ada works in Ada Labs", async (ctx) => {
+        ctx.vars.cookie = await withBackofficeAccessToken(ctx, ctx.vars.session, ctx.vars.orgId);
+      }),
+      then.assert(
+        "the catalog lists Airtable, which takes an API key, but no provider that signs in with OAuth",
+        async (ctx) => {
+          gateway.catalogProviders.set("airtable", {
+            service: "airtable",
+            displayName: "Airtable",
+            description: "Spreadsheet databases",
+            searchAliases: [],
+            iconUrl: "https://static.example/logo/Airtable.svg",
+            homepageUrl: "https://airtable.com",
+            categories: [{ id: "productivity", displayName: "Productivity" }],
+            authTypes: ["api_key"],
+          });
+          gateway.catalogProviders.set("jira", {
+            service: "jira",
+            displayName: "Jira",
+            description: "Project issue tracking and team work coordination",
+            searchAliases: [],
+            iconUrl: "https://static.example/logo/Jira.svg",
+            homepageUrl: "https://www.atlassian.com/software/jira",
+            categories: [{ id: "productivity", displayName: "Productivity" }],
+            authTypes: ["oauth2"],
+          });
+          const page = await openConnect(ctx, "");
+          // Provider accounts are user-owned, so Gmail, configured in the Connector, is not offered.
+          expect(page.services.map((service) => service.id)).not.toContain("gmail");
+          expect(page.unavailable).toEqual([
+            {
+              id: "airtable",
+              label: "Airtable",
+              description: "Spreadsheet databases.",
+              iconUrl: "https://static.example/logo/Airtable.svg",
+              categories: [{ id: "productivity", label: "Productivity" }],
+            },
+          ]);
+        },
+      ),
+      then.assert(
+        "connecting Airtable asks the organization's agent to set it up as an API integration",
+        async (ctx) => {
+          expect(await submitConnect(ctx, { intent: "ask-agent", source: "airtable" })).toEqual({
+            redirectsTo: `${connectPage(ctx)}/airtable?agent=opened`,
+          });
+          expect(
+            await submitConnect(ctx, { intent: "ask-agent", source: "jira" }),
+          ).not.toHaveProperty("redirectsTo");
+          expect(await userMessages(ctx)).toEqual([
+            "Help me connect Airtable in this scope. Set it up as an API integration (integration api). Search Airtable's API documentation for how to authenticate and which base URL to use.",
+          ]);
+        },
+      ),
+      then.assert("the organization's Connector serves nothing but the catalog", async (ctx) => {
+        const scope: BackofficeContextScope = {
+          kind: "org",
+          orgId: ctx.vars.orgId,
+          jurisdiction: null,
+        };
+        const execution = createBackofficeServiceExecution({
+          scope,
+          service: { type: "automation", id: "connect-scenario" },
+        });
+        const connector = ctx.runtime.objects.projectConnector.for(scope).http;
+        const read = (path: string) =>
+          connector.fetchAuthorized(new Request(`${ORIGIN}/api/project-connector${path}`), {
+            execution,
+          });
+        assert((await read("/providers")).status === 200);
+        assert((await read("/provider-configs")).status === 404);
+        assert((await read("/accounts")).status === 404);
+      }),
     ],
   }));
 });

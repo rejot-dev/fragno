@@ -90,7 +90,7 @@ describe("Automations object scope policy", () => {
 });
 
 describe("Connector object scope policy", () => {
-  it("allows user ownership and rejects organization or project ownership", () => {
+  it("allows user and organization ownership and rejects project ownership", () => {
     expect(() =>
       assertBackofficeObjectAddressAllowed(
         scopedAddress("PROJECT_CONNECTOR", { kind: "user", userId: "user-1", jurisdiction: null }),
@@ -100,7 +100,7 @@ describe("Connector object scope policy", () => {
       assertBackofficeObjectAddressAllowed(
         scopedAddress("PROJECT_CONNECTOR", { kind: "org", orgId: "org-1", jurisdiction: null }),
       ),
-    ).toThrow("cannot be instantiated with org scope");
+    ).not.toThrow();
     expect(() =>
       assertBackofficeObjectAddressAllowed(
         scopedAddress("PROJECT_CONNECTOR", {

@@ -148,10 +148,8 @@ function createConnectorActionValidator(schema: Record<string, unknown>) {
   return validator;
 }
 
-function createConnectorAccess(runtime: ConnectorRuntime, context: IntegrationContext) {
-  if (context.execution.scope.kind !== "user") {
-    throw new BackofficeUnavailableError("Connector integration requires a user scope.");
-  }
+/** The scope's Connector object, which in an organization serves only the catalog. */
+function createConnectorObjectAccess(runtime: ConnectorRuntime, context: IntegrationContext) {
   if (!runtime.config.bindings.projectConnector) {
     throw new BackofficeUnavailableError("Connector integration object binding is unavailable.");
   }
@@ -199,21 +197,31 @@ function createConnectorAccess(runtime: ConnectorRuntime, context: IntegrationCo
       notConfiguredMessage: "Connector is not configured.",
     });
   }
-  async function providers() {
-    const response = await invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
-      callRoute("GET", "/provider-configs"),
-    );
-    if (response.type === "json" && isSuccessStatus(response.status)) {
-      return response.data;
-    }
-    return fail(response);
-  }
   async function catalog() {
     const response = await invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
       callRoute("GET", "/providers"),
     );
     if (response.type === "json" && isSuccessStatus(response.status)) {
       return response.data.providers;
+    }
+    return fail(response);
+  }
+  return { callRoute, invoke, fail, isNotConfigured, isAmbiguous, catalog };
+}
+
+/** Provider accounts are user-owned, so everything but the catalog needs a user scope. */
+function createConnectorAccess(runtime: ConnectorRuntime, context: IntegrationContext) {
+  if (context.execution.scope.kind !== "user") {
+    throw new BackofficeUnavailableError("Connector integration requires a user scope.");
+  }
+  const objectAccess = createConnectorObjectAccess(runtime, context);
+  const { callRoute, invoke, fail, isNotConfigured } = objectAccess;
+  async function providers() {
+    const response = await invoke(BACKOFFICE_PERMISSION.connections.read, {}, () =>
+      callRoute("GET", "/provider-configs"),
+    );
+    if (response.type === "json" && isSuccessStatus(response.status)) {
+      return response.data;
     }
     return fail(response);
   }
@@ -260,13 +268,8 @@ function createConnectorAccess(runtime: ConnectorRuntime, context: IntegrationCo
     );
   }
   return {
-    callRoute,
-    invoke,
-    fail,
-    isNotConfigured,
-    isAmbiguous,
+    ...objectAccess,
     providers,
-    catalog,
     namedAccount,
     namedRequest,
     currentRequests,
@@ -314,7 +317,7 @@ export async function confirmConnectorConsent({
 /**
  * Every provider the Connector's catalog lists, configured for this project or not; empty when the
  * Connector is unavailable. Discovery offers only the configured ones, so agents never read the
- * whole catalog.
+ * whole catalog. Organizations read it too, though only a user scope can sign in to a provider.
  */
 export async function listConnectorCatalog({
   runtime,
@@ -323,11 +326,12 @@ export async function listConnectorCatalog({
   runtime: ConnectorRuntime;
   context: IntegrationContext;
 }) {
-  if (context.execution.scope.kind !== "user" || !runtime.config.bindings.projectConnector) {
+  const { kind } = context.execution.scope;
+  if ((kind !== "user" && kind !== "org") || !runtime.config.bindings.projectConnector) {
     return [];
   }
   try {
-    return await createConnectorAccess(runtime, context).catalog();
+    return await createConnectorObjectAccess(runtime, context).catalog();
   } catch (cause) {
     if (cause instanceof NotConfiguredError) {
       return [];
