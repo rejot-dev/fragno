@@ -1,3 +1,4 @@
+import { LeywayMark } from "@fragno-private/design-system/brand/leyway-mark";
 import { LeywayWordmark } from "@fragno-private/design-system/brand/leyway-wordmark";
 import { Link } from "react-router";
 
@@ -13,14 +14,15 @@ export function LandingFooter() {
       data-landing-dark
       className="bg-black [--bo-accent:#f58a1f] [--bo-border:#262626] [--bo-fg:#f1f4f9] [--bo-muted-2:#7d899c] [--bo-muted:#a8b3c5]"
     >
-      <div className="mx-auto max-w-[1180px] px-7 py-16 sm:px-8 lg:px-12">
+      <div className="max-w-landing mx-auto px-7 py-16 sm:px-8 lg:px-12">
         <div className="grid gap-10 md:grid-cols-[1.3fr_0.7fr_0.7fr]">
           <div className="space-y-6">
             <Link
               to="/"
-              className="inline-flex min-h-11 items-center text-[var(--bo-fg)] no-underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
+              className="inline-flex min-h-11 items-center gap-3 text-[var(--bo-fg)] no-underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--bo-accent)]"
               aria-label="Leyway home"
             >
+              <LeywayMark className="h-[calc(var(--spacing)*9*480/920)] w-auto" />
               <LeywayWordmark className="h-9" />
             </Link>
             <p className="max-w-xs text-sm leading-6 text-pretty text-[var(--bo-muted)]">

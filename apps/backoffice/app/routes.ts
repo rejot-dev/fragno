@@ -7,6 +7,8 @@ export default [
   route("marketplace", "routes/marketplace/index.tsx"),
   route("marketplace/:publisher/:packageSlug", "routes/marketplace/listing.tsx"),
   route("legal/:document", "routes/legal/legal-document.tsx"),
+  route("cases/:case", "routes/cases/case.tsx"),
+  route("about", "routes/about/about.tsx"),
 
   route("backoffice/login", "routes/backoffice/login.tsx"),
   route("backoffice/forgot-password", "routes/backoffice/forgot-password.tsx"),

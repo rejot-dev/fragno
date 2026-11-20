@@ -73,7 +73,7 @@ export default function PublicMarketplaceListing({ loaderData }: Route.Component
       className="flex min-h-svh flex-col bg-[var(--bo-bg)] font-sans text-[var(--bo-fg)]"
     >
       <LandingHeader />
-      <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 pt-10 pb-24 sm:px-8 lg:px-12 lg:pt-14">
+      <main className="max-w-landing mx-auto w-full flex-1 px-5 pt-10 pb-24 sm:px-8 lg:px-12 lg:pt-14">
         <Link
           to="/marketplace"
           className="inline-flex min-h-10 items-center text-[10px] font-semibold tracking-[0.14em] text-[var(--bo-muted)] uppercase no-underline hover:text-[var(--bo-fg)]"

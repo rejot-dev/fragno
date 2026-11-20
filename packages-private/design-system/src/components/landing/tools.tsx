@@ -5,7 +5,12 @@ import { Button } from "../controls/button";
 import { BackofficeStatusLight } from "../feedback/status-light";
 import type { BackofficeStatusTone } from "../feedback/status-tone";
 import { Icon, type IconName } from "../icon";
-import { LANDING_FRAME_CLASS_NAME, LandingSection } from "./landing-section";
+import { LandingConnectionsCycle } from "./connections-cycle";
+import {
+  LANDING_FRAME_CLASS_NAME,
+  LANDING_SECTION_INTRO_CLASS_NAME,
+  LANDING_SECTION_TITLE_CLASS_NAME,
+} from "./landing-section";
 
 type Connection = {
   name: string;
@@ -107,10 +112,27 @@ export function LandingTools() {
   const [installed, setInstalled] = useState<ReadonlySet<string>>(new Set());
 
   return (
-    <LandingSection
-      id="landing-tools"
-      title="Use what you have, or start from a package."
-      visual={
+    <section aria-labelledby="landing-tools">
+      {/* The heading and its explanation, with the connections stepping past the Leyway hub beside
+          them from lg, faded out at the top and bottom of their window. */}
+      <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <div>
+          <h2 id="landing-tools" className={LANDING_SECTION_TITLE_CLASS_NAME}>
+            Use what you have, or start from a package.
+          </h2>
+          <p className={LANDING_SECTION_INTRO_CLASS_NAME}>
+            Connect Slack, HubSpot, GitHub, any MCP server or API, and webhooks from anywhere. Or
+            install a package that sets up the connection, routes, and workflows for you, and shows
+            you what it adds first.
+          </p>
+        </div>
+        <div className="relative hidden h-96 w-[412px] overflow-hidden [mask-image:linear-gradient(transparent,#000_5rem,#000_calc(100%-5rem),transparent)] lg:block">
+          <div className="absolute top-1/2 left-0 -translate-y-1/2">
+            <LandingConnectionsCycle />
+          </div>
+        </div>
+      </div>
+      <div className="mt-10">
         <div
           className={`grid gap-px overflow-hidden ${LANDING_FRAME_CLASS_NAME} bg-[var(--bo-border)] lg:grid-cols-2`}
         >
@@ -192,11 +214,7 @@ export function LandingTools() {
             </Link>
           </div>
         </div>
-      }
-    >
-      Connect Slack, HubSpot, GitHub, any MCP server or API, and webhooks from anywhere. Or install
-      a package that sets up the connection, routes, and workflows for you, and shows you what it
-      adds first.
-    </LandingSection>
+      </div>
+    </section>
   );
 }

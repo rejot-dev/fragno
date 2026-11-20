@@ -63,7 +63,7 @@ export default function LegalDocument({ loaderData }: Route.ComponentProps) {
       className="flex min-h-svh flex-col bg-[var(--bo-bg)] font-sans text-[var(--bo-fg)]"
     >
       <LandingHeader />
-      <main className="mx-auto w-full max-w-[1180px] flex-1 px-7 pt-14 pb-24 sm:px-8 lg:px-12 lg:pt-20">
+      <main className="max-w-landing mx-auto w-full flex-1 px-7 pt-14 pb-24 sm:px-8 lg:px-12 lg:pt-20">
         <Streamdown
           mode="static"
           className="legal-document"

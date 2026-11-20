@@ -1,3 +1,4 @@
+import { LeywayMark } from "@fragno-private/design-system/brand/leyway-mark";
 import { LeywayWordmark } from "@fragno-private/design-system/brand/leyway-wordmark";
 import { Icon } from "@fragno-private/design-system/icon";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
@@ -8,22 +9,22 @@ import { useScrolled } from "./use-scrolled";
 // Mirrors the cells of the app's top bar, aligned to the page's content column. Every cell hugs
 // its item with the same padding. Once the page scrolls under the header, lines frame the cells and
 // the hero continues them downward; from md up, the hero's lines follow the cells' measured widths.
-const containerClassName = "mx-auto w-full max-w-[1180px] px-7 sm:px-8 lg:px-12";
+const containerClassName = "mx-auto w-full max-w-landing px-7 sm:px-8 lg:px-12";
 // The hero draws its lines in its own ink, faintly, so they recede behind whatever it shows.
 const heroLineClassName = "border-current/8";
 // From md up, the cells reach this far past the content column on either side, so their outer
 // lines frame the hero's copy with the same room the logo and the last link get inside them.
 const outsetClassName = "md:-mx-4";
-// The header publishes its columns here, on the document, for the hero's lines to follow, and the
-// width of its last cell, for the hero item that fits between the lines it draws.
+// The header publishes its columns here, on the document, for the hero's lines to follow.
 const COLUMNS_PROPERTY = "--landing-header-columns";
-const OPEN_WIDTH_PROPERTY = "--landing-header-open-width";
 
 // Once the page scrolls, faint lines in the header's ink frame its cells, over dark surfaces only;
 // over light ones the header shows just its items.
 const cellSeparatorClassName =
   "border-transparent transition-[color,border-color,background-color] duration-400 ease-out group-data-[scrolled]/header:group-data-[over-dark]/header:border-[color-mix(in_srgb,var(--landing-header-ink)_12%,transparent)]";
-const navCellClassName = `flex items-center gap-2 whitespace-nowrap ${cellSeparatorClassName} text-sm font-semibold text-[var(--landing-header-ink)] no-underline outline-none hover:bg-[color-mix(in_srgb,var(--landing-header-ink)_10%,transparent)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset`;
+const navCellBaseClassName = `group/link flex items-center gap-2 whitespace-nowrap ${cellSeparatorClassName} text-sm no-underline outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset`;
+// Links rest a shade lighter than the ink and darken to it on hover.
+const navCellClassName = `${navCellBaseClassName} font-light text-[color-mix(in_srgb,var(--landing-header-ink)_68%,transparent)] hover:text-[var(--landing-header-ink)]`;
 
 /**
  * Whether what shows under the header belongs to one of the page's dark surfaces, the elements
@@ -73,9 +74,14 @@ function usePublishedColumns() {
     const cells = [...grid.querySelectorAll<HTMLElement>("[data-header-cell]")];
     const root = document.documentElement;
     const observer = new ResizeObserver(() => {
-      const [logo, ...links] = cells.map((cell) => `${cell.getBoundingClientRect().width}px`);
+      // The first column is the logo's; only the cells in the grid's flow make columns.
+      const [logo, ...links] = cells
+        .filter((cell) => {
+          const style = getComputedStyle(cell);
+          return style.display !== "none" && style.position !== "absolute";
+        })
+        .map((cell) => `${cell.getBoundingClientRect().width}px`);
       root.style.setProperty(COLUMNS_PROPERTY, `${logo} minmax(0,1fr) ${links.join(" ")}`);
-      root.style.setProperty(OPEN_WIDTH_PROPERTY, links.at(-1) ?? "0px");
     });
     cells.forEach((cell) => {
       observer.observe(cell);
@@ -83,7 +89,6 @@ function usePublishedColumns() {
     return () => {
       observer.disconnect();
       root.style.removeProperty(COLUMNS_PROPERTY);
-      root.style.removeProperty(OPEN_WIDTH_PROPERTY);
     };
   }, []);
   return gridRef;
@@ -97,30 +102,31 @@ export function LandingHeader() {
   const overDarkSurface = useOverDarkSurface(headerRef);
 
   return (
-    // Its ink is white over the page's dark surfaces and the page's own ink elsewhere; everything
-    // drawn in it fades its own colors from one to the other, which every browser can. Over light
-    // surfaces it blurs harder, since busy dark content behind it would otherwise show through.
+    // White with black ink over every surface and in both themes.
     <header
       ref={headerRef}
       data-scrolled={scrolled || undefined}
       data-over-dark={overDarkSurface || undefined}
-      className="group/header sticky top-0 z-30 border-b border-transparent backdrop-blur-2xl transition-[border-color,backdrop-filter] duration-400 ease-out [--landing-header-ink:var(--bo-fg)] data-[over-dark]:backdrop-blur-md data-[over-dark]:[--landing-header-ink:#fff] data-[scrolled]:border-[color-mix(in_srgb,var(--landing-header-ink)_12%,transparent)]"
+      className="group/header sticky top-0 z-30 border-b border-transparent bg-white transition-[border-color,box-shadow] duration-400 ease-out [--landing-header-ink:#0b0b0a] data-[scrolled]:border-[color-mix(in_srgb,var(--landing-header-ink)_8%,transparent)] data-[scrolled]:shadow-[0_10px_30px_-20px_rgba(11,11,10,0.35)]"
     >
       <div className={containerClassName}>
         <div
           ref={gridRef}
-          className={`grid h-16 grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto_auto] ${outsetClassName}`}
+          className={`relative grid h-16 grid-cols-[minmax(0,auto)_minmax(0,1fr)_auto_auto] ${outsetClassName}`}
         >
           <Link
             to="/"
             data-header-cell
-            className={`flex min-w-0 items-center border-r pr-4 no-underline outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset max-[379px]:pr-2.5 md:border-l md:pl-4 ${cellSeparatorClassName}`}
+            // The first cell, at the start. From md up it is framed on both sides, so its lines run on
+            // into the hero's column lines.
+            className={`flex min-w-0 items-center gap-3 border-r pr-4 no-underline outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset max-[379px]:pr-2.5 md:border-l md:pl-4 ${cellSeparatorClassName}`}
             aria-label="Leyway home"
           >
-            <LeywayWordmark className="h-9 text-[var(--landing-header-ink)] transition-[color] duration-400 ease-out max-[379px]:h-7" />
+            <LeywayMark className="h-[calc(var(--spacing)*9*480/920)] w-auto max-[439px]:h-[calc(var(--spacing)*7*480/920)]" />
+            <LeywayWordmark className="h-9 text-[var(--landing-header-ink)] transition-[color] duration-400 ease-out max-[439px]:h-7" />
           </Link>
-          {/* The narrowest phones fit the wordmark and both links only with tighter cells, a smaller
-              wordmark, and no arrow. */}
+          {/* Phones fit the logo and both links only with a smaller logo, and the narrowest only
+              with tighter cells and no arrow too. */}
           <nav aria-label="Product" className="col-span-2 col-start-3 grid grid-cols-subgrid">
             <Link
               to="/marketplace"
@@ -132,12 +138,26 @@ export function LandingHeader() {
             <Link
               to="/backoffice"
               data-header-cell
-              className={`${navCellClassName} border-l pl-4 max-[379px]:pl-2.5 md:border-r md:pr-4`}
+              // The header's one call to action: the whole cell, full height, in the ink, its sides
+              // cut on a slant like a pair of slashes, leaning as the wordmark's "y" does (1.85rem over
+              // the 4rem header). The padding leaves room for the slant. It
+              // reaches over the header's bottom border, which would otherwise show white beneath.
+              className={`${navCellBaseClassName} relative h-[calc(100%+1px)] overflow-hidden bg-[var(--landing-header-ink)] px-9 font-normal text-white [clip-path:polygon(1.85rem_0,100%_0,calc(100%-1.85rem)_100%,0_100%)] hover:bg-[color-mix(in_srgb,var(--landing-header-ink)_85%,white)] max-[379px]:px-7`}
             >
-              <span className="flex items-center gap-2">
-                Open app
-                <Icon name="arrow-right" className="size-3.5 max-[379px]:hidden" />
-              </span>
+              {/* A glint: a streak of light on the button's slant sweeps across once on hover, and
+                  snaps back unseen when the pointer leaves, so it never runs backwards. */}
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 left-0 w-20 -translate-x-[150%] -skew-x-[24.83deg] bg-[linear-gradient(90deg,transparent,rgb(255_255_255/0.35),transparent)] group-hover/link:translate-x-[350%] group-hover/link:transition-transform group-hover/link:duration-700 group-hover/link:ease-out motion-reduce:hidden"
+              />
+              {/* The brand font's ascent is far taller than its caps, so an untrimmed line box
+                  centers the letters below the arrow. Trimmed to the lowercase's height and the
+                  baseline, the arrow centers on the lowercase that makes up most of the label. */}
+              <span className="[text-box:trim-both_ex_alphabetic]">Open app</span>
+              <Icon
+                name="arrow-right"
+                className="size-3.5 transition-transform duration-150 group-hover/link:translate-x-0.5 max-[379px]:hidden"
+              />
             </Link>
           </nav>
         </div>
@@ -151,13 +171,7 @@ export function LandingHeader() {
  * per link. Place it across the page's content column. `className` adds to the grid, such as how it
  * lays out below md.
  */
-export function LandingColumns({
-  className,
-  children,
-}: {
-  className: string;
-  children: ReactNode;
-}) {
+function LandingColumns({ className, children }: { className: string; children: ReactNode }) {
   return (
     <div
       className={`md:grid md:grid-cols-[var(--landing-header-columns)] ${outsetClassName} ${className}`}
@@ -181,8 +195,9 @@ export function LandingColumnLines() {
         <LandingColumns className="h-full">
           <span className={`border-x ${heroLineClassName}`} />
           <span />
+          {/* The call to action's slant ends the row, so its cell gets no line on the right. */}
           <span className={`border-l ${heroLineClassName}`} />
-          <span className={`border-x ${heroLineClassName}`} />
+          <span className={`border-l ${heroLineClassName}`} />
         </LandingColumns>
       </div>
     </div>

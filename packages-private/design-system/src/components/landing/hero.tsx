@@ -7,7 +7,7 @@ import { LandingDemo } from "./demo";
 /** The homepage's opening: what Backoffice does, the two ways in, and the product doing it. */
 export function LandingHero() {
   return (
-    <section className="mx-auto w-full max-w-[1180px] px-5 pt-14 pb-20 sm:px-8 lg:px-12 lg:pt-24 lg:pb-28">
+    <section className="max-w-landing mx-auto w-full px-5 pt-14 pb-20 sm:px-8 lg:px-12 lg:pt-24 lg:pb-28">
       <h1 className="max-w-[1040px] text-[clamp(3.5rem,8.8vw,8.4rem)] leading-[0.88] font-[560] tracking-[-0.075em] text-balance">
         AI that shows
         <br />

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 562.3 260">
+  <!-- The first Leyway mark, kept while a new one is designed: two squares, slanted forward like
+       the wordmark's "y". A small one taken out of a big one and set in front of its socket. -->
+  <g fill="#0b0b0a" transform="translate(120.3 0) skewX(-24.83)">
+    <path d="M0 65H130V195H0Z" />
+    <path d="M182 0H442V260H182V195H312V65H182Z" />
+  </g>
+</svg>

@@ -1,5 +1,11 @@
 import type { ReactNode } from "react";
 
+/** A section's heading and the explanation under it, for sections that lay out their own visual. */
+export const LANDING_SECTION_TITLE_CLASS_NAME =
+  "font-heading max-w-4xl text-[clamp(2rem,3.6vw,3.25rem)] leading-[1.05] font-light tracking-[-0.06em] text-balance";
+export const LANDING_SECTION_INTRO_CLASS_NAME =
+  "mt-6 max-w-2xl text-base leading-7 text-pretty text-[var(--bo-muted)]";
+
 /**
  * A landing page section: its heading, its explanation underneath, and the visual that shows the
  * feature. `id` names the heading, so the section is announced by it.
@@ -17,15 +23,10 @@ export function LandingSection({
 }) {
   return (
     <section aria-labelledby={id}>
-      <h2
-        id={id}
-        className="font-heading max-w-4xl text-[clamp(2.25rem,4.4vw,4.25rem)] leading-[1.05] font-light tracking-[-0.06em] text-balance"
-      >
+      <h2 id={id} className={LANDING_SECTION_TITLE_CLASS_NAME}>
         {title}
       </h2>
-      <p className="mt-6 max-w-2xl text-base leading-7 text-pretty text-[var(--bo-muted)]">
-        {children}
-      </p>
+      <p className={LANDING_SECTION_INTRO_CLASS_NAME}>{children}</p>
       <div className="mt-10">{visual}</div>
     </section>
   );
@@ -47,10 +48,15 @@ export function LandingStage({ children }: { children: ReactNode }) {
   );
 }
 
+/** The homepage's content column, which the header and the hero's grid lines line up with. */
+export function LandingColumn({ children }: { children: ReactNode }) {
+  return <div className="max-w-landing mx-auto w-full px-7 sm:px-8 lg:px-12">{children}</div>;
+}
+
 /** Lays sections out the way the landing page does, so stories show their real spacing. */
 export function LandingPageColumn({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-[1180px] space-y-28 px-5 py-16 sm:px-8 lg:px-12 lg:py-24">
+    <div className="max-w-landing mx-auto w-full space-y-28 px-5 py-16 sm:px-8 lg:px-12 lg:py-24">
       {children}
     </div>
   );

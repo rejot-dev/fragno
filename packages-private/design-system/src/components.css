@@ -461,6 +461,24 @@
   animation: bo-headline-enter 320ms cubic-bezier(0.2, 0, 0, 1) both;
 }
 
+/* Loading bar: a slanted segment slides across the track and off its far end. It rests in the
+   middle of the track, where it ends up when reduced motion cuts the animation short, since the
+   animation does not fill outside its run. */
+@keyframes bo-loading-bar {
+  from {
+    transform: translateX(-250%) skewX(-24.83deg);
+  }
+
+  to {
+    transform: translateX(250%) skewX(-24.83deg);
+  }
+}
+
+.bo-loading-bar-segment {
+  transform: skewX(-24.83deg);
+  animation: bo-loading-bar 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+
 /* Chat: a sheen passes over text that is still being worked on. */
 @keyframes bo-shimmer {
   from {
@@ -491,6 +509,7 @@
    parent, behind the parent's content, and takes no clicks. */
 
 .landing-film,
+.landing-film-mono,
 .landing-film-dark {
   position: absolute;
   inset: 0;
@@ -502,6 +521,8 @@
 
 .landing-film::before,
 .landing-film::after,
+.landing-film-mono::before,
+.landing-film-mono::after,
 .landing-film-dark::before,
 .landing-film-dark::after {
   position: absolute;
@@ -540,6 +561,30 @@
 
 /* On black: one red light leak from the bottom right corner, and the same grain. Overlay cannot
    lighten black, so the grain is screened on, faintly. */
+/* The same film in black, white, and grays: soft light pooling in from the left and the bottom
+   right, shadows between, on a near-black base. */
+.landing-film-mono {
+  box-shadow: inset 0 0 14rem 2rem rgb(0 0 0 / 0.55);
+}
+.landing-film-mono::before {
+  inset: -10%;
+  background:
+    radial-gradient(ellipse 22% 38% at 8% 22%, rgb(150 150 146 / 0.7), transparent 70%),
+    radial-gradient(ellipse 26% 42% at 6% 92%, rgb(0 0 0 / 0.85), transparent 70%),
+    radial-gradient(ellipse 55% 16% at 32% 40%, rgb(110 110 106 / 0.5), transparent 70%),
+    radial-gradient(ellipse 40% 30% at 55% 30%, rgb(8 8 8 / 0.55), transparent 70%),
+    radial-gradient(ellipse 48% 18% at 70% 62%, rgb(115 115 111 / 0.45), transparent 70%),
+    radial-gradient(ellipse 30% 40% at 96% 88%, rgb(160 160 156 / 0.75), transparent 70%),
+    radial-gradient(ellipse 60% 30% at 40% 75%, rgb(10 10 10 / 0.5), transparent 70%);
+  filter: blur(24px);
+}
+.landing-film-mono::after {
+  inset: 0;
+  background-image: var(--landing-film-grain);
+  background-size: 240px;
+  mix-blend-mode: overlay;
+  opacity: 0.4;
+}
 .landing-film-dark::before {
   right: -10%;
   bottom: -30%;
@@ -555,6 +600,101 @@
   background-size: 240px;
   mix-blend-mode: screen;
   opacity: 0.09;
+}
+
+/* The hero's photo: mountains at sunset, in their own colors. It overhangs the hero on every side,
+   so it can drift slowly across it without showing an edge; the line and dots on its summits drift
+   with it. How far it overhangs above and below, and how dimmed and softened it is so the copy reads
+   over it, belong to each photo and are set where it is chosen. */
+.landing-hero-photo {
+  position: absolute;
+  left: -14%;
+  right: -14%;
+  animation: landing-hero-photo-drift 60s ease-in-out infinite alternate;
+}
+
+.landing-hero-photo > img,
+.landing-hero-photo > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.landing-hero-photo > img {
+  object-fit: cover;
+}
+
+/* The photo fades in over its placeholder once it has loaded, and its line and markers follow it
+   onto the peaks. */
+.landing-hero-photo > img,
+.landing-hero-photo > svg {
+  opacity: 0;
+  transition: opacity 1.2s ease-out;
+}
+
+.landing-hero-photo > svg {
+  transition-delay: 0.5s;
+}
+
+.landing-hero-photo[data-loaded] > img,
+.landing-hero-photo[data-loaded] > svg {
+  opacity: 1;
+}
+
+/* It starts on the photo's left, shifted right, and pans across to its right, then back. The shift
+   is a share of the photo's own width, 128% of the hero's, so 10% moves it 12.8% of the hero: inside
+   its 14% overhang on either side, with its growing scale covering the rest. */
+@keyframes landing-hero-photo-drift {
+  from {
+    transform: translate3d(10%, -3%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(-10%, 3%, 0) scale(1.04);
+  }
+}
+
+/* Darkest behind the copy on the left and at the edges, where the film's vignette would be: the
+   photo covers the film's own. */
+.landing-hero-photo-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, rgb(0 0 0 / 0.6), rgb(0 0 0 / 0.15) 60%, rgb(0 0 0 / 0.3)),
+    radial-gradient(ellipse at center, transparent 40%, rgb(0 0 0 / 0.55));
+}
+
+/* A very faint line from summit to summit, a faint dot on each summit, and now and then a single
+   glowing flash along the line, which LandingHeroPhoto runs at random. The flash's dash is 0.08 of
+   the line, and this offset holds it just before the first summit, out of sight, between runs. It
+   stays faint itself: a soft light, not a highlight. */
+.landing-ley-line {
+  opacity: 0.14;
+}
+
+.landing-ley-summit {
+  opacity: 0.4;
+}
+
+.landing-ley-flash {
+  stroke-dashoffset: 0.08;
+  opacity: 0.5;
+  filter: drop-shadow(0 0 3px rgb(255 255 255 / 0.35));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-photo {
+    animation: none;
+  }
+
+  .landing-hero-photo > img,
+  .landing-hero-photo > svg {
+    transition: none;
+  }
+
+  .landing-ley-flash {
+    display: none;
+  }
 }
 
 /* A graph-paper grid behind a light landing section, in a faint tint of the page's ink: rows at a

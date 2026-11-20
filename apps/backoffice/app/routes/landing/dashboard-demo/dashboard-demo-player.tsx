@@ -1,3 +1,4 @@
+import { Icon } from "@fragno-private/design-system/icon";
 import { memo, useEffect, useRef, useState } from "react";
 
 import { DashboardDemo } from "./dashboard-demo";
@@ -8,17 +9,17 @@ import {
   type DashboardDemoScene,
   sceneAt,
 } from "./dashboard-demo-story";
-import { LaptopFrame } from "./laptop-frame";
+import { ScreenFrame } from "./screen-frame";
 
-// The timeline below redraws as a story plays; the dashboard redraws only when its scene changes.
+// The timeline in the bottom bar redraws as a story plays; the dashboard redraws only when its scene changes.
 const StillDashboardDemo = memo(DashboardDemo);
 
 // Longer than any frame of a playing page, shorter than any part.
 const MAX_FRAME_GAP_MS = 100;
 
 /**
- * The dashboard demo on its laptop, playing its story's parts one after another on a loop while it
- * is on screen, and pausing where it is when it scrolls away. Below it, the story's timeline, a
+ * The dashboard demo in a glossy screen, playing its story's parts one after another on a loop while it
+ * is on screen, and pausing where it is when it scrolls away. In its bottom bar, the story's timeline, a
  * segment per part; choosing one plays that part from its start. It plays for viewers who prefer
  * reduced motion too: still, it would not show how Leyway works.
  */
@@ -84,38 +85,62 @@ export function DashboardDemoPlayer({ state }: { state: DashboardDemoState }) {
 
   return (
     <div ref={containerRef} data-ignores-reduced-motion>
-      <LaptopFrame label="The Leyway dashboard, in one story: someone asks the agent to connect Google Drive and Slack, then for a page of this week's signups, then to tell #sales on Slack about every Business signup.">
+      <ScreenFrame
+        label="The Leyway dashboard, in one story: someone asks the agent to connect Google Drive and Slack, then for a page of this week's signups, then to tell #sales on Slack about every Business signup."
+        // One timeline for the one story, in a segment per part.
+        bar={
+          <ol className="flex">
+            {DASHBOARD_DEMOS.map((demo, index) => {
+              const fill =
+                index < timeline.index ? 1 : index === timeline.index ? timeline.progress : 0;
+              const active = index === timeline.index;
+              // Sections interlock: each after the first slides back under its neighbor's slant,
+              // and the bar's ends stay square so the sections fill it from edge to edge.
+              const first = index === 0;
+              const last = index === DASHBOARD_DEMOS.length - 1;
+              const clipPath = `polygon(${first ? "0" : "0.625rem"} 0,100% 0,${last ? "100%" : "calc(100% - 0.625rem)"} 100%,0 100%)`;
+              return (
+                <li key={demo.id} className={`min-w-0 flex-1 ${first ? "" : "-ml-[0.625rem]"}`}>
+                  <button
+                    type="button"
+                    aria-current={active ? "step" : undefined}
+                    onClick={() => {
+                      playheadRef.current = { index, elapsed: 0 };
+                      show(index, 0);
+                    }}
+                    style={{ clipPath }}
+                    // Slanted sections like the header's call to action, in light ink for the dark
+                    // bar; the part playing is a shade brighter. The slant clips a ring, so focus
+                    // shows as the brightest fill instead. The padding leaves room for the slant.
+                    className={`group relative flex min-h-11 w-full items-center overflow-hidden pr-5 pl-4 text-left text-sm font-semibold transition-[background-color,color] duration-150 ease-out outline-none focus-visible:bg-white/25 ${active ? "bg-white/[0.16] text-white" : "bg-white/[0.06] text-white/60 hover:bg-white/10 hover:text-white/90"}`}
+                  >
+                    {/* The part's progress runs along the item's bottom edge. */}
+                    <span
+                      aria-hidden="true"
+                      className="absolute bottom-0 left-0 h-0.5 bg-white/70"
+                      style={{ width: `${fill * 100}%` }}
+                    />
+                    <span className="flex size-8 shrink-0 items-center justify-center">
+                      <Icon
+                        name={demo.icon}
+                        className={`size-4 transition-colors duration-150 ${active ? "text-white/80" : "text-white/50"}`}
+                        strokeWidth={1.75}
+                      />
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className="mr-[calc(--spacing(2.75)-0.5px)] ml-[calc(--spacing(0.75)-0.5px)] h-6 w-px shrink-0 bg-white/15"
+                    />
+                    <span className="min-w-0 py-1.5 leading-tight">{demo.title}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        }
+      >
         <StillDashboardDemo state={state} scene={scene} />
-      </LaptopFrame>
-      {/* One timeline for the one story, in a segment per part. */}
-      <ol className="mx-auto mt-2 flex max-w-2xl justify-center gap-1 px-4">
-        {DASHBOARD_DEMOS.map((demo, index) => {
-          const fill =
-            index < timeline.index ? 1 : index === timeline.index ? timeline.progress : 0;
-          const active = index === timeline.index;
-          return (
-            <li key={demo.id} className="min-w-0 flex-1">
-              <button
-                type="button"
-                aria-current={active ? "step" : undefined}
-                onClick={() => {
-                  playheadRef.current = { index, elapsed: 0 };
-                  show(index, 0);
-                }}
-                className={`group flex h-full w-full flex-col justify-end gap-2 py-2 pr-2 text-left text-xs font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 sm:text-sm ${active ? "text-[var(--bo-fg)]" : "text-[var(--bo-muted-2)] hover:text-[var(--bo-fg)]"}`}
-              >
-                <span className="leading-tight">{demo.title}</span>
-                <span className="-mr-2 block h-0.5 overflow-hidden bg-[color-mix(in_srgb,var(--bo-fg)_12%,transparent)]">
-                  <span
-                    className="block h-full bg-[var(--bo-fg)]"
-                    style={{ width: `${fill * 100}%` }}
-                  />
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
+      </ScreenFrame>
     </div>
   );
 }

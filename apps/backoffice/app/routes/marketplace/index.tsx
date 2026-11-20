@@ -88,7 +88,7 @@ export default function PublicMarketplace({ loaderData }: Route.ComponentProps) 
       className="flex min-h-svh flex-col bg-[var(--bo-bg)] font-sans text-[var(--bo-fg)]"
     >
       <LandingHeader />
-      <main className="mx-auto w-full max-w-[1180px] flex-1 px-5 pt-14 pb-24 sm:px-8 lg:px-12 lg:pt-20">
+      <main className="max-w-landing mx-auto w-full flex-1 px-5 pt-14 pb-24 sm:px-8 lg:px-12 lg:pt-20">
         <h1 className="max-w-3xl text-[clamp(2.75rem,6vw,5.5rem)] leading-[0.92] font-[560] tracking-[-0.065em] text-balance">
           Marketplace
         </h1>
