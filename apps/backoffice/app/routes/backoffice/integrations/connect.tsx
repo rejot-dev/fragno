@@ -8,7 +8,6 @@ import type { IconName } from "@fragno-private/design-system/icon";
 import { Suspense } from "react";
 import { Await, data, Outlet, redirect, useParams, type RouterContextProvider } from "react-router";
 
-import type { BackofficeScopeSelection } from "@/backoffice-runtime/resolved-scope";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { MAIN_PI_AGENT_NAME } from "@/fragno/pi/agent/pi-agent-name";
 import { integrationConnectionKind } from "@/fragno/runtime-tools/families/integrations/integration-connections";
@@ -83,14 +82,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     throw redirect(owner ? connectSourcePath(connectPath, owner) : connectPath);
   }
 
-  return { selectedScope, catalog: readCatalog(context, selectedScope) };
+  return { selectedScope, catalog: readCatalog(context) };
 }
 
 /** Every source the scope can connect, with those it already has marked. */
-async function readCatalog(
-  context: Readonly<RouterContextProvider>,
-  selectedScope: BackofficeScopeSelection,
-) {
+async function readCatalog(context: Readonly<RouterContextProvider>) {
   const integrations = connectIntegrations(context);
   const [services, connections, providers] = await Promise.all([
     integrations.discover(),
@@ -101,14 +97,10 @@ async function readCatalog(
   const discovered = new Set(services.map((service) => service.id));
   return {
     services: services.map((service) => ({ ...service, connected: connected.has(service.id) })),
-    // Catalog providers the project has no OAuth configuration for, which cannot be connected yet.
+    // Catalog providers the project has not configured, which the agent sets up with an API key.
     // Discovery already lists the configured ones, and built-in services such as GitHub win.
     unavailable: providers
-      .filter(
-        (provider) =>
-          !discovered.has(provider.service) &&
-          listsUnconfiguredProvider(provider, selectedScope.kind),
-      )
+      .filter((provider) => !discovered.has(provider.service) && setsUpAsApiIntegration(provider))
       .map((provider) => ({
         id: provider.service,
         label: provider.displayName,
@@ -124,51 +116,19 @@ async function readCatalog(
 export const shouldRevalidate = shouldRevalidateWithinScope;
 
 /**
- * How the agent sets up a catalog provider the project has not configured, or null when neither way
- * fits. Oomol signs in to a provider with OAuth once the project configures it, but only in a
- * person's own scope, because provider accounts are user-owned. Any other provider skips Oomol,
- * because Leyway's own API integration holds its key or credentials.
+ * Whether the agent can set up a catalog provider the project has not configured, as Leyway's own
+ * API integration holding its key or credentials. A provider that only signs in with OAuth needs
+ * its OAuth configured in Oomol first, after which discovery lists it, so until then it is hidden.
  */
-function unconfiguredProviderSetup(
-  provider: { authTypes: readonly string[] },
-  scopeKind: BackofficeScopeSelection["kind"],
-): "connector" | "api" | null {
-  if (scopeKind === "user" && provider.authTypes.includes("oauth2")) {
-    return "connector";
-  }
-  if (
-    provider.authTypes.some((type) => ["api_key", "custom_credential", "no_auth"].includes(type))
-  ) {
-    return "api";
-  }
-  return null;
-}
-
-/**
- * A person's own scope lists every unconfigured provider, offering another way in for those
- * neither way fits; an organization lists only those its agent can set up.
- */
-function listsUnconfiguredProvider(
-  provider: { authTypes: readonly string[] },
-  scopeKind: BackofficeScopeSelection["kind"],
-): boolean {
-  return scopeKind === "user" || unconfiguredProviderSetup(provider, scopeKind) !== null;
+function setsUpAsApiIntegration(provider: { authTypes: readonly string[] }): boolean {
+  return provider.authTypes.some((type) =>
+    ["api_key", "custom_credential", "no_auth"].includes(type),
+  );
 }
 
 /** Asks the agent to connect a catalog provider the project has not set up. */
-function unconfiguredProviderPrompt(
-  provider: { displayName: string; authTypes: readonly string[] },
-  scopeKind: BackofficeScopeSelection["kind"],
-): string {
-  const request = `Help me connect ${provider.displayName} in this scope.`;
-  const setup = unconfiguredProviderSetup(provider, scopeKind);
-  if (setup === "connector") {
-    return `${request} It signs in with OAuth, so set it up through Oomol (the Connector), which has no OAuth configuration for it in this project yet.`;
-  }
-  if (setup === "api") {
-    return `${request} Follow the configuring-integrations skill to set it up as an API integration (integration api): find in ${provider.displayName}'s API documentation how it authenticates, its base URL, and where I create its key or token, then ask me for the key with a setup form that says where to find it.`;
-  }
-  return `${request} Connector lists it, but this project cannot sign in to it yet, so it needs another way to connect.`;
+function unconfiguredProviderPrompt(provider: { displayName: string }): string {
+  return `Help me connect ${provider.displayName} in this scope. Follow the configuring-integrations skill to set it up as an API integration (integration api): find in ${provider.displayName}'s API documentation how it authenticates, its base URL, and where I create its key or token, then ask me for the key with a setup form that says where to find it.`;
 }
 
 // The agent asks what the workflow should do before building it, so the page only says which
@@ -261,9 +221,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     const provider = service
       ? null
       : (await listConnectorProviders(context)).find(
-          (candidate) =>
-            candidate.service === source &&
-            listsUnconfiguredProvider(candidate, selectedScope.kind),
+          (candidate) => candidate.service === source && setsUpAsApiIntegration(candidate),
         );
     let sourceId: string;
     if (service) {
@@ -271,7 +229,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       content = `Help me connect ${service.label} (integration ${service.id}) in this scope.`;
     } else if (provider) {
       sourceId = provider.service;
-      content = unconfiguredProviderPrompt(provider, selectedScope.kind);
+      content = unconfiguredProviderPrompt(provider);
     } else {
       return data({ error: "Choose a source to connect." }, { status: 400 });
     }

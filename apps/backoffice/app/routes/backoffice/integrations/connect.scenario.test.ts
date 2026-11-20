@@ -218,8 +218,19 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
         });
       }),
       then.assert(
-        "the catalog also lists providers the project has not set up, which cannot be connected",
+        "the catalog also lists providers the project has not set up that take an API key, but hides those that only sign in with OAuth",
         async (ctx) => {
+          gateway.catalogProviders.set("airtable", {
+            service: "airtable",
+            displayName: "Airtable",
+            description: "Spreadsheet databases",
+            searchAliases: [],
+            iconUrl: "https://static.example/logo/Airtable.svg",
+            homepageUrl: "https://airtable.com",
+            categories: [{ id: "productivity", displayName: "Productivity" }],
+            authTypes: ["api_key"],
+          });
+          // Oomol has no OAuth configuration for Jira, so nothing can sign in to it yet.
           gateway.catalogProviders.set("jira", {
             service: "jira",
             displayName: "Jira",
@@ -234,36 +245,25 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
           // Gmail is configured, so it stays a source to connect rather than an unavailable one.
           expect(page.unavailable).toEqual([
             {
-              id: "jira",
-              label: "Jira",
-              description: "Project issue tracking and team work coordination.",
-              iconUrl: "https://static.example/logo/Jira.svg",
+              id: "airtable",
+              label: "Airtable",
+              description: "Spreadsheet databases.",
+              iconUrl: "https://static.example/logo/Airtable.svg",
               categories: [{ id: "productivity", label: "Productivity" }],
             },
           ]);
           expect(page.services.map((service) => service.id)).not.toContain("jira");
 
-          // Jira opens on the offer to set it up with the agent, which takes the question.
-          const opened = await openSource(ctx, `${connectPage(ctx)}/jira`);
+          // Airtable opens on the offer to set it up with the agent, which takes the question.
+          const opened = await openSource(ctx, `${connectPage(ctx)}/airtable`);
           expect(opened.method).toEqual({ kind: "agent" });
-          expect(await submitConnect(ctx, { intent: "ask-agent", source: "jira" })).toEqual({
-            redirectsTo: `${connectPage(ctx)}/jira?agent=opened`,
+          expect(await submitConnect(ctx, { intent: "ask-agent", source: "airtable" })).toEqual({
+            redirectsTo: `${connectPage(ctx)}/airtable?agent=opened`,
           });
-          // Jira signs in with OAuth, so the agent sets it up through Oomol; Airtable takes an API
-          // key, so the agent sets it up as Leyway's own API integration.
-          gateway.catalogProviders.set("airtable", {
-            service: "airtable",
-            displayName: "Airtable",
-            description: "Spreadsheet databases",
-            searchAliases: [],
-            iconUrl: "https://static.example/logo/Airtable.svg",
-            homepageUrl: "https://airtable.com",
-            categories: [{ id: "productivity", displayName: "Productivity" }],
-            authTypes: ["api_key"],
-          });
-          await submitConnect(ctx, { intent: "ask-agent", source: "airtable" });
+          expect(
+            await submitConnect(ctx, { intent: "ask-agent", source: "jira" }),
+          ).not.toHaveProperty("redirectsTo");
           expect(await userMessages(ctx)).toEqual([
-            "Help me connect Jira in this scope. It signs in with OAuth, so set it up through Oomol (the Connector), which has no OAuth configuration for it in this project yet.",
             "Help me connect Airtable in this scope. Follow the configuring-integrations skill to set it up as an API integration (integration api): find in Airtable's API documentation how it authenticates, its base URL, and where I create its key or token, then ask me for the key with a setup form that says where to find it.",
           ]);
         },
