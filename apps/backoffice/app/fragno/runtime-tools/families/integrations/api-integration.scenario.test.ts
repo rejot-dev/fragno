@@ -332,7 +332,7 @@ test("Codemode creates a custom API through setup and keeps one address across r
               instructions: expect.stringContaining(
                 "https://example.com/api/http/org%3Aapi-org/oauth/callback",
               ),
-              secretFields: ["token", "password", "clientSecret"],
+              secretFields: ["token", "password", "clientSecret", "key"],
             },
             invalid: { status: "blocked", connectionId: "api#has space" },
             nullInput: "rejected",
@@ -541,7 +541,7 @@ test("Codemode creates a custom API through setup and keeps one address across r
             },
             check: expect.objectContaining({
               status: "needs-input",
-              secretFields: ["token", "password", "clientSecret"],
+              secretFields: ["token", "password", "clientSecret", "key"],
               // Only OAuth connections can consent again without a full replacement.
               instructions: expect.not.stringContaining("reauthorize"),
             }),
@@ -599,7 +599,7 @@ test("Codemode creates a custom API through setup and keeps one address across r
               name: "billing",
               configuration: { status: "missing", missingFields: ["baseUrl", "type"] },
             },
-            check: { status: "needs-input", secretFields: ["token", "password", "clientSecret"] },
+            check: { status: "needs-input", secretFields: ["token", "password", "clientSecret", "key"] },
             result: { ok: false, response: null, error: { code: "CONNECTION_NOT_FOUND" } },
           });
           expect(provider.requests).toHaveLength(4);
