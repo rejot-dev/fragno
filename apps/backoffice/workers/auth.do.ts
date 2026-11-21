@@ -161,6 +161,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthCommands {
     return await this.#object.getLeywayCliOAuthConfig(input);
   }
 
+  async authorizeMcpUser(input: { requestUrl: string; oauthAccessToken: string }) {
+    return await this.#object.authorizeMcpUser(input);
+  }
+
   async exchangeBackofficeExecutionToken(
     input: BackofficeExecutionTokenExchangeInput,
   ): Promise<BackofficeExecutionTokenResult> {

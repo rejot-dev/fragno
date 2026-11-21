@@ -223,6 +223,18 @@ their own `app:<appId>` source. `admin` and `internal` tools are never exposed; 
 wait for real Browser Run result schemas in their fragment. Byte-oriented operations exchange base64
 through v0 adapters (`app/backoffice-api/v0-adapters.ts`) until dedicated file transfer APIs exist.
 
+## Remote MCP
+
+Connect a Streamable HTTP MCP client to `/api/v0/mcp` on your Leyway server. The client discovers
+Leyway's OAuth endpoints, registers with the dedicated MCP scopes, and opens browser sign-in and
+consent with OAuth authorization code and PKCE. The MCP resource has its own access-token audience.
+Auth checks the user, client, and current consent on every MCP request.
+
+The `codemode` tool starts each run in the user's personal workspace. Read
+`leyway://codemode/SYSTEM.md` for the available tools and context handles. Use `account.orgsList()`
+to find organization IDs and `context.org(organizationId).projects.list({})` to list projects in an
+organization the user can access. Users can revoke MCP access from Authorized applications.
+
 ## Browser consent and revocation
 
 `/backoffice/device` handles first-party device approval; `/backoffice/oauth/consent` handles
