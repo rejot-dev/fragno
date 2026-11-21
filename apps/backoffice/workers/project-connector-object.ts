@@ -1,5 +1,5 @@
 import {
-  backofficeUserScopeSchema,
+  backofficeRootOwnerSchema,
   backofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { FragmentDurableObjectHost } from "@fragno-dev/db/dispatchers/cloudflare-do/fragment-durable-object";
@@ -25,10 +25,7 @@ import {
   isConnectorOAuthReturnSegment,
 } from "@/fragno/runtime-tools/families/integrations/connector-connection-id";
 import { recordIntegrationConnectionState } from "@/fragno/runtime-tools/families/integrations/integration-events";
-import {
-  isScopedPublicOAuthRedirectUriAllowed,
-  PROJECT_CONNECTOR_PUBLIC_PREFIX,
-} from "@/fragno/scoped-public-fragment-routes";
+import { isProjectConnectorReturnUriAllowed } from "@/fragno/scoped-public-fragment-routes";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
 import type { BackofficeObjectImplementation } from "./lib/backoffice-object-implementation";
@@ -94,6 +91,7 @@ export class ProjectConnectorObject extends RpcTarget implements ProjectConnecto
           config,
           implementation.fragmentDatabase,
           new BackofficeKernel(runtime),
+          scopedRuntime.requireOwnerScope().kind,
         ),
       onProcessError: (error) => {
         console.error("Connector hook processor error", error);
@@ -107,12 +105,13 @@ export class ProjectConnectorObject extends RpcTarget implements ProjectConnecto
       state,
       ownerScope: backofficeContextScopeFromDurableObjectId(state.id, "PROJECT_CONNECTOR"),
       host,
-      scopeSchema: backofficeUserScopeSchema,
+      scopeSchema: backofficeRootOwnerSchema,
       createSource: function createScopedProjectConnectorConfig(
         scope,
       ): ProjectConnectorFragmentConfig {
         // Provider accounts are user-owned. Use the ID-backed user scope upstream; caller-supplied
-        // identities and organization slugs are not authoritative account owners.
+        // identities and organization slugs are not authoritative account owners. An organization's
+        // Connector serves only the catalog, so it never acts for this identity.
         const externalUserId = backofficeScopePathSegment(scope);
         return {
           baseUrl,
@@ -162,9 +161,8 @@ export class ProjectConnectorObject extends RpcTarget implements ProjectConnecto
             );
           },
           allowedReturnUrls: (redirectUri) =>
-            isScopedPublicOAuthRedirectUriAllowed({
+            isProjectConnectorReturnUriAllowed({
               publicOrigin: runtime.config.docsPublicBaseUrl,
-              publicPrefix: PROJECT_CONNECTOR_PUBLIC_PREFIX,
               redirectUri,
               // Every return names its connection, so the return confirms that one alone.
               returnSegment: isConnectorOAuthReturnSegment,

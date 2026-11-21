@@ -215,6 +215,57 @@ export function isScopedPublicOAuthRedirectUriAllowed({
   return scopePathSegment.length > 0 && !scopePathSegment.includes("/");
 }
 
+// A Connector consent started in the Connect wizard returns one segment deeper, under `connect/`.
+// The callback confirms it like any other, then resumes the wizard instead of opening the connection.
+const CONNECT_RETURN_PATH = /\/oauth\/callback\/connect\/([^/]+)$/;
+
+/** Where a consent for the connection `returnSegment` names returns, given what started it. */
+export function projectConnectorReturnUri({
+  oauthRedirectUri,
+  returnSegment,
+  returnTo,
+}: {
+  oauthRedirectUri: string;
+  returnSegment: string;
+  returnTo: "integrations" | "connect";
+}): string {
+  return returnTo === "connect"
+    ? `${oauthRedirectUri}/connect/${returnSegment}`
+    : `${oauthRedirectUri}/${returnSegment}`;
+}
+
+/** The segment naming a return's connection and what started it, or null for another path. */
+export function projectConnectorReturn(
+  suffix: string,
+): { segment: string; returnTo: "integrations" | "connect" } | null {
+  const connect = CONNECT_RETURN_PATH.exec(suffix);
+  if (connect?.[1] !== undefined) {
+    return { segment: connect[1], returnTo: "connect" };
+  }
+  const plain = /^\/oauth\/callback\/([^/]+)$/.exec(suffix);
+  return plain?.[1] === undefined ? null : { segment: plain[1], returnTo: "integrations" };
+}
+
+/** Allows the Connector's returns: a connection's callback, either directly or under `connect/`. */
+export function isProjectConnectorReturnUriAllowed({
+  publicOrigin,
+  redirectUri,
+  returnSegment,
+}: {
+  publicOrigin: string | undefined;
+  redirectUri: URL;
+  returnSegment: (segment: string) => boolean;
+}): boolean {
+  const callbackUri = new URL(redirectUri);
+  callbackUri.pathname = redirectUri.pathname.replace(CONNECT_RETURN_PATH, "/oauth/callback/$1");
+  return isScopedPublicOAuthRedirectUriAllowed({
+    publicOrigin,
+    publicPrefix: PROJECT_CONNECTOR_PUBLIC_PREFIX,
+    redirectUri: callbackUri,
+    returnSegment,
+  });
+}
+
 /** Builds the externally reachable URL for one API webhook endpoint. */
 export function apiWebhookPublicUrl(publicBaseUrl: string, endpointId: string): string {
   return `${publicBaseUrl}/webhooks/endpoints/${encodeURIComponent(endpointId)}/events`;

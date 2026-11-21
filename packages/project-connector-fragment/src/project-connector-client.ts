@@ -14,9 +14,10 @@ import {
   projectConnectorConnectionStateSchema,
   type projectConnectorConnectInputSchema,
   projectConnectorExecutionSchema,
+  projectConnectorGatewayProviderConfigsSchema,
   projectConnectorHttpUrlSchema,
   projectConnectorProfileSchema,
-  projectConnectorProviderConfigsSchema,
+  projectConnectorProviderCatalogSchema,
   type ProjectConnectorConnectionState,
 } from "./project-connector-contracts";
 
@@ -34,15 +35,12 @@ const projectConnectorConnectionRequestSchema = z
   .and(projectConnectorConnectionStateSchema);
 
 const projectConnectorCallOptions = { retries: 0 } satisfies ProjectCallOptions;
+// The gateway answers in a few seconds even with its whole catalog; a hung gateway should not hold
+// a page for the SDK's default 30 seconds.
+const PROJECT_CONNECTOR_TIMEOUT_MS = 10_000;
 const projectConnectorDiscoveryEnvelopeSchema = z.object({
   success: z.literal(true),
-  data: projectConnectorProviderConfigsSchema.safeExtend({
-    providerConfigs: z.array(
-      projectConnectorProviderConfigsSchema.shape.providerConfigs.element.extend({
-        actionIds: z.array(z.string().min(1)),
-      }),
-    ),
-  }),
+  data: projectConnectorGatewayProviderConfigsSchema,
 });
 
 const projectConnectorAccountDeletionEnvelopeSchema = z.object({
@@ -55,6 +53,22 @@ const projectConnectorCatalogActionSchema = projectConnectorActionSchema.extend(
     .string()
     .nullish()
     .transform((description) => description ?? null),
+});
+
+// The gateway also returns a description the SDK's ProviderMetadata type omits.
+const projectConnectorCatalogProviderSchema = projectConnectorProviderCatalogSchema.extend({
+  service: z.string().min(1),
+  description: z
+    .string()
+    .nullish()
+    .transform((description) => description || null),
+});
+
+const projectConnectorProvidersEnvelopeSchema = z.object({
+  success: z.literal(true),
+  data: z.array(
+    projectConnectorCatalogProviderSchema.extend({ authTypes: z.array(z.string().min(1)) }),
+  ),
 });
 
 type ProjectConnectorSdk = Pick<
@@ -169,22 +183,21 @@ async function fetchProjectConnectorWithoutRedirects(
 }
 
 /** Calls a SaaS route the SDK does not wrap; redirects must not forward the project key elsewhere. */
-async function fetchProjectConnectorSaas<T>(
+async function sendProjectConnectorSaas(
   config: Pick<ProjectConnectorClientConfig, "baseUrl" | "apiKey">,
-  request: { method: "GET" | "DELETE"; path: string },
-  envelopeSchema: z.ZodType<T>,
-): Promise<T> {
-  const signal = AbortSignal.timeout(30_000);
-  let response: Response;
+  request: { method: "GET" | "DELETE"; path: string; headers: Record<string, string> },
+) {
+  const signal = AbortSignal.timeout(PROJECT_CONNECTOR_TIMEOUT_MS);
   try {
-    response = await fetchProjectConnectorWithoutRedirects(
+    const response = await fetchProjectConnectorWithoutRedirects(
       `${config.baseUrl}/saas${request.path}`,
       {
         method: request.method,
-        headers: { authorization: `Bearer ${config.apiKey}` },
+        headers: { ...request.headers, authorization: `Bearer ${config.apiKey}` },
         signal,
       },
     );
+    return { response, signal };
   } catch (cause) {
     if (signal.aborted) {
       throw new ProjectConnectorClientError("client_timeout", 0);
@@ -194,6 +207,22 @@ async function fetchProjectConnectorSaas<T>(
     }
     throw cause;
   }
+}
+
+async function fetchProjectConnectorSaas<T>(
+  config: Pick<ProjectConnectorClientConfig, "baseUrl" | "apiKey">,
+  request: { method: "GET" | "DELETE"; path: string },
+  envelopeSchema: z.ZodType<T>,
+): Promise<T> {
+  const { response, signal } = await sendProjectConnectorSaas(config, { ...request, headers: {} });
+  return readProjectConnectorSaas(response, signal, envelopeSchema);
+}
+
+async function readProjectConnectorSaas<T>(
+  response: Response,
+  signal: AbortSignal,
+  envelopeSchema: z.ZodType<T>,
+): Promise<T> {
   let payload: unknown;
   try {
     payload = await response.json();
@@ -242,7 +271,12 @@ export function createProjectConnectorClient(
 ) {
   const apiKey = parseProjectConnectorApiKey(config.apiKey);
   const baseUrl = parseProjectConnectorApiBaseUrl(config.baseUrl);
-  const client = createSdk({ apiKey, baseUrl, maxRetries: 0 });
+  const client = createSdk({
+    apiKey,
+    baseUrl,
+    maxRetries: 0,
+    timeoutMs: PROJECT_CONNECTOR_TIMEOUT_MS,
+  });
   // Project credentials and catalog credentials have different authority; never substitute one for the other.
   const catalog =
     config.catalogApiKey === null
@@ -251,12 +285,54 @@ export function createProjectConnectorClient(
           apiKey: parseProjectConnectorApiKey(config.catalogApiKey),
           baseUrl,
           maxRetries: 0,
+          timeoutMs: PROJECT_CONNECTOR_TIMEOUT_MS,
           fetch: fetchProjectConnectorWithoutRedirects,
         }).catalog;
+  // The gateway serves its whole catalog unpaginated, well over a thousand providers, so the last
+  // copy is kept and only revalidated by its ETag.
+  let providerCatalog: {
+    etag: string;
+    providers: z.output<typeof projectConnectorProvidersEnvelopeSchema>["data"];
+  } | null = null;
 
   return {
+    /** Every provider in the gateway's catalog, read with the project key. */
+    async listProviders() {
+      const cached = providerCatalog;
+      const { response, signal } = await sendProjectConnectorSaas(
+        { apiKey, baseUrl },
+        {
+          method: "GET",
+          path: "/providers",
+          headers: cached ? { "if-none-match": cached.etag } : {},
+        },
+      );
+      if (cached && response.status === 304) {
+        await response.body?.cancel();
+        return { providers: cached.providers };
+      }
+      const envelope = await readProjectConnectorSaas(
+        response,
+        signal,
+        projectConnectorProvidersEnvelopeSchema,
+      );
+      const etag = response.headers.get("etag");
+      providerCatalog = etag === null ? null : { etag, providers: envelope.data };
+      return { providers: envelope.data };
+    },
     async listProviderConfigs() {
       const discovery = await fetchProjectConnectorProviderConfigs({ apiKey, baseUrl });
+      const services = [...new Set(discovery.providerConfigs.map((config) => config.service))];
+      const catalogByService = new Map(
+        catalog && services.length > 0
+          ? parseProjectConnectorResponse(
+              z.array(projectConnectorCatalogProviderSchema),
+              await callProjectConnector(() =>
+                catalog.providers({ service: services }, projectConnectorCallOptions),
+              ),
+            ).map(({ service, ...entry }) => [service, entry])
+          : [],
+      );
       return {
         projectId: discovery.projectId,
         providerConfigs: discovery.providerConfigs.map((config) => ({
@@ -266,6 +342,7 @@ export function createProjectConnectorClient(
           callbackUrl: config.callbackUrl,
           effectiveScopes: config.effectiveScopes,
           proxyAvailable: config.proxyAvailable,
+          catalog: catalogByService.get(config.service) ?? null,
         })),
       };
     },

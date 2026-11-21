@@ -124,7 +124,7 @@ async function runApiIntegrationScenario<TVars extends Record<string, unknown>>(
     assert(url.origin === providerOrigin, `Unexpected provider request to ${url.origin}`);
     provider.requests.push({
       method: request.method,
-      path: url.pathname,
+      path: `${url.pathname}${url.search}`,
       authorization: request.headers.get("authorization"),
     });
     return url.pathname === "/missing"
@@ -316,6 +316,8 @@ test("Codemode creates a custom API through setup and keeps one address across r
                 id: "api",
                 label: "Custom HTTP API",
                 description: expect.stringContaining("api#<slug>"),
+                iconUrl: null,
+                categories: [{ id: "developer_tools", label: "Developer Tools" }],
                 connectionCardinality: "multiple",
                 availability: { status: "available" },
                 setupTargets: [],
@@ -330,7 +332,7 @@ test("Codemode creates a custom API through setup and keeps one address across r
               instructions: expect.stringContaining(
                 "https://example.com/api/http/org%3Aapi-org/oauth/callback",
               ),
-              secretFields: ["token", "password", "clientSecret"],
+              secretFields: ["token", "password", "clientSecret", "key"],
             },
             invalid: { status: "blocked", connectionId: "api#has space" },
             nullInput: "rejected",
@@ -539,7 +541,7 @@ test("Codemode creates a custom API through setup and keeps one address across r
             },
             check: expect.objectContaining({
               status: "needs-input",
-              secretFields: ["token", "password", "clientSecret"],
+              secretFields: ["token", "password", "clientSecret", "key"],
               // Only OAuth connections can consent again without a full replacement.
               instructions: expect.not.stringContaining("reauthorize"),
             }),
@@ -597,7 +599,10 @@ test("Codemode creates a custom API through setup and keeps one address across r
               name: "billing",
               configuration: { status: "missing", missingFields: ["baseUrl", "type"] },
             },
-            check: { status: "needs-input", secretFields: ["token", "password", "clientSecret"] },
+            check: {
+              status: "needs-input",
+              secretFields: ["token", "password", "clientSecret", "key"],
+            },
             result: { ok: false, response: null, error: { code: "CONNECTION_NOT_FOUND" } },
           });
           expect(provider.requests).toHaveLength(4);
@@ -609,6 +614,39 @@ test("Codemode creates a custom API through setup and keeps one address across r
         where: { source: "integrations", eventType: "connection.disconnected" },
         expected: { subject: { service: "api", connectionId: "api#billing" } },
       }),
+      then.assert(
+        "an API key set up for a query parameter rides on every request in place of the caller's",
+        async (ctx) => {
+          const run = await ctx.runCodemode({
+            scope: orgScope,
+            code: `async () => {
+              const target = { connectionId: "api#gifs" };
+              const ready = await integrations.setup({ ...target, kind: "input", input: {
+                type: "apiKey", baseUrl: ${JSON.stringify(providerOrigin)},
+                location: "query", parameter: "api_key", key: "gifs-key",
+              } });
+              const search = await integrations.execute({ ...target, actionId: "request", input: {
+                method: "GET", path: "/v1/gifs/search", query: { q: "cat", api_key: "caller-key" },
+                body: { type: "empty" },
+              } });
+              return { ready, search: search.ok, described: await integrations.execute({
+                ...target, actionId: "connection.describe", input: {},
+              }) };
+            }`,
+          });
+          expect(run.result).toMatchObject({
+            ready: { status: "ready", connectionId: "api#gifs" },
+            search: true,
+            described: { authMode: "apiKey", auth: { mode: "apiKey", credentials: "present" } },
+          });
+          expect(JSON.stringify(run.result)).not.toContain("gifs-key");
+          expect(provider.requests.at(-1)).toEqual({
+            method: "GET",
+            path: "/v1/gifs/search?q=cat&api_key=gifs-key",
+            authorization: null,
+          });
+        },
+      ),
     ],
   }));
 });

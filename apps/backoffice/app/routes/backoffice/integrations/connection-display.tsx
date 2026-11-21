@@ -55,6 +55,7 @@ export function describeAuthStatus(status: ApiAuthStatus | McpAuthStatus | null)
     case "bearer":
     case "basic":
     case "client_credentials":
+    case "apiKey":
       return `${status.mode}, credentials ${status.credentials}`;
     default:
       throw new Error("Auth status mode is unsupported.", { cause: status satisfies never });

@@ -100,7 +100,9 @@ async () => await integrations.setup({ kind: "check", connectionId });
 ```
 
 - **`needs-input`**: `inputSchema` is the complete set of inputs and `secretFields` names the
-  secrets. Submit the matching object directly as
+  secrets. Fill in what the request and the provider's documentation settle. When a value only the
+  user holds is left, such as an API key, collect it with a setup form (below), which submits the
+  input; otherwise submit it yourself as
   `integrations.setup({ kind: "input", connectionId, input })`.
 - **`needs-authorization`**: give the user `authorizationUrl` as a link. When the user replies,
   check again; only the next check confirms consent.
@@ -110,29 +112,64 @@ async () => await integrations.setup({ kind: "check", connectionId });
   the replacement in "Change or remove"; otherwise stop. A lower rung creates a different
   connection, so move down only on the user's choice.
 
-For `api#` addresses, the input's `type` selects the auth mode, and an OAuth submission starts
-consent at once. The first check's `instructions` state the scope's exact OAuth callback URL. Give
-the user that URL to register in the provider's OAuth app in the same message that asks them to
-create the app, before they send credentials; consent fails with a redirect URI error until the app
-lists it.
+Setup keeps stored credentials: a ready connection ignores new input. Replacing them is
+reconfiguration.
+
+**Complete when** a check returns `ready`.
+
+### Setup form
+
+A setup form is a form card in your reply that asks the user for a connection's secrets, then
+submits them with the rest of the input. Secrets reach a connection only through a setup form, so
+they never pass through the conversation. `integrations.requestInput` starts one:
+
+```js
+async () =>
+  await integrations.requestInput({
+    connectionId: "api#acme",
+    operation: "setup",
+    input: { baseUrl: "https://api.acme.example", type: "bearer" },
+    title: "Connect Acme",
+    secrets: [
+      {
+        field: "token",
+        label: "Acme API key",
+        description: "Create one on Acme's API keys page: https://acme.example/settings/api-keys",
+      },
+    ],
+  });
+```
+
+- `input` holds every value except the secrets; `secrets` names each field of the check's
+  `secretFields` the input needs.
+- Say in each secret's `description` where the user creates it, with that page's URL from the
+  documentation.
+- `operation` is `reconfigure` when replacing an existing connection's configuration.
+
+No card exists until you call `integrations.requestInput`: call it in the turn the loop reaches
+`needs-input`, then let your reply add only what the card leaves out.
+
+**Complete when** `requestInput` returned the form's `instanceId`; its `instance.completed` event
+carries the setup progress as output, and the loop continues from it.
+
+### Auth by source
+
+For `api#` addresses, the input's `type` selects the auth mode the provider's documentation names,
+and an OAuth submission starts consent at once. A key the documentation sends in a header or a query
+parameter is `apiKey`, with `location` and `parameter` taken from the documentation, such as
+`{ type: "apiKey", location: "query", parameter: "api_key", key }`; its setup form asks only for
+`key`. `none` is for an API that takes no credential: a connection without the key it needs reports
+`ready` and fails every request. When the documented scheme fits no `type`, such as a key in the
+request body, tell the user instead of submitting. The first check's `instructions` state the
+scope's exact OAuth callback URL. Give the user that URL to register in the provider's OAuth app in
+the same message that asks them to create the app, before they send credentials; consent fails with
+a redirect URI error until the app lists it.
 
 For `mcp#` addresses, `type` likewise selects the auth mode and an OAuth submission starts consent.
 Servers with dynamic client registration need no client; otherwise include `clientId` and
 `clientSecret`. A `blocked` result naming dynamic client registration means the server needs a
 pre-registered client: have the user create an OAuth app with the stated callback URL, then
 reconfigure with its client.
-
-Collect missing values through a durable form unless the request already supplies all of them. Read
-`/static/skills/workflows/SKILL.md` and `/static/skills/generating-backoffice-uis/SKILL.md`, then
-define an inline workflow whose completed `step.do` returns a `$ui` form with one control per
-`inputSchema` field, masked for `secretFields`, and whose `step.waitForEvent` collects the
-submission. Continue the loop and verification in later `step.do` calls. Keep secrets out of labels,
-summaries, and final output.
-
-Setup keeps stored credentials: a ready connection ignores new input. Replacing them is
-reconfiguration.
-
-**Complete when** a check returns `ready`.
 
 ## 4. Verify
 
@@ -170,14 +207,22 @@ discovery, so verify before generating.
 
 Both operations replace or delete live credentials, so run them on the user's instruction.
 
-- **Reconfigure**: `integrations.reconfigure({ kind: "check", connectionId })` returns the
-  replacement `inputSchema`. Start the input from the `settings` that `integrations.get` returns,
-  the stored values that are not secret, and change only what the user asked; collect secrets and
-  any field `settings` omits as in step 3, then submit with `kind: "input"`. A submission replaces
-  the stored configuration and credentials, then returns setup progress: rerun the setup loop, step
-  4, and step 5. For an `api#` or `mcp#` OAuth connection whose provider revoked access, submit
+- **Reconfigure** replaces the stored configuration and credentials in one submission. Stored
+  secrets are never read back, so every replacement collects its secrets again through a setup form:
+  1. `integrations.reconfigure({ kind: "check", connectionId })` returns the replacement
+     `inputSchema`.
+  2. Start the input from the `settings` that `integrations.get` returns, the stored values that are
+     not secret, such as an API key's `location` and `parameter`, and change only what the user
+     asked. Take fields `settings` omits from the provider's documentation.
+  3. In the same turn, start a setup form with `operation: "reconfigure"`, `input` from step 2, and
+     `secrets` for every secret field of the replacement, such as the current key and a new one the
+     provider now needs.
+  4. The submission returns setup progress: rerun the setup loop, step 4, and step 5.
+
+  For an `api#` or `mcp#` OAuth connection whose provider revoked access, submit
   `{ reauthorize: true }` to consent again with the stored client; changing scopes, endpoints, or
   the client is a full replacement.
+
 - **Disconnect**: `integrations.disconnect({ connectionId, confirm: connectionId })` removes the
   configuration and credentials. `not-configured` means nothing was stored. The address stays valid
   for a later setup. Then delete its client with `state.rm({ path })`.

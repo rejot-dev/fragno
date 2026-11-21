@@ -32,6 +32,7 @@ import { apiPublicAddress } from "@/fragno/scoped-public-fragment-routes";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
 import { resolveRuntimePublicScopePathSegment } from "../../runtime-public-scope";
+import { INTEGRATION_CATEGORY } from "./integration-categories";
 import { connectionStateOfInspection } from "./integration-events";
 import {
   authMethodOfFragmentAuthMode,
@@ -42,7 +43,8 @@ import {
 
 const apiIntegrationId = "api";
 const apiConnectionShape = createApiConnectionInputSchema.omit({ auth: true }).shape;
-const [noAuth, bearerAuth, basicAuth, clientCredentialsAuth, oauthAuth] = authConfigSchema.options;
+const [noAuth, bearerAuth, basicAuth, clientCredentialsAuth, oauthAuth, apiKeyAuth] =
+  authConfigSchema.options;
 // Flat variants keep secrets top-level, where secretFields can name them for input controls.
 const apiSetupConnectionInputSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...apiConnectionShape, ...noAuth.shape }),
@@ -50,12 +52,19 @@ const apiSetupConnectionInputSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...apiConnectionShape, ...basicAuth.shape }),
   z.strictObject({ ...apiConnectionShape, ...clientCredentialsAuth.shape }),
   z.strictObject({ ...apiConnectionShape, ...oauthAuth.shape }),
+  z.strictObject({ ...apiConnectionShape, ...apiKeyAuth.shape }),
 ]);
 type ApiSetupConnectionInput = z.output<typeof apiSetupConnectionInputSchema>;
-const apiSetupSecretFields = ["token", "password", "clientSecret"] as const satisfies readonly (
+const apiSetupSecretFields = [
+  "token",
+  "password",
+  "clientSecret",
+  "key",
+] as const satisfies readonly (
   | keyof z.input<typeof bearerAuth>
   | keyof z.input<typeof basicAuth>
   | keyof z.input<typeof clientCredentialsAuth>
+  | keyof z.input<typeof apiKeyAuth>
 )[];
 const apiOAuthSetupInputSchema = z.strictObject({
   start: z.literal(true).describe("Explicitly start OAuth consent for this connection."),
@@ -384,6 +393,7 @@ export function createApiIntegration({
         return ready;
       case "basic":
       case "client_credentials":
+      case "apiKey":
         return status.credentials === "present"
           ? ready
           : {
@@ -468,7 +478,7 @@ export function createApiIntegration({
           return {
             connectionId,
             status: "needs-input",
-            instructions: `Submit the base URL, an optional display name, and the auth settings beside them; \`type\` selects none, bearer, basic, client_credentials, or oauth. This address supplies the slug. OAuth submissions start consent immediately. ${describeCallback(
+            instructions: `Submit the base URL, an optional display name, and the auth settings beside them; \`type\` selects none, bearer, basic, client_credentials, oauth, or apiKey, a key every request carries in the header or query parameter the provider documents. This address supplies the slug. OAuth submissions start consent immediately. ${describeCallback(
               await access.oauthCallbackUrl(),
             )}`,
             inputSchema: z.toJSONSchema(apiSetupConnectionInputSchema, { io: "input" }),
@@ -563,6 +573,8 @@ export function createApiIntegration({
           label: "Custom HTTP API",
           description:
             "Outbound HTTP connections to APIs without a native integration. Choose an address api#<slug>; the slug becomes the connection's identity.",
+          iconUrl: null,
+          categories: [INTEGRATION_CATEGORY.developerTools],
           connectionCardinality: "multiple",
           availability: !runtime.config.bindings.api
             ? { status: "unavailable", reason: "The API object binding is unavailable." }
@@ -635,14 +647,19 @@ export function createApiIntegration({
         },
         async settings() {
           // Stored auth modes are the input's type names; credentials and OAuth client details are
-          // never read back.
-          return (
-            resolved && {
-              ...(resolved.name ? { name: resolved.name } : {}),
-              baseUrl: resolved.baseUrl,
-              type: resolved.authMode,
-            }
-          );
+          // never read back. Where an API key goes is not secret, so a replacement needs only the key.
+          if (!resolved) {
+            return null;
+          }
+          const auth = resolved.authMode === "apiKey" ? await access.authStatus(localId) : null;
+          return {
+            ...(resolved.name ? { name: resolved.name } : {}),
+            baseUrl: resolved.baseUrl,
+            type: resolved.authMode,
+            ...(auth?.mode === "apiKey" && auth.credentials === "present"
+              ? { location: auth.location, parameter: auth.parameter }
+              : {}),
+          };
         },
         async actions() {
           return [

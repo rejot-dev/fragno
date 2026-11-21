@@ -39,6 +39,7 @@ export const storedAuthPayloadSchema = z.discriminatedUnion("type", [
     tokens: oauthTokensSchema.optional(),
     redirectUri: z.url().optional(),
   }),
+  authConfigSchema.options[5],
 ]);
 
 type StoredAuthPayload = z.infer<typeof storedAuthPayloadSchema>;
@@ -87,6 +88,16 @@ export function projectApiAuthStatus(args: {
   if (mode === "none") {
     return { mode };
   }
+  if (mode === "apiKey") {
+    if (!args.authSecret) {
+      return { mode, credentials: "missing" };
+    }
+    const auth = storedAuthPayloadSchema.parse(JSON.parse(args.authSecret.payload));
+    if (auth.type !== "apiKey") {
+      throw new Error("Stored API key auth does not match the connection's auth mode.");
+    }
+    return { mode, credentials: "present", location: auth.location, parameter: auth.parameter };
+  }
   if (mode !== "oauth") {
     return { mode, credentials: args.authSecret ? "present" : "missing" };
   }
@@ -121,6 +132,7 @@ export function isApiAuthReady(
     case "bearer":
     case "basic":
     case "client_credentials":
+    case "apiKey":
       return status.credentials === "present";
     default:
       throw new Error("Unknown API auth mode.", { cause: status satisfies never });
@@ -234,7 +246,7 @@ async function resolveOAuthAuth(args: {
     return {};
   }
   if (secretIsUnexpired(args.authSecret)) {
-    return { authorization: `Bearer ${args.authPayload.tokens.accessToken}` };
+    return { credential: authorizationHeader(`Bearer ${args.authPayload.tokens.accessToken}`) };
   }
   if (!args.authPayload.tokens.refreshToken) {
     throw new Error("OAuth access token expired and no refresh token is available");
@@ -248,7 +260,7 @@ async function resolveOAuthAuth(args: {
     throw new Error("OAuth refresh did not return an access token");
   }
   return {
-    authorization: `Bearer ${tokens.accessToken}`,
+    credential: authorizationHeader(`Bearer ${tokens.accessToken}`),
     authChanges: {
       authPayload: JSON.stringify({ ...args.authPayload, tokens }),
       authExpiresAt: tokenExpiry(tokens),
@@ -262,7 +274,7 @@ async function resolveClientCredentialsAuth(args: {
   authPayload: Extract<StoredAuthPayload, { type: "client_credentials" }>;
 }) {
   if (args.authPayload.tokens?.accessToken && secretExpiresInFuture(args.authSecret)) {
-    return { authorization: `Bearer ${args.authPayload.tokens.accessToken}` };
+    return { credential: authorizationHeader(`Bearer ${args.authPayload.tokens.accessToken}`) };
   }
   const tokens = await requestClientCredentialsToken({
     auth: args.authPayload,
@@ -272,7 +284,7 @@ async function resolveClientCredentialsAuth(args: {
     throw new Error("Client credentials flow did not return an access token");
   }
   return {
-    authorization: `Bearer ${tokens.accessToken}`,
+    credential: authorizationHeader(`Bearer ${tokens.accessToken}`),
     authChanges: {
       authPayload: JSON.stringify({ ...args.authPayload, tokens }),
       authExpiresAt: tokenExpiry(tokens),
@@ -280,10 +292,17 @@ async function resolveClientCredentialsAuth(args: {
   };
 }
 
+/** A value every request to the connection carries, wherever the provider expects it. */
+export type ApiRequestCredential = { location: "header" | "query"; name: string; value: string };
+
+function authorizationHeader(value: string): ApiRequestCredential {
+  return { location: "header", name: "authorization", value };
+}
+
 export async function resolveApiOperationAuth(args: {
   config: ApiFragmentConfig;
   secrets: SecretRecord[];
-}): Promise<{ authorization?: string; authChanges?: AuthPersistenceChanges }> {
+}): Promise<{ credential?: ApiRequestCredential; authChanges?: AuthPersistenceChanges }> {
   const authSecret = secretByKind(args.secrets, "auth");
   const authPayload = authSecret
     ? storedAuthPayloadSchema.parse(JSON.parse(authSecret.payload))
@@ -292,11 +311,20 @@ export async function resolveApiOperationAuth(args: {
     return {};
   }
   if (authPayload.type === "bearer") {
-    return { authorization: `Bearer ${authPayload.token}` };
+    return { credential: authorizationHeader(`Bearer ${authPayload.token}`) };
   }
   if (authPayload.type === "basic") {
     const credentials = bytesToBase64(utf8Bytes(`${authPayload.username}:${authPayload.password}`));
-    return { authorization: `Basic ${credentials}` };
+    return { credential: authorizationHeader(`Basic ${credentials}`) };
+  }
+  if (authPayload.type === "apiKey") {
+    return {
+      credential: {
+        location: authPayload.location,
+        name: authPayload.parameter,
+        value: authPayload.key,
+      },
+    };
   }
   if (authPayload.type === "oauth") {
     return resolveOAuthAuth({ config: args.config, authSecret: authSecret!, authPayload });
@@ -330,7 +358,7 @@ function boundedErrorMessage(message: string) {
 export async function performApiRequest(args: {
   config: ApiFragmentConfig;
   baseUrl: string;
-  authorization?: string;
+  credential?: ApiRequestCredential;
   request: ApiRequestInput;
 }): Promise<ApiRequestOutput> {
   const controller = args.request.timeoutMs ? new AbortController() : undefined;
@@ -343,10 +371,12 @@ export async function performApiRequest(args: {
   try {
     const url = resolveRequestUrl(args.baseUrl, args.request.path, args.request.query);
     const headers = new Headers(args.request.headers ?? {});
+    // Callers never supply credentials: the stored one replaces any they send under its name.
     headers.delete("authorization");
-    headers.delete("Authorization");
-    if (args.authorization) {
-      headers.set("authorization", args.authorization);
+    if (args.credential?.location === "header") {
+      headers.set(args.credential.name, args.credential.value);
+    } else if (args.credential?.location === "query") {
+      url.searchParams.set(args.credential.name, args.credential.value);
     }
     let body: BodyInit | undefined;
     if (args.request.body.type === "json") {

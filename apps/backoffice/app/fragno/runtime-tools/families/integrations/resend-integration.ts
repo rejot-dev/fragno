@@ -15,6 +15,7 @@ import { BackofficeUnavailableError } from "@/backoffice-runtime/kernel";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 
 import { createResendRuntime } from "../resend-runtime";
+import { INTEGRATION_CATEGORY } from "./integration-categories";
 import type { IntegrationSetupOperation } from "./integration-contracts";
 import { connectionStateOfInspection } from "./integration-events";
 import {
@@ -382,6 +383,8 @@ export function createResendIntegration({
             context.execution.scope.kind === "system"
               ? "The platform Resend account Backoffice sends its own email through, such as email verification. Disconnecting or misconfiguring it stops that email for every user."
               : "Email threads sent and received through the organization's Resend account.",
+          iconUrl: null,
+          categories: [INTEGRATION_CATEGORY.communication],
           connectionCardinality: "singleton",
           availability:
             reason === null ? { status: "available" } : { status: "unavailable", reason },

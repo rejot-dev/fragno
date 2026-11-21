@@ -57,6 +57,7 @@ type InMemoryWorkerEvaluationContext = {
   atob: typeof atob;
   btoa: typeof btoa;
   TextEncoder: typeof TextEncoder;
+  structuredClone: typeof structuredClone;
   Request: typeof Request;
   Response: typeof Response;
   Headers: typeof Headers;
@@ -99,6 +100,8 @@ function evaluateInMemoryWorker(worker: InMemoryWorkerCode): object {
     btoa,
     // Guests count log bytes with it.
     TextEncoder,
+    // The interface builder copies a form's initial state with it.
+    structuredClone,
     // Workers answer fetch with them, and stream bodies.
     Request,
     Response,
