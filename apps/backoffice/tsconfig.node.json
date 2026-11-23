@@ -6,6 +6,7 @@
     "vite.replay.config.ts",
     "react-router.config.ts",
     "source.config.ts",
+    "pwa-assets.config.ts",
     "vitest*.ts",
     "dev-vars.test.ts",
     "scripts/**/*.ts",

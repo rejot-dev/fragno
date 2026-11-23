@@ -1,19 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
-  <style>
-    .accent { fill: #ea580c; }
-    .live { fill: #12856f; }
-    .accent-muted { fill: #f29a6d; }
-    .waiting { fill: #a7650c; }
-
-    @media (prefers-color-scheme: dark) {
-      .accent { fill: #ffb374; }
-      .live { fill: #63d7be; }
-      .accent-muted { fill: #9d7458; }
-      .waiting { fill: #f0b55c; }
-    }
-  </style>
-  <rect class="accent" x="1" y="1" width="6" height="6" />
-  <rect class="live" x="9" y="1" width="6" height="6" />
-  <rect class="accent-muted" x="1" y="9" width="6" height="6" />
-  <rect class="waiting" x="9" y="9" width="6" height="6" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-34 -52.7 433.4 433.4">
+  <!-- The Leyway mark (LeywayMark in @fragno-private/design-system), centered in a square. It is
+       the favicon itself and the source of every other icon size: pnpm favicons:generate. -->
+  <path d="M250 70L360 260H280L210.1 138.8Z" fill="#ffd60a" />
+  <path d="M130 0L280 260H0Z" fill="#ff2d87" />
+  <path d="M0 260H360L399.4 328H-34Z" fill="#7a3cff" />
 </svg>

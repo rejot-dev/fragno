@@ -14,8 +14,12 @@ import type { Route } from "./+types/root";
 import { getRouteErrorDebugDetails } from "./routes/backoffice/route-errors";
 
 export const links: Route.LinksFunction = () => [
+  // Generated from public/favicon.svg by `pnpm favicons:generate` (pwa-assets.config.ts). The
+  // ".ico" claims every size so browsers that read SVG favicons still pick the SVG.
+  { rel: "icon", href: "/favicon.ico", sizes: "any" },
   { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
-  { rel: "icon", href: "/favicon.ico", sizes: "32x32" },
+  { rel: "apple-touch-icon", href: "/apple-touch-icon-180x180.png" },
+  { rel: "manifest", href: "/manifest.webmanifest" },
   // Preloaded so the design system's @font-face resolves before the first paint; without it the
   // page paints in the system fallback and swaps to the brand font later.
   {

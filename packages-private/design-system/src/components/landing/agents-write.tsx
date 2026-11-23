@@ -286,17 +286,19 @@ function ProcessPanel({ process }: { process: Process }) {
         {changed ? null : (
           <div className="mt-auto pt-2">
             <p className="text-xs text-[var(--bo-muted-2)]">Later, you ask</p>
-            {/* Slanted like the page's calls to action, in their light gray. */}
+            {/* Round like the page's calls to action, in their light gray. */}
             <button
               type="button"
-              className="mt-2 inline-flex min-h-10 cursor-pointer items-center gap-2 bg-[#e6e3df] px-7 py-2 text-left text-sm transition-colors duration-150 outline-none [clip-path:polygon(0.5rem_0,100%_0,calc(100%-0.5rem)_100%,0_100%)] hover:bg-[#dcd8d3] focus-visible:bg-[#dcd8d3]"
+              className="mt-2 inline-flex min-h-12 cursor-pointer items-center gap-2 rounded-full bg-[#e6e3df] px-6 py-2 text-left text-sm transition-colors duration-150 outline-none hover:bg-[#dcd8d3] focus-visible:bg-[#dcd8d3]"
               onClick={() => {
                 setChanged(true);
                 // The next run already follows the changed workflow.
                 setRun((current) => ({ count: current.count + 1, at: { kind: "trigger" } }));
               }}
             >
-              “{process.change.request}”
+              <span className="[text-box:trim-both_cap_alphabetic]">
+                “{process.change.request}”
+              </span>
               <Icon name="corner-down-left" className="size-3.5 shrink-0" />
             </button>
           </div>
