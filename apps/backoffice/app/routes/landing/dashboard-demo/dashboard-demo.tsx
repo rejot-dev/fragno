@@ -140,12 +140,6 @@ const AGENT_TURNS: Record<DashboardDemoId, AgentTurn> = {
   },
 };
 
-// The demo is drawn in black and white, so the landing page's own colors stay the only ones: the
-// status tones, the accent behind icons and the agent's mark, and the chart's series
-// take the ink and greys in place of the app's colors. Buttons keep theirs.
-const MONOCHROME_CLASS_NAME =
-  "[--bo-accent-bg:#efefef] [--bo-accent-text:#0b0b0a] [--bo-accent:#0b0b0a] [--bo-blue-1:#0b0b0a] [--bo-blue-2:#3d3d3d] [--bo-blue-3:#8a8a8a] [--bo-blue-4:#c8c8c8] [--bo-failed-bg:#efefef] [--bo-failed:#0b0b0a] [--bo-live-bg:#efefef] [--bo-live:#0b0b0a] [--bo-waiting-bg:#efefef] [--bo-waiting:#6b6b6b] dark:[--bo-accent-bg:#262626] dark:[--bo-accent-text:#f5f5f5] dark:[--bo-accent:#f5f5f5] dark:[--bo-blue-1:#f5f5f5] dark:[--bo-blue-2:#d4d4d4] dark:[--bo-blue-3:#a3a3a3] dark:[--bo-blue-4:#6b6b6b] dark:[--bo-failed-bg:#262626] dark:[--bo-failed:#f5f5f5] dark:[--bo-live-bg:#262626] dark:[--bo-live:#f5f5f5] dark:[--bo-waiting-bg:#262626] dark:[--bo-waiting:#a3a3a3]";
-
 /** The Backoffice dashboard, shell and agent drawer included, at one moment of the demo's story. */
 export function DashboardDemo({
   state,
@@ -169,9 +163,7 @@ export function DashboardDemo({
   // the app once the result shows. The other side is shaded.
   const focus = scene.resultShown ? "app" : scene.drawerOpen ? "drawer" : "none";
   return (
-    <div
-      className={`relative flex h-full bg-[var(--bo-bg)] text-[var(--bo-fg)] ${MONOCHROME_CLASS_NAME}`}
-    >
+    <div className="relative flex h-full bg-[var(--bo-bg)] text-[var(--bo-fg)]">
       <div className="relative flex min-w-0 flex-1 flex-col">
         <TopBar state={state} drawerOpen={scene.drawerOpen} />
         <div className="flex min-h-0 flex-1">
@@ -714,19 +706,17 @@ function SignupsPage({ signups }: { signups: DashboardDemoSignups }) {
             <Metric key={plan.id} tone={null} label={plan.label} value={String(totals[index])} />
           ))}
         </div>
-        {/* The chart's first three series, dark to light grey. None is the ink, whose solid
-            black bars would outweigh the rest of the page. */}
-        <div className="[--bo-blue-1:#4a4a4a] [--bo-live:#8a8a8a] [--bo-waiting:#c8c8c8] dark:[--bo-blue-1:#d4d4d4] dark:[--bo-live:#a3a3a3] dark:[--bo-waiting:#6b6b6b]">
-          <StackedBarChart
-            ariaLabel="Signups per day by plan"
-            series={signups.plans}
-            buckets={signups.perDay.map((day) => ({
-              id: day.day,
-              label: day.day,
-              values: day.values,
-            }))}
-          />
-        </div>
+        {/* In the app's own series colors: the landing page shows the preview in black and
+            white until it is pointed at, and then in the app's real colors. */}
+        <StackedBarChart
+          ariaLabel="Signups per day by plan"
+          series={signups.plans}
+          buckets={signups.perDay.map((day) => ({
+            id: day.day,
+            label: day.day,
+            values: day.values,
+          }))}
+        />
       </Panel>
       <DataTable
         caption="Latest signups"

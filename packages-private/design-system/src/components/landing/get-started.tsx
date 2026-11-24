@@ -33,14 +33,15 @@ export function LandingGetStarted() {
               Open the app, connect a tool, and describe how a process runs. Your first workflow is
               running in minutes, and you can try it before it touches anything real.
             </p>
-            {/* The page's call to action again, slanted like the header's. Both cards' actions sit
-                at their bottoms, level with each other. */}
+            {/* The page's call to action again, slanted. Both cards' actions sit at their bottoms,
+                level with each other. */}
             <div className="mt-auto pt-10">
               <Link
                 to="/backoffice"
                 className="group inline-flex h-12 items-center gap-2 bg-[#0b0b0a] px-9 text-sm font-semibold text-white no-underline transition-opacity duration-150 outline-none [clip-path:polygon(0.75rem_0,100%_0,calc(100%-0.75rem)_100%,0_100%)] hover:opacity-85 focus-visible:opacity-85"
               >
-                Start automating
+                {/* Trimmed to cap height and baseline, so the letters center in the button. */}
+                <span className="[text-box:trim-both_cap_alphabetic]">Start automating</span>
                 <Icon
                   name="arrow-right"
                   className="size-4 transition-transform duration-150 group-hover:translate-x-0.5"

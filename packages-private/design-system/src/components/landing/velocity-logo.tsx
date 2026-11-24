@@ -23,7 +23,8 @@ export function VelocityLogo({ tone }: { tone: keyof typeof TONE_CLASS_NAMES }) 
       <span
         className={`block size-3 transition-colors duration-150 [clip-path:polygon(0_0,100%_0,50%_100%)] ${toneClassNames.mark}`}
       />
-      Velocity
+      {/* Trimmed to cap height and baseline, so the name centers on the triangle and in a button. */}
+      <span className="[text-box:trim-both_cap_alphabetic]">Velocity</span>
     </span>
   );
 }

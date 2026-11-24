@@ -420,12 +420,19 @@ function CaseCards({ slugs, className }: { slugs: readonly CaseSlug[]; className
         const steps = story.workflows.flatMap((workflow) => workflow.steps);
         const slant: Slant = index === 0 ? "right" : index === slugs.length - 1 ? "left" : "both";
         const slantClassNames = SLANT_CLASS_NAMES[slant];
+        // In two columns, before xl, an odd row's last card would stand alone beside an empty
+        // slot; it fills the row instead, twice as wide and as tall as the pair above it, with its
+        // text block kept a card's width and started as far down.
+        const fillsRow = index === slugs.length - 1 && slugs.length % 2 === 1;
         return (
-          <li key={slug} className={`flex ${slantClassNames.item}`}>
+          <li
+            key={slug}
+            className={`flex ${slantClassNames.item} ${fillsRow ? "sm:col-span-2 xl:col-span-1" : ""}`}
+          >
             {/* Not a link yet: the case pages stay unpublished until they are ready, so the card
                 does not navigate. Hovering still clears its glass, to show the photo. */}
             <div
-              className={`group relative isolate flex min-h-[26rem] w-full flex-col overflow-hidden bg-[#0b0b0a] p-6 text-white sm:aspect-[4/5] sm:min-h-0 xl:block xl:aspect-auto xl:h-[var(--case-height)] xl:pt-[calc(var(--case-height)*0.3)] xl:pb-20 ${slantClassNames.clip} ${slantClassNames.text}`}
+              className={`group relative isolate flex min-h-[26rem] w-full flex-col overflow-hidden bg-[#0b0b0a] p-6 text-white ${fillsRow ? "sm:aspect-[2/1]" : "sm:aspect-square"} sm:min-h-0 xl:block xl:aspect-auto xl:h-[var(--case-height)] xl:pt-[calc(var(--case-height)*0.3)] xl:pb-20 ${slantClassNames.clip} ${slantClassNames.text}`}
             >
               <img
                 src={`${story.image}?auto=format&fit=crop&w=1200&q=70`}
@@ -451,7 +458,7 @@ function CaseCards({ slugs, className }: { slugs: readonly CaseSlug[]; className
                 {story.industry}
               </span>
               <span
-                className={`mt-[30%] mb-auto block pb-8 xl:mt-0 xl:pb-0 ${slantClassNames.body}`}
+                className={`mt-[30%] mb-auto block pb-8 xl:mt-0 xl:pb-0 ${fillsRow ? "sm:mt-[10%] sm:max-w-[calc(50%-3rem)] xl:max-w-none" : "sm:mt-[20%]"} ${slantClassNames.body}`}
               >
                 <span className="font-heading block text-2xl leading-[1.15] font-light tracking-[-0.04em] text-balance">
                   {story.headline}

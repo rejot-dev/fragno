@@ -606,10 +606,14 @@
    so it can drift slowly across it without showing an edge; the line and dots on its summits drift
    with it. How far it overhangs above and below, and how dimmed and softened it is so the copy reads
    over it, belong to each photo and are set where it is chosen. */
-.landing-hero-photo {
+.landing-hero-photo,
+.landing-hero-photo-placeholder {
   position: absolute;
   left: -14%;
   right: -14%;
+}
+
+.landing-hero-photo {
   animation: landing-hero-photo-drift 60s ease-in-out infinite alternate;
 }
 
@@ -660,8 +664,20 @@
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(to right, rgb(0 0 0 / 0.6), rgb(0 0 0 / 0.15) 60%, rgb(0 0 0 / 0.3)),
-    radial-gradient(ellipse at center, transparent 40%, rgb(0 0 0 / 0.55));
+    linear-gradient(to right, rgb(0 0 0 / 0.42), rgb(0 0 0 / 0.1) 60%, rgb(0 0 0 / 0.2)),
+    radial-gradient(ellipse at center, transparent 45%, rgb(0 0 0 / 0.28));
+}
+
+/* Golden-hour sunlight falling on the peaks from the right, and a pale glow in the sky above them.
+   Plain translucent color rather than a blend mode: Safari blends a still layer over the drifting,
+   separately composited photo against nothing, which hides the photo. */
+.landing-hero-photo-sunlight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 45% 55% at 78% 62%, rgb(255 186 110 / 0.32), transparent 72%),
+    radial-gradient(ellipse 70% 60% at 100% 0%, rgb(255 214 160 / 0.16), transparent 70%);
 }
 
 /* A very faint line from summit to summit, a faint dot on each summit, and now and then a single

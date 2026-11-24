@@ -102,12 +102,14 @@ export function LandingHeader() {
   const overDarkSurface = useOverDarkSurface(headerRef);
 
   return (
-    // White with black ink over every surface and in both themes.
+    // Clear with white ink over the page's dark surfaces, blurring what lies behind it so its
+    // items stay legible over the hero's photo and copy. White with black ink over light surfaces,
+    // in both themes.
     <header
       ref={headerRef}
       data-scrolled={scrolled || undefined}
       data-over-dark={overDarkSurface || undefined}
-      className="group/header sticky top-0 z-30 border-b border-transparent bg-white transition-[border-color,box-shadow] duration-400 ease-out [--landing-header-ink:#0b0b0a] data-[scrolled]:border-[color-mix(in_srgb,var(--landing-header-ink)_8%,transparent)] data-[scrolled]:shadow-[0_10px_30px_-20px_rgba(11,11,10,0.35)]"
+      className="group/header sticky top-0 z-30 border-b border-transparent bg-white transition-[border-color,box-shadow,background-color] duration-400 ease-out [--landing-header-ink:#0b0b0a] data-[over-dark]:bg-transparent data-[over-dark]:backdrop-blur-md data-[over-dark]:[--landing-header-ink:#ffffff] data-[scrolled]:border-[color-mix(in_srgb,var(--landing-header-ink)_8%,transparent)] data-[scrolled]:not-data-[over-dark]:shadow-[0_10px_30px_-20px_rgba(11,11,10,0.15)]"
     >
       <div className={containerClassName}>
         <div
@@ -138,26 +140,23 @@ export function LandingHeader() {
             <Link
               to="/backoffice"
               data-header-cell
-              // The header's one call to action: the whole cell, full height, in the ink, its sides
-              // cut on a slant like a pair of slashes, leaning as the wordmark's "y" does (1.85rem over
-              // the 4rem header). The padding leaves room for the slant. It
-              // reaches over the header's bottom border, which would otherwise show white beneath.
-              className={`${navCellBaseClassName} relative h-[calc(100%+1px)] overflow-hidden bg-[var(--landing-header-ink)] px-9 font-normal text-white [clip-path:polygon(1.85rem_0,100%_0,calc(100%-1.85rem)_100%,0_100%)] hover:bg-[color-mix(in_srgb,var(--landing-header-ink)_85%,white)] max-[379px]:px-7`}
+              // The header's one call to action: a cell like the others, framed on both sides from md
+              // up like the logo's, holding an outlined round button in the header's ink, like the
+              // hero's Browse the marketplace. On hover, a ring in the logo's colors runs around it
+              // (landing.css); over the hero it also lightens, while on the white header it stays
+              // white.
+              className={`${navCellBaseClassName} border-l px-4 max-[379px]:px-2.5 md:border-r`}
             >
-              {/* A glint: a streak of light on the button's slant sweeps across once on hover, and
-                  snaps back unseen when the pointer leaves, so it never runs backwards. */}
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 left-0 w-20 -translate-x-[150%] -skew-x-[24.83deg] bg-[linear-gradient(90deg,transparent,rgb(255_255_255/0.35),transparent)] group-hover/link:translate-x-[350%] group-hover/link:transition-transform group-hover/link:duration-700 group-hover/link:ease-out motion-reduce:hidden"
-              />
-              {/* The brand font's ascent is far taller than its caps, so an untrimmed line box
-                  centers the letters below the arrow. Trimmed to the lowercase's height and the
-                  baseline, the arrow centers on the lowercase that makes up most of the label. */}
-              <span className="[text-box:trim-both_ex_alphabetic]">Open app</span>
-              <Icon
-                name="arrow-right"
-                className="size-3.5 transition-transform duration-150 group-hover/link:translate-x-0.5 max-[379px]:hidden"
-              />
+              <span className="landing-rainbow-ring inline-flex h-12 items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--landing-header-ink)_30%,transparent)] px-6 text-sm font-semibold text-[var(--landing-header-ink)] transition-colors duration-150 group-data-[over-dark]/header:group-hover/link:bg-[color-mix(in_srgb,var(--landing-header-ink)_10%,transparent)] max-[379px]:px-3">
+                {/* The font's ascent is far taller than its caps, so an untrimmed line box centers
+                    the letters low. Trimmed to cap height and baseline, the letters center in the
+                    button and on the arrow, as in every round button on the page. */}
+                <span className="[text-box:trim-both_cap_alphabetic]">Open app</span>
+                <Icon
+                  name="arrow-right"
+                  className="size-3.5 transition-transform duration-150 group-hover/link:translate-x-0.5 max-[379px]:hidden"
+                />
+              </span>
             </Link>
           </nav>
         </div>
@@ -195,9 +194,8 @@ export function LandingColumnLines() {
         <LandingColumns className="h-full">
           <span className={`border-x ${heroLineClassName}`} />
           <span />
-          {/* The call to action's slant ends the row, so its cell gets no line on the right. */}
           <span className={`border-l ${heroLineClassName}`} />
-          <span className={`border-l ${heroLineClassName}`} />
+          <span className={`border-x ${heroLineClassName}`} />
         </LandingColumns>
       </div>
     </div>

@@ -192,12 +192,12 @@ export function LandingTools() {
                       ) : (
                         <Button
                           variant="secondary"
-                          className="min-h-9 rounded-[6px] border border-[color-mix(in_srgb,var(--bo-fg)_18%,transparent)] bg-transparent px-3 text-xs shadow-none hover:bg-[color-mix(in_srgb,var(--bo-fg)_6%,transparent)]"
+                          className="min-h-12 rounded-full border border-[color-mix(in_srgb,var(--bo-fg)_18%,transparent)] bg-transparent px-6 text-xs shadow-none hover:bg-[color-mix(in_srgb,var(--bo-fg)_6%,transparent)]"
                           onClick={() => {
                             setInstalled((current) => new Set(current).add(pkg.slug));
                           }}
                         >
-                          Install
+                          <span className="[text-box:trim-both_cap_alphabetic]">Install</span>
                         </Button>
                       )}
                     </div>
