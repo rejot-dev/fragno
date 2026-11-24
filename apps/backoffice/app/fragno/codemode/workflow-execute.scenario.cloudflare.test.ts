@@ -56,19 +56,14 @@ for (const caller of ["runner", "wrapper"] as const) {
       { name: workflowName },
       caller === "runner"
         ? defineCodemodeWorkflowRun(testWorkflowProgram(code), codemode, options)
-        : async (event, remote) => {
-            const output = await runBackofficeCodemodeWorkflow({
+        : async (event, remote) =>
+            await runBackofficeCodemodeWorkflow({
               program: testWorkflowProgram(code),
               event,
               remote,
               codemode,
               ...options,
-            });
-            if (output.error) {
-              throw new Error(output.error);
-            }
-            return output.result;
-          },
+            }),
     );
     await runScenario(
       defineScenario({

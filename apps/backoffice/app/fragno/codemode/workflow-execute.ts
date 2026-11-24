@@ -27,10 +27,6 @@ import { createBackofficeCodemodeRunTools } from "./execute";
 import { BackofficeWorkflowStepHost } from "./workflow-host";
 import type { CodemodeWorkflowProgram } from "./workflow-program";
 
-export type BackofficeCodemodeWorkflowResult<TOutput = unknown> = {
-  result?: TOutput;
-  error?: string;
-};
 type CodemodeWorkflowEvent<TParams> = WorkflowEvent<TParams> & { id?: string };
 
 export type BackofficeCodemodeWorkflowOptions = {
@@ -104,21 +100,15 @@ function workflowTickOutput(
   return completion.value;
 }
 
-/** Runs one activation; guest errors become the result, while suspensions and interruptions reach the runner. */
+/**
+ * Runs one activation for the runner. A guest error is thrown as the guest threw it, its class name
+ * included, which the run keeps as the one its last failed step kept.
+ */
 export async function runBackofficeCodemodeWorkflow<TParams = unknown, TOutput = unknown>(
   input: WorkflowExecutionInput<TParams>,
-): Promise<BackofficeCodemodeWorkflowResult<TOutput>> {
-  let completion;
-  try {
-    completion = await runCodemodeWorkflowTick(input);
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
-  }
-  if (completion.status === "failed") {
-    return { error: decodeCodemodeError(completion.error).message };
-  }
+): Promise<TOutput> {
   // Workflow output remains opaque until the runner's registered output schema validates it.
-  return { result: workflowTickOutput(completion, input.remote) as TOutput };
+  return workflowTickOutput(await runCodemodeWorkflowTick(input), input.remote) as TOutput;
 }
 
 /** Re-evaluates the workflow program on each runner tick using Node-owned checkpoints. */
@@ -128,8 +118,11 @@ export function defineCodemodeWorkflowRun<TParams = unknown, TOutput = unknown>(
   options: BackofficeCodemodeWorkflowOptions,
 ): RemoteWorkflowRunFn<TParams, TOutput> {
   return async (event, remote) =>
-    workflowTickOutput(
-      await runCodemodeWorkflowTick({ program, event, remote, codemode, ...options }),
+    await runBackofficeCodemodeWorkflow<TParams, TOutput>({
+      program,
+      event,
       remote,
-    ) as TOutput;
+      codemode,
+      ...options,
+    });
 }

@@ -550,7 +550,7 @@ describe("Pi codemode tool", () => {
     const stateBackend = createTestStateBackend();
     const workflow = defineRemoteWorkflow({ name: "codemode-script" }, async (event, remote) => {
       const params = codemodeWorkflowParamsSchema.parse(event.payload);
-      const result = await runBackofficeCodemodeWorkflow({
+      return await runBackofficeCodemodeWorkflow({
         program: params.program,
         dependencies: params.program.dependencies,
         event: {
@@ -568,10 +568,6 @@ describe("Pi codemode tool", () => {
           runtimes: { state: stateBackend },
         }),
       });
-      if (result.error) {
-        throw new Error(result.error);
-      }
-      return result.result;
     });
     const harness = await createWorkflowsTestHarness({
       workflows: { PI_CODEMODE_SCRIPT: workflow },

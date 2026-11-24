@@ -174,7 +174,7 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
         }),
         import("./codemode"),
       ]);
-      const result = await executeWorkflowCodemodeAutomation({
+      return await executeWorkflowCodemodeAutomation({
         program: params.program,
         dependencies: params.program.dependencies,
         context,
@@ -196,10 +196,5 @@ export const defineCodemodeWorkflow = (config: CodemodeWorkflowConfig) =>
         },
         remote,
       });
-
-      if (result.exitCode !== 0) {
-        throw new Error(result.stderr || "Codemode workflow failed.");
-      }
-      return result.result;
     },
   );
