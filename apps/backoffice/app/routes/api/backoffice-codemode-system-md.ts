@@ -16,7 +16,7 @@ const readOrgSystemGuidance = async ({
 }) => {
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   const state = createRuntimeStateBackend({ runtime, kernel, execution });
-  return await renderCodemodeSystemPrompt({ state });
+  return await renderCodemodeSystemPrompt({ audience: "in-app", state });
 };
 
 export async function loader({ request, context, params }: Route.LoaderArgs) {

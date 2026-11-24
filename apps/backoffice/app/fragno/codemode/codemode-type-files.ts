@@ -211,6 +211,17 @@ export function createCodemodeStaticTypeFiles({
   ];
 }
 
+/** Names the codemode globals and where providers are declared, for a description an agent sees first. */
+export function renderCodemodeGlobalsSummary(families: readonly BackofficeRuntimeToolFamily[]) {
+  const providers = [
+    ...groupReferencesByNamespace(getCodemodeRuntimeToolReferences(families)).keys(),
+  ];
+  return (
+    `Globals: context, ${providers.join(", ")}. ` +
+    `Each provider is declared in ${CODEMODE_PROVIDER_TYPES_DIR_PATH}/<name>.d.ts; read one with state.readFile({ path }).`
+  );
+}
+
 /** Generates the complete codemode declaration set for tests and in-memory consumers. */
 export function createCodemodeTypeFiles({
   families,

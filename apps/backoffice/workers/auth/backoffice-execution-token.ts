@@ -3,10 +3,16 @@ import type {
   AppInstallationExternalAccount,
   AppInstallationResourceScope,
 } from "@fragno-dev/backoffice-api/v0/apps";
-import { backofficeScopeRootOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import {
+  backofficeScopeRootOwner,
+  type BackofficeUserContextScope,
+} from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { z } from "zod";
+
+import { requireMcpAuth } from "@better-auth/mcp";
+import { createResourceServerChallenge } from "@better-auth/oauth-provider";
 
 import {
   appInstallationReaches,
@@ -19,6 +25,12 @@ import {
   type BackofficeExecutionTokenExchangeInput,
   type BackofficeExecutionTokenResult,
 } from "@/fragno/auth/execution-token";
+import {
+  LEYWAY_MCP_OAUTH_SCOPE,
+  LEYWAY_MCP_OAUTH_SCOPES,
+  LEYWAY_MCP_PATH,
+  type LeywayMcpRequestAuthorization,
+} from "@/fragno/auth/mcp-oauth";
 import { issueBackofficeJwt, issueInstalledAppJwt } from "@/fragno/auth/token-lifecycle";
 
 import {
@@ -99,6 +111,28 @@ async function verifyBackofficeOAuthAccessToken(
   }
 }
 
+async function authorizeOAuthUserConsent(
+  authContext: BetterAuthContext,
+  payload: z.infer<typeof backofficeOAuthAccessTokenPayloadSchema>,
+) {
+  try {
+    await requireBackofficeOAuthConsent(authContext.adapter, {
+      userId: payload.sub,
+      clientId: payload.client_id,
+      scopes: payload.scope.split(/\s+/),
+      requestedUserInfoClaims: [],
+    });
+  } catch (error) {
+    if (error instanceof APIError) {
+      throw new BackofficeExecutionTokenAuthenticationError(
+        "Backoffice execution OAuth consent is missing or has been revoked.",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+}
+
 /** Exchanges OAuth identity for scoped execution authority under an explicit server client policy. */
 export async function exchangeBackofficeExecutionToken(
   auth: BetterAuthInstance,
@@ -117,22 +151,7 @@ export async function exchangeBackofficeExecutionToken(
   // Client-credentials tokens name the client as their subject; they carry no user or consent.
   const userId = payload.sub === payload.client_id ? null : payload.sub;
   if (userId !== null) {
-    try {
-      await requireBackofficeOAuthConsent(authContext.adapter, {
-        userId,
-        clientId: payload.client_id,
-        scopes: payload.scope.split(/\s+/),
-        requestedUserInfoClaims: [],
-      });
-    } catch (error) {
-      if (error instanceof APIError) {
-        throw new BackofficeExecutionTokenAuthenticationError(
-          "Backoffice execution OAuth consent is missing or has been revoked.",
-          { cause: error },
-        );
-      }
-      throw error;
-    }
+    await authorizeOAuthUserConsent(authContext, payload);
   }
   if (policy.kind === "installed-app") {
     return await exchangeInstalledAppToken(
@@ -150,10 +169,96 @@ export async function exchangeBackofficeExecutionToken(
   return await exchangeFirstPartyUserToken(authContext, input, userId, dependencies);
 }
 
+/**
+ * Better Auth verifies the MCP request's Bearer or DPoP access token and answers invalid ones with
+ * its sign-in challenge. Access tokens outlive revocation, so the client and consent are checked
+ * live; the run then starts in the user's personal workspace.
+ */
+export async function authorizeMcpRequest(
+  auth: BetterAuthInstance,
+  request: Request,
+  dependencies: Pick<BackofficeExecutionTokenDependencies, "resolveUserGrant"> & {
+    isOAuthClientEnabled(clientId: string): Promise<boolean>;
+  },
+): Promise<LeywayMcpRequestAuthorization> {
+  const { origin } = new URL(request.url);
+  const resource = new URL(LEYWAY_MCP_PATH, origin).href;
+  const challengeScopes = [...LEYWAY_MCP_OAUTH_SCOPES];
+  const authorized: { scope: BackofficeUserContextScope | null } = { scope: null };
+  let response: Response;
+  try {
+    response = await requireMcpAuth(
+      auth,
+      async (_request, claims) => {
+        authorized.scope = await authorizeMcpUser(
+          await auth.$context,
+          backofficeOAuthAccessTokenPayloadSchema.parse(claims),
+          dependencies,
+        );
+        return new Response(null, { status: 204 });
+      },
+      // Auth signs tokens as the origin, not Better Auth's `/api/auth` base URL.
+      { resource, issuer: origin, requiredScopes: [LEYWAY_MCP_OAUTH_SCOPE], challengeScopes },
+    )(request);
+  } catch (error) {
+    if (error instanceof BackofficeExecutionTokenAuthenticationError) {
+      const challenge = createResourceServerChallenge(
+        new APIError("UNAUTHORIZED", { error: "invalid_token", error_description: error.message }),
+        resource,
+        { challengeScopes, request },
+      );
+      if (!challenge) {
+        throw new Error("Better Auth answers every unauthorized request with a challenge.", {
+          cause: error,
+        });
+      }
+      response = Response.json(challenge.body, {
+        status: challenge.statusCode,
+        headers: challenge.headers,
+      });
+    } else if (error instanceof BackofficeExecutionTokenScopeError) {
+      response = Response.json({ error: "forbidden", message: error.message }, { status: 403 });
+    } else {
+      throw error;
+    }
+  }
+  if (authorized.scope !== null) {
+    return { kind: "authorized", scope: authorized.scope };
+  }
+  return {
+    kind: "rejected",
+    status: response.status,
+    headers: [...response.headers],
+    body: await response.text(),
+  };
+}
+
+async function authorizeMcpUser(
+  authContext: BetterAuthContext,
+  payload: z.infer<typeof backofficeOAuthAccessTokenPayloadSchema>,
+  dependencies: Parameters<typeof authorizeMcpRequest>[2],
+) {
+  if (!(await dependencies.isOAuthClientEnabled(payload.client_id))) {
+    throw new BackofficeExecutionTokenAuthenticationError("This MCP client has been disabled.");
+  }
+  await authorizeOAuthUserConsent(authContext, payload);
+  const authority = await resolveUserAuthority(
+    authContext,
+    { userId: payload.sub, scope: null, organizationSelection: "preferred" },
+    dependencies,
+  );
+  if (!authority.personalScope) {
+    throw new BackofficeExecutionTokenScopeError(
+      "Finish setting up Leyway in the browser before running Codemode.",
+    );
+  }
+  return authority.personalScope;
+}
+
 async function resolveUserAuthority(
   authContext: BetterAuthContext,
   input: Parameters<ResolveBackofficeUserTokenGrant>[1],
-  dependencies: BackofficeExecutionTokenDependencies,
+  dependencies: Pick<BackofficeExecutionTokenDependencies, "resolveUserGrant">,
 ): Promise<BackofficeUserTokenAuthority> {
   try {
     return await dependencies.resolveUserGrant(authContext.adapter, input);

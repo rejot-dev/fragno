@@ -3,14 +3,21 @@ import { APIError } from "better-auth/api";
 
 import { Cursor, decodeCursor } from "@fragno-dev/db";
 
+import { cimd } from "@better-auth/cimd";
+import { mcp } from "@better-auth/mcp";
 import {
   DEVICE_CODE_GRANT_TYPE,
   oauthDeviceAuthorization,
-  oauthProvider,
+  type ClientMetadataResourceFetch,
   type OAuthClientAdministrativeResponse,
 } from "@better-auth/oauth-provider";
 
 import type { LeywayCliOAuthConfig } from "@/fragno/auth/contracts";
+import {
+  LEYWAY_MCP_OAUTH_SCOPE,
+  LEYWAY_MCP_OAUTH_SCOPES,
+  LEYWAY_MCP_PATH,
+} from "@/fragno/auth/mcp-oauth";
 import {
   BACKOFFICE_CLIENT_CREDENTIALS_SCOPES,
   BACKOFFICE_OAUTH_SCOPES,
@@ -225,17 +232,43 @@ async function loadBackofficeCodemodeOAuth(
   return { authContext, client };
 }
 
-/** Restricts managed OAuth client operations using live global administrator authority. */
+/**
+ * Restricts managed OAuth client operations using live global administrator authority.
+ *
+ * MCP clients identify themselves with Client ID Metadata Documents fetched through
+ * `fetchClientMetadataResource`, which is null where the runtime has no fetch limited to public
+ * addresses; there, MCP clients cannot sign in. Dynamic client registration stays off: MCP
+ * 2026-07-28 replaced it with Client ID Metadata Documents.
+ */
 export function createBackofficeOAuthPlugins(input: {
+  baseURL: string;
   isUserAdministrator: ((userId: string) => Promise<boolean>) | null;
+  fetchClientMetadataResource: ClientMetadataResourceFetch | null;
 }): BetterAuthPlugin[] {
   return [
-    oauthProvider({
+    // The OAuth provider for every client, which also binds tokens to and describes the MCP resource.
+    mcp({
+      resource: new URL(LEYWAY_MCP_PATH, input.baseURL).href,
       loginPage: "/backoffice/login",
       consentPage: "/backoffice/oauth/consent",
-      scopes: [...BACKOFFICE_OAUTH_SCOPES],
+      scopes: [...BACKOFFICE_OAUTH_SCOPES, LEYWAY_MCP_OAUTH_SCOPE],
+      // The MCP resource's discovery document lists these, less identity scopes, and MCP clients
+      // without a challenge scope request them all. `backoffice` stays supported but unadvertised:
+      // metadata-document clients cannot receive it, and the clients that use it already know it.
+      advertisedMetadata: {
+        scopes_supported: [
+          ...BACKOFFICE_OAUTH_SCOPES.filter((scope) => scope !== "backoffice"),
+          LEYWAY_MCP_OAUTH_SCOPE,
+        ],
+      },
       enforcePerClientResources: false,
+      // mcp() lets a rotated refresh token work again for 30 seconds, for clients that refresh
+      // concurrently, and the option covers every client here: the CLI, apps, and devices too.
+      // Rotated tokens stay single-use, so a replayed one counts as reuse.
+      refreshTokenReuseInterval: 0,
       allowDynamicClientRegistration: false,
+      // Metadata-document clients receive exactly these scopes, whatever their document asks for.
+      clientRegistrationDefaultScopes: [...LEYWAY_MCP_OAUTH_SCOPES],
       customTokenResponseFields: enforceBackofficeOAuthTokenResponseConsent,
       clientPrivileges: async function authorizeOAuthClientManagement({ action, user }) {
         if (!user) {
@@ -256,6 +289,14 @@ export function createBackofficeOAuthPlugins(input: {
       verificationUri: "/backoffice/device",
       generateUserCode: generateBackofficeDeviceUserCode,
     }),
+    ...(input.fetchClientMetadataResource === null
+      ? []
+      : [
+          cimd({
+            fetchClientMetadataResource: input.fetchClientMetadataResource,
+            metadataProfile: "mcp-2026-07-28",
+          }),
+        ]),
   ];
 }
 

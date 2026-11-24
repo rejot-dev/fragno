@@ -26,6 +26,11 @@ import {
   BACKOFFICE_TOKEN_EXPIRED_CODE,
 } from "@/fragno/auth/contracts";
 import {
+  LEYWAY_MCP_PATH,
+  LEYWAY_MCP_RESOURCE_METADATA_PATH,
+  LEYWAY_OAUTH_SERVER_METADATA_PATH,
+} from "@/fragno/auth/mcp-oauth";
+import {
   ACCESS_TOKEN_AUDIENCE,
   verifyBackofficeApiCredential,
   verifyPiAgentWatchTicket,
@@ -300,8 +305,18 @@ function createVersionRouter<TApi extends BackofficeApi>(
   return router;
 }
 
-/** Serves `/api/<version>/…`; every other path belongs to React Router. */
 export const backofficeApiRouter = new Hono<{ Bindings: BackofficeApiBindings }>()
+  // Auth's OAuth provider serves both discovery documents.
+  .get(LEYWAY_MCP_RESOURCE_METADATA_PATH, (c) =>
+    c.env.runtime.objects.auth.singleton().http.fetch(c.req.raw),
+  )
+  .get(LEYWAY_OAUTH_SERVER_METADATA_PATH, (c) =>
+    c.env.runtime.objects.auth.singleton().http.fetch(c.req.raw),
+  )
+  .all(LEYWAY_MCP_PATH, async (c) => {
+    const { serveLeywayMcp } = await import("./leyway-mcp");
+    return await serveLeywayMcp(c.req.raw, c.env);
+  })
   .route(`/api/${backofficeApiV0.version}/provisioning`, backofficeProvisioningRouter)
   .route(
     `/api/${backofficeApiV0.version}`,

@@ -29,7 +29,6 @@ CREATE TABLE "session" (
 
 CREATE TABLE "account" (
   "id" text NOT NULL PRIMARY KEY,
-  "issuer" text NOT NULL,
   "accountId" text NOT NULL,
   "providerId" text NOT NULL,
   "userId" text NOT NULL REFERENCES "user" ("id") ON DELETE CASCADE,
@@ -273,8 +272,6 @@ CREATE INDEX "oauthAccessToken_refreshId_idx" ON "oauthAccessToken" ("refreshId"
 CREATE INDEX "oauthConsent_clientId_idx" ON "oauthConsent" ("clientId");
 
 CREATE INDEX "oauthConsent_userId_idx" ON "oauthConsent" ("userId");
-
-CREATE UNIQUE INDEX "account_issuer_accountId_uidx" ON "account" ("issuer", "accountId");
 
 CREATE UNIQUE INDEX "oauthClientResource_clientId_resourceId_uidx" ON "oauthClientResource" ("clientId", "resourceId");
 

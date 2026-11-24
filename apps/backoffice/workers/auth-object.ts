@@ -106,6 +106,10 @@ import {
   type BackofficeExecutionTokenResult,
 } from "@/fragno/auth/execution-token";
 import {
+  leywayMcpRequestCredentialsSchema,
+  type LeywayMcpRequestCredentials,
+} from "@/fragno/auth/mcp-oauth";
+import {
   backofficeOAuthClientCreateInputSchema,
   backofficeOAuthClientListInputSchema,
   backofficeOAuthClientRotateSecretInputSchema,
@@ -149,6 +153,7 @@ import { BACKOFFICE_LOGIN_PATH } from "@/routes/backoffice/auth-navigation";
 
 import {
   authenticateInstalledAppClient,
+  authorizeMcpRequest,
   exchangeBackofficeExecutionToken,
 } from "./auth/backoffice-execution-token";
 import {
@@ -1022,11 +1027,16 @@ export class AuthObject implements AuthCommands {
     // Follow the origin, not the build mode: `pnpm preview` serves a production build over HTTP.
     const secureCookies = new URL(baseURL).protocol === "https:";
     const objects = runtime.objects;
+    const { webFetch } = runtime;
     const schemaPlugins = createBackofficeBetterAuthSchemaPlugins({
       baseURL,
       isUserAdministrator: async (userId) => await this.#isUserAdministrator(userId),
       listFirstPartyOAuthClientIds: async () =>
         await objects.apps.singleton().commands.listFirstPartyOAuthClientIds(),
+      // Client metadata documents must not redirect. Workers reject the `redirect: "error"` that
+      // Better Auth asks for, so redirects come back unfollowed and fail as non-200 responses.
+      fetchClientMetadataResource:
+        webFetch && (async (input, init) => await webFetch(input, { ...init, redirect: "manual" })),
       organizationHooks: {
         async beforeCreateOrganization({ organization: nextOrganization, user }) {
           return {
@@ -1667,6 +1677,27 @@ export class AuthObject implements AuthCommands {
     const auth = this.#getAuth(new URL(parsed.requestUrl).origin);
     return await authenticateInstalledAppClient(auth, parsed, {
       resolveClientPolicy: this.#resolveOAuthClientPolicy(auth, parsed.requestUrl),
+    });
+  }
+
+  async authorizeMcpRequest(input: LeywayMcpRequestCredentials) {
+    const { url, method, authorization, dpop } = leywayMcpRequestCredentialsSchema.parse(input);
+    await this.#ready;
+    const headers = new Headers();
+    if (authorization !== null) {
+      headers.set("authorization", authorization);
+    }
+    if (dpop !== null) {
+      headers.set("dpop", dpop);
+    }
+    const auth = this.#getAuth(new URL(url).origin);
+    return await authorizeMcpRequest(auth, new Request(url, { method, headers }), {
+      async isOAuthClientEnabled(clientId) {
+        const client = await getBackofficeOAuthClientFacts(auth, clientId);
+        return client !== null && !client.disabled;
+      },
+      resolveUserGrant: (adapter, input) =>
+        resolveBackofficeUserTokenGrant(adapter, this.#database, input),
     });
   }
 

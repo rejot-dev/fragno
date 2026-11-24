@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import { callBetterAuth } from "@/fragno/auth/auth-server";
 import { requireBackofficeBrowserSession } from "@/fragno/auth/browser-session.server";
+import { LEYWAY_MCP_OAUTH_SCOPE } from "@/fragno/auth/mcp-oauth";
 import { backofficeOAuthConsentDetailsSchema } from "@/fragno/auth/oauth-consent";
 
 import type { Route } from "./+types/oauth-consent";
@@ -129,9 +130,9 @@ export default function BackofficeOAuthConsent({
           </ul>
         </div>
         <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
-          Approval allows this client to use the scopes and any additional requests listed here. It
-          does not install an app or approve organization permissions; an app can act in an
-          organization only after an owner or admin installs it there.
+          {consent.scopes.includes(LEYWAY_MCP_OAUTH_SCOPE)
+            ? "Approval allows this MCP client to run Codemode as you, including in the Leyway workspaces you can access."
+            : "Approval allows this client to use the scopes and any additional requests listed here. It does not install an app or approve organization permissions; an app can act in an organization only after an owner or admin installs it there."}
         </p>
         {consent.resources.length > 0 ? (
           <div className="text-xs text-[var(--bo-muted)]">

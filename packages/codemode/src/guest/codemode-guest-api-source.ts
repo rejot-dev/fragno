@@ -103,20 +103,30 @@ export function createCodemodeProviderGlobalsSource(
     .join("\n");
 }
 
-/** Generates provider proxies; host implementations remain behind the injected dispatchers. */
+/**
+ * Generates provider proxies; host implementations remain behind the injected dispatchers. A
+ * provider's own keys are its advertised tools, so a program can list them with `Object.keys`; other
+ * names still reach the dispatcher, which reports them as unknown.
+ */
 export function createCodemodeProviderProxySource(providers: readonly ResolvedProvider[]): string {
   return [
+    String.raw`
+    const __codemodeProvider = (providerName, toolNames) => {
+      const tool = (toolName) => async (...args) => {
+        // Read at each call: a workflow guest installs its dispatchers after defining providers.
+        const data = await __dispatchers[providerName].call(toolName, args);
+        if (data.status === "error") __throwCodemodeProviderError(data.error);
+        return data.value;
+      };
+      return new Proxy(Object.fromEntries(toolNames.map((toolName) => [toolName, tool(toolName)])), {
+        get: (tools, toolName) => Object.hasOwn(tools, toolName) ? tools[toolName] : tool(String(toolName)),
+      });
+    };`,
     ...providers
       .filter((provider) => !CODEMODE_INTERNAL_PROVIDER_NAMES.has(provider.name))
       .map(
         (provider) =>
-          `    const ${provider.name} = new Proxy({}, {\n` +
-          `      get: (_, toolName) => async (...args) => {\n` +
-          `        const data = await __dispatchers.${provider.name}.call(String(toolName), args);\n` +
-          `        if (data.status === "error") __throwCodemodeProviderError(data.error);\n` +
-          `        return data.value;\n` +
-          `      }\n` +
-          `    });`,
+          `    const ${provider.name} = __codemodeProvider(${JSON.stringify(provider.name)}, ${JSON.stringify(Object.keys(provider.fns))});`,
       ),
     ...(providers.some((provider) => provider.name === "__context")
       ? [createScopedContextProxySource()]

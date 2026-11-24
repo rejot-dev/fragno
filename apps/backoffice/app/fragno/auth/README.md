@@ -223,6 +223,26 @@ their own `app:<appId>` source. `admin` and `internal` tools are never exposed; 
 wait for real Browser Run result schemas in their fragment. Byte-oriented operations exchange base64
 through v0 adapters (`app/backoffice-api/v0-adapters.ts`) until dedicated file transfer APIs exist.
 
+## Remote MCP
+
+Connect an MCP client to `/api/v0/mcp` on your Leyway server. Clients on protocol revision
+2026-07-28 use its stateless requests; clients on 2025-11-25, such as pi, connect with `initialize`
+and each of their requests is answered on its own. Better Auth's MCP plugin (`@better-auth/mcp`) is
+Auth's OAuth provider and publishes the resource's discovery metadata. The client identifies itself
+with a Client ID Metadata Document (its `client_id` is the document's HTTPS URL) and opens browser
+sign-in and consent with OAuth authorization code and PKCE. Dynamic client registration is off. Auth
+fetches metadata documents through the runtime's public `webFetch`, so a runtime without one cannot
+serve MCP clients. Every metadata-document client gets only the MCP scopes.
+
+Access tokens are bound to the MCP resource, as Bearer tokens or, for clients that use DPoP, to the
+client's key. Auth verifies each request with Better Auth's `requireMcpAuth`, then checks that the
+client is enabled and the consent current, since access tokens outlive revocation.
+
+The `codemode` tool starts each run in the user's personal workspace. Read
+`leyway://codemode/SYSTEM.md` for the available tools and context handles. Use `account.orgsList()`
+to find organization IDs and `context.org(organizationId).projects.list({})` to list projects in an
+organization the user can access. Users can revoke MCP access from Authorized applications.
+
 ## Browser consent and revocation
 
 `/backoffice/device` handles first-party device approval; `/backoffice/oauth/consent` handles

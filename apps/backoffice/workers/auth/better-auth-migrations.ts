@@ -3,7 +3,7 @@ import { sql, type Kysely } from "kysely";
 import betterAuthSchemaSql from "./migrations/better-auth.sql?raw";
 
 /** Current application-owned Better Auth schema version stored by the Auth Durable Object. */
-export const BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION = "better-auth-v4";
+export const BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION = "better-auth-v5";
 
 function readBetterAuthGeneratedMigrationStatements(migrationSql: string): string[] {
   const trimmedMigration = migrationSql.trim();
@@ -42,6 +42,17 @@ async function addJurisdictionsAndOnboarding<Database>(database: Kysely<Database
   await sql`ALTER TABLE "organization" ADD COLUMN "jurisdiction" text`.execute(database);
 }
 
+/**
+ * v5 drops the account issuer that Better Auth 1.7.0 through 1.7.2 required and 1.7.3 stopped
+ * writing; a required column it never fills would reject every new account. Every earlier version
+ * was created by 1.7.1, so each has the column and its index.
+ * https://www.better-auth.com/docs/guides/1-7-upgrade-guide#account-identity-keeps-the-provider-key
+ */
+async function dropAccountIssuer<Database>(database: Kysely<Database>): Promise<void> {
+  await sql`DROP INDEX "account_issuer_accountId_uidx"`.execute(database);
+  await sql`ALTER TABLE "account" DROP COLUMN "issuer"`.execute(database);
+}
+
 /** Applies the committed Better Auth SQL schema to a fresh database, or upgrades an older one. */
 export async function applyBackofficeBetterAuthSchemaMigrations<Database>(
   database: Kysely<Database>,
@@ -56,9 +67,14 @@ export async function applyBackofficeBetterAuthSchemaMigrations<Database>(
     case "better-auth-v2":
       await addManagingOrganization(database);
       await addJurisdictionsAndOnboarding(database);
+      await dropAccountIssuer(database);
       return;
     case "better-auth-v3":
       await addJurisdictionsAndOnboarding(database);
+      await dropAccountIssuer(database);
+      return;
+    case "better-auth-v4":
+      await dropAccountIssuer(database);
       return;
     case null:
       for (const statement of readBetterAuthGeneratedMigrationStatements(betterAuthSchemaSql)) {

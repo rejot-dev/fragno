@@ -6,10 +6,24 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import {
+  Client,
+  DpopSession,
+  StreamableHTTPClientTransport,
+  UnauthorizedError,
+  type OAuthClientMetadata,
+  type OAuthClientProvider,
+  type StoredOAuthClientInformation,
+  type StoredOAuthTokens,
+  type VersionNegotiationOptions,
+} from "@modelcontextprotocol/client";
+
+import { backofficeApiRouter } from "@/backoffice-api/backoffice-api-router";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { requireBackofficeContext } from "@/fragno/auth/backoffice-principal.server";
 import { backofficeExecutionTokenResultSchema } from "@/fragno/auth/execution-token";
+import { LEYWAY_MCP_PATH, LEYWAY_MCP_RESOURCE_METADATA_PATH } from "@/fragno/auth/mcp-oauth";
 import {
   BACKOFFICE_JWT_LIFETIME_SECONDS,
   verifyBackofficeJwt,
@@ -25,6 +39,7 @@ import { AppInstallationsObject } from "../../../workers/app-installations-objec
 import { AppsObject } from "../../../workers/apps-object";
 import { AuthObject } from "../../../workers/auth-object";
 import { AutomationsObject } from "../../../workers/automations-object";
+import { CodemodeObject } from "../../../workers/codemode-object";
 import { OtpObject } from "../../../workers/otp-object";
 import { UploadObject } from "../../../workers/upload-object";
 import { action } from "./backoffice-execution-token";
@@ -34,6 +49,7 @@ const scenarioObjects = {
   APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
+  CODEMODE: (input) => new CodemodeObject(input),
   OTP: (input) => new OtpObject(input),
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
@@ -41,6 +57,25 @@ const scenarioObjects = {
 const wholeOrganization = { kind: "owner" } as const;
 
 const origin = "https://backoffice.example";
+const mcpClientRedirectUri = "http://127.0.0.1:48526/callback";
+const mcpClientMetadata = {
+  client_id: "https://mcp-client.test/oauth/client.json",
+  client_name: "Scenario MCP client",
+  redirect_uris: [mcpClientRedirectUri],
+  grant_types: ["authorization_code", "refresh_token"],
+  response_types: ["code"],
+  token_endpoint_auth_method: "none",
+};
+// Shaped like pi's document: a native client whose loopback callback takes any port.
+const piClientMetadata = {
+  client_id: "https://pi-client.test/oauth/client.json",
+  client_name: "pi",
+  application_type: "native",
+  redirect_uris: ["http://127.0.0.1/callback", "http://localhost/callback"],
+  grant_types: ["authorization_code", "refresh_token"],
+  response_types: ["code"],
+  token_endpoint_auth_method: "none",
+};
 const deviceGrant = "urn:ietf:params:oauth:grant-type:device_code";
 
 /** The signed-up user's session, captured by the scenario's sign-up step. */
@@ -146,6 +181,107 @@ async function requestExecutionToken(
   });
 }
 
+function mcpGatewayFetch(ctx: BackofficeScenarioContext, request: Request) {
+  const runtime = ctx.runtime.services;
+  return backofficeApiRouter.fetch(request, { runtime, kernel: new BackofficeKernel(runtime) });
+}
+
+/**
+ * Signs an MCP client in the way MCP clients do: discovery from its first rejected request, browser
+ * approval on the consent page, and the callback; then connects it.
+ */
+async function connectMcpClient(
+  ctx: BackofficeScenarioContext,
+  input: {
+    metadata: OAuthClientMetadata & { client_id: string };
+    redirectUri: string;
+    dpop: DpopSession | null;
+    versionNegotiation: VersionNegotiationOptions;
+  },
+) {
+  const endpoint = new URL(LEYWAY_MCP_PATH, origin);
+  const flow: {
+    authorization: URL | null;
+    tokens: StoredOAuthTokens | undefined;
+    clientInformation: StoredOAuthClientInformation | undefined;
+    codeVerifier: string;
+  } = { authorization: null, tokens: undefined, clientInformation: undefined, codeVerifier: "" };
+  const authProvider: OAuthClientProvider = {
+    redirectUrl: input.redirectUri,
+    clientMetadataUrl: input.metadata.client_id,
+    clientMetadata: input.metadata,
+    clientInformation: () => flow.clientInformation,
+    saveClientInformation: (value) => {
+      flow.clientInformation = value;
+    },
+    tokens: () => flow.tokens,
+    saveTokens: (value) => {
+      flow.tokens = value;
+    },
+    redirectToAuthorization: (url) => {
+      flow.authorization = url;
+    },
+    state: () => "scenario-mcp-state",
+    codeVerifier: () => flow.codeVerifier,
+    saveCodeVerifier: (value) => {
+      flow.codeVerifier = value;
+    },
+    dpop: () => input.dpop ?? undefined,
+  };
+  function createTransport() {
+    return new StreamableHTTPClientTransport(endpoint, {
+      authProvider,
+      fetch: async (url, init) => {
+        const request = new Request(url, init);
+        return new URL(request.url).pathname.startsWith("/api/auth/")
+          ? await ctx.runtime.objects.auth.singleton().http.fetch(request)
+          : await mcpGatewayFetch(ctx, request);
+      },
+    });
+  }
+  const client = new Client(
+    { name: "leyway-mcp-test", version: "1.0.0" },
+    { versionNegotiation: input.versionNegotiation },
+  );
+  const transport = createTransport();
+  await expect(client.connect(transport)).rejects.toBeInstanceOf(UnauthorizedError);
+  const authorization = flow.authorization;
+  assert(authorization);
+  assert.equal(authorization.searchParams.get("client_id"), input.metadata.client_id);
+  assert.equal(authorization.searchParams.get("resource"), endpoint.href);
+  assert.equal(authorization.searchParams.get("code_challenge_method"), "S256");
+  const authorize = await ctx.runtime.objects.auth
+    .singleton()
+    .http.fetch(new Request(authorization, { headers: { cookie: sessionCookie(ctx) } }));
+  assert.equal(authorize.status, 302, await authorize.clone().text());
+  const consentLocation = authorize.headers.get("location");
+  assert(consentLocation);
+  assert.equal(new URL(consentLocation, origin).pathname, "/backoffice/oauth/consent");
+  const oauthQuery = new URL(consentLocation, origin).search.slice(1);
+  // What the consent page shows the person before they approve.
+  const review = await authRequest(ctx, "/backoffice/oauth/consent-details", {
+    oauth_query: oauthQuery,
+  });
+  assert(review.ok, await review.clone().text());
+  expect(await review.json()).toMatchObject({
+    clientId: input.metadata.client_id,
+    redirectUri: input.redirectUri,
+  });
+  const approved = await authRequest(ctx, "/oauth2/consent", {
+    accept: true,
+    oauth_query: oauthQuery,
+  });
+  assert(approved.ok, await approved.clone().text());
+  const callback = new URL(z.object({ url: z.url() }).parse(await approved.json()).url);
+  assert.equal(callback.origin + callback.pathname, input.redirectUri);
+  assert.equal(callback.searchParams.get("state"), "scenario-mcp-state");
+  await transport.finishAuth(callback.searchParams);
+  await transport.close();
+  await client.connect(createTransport());
+  assert(flow.tokens?.refresh_token);
+  return { client, tokens: flow.tokens };
+}
+
 async function runExecutionTokenScenario(check: (ctx: BackofficeScenarioContext) => Promise<void>) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "backoffice-execution-token-"));
   try {
@@ -155,6 +291,15 @@ async function runExecutionTokenScenario(check: (ctx: BackofficeScenarioContext)
         name: "shared OAuth execution token exchange",
         options: { sqliteDataDirectory: directory },
         env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
+        // The MCP client's Client ID Metadata Document, which Auth fetches from the public web.
+        fakes: ({ fake }) => ({
+          web: fake.web({
+            responses: {
+              [mcpClientMetadata.client_id]: () => Response.json(mcpClientMetadata),
+              [piClientMetadata.client_id]: () => Response.json(piClientMetadata),
+            },
+          }),
+        }),
         steps: ({ when, then }) => [
           when.auth.signUp({
             email: "execution-user@example.test",
@@ -236,6 +381,210 @@ describe("Backoffice execution token SQLite scenarios", () => {
       expect(backofficeExecutionTokenResultSchema.parse(await defaults.json()).scope).toEqual(
         scope,
       );
+    });
+  });
+
+  test("a remote MCP client identifies itself by metadata document, gets browser approval for DPoP-bound tokens, and starts in the personal workspace", async () => {
+    await runExecutionTokenScenario(async (ctx) => {
+      const { token, user, organization } = await authorizeFirstPartyClient(ctx);
+      const endpoint = new URL(LEYWAY_MCP_PATH, origin);
+      const wrongAudience = await mcpGatewayFetch(
+        ctx,
+        new Request(endpoint, { headers: { authorization: `Bearer ${token}` } }),
+      );
+      assert.equal(wrongAudience.status, 401);
+      assert.match(wrongAudience.headers.get("www-authenticate") ?? "", /resource_metadata=/u);
+
+      const discovery = await mcpGatewayFetch(
+        ctx,
+        new Request(new URL("/.well-known/oauth-authorization-server", origin)),
+      );
+      const metadata = z.record(z.string(), z.unknown()).parse(await discovery.json());
+      assert.equal(metadata.client_id_metadata_document_supported, true);
+      // Clients without a challenge scope request what the resource advertises, so it lists only
+      // what metadata-document clients may receive.
+      const resourceDiscovery = await mcpGatewayFetch(
+        ctx,
+        new Request(new URL(LEYWAY_MCP_RESOURCE_METADATA_PATH, origin)),
+      );
+      expect(await resourceDiscovery.json()).toMatchObject({ scopes_supported: ["mcp"] });
+      assert.equal(metadata.registration_endpoint, undefined);
+      const registration = await ctx.runtime.objects.auth.singleton().http.fetch(
+        new Request(new URL("/api/auth/oauth2/register", origin), {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            redirect_uris: [mcpClientRedirectUri],
+            token_endpoint_auth_method: "none",
+          }),
+        }),
+      );
+      assert.equal(registration.status, 403);
+      const { client, tokens } = await connectMcpClient(ctx, {
+        metadata: mcpClientMetadata,
+        redirectUri: mcpClientRedirectUri,
+        dpop: await DpopSession.create(),
+        versionNegotiation: { mode: { pin: "2026-07-28" } },
+      });
+      assert.equal(tokens.token_type, "DPoP");
+
+      try {
+        const { tools } = await client.listTools();
+        assert.deepEqual(
+          tools.map(({ name }) => name),
+          ["codemode"],
+        );
+        const { resources } = await client.listResources();
+        assert.deepEqual(
+          resources.map(({ uri }) => uri),
+          ["leyway://codemode/SYSTEM.md"],
+        );
+        const guide = z
+          .object({ contents: z.tuple([z.object({ mimeType: z.string(), text: z.string() })]) })
+          .parse(await client.readResource({ uri: resources[0].uri })).contents[0];
+        assert.equal(guide.mimeType, "text/markdown");
+        // The MCP guide leaves out what only Leyway's own conversations have.
+        assert.include(guide.text, "through its MCP server");
+        assert.notInclude(guide.text, "<backoffice-attachments>");
+        assert.notInclude(guide.text, "<!--");
+        const code = `async () => ({
+          current: await context.getCurrentScope(),
+          organization: (await context.org(${JSON.stringify(organization.id)}).org.get()).organization,
+        })`;
+        const input = { name: "codemode", arguments: { code } };
+        expect(await client.callTool(input)).toMatchObject({
+          structuredContent: {
+            ok: true,
+            result: {
+              current: { kind: "user", userId: user.id },
+              organization: { organizationId: organization.id },
+            },
+          },
+        });
+        expect(
+          await client.callTool({ ...input, arguments: { code, scope: organization.id } }),
+        ).toMatchObject({ isError: true });
+        // A program run for its side effects returns nothing, which the client still accepts.
+        expect(
+          await client.callTool({
+            name: "codemode",
+            arguments: {
+              code: `async () => { await state.writeFile({ path: "/workspace/done.md", content: "done" }); }`,
+            },
+          }),
+        ).toMatchObject({ isError: false, structuredContent: { ok: true, result: null } });
+
+        await ctx.runtime.objects.auth.singleton().commands.applyScenarioFixture({
+          removedMembers: [{ organizationId: organization.id, userId: user.id }],
+        });
+        expect(await client.callTool(input)).toMatchObject({
+          isError: true,
+          content: [{ text: expect.stringContaining("Permission denied") }],
+        });
+
+        const revoked = await authRequest(ctx, "/backoffice/oauth/revoke-consent", {
+          clientId: mcpClientMetadata.client_id,
+        });
+        assert(revoked.ok, await revoked.clone().text());
+        // The access token has not expired, but Auth rejects it, and revocation removed the refresh.
+        await expect(client.callTool(input)).rejects.toMatchObject({ code: "invalid_grant" });
+      } finally {
+        await client.close();
+      }
+    });
+  });
+
+  test("a 2025-11-25 MCP client like pi signs in with its metadata document and Bearer tokens, then runs Codemode", async () => {
+    await runExecutionTokenScenario(async (ctx) => {
+      const { user } = await authorizeFirstPartyClient(ctx);
+      const { client, tokens } = await connectMcpClient(ctx, {
+        metadata: piClientMetadata,
+        // Pi listens on a free port; its document registers the loopback callback without one.
+        redirectUri: "http://127.0.0.1:48527/callback",
+        dpop: null,
+        versionNegotiation: { mode: "legacy" },
+      });
+      try {
+        assert.equal(tokens.token_type, "Bearer");
+        assert.equal(client.getNegotiatedProtocolVersion(), "2025-11-25");
+        const result = await client.callTool({
+          name: "codemode",
+          arguments: {
+            code: `async () => {
+              await state.writeFile({ path: "/workspace/notes.md", content: "From pi" });
+              console.log("saved");
+              return { scope: await context.getCurrentScope(), stateTools: Object.keys(state) };
+            }`,
+          },
+        });
+        expect(result).toMatchObject({
+          isError: false,
+          structuredContent: {
+            ok: true,
+            result: {
+              scope: { kind: "user", userId: user.id },
+              stateTools: expect.arrayContaining(["readFile", "writeFile", "rm"]),
+            },
+            error: null,
+            logs: [{ channel: "log", text: "saved" }],
+            calls: {
+              items: [
+                {
+                  subject: {
+                    kind: "tool",
+                    name: "state.writeFile",
+                    target: "/workspace/notes.md",
+                  },
+                  status: "succeeded",
+                },
+              ],
+              omitted: 0,
+            },
+          },
+        });
+        // A model reads the calls' summaries; the content they wrote stays in the run's history.
+        assert.notInclude(JSON.stringify(result), "From pi");
+
+        // Nothing would start an inline workflow for an MCP client, so the run says so.
+        expect(
+          await client.callTool({
+            name: "codemode",
+            arguments: {
+              code: `defineWorkflow({ name: "later" }, async (_event, step) => await step.do("now", async () => 1))`,
+            },
+          }),
+        ).toMatchObject({
+          isError: true,
+          structuredContent: {
+            ok: false,
+            error: expect.stringContaining("workflow.createInstance"),
+          },
+        });
+
+        // Rotation is strict for every client: a refresh token works once, even moments later.
+        const refreshToken = tokens.refresh_token;
+        assert(refreshToken);
+        const refresh = async () =>
+          await ctx.runtime.objects.auth.singleton().http.fetch(
+            new Request(new URL("/api/auth/oauth2/token", origin), {
+              method: "POST",
+              headers: { "content-type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                grant_type: "refresh_token",
+                refresh_token: refreshToken,
+                client_id: piClientMetadata.client_id,
+                resource: new URL(LEYWAY_MCP_PATH, origin).href,
+              }),
+            }),
+          );
+        const rotated = await refresh();
+        assert(rotated.ok, await rotated.clone().text());
+        const replayed = await refresh();
+        assert.equal(replayed.status, 400);
+        expect(await replayed.json()).toMatchObject({ error: "invalid_grant" });
+      } finally {
+        await client.close();
+      }
     });
   });
 

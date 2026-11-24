@@ -21,13 +21,22 @@ function createMigrationDatabase(): Kysely<unknown> {
   return database;
 }
 
-// v3 is the committed schema before jurisdictions and onboarding.
-const V3_SCHEMA = betterAuthSchemaSql
+// v4 is the committed schema with Better Auth 1.7.1's required account issuer.
+const V4_SCHEMA = betterAuthSchemaSql
   .replace(
-    ',\n  "banExpires" date,\n  "jurisdiction" text,\n  "onboardedAt" date',
-    ',\n  "banExpires" date',
+    '"id" text NOT NULL PRIMARY KEY,\n  "accountId"',
+    '"id" text NOT NULL PRIMARY KEY,\n  "issuer" text NOT NULL,\n  "accountId"',
   )
-  .replace(' ON DELETE SET NULL,\n  "jurisdiction" text', " ON DELETE SET NULL");
+  .replace(
+    'CREATE UNIQUE INDEX "oauthClientResource',
+    'CREATE UNIQUE INDEX "account_issuer_accountId_uidx" ON "account" ("issuer", "accountId");\n\nCREATE UNIQUE INDEX "oauthClientResource',
+  );
+
+// v3 is the committed schema before jurisdictions and onboarding.
+const V3_SCHEMA = V4_SCHEMA.replace(
+  ',\n  "banExpires" date,\n  "jurisdiction" text,\n  "onboardedAt" date',
+  ',\n  "banExpires" date',
+).replace(' ON DELETE SET NULL,\n  "jurisdiction" text', " ON DELETE SET NULL");
 
 // v2 is the committed schema before organizations could be managed.
 const V2_SCHEMA = V3_SCHEMA.replace(
@@ -67,6 +76,7 @@ async function pendingSchemaChanges(database: Kysely<unknown>) {
       organizationHooks: null,
       isUserAdministrator: null,
       listFirstPartyOAuthClientIds: null,
+      fetchClientMetadataResource: null,
     }),
   });
   return {
@@ -148,6 +158,7 @@ describe("Backoffice Better Auth SQL migrations", () => {
   test.each([
     ["better-auth-v2", V2_SCHEMA],
     ["better-auth-v3", V3_SCHEMA],
+    ["better-auth-v4", V4_SCHEMA],
   ])("upgrades a %s database to the schema a new database gets", async (version, schema) => {
     const database = createMigrationDatabase();
     for (const statement of schema.trim().slice(0, -1).split(/;\n\n/u)) {
@@ -187,6 +198,6 @@ describe("Backoffice Better Auth SQL migrations", () => {
     ).rejects.toThrow(
       "Backoffice Better Auth schema version 'better-auth-unknown' has no migration path.",
     );
-    expect(BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION).toBe("better-auth-v4");
+    expect(BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION).toBe("better-auth-v5");
   });
 });
