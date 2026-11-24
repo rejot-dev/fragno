@@ -1,4 +1,4 @@
-import { describe, expect, test, assert } from "vitest";
+import { describe, expect, test, assert, vi } from "vitest";
 
 import {
   automationActorsSchema,
@@ -304,6 +304,87 @@ const liveGrantWorkflowSource = `export default defineWorkflow(
 );
 `;
 
+/**
+ * A delegated user's sync whose one step never retries, as Brex's does so its tools never run
+ * twice, while Auth fails the first read of the user's authority. The step runs as its user, so
+ * each call it makes asks Auth.
+ */
+async function syncWhileAuthFailsOnce(
+  name: string,
+  failure: Error,
+  status: "complete" | "errored",
+) {
+  const authority = vi
+    .spyOn(AuthObject.prototype, "getUserAuthorityFacts")
+    .mockRejectedValueOnce(failure);
+  try {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name,
+        files: backofficeFiles.workspaceStarter(),
+        setup: ({ given }) => [
+          given.auth.user({ id: "user-1", role: "user" }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "user-1",
+            ownerRoles: ["owner"],
+          }),
+          given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "user-1" }),
+          given.direct.file({
+            orgId: "org-1",
+            path: "/workspace/automations/sync.workflow.js",
+            content: `export default defineWorkflow({ name: "sync" }, async (event, step) => {
+  await step.do("write", { retries: { limit: 0, delay: "1 second" } }, async () => {
+    await store.set({ key: "synced/" + event.id, value: "written", category: ["test"] });
+  });
+});`,
+          }),
+          given.router.route({
+            orgId: "org-1",
+            id: "sync",
+            name: "Sync",
+            enabled: true,
+            priority: 100,
+            trigger: {
+              kind: "event",
+              source: "authority-test",
+              eventType: "authority.requested",
+              matcher: null,
+            },
+            action: {
+              kind: "start_workflow",
+              authority: { kind: "delegated-user", grants: [BACKOFFICE_PERMISSION.store.modify] },
+              workflowScriptPath: "/workspace/automations/sync.workflow.js",
+              instanceIdTemplate: "sync-${event.id}",
+            },
+          }),
+        ],
+        steps: ({ when, then }) => [
+          when.automation.ingestEvent(
+            authorityEvent({
+              id: "event-1",
+              principal: { scope: "internal", type: "user", id: "user-1", role: "principal" },
+            }),
+          ),
+          then.workflow.instance({
+            remoteWorkflowName: "sync",
+            instanceId: "sync-event-1",
+            status,
+          }),
+          status === "complete"
+            ? then.store.entry({ orgId: "org-1", key: "synced/event-1", value: "written" })
+            : then.store.missing({ orgId: "org-1", key: "synced/event-1" }),
+        ],
+        options: { allowErroredWorkflows: true },
+      }),
+    );
+  } finally {
+    authority.mockRestore();
+  }
+}
+
 describe("automation route authority modes", () => {
   test("organization-automation performs protected work after its creator leaves", async () => {
     await runBackofficeScenario(
@@ -575,6 +656,31 @@ describe("automation route authority modes", () => {
         ],
         options: { allowErroredWorkflows: true },
       }),
+    );
+  });
+
+  test("a workflow step that never retries survives Auth failing only while it restarts", async () => {
+    await syncWhileAuthFailsOnce(
+      "Auth restarts while a delegated user's sync writes",
+      Object.assign(
+        new Error("Connection closed: this Durable Object instance is no longer active."),
+        { retryable: true },
+      ),
+      "complete",
+    );
+    // An overloaded Auth is not asked again, however retryable Cloudflare calls its failure.
+    await syncWhileAuthFailsOnce(
+      "Auth is overloaded while a delegated user's sync writes",
+      Object.assign(new Error("Durable Object is overloaded. Too many requests queued."), {
+        retryable: true,
+        overloaded: true,
+      }),
+      "errored",
+    );
+    await syncWhileAuthFailsOnce(
+      "Auth cannot answer while a delegated user's sync writes",
+      new Error("Backoffice authority source is unavailable."),
+      "errored",
     );
   });
 
