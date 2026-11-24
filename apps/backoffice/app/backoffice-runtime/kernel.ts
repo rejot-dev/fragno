@@ -33,6 +33,51 @@ import {
 } from "./object-registry";
 import { BackofficeOperationError } from "./operation-error";
 
+const AUTHORITY_ATTEMPTS = 2;
+const AUTHORITY_RETRY_DELAY_MS = 200;
+
+/**
+ * Deferred work resolves its authority from the Auth object over RPC, which fails now and then for
+ * a moment, as when the object restarts. Nothing has run yet, so a failure Cloudflare marks
+ * retryable is tried again. An overloaded Auth is not asked again, and any other failure is denied
+ * at once. Each failure is logged, because the denial says only that authority was unavailable.
+ */
+async function resolveAuthority<T>(resolve: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await resolve();
+    } catch (error) {
+      const fields = authorityErrorFields(error);
+      const retrying = attempt < AUTHORITY_ATTEMPTS && fields.retryable && !fields.overloaded;
+      (retrying ? console.warn : console.error)("backoffice.authority.resolution.failed", {
+        attempt,
+        retrying,
+        ...fields,
+      });
+      if (!retrying) {
+        throw error;
+      }
+      await new Promise<void>((resume) => {
+        setTimeout(resume, AUTHORITY_RETRY_DELAY_MS);
+      });
+    }
+  }
+}
+
+/** Cloudflare marks RPC errors `retryable` when trying again is safe, and `overloaded`. */
+function authorityErrorFields(error: unknown) {
+  const { retryable, overloaded } =
+    error !== null && typeof error === "object"
+      ? (error as { retryable?: unknown; overloaded?: unknown })
+      : {};
+  return {
+    errorName: error instanceof Error ? error.name : "UnknownError",
+    errorMessage: error instanceof Error ? error.message : String(error),
+    retryable: retryable === true,
+    overloaded: overloaded === true,
+  };
+}
+
 export type BackofficeKernelAction = {
   execution: BackofficeExecutionContext;
   operation: BackofficePermissionRequirement;
@@ -400,12 +445,12 @@ export class BackofficeKernel {
     const principal = trustedExecution.actors.principal;
 
     const resolvePrincipalAuthority = principal
-      ? this.#authorityResolver
-          .resolvePrincipalPermissions(
+      ? resolveAuthority(() =>
+          this.#authorityResolver.resolvePrincipalPermissions(
             { principal, execution: trustedExecution },
             requirements.map(({ operation }) => operation),
-          )
-          .then((permissions) => ({ kind: "principal" as const, permissions }))
+          ),
+        ).then((permissions) => ({ kind: "principal" as const, permissions }))
       : Promise.resolve({ kind: "principal-free" as const });
 
     const resolvePrincipalAuthorityResult = resolvePrincipalAuthority.then(
@@ -414,10 +459,12 @@ export class BackofficeKernel {
     );
     const resolveDelegatedActorResults = Promise.allSettled(
       trustedExecution.actors.delegation.map((actor) =>
-        this.#authorityResolver.resolveActorCapabilityGrants({
-          actor,
-          execution: trustedExecution,
-        }),
+        resolveAuthority(() =>
+          this.#authorityResolver.resolveActorCapabilityGrants({
+            actor,
+            execution: trustedExecution,
+          }),
+        ),
       ),
     );
     const [principalAuthorityResult, delegatedActorResults] = await Promise.all([
