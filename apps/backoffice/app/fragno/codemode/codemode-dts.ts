@@ -1,4 +1,4 @@
-import { renderStaticGuidance } from "@/files/content/static";
+import { renderStaticGuidance, type StaticGuidanceAudience } from "@/files/content/static";
 import {
   CODEMODE_SYSTEM_DTS_PATH,
   createCodemodeTypeFiles as createCodemodeTypeFilesFromTemplates,
@@ -11,11 +11,14 @@ import uiTypes from "../../../content/static/codemode/ui.d.ts?raw";
 import workflowAuthoringTypes from "../../../content/static/codemode/workflow-authoring.d.ts?raw";
 
 export const renderCodemodeSystemPrompt = async ({
+  audience,
   state,
 }: {
+  audience: StaticGuidanceAudience;
   state: { readFile(path: string): Promise<string> };
 }) =>
   renderStaticGuidance({
+    audience,
     codemodeDts: await state.readFile(CODEMODE_SYSTEM_DTS_PATH),
     stateExcerpt: renderCodemodeStateExcerpt(),
   });

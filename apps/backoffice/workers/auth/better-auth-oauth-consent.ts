@@ -364,7 +364,9 @@ export function createBackofficeOAuthConsentPlugin(input: {
           body: backofficeOAuthConsentRequestSchema,
         },
         async function reviewSignedOAuthConsent(context) {
-          // OAuth Provider's before hook verifies every oauth_query before endpoint dispatch.
+          // OAuth Provider's before hook verifies every oauth_query before endpoint dispatch, and
+          // it signs one only after its authorize endpoint matched the redirect URI to the client,
+          // allowing any port on a native client's loopback callback (RFC 8252).
           const query = new URLSearchParams(context.body.oauth_query);
           const clientId = query.get("client_id");
           const redirectUri = query.get("redirect_uri");
@@ -375,16 +377,13 @@ export function createBackofficeOAuthConsentPlugin(input: {
             clientId: string;
             name: string | null;
             disabled: boolean | null;
-            redirectUris: string[];
           }>({
             model: "oauthClient",
-            select: ["clientId", "name", "disabled", "redirectUris"],
+            select: ["clientId", "name", "disabled"],
             where: [{ field: "clientId", value: clientId }],
           });
-          if (!client || client.disabled || !client.redirectUris.includes(redirectUri)) {
-            throw new APIError("BAD_REQUEST", {
-              message: "OAuth consent client or callback is unavailable.",
-            });
+          if (!client || client.disabled) {
+            throw new APIError("BAD_REQUEST", { message: "OAuth consent client is unavailable." });
           }
           return context.json({
             clientId,

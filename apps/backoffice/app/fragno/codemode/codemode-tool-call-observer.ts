@@ -17,8 +17,14 @@ function boundToolSummary(summary: string) {
     : summary;
 }
 
-/** Bounds a tool's input or output to what a log or history row can hold. */
+/**
+ * Bounds a tool's input or output to what a log or history row can hold. A call without input, or a
+ * tool that returns nothing, has an empty summary; JSON for an empty string is `""`.
+ */
 function summarizeToolValue(value: unknown) {
+  if (value === undefined) {
+    return "";
+  }
   try {
     const summary = JSON.stringify(value);
     if (typeof summary === "string") {

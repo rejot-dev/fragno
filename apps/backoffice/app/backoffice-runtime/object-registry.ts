@@ -125,6 +125,10 @@ import type {
   BackofficeExecutionTokenResult,
 } from "@/fragno/auth/execution-token";
 import type {
+  LeywayMcpRequestAuthorization,
+  LeywayMcpRequestCredentials,
+} from "@/fragno/auth/mcp-oauth";
+import type {
   BackofficeOAuthClientCreateRequest,
   BackofficeOAuthClientCreateResult,
   BackofficeOAuthClientFacts,
@@ -460,6 +464,8 @@ export type AuthCommands = DurableHookCommands &
       requestUrl: string;
       oauthAccessToken: string;
     }): Promise<{ appId: string }>;
+    /** Verifies an MCP request's OAuth credential and returns its workspace or rejection. */
+    authorizeMcpRequest(input: LeywayMcpRequestCredentials): Promise<LeywayMcpRequestAuthorization>;
     /** Exchanges OAuth identity under a server-controlled execution policy, not app registration alone. */
     exchangeBackofficeExecutionToken(
       input: BackofficeExecutionTokenExchangeInput,

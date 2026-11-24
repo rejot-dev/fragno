@@ -23,6 +23,7 @@ const options: BetterAuthOptions = {
     organizationHooks: null,
     isUserAdministrator: null,
     listFirstPartyOAuthClientIds: null,
+    fetchClientMetadataResource: null,
   }),
 };
 

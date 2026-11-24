@@ -4,6 +4,8 @@ import { admin } from "better-auth/plugins/admin";
 import { jwt } from "better-auth/plugins/jwt";
 import { organization, type OrganizationOptions } from "better-auth/plugins/organization";
 
+import type { ClientMetadataResourceFetch } from "@better-auth/oauth-provider";
+
 import { createBackofficeOAuthPlugins } from "./better-auth-oauth";
 import { createBackofficeOAuthConsentPlugin } from "./better-auth-oauth-consent";
 
@@ -18,6 +20,7 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
   organizationHooks: BetterAuthOrganizationHooks | null;
   isUserAdministrator: ((userId: string) => Promise<boolean>) | null;
   listFirstPartyOAuthClientIds: (() => Promise<string[]>) | null;
+  fetchClientMetadataResource: ClientMetadataResourceFetch | null;
 }): BetterAuthPlugin[] {
   const organizationOptions = {
     allowUserToCreateOrganization: true,
@@ -80,7 +83,11 @@ export function createBackofficeBetterAuthSchemaPlugins(input: {
         expirationTime: "15m",
       },
     }),
-    ...createBackofficeOAuthPlugins({ isUserAdministrator: input.isUserAdministrator }),
+    ...createBackofficeOAuthPlugins({
+      baseURL: input.baseURL,
+      isUserAdministrator: input.isUserAdministrator,
+      fetchClientMetadataResource: input.fetchClientMetadataResource,
+    }),
     createBackofficeOAuthConsentPlugin({
       listFirstPartyOAuthClientIds: input.listFirstPartyOAuthClientIds,
     }),

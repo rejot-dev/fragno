@@ -40,6 +40,7 @@ import type {
   BackofficeExecutionTokenExchangeInput,
   BackofficeExecutionTokenResult,
 } from "@/fragno/auth/execution-token";
+import type { LeywayMcpRequestCredentials } from "@/fragno/auth/mcp-oauth";
 import type {
   BackofficeOAuthClientCreateRequest,
   BackofficeOAuthClientCreateResult,
@@ -159,6 +160,10 @@ export class Auth extends DurableObject<CloudflareEnv> implements AuthCommands {
 
   async getLeywayCliOAuthConfig(input: { requestUrl: string }): Promise<LeywayCliOAuthConfig> {
     return await this.#object.getLeywayCliOAuthConfig(input);
+  }
+
+  async authorizeMcpRequest(input: LeywayMcpRequestCredentials) {
+    return await this.#object.authorizeMcpRequest(input);
   }
 
   async exchangeBackofficeExecutionToken(

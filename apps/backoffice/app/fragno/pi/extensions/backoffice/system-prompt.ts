@@ -62,7 +62,7 @@ export async function buildBackofficePiSystemPrompt(options: {
   const baseSystemPrompt = [PI_SYSTEM_PROMPT, formatPiSkillsForSystemPrompt(skills)]
     .filter((part) => part.trim().length > 0)
     .join("\n\n");
-  const renderedStaticGuidance = await renderCodemodeSystemPrompt({ state });
+  const renderedStaticGuidance = await renderCodemodeSystemPrompt({ audience: "in-app", state });
   const expandedDefaultGuidance = baseSystemPrompt.replace(
     PI_SYSTEM_PROMPT,
     renderedStaticGuidance,
