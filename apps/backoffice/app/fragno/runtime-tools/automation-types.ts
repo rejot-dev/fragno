@@ -1,8 +1,6 @@
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import type { AutomationCommandCallResult } from "../automation/run-result";
-
 export type AutomationCommandFormat = "text" | "json";
 
 export type AutomationCommandOutputOptions = {
@@ -73,7 +71,11 @@ export type AutomationCommandHelp = {
   examples?: readonly string[];
 };
 
-export type BashAutomationCommandResult = AutomationCommandCallResult;
+export type BashAutomationCommandResult = {
+  command: string;
+  output: string;
+  exitCode: number;
+};
 
 export type AutomationTriggerBinding = {
   id?: string;

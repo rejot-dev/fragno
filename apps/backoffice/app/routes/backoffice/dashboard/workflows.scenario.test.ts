@@ -70,8 +70,9 @@ const CLOSE_BOOKS = "/workspace/automations/close-books.workflow.js";
 
 /**
  * Posting a batch fails as many times as its event asks, and its one retry rescues a single
- * failure. The store counts the attempts, because the step itself cannot tell them apart. Looking
- * up the customer is optional: the workflow catches its failure and goes on.
+ * failure. The store counts the attempts, because the step itself cannot tell them apart. The
+ * ledger refuses with an error of its own class, as Backoffice's tools do. Looking up the customer
+ * is optional: the workflow catches its failure and goes on.
  */
 const workflows = {
   "automations/invoice-sync.workflow.js": `export default defineWorkflow({ name: "invoice-sync" }, async (event, step) => {
@@ -92,7 +93,10 @@ const workflows = {
     const attempt = Number(previous?.value ?? 0) + 1;
     await context.current.store.set({ key, value: String(attempt) });
     if (attempt <= event.payload.failures) {
-      throw new Error(\`ledger rejected batch \${event.payload.batch}\`);
+      class LedgerRejectedError extends Error {
+        name = "LedgerRejectedError";
+      }
+      throw new LedgerRejectedError(\`ledger rejected batch \${event.payload.batch}\`);
     }
     return invoices.length;
   });

@@ -274,8 +274,8 @@ describe("codemode workflow execution", () => {
   test("runBackofficeCodemodeWorkflow preserves step suspension for wrapper callers", async () => {
     const Workflow = defineRemoteWorkflow(
       { name: "codemode-wrapper-sleep" },
-      async (event, remote) => {
-        const result = await runBackofficeCodemodeWorkflow({
+      async (event, remote) =>
+        await runBackofficeCodemodeWorkflow({
           program: testWorkflowProgram(`async (_event, step) => {
           await step.sleep("pause", "3 seconds");
           return "done";
@@ -289,12 +289,7 @@ describe("codemode workflow execution", () => {
           toolContext: createTrustedSystemBackofficeToolContext({
             runtimes: {},
           }),
-        });
-        if (result.error) {
-          throw new Error(result.error);
-        }
-        return result.result;
-      },
+        }),
     );
     const harness = await createHarness({ WORKFLOW: Workflow });
 

@@ -95,13 +95,10 @@ describe("executeWorkflowCodemodeAutomation", () => {
 
     await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
       status: "complete",
-      output: expect.objectContaining({
-        exitCode: 0,
-        result: {
-          hookScopes: [uploadHookScope],
-          eventId: "event-workflow-list-hook-scopes",
-        },
-      }),
+      output: {
+        hookScopes: [uploadHookScope],
+        eventId: "event-workflow-list-hook-scopes",
+      },
     });
     expect(calls).toEqual(["listHookScopes"]);
   });
@@ -221,11 +218,8 @@ describe("executeWorkflowCodemodeAutomation", () => {
     });
 
     await expect(harness.getStatus("WORKFLOW", instanceId)).resolves.toMatchObject({
-      status: "complete",
-      output: expect.objectContaining({
-        exitCode: 1,
-        stderr: expect.stringContaining("not permitted to access the internet"),
-      }),
+      status: "errored",
+      error: { message: expect.stringContaining("not permitted to access the internet") },
     });
   });
 });
