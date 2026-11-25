@@ -130,9 +130,12 @@ reclassifies the event, or forwards it to another scope.
 
    `organization-automation` acts with the route's grants in the route's own scope and, from an
    organization, in its projects. For work in another scope, forward an event to a route there that
-   establishes its own authority; share files explicitly when needed. Give the automation the
-   explicit canonical permissions used by its runtime tools; actions on Telegram and Resend need
-   only `integrations.execute`.
+   establishes its own authority; share files explicitly when needed. The grants of the routes that
+   caused its event do not limit it. An agent that caused the event limits it to the permissions the
+   agent's definition grants, and so does an installed app that caused it while acting for a user.
+   An app acting as itself does not, so a route acting on its events may do what the app may not.
+   Give the automation the explicit canonical permissions used by its runtime tools; actions on
+   Telegram and Resend need only `integrations.execute`.
 
    A route grants `integrations.execute` on the connections its workflow executes on, each named
    with its scope as a `context` handle reaches it: `{ kind: "current" }` for the route's own,
