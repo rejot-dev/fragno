@@ -43,6 +43,15 @@ function applyTheme(choice: ThemeChoice) {
 
   root.classList.toggle("dark", isDark);
   root.style.colorScheme = isDark ? "dark" : "light";
+
+  // Browsers that tint their bars from theme-color follow the chosen theme, not only the system's.
+  let themeColor = document.querySelector('meta[name="theme-color"]');
+  if (!themeColor) {
+    themeColor = document.createElement("meta");
+    themeColor.setAttribute("name", "theme-color");
+    document.head.appendChild(themeColor);
+  }
+  themeColor.setAttribute("content", getComputedStyle(root).backgroundColor);
 }
 
 export type AppearancePreferences = {
