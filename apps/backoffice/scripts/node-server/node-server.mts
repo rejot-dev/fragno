@@ -4,18 +4,12 @@ import { fileURLToPath } from "node:url";
 import express from "express";
 import type { ServerBuild } from "react-router";
 
-import { getRequestListener } from "@hono/node-server";
-import { createRequestHandler } from "@react-router/express";
-
-import { isBackofficeApiPath } from "../../app/backoffice-api/api-path";
-import { backofficeApiRouter } from "../../app/backoffice-api/backoffice-api-router";
 import { allLocalObjects } from "../../app/backoffice-runtime/all-local-objects";
-import { BackofficeKernel } from "../../app/backoffice-runtime/kernel";
 import { createLocalBackofficeRuntime } from "../../app/backoffice-runtime/node/local-runtime";
 import { startNodeBackofficeAlarmScheduler } from "../../app/backoffice-runtime/node/node-alarm-scheduler";
 import { createExternallyProcessedNodeBackofficeDurableHooks } from "../../app/backoffice-runtime/node/node-durable-hooks";
 import { shutdownNodeOpenTelemetry } from "../../app/backoffice-runtime/node/node-opentelemetry-lifecycle";
-import { createBackofficeRouterContextProvider } from "../../app/worker-runtime/router-context-provider.server";
+import { mountBackofficeHandler } from "./node-backoffice-handler";
 import { createNodeBackofficeProcessConfig } from "./node-process-config";
 import { registerNodeBackofficeRequestObservability } from "./node-request-observability";
 import { registerNodeBackofficeHealthCheck } from "./node-server-health";
@@ -43,7 +37,6 @@ const runtime = await createLocalBackofficeRuntime({
 // Durable Object alarms must run beside HTTP/RPC object instances. A second process opening the
 // same Pi harness would classify active tasks as crash recovery and repeat in-flight model calls.
 const alarmScheduler = startNodeBackofficeAlarmScheduler(runtime);
-const kernel = new BackofficeKernel(runtime.services);
 const staticDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "client");
 const app = express();
 app.disable("x-powered-by");
@@ -64,66 +57,7 @@ app.use(
   }),
 );
 app.use(express.static(staticDirectory, { maxAge: "1m", index: false, redirect: false }));
-const backofficeApiListener = getRequestListener(async (request, { incoming }) => {
-  // Use the URL React Router sees: Express applies the trusted proxy's protocol and host, and
-  // credential verification depends on the public origin.
-  const { protocol, host, originalUrl } = incoming as express.Request;
-  return await backofficeApiRouter.fetch(
-    new Request(new URL(`${protocol}://${host}${originalUrl}`), {
-      method: request.method,
-      headers: request.headers,
-      // API bodies are small JSON documents, so buffering avoids streaming-body plumbing.
-      body:
-        request.method === "GET" || request.method === "HEAD" ? null : await request.arrayBuffer(),
-      signal: request.signal,
-    }),
-    { runtime: runtime.services, kernel },
-  );
-});
-app.use((request, response, next) => {
-  if (isBackofficeApiPath(request.path)) {
-    void backofficeApiListener(request, response);
-    return;
-  }
-  next();
-});
-app.use(
-  createRequestHandler({
-    build: serverBuild,
-    mode: "production",
-    getLoadContext(request, response) {
-      const headers = new Headers();
-      for (const [name, value] of Object.entries(request.headers)) {
-        if (Array.isArray(value)) {
-          for (const entry of value) {
-            headers.append(name, entry);
-          }
-        } else if (value !== undefined) {
-          headers.set(name, value);
-        }
-      }
-      const controller = new AbortController();
-      response.once("close", () => {
-        if (!response.writableFinished) {
-          controller.abort();
-        }
-      });
-      // The adapter owns the request body; request state only needs URL, headers, and cancellation.
-      const contextRequest = new Request(
-        new URL(`${request.protocol}://${request.host}${request.originalUrl}`),
-        { method: request.method, headers, signal: controller.signal },
-      );
-      return createBackofficeRouterContextProvider(contextRequest, {
-        runtime: runtime.services,
-        kernel,
-        env: runtime.env as unknown as CloudflareEnv,
-        ctx: {
-          waitUntil: (promise: Promise<unknown>) => void promise.catch(console.error),
-        } as ExecutionContext,
-      });
-    },
-  }),
-);
+mountBackofficeHandler(app, { runtime, build: serverBuild, mode: "production" });
 
 const listeners = await startNodeBackofficeListeners({
   requestListener(request, response) {
