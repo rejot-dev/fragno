@@ -51,7 +51,7 @@ import { sha256Hex } from "@/lib/crypto";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "./actors";
 import { appendAutomationDelegate } from "./authority";
 import {
-  CODEMODE_CAPABILITY_ACTOR,
+  codemodeCapabilityActor,
   CODEMODE_WORKFLOW,
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
@@ -768,6 +768,11 @@ export function defineMarketplacePackageInstallWorkflow(
         const installationWorkflowInstanceId = marketplaceInstallationWorkflowInstanceId(
           event.instanceId,
         );
+        // Everything the package's code causes stays within the permissions approved for it.
+        const installationCapability = codemodeCapabilityActor({
+          ownerScope: config.ownerScope,
+          instanceId: installationWorkflowInstanceId,
+        });
         const installationBaseExecution = createBackofficeServiceExecution({
           scope: input.targetScope,
           service: {
@@ -814,7 +819,7 @@ export function defineMarketplacePackageInstallWorkflow(
             );
             const execution = appendAutomationDelegate({
               execution: installationBaseExecution,
-              delegate: CODEMODE_CAPABILITY_ACTOR,
+              delegate: installationCapability,
             });
             let prepared;
             try {
@@ -846,7 +851,7 @@ export function defineMarketplacePackageInstallWorkflow(
               execution,
               capabilityGrants: [
                 {
-                  actor: CODEMODE_CAPABILITY_ACTOR,
+                  actor: installationCapability,
                   // Routes come only from declarations, so the package's code can't write them.
                   // Reading installations lets it see its current settings.
                   permissions: [

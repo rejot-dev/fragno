@@ -12,8 +12,11 @@ import {
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import {
+  type BackofficeContextScope,
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
+  backofficeScopePathSegment,
+  parseBackofficeScopePathSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { normalizeCode } from "@fragno-dev/codemode/runtime-api";
 import { z } from "zod";
@@ -27,12 +30,49 @@ import type { CodemodeWorkflowProgram } from "@/fragno/codemode/workflow-program
 
 export const CODEMODE_WORKFLOW = "codemode-script";
 
-export const CODEMODE_CAPABILITY_ACTOR = {
-  scope: "internal",
-  type: "capability",
-  id: CODEMODE_WORKFLOW,
-  role: "delegate",
-} as const satisfies AutomationActors["delegation"][number];
+const CODEMODE_CAPABILITY_ACTOR_ID_PREFIX = `${CODEMODE_WORKFLOW}/`;
+
+/**
+ * The delegate that narrows one codemode workflow run to the capability grants it was started with,
+ * which its stored parameters keep. Everything the run causes keeps it, so it names the run:
+ * `codemode-script/<scope segment of the Automations object running it>/<instance ID>`. Scope
+ * segments encode `/`, so the instance ID follows the first one after the prefix.
+ */
+export function codemodeCapabilityActor({
+  ownerScope,
+  instanceId,
+}: {
+  ownerScope: BackofficeContextScope;
+  instanceId: string;
+}): AutomationActors["delegation"][number] {
+  return {
+    scope: "internal",
+    type: "capability",
+    id: `${CODEMODE_CAPABILITY_ACTOR_ID_PREFIX}${backofficeScopePathSegment(ownerScope)}/${instanceId}`,
+    role: "delegate",
+  };
+}
+
+/** The run a `codemodeCapabilityActor` names; null for any other actor. */
+export function codemodeCapabilityActorRun(
+  actor: AutomationActors["delegation"][number],
+): { ownerScope: BackofficeContextScope; instanceId: string } | null {
+  if (
+    actor.scope !== "internal" ||
+    actor.type !== "capability" ||
+    !actor.id.startsWith(CODEMODE_CAPABILITY_ACTOR_ID_PREFIX)
+  ) {
+    return null;
+  }
+  const run = actor.id.slice(CODEMODE_CAPABILITY_ACTOR_ID_PREFIX.length);
+  const separator = run.indexOf("/");
+  return separator < 0
+    ? null
+    : {
+        ownerScope: parseBackofficeScopePathSegment(run.slice(0, separator)),
+        instanceId: run.slice(separator + 1),
+      };
+}
 
 export type CodemodeCapabilityGrant = {
   actor: AutomationActors["delegation"][number];

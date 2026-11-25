@@ -80,11 +80,8 @@ describe("Backoffice authority role grants", () => {
     }
   });
 
-  test("uses the canonical permission set for automation and capability actors", () => {
+  test("uses the canonical permission set for automation actors", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.automation).toEqual(
-      allBackofficePermissionRequirements,
-    );
-    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.capability).toEqual(
       allBackofficePermissionRequirements,
     );
   });

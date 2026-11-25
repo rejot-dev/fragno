@@ -294,8 +294,9 @@ const INTERNAL_SERVICE_AUTHORITY_ROLE_GRANTS = {
     BACKOFFICE_PERMISSION.upload.modify,
     BACKOFFICE_PERMISSION.upload.read,
   ],
-  // Runtime capability grants remain the narrower per-execution boundary.
-  capability: allBackofficePermissionRequirements,
+  // A capability delegate may do what the codemode run it names was started allowing, which
+  // `createCodemodeCapabilityAuthorityResolver` reads; a runtime without it lets it do nothing.
+  capability: [],
   // A Pi agent may do what its definition grants, which `createPiAgentAuthorityResolver` reads;
   // a runtime without it lets agents do nothing.
   "pi-agent": [],

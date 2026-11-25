@@ -16,12 +16,18 @@ export const MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME = "marketplace-package-in
 
 const MARKETPLACE_PACKAGE_INSTALL_INSTANCE_PREFIX = "marketplace-package-install-";
 const MARKETPLACE_INSTALLATION_WORKFLOW_SUFFIX = ":installation";
+/**
+ * Install runs from before a run's capability delegate named the run carry one shared delegate,
+ * which now grants nothing, and keep it when restarted (LW-78). Installing again starts a new run
+ * under this key instead of restarting one of those.
+ */
+const MARKETPLACE_INSTALLATION_WORKFLOW_KEY = ":2";
 
 /** A package's optional install workflow is a child of its package installation instance. */
 export function marketplaceInstallationWorkflowInstanceId(
   packageInstallWorkflowInstanceId: string,
 ) {
-  return `${packageInstallWorkflowInstanceId}${MARKETPLACE_INSTALLATION_WORKFLOW_SUFFIX}`;
+  return `${packageInstallWorkflowInstanceId}${MARKETPLACE_INSTALLATION_WORKFLOW_KEY}${MARKETPLACE_INSTALLATION_WORKFLOW_SUFFIX}`;
 }
 
 /** Whether a codemode instance is a package's install workflow, which decides its settings. */

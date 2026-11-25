@@ -12,6 +12,7 @@ import {
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
+import { marketplaceInstallationWorkflowInstanceId } from "@/fragno/automation/marketplace-package-install-identity";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -126,7 +127,7 @@ describe("Workspace package runtime scenarios", () => {
               installationRoot: INSTALLATION_ROOT,
               status: "waiting",
               installer: {
-                workflowInstanceId: `${ctx.vars.instanceId}:installation`,
+                workflowInstanceId: marketplaceInstallationWorkflowInstanceId(ctx.vars.instanceId),
                 status: "waiting",
               },
             });

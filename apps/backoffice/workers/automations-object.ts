@@ -72,6 +72,10 @@ import {
 } from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
+import {
+  codemodeRunCapabilityGrants,
+  createCodemodeCapabilityAuthorityResolver,
+} from "@/fragno/automation/engine/codemode-capability-authority";
 import { CODEMODE_WORKFLOW } from "@/fragno/automation/engine/codemode-invocation";
 import { automationEventRecord } from "@/fragno/automation/event-routes";
 import type {
@@ -342,15 +346,24 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     this.#state = state;
     this.#runtimeServices = {
       ...runtime,
-      authorityResolver: createAutomationRouteAuthorityResolver({
-        fallbackResolver: runtime.authorityResolver,
-        // A route's actor follows its workflow into other scopes, so its route may live elsewhere.
-        lookupRoute: async ({ scope, routeId }) =>
-          backofficeContextScopesEqual(this.#requireScope(), scope)
-            ? await this.getRouteForAuthority({ id: routeId })
+      authorityResolver: createCodemodeCapabilityAuthorityResolver({
+        resolver: createAutomationRouteAuthorityResolver({
+          fallbackResolver: runtime.authorityResolver,
+          // A route's actor follows its workflow into other scopes, so its route may live elsewhere.
+          lookupRoute: async ({ scope, routeId }) =>
+            backofficeContextScopesEqual(this.#requireScope(), scope)
+              ? await this.getRouteForAuthority({ id: routeId })
+              : await this.#runtimeServices.objects.automations
+                  .for(scope)
+                  .commands.getRouteForAuthority({ id: routeId }),
+        }),
+        // So does a codemode run's.
+        lookupCapabilityGrants: async ({ ownerScope, ...input }) =>
+          backofficeContextScopesEqual(this.#requireScope(), ownerScope)
+            ? await this.getWorkflowCapabilityGrants(input)
             : await this.#runtimeServices.objects.automations
-                .for(scope)
-                .commands.getRouteForAuthority({ id: routeId }),
+                .for(ownerScope)
+                .commands.getWorkflowCapabilityGrants(input),
       }),
     };
     this.#nowEpochMs = nowEpochMs;
@@ -510,6 +523,28 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       runtime.automationFragment.services.getRoute(input),
     );
     return route ? { enabled: route.enabled, action: route.action } : null;
+  }
+
+  async getWorkflowCapabilityGrants({
+    instanceId,
+    actor,
+  }: Parameters<AutomationsCommands["getWorkflowCapabilityGrants"]>[0]): ReturnType<
+    AutomationsCommands["getWorkflowCapabilityGrants"]
+  > {
+    const scope = this.#requireScope();
+    await this.#ensureConfigured({ scope });
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    try {
+      const metadata = await runtime.workflowsFragment.callServices(() =>
+        runtime.workflowsFragment.services.getInstanceMetadata(CODEMODE_WORKFLOW, instanceId),
+      );
+      return codemodeRunCapabilityGrants(metadata.params, actor);
+    } catch (error) {
+      if (error instanceof WorkflowInstanceNotFoundError) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   /**

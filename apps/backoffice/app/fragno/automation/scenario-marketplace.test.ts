@@ -20,11 +20,12 @@ import type { BackofficeActionRpcContext } from "@/backoffice-runtime/object-reg
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
 import { appendAutomationDelegate } from "@/fragno/automation/authority";
 import {
-  CODEMODE_CAPABILITY_ACTOR,
+  codemodeCapabilityActor,
   CODEMODE_WORKFLOW,
 } from "@/fragno/automation/engine/codemode-invocation";
 import { captureBundledMarketplaceRelease } from "@/fragno/marketplace/bundled-release";
 import { marketplaceListingId } from "@/fragno/marketplace/owner";
+import { MARKETPLACE_DECLARATION_PATH } from "@/fragno/marketplace/package-declaration";
 import {
   MARKETPLACE_INSTALL_WORKFLOW_PATH,
   marketplacePackageUploadName,
@@ -51,6 +52,7 @@ import { UploadObject } from "../../../workers/upload-object";
 import {
   buildMarketplacePackageInstallWorkflowInstanceId,
   MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+  marketplaceInstallationWorkflowInstanceId,
 } from "./marketplace-package-install-identity";
 import { MARKETPLACE_PACKAGE_PUBLISH_WORKFLOW_NAME } from "./marketplace-package-publish-workflow";
 import { createAutomationsRouteCaller, createWorkflowsRouteCaller } from "./route-callers";
@@ -151,7 +153,7 @@ async function submitTelegramTestCommandInstaller(
   const submitted = await workflows("POST", "/:workflowName/instances/:instanceId/events", {
     pathParams: {
       workflowName: CODEMODE_WORKFLOW,
-      instanceId: `${ingestionInstanceId}:installation`,
+      instanceId: marketplaceInstallationWorkflowInstanceId(ingestionInstanceId),
     },
     body: {
       // Event IDs are unique within the coordinating object, which hosts every project installer.
@@ -1034,7 +1036,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
               runner.drain(),
               then.workflow.instance({
                 workflowName: CODEMODE_WORKFLOW,
-                instanceId: `${workflowInstanceId}:installation`,
+                instanceId: marketplaceInstallationWorkflowInstanceId(workflowInstanceId),
                 status: "errored",
               }),
               then.workflow.instance({
@@ -1063,12 +1065,12 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
                   const response = await workflows("GET", "/:workflowName/instances/:instanceId", {
                     pathParams: {
                       workflowName: CODEMODE_WORKFLOW,
-                      instanceId: `${workflowInstanceId}:installation`,
+                      instanceId: marketplaceInstallationWorkflowInstanceId(workflowInstanceId),
                     },
                   });
                   assert(response.type === "json");
                   expect(response.data.details.error?.message).toContain(
-                    `Delegated capability '${CODEMODE_WORKFLOW}' is not granted router.modify`,
+                    `Delegated capability '${CODEMODE_WORKFLOW}/org:org-1/${marketplaceInstallationWorkflowInstanceId(workflowInstanceId)}' is not granted router.modify`,
                   );
                 },
               ),
@@ -1080,6 +1082,110 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
         );
       },
     );
+  });
+
+  test("a workflow an install workflow starts keeps the package's permissions", async () => {
+    const scope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
+    const files = INSTALLER_STATIC_MARKETPLACE_VERSION.files as Record<string, string>;
+    const original = { ...files };
+    const declaration = JSON.parse(files[MARKETPLACE_DECLARATION_PATH]) as {
+      permissions: { namespace: string; permission: string }[];
+    };
+    // Enough to start a workflow, but not to write the store.
+    const permissions = [
+      ...declaration.permissions,
+      BACKOFFICE_PERMISSION.workflow.modify,
+      BACKOFFICE_PERMISSION.workflow.executeCode,
+    ];
+    files[MARKETPLACE_DECLARATION_PATH] = JSON.stringify({ ...declaration, permissions });
+    files[MARKETPLACE_INSTALL_WORKFLOW_PATH] = `export default defineWorkflow(
+  { name: "workflow-starting-marketplace-install" },
+  async (_event, step) => {
+    await step.do("start a workflow", async () => {
+      await workflow.createInstance({ path: "/workspace/automations/escalate.workflow.js", instanceId: "escalate-1" });
+    });
+  },
+);
+`;
+    files["automations/escalate.workflow.js"] = `export default defineWorkflow(
+  { name: "escalate" },
+  async (_event, step) => {
+    await step.do("write the store", async () => {
+      await store.set({ key: "escalated", value: "written" });
+    });
+  },
+);
+`;
+    try {
+      await runBackofficeScenario(
+        defineBackofficeScenario({
+          objects: scenarioObjects,
+          name: "a Marketplace install workflow starts a workflow",
+          setup: ({ given }) => [
+            given.organization.exists({ id: "org-1", name: "Ada Labs" }),
+            // Scenarios read workflow sources from their own files, not the ones a package installs.
+            given.direct.file({
+              orgId: "org-1",
+              path: "/workspace/automations/escalate.workflow.js",
+              content: files["automations/escalate.workflow.js"],
+            }),
+          ],
+          steps: ({ then, runner }) => [
+            then.assert("publish the Marketplace package", async (ctx) => {
+              await ctx.runtime.objects.automations
+                .singleton()
+                .commands.requestStaticMarketplacePublications();
+            }),
+            runner.drain(),
+            then.assert("request Marketplace ingestion", async (ctx) => {
+              await ctx.runtime.objects.automations.for(scope).commands.requestMarketplaceIngestion(
+                {
+                  marketplace: { kind: "system" },
+                  installationRoot: "/workspace",
+                  listingId: MARKETPLACE_LISTING_ID,
+                  version: "2.1.0",
+                  targetScope: scope,
+                  permissions,
+                },
+                {
+                  execution: createBackofficeSystemExecution(scope),
+                  propagationContext: null,
+                },
+              );
+            }),
+            runner.drain(),
+            then.workflow.instance({
+              workflowName: CODEMODE_WORKFLOW,
+              instanceId: "escalate-1",
+              status: "errored",
+            }),
+            then.assert("the package's permissions deny the write", async (ctx) => {
+              const workflows = createWorkflowsRouteCaller({
+                object: ctx.runtime.objects.automations.for(scope),
+                context: {
+                  execution: createBackofficeSystemExecution(scope),
+                  propagationContext: null,
+                },
+              });
+              const response = await workflows("GET", "/:workflowName/instances/:instanceId", {
+                pathParams: { workflowName: CODEMODE_WORKFLOW, instanceId: "escalate-1" },
+              });
+              assert(response.type === "json");
+              expect(response.data.details.error?.message).toMatch(
+                /Delegated capability 'codemode-script\/org:org-1\/\S+:installation' is not granted store\.modify/,
+              );
+            }),
+            then.store.missing({ orgId: "org-1", key: "escalated" }),
+          ],
+          options: { allowErroredWorkflows: true },
+        }),
+      );
+    } finally {
+      for (const key of Object.keys(files)) {
+        delete files[key];
+      }
+      Object.assign(files, original);
+    }
   });
 
   test("records the installer as the author of the routes a package declares", async () => {
@@ -1211,7 +1317,7 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
             const installation = await workflows("GET", "/:workflowName/instances/:instanceId", {
               pathParams: {
                 workflowName: CODEMODE_WORKFLOW,
-                instanceId: `${workflowInstanceId}:installation`,
+                instanceId: marketplaceInstallationWorkflowInstanceId(workflowInstanceId),
               },
             });
             assert(installation.type === "json");
@@ -1226,12 +1332,18 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
               scope: { kind: "org", orgId: "org-1", jurisdiction: null },
               service: {
                 type: "automation",
-                id: `automation:${workflowInstanceId}:installation`,
+                id: `automation:${marketplaceInstallationWorkflowInstanceId(workflowInstanceId)}`,
               },
             }).actors;
             expect(installationActors).toEqual({
               ...installationBaseActors,
-              delegation: [...installationBaseActors.delegation, CODEMODE_CAPABILITY_ACTOR],
+              delegation: [
+                ...installationBaseActors.delegation,
+                codemodeCapabilityActor({
+                  ownerScope: { kind: "org", orgId: "org-1", jurisdiction: null },
+                  instanceId: marketplaceInstallationWorkflowInstanceId(workflowInstanceId),
+                }),
+              ],
             });
 
             expect(installationParams.trigger).toMatchObject({
