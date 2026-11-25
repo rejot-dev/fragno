@@ -832,6 +832,215 @@ describe("automation route authority modes", () => {
     );
   });
 
+  test("an organization automation acts with its own grants on an event a member's schedule forwards", async () => {
+    const personal = { kind: "user", userId: "user-1", jurisdiction: null } as const;
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "forwarded schedule output runs under the organization route",
+        options: { allowErroredWorkflows: true },
+        files: backofficeFiles.workspaceStarter({
+          "automations/balance-sync.workflow.js": `export default defineWorkflow(
+  { name: "balance-sync" },
+  async (_event, step) => {
+    await step.do("report the balance", async () => {
+      await events.fire({ source: "bank", eventType: "balance.updated", payload: { balanceCents: 8709 } });
+    });
+  },
+);
+`,
+          "automations/balance-convert.workflow.js": `export default defineWorkflow(
+  { name: "balance-convert" },
+  async (event, step) => {
+    await step.do("record the balance", async () => {
+      await store.set({ key: "balances/latest", value: String(event.payload.balanceCents) });
+    });
+  },
+);
+`,
+        }),
+        setup: ({ given }) => [
+          given.auth.user({ id: "owner-1", role: "admin" }),
+          given.auth.user({ id: "user-1", role: "user" }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "owner-1",
+            ownerRoles: ["owner"],
+          }),
+          given.auth.member({ orgId: "org-1", userId: "user-1", roles: ["member"] }),
+          given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "owner-1" }),
+          given.codemode.run({
+            scope: organizationScope,
+            code: `async () => await router.acceptsCreate({
+              id: "member-balances",
+              name: "Member balances",
+              from: { kind: "members" },
+              matcher: null,
+            })`,
+          }),
+          // The schedule's grants hold nothing the organization's route needs.
+          given.router.route({
+            orgId: "org-1",
+            id: "balance-convert",
+            name: "Convert balances",
+            enabled: true,
+            priority: 100,
+            trigger: {
+              kind: "event",
+              source: "bank",
+              eventType: "balance.updated",
+              matcher: null,
+            },
+            action: {
+              kind: "start_workflow",
+              authority: {
+                kind: "organization-automation",
+                grants: [BACKOFFICE_PERMISSION.store.modify],
+              },
+              workflowScriptPath: "/workspace/automations/balance-convert.workflow.js",
+              instanceIdTemplate: "balance-convert-${event.id}",
+            },
+          }),
+        ],
+        steps: ({ when, then }) => [
+          then.assert(
+            "the member schedules a balance sync forwarded to the organization",
+            async (ctx) => {
+              const routes = createAutomationsRouteCaller({
+                object: ctx.runtime.objects.automations.for(personal),
+                context: {
+                  execution: createBackofficeUserExecution({ scope: personal, userId: "user-1" }),
+                  propagationContext: null,
+                },
+              });
+              await expect(
+                routes("POST", "/routes", {
+                  body: {
+                    id: "balance-sync",
+                    name: "Balance sync",
+                    enabled: true,
+                    priority: 1000,
+                    trigger: {
+                      kind: "schedule",
+                      cadence: { kind: "once", at: new Date(Date.now() + 60_000).toISOString() },
+                    },
+                    action: {
+                      kind: "start_workflow",
+                      authority: {
+                        kind: "delegated-user",
+                        grants: [BACKOFFICE_PERMISSION.events.emit],
+                      },
+                      workflowScriptPath: "/workspace/automations/balance-sync.workflow.js",
+                      instanceIdTemplate: "balance-sync-${event.id}",
+                    },
+                  },
+                }),
+              ).resolves.toMatchObject({ type: "json" });
+              await expect(
+                routes("POST", "/routes", {
+                  body: {
+                    id: "balances-to-org",
+                    name: "Balances to Ada Labs",
+                    enabled: true,
+                    priority: 1000,
+                    trigger: {
+                      kind: "event",
+                      source: "bank",
+                      eventType: "balance.updated",
+                      matcher: null,
+                    },
+                    action: {
+                      kind: "forward_event",
+                      targetScope: { kind: "org", orgIdTemplate: "org-1" },
+                    },
+                  },
+                }),
+              ).resolves.toMatchObject({ type: "json" });
+            },
+          ),
+          when.time.advance("2 minutes"),
+          then.workflow.instance({
+            remoteWorkflowName: "balance-convert",
+            status: "complete",
+            actors: {
+              principal: {
+                type: "automation",
+                id: "automation-route/org:org-1/balance-convert",
+                role: "principal",
+              },
+              delegation: [],
+            },
+          }),
+          then.store.entry({ orgId: "org-1", key: "balances/latest", value: "8709" }),
+          // The same schedule's balance, reported through an app acting for the member. The app is
+          // not installed in org-1, so it may do nothing there, and neither may what it caused.
+          when.automation.ingestEvent({
+            id: "app-balance",
+            scopeRestriction: null,
+            scope: organizationScope,
+            source: "bank",
+            eventType: "balance.updated",
+            occurredAt: "2026-08-07T00:00:00.000Z",
+            sequence: null,
+            payload: { balanceCents: 1200 },
+            actors: {
+              initiator: { scope: "internal", type: "app", id: "ledger", role: "initiator" },
+              principal: { scope: "internal", type: "user", id: "user-1", role: "principal" },
+              delegation: [
+                {
+                  scope: "internal",
+                  type: "automation",
+                  id: "automation-route/user:user-1/balance-sync",
+                  role: "delegate",
+                },
+                { scope: "internal", type: "app-installation", id: "ledger:1", role: "delegate" },
+              ],
+            },
+            subject: null,
+            causation: {
+              kind: "forward",
+              from: {
+                scope: personal,
+                routeId: "balances-to-org",
+                routeName: "Balances to Ada Labs",
+              },
+              parent: { eventId: "app-balance", rootEventId: "app-balance" },
+            },
+          }),
+          then.workflow.instance({
+            remoteWorkflowName: "balance-convert",
+            instanceId: "balance-convert-app-balance",
+            status: "errored",
+            actors: {
+              delegation: [{ type: "app-installation", id: "ledger:1", role: "delegate" }],
+            },
+          }),
+          then.assert("the app's grants deny the write", async (ctx) => {
+            const workflows = createWorkflowsRouteCaller({
+              object: ctx.runtime.objects.automations.for(organizationScope),
+              context: {
+                execution: createBackofficeSystemExecution(organizationScope),
+                propagationContext: null,
+              },
+            });
+            const response = await workflows("GET", "/:workflowName/instances/:instanceId", {
+              pathParams: {
+                workflowName: CODEMODE_WORKFLOW,
+                instanceId: "balance-convert-app-balance",
+              },
+            });
+            assert(response.type === "json");
+            expect(response.data.details.error?.message).toContain(
+              "Delegated app-installation 'ledger:1' is not granted store.modify",
+            );
+          }),
+          then.store.entry({ orgId: "org-1", key: "balances/latest", value: "8709" }),
+        ],
+      }),
+    );
+  });
+
   test("linked-user resolves the external initiator before starting the workflow", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({

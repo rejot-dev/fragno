@@ -399,7 +399,12 @@ export const createAutomationRuntimeExecution = ({
     actors: automationActorsSchema.parse({
       initiator: event.actors.initiator,
       principal: automationActor(authority.automationId, "principal"),
-      delegation: event.actors.delegation,
+      // A route delegate narrows the user its route acted for, and this route acts for none, so
+      // the routes that caused the event lend it none of their limits. Agents and installed apps
+      // that caused it still narrow it to what they may do.
+      delegation: event.actors.delegation.filter(
+        (actor) => actor.role !== "delegate" || automationRouteFromActor(actor) === null,
+      ),
     }),
   };
 };
