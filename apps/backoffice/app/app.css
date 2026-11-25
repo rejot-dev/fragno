@@ -5,6 +5,16 @@
 
 @source "../node_modules/streamdown/dist/*.js";
 
+/* Where the shell drops its phone chrome for the top bar and sidebar: from sm wide with a mouse or
+   trackpad, and on touch screens from the size of the smallest iPad (744×1133). Touch screens below
+   that are phones, including one on its side and an unfolded iPhone Duo (669×867, 951×585 on its
+   side); an iPad mini on its side keeps about 680px of height under Safari's bars. */
+@custom-variant desktop {
+  @media (width >= 40rem) and (not (pointer: coarse)), (width >= 720px) and (height >= 660px) {
+    @slot;
+  }
+}
+
 /* The viewport covers the whole screen (viewport-fit=cover) so the phone chrome can reach under the
    home indicator, which also reaches under a landscape phone's notch; pages stay clear of it. */
 body {
@@ -18,8 +28,8 @@ html:has([data-integrations-workspace]) {
 }
 
 /* The shell's chrome above and below a page, so pages that fill the screen, such as explorers and
-   chats, take what is left. Phones have the slim header and the tab bar; from sm, the top bar above
-   the sidebar.
+   chats, take what is left. Phones have the slim header and the tab bar; desktops, the top bar
+   above the sidebar.
    The body and shell use min-h-dvh to match: on phones 100vh is the viewport without the browser's
    URL bar, so a 100vh shell would scroll a full-screen page under the header and leave a gap above
    the tab bar. */
@@ -27,10 +37,8 @@ html:has([data-integrations-workspace]) {
   --bo-shell-top: calc(var(--spacing) * 14 + 1px + env(safe-area-inset-top));
   --bo-shell-bottom: calc(var(--spacing) * 14 + 1px + env(safe-area-inset-bottom));
   --bo-page-height: calc(100dvh - var(--bo-shell-top) - var(--bo-shell-bottom));
-}
 
-@media (width >= 40rem) {
-  [data-backoffice-shell] {
+  @variant desktop {
     --bo-shell-top: calc(var(--spacing) * 16 + 1px + env(safe-area-inset-top));
     --bo-shell-bottom: 0px;
   }

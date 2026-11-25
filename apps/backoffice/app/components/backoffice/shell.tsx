@@ -310,7 +310,7 @@ function BackofficeShellFrame({
         />
         <div className="flex min-w-0 flex-1">
           {/* Phones reach sections through the tab bar instead. */}
-          <div className="hidden sm:contents">
+          <div className="desktop:contents hidden">
             <BackofficeSidebarNav
               sections={sections}
               collapsed={sidebarShownCollapsed}
@@ -330,7 +330,7 @@ function BackofficeShellFrame({
         </div>
       </div>
       {/* Phones reach agents through the Agents tab instead. */}
-      <div className="hidden sm:contents">
+      <div className="desktop:contents hidden">
         <AgentDrawer
           open={agentDrawerOpen}
           draft={agentDraft}

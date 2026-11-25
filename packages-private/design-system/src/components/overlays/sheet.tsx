@@ -40,7 +40,8 @@ export function Sheet({
         <BaseDialog.Popup
           data-backoffice-root
           className={cn(
-            "bo-popover-surface fixed inset-x-0 z-50 flex max-h-[85dvh] flex-col bg-[var(--bo-panel)] text-[var(--bo-fg)] transition-transform duration-200 ease-out outline-none motion-reduce:transition-none",
+            // Spans the screen, so on a phone on its side its content keeps clear of the notch.
+            "bo-popover-surface fixed inset-x-0 z-50 flex max-h-[85dvh] flex-col bg-[var(--bo-panel)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)] text-[var(--bo-fg)] transition-transform duration-200 ease-out outline-none motion-reduce:transition-none",
             side === "top"
               ? "top-0 rounded-b-[12px] pt-[env(safe-area-inset-top)] data-[ending-style]:-translate-y-full data-[starting-style]:-translate-y-full"
               : "bottom-0 rounded-t-[12px] pb-[env(safe-area-inset-bottom)] data-[ending-style]:translate-y-full data-[starting-style]:translate-y-full",

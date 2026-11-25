@@ -122,7 +122,9 @@ export function MobileNavigation({
 /**
  * Phone navigation pinned to the bottom of the screen, within reach of a thumb: evenly split slots
  * of BottomNavigationItem and BottomNavigationButton. The consumer hides it where it does not apply
- * and keeps page content clear of it; it pads itself above the home indicator.
+ * and keeps page content clear of it; it pads itself above the home indicator and, on a phone on
+ * its side, clear of the notch. On wide screens, such as an unfolded iPhone Duo, the slots stay
+ * together in the middle rather than spreading across the bar.
  */
 export function BottomNavigation({
   ariaLabel,
@@ -134,9 +136,9 @@ export function BottomNavigation({
   return (
     <nav
       aria-label={ariaLabel}
-      className="fixed inset-x-0 bottom-0 z-30 grid auto-cols-fr grid-flow-col border-t border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] px-1 pb-[env(safe-area-inset-bottom)]"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] pr-[max(--spacing(1),env(safe-area-inset-right))] pb-[env(safe-area-inset-bottom)] pl-[max(--spacing(1),env(safe-area-inset-left))]"
     >
-      {children}
+      <div className="mx-auto grid max-w-[28rem] auto-cols-fr grid-flow-col">{children}</div>
     </nav>
   );
 }
