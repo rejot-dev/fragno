@@ -8,33 +8,36 @@ import {
   type ReactNode,
 } from "react";
 
-const DEFAULT_WIDTH = 520;
-const MIN_WIDTH = 360;
+export const SIDE_DRAWER_MIN_WIDTH = 360;
 const MAX_WIDTH = 900;
 const RESIZE_STEP = 24;
 
 /**
  * A full-height panel on the right edge of the shell that pushes the page aside. The reader
- * resizes it from its left edge, which is remembered under `storageKey`. Its children mount when
- * it first opens, stay mounted while it is closed so what they hold (a live connection, for
- * example) survives reopening, and start with a `SideDrawerHeader`.
+ * resizes it from its left edge, with a grip on touch screens. The width starts at `defaultWidth`
+ * and is remembered under `storageKey`, so a consumer can size it apart per kind of screen. Its
+ * children mount when it first opens, stay mounted while it is closed so what they hold (a live
+ * connection, for example) survives reopening, and start with a `SideDrawerHeader`.
  */
 export function SideDrawer({
   id,
   label,
   open,
+  defaultWidth,
   storageKey,
   children,
 }: {
   id: string;
   label: string;
   open: boolean;
+  defaultWidth: number;
   storageKey: string;
   children: ReactNode;
 }) {
-  // The server renders the default; the stored width is restored once mounted.
-  const [width, setWidth] = useState(DEFAULT_WIDTH);
-  const restoredRef = useRef(false);
+  // The server renders the default; the stored width is restored once mounted, and again when the
+  // key changes.
+  const [width, setWidth] = useState(defaultWidth);
+  const restoredKeyRef = useRef<string | null>(null);
   const [everOpened, setEverOpened] = useState(open);
   if (open && !everOpened) {
     setEverOpened(true);
@@ -42,17 +45,15 @@ export function SideDrawer({
   const draggingRef = useRef(false);
   const clampWidth = useCallback(
     (value: number) =>
-      Math.min(Math.min(MAX_WIDTH, window.innerWidth - 32), Math.max(MIN_WIDTH, value)),
+      Math.min(Math.min(MAX_WIDTH, window.innerWidth - 32), Math.max(SIDE_DRAWER_MIN_WIDTH, value)),
     [],
   );
 
   useEffect(() => {
-    if (!restoredRef.current) {
-      restoredRef.current = true;
+    if (restoredKeyRef.current !== storageKey) {
+      restoredKeyRef.current = storageKey;
       const stored = readStoredWidth(storageKey);
-      if (stored !== null) {
-        setWidth(clampWidth(stored));
-      }
+      setWidth(stored === null ? defaultWidth : clampWidth(stored));
       return;
     }
     try {
@@ -60,7 +61,7 @@ export function SideDrawer({
     } catch {
       // Drawer sizing persistence is optional when storage is unavailable.
     }
-  }, [clampWidth, storageKey, width]);
+  }, [clampWidth, defaultWidth, storageKey, width]);
 
   const stopDragging = useCallback(() => {
     if (!draggingRef.current) {
@@ -102,7 +103,7 @@ export function SideDrawer({
     }
     event.preventDefault();
     if (event.key === "Home") {
-      setWidth(MIN_WIDTH);
+      setWidth(SIDE_DRAWER_MIN_WIDTH);
     } else if (event.key === "End") {
       setWidth(clampWidth(MAX_WIDTH));
     } else {
@@ -125,12 +126,12 @@ export function SideDrawer({
         role="separator"
         aria-label={`Resize ${label.toLowerCase()}`}
         aria-orientation="vertical"
-        aria-valuemin={MIN_WIDTH}
+        aria-valuemin={SIDE_DRAWER_MIN_WIDTH}
         aria-valuemax={MAX_WIDTH}
         aria-valuenow={Math.round(width)}
         tabIndex={open ? 0 : -1}
         onDoubleClick={() => {
-          setWidth(DEFAULT_WIDTH);
+          setWidth(defaultWidth);
         }}
         onKeyDown={resizeFromKeyboard}
         onPointerDown={(event) => {
@@ -139,10 +140,15 @@ export function SideDrawer({
           document.body.style.cursor = "col-resize";
           document.body.style.userSelect = "none";
         }}
-        className="absolute inset-y-0 left-0 z-10 hidden w-px -translate-x-px cursor-col-resize bg-[var(--bo-border-strong)] transition-colors duration-150 outline-none hover:bg-[color-mix(in_srgb,var(--bo-border-strong),var(--bo-fg)_20%)] focus-visible:bg-[color-mix(in_srgb,var(--bo-border-strong),var(--bo-fg)_20%)] active:bg-[color-mix(in_srgb,var(--bo-border-strong),var(--bo-fg)_20%)] sm:block"
+        className="absolute inset-y-0 left-0 z-10 hidden w-px -translate-x-px cursor-col-resize touch-none bg-[var(--bo-border-strong)] transition-colors duration-150 outline-none hover:bg-[color-mix(in_srgb,var(--bo-border-strong),var(--bo-fg)_20%)] focus-visible:bg-[color-mix(in_srgb,var(--bo-border-strong),var(--bo-fg)_20%)] active:bg-[color-mix(in_srgb,var(--bo-border-strong),var(--bo-fg)_20%)] sm:block"
       >
         {/* A wider, invisible grab area; only the line itself darkens. */}
         <span className="absolute inset-y-0 -left-2 w-4" />
+        {/* A finger needs more than the line, and to see where to hold: a grip inside the edge,
+            since the drawer clips what lies outside it. */}
+        <span className="absolute top-1/2 left-0 hidden h-16 w-6 -translate-y-1/2 pointer-coarse:block">
+          <span className="absolute top-1/2 left-1 h-10 w-1.5 -translate-y-1/2 rounded-full bg-[var(--bo-border-strong)]" />
+        </span>
       </div>
 
       {everOpened ? (
@@ -160,11 +166,12 @@ export function SideDrawer({
   );
 }
 
-/** The drawer's toolbar, level with the Backoffice top bar. */
+/** The drawer's toolbar, level with the Backoffice top bar, or its phone header on wide phones. */
 export function SideDrawerHeader({ children }: { children: ReactNode }) {
   return (
-    // Matches the Backoffice top bar: its background, and 64px of content plus its 1px bottom border.
-    <header className="flex h-[calc(--spacing(16)+1px)] shrink-0 items-center gap-1 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] px-3">
+    // Matches the Backoffice shell's header: its background, and its height, which the shell keeps
+    // in --bo-shell-top; outside the shell, the top bar's 64px of content plus its 1px bottom border.
+    <header className="flex h-[var(--bo-shell-top,calc(--spacing(16)+1px))] shrink-0 items-center gap-1 border-b border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] px-3 pt-[env(safe-area-inset-top)]">
       {children}
     </header>
   );

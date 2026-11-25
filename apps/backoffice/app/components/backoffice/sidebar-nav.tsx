@@ -20,11 +20,17 @@ type PrimaryNavigationItem = {
   to: string;
   icon: IconName;
   isActive: (pathname: string) => boolean;
-  /** Whether phones give it a tab of its own; the others are in the phone menu. */
-  phoneTab: boolean;
+  /** Which phones give it a tab of its own; the others list it in the phone menu. */
+  phoneTab: PhoneTab;
   /** Where phones start it in a scope, when not where wider screens do. */
   phoneStart: ((scope: BackofficeRouteScope) => string) | null;
 };
+
+/**
+ * Phones narrower than the agent's drawer allows reach the agent through the Agents tab. Wider
+ * ones keep the agent beside the page and have room for more tabs in its place.
+ */
+type PhoneTab = "every-phone" | "narrow-phones" | "wide-phones" | "none";
 
 const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
   {
@@ -32,7 +38,7 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     to: "/backoffice/dashboard",
     icon: "grid",
     isActive: (pathname) => pathname.startsWith("/backoffice/dashboard"),
-    phoneTab: true,
+    phoneTab: "every-phone",
     phoneStart: null,
   },
   {
@@ -40,7 +46,7 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     to: "/backoffice/integrations",
     icon: "link",
     isActive: (pathname) => pathname.startsWith("/backoffice/integrations"),
-    phoneTab: false,
+    phoneTab: "wide-phones",
     phoneStart: null,
   },
   {
@@ -48,7 +54,7 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     to: "/backoffice/agents",
     icon: "message-square",
     isActive: (pathname) => pathname.startsWith("/backoffice/agents"),
-    phoneTab: true,
+    phoneTab: "narrow-phones",
     phoneStart: mainPiAgentPath,
   },
   {
@@ -56,7 +62,7 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     to: "/backoffice/artifacts",
     icon: "layers",
     isActive: (pathname) => pathname.startsWith("/backoffice/artifacts"),
-    phoneTab: false,
+    phoneTab: "wide-phones",
     phoneStart: null,
   },
   {
@@ -64,7 +70,7 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     to: "/backoffice/files",
     icon: "folder",
     isActive: (pathname) => pathname.startsWith("/backoffice/files"),
-    phoneTab: true,
+    phoneTab: "every-phone",
     phoneStart: null,
   },
   {
@@ -72,7 +78,7 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     to: "/backoffice/computers",
     icon: "monitor",
     isActive: (pathname) => pathname.startsWith("/backoffice/computers"),
-    phoneTab: false,
+    phoneTab: "none",
     phoneStart: null,
   },
   {
@@ -80,14 +86,14 @@ const PRIMARY_NAVIGATION: PrimaryNavigationItem[] = [
     to: "/backoffice/marketplace",
     icon: "shopping-bag",
     isActive: (pathname) => pathname.startsWith("/backoffice/marketplace"),
-    phoneTab: false,
+    phoneTab: "none",
     phoneStart: null,
   },
 ];
 
 type SidebarScope = BackofficeResolvedScope<Organization>;
 
-type PrimarySection = { link: NavigationItem; phoneTab: boolean; phoneStart: string };
+type PrimarySection = { link: NavigationItem; phoneTab: PhoneTab; phoneStart: string };
 
 // Section links carry the current scope so switching sections keeps the
 // selected organization/project instead of falling back to the default scope.
@@ -186,8 +192,8 @@ export type BackofficeSections = {
   context: NavigationItem[];
   /** Phones' sections, some of which start elsewhere. */
   phone: {
-    /** The primary sections phones give a tab of their own. */
-    tabs: NavigationItem[];
+    /** The primary sections each width of phone gives a tab of its own; see `PhoneTab`. */
+    tabs: { narrow: NavigationItem[]; wide: NavigationItem[] };
     all: NavigationItem[];
   };
 };
@@ -227,7 +233,14 @@ export function useBackofficeSections(
     primary: primary.map(({ link }) => resume(link, link.to)),
     context: resumedContext,
     phone: {
-      tabs: phonePrimary.filter((section) => section.phoneTab).map(({ link }) => link),
+      tabs: {
+        narrow: phonePrimary
+          .filter(({ phoneTab }) => phoneTab === "every-phone" || phoneTab === "narrow-phones")
+          .map(({ link }) => link),
+        wide: phonePrimary
+          .filter(({ phoneTab }) => phoneTab === "every-phone" || phoneTab === "wide-phones")
+          .map(({ link }) => link),
+      },
       all: [...phonePrimary.map(({ link }) => link), ...resumedContext],
     },
   };

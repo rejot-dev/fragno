@@ -76,21 +76,23 @@ export function Mobile() {
   );
 }
 
-// Fixed to the bottom of the viewport, as on a phone; the last slot opens the destinations that do
-// not fit.
+// Last in a screen-high column, as on a phone; the last slot opens the destinations that do not fit.
 export function Bottom() {
   return (
-    <BottomNavigation ariaLabel="Backoffice">
-      {items.slice(0, 3).map((item) => (
-        <BottomNavigationItem key={item.to} item={item} />
-      ))}
-      <BottomNavigationButton
-        label="More"
-        icon="more-horizontal"
-        active={false}
-        expanded={false}
-        onClick={() => undefined}
-      />
-    </BottomNavigation>
+    <div className="flex min-h-dvh flex-col">
+      <div className="flex-1 p-6 text-sm text-[var(--bo-muted)]">Page content</div>
+      <BottomNavigation ariaLabel="Backoffice" end={null}>
+        {items.slice(0, 3).map((item) => (
+          <BottomNavigationItem key={item.to} item={item} />
+        ))}
+        <BottomNavigationButton
+          label="More"
+          icon="more-horizontal"
+          active={false}
+          expanded={false}
+          onClick={() => undefined}
+        />
+      </BottomNavigation>
+    </div>
   );
 }

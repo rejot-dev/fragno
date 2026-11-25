@@ -42,7 +42,7 @@ export function BackofficeTopBar({
   const projectOwner = resolvedScope && backofficeScopeProjectOwner(resolvedScope);
 
   return (
-    // Phones get BackofficePhoneChrome instead.
+    // Phones get BackofficePhoneHeader instead.
     <header className="desktop:block sticky top-0 z-30 hidden border-b border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] pt-[env(safe-area-inset-top)]">
       <div className="flex h-16 items-stretch">
         {/* Tracks the sidebar's width below it, including its collapse transition. */}

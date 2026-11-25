@@ -120,25 +120,32 @@ export function MobileNavigation({
 }
 
 /**
- * Phone navigation pinned to the bottom of the screen, within reach of a thumb: evenly split slots
- * of BottomNavigationItem and BottomNavigationButton. The consumer hides it where it does not apply
- * and keeps page content clear of it; it pads itself above the home indicator and, on a phone on
- * its side, clear of the notch. On wide screens, such as an unfolded iPhone Duo, the slots stay
- * together in the middle rather than spreading across the bar.
+ * Phone navigation stuck to the bottom of the screen, within reach of a thumb: evenly split slots
+ * of BottomNavigationItem and BottomNavigationButton. The consumer places it last in the column it
+ * spans, which a panel beside the page leaves out, and hides it where it does not apply. It pads
+ * itself above the home indicator and, on a phone on its side, clear of the notch. On wide screens,
+ * such as an unfolded iPhone Duo, the slots stay together in the middle rather than spreading
+ * across the bar. `end` holds a control apart from the slots, at the bar's right edge, such as the
+ * toggle of a panel beside the page.
  */
 export function BottomNavigation({
   ariaLabel,
+  end,
   children,
 }: {
   ariaLabel: string;
+  end: ReactNode;
   children: ReactNode;
 }) {
   return (
     <nav
       aria-label={ariaLabel}
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] pr-[max(--spacing(1),env(safe-area-inset-right))] pb-[env(safe-area-inset-bottom)] pl-[max(--spacing(1),env(safe-area-inset-left))]"
+      className="sticky bottom-0 z-30 flex border-t border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] pr-[max(--spacing(1),env(safe-area-inset-right))] pb-[env(safe-area-inset-bottom)] pl-[max(--spacing(1),env(safe-area-inset-left))]"
     >
-      <div className="mx-auto grid max-w-[28rem] auto-cols-fr grid-flow-col">{children}</div>
+      <div className="mx-auto grid max-w-[36rem] min-w-0 flex-1 auto-cols-fr grid-flow-col">
+        {children}
+      </div>
+      {end}
     </nav>
   );
 }

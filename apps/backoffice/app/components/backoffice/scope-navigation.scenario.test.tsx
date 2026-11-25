@@ -20,7 +20,7 @@ import {
 import type { BackofficeMeData, Organization } from "@/fragno/auth/contracts";
 import { resolveBackofficePageScope } from "@/layouts/backoffice-layout-scope";
 
-import { BackofficePhoneChrome } from "./phone-chrome";
+import { BackofficePhoneTabBar } from "./phone-chrome";
 import { BackofficeProjectMenu } from "./project-menu";
 import { BackofficeSidebarNav, useBackofficeSections } from "./sidebar-nav";
 
@@ -94,15 +94,7 @@ function NavigationScenario({ navigation }: { navigation: Navigation }) {
           onCollapsedChange={setCollapsed}
         />
       ) : (
-        <BackofficePhoneChrome
-          sections={sections}
-          me={me}
-          resolvedScope={scope}
-          administeredMember={null}
-          projectList={null}
-          scopeProbe={null}
-          isLoading={false}
-        />
+        <BackofficePhoneTabBar sections={sections} agentBeside={null} me={me} isLoading={false} />
       )}
       {owner.kind !== "system" ? (
         <BackofficeProjectMenu
