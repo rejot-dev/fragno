@@ -962,14 +962,17 @@ export class AuthObject implements AuthCommands {
             installedSchemaVersion ?? null,
           );
           await installBetterAuthDurableHooks<AuthDatabase>(transaction);
+          // The version commits with the schema it names. Stored apart, a failure between the two
+          // left the new schema under the old version, whose upgrade then failed on every
+          // activation. Durable Object storage writes made in the transaction roll back with it.
+          await state.storage.put(
+            AUTH_SCHEMA_VERSION_STORAGE_KEY,
+            BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION,
+          );
         });
         // Installing creates the Codemode client once; activations then skip building a Better
         // Auth instance for it, and the paths that hand the client out still ensure it exists.
         await initializeBackofficeCodemodeOAuthClient(this.#getAuth("http://localhost"));
-        await state.storage.put(
-          AUTH_SCHEMA_VERSION_STORAGE_KEY,
-          BACKOFFICE_BETTER_AUTH_SCHEMA_VERSION,
-        );
       }
 
       if (!runtime.config.authEmailVerification.enabled) {
