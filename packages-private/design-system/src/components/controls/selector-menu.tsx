@@ -19,8 +19,7 @@ export function SelectorMenu({ children }: { children: ReactNode }) {
 // - "fill" spans its container.
 // - "hug" sizes to its content and collapses to the initials below the xl breakpoint.
 // - "workspace" fills like "fill" with a coloured workspace tile on the left. When collapsed, only
-//   the tile is shown, centered, from the sidebar breakpoint (960px) up, so it lines up with a
-//   collapsed sidebar; below that breakpoint there is no sidebar to line up with.
+//   the tile is shown, centered, so it lines up with a collapsed sidebar.
 // - "icon" shows only an icon, for a setting whose state the icon itself shows; the label and
 //   value stay in the accessible name.
 type SelectorMenuTriggerLayout =
@@ -53,7 +52,7 @@ function WorkspaceTile({
         color.kind === "primary"
           ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
           : "text-white",
-        collapsed && "min-[960px]:mr-0",
+        collapsed && "mr-0",
       )}
     >
       {mark.kind === "letter" ? (
@@ -89,9 +88,7 @@ export function SelectorMenuTrigger({
             ? "shrink-0 self-stretch px-4"
             : "w-full",
         layout.kind === "workspace" && "pl-5",
-        layout.kind === "workspace" &&
-          layout.collapsed &&
-          "min-[960px]:justify-center min-[960px]:px-0",
+        layout.kind === "workspace" && layout.collapsed && "justify-center px-0",
       )}
     >
       {layout.kind === "hug" ? (
@@ -115,7 +112,7 @@ export function SelectorMenuTrigger({
             : layout.kind === "icon"
               ? "hidden"
               : "flex flex-1",
-          layout.kind === "workspace" && layout.collapsed && "min-[960px]:hidden",
+          layout.kind === "workspace" && layout.collapsed && "hidden",
         )}
       >
         <span className="text-[11px] font-semibold text-[var(--bo-muted-2)]">{label}</span>
@@ -137,7 +134,7 @@ export function SelectorMenuTrigger({
           "size-3.5 shrink-0 text-[var(--bo-muted-2)] transition-[transform,color] duration-150 ease-out group-data-[popup-open]:rotate-180 group-data-[popup-open]:text-[var(--bo-accent-fg)]",
           layout.kind === "hug" && "hidden sm:block",
           layout.kind === "icon" && "hidden",
-          layout.kind === "workspace" && layout.collapsed && "min-[960px]:hidden",
+          layout.kind === "workspace" && layout.collapsed && "hidden",
         )}
       />
     </Menu.Trigger>

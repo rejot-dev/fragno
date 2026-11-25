@@ -1,9 +1,6 @@
 import { backofficeScopeRootOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { IconName } from "@fragno-private/design-system/icon";
-import {
-  MobileNavigation,
-  SidebarNavigation,
-} from "@fragno-private/design-system/navigation/navigation";
+import { SidebarNavigation } from "@fragno-private/design-system/navigation/navigation";
 import type { NavigationItem } from "@fragno-private/design-system/navigation/navigation-item";
 import { useState } from "react";
 import { useLocation } from "react-router";
@@ -170,7 +167,7 @@ export function BackofficeSidebarNav({
 }: {
   sections: BackofficeSections;
   collapsed: boolean;
-  onCollapsedChange: (collapsed: boolean) => void;
+  onCollapsedChange: ((collapsed: boolean) => void) | null;
 }) {
   return (
     <SidebarNavigation
@@ -181,10 +178,6 @@ export function BackofficeSidebarNav({
       onCollapsedChange={onCollapsedChange}
     />
   );
-}
-
-export function BackofficeMobileNav({ sections }: { sections: BackofficeSections }) {
-  return <MobileNavigation items={[...sections.primary, ...sections.context]} ariaLabel="Leyway" />;
 }
 
 export type BackofficeSections = {

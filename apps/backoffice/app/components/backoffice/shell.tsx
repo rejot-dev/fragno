@@ -3,7 +3,16 @@ import {
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 
 import {
   backofficeRouteScopeFromResolvedScope,
@@ -152,6 +161,28 @@ function readStoredSidebarCollapsed(): boolean {
   }
 }
 
+// Below this the sidebar is a rail of icons whatever was saved, so pages keep their room.
+const SIDEBAR_RAIL_QUERY = "(width < 960px)";
+
+/** Whether the media query matches; false on the server and in the hydrating render. */
+function useMediaQuery(query: string): boolean {
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const list = window.matchMedia(query);
+      list.addEventListener("change", onChange);
+      return () => {
+        list.removeEventListener("change", onChange);
+      };
+    },
+    [query],
+  );
+  return useSyncExternalStore(
+    subscribe,
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
+}
+
 function BackofficeShellFrame({
   children,
   me,
@@ -180,6 +211,8 @@ function BackofficeShellFrame({
   );
   const sections = useBackofficeSections(resolvedScope, me);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const sidebarRail = useMediaQuery(SIDEBAR_RAIL_QUERY);
+  const sidebarShownCollapsed = sidebarCollapsed || sidebarRail;
   const sidebarRestoredRef = useRef(false);
   const [sidebarRestoring, setSidebarRestoring] = useState(true);
   const terminalScope = resolvedScope
@@ -229,7 +262,9 @@ function BackofficeShellFrame({
     code: "KeyB",
     modifiers: { primary: true },
     handler() {
-      setSidebarCollapsed((collapsed) => !collapsed);
+      if (!sidebarRail) {
+        setSidebarCollapsed((collapsed) => !collapsed);
+      }
     },
   });
   useGlobalHotkey({
@@ -261,25 +296,27 @@ function BackofficeShellFrame({
           isLoading={isLoading ?? false}
         />
         <BackofficeTopBar
-          sections={sections}
           me={me}
           resolvedScope={resolvedScope}
           administeredMember={administeredMember}
           projectList={projectList}
           scopeProbe={scopeProbe}
           isLoading={isLoading}
-          sidebarCollapsed={sidebarCollapsed}
+          sidebarCollapsed={sidebarShownCollapsed}
           agentDrawerOpen={agentDrawerOpen}
           onAgentDrawerToggle={() => {
             setAgentDrawerOpen((open) => !open);
           }}
         />
         <div className="flex min-w-0 flex-1">
-          <BackofficeSidebarNav
-            sections={sections}
-            collapsed={sidebarCollapsed}
-            onCollapsedChange={setSidebarCollapsed}
-          />
+          {/* Phones reach sections through the tab bar instead. */}
+          <div className="hidden sm:contents">
+            <BackofficeSidebarNav
+              sections={sections}
+              collapsed={sidebarShownCollapsed}
+              onCollapsedChange={sidebarRail ? null : setSidebarCollapsed}
+            />
+          </div>
           <main className="relative z-10 flex min-w-0 flex-1 flex-col">
             <MemberWorkspaceBanner
               me={me}

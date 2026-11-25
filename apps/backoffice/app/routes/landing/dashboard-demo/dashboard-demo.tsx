@@ -315,10 +315,8 @@ function TopBar({ state, drawerOpen }: { state: DashboardDemoState; drawerOpen: 
   return (
     <header className="flex h-16 shrink-0 items-stretch border-b border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)]">
       {/* The workspace tile takes the primary color; the demo's organization tile is black. */}
-      {/* As wide as the collapsed sidebar below it, as the app's top bar is. Clipped, because the
-          trigger follows the visitor's viewport and below the sidebar breakpoint shows its label,
-          which the demo's fixed desktop has no room for. */}
-      <div className="flex w-16 items-stretch overflow-hidden border-r border-[color:var(--bo-border)] [--primary-foreground:#ffffff] [--primary:#0b0b0a]">
+      {/* As wide as the collapsed sidebar below it, as the app's top bar is. */}
+      <div className="flex w-16 items-stretch border-r border-[color:var(--bo-border)] [--primary-foreground:#ffffff] [--primary:#0b0b0a]">
         <SelectorMenu>
           <SelectorMenuTrigger
             label="Organization"
@@ -371,8 +369,7 @@ function TopBar({ state, drawerOpen }: { state: DashboardDemoState; drawerOpen: 
 function Sidebar({ active }: { active: string }) {
   return (
     // The app's sidebar, collapsed to its icons so the page has the room. Drawn here rather than
-    // through SidebarNavigation, which hides below the sidebar breakpoint and pins itself to the
-    // window: the demo is a fixed desktop.
+    // through SidebarNavigation, which pins itself to the window: the demo is a fixed desktop.
     <aside className="flex w-16 shrink-0 flex-col border-r border-[color:var(--bo-border)] bg-[color:var(--bo-sidebar-bg)]">
       <nav aria-label="Leyway" className="flex min-h-0 flex-1 flex-col">
         <div className="flex flex-col gap-2.5 px-2 py-4">

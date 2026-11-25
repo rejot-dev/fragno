@@ -36,7 +36,6 @@ const sections = [
   },
 ] satisfies NavigationSection[];
 
-// The sidebar only shows from 960px wide, matching the Backoffice shell breakpoint.
 export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   return (

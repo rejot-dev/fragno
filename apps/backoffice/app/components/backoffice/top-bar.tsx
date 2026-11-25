@@ -15,10 +15,8 @@ import { BackofficePresenceIndicator } from "./presence-indicator";
 import { StreamedBackofficeProjectMenu } from "./project-menu";
 import { BackofficeScopeMenu } from "./scope-menu";
 import { type ScopeProbe, StreamedScopeProbe } from "./scope-probe";
-import { BackofficeMobileNav, type BackofficeSections } from "./sidebar-nav";
 
 type BackofficeTopBarProps = {
-  sections: BackofficeSections;
   me: BackofficeMeData | null;
   resolvedScope: BackofficeResolvedScope<Organization, BackofficeNamedProject> | null;
   administeredMember: AdministeredMember | null;
@@ -31,7 +29,6 @@ type BackofficeTopBarProps = {
 };
 
 export function BackofficeTopBar({
-  sections,
   me,
   resolvedScope,
   administeredMember,
@@ -50,7 +47,7 @@ export function BackofficeTopBar({
       <div className="flex h-16 items-stretch">
         {/* Tracks the sidebar's width below it, including its collapse transition. */}
         <div
-          className={`flex min-w-0 flex-1 items-stretch transition-[width] duration-150 ease-out min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)] ${sidebarCollapsed ? "min-[960px]:w-16" : "min-[960px]:w-72"}`}
+          className={`flex min-w-0 flex-none items-stretch border-r border-[color:var(--bo-border)] transition-[width] duration-150 ease-out ${sidebarCollapsed ? "w-16" : "w-72"}`}
         >
           <BackofficeScopeMenu
             me={me}
@@ -61,7 +58,8 @@ export function BackofficeTopBar({
         </div>
 
         {resolvedScope && projectOwner ? (
-          <div className="flex min-w-0 flex-1 items-stretch min-[960px]:w-72 min-[960px]:flex-none min-[960px]:border-r min-[960px]:border-[color:var(--bo-border)]">
+          // On the narrowest top bars it shrinks so the controls on the right keep their room.
+          <div className="flex max-w-72 min-w-0 flex-1 items-stretch border-r border-[color:var(--bo-border)]">
             <StreamedBackofficeProjectMenu
               presentation="menu"
               owner={backofficeRouteScopeFromResolvedScope(projectOwner)}
@@ -82,7 +80,7 @@ export function BackofficeTopBar({
             // Keyed so switching organizations drops the previous organization's members.
             <BackofficePresenceIndicator key={me.activeOrganizationId} />
           ) : null}
-          <div className="flex shrink-0 items-center min-[960px]:border-l min-[960px]:border-[color:var(--bo-border)]">
+          <div className="flex shrink-0 items-center border-l border-[color:var(--bo-border)]">
             <BackofficeAppearanceMenu me={me} isLoading={isLoading} trigger="icon" />
           </div>
         </div>
@@ -103,10 +101,6 @@ export function BackofficeTopBar({
             <AgentMark />
           </button>
         ) : null}
-      </div>
-
-      <div className="border-t border-[color:var(--bo-border)] min-[960px]:hidden">
-        <BackofficeMobileNav sections={sections} />
       </div>
     </header>
   );

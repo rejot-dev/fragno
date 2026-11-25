@@ -53,7 +53,7 @@ export function BackofficePresenceIndicator() {
   }
 
   return (
-    <div className="flex shrink-0 items-center px-4 min-[960px]:border-l min-[960px]:border-[color:var(--bo-border)]">
+    <div className="flex shrink-0 items-center border-l border-[color:var(--bo-border)] px-4">
       <PresenceStack people={people} />
     </div>
   );
