@@ -6,9 +6,7 @@ describe("Backoffice system file collection", () => {
   test("exposes system files as a static collection", async () => {
     const systemFileCollection = createBackofficeSystemFileCollection();
     const tree = await systemFileCollection.getTree();
-    expect(tree.entries.map((entry) => entry.path)).toEqual(
-      expect.arrayContaining(["README.md", "automations"]),
-    );
+    expect(tree.entries.map((entry) => entry.path)).toEqual(expect.arrayContaining(["README.md"]));
 
     const readme = await systemFileCollection.getFile("README.md");
     expect(readme).not.toBeNull();

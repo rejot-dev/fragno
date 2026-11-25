@@ -108,8 +108,9 @@ test("an agent's definition narrows the work its turns leave behind", async () =
       objects: scenarioObjects,
       name: "agent definitions narrow persisted work",
       options: { allowErroredWorkflows: true },
-      files: backofficeFiles.workspaceStarter({
-        "automations/record.workflow.js": `export default defineWorkflow(
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/record.workflow.js": `export default defineWorkflow(
   { name: "record" },
   async (event, step) => {
     await step.do("record", async () => {
@@ -118,6 +119,7 @@ test("an agent's definition narrows the work its turns leave behind", async () =
   },
 );
 `,
+        },
       }),
       setup: ({ given }) => [
         given.auth.user({ id: "user-1", role: "user" }),

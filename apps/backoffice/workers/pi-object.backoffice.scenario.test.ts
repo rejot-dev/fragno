@@ -2728,8 +2728,10 @@ for (const leaveOrganization of [false, true]) {
     await runBackofficeScenario(
       defineBackofficeScenario({
         name: `personal workflow usage${leaveOrganization ? " after leaving an organization" : ""}`,
-        files: backofficeFiles.workspaceStarter({
-          "automations/saved-sentence-checker.workflow.js": savedWorkflowCode,
+        files: backofficeFiles.custom({
+          workspace: {
+            "automations/saved-sentence-checker.workflow.js": savedWorkflowCode,
+          },
         }),
         options: { drain: false },
         // Beyond the classifications, the agent hears back when its workflow ends.

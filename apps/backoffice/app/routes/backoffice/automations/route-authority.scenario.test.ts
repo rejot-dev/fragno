@@ -7,11 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
-import {
-  backofficeFiles,
-  defineBackofficeScenario,
-  runBackofficeScenario,
-} from "@/fragno/automation/scenario";
+import { defineBackofficeScenario, runBackofficeScenario } from "@/fragno/automation/scenario";
 
 import { ApiObject } from "../../../../workers/api-object";
 import { AuthObject } from "../../../../workers/auth-object";
@@ -33,7 +29,6 @@ describe("route authority inspector scenario", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "route inspector explains whose permissions apply",
-        files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then }) => [
           when.router.createRoute({

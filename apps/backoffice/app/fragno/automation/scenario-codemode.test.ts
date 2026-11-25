@@ -17,7 +17,7 @@ import { ProjectConnectorObject } from "../../../workers/project-connector-objec
 import { ResendObject } from "../../../workers/resend-object";
 import { TelegramObject } from "../../../workers/telegram-object";
 import { UploadObject } from "../../../workers/upload-object";
-import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
+import { defineBackofficeScenario, runBackofficeScenario } from "./scenario";
 const scenarioObjects = {
   API: (input) => new ApiObject(input),
   APPS: (input) => new AppsObject(input),
@@ -42,8 +42,6 @@ describe("Backoffice codemode scenarios", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "codemode writes automation state",
-
-        files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
@@ -93,7 +91,6 @@ describe("Backoffice codemode scenarios", () => {
           DOCS_PUBLIC_BASE_URL: undefined,
           SIGN_UP_ACCESS_CODES_REQUIRED: "false",
         },
-        files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
@@ -137,7 +134,6 @@ describe("Backoffice codemode scenarios", () => {
             DOCS_PUBLIC_BASE_URL: publicOrigin,
             SIGN_UP_ACCESS_CODES_REQUIRED: "false",
           },
-          files: backofficeFiles.workspaceStarter(),
 
           setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
@@ -176,8 +172,6 @@ describe("Backoffice codemode scenarios", () => {
         objects: scenarioObjects,
         name: "codemode writes state through scoped context handles",
 
-        files: backofficeFiles.workspaceStarter(),
-
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
         steps: ({ when, then }) => [
@@ -214,8 +208,6 @@ describe("Backoffice codemode scenarios", () => {
         objects: scenarioObjects,
         name: "codemode user scoped context lists integrations without capability setup",
 
-        files: backofficeFiles.workspaceStarter(),
-
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
           // Codemode reaches a user by ID only when Auth knows them.
@@ -244,8 +236,6 @@ describe("Backoffice codemode scenarios", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "trusted scenario codemode writes state through a scoped context",
-
-        files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
@@ -278,8 +268,6 @@ describe("Backoffice codemode scenarios", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "codemode terminates a dormant workflow run",
-
-        files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
@@ -323,8 +311,6 @@ describe("Backoffice codemode scenarios", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "file setup helper writes multiple workspace files",
-
-        files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),

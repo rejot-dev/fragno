@@ -857,9 +857,9 @@ describe("installed-app event delivery SQLite scenarios", () => {
             await ctx.runtime.objects.apps.singleton().commands.getApp({ appId: ctx.vars.appId }),
           ).toMatchObject({ requestedPermissions: [BACKOFFICE_PERMISSION.events.read] });
 
-          expect(await sendEvent(ctx, { credential: ctx.vars.credential })).toMatchObject({
-            accepted: true,
-          });
+          const receipt = await sendEvent(ctx, { credential: ctx.vars.credential });
+          expect(receipt).toMatchObject({ accepted: true });
+          ctx.vars.eventId = receipt.eventId;
           const installations = ctx.runtime.objects.appInstallations.for({
             kind: "org",
             orgId: ctx.vars.orgId,
@@ -878,7 +878,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
         const scope = orgScope(ctx.vars.orgId);
         await expectApiError(listEventIds(ctx, ctx.vars.credential, scope), "forbidden");
         await updateGrants(ctx, [BACKOFFICE_PERMISSION.events.read]);
-        expect(await listEventIds(ctx, ctx.vars.credential, scope)).toHaveLength(1);
+        expect(await listEventIds(ctx, ctx.vars.credential, scope)).toContain(ctx.vars.eventId);
         await expectApiError(sendEvent(ctx, { credential: ctx.vars.credential }), "forbidden");
       }),
     ]);

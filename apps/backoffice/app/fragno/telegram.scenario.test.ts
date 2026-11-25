@@ -18,11 +18,7 @@ import { McpObject } from "../../workers/mcp-object";
 import { OtpObject } from "../../workers/otp-object";
 import { ResendObject } from "../../workers/resend-object";
 import { UploadObject } from "../../workers/upload-object";
-import {
-  backofficeFiles,
-  defineBackofficeScenario,
-  runBackofficeScenario,
-} from "./automation/scenario";
+import { defineBackofficeScenario, runBackofficeScenario } from "./automation/scenario";
 
 const scenarioObjects = {
   API: (input) => new ApiObject(input),
@@ -71,7 +67,6 @@ test("a Telegram group message acts as its sender's linked user, never as one li
         objects: scenarioObjects,
         name: "Telegram group senders are the human identities",
         options: { sqliteDataDirectory: directory },
-        files: backofficeFiles.workspaceStarter(),
         fakes: ({ fake }) => ({ telegram: fake.telegram() }),
         setup: ({ given }) => [
           given.auth.user({ id: "linked-user", role: "user" }),

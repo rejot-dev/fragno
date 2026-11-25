@@ -1410,6 +1410,9 @@ test("an agent's turns and queue are recorded as they move, so its events say wh
             runningTurnAlarms = runtime.drainAlarms();
             await waitForEvent(runtime, "second", "queue.added");
             await waitForEvent(runtime, "steer", "queue.added");
+            // Automations fold the events in hooks their recording triggered, after the alarm above
+            // began; the agent's alarm still runs its turn, so it is not due again.
+            await runtime.drainAlarms();
 
             expect(await assistantState(ctx)).toEqual({
               answering: true,

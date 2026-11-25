@@ -57,7 +57,6 @@ describe("scheduled automation route scenario", () => {
         defineBackofficeScenario({
           objects: scenarioObjects,
           name: `scheduled routes reject ${kind} authority`,
-          files: backofficeFiles.workspaceStarter(),
           setup: ({ given }) => [
             given.organization.exists({ id: "org-1", name: "Ada Labs" }),
             given.router.route({
@@ -402,7 +401,6 @@ describe("scheduled automation route scenario", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "non-start-workflow scheduled actions remain valid",
-        files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
         steps: ({ when, then }) => [
           when.router.createRoute({
@@ -449,7 +447,6 @@ describe("scheduled automation route scenario", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "scheduled route starts a workflow",
-        files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
           given.direct.file({
@@ -583,8 +580,10 @@ describe("scheduled automation route scenario", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "personal schedules act for their owner within their author's grants",
-        files: backofficeFiles.workspaceStarter({
-          "automations/personal-digest.workflow.js": workflowSource,
+        files: backofficeFiles.custom({
+          workspace: {
+            "automations/personal-digest.workflow.js": workflowSource,
+          },
         }),
         setup: ({ given }) => [given.auth.user({ id: "user-1", role: "user" })],
         steps: ({ when, then }) => [

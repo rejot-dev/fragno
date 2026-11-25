@@ -1,18 +1,14 @@
 import { describe, expect, test, assert } from "vitest";
 
-import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
+import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import {
-  BACKOFFICE_SYSTEM_ACTORS,
   createBackofficeSystemExecution,
   createBackofficeUserExecution,
 } from "@/backoffice-runtime/context";
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
-import {
-  createInMemoryBackofficeRuntime,
-  type InMemoryBackofficeRuntime,
-} from "@/backoffice-runtime/in-memory-runtime";
+import type { InMemoryBackofficeRuntime } from "@/backoffice-runtime/in-memory-runtime";
 import { BackofficeKernel, noopBackofficeKernelObserver } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import { createRuntimeStateBackend } from "@/fragno/codemode/runtime-state-backend";
@@ -32,14 +28,8 @@ import { OtpObject } from "../../../workers/otp-object";
 import { ResendObject } from "../../../workers/resend-object";
 import { TelegramObject } from "../../../workers/telegram-object";
 import { UploadObject } from "../../../workers/upload-object";
-import { readBackofficeAutomationSource } from "./read-backoffice-automation-source";
+import { createRouteBackedAutomationRouterRuntime } from "./routing-route-runtime";
 import { backofficeFiles, defineBackofficeScenario, runBackofficeScenario } from "./scenario";
-import {
-  setUpScenarioAuthMember,
-  setUpScenarioAuthOrganization,
-  setUpScenarioAuthUser,
-} from "./scenario-auth";
-import { createRouteBackedAutomationWorkflowRuntime } from "./workflow-route-runtime";
 
 const scenarioObjects = {
   API: (input) => new ApiObject(input),
@@ -55,42 +45,6 @@ const scenarioObjects = {
   TELEGRAM: (input) => new TelegramObject(input),
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
-
-const localObjects = {
-  APPS: (input) => new AppsObject(input),
-  APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
-  AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
-  AUTOMATIONS: (input) => new AutomationsObject(input),
-  BILLING: (input) => new BillingObject(input),
-  CODEMODE: (input) => new CodemodeObject(input),
-  UPLOAD: (input) => new UploadObject(input),
-} satisfies LocalBackofficeObjects;
-
-const systemUnrelatedEvent = {
-  id: "github:issue.opened:1",
-  scopeRestriction: null,
-  scope: { kind: "org", orgId: "org-1", jurisdiction: null },
-  source: "github",
-  eventType: "issue.opened",
-  occurredAt: "2026-01-01T00:00:00.000Z",
-  sequence: null,
-  payload: {
-    issueId: "issue-1",
-  },
-  actors: {
-    initiator: {
-      scope: "external",
-      source: "github",
-      type: "user",
-      id: "octocat",
-      role: "initiator",
-    },
-    principal: null,
-    delegation: [],
-  },
-  subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
-  causation: { kind: "origin" },
-} satisfies AutomationEvent;
 
 function createScopedTestFileSystem(
   runtime: InMemoryBackofficeRuntime,
@@ -172,140 +126,75 @@ describe("system automation scenarios", () => {
               ]),
             );
           }),
+          // System's first event: its starter routes must be in place before it takes any.
+          then.assert("System forwarded the organization its creation", async (ctx) => {
+            const organizationId = ctx.vars.organizationId;
+            assert(organizationId);
+
+            const response = await ctx.runtime.objects.automations
+              .for({ kind: "org", orgId: organizationId, jurisdiction: null })
+              .http.fetch(new Request("https://automations.test/api/automations/events?limit=500"));
+            assert(response.ok);
+            const result = (await response.json()) as {
+              events: Array<{ eventType: string }>;
+            };
+            expect(result.events.map((event) => event.eventType)).toContain("organization.created");
+          }),
         ],
       }),
     );
   });
 
-  test("auth organization.created initializes upload-backed workspace files", async () => {
-    const orgId = "org-real";
-    let runtime!: InMemoryBackofficeRuntime;
-    runtime = await createInMemoryBackofficeRuntime({
-      objects: localObjects,
-      readAutomationSource: ({ execution, path }) =>
-        readBackofficeAutomationSource({
-          objects: runtime.objects,
-          config: runtime.config,
-          kernel: new BackofficeKernel(runtime.services),
-          execution,
-          path,
-        }),
-    });
+  test("System seeds its starter routes again after a failed seed, before it takes the event", async () => {
+    // The first read of the seeded revision fails, as storage can, once.
+    let failSeed = true;
+    const failingSeedObjects = {
+      ...scenarioObjects,
+      AUTOMATIONS: (input) => {
+        const storage = input.state.storage;
+        const get = storage.get.bind(storage);
+        storage.get = (async (key: string | string[], options?: DurableObjectGetOptions) => {
+          if (failSeed && key === "automations:starter-routes-revision") {
+            failSeed = false;
+            throw new Error("Storage failed once.");
+          }
+          return Array.isArray(key) ? await get(key, options) : await get(key, options);
+        }) as typeof storage.get;
+        return new AutomationsObject(input);
+      },
+    } satisfies LocalBackofficeObjects;
 
-    try {
-      await setUpScenarioAuthUser(runtime, {
-        id: "owner-1",
-        email: "owner@example.com",
-      });
-      await setUpScenarioAuthUser(runtime, {
-        id: "user-1",
-        email: "member@example.com",
-      });
-      await setUpScenarioAuthOrganization(runtime, {
-        id: orgId,
-        name: "Ada Labs",
-        ownerUserId: "owner-1",
-        ownerRoles: ["owner"],
-      });
-      await setUpScenarioAuthMember(runtime, {
-        orgId,
-        userId: "user-1",
-        roles: ["member"],
-      });
-
-      const systemAutomations = runtime.objects.automations.singleton();
-      await systemAutomations.commands.ingestEvent({
-        id: `system:auth:organization.created:${orgId}`,
-        scopeRestriction: null,
-        scope: { kind: "system" },
-        source: "auth",
-        eventType: "organization.created",
-        occurredAt: "2026-01-01T00:00:00.000Z",
-        sequence: null,
-        payload: {
-          organization: {
-            id: orgId,
-            name: "Ada Labs",
-            slug: "ada-labs",
-            logoUrl: null,
-            metadata: null,
-            createdBy: "owner-1",
-            createdAt: "2026-01-01T00:00:00.000Z",
-            updatedAt: "2026-01-01T00:00:00.000Z",
-            deletedAt: null,
-          },
-        },
-        actors: {
-          initiator: {
-            scope: "internal",
-            type: "user",
-            id: "owner-1",
-            role: "initiator",
-          },
-          principal: null,
-          delegation: [],
-        },
-        subject: { scope: { kind: "org", orgId, jurisdiction: null } },
-        causation: { kind: "origin" },
-      } satisfies AutomationEvent);
-
-      await runtime.drain();
-
-      const workflow = createRouteBackedAutomationWorkflowRuntime({
-        object: runtime.objects.automations.singleton(),
-        execution: createBackofficeSystemExecution({ kind: "system" }),
-      });
-      const listInstances = workflow.listInternalInstances;
-      if (!listInstances) {
-        throw new Error("Workflow listInstances runtime helper is unavailable.");
-      }
-      const instances = await listInstances({
-        workflowName: "codemode-script",
-        remoteWorkflowName: "workspace-file-initialization",
-      });
-      expect(instances.instances).toHaveLength(1);
-      assert(
-        instances.instances[0]!.details.status === "complete",
-        JSON.stringify(instances.instances[0]),
-      );
-
-      const systemExecution = {
-        kind: "deferred" as const,
-        actors: BACKOFFICE_SYSTEM_ACTORS,
-        scopeRestriction: null,
-        scope: { kind: "org" as const, orgId, jurisdiction: null },
-      };
-      const fs = createScopedTestFileSystem(runtime, systemExecution);
-      await expect(fs.readFile("/workspace/AGENTS.md")).resolves.toContain("Workspace guidance");
-      await expect(fs.readFile("/static/codemode/providers/hooks.d.ts")).resolves.toContain(
-        "declare const hooks",
-      );
-
-      // Seeded files are ordinary scope-owned state, editable by authorized org members.
-      const memberExecution = createBackofficeUserExecution({
-        scope: { kind: "org", orgId, jurisdiction: null },
-        userId: "user-1",
-      });
-      const memberPrincipal = memberExecution.actors.principal;
-      assert(memberPrincipal);
-      await expect(
-        runtime.services.authorityResolver.resolvePrincipalPermissions({
-          principal: memberPrincipal,
-          execution: memberExecution,
-        }),
-      ).resolves.toContainEqual(BACKOFFICE_PERMISSION.store.modify);
-
-      const memberFs = createScopedTestFileSystem(runtime, memberExecution);
-      const workspaceNotesPath = "/workspace/input/notes.md";
-      await expect(
-        memberFs.writeFile(workspaceNotesPath, "# Edited by org member\n"),
-      ).resolves.toBeUndefined();
-      await expect(memberFs.readFile(workspaceNotesPath)).resolves.toContain(
-        "Edited by org member",
-      );
-    } finally {
-      await runtime.cleanup();
-    }
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: failingSeedObjects,
+        name: "System seeds its starter routes again after a failed seed",
+        files: backofficeFiles.systemOnly(),
+        vars: () => ({ cookie: "", organizationId: "" }),
+        steps: ({ when, then }) => [
+          when.auth.signUp({
+            email: "seed-retry@example.com",
+            captureSessionCookieAs: "cookie",
+          }),
+          when.auth.createOrganization({
+            cookie: ({ vars }) => vars.cookie,
+            name: "Seed Retry",
+            slug: "seed-retry",
+            captureOrganizationIdAs: "organizationId",
+          }),
+          // Auth retries the event the failed seed rejected.
+          when.time.advance("1 minute"),
+          then.assert("System forwarded the organization its creation", async (ctx) => {
+            assert(!failSeed);
+            const response = await ctx.runtime.objects.automations
+              .for({ kind: "org", orgId: ctx.vars.organizationId, jurisdiction: null })
+              .http.fetch(new Request("https://automations.test/api/automations/events?limit=500"));
+            assert(response.ok);
+            const result = (await response.json()) as { events: Array<{ eventType: string }> };
+            expect(result.events.map((event) => event.eventType)).toContain("organization.created");
+          }),
+        ],
+      }),
+    );
   });
 
   test("project creation exposes an empty database-backed workspace", async () => {
@@ -313,7 +202,7 @@ describe("system automation scenarios", () => {
       defineBackofficeScenario<{ projectId: string }>({
         objects: scenarioObjects,
         name: "project creation exposes an empty database-backed workspace",
-        files: backofficeFiles.fullStarter(),
+        files: backofficeFiles.systemOnly(),
         vars: () => ({ projectId: "" }),
 
         setup: ({ given }) => [
@@ -372,11 +261,11 @@ describe("system automation scenarios", () => {
     );
   });
 
-  test("auth organization.created initializes workspace files", async () => {
+  test("auth organization.created reaches an organization with an empty workspace", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "system organization creation initializes workspace files",
+        name: "system organization creation leaves the workspace to the organization",
         options: { allowErroredWorkflows: true },
 
         files: backofficeFiles.systemOnly(),
@@ -434,50 +323,9 @@ describe("system automation scenarios", () => {
               subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
             },
           }),
-          then.workflow.instance({
-            remoteWorkflowName: "workspace-file-initialization",
-            status: "complete",
-            actors: BACKOFFICE_SYSTEM_ACTORS,
-          }),
-
-          then.workflow.steps({
-            remoteWorkflowName: "workspace-file-initialization",
-            include: ["seed workspace starter files"],
-          }),
-
-          then.assert("workspace initialization workflow runs in system scope", async (ctx) => {
-            const systemWorkflow = createRouteBackedAutomationWorkflowRuntime({
-              object: ctx.runtime.objects.automations.singleton(),
-              execution: createBackofficeSystemExecution({ kind: "system" }),
-            });
-            const systemInstances = await systemWorkflow.listInternalInstances({
-              workflowName: "codemode-script",
-              remoteWorkflowName: "workspace-file-initialization",
-            });
-
-            expect(systemInstances?.instances).toHaveLength(1);
-            assert(systemInstances?.instances[0]?.details.status === "complete");
-          }),
-
           then.router.missing({ orgId: "org-1", id: "system-project-files-configure" }),
 
-          then.files.exists({ orgId: "org-1", path: "/workspace/AGENTS.md" }),
-          then.files.missing({
-            orgId: "org-1",
-            path: "/workspace/automations/router.cm.js",
-          }),
-          then.files.missing({
-            orgId: "org-1",
-            path: "/workspace/automations/telegram-user-linking.workflow.js",
-          }),
-          then.files.missing({
-            orgId: "org-1",
-            path: "/workspace/automations/telegram-user-pi-linking.workflow.js",
-          }),
-          then.files.missing({
-            orgId: "org-1",
-            path: "/workspace/automations/telegram-test-command.workflow.js",
-          }),
+          then.files.missing({ orgId: "org-1", path: "/workspace/AGENTS.md" }),
           then.files.contains({
             orgId: "org-1",
             path: "/static/codemode/system.d.ts",
@@ -579,7 +427,7 @@ describe("system automation scenarios", () => {
     );
   });
 
-  test("auth organization.updated is forwarded to the org automation queue after workspace initialization", async () => {
+  test("auth organization.updated is forwarded to the org automation queue after creation", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
@@ -695,22 +543,146 @@ describe("system automation scenarios", () => {
     );
   });
 
-  test("unrelated system events do not create system workflow instances", async () => {
+  test("seeding removes the retired workspace initialization route from the system scope", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
         objects: scenarioObjects,
-        name: "system router ignores unrelated automation events",
-
+        name: "a deployment seeded before the route retired drops it",
         files: backofficeFiles.systemOnly(),
+        steps: ({ then }) => [
+          then.assert("the system scope holds the route from before", async (ctx) => {
+            const router = createRouteBackedAutomationRouterRuntime({
+              object: ctx.runtime.objects.automations.singleton(),
+              execution: createBackofficeSystemExecution({ kind: "system" }),
+            });
+            await router.createRoute({
+              id: "system-workspace-file-initialization",
+              name: "Initialize workspace files",
+              enabled: true,
+              trigger: {
+                kind: "event",
+                source: "auth",
+                eventType: "organization.created",
+                matcher: null,
+              },
+              priority: 10,
+              action: {
+                kind: "start_workflow",
+                authority: { kind: "organization-automation", grants: [] },
+                workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
+                instanceIdTemplate: "workspace-file-initialization-${event.id}",
+              },
+            });
 
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
+            const seeded = await ctx.runtime.objects.automations
+              .singleton()
+              .commands.seedStarterAutomationRoutes();
 
-        steps: ({ when, then }) => [
-          when.automation.ingestEvent(systemUnrelatedEvent),
-
-          then.workflow.missing({
-            remoteWorkflowName: "workspace-file-initialization",
+            expect(seeded.removed).toEqual(["system-workspace-file-initialization"]);
+            await expect(
+              router.getRoute({ id: "system-workspace-file-initialization" }),
+            ).resolves.toBeNull();
           }),
+        ],
+      }),
+    );
+  });
+
+  test("an organization creation the retired route matched before it retired settles as skipped", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "a dispatch queued for the retired workspace initialization route",
+        files: backofficeFiles.systemOnly(),
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "user-1" }),
+        ],
+        steps: ({ runner, then }) => [
+          then.assert("the route from before matches an organization's creation", async (ctx) => {
+            await createRouteBackedAutomationRouterRuntime({
+              object: ctx.runtime.objects.automations.singleton(),
+              execution: createBackofficeSystemExecution({ kind: "system" }),
+            }).createRoute({
+              id: "system-workspace-file-initialization",
+              name: "Initialize workspace files",
+              enabled: true,
+              trigger: {
+                kind: "event",
+                source: "auth",
+                eventType: "organization.created",
+                matcher: null,
+              },
+              priority: 10,
+              action: {
+                kind: "start_workflow",
+                authority: { kind: "organization-automation", grants: [] },
+                workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
+                instanceIdTemplate: "workspace-file-initialization-${event.id}",
+              },
+            });
+            await ctx.runtime.objects.automations.singleton().commands.ingestEvent({
+              id: "auth:organization.created:org-1",
+              scopeRestriction: null,
+              scope: { kind: "system" },
+              source: "auth",
+              eventType: "organization.created",
+              occurredAt: "2026-01-01T00:00:00.000Z",
+              sequence: null,
+              payload: {
+                organization: {
+                  id: "org-1",
+                  name: "Ada Labs",
+                  slug: "ada-labs",
+                  logoUrl: null,
+                  metadata: null,
+                  createdBy: "user-1",
+                  createdAt: "2026-01-01T00:00:00.000Z",
+                  updatedAt: "2026-01-01T00:00:00.000Z",
+                  deletedAt: null,
+                },
+              },
+              actors: {
+                initiator: { scope: "internal", type: "user", id: "user-1", role: "initiator" },
+                principal: null,
+                delegation: [],
+              },
+              subject: { scope: { kind: "org", orgId: "org-1", jurisdiction: null } },
+              causation: { kind: "origin" },
+            });
+          }),
+          runner.drain(),
+          // The dispatch holds the route as it matched; its workflow script is gone.
+          then.assert(
+            "the retired route skipped, and the organization got its creation",
+            async (ctx) => {
+              const response = await ctx.runtime.objects.automations
+                .singleton()
+                .http.fetch(
+                  new Request("https://automations.test/api/automations/events?limit=500"),
+                );
+              const { events } = automationEventListResultSchema.parse(await response.json());
+              expect(
+                events.find((event) => event.id === "auth:organization.created:org-1"),
+              ).toMatchObject({
+                routing: {
+                  status: "matched",
+                  routes: [
+                    {
+                      routeId: "system-auth-organization-created-forward-to-org",
+                      status: "completed",
+                      outcome: { kind: "event_forwarded" },
+                    },
+                    {
+                      routeId: "system-workspace-file-initialization",
+                      status: "completed",
+                      outcome: { kind: "skipped", reason: "route_retired" },
+                      failedAttempts: 0,
+                    },
+                  ],
+                },
+              });
+            },
+          ),
           then.workflow.noErrored({ orgId: "org-1" }),
         ],
       }),

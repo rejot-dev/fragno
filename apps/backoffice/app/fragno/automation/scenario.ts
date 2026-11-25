@@ -61,7 +61,6 @@ import {
   createTelegramAutomationFileResponse,
   type TelegramAutomationFileMetadata,
 } from "@/backoffice-runtime/telegram-file-response";
-import { WORKSPACE_STARTER_CONTENT } from "@/files/content/starter";
 import { STATIC_FILE_CONTENT } from "@/files/content/static";
 import { SYSTEM_FILE_CONTENT } from "@/files/content/system";
 import { issueBackofficeTokenResultSchema, type UserAuthorityFacts } from "@/fragno/auth/contracts";
@@ -1092,19 +1091,6 @@ export const backofficeFiles = {
     createPreset({
       ...mapContentToMountedFiles("/static", STATIC_FILE_CONTENT),
       ...mapContentToMountedFiles("/system", SYSTEM_FILE_CONTENT),
-    }),
-  workspaceStarter: (additionalFiles: Record<string, string | Uint8Array> = {}) =>
-    createPreset(
-      mapContentToMountedFiles("/workspace", {
-        ...WORKSPACE_STARTER_CONTENT,
-        ...additionalFiles,
-      }),
-    ),
-  fullStarter: () =>
-    createPreset({
-      ...mapContentToMountedFiles("/static", STATIC_FILE_CONTENT),
-      ...mapContentToMountedFiles("/system", SYSTEM_FILE_CONTENT),
-      ...mapContentToMountedFiles("/workspace", WORKSPACE_STARTER_CONTENT),
     }),
   custom: (input: {
     system?: Record<string, string | Uint8Array>;
@@ -2354,9 +2340,9 @@ const ingestSystemAutomationEvent = async (
     ctx.rememberOrg(orgId);
   }
 
-  const systemAutomations = ctx.runtime.objects.automations.singleton();
-  await systemAutomations.commands.seedStarterAutomationRoutes();
-  await systemAutomations.commands.ingestEvent({ ...event, scope: { kind: "system" } });
+  await ctx.runtime.objects.automations
+    .singleton()
+    .commands.ingestEvent({ ...event, scope: { kind: "system" } });
 };
 
 const ingestAutomationEvent = async (ctx: BackofficeScenarioContext, event: AutomationEvent) => {
@@ -2371,9 +2357,9 @@ const ingestAutomationEvent = async (ctx: BackofficeScenarioContext, event: Auto
 
   ctx.rememberOrg(event.scope.orgId);
   if (isSystemRoutedAutomationEvent(event)) {
-    const systemAutomations = ctx.runtime.objects.automations.singleton();
-    await systemAutomations.commands.seedStarterAutomationRoutes();
-    await systemAutomations.commands.ingestEvent({ ...event, id: `system:${event.id}` });
+    await ctx.runtime.objects.automations
+      .singleton()
+      .commands.ingestEvent({ ...event, id: `system:${event.id}` });
   }
   await ctx.runtime.objects.automations
     .for({ kind: "org", orgId: event.scope.orgId, jurisdiction: null })
@@ -4980,10 +4966,7 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   scenario: BackofficeScenarioDefinition<TVars>,
 ): Promise<BackofficeScenarioContext<TVars>> => {
   const orgIds = new Set<string>();
-  const files = createScenarioFileSystems(
-    scenario.files ?? backofficeFiles.workspaceStarter(),
-    orgIds,
-  );
+  const files = createScenarioFileSystems(scenario.files ?? backofficeFiles.custom({}), orgIds);
   const fakes = scenario.fakes?.({ fake: createScenarioFakeFactory() }) ?? {};
   const kernelActions: BackofficeKernelAction[] = [];
   const kernelObserver: BackofficeKernelObserver = {

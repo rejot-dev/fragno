@@ -35,8 +35,9 @@ test("Node checkpoints and replays workflow codemode across fresh Worker WebSock
       objects: scenarioObjects,
       name: "Node checkpoint replay through ordinary Worker sockets",
       env,
-      files: backofficeFiles.workspaceStarter({
-        "automations/remote-checkpointed.workflow.js": `export default defineWorkflow(
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/remote-checkpointed.workflow.js": `export default defineWorkflow(
         { name: "remote-checkpointed", checkpoint: "step" },
         async (_event, step) => {
           const first = await step.do("first", async () => {
@@ -49,6 +50,7 @@ test("Node checkpoints and replays workflow codemode across fresh Worker WebSock
           return await step.do("third", async () => second + 1);
         },
       );`,
+        },
       }),
       setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
       steps: ({ when, then }) => [
@@ -106,8 +108,9 @@ test("remote event consumption and sleep resume with Date values intact", async 
       objects: scenarioObjects,
       name: "remote wait, onConsume, and sleep",
       env,
-      files: backofficeFiles.workspaceStarter({
-        "automations/remote-wait.workflow.js": `export default defineWorkflow({ name: "remote-wait" }, async (event, step) => {
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/remote-wait.workflow.js": `export default defineWorkflow({ name: "remote-wait" }, async (event, step) => {
         const received = await step.waitForEvent("ready", { type: "ready", onConsume: async (tx, received) => {
           tx.emit({ timestamp: received.timestamp.toISOString() });
         } });
@@ -117,6 +120,7 @@ test("remote event consumption and sleep resume with Date values intact", async 
           return { value: received.payload.value, preservedDate: received.timestamp instanceof Date };
         });
       });`,
+        },
       }),
       setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
       steps: ({ when, then }) => [
@@ -178,8 +182,9 @@ test("interruption preserves host retry scheduling without falsely committing to
             host,
           ),
       },
-      files: backofficeFiles.workspaceStarter({
-        "automations/remote-interrupted.workflow.js": `export default defineWorkflow({ name: "remote-interrupted" }, async (_event, step) => {
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/remote-interrupted.workflow.js": `export default defineWorkflow({ name: "remote-interrupted" }, async (_event, step) => {
         return await step.do("interrupted", { retries: { limit: 1, delay: "1 second" } }, async () => {
           const previous = await context.current.store.get({ key: "interrupted-effects" });
           await context.current.store.set({ key: "interrupted-effects", value: String(Number(previous?.value ?? 0) + 1) });
@@ -187,6 +192,7 @@ test("interruption preserves host retry scheduling without falsely committing to
           return "must not commit";
         });
       });`,
+        },
       }),
       setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
       steps: ({ when, then }) => [
@@ -240,8 +246,9 @@ test("permanent guest failures bypass the real Node runner's configured retry po
       objects: scenarioObjects,
       name: "Cap'n Web preserves non-retryable callback outcomes",
       env,
-      files: backofficeFiles.workspaceStarter({
-        "automations/remote-permanent.workflow.js": `export default defineWorkflow({ name: "remote-permanent" }, async (_event, step) => {
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/remote-permanent.workflow.js": `export default defineWorkflow({ name: "remote-permanent" }, async (_event, step) => {
         return await step.do("permanent", { retries: { limit: 3, delay: "1 second" } }, async () => {
           const previous = await context.current.store.get({ key: "permanent-attempts" });
           await context.current.store.set({ key: "permanent-attempts", value: String(Number(previous?.value ?? 0) + 1) });
@@ -250,6 +257,7 @@ test("permanent guest failures bypass the real Node runner's configured retry po
           throw error;
         });
       });`,
+        },
       }),
       setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
       steps: ({ when, then }) => [

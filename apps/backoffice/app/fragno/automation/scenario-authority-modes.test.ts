@@ -131,7 +131,6 @@ const otherOrganizationScenario = ({
     objects: scenarioObjects,
     name,
     options: { allowErroredWorkflows },
-    files: backofficeFiles.workspaceStarter(),
     setup: ({ given }) => [
       given.auth.user({ id: "owner-1", role: "admin" }),
       given.auth.user({ id: "user-1", role: "user" }),
@@ -231,7 +230,6 @@ const projectScenario = ({
     objects: scenarioObjects,
     name,
     options: { allowErroredWorkflows },
-    files: backofficeFiles.workspaceStarter(),
     setup: ({ given }) => [
       given.auth.user({ id: "owner-1", role: "admin" }),
       given.auth.organization({
@@ -322,7 +320,6 @@ async function syncWhileAuthFailsOnce(
       defineBackofficeScenario({
         objects: scenarioObjects,
         name,
-        files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [
           given.auth.user({ id: "user-1", role: "user" }),
           given.auth.organization({
@@ -391,7 +388,6 @@ describe("automation route authority modes", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "organization automation survives creator departure",
-        files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [
           given.auth.user({ id: "owner-1", role: "admin" }),
           given.auth.user({ id: "creator-1", role: "user" }),
@@ -546,7 +542,6 @@ describe("automation route authority modes", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "delegated user route follows current membership",
-        files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [
           given.auth.user({ id: "owner-1", role: "admin" }),
           given.auth.user({ id: "user-1", role: "user" }),
@@ -839,8 +834,9 @@ describe("automation route authority modes", () => {
         objects: scenarioObjects,
         name: "forwarded schedule output runs under the organization route",
         options: { allowErroredWorkflows: true },
-        files: backofficeFiles.workspaceStarter({
-          "automations/balance-sync.workflow.js": `export default defineWorkflow(
+        files: backofficeFiles.custom({
+          workspace: {
+            "automations/balance-sync.workflow.js": `export default defineWorkflow(
   { name: "balance-sync" },
   async (_event, step) => {
     await step.do("report the balance", async () => {
@@ -849,7 +845,7 @@ describe("automation route authority modes", () => {
   },
 );
 `,
-          "automations/balance-convert.workflow.js": `export default defineWorkflow(
+            "automations/balance-convert.workflow.js": `export default defineWorkflow(
   { name: "balance-convert" },
   async (event, step) => {
     await step.do("record the balance", async () => {
@@ -858,6 +854,7 @@ describe("automation route authority modes", () => {
   },
 );
 `,
+          },
         }),
         setup: ({ given }) => [
           given.auth.user({ id: "owner-1", role: "admin" }),
@@ -1046,7 +1043,6 @@ describe("automation route authority modes", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "linked user route derives its principal",
-        files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [
           given.auth.user({ id: "owner-1", role: "admin" }),
           given.auth.user({ id: "user-1", role: "user" }),
@@ -1139,7 +1135,6 @@ describe("automation route authority modes", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "running automation observes current route grants",
-        files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [
           given.auth.user({ id: "owner-1", role: "admin" }),
           given.auth.organization({
@@ -1227,7 +1222,6 @@ describe("automation route authority modes", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "delegated user authority is an intersection",
-        files: backofficeFiles.workspaceStarter(),
         setup: ({ given }) => [
           given.auth.user({ id: "owner-1", role: "admin" }),
           given.auth.user({ id: "user-1", role: "user" }),

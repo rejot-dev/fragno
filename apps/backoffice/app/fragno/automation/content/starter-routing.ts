@@ -3,29 +3,6 @@ import type {
   AutomationRouteCreateInput,
 } from "@fragno-dev/backoffice-api/v0/automation";
 
-type AutomationStartWorkflowInput = Extract<
-  AutomationRouteCreateInput["action"],
-  { kind: "start_workflow" }
->;
-
-const startWorkflowAction = ({
-  workflowScriptPath,
-  instanceIdTemplate,
-  grants,
-}: {
-  workflowScriptPath: string;
-  instanceIdTemplate: string;
-  grants: Extract<
-    AutomationStartWorkflowInput["authority"],
-    { kind: "organization-automation" }
-  >["grants"];
-}): AutomationStartWorkflowInput => ({
-  kind: "start_workflow",
-  authority: { kind: "organization-automation", grants },
-  workflowScriptPath,
-  instanceIdTemplate,
-});
-
 const forwardToSubjectOrgAction = (): AutomationForwardEventAction => ({
   kind: "forward_event",
   targetScope: { kind: "subject" },
@@ -33,28 +10,6 @@ const forwardToSubjectOrgAction = (): AutomationForwardEventAction => ({
 });
 
 export const SYSTEM_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInput[] = [
-  {
-    id: "system-workspace-file-initialization",
-    name: "Initialize workspace files",
-    enabled: true,
-    trigger: {
-      kind: "event",
-      source: "auth",
-      eventType: "organization.created",
-      matcher: {
-        all: [
-          { path: "$.scope.kind", op: "eq", value: "system" },
-          { path: "$.subject.scope.kind", op: "eq", value: "org" },
-        ],
-      },
-    },
-    priority: 10,
-    action: startWorkflowAction({
-      workflowScriptPath: "/system/automations/workspace-file-initialization.workflow.js",
-      instanceIdTemplate: "workspace-file-initialization-${event.id}",
-      grants: [],
-    }),
-  },
   {
     id: "system-auth-organization-created-forward-to-org",
     name: "Forward organization-created auth events to the organization",
@@ -92,3 +47,19 @@ export const SYSTEM_STARTER_AUTOMATION_ROUTES: readonly AutomationRouteCreateInp
     action: forwardToSubjectOrgAction(),
   },
 ];
+
+/**
+ * Built-in routes the product no longer ships. Seeding deletes them from the scopes that still
+ * hold them, such as the system scope of deployments seeded before they were retired.
+ */
+export const RETIRED_STARTER_AUTOMATION_ROUTE_IDS: readonly string[] = [
+  "system-workspace-file-initialization",
+];
+
+/**
+ * Changes whenever the built-in routes do. Each scope seeds its starter routes once per revision,
+ * as its Automations object starts, so retiring a route reaches scopes seeded before.
+ */
+export const STARTER_AUTOMATION_ROUTES_REVISION = SYSTEM_STARTER_AUTOMATION_ROUTES.map(
+  (route) => route.id,
+).join("+");

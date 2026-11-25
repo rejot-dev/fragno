@@ -269,6 +269,7 @@ const SKIP_REASON_LABEL: Record<AutomationRouteDispatchSkipReason, string> = {
   caused_by_notified_app: "The app caused the event",
   app_not_installed: "The app is not installed here",
   app_cannot_read_events: "The app may not read events",
+  route_retired: "Leyway retired this built-in route",
 };
 
 export function describeRouteDispatchSkipReason(reason: AutomationRouteDispatchSkipReason): string {

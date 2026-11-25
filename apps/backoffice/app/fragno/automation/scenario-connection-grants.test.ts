@@ -30,7 +30,6 @@ import { TelegramObject } from "../../../workers/telegram-object";
 import { UploadObject } from "../../../workers/upload-object";
 import { createAutomationsRouteCaller, createWorkflowsRouteCaller } from "./route-callers";
 import {
-  backofficeFiles,
   type BackofficeScenarioContext,
   type BackofficeScenarioDefinitionInput,
   defineBackofficeScenario,
@@ -187,7 +186,6 @@ function connectionsScenario({
   return defineBackofficeScenario({
     objects: scenarioObjects,
     name,
-    files: backofficeFiles.workspaceStarter(),
     setup: ({ given }) => [
       given.auth.user({ id: "owner-1", role: "admin" }),
       given.auth.user({ id: "user-1", role: "user" }),

@@ -5963,34 +5963,5 @@
         "valueName": "format"
       }
     ]
-  },
-  {
-    "command": "internal.files.seed.execute",
-    "summary": "internal.files.seed.execute seeds missing workspace starter files.",
-    "options": [
-      {
-        "name": "force",
-        "description": "Replace starter files and repair starter file/folder permissions."
-      },
-      {
-        "name": "help",
-        "description": "Show this help text",
-        "valueRequired": false,
-        "valueName": ""
-      },
-      {
-        "name": "print",
-        "description": "Extract a nested JSON field (kebab-case path) from command result",
-        "valueRequired": true,
-        "valueName": "selector",
-        "required": false
-      },
-      {
-        "name": "format",
-        "description": "Output format: text (default) or json",
-        "valueRequired": true,
-        "valueName": "format"
-      }
-    ]
   }
 ]

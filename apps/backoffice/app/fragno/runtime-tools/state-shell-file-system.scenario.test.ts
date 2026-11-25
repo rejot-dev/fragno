@@ -3,7 +3,6 @@ import { assert, describe, expect, test } from "vitest";
 import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import { BackofficeKernel } from "@/backoffice-runtime/kernel";
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
-import { seedWorkspaceStarterFiles } from "@/files/seed-workspace-starter-files";
 import {
   defineBackofficeScenario,
   runBackofficeScenario,
@@ -173,42 +172,6 @@ describe("shared state shell scenarios", () => {
               await expect(state.exists("/workspace/link.txt")).resolves.toBe(false);
             },
           ),
-        ],
-      }),
-    );
-  });
-
-  test("starter seeding skips edits unless explicitly forced and writes no ownership metadata", async () => {
-    await runBackofficeScenario(
-      defineBackofficeScenario({
-        objects: scenarioObjects,
-        name: "Starter files are ordinary scope-owned state",
-        setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
-        steps: ({ then }) => [
-          then.assert("forced seeding restores content without a permission model", async (ctx) => {
-            const { state } = await createScenarioShell(ctx);
-            await state.writeFile("/workspace/AGENTS.md", "edited guidance");
-            const input = {
-              objects: ctx.runtime.objects,
-              scope: { kind: "org" as const, orgId: "org-1", jurisdiction: null },
-            };
-            const skipped = await seedWorkspaceStarterFiles(input);
-            expect(skipped.skipped).toContain("/workspace/AGENTS.md");
-            await expect(state.readFile("/workspace/AGENTS.md")).resolves.toBe("edited guidance");
-            const restored = await seedWorkspaceStarterFiles({ ...input, force: true });
-            expect(restored.overwritten).toContain("/workspace/AGENTS.md");
-            await expect(state.readFile("/workspace/AGENTS.md")).resolves.toContain(
-              "Workspace guidance",
-            );
-            const response = await ctx.runtime.objects.upload
-              .for({ kind: "org", orgId: "org-1", jurisdiction: null })
-              .http.fetch(
-                new Request("https://upload.internal/api/upload/files/by-key?key=AGENTS.md"),
-              );
-            assert(response.ok);
-            const file = (await response.json()) as { metadata: Record<string, unknown> | null };
-            expect(file.metadata).toBeNull();
-          }),
         ],
       }),
     );
