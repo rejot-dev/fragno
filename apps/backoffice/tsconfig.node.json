@@ -18,7 +18,8 @@
     "scripts/node-server/node-backoffice-handler.ts",
     "scripts/node-server/node-process-config.ts",
     "scripts/node-server/node-server-proxy.scenario.test.ts",
-    "scripts/node-server/node-supervisor-disconnect.ts"
+    "scripts/node-server/node-supervisor-disconnect.ts",
+    "scripts/scenario-server/**"
   ],
   "compilerOptions": {
     "composite": true,

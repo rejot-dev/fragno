@@ -13,6 +13,7 @@
     "dev-account:create": "tsx scripts/create-dev-account.ts",
     "universe-replay:capture": "tsx scripts/universe-replay/capture.ts",
     "universe-replay": "vite --config vite.replay.config.ts",
+    "scenario-server": "tsx scripts/scenario-server/start-scenario-server.ts",
     "do:reset": "bash scripts/reset-dev-durable-objects.sh",
     "oauth:test": "node scripts/test-oauth-client.mjs",
     "build": "react-router build",

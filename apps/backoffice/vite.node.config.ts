@@ -8,7 +8,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { emitWaSqliteWasmAssetPlugin } from "./scripts/node-server/vite-wa-sqlite-wasm-asset";
 
 // Separate from the Cloudflare Vite plugin: the server bundle runs under Node.
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   define: {
     "import.meta.env.BACKOFFICE_TARGET": JSON.stringify("node"),
   },
@@ -28,6 +28,7 @@ export default defineConfig({
   plugins: [tailwindcss(), reactRouter(), emitWaSqliteWasmAssetPlugin()],
   ssr: {
     external: ["better-sqlite3"],
-    noExternal: true,
+    // The scenario server loads dependencies from node_modules while it serves, as Vitest does.
+    noExternal: command === "build" ? true : undefined,
   },
-});
+}));
