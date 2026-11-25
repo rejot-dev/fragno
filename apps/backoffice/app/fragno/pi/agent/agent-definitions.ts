@@ -132,9 +132,11 @@ export function piPromptModel(
   return { type: "model", model: chosen };
 }
 
-/** Grants that no longer name a permission grant nothing, which only narrows the agent. */
-function expandPiAgentPermissions(grants: readonly string[]): BackofficePermissionRequirement[] {
-  return [...new Set(grants.flatMap(piAgentPermissionGrantRequirements))];
+/** What a definition lets its agent do. Grants that no longer name a permission grant nothing. */
+export function piAgentDefinitionPermissions(
+  definition: Pick<PiAgentDefinition, "permissions">,
+): BackofficePermissionRequirement[] {
+  return [...new Set(definition.permissions.flatMap(piAgentPermissionGrantRequirements))];
 }
 
 /**
@@ -246,7 +248,7 @@ export function piAgentTurnOf(
     agent: {
       model,
       instructions: definition.instructions,
-      permissions: expandPiAgentPermissions(definition.permissions),
+      permissions: piAgentDefinitionPermissions(definition),
       skills: definition.reloadedSkills,
       skillFolders: definition.skills,
       disabledSkills: definition.disabledSkills,

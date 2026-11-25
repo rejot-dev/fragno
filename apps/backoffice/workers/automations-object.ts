@@ -1,7 +1,8 @@
-import type {
-  AutomationForwardAccept,
-  AutomationForwardAcceptCreateInput,
-  AutomationForwardAcceptUpdateInput,
+import {
+  automationRouteActionAuthority,
+  type AutomationForwardAccept,
+  type AutomationForwardAcceptCreateInput,
+  type AutomationForwardAcceptUpdateInput,
 } from "@fragno-dev/backoffice-api/v0/automation";
 import type {
   AutomationEvent,
@@ -1026,6 +1027,15 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
         resource: { kind: "package-installation", listingId: input.listingId },
       })),
     });
+    // As with saving one, only an installer nothing narrows may install a route that acts with a
+    // person's whole authority.
+    if (
+      declaration.routes.some(
+        (route) => automationRouteActionAuthority(route.action)?.grants === "inherit",
+      )
+    ) {
+      await this.#kernel.assertUnnarrowed({ ...context.execution, scope: input.targetScope });
+    }
     const installed = backofficeContextScopesEqual(input.targetScope, scope)
       ? await runtime.automationFragment.callServices(() =>
           runtime.automationFragment.services.getPackageInstallation({

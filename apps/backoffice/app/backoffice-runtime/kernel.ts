@@ -1,6 +1,8 @@
 import {
+  allBackofficePermissionRequirements,
   BACKOFFICE_PERMISSION,
   type BackofficePermissionRequirement,
+  isPrincipalOnlyPermission,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
@@ -270,16 +272,26 @@ function connectionDenialReason(
 
 const DENIAL_LISTED_GRANTS = 8;
 
+/** What a principal or delegate holds when it narrows nothing a person may do. */
+const UNNARROWED_PERMISSIONS = allBackofficePermissionRequirements.filter(
+  (operation) => !isPrincipalOnlyPermission(operation),
+);
+
+function delegatedActorLabel(
+  actor: BackofficeExecutionContext["actors"]["delegation"][number],
+): string {
+  return actor.type === "pi-agent"
+    ? `Agent '${piAgentActorName(actor)}'`
+    : `Delegated ${actor.type} '${actor.id}'`;
+}
+
 /** Names the delegate and what it holds, so a denial points at the grant to change. */
 function delegatedActorDenialMessage(
   actor: BackofficeExecutionContext["actors"]["delegation"][number],
   requirement: BackofficeKernelAuthorizationRequirement,
   grants: readonly BackofficeGrant[],
 ): string {
-  const actorLabel =
-    actor.type === "pi-agent"
-      ? `Agent '${piAgentActorName(actor)}'`
-      : `Delegated ${actor.type} '${actor.id}'`;
+  const actorLabel = delegatedActorLabel(actor);
   const connectionReason = connectionDenialReason(grants, requirement);
   if (connectionReason) {
     return `${actorLabel} is not granted this connection: ${connectionReason}.`;
@@ -344,6 +356,65 @@ export class BackofficeKernel {
     requirements: readonly BackofficeKernelAuthorizationRequirement[];
   }): Promise<void> {
     await this.#authorizeAllForExecution(execution, requirements);
+  }
+
+  /**
+   * Checks that nothing in the execution narrows what a person may do: the principal, unless it is
+   * a person, and each delegate hold every permission a delegate may hold, on every connection.
+   * Work set up to act later with a person's whole authority, such as a route with inherited
+   * grants, would otherwise shed the narrowing it was set up under.
+   */
+  async assertUnnarrowed(execution: BackofficeExecutionContext): Promise<void> {
+    const trustedExecution = this.#parseExecutionContext(execution);
+    const principal = trustedExecution.actors.principal;
+    // A person's own permissions are what the work acts with, so they narrow nothing.
+    const narrowingPrincipal =
+      principal && !(principal.scope === "internal" && principal.type === "user")
+        ? principal
+        : null;
+    const [principalResult, delegatedActorResults] = await Promise.all([
+      narrowingPrincipal
+        ? Promise.allSettled([
+            resolveAuthority(() =>
+              this.#authorityResolver.resolvePrincipalPermissions(
+                { principal: narrowingPrincipal, execution: trustedExecution },
+                UNNARROWED_PERMISSIONS,
+              ),
+            ),
+          ])
+        : [],
+      this.#resolveDelegatedActors(trustedExecution),
+    ]);
+    const labelled = [
+      ...principalResult.map((result) => ({
+        result,
+        label: `The current principal '${narrowingPrincipal?.id}'`,
+      })),
+      ...delegatedActorResults.map((result, index) => ({
+        result,
+        label: delegatedActorLabel(trustedExecution.actors.delegation[index]),
+      })),
+    ];
+    for (const { result, label } of labelled) {
+      if (result.status === "rejected") {
+        throw new BackofficeForbiddenError(
+          "Backoffice authority resolution is unavailable.",
+          "authority-unavailable",
+        );
+      }
+      const missing = UNNARROWED_PERMISSIONS.find(
+        (operation) =>
+          !result.value.some(
+            (grant) => backofficePermissionsEqual(grant, operation) && !("connections" in grant),
+          ),
+      );
+      if (missing) {
+        throw new BackofficeForbiddenError(
+          `${label} is not granted ${missing.namespace}.${missing.permission} on everything, so it cannot set up work that acts with all of a person's permissions.`,
+          "actor-capability-denied",
+        );
+      }
+    }
   }
 
   /**
@@ -457,19 +528,9 @@ export class BackofficeKernel {
       (value) => ({ status: "fulfilled" as const, value }),
       () => ({ status: "rejected" as const }),
     );
-    const resolveDelegatedActorResults = Promise.allSettled(
-      trustedExecution.actors.delegation.map((actor) =>
-        resolveAuthority(() =>
-          this.#authorityResolver.resolveActorCapabilityGrants({
-            actor,
-            execution: trustedExecution,
-          }),
-        ),
-      ),
-    );
     const [principalAuthorityResult, delegatedActorResults] = await Promise.all([
       resolvePrincipalAuthorityResult,
-      resolveDelegatedActorResults,
+      this.#resolveDelegatedActors(trustedExecution),
     ]);
 
     for (const requirement of requirements) {
@@ -531,6 +592,19 @@ export class BackofficeKernel {
       operation: requirement.operation,
       resource: requirement.resource,
     }));
+  }
+
+  async #resolveDelegatedActors(trustedExecution: BackofficeExecutionContext) {
+    return await Promise.allSettled(
+      trustedExecution.actors.delegation.map((actor) =>
+        resolveAuthority(() =>
+          this.#authorityResolver.resolveActorCapabilityGrants({
+            actor,
+            execution: trustedExecution,
+          }),
+        ),
+      ),
+    );
   }
 
   #parseExecutionContext(execution: BackofficeExecutionContext): BackofficeExecutionContext {

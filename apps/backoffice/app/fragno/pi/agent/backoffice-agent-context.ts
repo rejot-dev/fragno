@@ -100,8 +100,8 @@ export function createBackofficeAgentContext(input: {
 
   /** `subagent` for a subagent's turn, which nothing it starts notifies and which starts none. */
   function createTurnContext(turn: PiAgentTurn, subagent: boolean): BackofficeAgentTurnContext {
-    // Grants bind to this turn only; elsewhere the pi-agent actor does not narrow, like other
-    // runtime capability delegates.
+    // The turn runs with the definition it was admitted with; elsewhere, such as in the objects it
+    // calls and the work it leaves behind, the agent's current definition narrows it.
     const runtime: BackofficeRuntimeServices = {
       ...input.runtime,
       authorityResolver: withBackofficeActorCapabilityGrants({

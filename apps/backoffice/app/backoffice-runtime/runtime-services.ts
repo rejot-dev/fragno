@@ -18,6 +18,7 @@ import { normalizedSitesDomain } from "@/artifacts/sites/site-host-names";
 import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import { blobsR2BucketsFromEnv, type BlobsR2Access } from "@/fragno/blobs-r2-buckets";
+import { createPiAgentAuthorityResolver } from "@/fragno/pi/agent/pi-agent-authority";
 import { createReson8Server, type Reson8Fragment } from "@/fragno/reson8";
 
 import {
@@ -258,21 +259,25 @@ export const createCloudflareBackofficeRuntimeServices = (
     adapters: options.databaseScope ? adapters.forScope(options.databaseScope) : adapters,
     config: createCloudflareBackofficeRuntimeConfig(env),
     authorityResolver: createControlPlaneAuthorityResolver({
-      resolver: createAppInstallationAuthorityResolver({
-        resolver: createAutomationRouteAuthorityResolver({
-          fallbackResolver: createBackofficeAuthorityResolver({
-            getUserAuthorityFacts: async (input) =>
-              await objects.auth.singleton().commands.getUserAuthorityFacts(input),
-            findAdministeredMember: async (input) =>
-              await objects.auth.singleton().commands.findAdministeredMember(input),
+      resolver: createPiAgentAuthorityResolver({
+        resolver: createAppInstallationAuthorityResolver({
+          resolver: createAutomationRouteAuthorityResolver({
+            fallbackResolver: createBackofficeAuthorityResolver({
+              getUserAuthorityFacts: async (input) =>
+                await objects.auth.singleton().commands.getUserAuthorityFacts(input),
+              findAdministeredMember: async (input) =>
+                await objects.auth.singleton().commands.findAdministeredMember(input),
+            }),
+            lookupRoute: async ({ scope, routeId }) =>
+              await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
           }),
-          lookupRoute: async ({ scope, routeId }) =>
-            await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
+          installations: {
+            getInstallation: async ({ owner, appId }) =>
+              await objects.appInstallations.for(owner).commands.getInstallation({ appId }),
+          },
         }),
-        installations: {
-          getInstallation: async ({ owner, appId }) =>
-            await objects.appInstallations.for(owner).commands.getInstallation({ appId }),
-        },
+        lookupAgentPermissions: async ({ scope, agentName }) =>
+          await objects.piManager.for(scope).commands.getAgentPermissions({ agentName }),
       }),
       auth: {
         getUserOrganizationAuthorityFacts: async (input) =>

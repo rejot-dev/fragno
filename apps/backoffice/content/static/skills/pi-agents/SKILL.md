@@ -101,8 +101,14 @@ definition's `permissions`. A definition can only restrict: editing it never gra
 person or workflow prompting the agent already has. Changes to a definition apply from the next
 turn.
 
-Work a turn persists, such as a workflow it starts, runs with the prompter's permissions without the
-definition's narrowing.
+Work a turn leaves behind that carries the agent stays narrowed by the agent's current definition:
+workflows the turn starts, and what routes do with events it fires. Narrowing the definition narrows
+that work too; deleting the agent leaves it nothing.
+
+Routes and schedules a turn saves don't carry the agent. Saving one may grant only what the
+definition grants at that moment, and a route that inherits a person's permissions needs a
+definition that grants everything. Once saved, a route acts with its own grants: narrowing the
+definition or deleting the agent doesn't change it. Edit or delete the route for that.
 
 ## Subagents
 

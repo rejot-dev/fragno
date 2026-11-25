@@ -34,6 +34,8 @@ import {
   type UsageBilling,
 } from "@/fragno/billing/usage-billing";
 import type { UsageLimitedMeter } from "@/fragno/billing/usage-limits";
+import { piAgentDefinitionPermissions } from "@/fragno/pi/agent/agent-definitions";
+import { createPiAgentAuthorityResolver } from "@/fragno/pi/agent/pi-agent-authority";
 import {
   type PiAgent,
   type PiAgentAddress,
@@ -147,6 +149,19 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     super();
     this.#env = env;
     this.#nowEpochMs = nowEpochMs;
+    // This object holds its scope's agent definitions, so it reads its own agents itself.
+    runtime = {
+      ...runtime,
+      authorityResolver: createPiAgentAuthorityResolver({
+        resolver: runtime.authorityResolver,
+        lookupAgentPermissions: async ({ scope, agentName }) =>
+          backofficeContextScopesEqual(this.#scoped.requireOwnerScope(), scope)
+            ? await this.getAgentPermissions({ agentName })
+            : await this.#runtime.objects.piManager
+                .for(scope)
+                .commands.getAgentPermissions({ agentName }),
+      }),
+    };
     this.#runtime = runtime;
     this.#classifier = classifier;
     this.#imageGenerator = imageGenerator;
@@ -238,6 +253,12 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
       { ...this.#config, scope: this.#scoped.requireOwnerScope() },
       input,
     );
+  }
+
+  async getAgentPermissions({ agentName }: { agentName: string }) {
+    const fragment = await this.#scoped.getRuntime();
+    const { definition } = await fragment.callServices(() => fragment.services.getAgent(agentName));
+    return definition ? piAgentDefinitionPermissions(definition) : [];
   }
 
   async authorizeViewer({

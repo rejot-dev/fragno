@@ -18,6 +18,7 @@ import {
 import type { LocalBackofficeObjects } from "@/backoffice-runtime/local-object-factory";
 import type { BackofficeActionRpcContext } from "@/backoffice-runtime/object-registry";
 import { BACKOFFICE_WORKFLOW_ACTORS_METADATA_KEY } from "@/fragno/automation/actors";
+import { appendAutomationDelegate } from "@/fragno/automation/authority";
 import {
   CODEMODE_CAPABILITY_ACTOR,
   CODEMODE_WORKFLOW,
@@ -33,6 +34,7 @@ import {
   STATIC_MARKETPLACE_ENTRIES,
   getStaticMarketplaceEntry,
 } from "@/fragno/marketplace/static-entries";
+import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 
 import { ApiObject } from "../../../workers/api-object";
 import { AppInstallationsObject } from "../../../workers/app-installations-object";
@@ -908,6 +910,76 @@ describe("marketplace scenarios", { concurrent: false, timeout: 30_000 }, () => 
               }
             },
           ),
+        ],
+      }),
+    );
+  });
+
+  test("only an installer nothing narrows may install a route that inherits a person's permissions", async () => {
+    const scope = { kind: "org", orgId: "org-1", jurisdiction: null } as const;
+    const owner = createBackofficeUserExecution({ scope, userId: "user-1" });
+    const telegramChannel = {
+      marketplace: { kind: "system" },
+      installationRoot: "/workspace",
+      listingId: marketplaceListingId({ ownerScope: { kind: "system" }, slug: "telegram-channel" }),
+      version: "3.1.0",
+      targetScope: scope,
+      permissions: bundledMarketplacePermissions({ slug: "telegram-channel", version: "3.1.0" }),
+    } as const;
+
+    await runBackofficeScenario(
+      defineBackofficeScenario({
+        objects: scenarioObjects,
+        name: "an agent installs a package whose route inherits a person's permissions",
+        setup: ({ given }) => [
+          given.auth.user({ id: "user-1", role: "user" }),
+          given.auth.organization({
+            id: "org-1",
+            name: "Ada Labs",
+            ownerUserId: "user-1",
+            ownerRoles: ["owner"],
+          }),
+          given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "user-1" }),
+          // Granted everything Telegram Channel asks for, but not everything.
+          given.codemode.run({
+            scope,
+            code: `async () => await pi.createAgent({
+              agentName: "installer",
+              description: "Installs packages.",
+              model: null,
+              permissions: ["identity.*", "integrations.*", "otp.*", "store.*", "packages.*"],
+              instructions: "",
+              category: null,
+            })`,
+          }),
+        ],
+        steps: ({ then, runner }) => [
+          then.assert("publish the Marketplace package", async (ctx) => {
+            await ctx.runtime.objects.automations
+              .singleton()
+              .commands.requestStaticMarketplacePublications();
+          }),
+          runner.drain(),
+          then.assert("the agent may not install it; the owner may", async (ctx) => {
+            const automations = ctx.runtime.objects.automations.for(scope).commands;
+            await expect(
+              automations.requestMarketplaceIngestion(telegramChannel, {
+                execution: appendAutomationDelegate({
+                  execution: { ...owner, kind: "deferred" },
+                  delegate: piAgentActor(scope, "installer"),
+                }),
+                propagationContext: null,
+              }),
+            ).rejects.toThrow(
+              /Agent 'installer' is not granted \S+ on everything, so it cannot set up work that acts with all of a person's permissions\./,
+            );
+            await expect(
+              automations.requestMarketplaceIngestion(telegramChannel, {
+                execution: owner,
+                propagationContext: null,
+              }),
+            ).resolves.toMatchObject({ state: "requested" });
+          }),
         ],
       }),
     );

@@ -628,36 +628,40 @@ describe("scheduled automation route scenario", () => {
                 routes("POST", "/routes", { body: personalDigest("inherited-digest", "inherit") }),
               ).resolves.toMatchObject({
                 type: "error",
-                status: 400,
-                error: { code: "ROUTE_AUTHORITY_INVALID" },
+                status: 403,
+                error: { code: "actor-capability-denied" },
               });
             },
           ),
           then.assert(
-            "the narrowed delegate routes a reclassified schedule to inherited authority",
+            "a reclassified schedule reaches a route with inherited authority",
             async (ctx) => {
               const routes = routesFor(ctx, routerOnly);
+              const smuggled = {
+                id: "smuggled-digest",
+                name: "Smuggled digest",
+                enabled: true,
+                priority: 1000,
+                trigger: {
+                  kind: "event",
+                  source: "personal",
+                  eventType: "digest.requested",
+                  matcher: null,
+                },
+                action: {
+                  kind: "start_workflow",
+                  authority: { kind: "delegated-user", grants: "inherit" },
+                  workflowScriptPath: "/workspace/automations/personal-digest.workflow.js",
+                  instanceIdTemplate: "smuggled-digest-${event.id}",
+                },
+              } as const;
+              // The narrowed delegate may not save it; the owner may.
+              await expect(routes("POST", "/routes", { body: smuggled })).resolves.toMatchObject({
+                type: "error",
+                status: 403,
+              });
               await expect(
-                routes("POST", "/routes", {
-                  body: {
-                    id: "smuggled-digest",
-                    name: "Smuggled digest",
-                    enabled: true,
-                    priority: 1000,
-                    trigger: {
-                      kind: "event",
-                      source: "personal",
-                      eventType: "digest.requested",
-                      matcher: null,
-                    },
-                    action: {
-                      kind: "start_workflow",
-                      authority: { kind: "delegated-user", grants: "inherit" },
-                      workflowScriptPath: "/workspace/automations/personal-digest.workflow.js",
-                      instanceIdTemplate: "smuggled-digest-${event.id}",
-                    },
-                  },
-                }),
+                routesFor(ctx, owner)("POST", "/routes", { body: smuggled }),
               ).resolves.toMatchObject({ type: "json" });
               await expect(
                 routes("POST", "/routes", {
