@@ -80,14 +80,11 @@ describe("Backoffice authority role grants", () => {
     }
   });
 
-  test("uses the canonical permission set for automation, capability, and Pi agent actors", () => {
+  test("uses the canonical permission set for automation and capability actors", () => {
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.automation).toEqual(
       allBackofficePermissionRequirements,
     );
     expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS.capability).toEqual(
-      allBackofficePermissionRequirements,
-    );
-    expect(BACKOFFICE_AUTHORITY_ROLE_GRANTS["pi-agent"]).toEqual(
       allBackofficePermissionRequirements,
     );
   });

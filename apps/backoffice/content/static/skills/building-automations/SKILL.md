@@ -123,8 +123,10 @@ reclassifies the event, or forwards it to another scope.
 
    For either user-backed mode, use `grants: "inherit"` when the workflow should retain the user's
    current permissions. The route remains a delegate, while role changes, bans, membership removal,
-   and route disablement still apply. Use an explicit canonical grant array only when the route must
-   narrow the user's authority.
+   and route disablement still apply. Only someone acting without narrower limits may save an
+   `"inherit"` route: an agent whose definition limits it, or a workflow whose route grants less
+   than everything, must save explicit grants instead. Use an explicit canonical grant array only
+   when the route must narrow the user's authority.
 
    `organization-automation` acts with the route's grants in the route's own scope and, from an
    organization, in its projects. For work in another scope, forward an event to a route there that

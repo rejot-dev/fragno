@@ -56,6 +56,10 @@ export class PiManager extends DurableObject<CloudflareEnv> implements PiManager
     await this.#object.reportSettledTurn(input);
   }
 
+  async getAgentPermissions(input: { agentName: string }) {
+    return await this.#object.getAgentPermissions(input);
+  }
+
   async authorizeViewer(
     input: Parameters<PiManagerCommands["authorizeViewer"]>[0],
   ): ReturnType<PiManagerCommands["authorizeViewer"]> {

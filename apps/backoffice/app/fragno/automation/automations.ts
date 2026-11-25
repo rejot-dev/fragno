@@ -748,6 +748,9 @@ export const createAutomationsRuntime = (
     }) => {
       const authority = action ? automationRouteActionAuthority(action) : null;
       return await authorizeAutomation(async (execution) => {
+        if (authority?.grants === "inherit") {
+          await config.kernel.assertUnnarrowed(execution);
+        }
         await config.kernel.assertAuthorizedAll({
           execution,
           requirements: [
@@ -801,11 +804,15 @@ export const createAutomationsRuntime = (
         setAutomationRouteMutationActors(request, execution.actors);
         setAutomationRouteMutationActionAuthorizer(request, async ({ routeId, action }) => {
           const authority = automationRouteActionAuthority(action);
-          if (!authority || authority.grants === "inherit") {
+          if (!authority) {
             return;
           }
 
           try {
+            if (authority.grants === "inherit") {
+              await config.kernel.assertUnnarrowed(execution);
+              return;
+            }
             await config.kernel.assertAuthorizedAll({
               execution,
               requirements: automationRouteGrantRequirements({

@@ -465,6 +465,30 @@ describe("routes grant integrations.execute on named connections", () => {
     );
   });
 
+  test("an organization automation that may change routes cannot save one inheriting a person's permissions", async () => {
+    await runBackofficeScenario(
+      connectionsScenario({
+        name: "an organization automation saves a route with inherited grants",
+        authority: {
+          kind: "organization-automation",
+          grants: [BACKOFFICE_PERMISSION.router.modify],
+        },
+        workflow: "create-route",
+        steps: ({ when, then }) => [
+          when.automation.ingestEvent({
+            ...callsEvent("inherit", []),
+            payload: { routeId: "inherits", authority: "delegated-user", grants: "inherit" },
+          }),
+          then.assert("saving it is refused", async (ctx) => {
+            expect(await workflowOutput(ctx, "connections-inherit")).toContain(
+              "The current principal 'automation-route/org:org-1/connections' is not granted",
+            );
+          }),
+        ],
+      }),
+    );
+  });
+
   test("a user-backed route grants connections elsewhere only if whoever saves it may execute on them", async () => {
     await runBackofficeScenario(
       connectionsScenario({

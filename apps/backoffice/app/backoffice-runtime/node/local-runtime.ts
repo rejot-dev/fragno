@@ -7,6 +7,7 @@ import { createControlPlaneAuthorityResolver } from "@/backoffice-runtime/contro
 import { createAppInstallationAuthorityResolver } from "@/fragno/app-installations/authority";
 import { createAutomationRouteAuthorityResolver } from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
+import { createPiAgentAuthorityResolver } from "@/fragno/pi/agent/pi-agent-authority";
 import type { PiAvailableModel } from "@/fragno/pi/agent/pi-agent-contract";
 import { createReson8Server } from "@/fragno/reson8";
 import type { CreateSandboxRuntimeProviders } from "@/sandbox/contracts";
@@ -126,24 +127,28 @@ export async function createLocalBackofficeRuntime(
     authorityResolver:
       options.authorityResolver ??
       createControlPlaneAuthorityResolver({
-        resolver: createAppInstallationAuthorityResolver({
-          resolver: createAutomationRouteAuthorityResolver({
-            fallbackResolver: createBackofficeAuthorityResolver(
-              {
-                getUserAuthorityFacts: async (input) =>
-                  await objects.auth.singleton().commands.getUserAuthorityFacts(input),
-                findAdministeredMember: async (input) =>
-                  await objects.auth.singleton().commands.findAdministeredMember(input),
-              },
-              { now: () => objectFactory.now() },
-            ),
-            lookupRoute: async ({ scope, routeId }) =>
-              await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
+        resolver: createPiAgentAuthorityResolver({
+          resolver: createAppInstallationAuthorityResolver({
+            resolver: createAutomationRouteAuthorityResolver({
+              fallbackResolver: createBackofficeAuthorityResolver(
+                {
+                  getUserAuthorityFacts: async (input) =>
+                    await objects.auth.singleton().commands.getUserAuthorityFacts(input),
+                  findAdministeredMember: async (input) =>
+                    await objects.auth.singleton().commands.findAdministeredMember(input),
+                },
+                { now: () => objectFactory.now() },
+              ),
+              lookupRoute: async ({ scope, routeId }) =>
+                await objects.automations.for(scope).commands.getRouteForAuthority({ id: routeId }),
+            }),
+            installations: {
+              getInstallation: async ({ owner, appId }) =>
+                await objects.appInstallations.for(owner).commands.getInstallation({ appId }),
+            },
           }),
-          installations: {
-            getInstallation: async ({ owner, appId }) =>
-              await objects.appInstallations.for(owner).commands.getInstallation({ appId }),
-          },
+          lookupAgentPermissions: async ({ scope, agentName }) =>
+            await objects.piManager.for(scope).commands.getAgentPermissions({ agentName }),
         }),
         auth: {
           getUserOrganizationAuthorityFacts: async (input) =>

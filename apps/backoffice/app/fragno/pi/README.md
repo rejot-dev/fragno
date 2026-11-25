@@ -82,8 +82,10 @@ run, such as compaction, uses the latest admitted turn; manual compaction record
 first, and the queue's compaction the turn it follows. A turn is recorded before Pi admits its
 prompt, so no work can start without it, and withdrawn if Pi does not admit it, so a refused prompt
 never decides whom later work runs as. Work a turn persists, such as workflows or events, keeps the
-`pi-agent` actor, whose static role grants everything: it runs as the principal without the
-definition's narrowing.
+`pi-agent` actor. Outside the turn, `createPiAgentAuthorityResolver` resolves it from the agent's
+current definition through the Pi manager, so that work stays narrowed, narrowing the definition
+narrows it, and deleting the agent leaves it nothing. Routes and schedules a turn saves don't carry
+the actor: saving checks the definition's grants then, and the route acts with its own grants after.
 
 ## Subagents
 

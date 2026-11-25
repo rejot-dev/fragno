@@ -51,6 +51,7 @@ import type {
 import type { PiAgentWatchTicket } from "@fragno-dev/backoffice-api/v0/pi";
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
 import type { DirectoryPageInput } from "@fragno-dev/backoffice-api/v0/shared/pagination";
+import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import {
   type BackofficeContextScope,
   type BackofficeJurisdiction,
@@ -630,6 +631,8 @@ export type PiManagerCommands = WarmableCommands & {
    * event recording how it ended, which the agent its prompt replies to receives.
    */
   reportSettledTurn(input: PiAgentSettledTurn): Promise<void>;
+  /** What the scope's agent may do now, by its definition; nothing when no agent has the name. */
+  getAgentPermissions(input: { agentName: string }): Promise<BackofficePermissionRequirement[]>;
   /**
    * Whether the execution may watch the agent's conversation, which needs `pi.read`, and if so what
    * waits in its queue; an agent asks when a viewer connects to its view socket.
