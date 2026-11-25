@@ -69,6 +69,12 @@ export class Automations extends DurableObject<CloudflareEnv> implements Automat
     return await this.#object.getRouteForAuthority(input);
   }
 
+  async getWorkflowCapabilityGrants(
+    input: Parameters<AutomationsCommands["getWorkflowCapabilityGrants"]>[0],
+  ) {
+    return await this.#object.getWorkflowCapabilityGrants(input);
+  }
+
   async seedStarterAutomationRoutes() {
     return await this.#object.seedStarterAutomationRoutes();
   }

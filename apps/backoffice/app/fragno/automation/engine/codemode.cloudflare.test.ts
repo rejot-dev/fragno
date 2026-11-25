@@ -13,7 +13,7 @@ import { createBackofficeSystemExecution } from "@/backoffice-runtime/context";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
 import type { AutomationRuntimeHostContext, AutomationRuntime } from "@/fragno/automation";
 import { AUTOMATION_SYSTEM_INITIATOR } from "@/fragno/automation/actors";
-import { CODEMODE_CAPABILITY_ACTOR } from "@/fragno/automation/engine/codemode-invocation";
+import { codemodeCapabilityActor } from "@/fragno/automation/engine/codemode-invocation";
 import { codemodeRunnerFor } from "@/fragno/codemode/codemode-object-execute";
 import { createTestStateBackend } from "@/fragno/codemode/state-backend.test-utils";
 import { inlineWorkflowProgram } from "@/fragno/codemode/workflow-program";
@@ -137,7 +137,10 @@ describe("executeWorkflowCodemodeAutomation", () => {
           actors: execution.actors,
           capabilityGrants: [
             {
-              actor: CODEMODE_CAPABILITY_ACTOR,
+              actor: codemodeCapabilityActor({
+                ownerScope: execution.scope,
+                instanceId: "invalid-capability-grant-1",
+              }),
               permissions: [BACKOFFICE_PERMISSION.router.modify],
             },
           ],

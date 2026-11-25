@@ -40,6 +40,7 @@ import { UploadObject } from "../../../workers/upload-object";
 import {
   buildMarketplacePackageInstallWorkflowInstanceId,
   MARKETPLACE_PACKAGE_INSTALL_WORKFLOW_NAME,
+  marketplaceInstallationWorkflowInstanceId,
 } from "./marketplace-package-install-identity";
 import { createAutomationsRouteCaller, createWorkflowsRouteCaller } from "./route-callers";
 import {
@@ -135,7 +136,7 @@ async function submitTestCommandMessage(
   const submitted = await workflows("POST", "/:workflowName/instances/:instanceId/events", {
     pathParams: {
       workflowName: CODEMODE_WORKFLOW,
-      instanceId: `${ingestionInstanceId}:installation`,
+      instanceId: marketplaceInstallationWorkflowInstanceId(ingestionInstanceId),
     },
     body: {
       id: input.eventId,
@@ -327,7 +328,7 @@ describe("package installation scenarios", () => {
             const history = await workflows("GET", "/:workflowName/instances/:instanceId/history", {
               pathParams: {
                 workflowName: CODEMODE_WORKFLOW,
-                instanceId: `${workflowInstanceId}:installation`,
+                instanceId: marketplaceInstallationWorkflowInstanceId(workflowInstanceId),
               },
             });
             assert(history.type === "json");

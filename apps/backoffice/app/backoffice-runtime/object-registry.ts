@@ -144,6 +144,7 @@ import type {
   StarterAutomationRoutesSeedResult,
 } from "@/fragno/automation";
 import type { AutomationRouteAuthorityLookup } from "@/fragno/automation/authority";
+import type { CodemodeCapabilityGrantsLookup } from "@/fragno/automation/engine/codemode-capability-authority";
 import type {
   AutomationEventSource,
   AutomationEventSourceInput,
@@ -793,6 +794,10 @@ export type AutomationsCommands = {
   ): Promise<AutomationIngestResult>;
   /** Trusted authority lookup; it must not require the permission it is being used to resolve. */
   getRouteForAuthority(input: { id: string }): ReturnType<AutomationRouteAuthorityLookup>;
+  /** Trusted authority lookup: what a codemode run here was started allowing `actor` to do. */
+  getWorkflowCapabilityGrants(
+    input: Omit<Parameters<CodemodeCapabilityGrantsLookup>[0], "ownerScope">,
+  ): ReturnType<CodemodeCapabilityGrantsLookup>;
   seedStarterAutomationRoutes(): Promise<StarterAutomationRoutesSeedResult>;
   /** Asks each of an owner's active projects to tell it how the project is wired. */
   askProjectsForWiring(): Promise<{ asked: number }>;

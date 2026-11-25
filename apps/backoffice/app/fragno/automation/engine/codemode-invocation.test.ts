@@ -7,7 +7,7 @@ import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
 
 import {
   assertCodemodeCapabilityGrantsBelongToExecution,
-  CODEMODE_CAPABILITY_ACTOR,
+  codemodeCapabilityActor,
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
 } from "./codemode-invocation";
@@ -77,7 +77,10 @@ describe("codemode invocation preparation", () => {
         execution,
         capabilityGrants: [
           {
-            actor: CODEMODE_CAPABILITY_ACTOR,
+            actor: codemodeCapabilityActor({
+              ownerScope: execution.scope,
+              instanceId: "instance-1",
+            }),
             permissions: [BACKOFFICE_PERMISSION.router.modify],
           },
         ],

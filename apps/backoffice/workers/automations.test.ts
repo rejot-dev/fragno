@@ -22,7 +22,7 @@ import type { BackofficeRuntimeConfig } from "@/backoffice-runtime/runtime-servi
 import { createAutomationRuntimeExecution } from "@/fragno/automation/authority";
 import { readAutomationScript } from "@/fragno/automation/automation-source";
 import {
-  CODEMODE_CAPABILITY_ACTOR,
+  codemodeCapabilityActor,
   CODEMODE_WORKFLOW,
   createCodemodeWorkflowInstanceInput,
   prepareCodemodeWorkflowInstance,
@@ -1054,11 +1054,16 @@ describe("Automations authorized HTTP context", () => {
           scope,
           actors: {
             ...systemActors,
-            delegation: [CODEMODE_CAPABILITY_ACTOR],
+            delegation: [
+              codemodeCapabilityActor({ ownerScope: scope, instanceId: "forged-installation" }),
+            ],
           },
           capabilityGrants: [
             {
-              actor: CODEMODE_CAPABILITY_ACTOR,
+              actor: codemodeCapabilityActor({
+                ownerScope: scope,
+                instanceId: "forged-installation",
+              }),
               permissions: [BACKOFFICE_PERMISSION.router.modify],
             },
           ],
