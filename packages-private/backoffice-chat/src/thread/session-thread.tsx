@@ -555,6 +555,9 @@ export function SessionThread({
                         <>
                           <ComposerPrimitive.Input
                             submitMode="enter"
+                            // A message is not a form field, so iOS keeps its AutoFill bar
+                            // (passwords, cards, locations) off the keyboard.
+                            autoComplete="off"
                             placeholder={
                               composerAction === "compact"
                                 ? `Tell ${agentLabel} what the compaction summary must preserve`

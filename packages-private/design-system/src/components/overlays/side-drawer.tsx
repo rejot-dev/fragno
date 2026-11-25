@@ -12,12 +12,51 @@ export const SIDE_DRAWER_MIN_WIDTH = 360;
 const MAX_WIDTH = 900;
 const RESIZE_STEP = 24;
 
+type VisibleArea = { top: number; height: number };
+
+/**
+ * The part of the screen the page shows, while an on-screen keyboard covers the rest: Safari does not
+ * shrink the page for it, and scrolls the page to keep the focused field in view instead. Null while
+ * nothing covers the page, and while pinch-zoomed, where the visible area is the zoomed-in part.
+ */
+function useKeyboardFreeArea(): VisibleArea | null {
+  const [area, setArea] = useState<VisibleArea | null>(null);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (viewport === null) {
+      return undefined;
+    }
+    const update = () => {
+      const covered =
+        window.innerHeight - viewport.height > 1 && Math.abs(viewport.scale - 1) < 0.01;
+      setArea((current) => {
+        if (!covered) {
+          return null;
+        }
+        return current?.top === viewport.offsetTop && current.height === viewport.height
+          ? current
+          : { top: viewport.offsetTop, height: viewport.height };
+      });
+    };
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+    };
+  }, []);
+  return area;
+}
+
 /**
  * A full-height panel on the right edge of the shell that pushes the page aside. The reader
  * resizes it from its left edge, with a grip on touch screens. The width starts at `defaultWidth`
  * and is remembered under `storageKey`, so a consumer can size it apart per kind of screen. Its
  * children mount when it first opens, stay mounted while it is closed so what they hold (a live
- * connection, for example) survives reopening, and start with a `SideDrawerHeader`.
+ * connection, for example) survives reopening, and start with a `SideDrawerHeader`. While an
+ * on-screen keyboard is up, it fits the screen above it, so its header and what it holds stay in
+ * view.
  */
 export function SideDrawer({
   id,
@@ -39,6 +78,7 @@ export function SideDrawer({
   const [width, setWidth] = useState(defaultWidth);
   const restoredKeyRef = useRef<string | null>(null);
   const [everOpened, setEverOpened] = useState(open);
+  const keyboardFreeArea = useKeyboardFreeArea();
   if (open && !everOpened) {
     setEverOpened(true);
   }
@@ -119,7 +159,14 @@ export function SideDrawer({
       aria-label={label}
       aria-hidden={!open}
       inert={!open}
-      style={{ "--side-drawer-width": `${width}px` } as CSSProperties}
+      style={
+        {
+          "--side-drawer-width": `${width}px`,
+          ...(keyboardFreeArea === null
+            ? {}
+            : { top: keyboardFreeArea.top, height: keyboardFreeArea.height }),
+        } as CSSProperties
+      }
       className={`sticky top-0 z-40 flex h-dvh shrink-0 flex-col overflow-hidden bg-[var(--bo-panel)] transition-[width] duration-200 ease-out [--bo-bg:var(--bo-panel)] ${open ? "w-[min(var(--side-drawer-width),calc(100vw-2rem))] border-l border-[color:var(--bo-border)]" : "pointer-events-none w-0"}`}
     >
       <div
