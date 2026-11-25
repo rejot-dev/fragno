@@ -22,7 +22,7 @@ import { resolveBackofficePageScope } from "@/layouts/backoffice-layout-scope";
 
 import { BackofficePhoneChrome } from "./phone-chrome";
 import { BackofficeProjectMenu } from "./project-menu";
-import { BackofficeMobileNav, BackofficeSidebarNav, useBackofficeSections } from "./sidebar-nav";
+import { BackofficeSidebarNav, useBackofficeSections } from "./sidebar-nav";
 
 const organization: Organization = {
   id: "agency-id",
@@ -77,7 +77,7 @@ async function loadScope({ params }: LoaderFunctionArgs) {
   return result.scope;
 }
 
-type Navigation = "desktop" | "mobile" | "phone";
+type Navigation = "desktop" | "phone";
 
 function NavigationScenario({ navigation }: { navigation: Navigation }) {
   const scope = useLoaderData<typeof loadScope>();
@@ -93,8 +93,6 @@ function NavigationScenario({ navigation }: { navigation: Navigation }) {
           collapsed={collapsed}
           onCollapsedChange={setCollapsed}
         />
-      ) : navigation === "mobile" ? (
-        <BackofficeMobileNav sections={sections} />
       ) : (
         <BackofficePhoneChrome
           sections={sections}
@@ -168,7 +166,7 @@ function personalScopes(userId: string): BackofficeRouteScope[] {
 }
 
 describe("scope navigation scenarios", () => {
-  test.each(["desktop", "mobile", "phone"] as const)(
+  test.each(["desktop", "phone"] as const)(
     "%s navigation reaches personal settings from owned descendants but not another member's",
     async (navigation) => {
       const router = await renderNavigation("/backoffice/dashboard/user/ada", navigation);
@@ -233,7 +231,7 @@ describe("scope navigation scenarios", () => {
     },
   );
 
-  test.each(["desktop", "mobile", "phone"] as const)(
+  test.each(["desktop", "phone"] as const)(
     "%s navigation returns to where each section was left, per scope",
     async (navigation) => {
       const router = await renderNavigation("/backoffice/dashboard/user/ada", navigation);

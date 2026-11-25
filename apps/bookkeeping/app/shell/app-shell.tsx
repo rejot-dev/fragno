@@ -66,13 +66,15 @@ export function AppShell({
         <MobileNavigation items={sections.at(-1)?.items ?? []} ariaLabel={ariaLabel} />
       </div>
       <div className="flex min-w-0">
-        <SidebarNavigation
-          sections={sections}
-          secondaryItems={[]}
-          ariaLabel={ariaLabel}
-          collapsed={collapsed}
-          onCollapsedChange={setCollapsed}
-        />
+        <div className="hidden min-[960px]:contents">
+          <SidebarNavigation
+            sections={sections}
+            secondaryItems={[]}
+            ariaLabel={ariaLabel}
+            collapsed={collapsed}
+            onCollapsedChange={setCollapsed}
+          />
+        </div>
         <main id="main-content" className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>

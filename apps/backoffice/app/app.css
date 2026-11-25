@@ -18,7 +18,8 @@ html:has([data-integrations-workspace]) {
 }
 
 /* The shell's chrome above and below a page, so pages that fill the screen, such as explorers and
-   chats, take what is left. Phones have the slim header and the tab bar; from sm, the top bar and its section strip; from 960px, the top bar beside the sidebar.
+   chats, take what is left. Phones have the slim header and the tab bar; from sm, the top bar above
+   the sidebar.
    The body and shell use min-h-dvh to match: on phones 100vh is the viewport without the browser's
    URL bar, so a 100vh shell would scroll a full-screen page under the header and leave a gap above
    the tab bar. */
@@ -30,14 +31,8 @@ html:has([data-integrations-workspace]) {
 
 @media (width >= 40rem) {
   [data-backoffice-shell] {
-    --bo-shell-top: calc(var(--spacing) * 27 + 2px + env(safe-area-inset-top));
-    --bo-shell-bottom: 0px;
-  }
-}
-
-@media (width >= 960px) {
-  [data-backoffice-shell] {
     --bo-shell-top: calc(var(--spacing) * 16 + 1px + env(safe-area-inset-top));
+    --bo-shell-bottom: 0px;
   }
 }
 
