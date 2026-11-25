@@ -128,7 +128,7 @@ const scopedEvent = (orgId: string): AutomationEvent => ({
 });
 
 describe("readBackofficeAutomationSource", () => {
-  test("loads static and system automation files for system automation scope", async () => {
+  test("loads static automation files for system automation scope", async () => {
     const execution = {
       kind: "deferred" as const,
       actors: BACKOFFICE_SYSTEM_ACTORS,
@@ -145,16 +145,6 @@ describe("readBackofficeAutomationSource", () => {
     ).resolves.toEqual(
       expect.objectContaining({
         absolutePath: "/static/automations/project-files-configure.workflow.js",
-      }),
-    );
-    await expect(
-      readAutomationScript(sourceReader, {
-        execution,
-        scriptPath: "/system/automations/workspace-file-initialization.workflow.js",
-      }),
-    ).resolves.toEqual(
-      expect.objectContaining({
-        absolutePath: "/system/automations/workspace-file-initialization.workflow.js",
       }),
     );
   });
@@ -176,12 +166,6 @@ describe("readBackofficeAutomationSource", () => {
         absolutePath: "/static/automations/project-files-configure.workflow.js",
       }),
     );
-    await expect(
-      readAutomationScript(sourceReader, {
-        execution,
-        scriptPath: "/system/automations/workspace-file-initialization.workflow.js",
-      }),
-    ).rejects.toThrow();
   });
 });
 

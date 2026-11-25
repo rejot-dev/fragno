@@ -62,7 +62,10 @@ import {
 } from "./authority";
 import { resolveAutomationScriptPath, type AutomationSourceReader } from "./automation-source";
 import { createAutomationStoreServices } from "./bindings-storage-runtime";
-import { SYSTEM_STARTER_AUTOMATION_ROUTES } from "./content/starter-routing";
+import {
+  RETIRED_STARTER_AUTOMATION_ROUTE_IDS,
+  SYSTEM_STARTER_AUTOMATION_ROUTES,
+} from "./content/starter-routing";
 import { getAutomationEventIdentity, type AutomationEventIdentity } from "./contracts";
 import {
   CODEMODE_WORKFLOW,
@@ -146,9 +149,11 @@ export type AutomationIngestResult = {
   eventType: string;
 };
 
-const ALL_BUILT_IN_STARTER_AUTOMATION_ROUTE_IDS = SYSTEM_STARTER_AUTOMATION_ROUTES.map(
-  (route) => route.id,
-);
+// Seeding removes the built-in routes a scope should not hold, retired ones included.
+const ALL_BUILT_IN_STARTER_AUTOMATION_ROUTE_IDS = [
+  ...SYSTEM_STARTER_AUTOMATION_ROUTES.map((route) => route.id),
+  ...RETIRED_STARTER_AUTOMATION_ROUTE_IDS,
+];
 
 function getStarterAutomationRoutesForScope(ownerScope: BackofficeContextScope) {
   switch (ownerScope.kind) {
@@ -526,9 +531,6 @@ const handleForwardEventRouteAction = async ({
   } satisfies AutomationEvent;
 
   const targetAutomations = runtime.objects.automations.for(scope);
-  if (scope.kind === "system") {
-    await targetAutomations.commands.seedStarterAutomationRoutes();
-  }
   const ingested = await targetAutomations.commands.ingestEvent(forwardedEvent);
   if (!ingested.accepted) {
     // The receiving scope decides what it takes in; retrying cannot change its mind.
@@ -1352,6 +1354,15 @@ export const automationFragmentDefinition = defineFragment<AutomationFragmentCon
               linkedUserId,
               ownerScope: config.ownerScope,
             };
+            // A dispatch queued before its built-in route was retired still holds the route, whose
+            // workflow and tools are gone with it.
+            if (
+              config.ownerScope.kind === "system" &&
+              RETIRED_STARTER_AUTOMATION_ROUTE_IDS.includes(route.id)
+            ) {
+              await commitDispatch({ kind: "skipped", reason: "route_retired" }, null);
+              return;
+            }
             const action = route.action;
             switch (action.kind) {
               case "start_workflow":

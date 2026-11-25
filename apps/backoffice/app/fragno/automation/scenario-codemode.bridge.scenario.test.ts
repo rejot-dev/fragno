@@ -72,7 +72,6 @@ test("uses codemode setup helpers while keeping setup intent explicit", async ()
       objects: scenarioObjects,
       name: "codemode setup helpers arrange state through runtime tools",
       env: runtimeEnv,
-      files: backofficeFiles.workspaceStarter(),
       setup: ({ given }) => [
         given.organization.exists({ id: "org-1", name: "Ada Labs" }),
         given.codemode.storeSet({

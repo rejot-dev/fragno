@@ -201,7 +201,8 @@ export const automationEventListResultSchema = z.lazy(() =>
  * reclassifying or forwarding route, and notifying it could let the app answer each notification
  * with another. `app_not_installed`: the app is not installed, or its
  * installation does not reach the event's scope. `app_cannot_read_events`: the installation lacks
- * `events.read`, so the app could not read the event it would be told about.
+ * `events.read`, so the app could not read the event it would be told about. `route_retired`: the
+ * product retired the built-in route after the event matched it, along with what it ran.
  */
 export type AutomationRouteDispatchSkipReason =
   | "no_linked_external_sender"
@@ -210,7 +211,8 @@ export type AutomationRouteDispatchSkipReason =
   | "caused_by_notified_agent"
   | "caused_by_notified_app"
   | "app_not_installed"
-  | "app_cannot_read_events";
+  | "app_cannot_read_events"
+  | "route_retired";
 
 /**
  * What a matched route did with an event. Derived events also record the route in their own
@@ -284,6 +286,7 @@ const automationRouteDispatchOutcomeSchema: z.ZodType<AutomationRouteDispatchOut
         "caused_by_notified_app",
         "app_not_installed",
         "app_cannot_read_events",
+        "route_retired",
       ]),
     }),
   ]),

@@ -81,7 +81,6 @@ import {
   setInboundEmailSending,
 } from "@/fragno/runtime-tools/families/integrations/email-integration";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
-import { createInternalRuntime } from "@/fragno/runtime-tools/families/internal";
 import {
   createJavaScriptRuntime,
   type JavaScriptRunHistory,
@@ -676,14 +675,6 @@ const createRuntimeContext = ({
             objects: runtime.objects,
             config: runtime.config,
             organization: org,
-          }),
-        }
-      : null,
-    internal: org
-      ? {
-          runtime: createInternalRuntime({
-            objects: runtime.objects,
-            scope: org,
           }),
         }
       : null,

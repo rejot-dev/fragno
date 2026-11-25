@@ -669,7 +669,8 @@ type EventsListOutput = {
                         | "caused_by_notified_agent"
                         | "caused_by_notified_app"
                         | "app_not_installed"
-                        | "app_cannot_read_events";
+                        | "app_cannot_read_events"
+                        | "route_retired";
                     };
                 failedAttempts: number;
               }
@@ -1093,7 +1094,8 @@ type EventsGetOutput = {
                       | "caused_by_notified_agent"
                       | "caused_by_notified_app"
                       | "app_not_installed"
-                      | "app_cannot_read_events";
+                      | "app_cannot_read_events"
+                      | "route_retired";
                   };
               failedAttempts: number;
             }
@@ -1227,7 +1229,8 @@ type EventsRoutesListOutput = {
                   | "caused_by_notified_agent"
                   | "caused_by_notified_app"
                   | "app_not_installed"
-                  | "app_cannot_read_events";
+                  | "app_cannot_read_events"
+                  | "route_retired";
               };
           failedAttempts: number;
         };
@@ -1400,7 +1403,8 @@ type EventsRoutesRetryOutput =
               | "caused_by_notified_agent"
               | "caused_by_notified_app"
               | "app_not_installed"
-              | "app_cannot_read_events";
+              | "app_cannot_read_events"
+              | "route_retired";
           };
       failedAttempts: number;
     }

@@ -51,7 +51,6 @@ import {
   integrationsToolFamily,
   type IntegrationsRuntime,
 } from "./families/integrations/integration-tools";
-import { internalWorkspaceToolFamily, type InternalRuntime } from "./families/internal";
 import {
   javaScriptBuildToolFamily,
   javaScriptCheckToolFamily,
@@ -100,7 +99,6 @@ export type CoreBackofficeRuntimeMap = {
   event?: EventRuntime;
   eventCatalog?: EventCatalogRuntime;
   cloudflare?: CloudflareRuntime;
-  internal?: InternalRuntime;
   marketplace: MarketplaceRuntime | undefined;
   packages: PackagesRuntime | undefined;
   otp?: OtpRuntime;
@@ -154,5 +152,4 @@ export const runtimeToolFamilies = [
   artifactsToolFamily,
   marketplaceToolFamily,
   packagesToolFamily,
-  internalWorkspaceToolFamily,
 ] as const satisfies readonly BackofficeRuntimeToolFamily[];

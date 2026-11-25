@@ -158,9 +158,11 @@ const TELEGRAM_CHANNEL_MARKETPLACE_INSTALLATION = {
 } as const;
 
 const marketplaceTelegramTestWorkspace = () =>
-  backofficeFiles.workspaceStarter({
-    "automations/telegram-test-command.workflow.js":
-      telegramTestCommandEntry.files["automations/telegram-test-command.workflow.js"],
+  backofficeFiles.custom({
+    workspace: {
+      "automations/telegram-test-command.workflow.js":
+        telegramTestCommandEntry.files["automations/telegram-test-command.workflow.js"],
+    },
   });
 
 const telegramTestCommandRoute = {
@@ -440,8 +442,6 @@ describe("starter automation router scenarios", () => {
         objects: scenarioObjects,
         name: "scenario router disables custom route",
 
-        files: backofficeFiles.workspaceStarter(),
-
         setup: ({ given }) => [given.organization.exists({ id: "org-1", name: "Ada Labs" })],
 
         steps: ({ when, then }) => [
@@ -518,8 +518,6 @@ describe("starter automation router scenarios", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "scenario router creates custom start route",
-
-        files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
@@ -659,8 +657,6 @@ describe("starter automation router scenarios", () => {
         objects: scenarioObjects,
         name: "scenario router missing workflow file skips",
 
-        files: backofficeFiles.workspaceStarter(),
-
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
           given.direct.file({
@@ -754,8 +750,6 @@ describe("starter automation router scenarios", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "retry a failing route without its sibling",
-
-        files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
@@ -911,8 +905,6 @@ describe("starter automation router scenarios", () => {
         objects: scenarioObjects,
         name: "retry a route after it gave up",
 
-        files: backofficeFiles.workspaceStarter(),
-
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
           given.direct.file({
@@ -1058,8 +1050,6 @@ describe("starter automation router scenarios", () => {
         name: "a route to a finished run fails and announces it",
         // Both routes that send to the finished run stay failed.
         options: { allowFailedDurableHooks: true },
-
-        files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),
@@ -1213,8 +1203,6 @@ describe("starter automation router scenarios", () => {
       defineBackofficeScenario({
         objects: scenarioObjects,
         name: "scenario router sends workflow event",
-
-        files: backofficeFiles.workspaceStarter(),
 
         setup: ({ given }) => [
           given.organization.exists({ id: "org-1", name: "Ada Labs" }),

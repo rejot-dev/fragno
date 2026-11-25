@@ -72,6 +72,7 @@ import {
 } from "@/fragno/automation/authority";
 import type { AutomationSourceReader } from "@/fragno/automation/automation-source";
 import { createAutomationsRuntime, type AutomationsRuntime } from "@/fragno/automation/automations";
+import { STARTER_AUTOMATION_ROUTES_REVISION } from "@/fragno/automation/content/starter-routing";
 import {
   codemodeRunCapabilityGrants,
   createCodemodeCapabilityAuthorityResolver,
@@ -176,7 +177,6 @@ import { createUploadRouteCaller } from "@/fragno/upload-server";
 import type {
   BackofficeFragmentDurableObject,
   BackofficeObjectState,
-  BackofficeOutboxItem,
 } from "./lib/backoffice-fragment-durable-object";
 import type {
   BackofficeObjectImplementation,
@@ -189,9 +189,8 @@ type AutomationDurableObjectConfig = {
   scope: BackofficeContextScope;
 };
 
-type AutomationsOutboxItem = BackofficeOutboxItem & {
-  type: "automations.initialized";
-};
+// The set of starter routes an object last seeded, so a changed set seeds again.
+const STARTER_ROUTES_REVISION_STORAGE_KEY = "automations:starter-routes-revision";
 
 function selectAutomationsDurableHookFragment(
   runtime: AutomationsRuntime,
@@ -319,10 +318,12 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
   readonly #host: BackofficeFragmentDurableObject<
     AutomationDurableObjectConfig,
     AutomationDurableObjectConfig,
-    AutomationsRuntime,
-    AutomationsOutboxItem
+    AutomationsRuntime
   >;
   #scope: BackofficeContextScope | null = null;
+  // Whether the configured runtime seeded its starter routes and started its fold replay. The host
+  // is configured before they run, so a failed seed leaves it configured but not ready.
+  #ready = false;
   private readonly automationRoutePrefix = "/api/automations";
 
   constructor({
@@ -408,18 +409,6 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
         },
         { id: "workflows", target: (runtime) => runtime.workflowsFragment },
       ],
-      outbox: {
-        dispatch: async (item) => {
-          if (item.type !== "automations.initialized") {
-            return;
-          }
-
-          const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
-          await runtime.automationFragment.callServices(() =>
-            runtime.automationFragment.services.seedStarterAutomationRoutes(),
-          );
-        },
-      },
     });
 
     void state.blockConcurrencyWhile(async () => {
@@ -431,8 +420,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       }
       await this.#host.initializeFromStored(stored);
       if (stored) {
-        await this.#dispatchInitialized(stored.scope);
-        await this.#startEventFoldReplay();
+        await this.#prepare();
       }
     });
   }
@@ -445,14 +433,30 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     return this.#scope;
   }
 
-  async #dispatchInitialized(scope: BackofficeContextScope) {
-    await this.#host.dispatch({
-      id: `automations.initialized:${
-        scope.kind === "system" ? "system" : backofficeScopePathSegment(scope)
-      }`,
-      type: "automations.initialized",
-      createdAt: new Date().toISOString(),
-    });
+  /**
+   * Seeds the starter routes before the object takes any event: an event routed without them,
+   * such as System's first `organization.created`, is never routed again.
+   */
+  async #seedStarterRoutes() {
+    const seeded = await this.#state.storage.get<string>(STARTER_ROUTES_REVISION_STORAGE_KEY);
+    if (seeded === STARTER_AUTOMATION_ROUTES_REVISION) {
+      return;
+    }
+    const { runtime } = this.#host.requireConfigured("Automations runtime is not ready.");
+    await runtime.automationFragment.callServices(() =>
+      runtime.automationFragment.services.seedStarterAutomationRoutes(),
+    );
+    await this.#state.storage.put(
+      STARTER_ROUTES_REVISION_STORAGE_KEY,
+      STARTER_AUTOMATION_ROUTES_REVISION,
+    );
+  }
+
+  /** Readies the configured runtime to take events; runs again until it succeeds. */
+  async #prepare() {
+    await this.#seedStarterRoutes();
+    await this.#startEventFoldReplay();
+    this.#ready = true;
   }
 
   /** Folds events stored before ingestion folded them; see `event-fold-replay`. */
@@ -471,7 +475,7 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
     const configured = this.#host.getConfigured();
     if (configured) {
       this.#host.assertSameScope(configured.stored, config.scope);
-      if (JSON.stringify(configured.stored.scope) === JSON.stringify(config.scope)) {
+      if (this.#ready && JSON.stringify(configured.stored.scope) === JSON.stringify(config.scope)) {
         return;
       }
     }
@@ -480,13 +484,14 @@ export class AutomationsObject extends RpcTarget implements AutomationsCommands 
       const latest = this.#host.getConfigured();
       if (latest) {
         this.#host.assertSameScope(latest.stored, config.scope);
-        if (JSON.stringify(latest.stored.scope) === JSON.stringify(config.scope)) {
-          return;
-        }
       }
-      await this.#host.storeAndInitialize(config);
-      await this.#dispatchInitialized(config.scope);
-      await this.#startEventFoldReplay();
+      if (!latest || JSON.stringify(latest.stored.scope) !== JSON.stringify(config.scope)) {
+        this.#ready = false;
+        await this.#host.storeAndInitialize(config);
+      } else if (this.#ready) {
+        return;
+      }
+      await this.#prepare();
     });
   }
 

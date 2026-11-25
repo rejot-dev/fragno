@@ -30,7 +30,6 @@ import type { CloudflareRuntime } from "./families/cloudflare-runtime";
 import type { EventRuntime } from "./families/event";
 import type { EventCatalogRuntime } from "./families/event-catalog";
 import type { IntegrationsRuntime } from "./families/integrations/integration-tools";
-import type { InternalRuntime } from "./families/internal";
 import type { JavaScriptRuntime } from "./families/javascript-runtime";
 import type { MarketplaceRuntime } from "./families/marketplace-runtime";
 import type { ModelsRuntime } from "./families/models";
@@ -79,7 +78,6 @@ export type BashHostContext = {
   workflow?: { runtime: AutomationWorkflowRuntime } | null;
   durableHooks?: { runtime: DurableHooksRuntime } | null;
   integrations: { runtime: IntegrationsRuntime } | null;
-  internal?: { runtime: InternalRuntime } | null;
   marketplace: { runtime: MarketplaceRuntime } | null;
   packages: { runtime: PackagesRuntime } | null;
   otp: RegisteredOtpCommandContext | null;

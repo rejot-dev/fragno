@@ -85,7 +85,7 @@ describe("automation backoffice workspace data", () => {
 
   test("rejects hidden system script source from org scope", async () => {
     const fileSystem = createStubAutomationFileSystem({
-      "/system/automations/workspace-file-initialization.workflow.js": "initialize",
+      "/system/automations/admin.workflow.js": "admin",
     });
     readBackofficeAutomationSourceMock.mockImplementation(({ path }) =>
       fileSystem.fs.readFile(path),
@@ -94,13 +94,13 @@ describe("automation backoffice workspace data", () => {
     const result = await loadAutomationScriptSource({
       context: mockContext,
       execution: orgExecution,
-      scriptId: "automation-script:/system/automations/workspace-file-initialization.workflow.js",
+      scriptId: "automation-script:/system/automations/admin.workflow.js",
     });
 
     expect(result).toEqual({
       script: null,
       scriptError:
-        "Automation script '/system/automations/workspace-file-initialization.workflow.js' is not visible in org scope.",
+        "Automation script '/system/automations/admin.workflow.js' is not visible in org scope.",
     });
     expect(fileSystem.readFileCalls).toEqual([]);
   });

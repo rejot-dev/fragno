@@ -84,8 +84,10 @@ test("a workflow routes a ticket by the classifier's answers and bills its organ
     defineBackofficeScenario({
       name: "ticket triage with models.classify",
       objects: allLocalObjects,
-      files: backofficeFiles.workspaceStarter({
-        "automations/ticket-triage.workflow.js": triageWorkflow,
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/ticket-triage.workflow.js": triageWorkflow,
+        },
       }),
       fakes: ({ fake }) => ({
         classifier: fake.classifier({ answer: triageAnswers, inputTokens: 1_200 }),
@@ -181,8 +183,10 @@ test("usage reaches billing after an outage without classifying again", async ()
             }
           })(input),
       },
-      files: backofficeFiles.workspaceStarter({
-        "automations/ticket-triage.workflow.js": triageWorkflow,
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/ticket-triage.workflow.js": triageWorkflow,
+        },
       }),
       fakes: ({ fake }) => ({
         classifier: fake.classifier({ answer: triageAnswers, inputTokens: 1_200 }),
@@ -288,8 +292,10 @@ test("a workflow generates an image, judges its bytes through Decisions, and bil
     defineBackofficeScenario({
       name: "review a generated workspace image",
       objects: allLocalObjects,
-      files: backofficeFiles.workspaceStarter({
-        "automations/reviewed-image.workflow.js": reviewedImageWorkflow,
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/reviewed-image.workflow.js": reviewedImageWorkflow,
+        },
       }),
       fakes: ({ fake }) => ({
         openaiImages: fake.openaiImages({
@@ -600,8 +606,10 @@ test("a workflow writes a generated image to the workspace and bills its organiz
     defineBackofficeScenario({
       name: "product shot with models.generateImage",
       objects: allLocalObjects,
-      files: backofficeFiles.workspaceStarter({
-        "automations/product-shot.workflow.js": productShotWorkflow,
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/product-shot.workflow.js": productShotWorkflow,
+        },
       }),
       fakes: ({ fake }) => ({
         openaiImages: fake.openaiImages({
@@ -714,8 +722,10 @@ test("a workflow reads an invoice PDF into typed fields and bills the extraction
     defineBackofficeScenario({
       name: "extract an invoice with models.extract",
       objects: allLocalObjects,
-      files: backofficeFiles.workspaceStarter({
-        "automations/book-invoice.workflow.js": bookInvoiceWorkflow,
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/book-invoice.workflow.js": bookInvoiceWorkflow,
+        },
       }),
       fakes: ({ fake }) => ({
         openaiResponses: fake.openaiResponses({
@@ -1062,8 +1072,10 @@ test("a workflow restages its product shot in a room kept as a blob", async () =
         BLOBS: (input) =>
           new BlobsObject({ ...input, storage: { buckets: blobBuckets, fetch: r2.fetch } }),
       },
-      files: backofficeFiles.workspaceStarter({
-        "automations/restage-product.workflow.js": restageWorkflow,
+      files: backofficeFiles.custom({
+        workspace: {
+          "automations/restage-product.workflow.js": restageWorkflow,
+        },
       }),
       fakes: ({ fake }) => ({
         openaiImages: fake.openaiImages({
