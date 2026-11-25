@@ -159,7 +159,7 @@ export function BackofficePhoneTabBar({
 
   return (
     <>
-      <div className="desktop:hidden contents">
+      <div data-phone-tab-bar className="desktop:hidden contents">
         <BottomNavigation
           ariaLabel="Leyway"
           end={

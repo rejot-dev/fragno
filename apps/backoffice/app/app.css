@@ -44,6 +44,34 @@ html:has([data-integrations-workspace]) {
   }
 }
 
+/* While the on-screen keyboard is up, phones hide the tab bar, as native apps do, so what is being
+   typed keeps the little room the keyboard leaves. Fields that open a picker rather than the
+   keyboard keep it. */
+@media (pointer: coarse) {
+  [data-backoffice-shell]:has(
+    :is(
+      input:not(
+        [type="checkbox"],
+        [type="radio"],
+        [type="range"],
+        [type="file"],
+        [type="color"],
+        [type="button"],
+        [type="submit"],
+        [type="reset"]
+      ),
+      textarea,
+      [contenteditable="true"]
+    ):focus
+  ) {
+    --bo-shell-bottom: 0px;
+
+    & [data-phone-tab-bar] {
+      display: none;
+    }
+  }
+}
+
 /* The shell sets this until the saved sidebar state has painted, so it does not animate on load. */
 [data-sidebar-restoring] * {
   transition: none !important;
