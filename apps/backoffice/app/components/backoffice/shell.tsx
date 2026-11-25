@@ -33,7 +33,7 @@ import { CurrentBackofficeProvider } from "./current-context";
 import type { CurrentBackofficeContext } from "./current-context-state";
 import { GlobalHotkeysProvider, useGlobalHotkey } from "./global-hotkeys";
 import { MemberWorkspaceBanner } from "./member-workspace-banner";
-import { BackofficePhoneChrome } from "./phone-chrome";
+import { BackofficePhoneHeader, BackofficePhoneTabBar } from "./phone-chrome";
 import type { ScopeProbe } from "./scope-probe";
 import { BackofficeSidebarNav, useBackofficeSections } from "./sidebar-nav";
 import { BackofficeTopBar } from "./top-bar";
@@ -164,6 +164,29 @@ function readStoredSidebarCollapsed(): boolean {
 // Below this the sidebar is a rail of icons whatever was saved, so pages keep their room.
 const SIDEBAR_RAIL_QUERY = "(width < 960px)";
 
+// Phones wide enough to keep the agent beside the page, such as an unfolded iPhone Duo on its side:
+// the phone chrome (the opposite of the `desktop` variant in app.css) from 768px wide.
+const AGENT_BESIDE_PHONE_QUERY = "(pointer: coarse) and (width >= 768px) and (height < 660px)";
+
+// Such phones open the agent until it is closed there; desktops start with it closed.
+const PHONE_AGENT_CLOSED_STORAGE_KEY = "backoffice:phone-agent-closed";
+
+function readStoredPhoneAgentClosed(): boolean {
+  try {
+    return window.localStorage.getItem(PHONE_AGENT_CLOSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function storePhoneAgentClosed(closed: boolean) {
+  try {
+    window.localStorage.setItem(PHONE_AGENT_CLOSED_STORAGE_KEY, String(closed));
+  } catch {
+    // Remembering the agent is optional when storage is unavailable.
+  }
+}
+
 /** Whether the media query matches; false on the server and in the hydrating render. */
 function useMediaQuery(query: string): boolean {
   const subscribe = useCallback(
@@ -212,6 +235,13 @@ function BackofficeShellFrame({
   const sections = useBackofficeSections(resolvedScope, me);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarRail = useMediaQuery(SIDEBAR_RAIL_QUERY);
+  const agentBesidePhone = useMediaQuery(AGENT_BESIDE_PHONE_QUERY);
+  const toggleAgentDrawer = () => {
+    if (agentBesidePhone) {
+      storePhoneAgentClosed(agentDrawerOpen);
+    }
+    setAgentDrawerOpen(!agentDrawerOpen);
+  };
   const sidebarShownCollapsed = sidebarCollapsed || sidebarRail;
   const sidebarRestoredRef = useRef(false);
   const [sidebarRestoring, setSidebarRestoring] = useState(true);
@@ -242,6 +272,13 @@ function BackofficeShellFrame({
       // Remembering the sidebar is optional when storage is unavailable.
     }
   }, [sidebarCollapsed]);
+  // Phones with room for the agent open it until it is closed there: on load, and when one unfolds
+  // or turns to make the room.
+  useEffect(() => {
+    if (agentBesidePhone && !readStoredPhoneAgentClosed()) {
+      setAgentDrawerOpen(true);
+    }
+  }, [agentBesidePhone]);
   // Transitions stay off until a frame has painted the restored sidebar, so a saved collapse
   // snaps into place instead of replaying its animation on load.
   useEffect(() => {
@@ -284,9 +321,9 @@ function BackofficeShellFrame({
       className="relative isolate flex min-h-dvh bg-[var(--bo-bg)] text-[var(--bo-fg)]"
     >
       <BackofficeClsDebugger />
-      <div className="relative flex min-w-0 flex-1 flex-col pb-[var(--bo-shell-bottom)]">
+      <div className="relative flex min-w-0 flex-1 flex-col">
         <div className="bo-grid-backdrop pointer-events-none absolute inset-0" />
-        <BackofficePhoneChrome
+        <BackofficePhoneHeader
           sections={sections}
           me={me}
           resolvedScope={resolvedScope}
@@ -304,9 +341,7 @@ function BackofficeShellFrame({
           isLoading={isLoading}
           sidebarCollapsed={sidebarShownCollapsed}
           agentDrawerOpen={agentDrawerOpen}
-          onAgentDrawerToggle={() => {
-            setAgentDrawerOpen((open) => !open);
-          }}
+          onAgentDrawerToggle={toggleAgentDrawer}
         />
         <div className="flex min-w-0 flex-1">
           {/* Phones reach sections through the tab bar instead. */}
@@ -328,15 +363,27 @@ function BackofficeShellFrame({
             </div>
           </main>
         </div>
+        <BackofficePhoneTabBar
+          sections={sections}
+          agentBeside={
+            agentBesidePhone ? { open: agentDrawerOpen, onToggle: toggleAgentDrawer } : null
+          }
+          me={me}
+          isLoading={isLoading ?? false}
+        />
       </div>
-      {/* Phones reach agents through the Agents tab instead. */}
-      <div className="desktop:contents hidden">
+      {/* Narrower phones reach agents through the Agents tab instead. */}
+      <div className={agentBesidePhone ? "contents" : "desktop:contents hidden"}>
         <AgentDrawer
           open={agentDrawerOpen}
+          screen={agentBesidePhone ? "phone" : "desktop"}
           draft={agentDraft}
           // Agents read their directory from the scope's Automations replica.
           resolvedScope={automationReplicaSource ? resolvedScope : null}
           onClose={() => {
+            if (agentBesidePhone) {
+              storePhoneAgentClosed(true);
+            }
             setAgentDrawerOpen(false);
           }}
         />

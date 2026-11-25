@@ -21,6 +21,8 @@ import type { AdministeredMember, BackofficeMeData, Organization } from "@/fragn
 import { useBackofficeSignOut } from "@/fragno/auth/use-backoffice-sign-out";
 import type { AutomationProjectList } from "@/fragno/automation/project-list";
 
+import { AGENT_DRAWER_ID, preloadAgentDrawer } from "./agent-drawer";
+import { AgentMark } from "./agent-mark";
 import { BackofficeAppearanceMenu } from "./appearance-menu";
 import { StreamedBackofficeProjectMenu } from "./project-menu";
 import { BackofficeScopeSheetSections, currentScopeLabel } from "./scope-menu";
@@ -28,11 +30,25 @@ import { type ScopeProbe, StreamedScopeProbe } from "./scope-probe";
 import type { BackofficeSections } from "./sidebar-nav";
 
 /**
- * The shell's chrome on phones, in place of the top bar and sidebar: a slim header naming the
- * section and the workspace, which opens a sheet from the top to switch workspaces, and a bottom
- * tab bar, whose More opens a sheet from the bottom with everything else.
+ * Whether a sheet is open. It remembers the location it opened at, so following any link in it
+ * closes it.
  */
-export function BackofficePhoneChrome({
+function useSheetAtLocation(): [boolean, (open: boolean) => void] {
+  const location = useLocation();
+  const [openedAt, setOpenedAt] = useState<string | null>(null);
+  return [
+    openedAt === location.key,
+    (open) => {
+      setOpenedAt(open ? location.key : null);
+    },
+  ];
+}
+
+/**
+ * The top of the shell's chrome on phones, in place of the top bar: a slim header naming the
+ * section and the workspace, which opens a sheet from the top to switch workspaces.
+ */
+export function BackofficePhoneHeader({
   sections,
   me,
   resolvedScope,
@@ -49,21 +65,9 @@ export function BackofficePhoneChrome({
   scopeProbe: Promise<ScopeProbe> | null;
   isLoading: boolean;
 }) {
-  const location = useLocation();
-  // Remembers the location the sheet opened at, so following any link in it closes it.
-  const [openSheet, setOpenSheet] = useState<{
-    sheet: "workspace" | "menu";
-    at: string;
-  } | null>(null);
-  const sheetOpen = (sheet: "workspace" | "menu") =>
-    openSheet?.sheet === sheet && openSheet.at === location.key;
-  const sheetOpenChange = (sheet: "workspace" | "menu") => (open: boolean) => {
-    setOpenSheet(open ? { sheet, at: location.key } : null);
-  };
+  const [workspaceOpen, setWorkspaceOpen] = useSheetAtLocation();
   const projectOwner = resolvedScope && backofficeScopeProjectOwner(resolvedScope);
   const currentSection = sections.phone.all.find((item) => item.active) ?? null;
-  const currentSectionInMenu =
-    currentSection !== null && !sections.phone.tabs.some((tab) => tab.active);
   const workspaceLabel =
     me?.user && resolvedScope
       ? resolvedScope.kind === "project"
@@ -85,10 +89,10 @@ export function BackofficePhoneChrome({
             <button
               type="button"
               aria-haspopup="dialog"
-              aria-expanded={sheetOpen("workspace")}
+              aria-expanded={workspaceOpen}
               aria-label={`Switch workspace. Current context: ${workspaceLabel}`}
               onClick={() => {
-                sheetOpenChange("workspace")(true);
+                setWorkspaceOpen(true);
               }}
               className="flex min-h-10 max-w-[65%] min-w-0 cursor-pointer items-center gap-1.5 rounded-full bg-[var(--bo-selected-bg)] px-3.5 text-xs font-semibold text-[var(--bo-fg)] shadow-[var(--bo-selected-shadow)] transition-[scale] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]"
             >
@@ -99,29 +103,11 @@ export function BackofficePhoneChrome({
         </div>
       </header>
 
-      {/* Pages keep clear of it through --bo-shell-bottom. */}
-      <div className="desktop:hidden">
-        <BottomNavigation ariaLabel="Leyway">
-          {sections.phone.tabs.map((item) => (
-            <BottomNavigationItem key={item.label} item={item} />
-          ))}
-          <BottomNavigationButton
-            label="More"
-            icon="more-horizontal"
-            active={currentSectionInMenu}
-            expanded={sheetOpen("menu")}
-            onClick={() => {
-              sheetOpenChange("menu")(true);
-            }}
-          />
-        </BottomNavigation>
-      </div>
-
       {me?.user && resolvedScope ? (
         <Sheet
           side="top"
-          open={sheetOpen("workspace")}
-          onOpenChange={sheetOpenChange("workspace")}
+          open={workspaceOpen}
+          onOpenChange={setWorkspaceOpen}
           title="Switch workspace"
         >
           <BackofficeScopeSheetSections
@@ -144,13 +130,71 @@ export function BackofficePhoneChrome({
           ) : null}
         </Sheet>
       ) : null}
+    </>
+  );
+}
 
-      <Sheet
-        side="bottom"
-        open={sheetOpen("menu")}
-        onOpenChange={sheetOpenChange("menu")}
-        title="Menu"
-      >
+/**
+ * The bottom of the shell's chrome on phones, in place of the sidebar: a tab bar, whose More opens
+ * a sheet from the bottom with everything else. The shell places it last in the page's column.
+ * Phones wide enough to keep the agent beside the page toggle it from the bar's right edge, and
+ * have room for more tabs; narrower ones reach it through the Agents tab.
+ */
+export function BackofficePhoneTabBar({
+  sections,
+  agentBeside,
+  me,
+  isLoading,
+}: {
+  sections: BackofficeSections;
+  /** Null on phones too narrow to keep the agent beside the page. */
+  agentBeside: { open: boolean; onToggle: () => void } | null;
+  me: BackofficeMeData | null;
+  isLoading: boolean;
+}) {
+  const [menuOpen, setMenuOpen] = useSheetAtLocation();
+  const tabs = agentBeside ? sections.phone.tabs.wide : sections.phone.tabs.narrow;
+  const currentSectionInMenu =
+    sections.phone.all.some((item) => item.active) && !tabs.some((tab) => tab.active);
+
+  return (
+    <>
+      <div className="desktop:hidden contents">
+        <BottomNavigation
+          ariaLabel="Leyway"
+          end={
+            agentBeside ? (
+              // Apart from the tabs, beside the drawer it opens, as the desktop top bar's toggle.
+              <button
+                type="button"
+                aria-label={agentBeside.open ? "Close agent" : "Open agent"}
+                aria-expanded={agentBeside.open}
+                aria-controls={AGENT_DRAWER_ID}
+                onClick={agentBeside.onToggle}
+                onPointerDown={preloadAgentDrawer}
+                className={`flex w-16 shrink-0 cursor-pointer items-center justify-center border-l border-[color:var(--bo-border)] transition-[background-color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset ${agentBeside.open ? "bg-[color:var(--bo-sidebar-bg)]" : "hover:bg-[var(--bo-panel-2)]"}`}
+              >
+                <AgentMark />
+              </button>
+            ) : null
+          }
+        >
+          {tabs.map((item) => (
+            <BottomNavigationItem key={item.label} item={item} />
+          ))}
+          <BottomNavigationButton
+            label="More"
+            icon="more-horizontal"
+            active={currentSectionInMenu}
+            expanded={menuOpen}
+            onClick={() => {
+              setMenuOpen(true);
+            }}
+          />
+        </BottomNavigation>
+      </div>
+
+      <Sheet side="bottom" open={menuOpen} onOpenChange={setMenuOpen} title="Menu">
         <PhoneMenu sections={sections.phone.all} me={me} isLoading={isLoading} />
       </Sheet>
     </>

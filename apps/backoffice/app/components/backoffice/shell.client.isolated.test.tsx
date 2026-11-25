@@ -35,7 +35,10 @@ vi.mock("./sidebar-nav", () => ({
     return { primary: [], context: [], phone: { tabs: [], all: [] } };
   },
 }));
-vi.mock("./phone-chrome", () => ({ BackofficePhoneChrome: () => null }));
+vi.mock("./phone-chrome", () => ({
+  BackofficePhoneHeader: () => null,
+  BackofficePhoneTabBar: () => null,
+}));
 vi.mock("./top-bar", () => ({
   BackofficeTopBar: (props: unknown) => {
     topBarMock(props);

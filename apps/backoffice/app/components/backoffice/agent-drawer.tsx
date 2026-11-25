@@ -1,5 +1,8 @@
 import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
-import { SideDrawer } from "@fragno-private/design-system/overlays/side-drawer";
+import {
+  SIDE_DRAWER_MIN_WIDTH,
+  SideDrawer,
+} from "@fragno-private/design-system/overlays/side-drawer";
 import { lazy, Suspense, useState } from "react";
 
 import {
@@ -29,14 +32,22 @@ export function preloadAgentDrawer() {
   void loadAgentDrawerScope();
 }
 
+// Phones keep their own width: the page beside the drawer has little room to give.
+const AGENT_DRAWER_SIZES = {
+  desktop: { defaultWidth: 520, storageKey: "backoffice:agent-drawer-width" },
+  phone: { defaultWidth: SIDE_DRAWER_MIN_WIDTH, storageKey: "backoffice:phone-agent-drawer-width" },
+} as const;
+
 /** A conversation with one of the scope's agents beside every page, starting with the main agent. */
 export function AgentDrawer({
   open,
+  screen,
   draft,
   resolvedScope,
   onClose,
 }: {
   open: boolean;
+  screen: "desktop" | "phone";
   /** What a page last asked an agent, which the drawer opens on. */
   draft: AgentDraft | null;
   /** Null where the page has no scope to hold agents. */
@@ -66,7 +77,8 @@ export function AgentDrawer({
       id={AGENT_DRAWER_ID}
       label="Agent conversation"
       open={open}
-      storageKey="backoffice:agent-drawer-width"
+      defaultWidth={AGENT_DRAWER_SIZES[screen].defaultWidth}
+      storageKey={AGENT_DRAWER_SIZES[screen].storageKey}
     >
       {resolvedScope && agentsPath ? (
         <Suspense
