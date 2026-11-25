@@ -419,10 +419,14 @@ type FileDiffEntry = {
   after?: string;
 };
 
-type BackofficeScenarioFilePreset = {
-  createFileSystem(): IFileSystem;
-  snapshot: Record<string, string>;
-};
+/**
+ * Where a scenario's files live: in memory, which only its runtime's automations read, or in its
+ * runtime's workspaces, as Backoffice keeps them, where the app shows them and automations read
+ * them as they do in production.
+ */
+type BackofficeScenarioFilePreset =
+  | { kind: "memory"; createFileSystem(): IFileSystem; snapshot: Record<string, string> }
+  | { kind: "workspace" };
 
 export type BackofficeScenarioFileSystems = {
   forOrg(orgId?: string): IFileSystem;
@@ -715,6 +719,8 @@ type AuthCreateOrganizationInput<TVars extends ScenarioVars> = {
   name: string;
   slug: string;
   captureOrganizationIdAs?: string;
+  // The origin the cookie was issued at, whose cookie names it carries; see `AuthSignUpInput`.
+  origin?: string;
 };
 type AuthOrganizationSessionInput<TVars extends ScenarioVars> = {
   cookie: ScenarioValue<TVars, string>;
@@ -1061,6 +1067,7 @@ const mapContentToMountedFiles = (
 const createPreset = (
   files: Record<string, string | Uint8Array>,
 ): BackofficeScenarioFilePreset => ({
+  kind: "memory",
   createFileSystem: () => new InMemoryFs(files),
   snapshot: Object.fromEntries(
     Object.entries(files).map(([path, content]) => [
@@ -1087,6 +1094,8 @@ export function bundledMarketplacePermissions({
 }
 
 export const backofficeFiles = {
+  /** The organizations' workspaces, empty until steps write to them. */
+  workspace: (): BackofficeScenarioFilePreset => ({ kind: "workspace" }),
   systemOnly: () =>
     createPreset({
       ...mapContentToMountedFiles("/static", STATIC_FILE_CONTENT),
@@ -1844,7 +1853,7 @@ const readSnapshotContent = async (fs: IFileSystem, path: string): Promise<strin
 
 const snapshotFileSystem = async (
   fs: IFileSystem,
-  additionalPaths: readonly string[] = [],
+  root: string,
 ): Promise<Record<string, string>> => {
   const snapshot: Record<string, string> = {};
 
@@ -1870,16 +1879,7 @@ const snapshotFileSystem = async (
     );
   };
 
-  await visitDirectory("/");
-  for (const path of additionalPaths) {
-    if (path in snapshot) {
-      continue;
-    }
-    const content = await readSnapshotContent(fs, path);
-    if (content !== null) {
-      snapshot[path] = content;
-    }
-  }
+  await visitDirectory(root);
   return snapshot;
 };
 
@@ -1912,16 +1912,43 @@ const diffSnapshots = (
 const createScenarioFileSystems = (
   preset: BackofficeScenarioFilePreset,
   orgIds: Set<string>,
+  // The runtime opens after the file systems, which its automations read; it is asked for lazily.
+  runtime: () => InMemoryBackofficeRuntime,
 ): BackofficeScenarioFileSystems => {
   const byOrg = new Map<string, IFileSystem>();
   const byProject = new Map<string, IFileSystem>();
   const byUser = new Map<string, IFileSystem>();
   const rememberedOrgPaths = new Map<string, Set<string>>();
+  const snapshot = preset.kind === "memory" ? preset.snapshot : {};
+  // A workspace's file system also mounts the bundled /static and /shared files, which steps
+  // do not write and the empty baseline does not hold.
+  const snapshotRoot = preset.kind === "memory" ? "/" : "/workspace";
 
-  const getScopedFs = (map: Map<string, IFileSystem>, key: string) => {
+  const openFileSystem = (key: { orgId: string } | { projectId: string } | { userId: string }) => {
+    if (preset.kind === "memory") {
+      return preset.createFileSystem();
+    }
+    if (!("orgId" in key)) {
+      throw new Error("Scenario workspace files are kept for organizations only.");
+    }
+    const services = runtime().services;
+    return createStateShellFileSystem(
+      createRuntimeStateBackend({
+        runtime: services,
+        kernel: new BackofficeKernel(services),
+        execution: createBackofficeSystemExecution({
+          kind: "org",
+          orgId: key.orgId,
+          jurisdiction: null,
+        }),
+      }),
+    );
+  };
+
+  const getScopedFs = (map: Map<string, IFileSystem>, key: string, open: () => IFileSystem) => {
     let fs = map.get(key);
     if (!fs) {
-      fs = preset.createFileSystem();
+      fs = open();
       map.set(key, fs);
     }
     return fs;
@@ -1929,13 +1956,14 @@ const createScenarioFileSystems = (
 
   const forOrg = (orgId = "__default__") => {
     orgIds.add(orgId);
-    return getScopedFs(byOrg, orgId);
+    return getScopedFs(byOrg, orgId, () => openFileSystem({ orgId }));
   };
 
   return {
     forOrg,
-    forProject: (projectId) => getScopedFs(byProject, projectId),
-    forUser: (userId) => getScopedFs(byUser, userId),
+    forProject: (projectId) =>
+      getScopedFs(byProject, projectId, () => openFileSystem({ projectId })),
+    forUser: (userId) => getScopedFs(byUser, userId, () => openFileSystem({ userId })),
     listOrgIds: () => Array.from(orgIds),
     rememberOrgPaths: (orgId, paths) => {
       const rememberedPaths = rememberedOrgPaths.get(orgId) ?? new Set<string>();
@@ -1946,7 +1974,7 @@ const createScenarioFileSystems = (
     },
     diff: async (orgId = "__default__", readAdditionalPath) => {
       const [after, additionalFiles] = await Promise.all([
-        snapshotFileSystem(forOrg(orgId)),
+        snapshotFileSystem(forOrg(orgId), snapshotRoot),
         Promise.all(
           Array.from(rememberedOrgPaths.get(orgId) ?? [], async (path) => ({
             path,
@@ -1961,7 +1989,7 @@ const createScenarioFileSystems = (
           after[path] = content;
         }
       }
-      return diffSnapshots(preset.snapshot, after);
+      return diffSnapshots(snapshot, after);
     },
   };
 };
@@ -3001,20 +3029,27 @@ const buildStepBuilders = <
           "auth.createOrganization",
           `create auth organization ${input.slug}`,
           async (ctx) => {
-            const response = await scenarioAuthRequest(ctx, "/organization/create", {
-              cookie: await resolveScenarioValue(ctx, input.cookie),
-              body: { name: input.name, slug: input.slug },
-            });
+            const response = await scenarioAuthRequest(
+              ctx,
+              "/organization/create",
+              {
+                cookie: await resolveScenarioValue(ctx, input.cookie),
+                body: { name: input.name, slug: input.slug },
+              },
+              input.origin,
+            );
             if (!response.ok) {
               throw new Error(
                 `Auth organization creation failed (${response.status}): ${await response.text()}`,
               );
             }
+            const organization = await response.json<{ id?: unknown }>();
+            if (typeof organization.id !== "string") {
+              throw new Error("Auth organization creation returned no organization id.");
+            }
+            // The scenario knows the organizations it created, as it knows those it set up.
+            ctx.rememberOrg(organization.id);
             if (input.captureOrganizationIdAs) {
-              const organization = await response.json<{ id?: unknown }>();
-              if (typeof organization.id !== "string") {
-                throw new Error("Auth organization creation returned no organization id.");
-              }
               ctx.vars[input.captureOrganizationIdAs] = organization.id;
             }
           },
@@ -4962,11 +4997,38 @@ const runStep = async (
   }
 };
 
+/**
+ * A scenario whose setup ran, its runtime open between its steps until `ctx.cleanup()`: the
+ * scenario server serves Backoffice from it while someone steps through.
+ */
+export type OpenBackofficeScenario<TVars extends ScenarioVars = ScenarioVars> = {
+  ctx: BackofficeScenarioContext<TVars>;
+  /** The steps left, ending in the checks that no workflow errored and no durable hook failed. */
+  remaining(): readonly BackofficeScenarioStep[];
+  /** Runs the next step; false once none is left. */
+  runNext(): Promise<boolean>;
+};
+
 export const runBackofficeScenario = async <TVars extends ScenarioVars = ScenarioVars>(
   scenario: BackofficeScenarioDefinition<TVars>,
 ): Promise<BackofficeScenarioContext<TVars>> => {
+  const open = await openBackofficeScenario(scenario);
+  try {
+    while (await open.runNext()) {
+      // Each call runs one step.
+    }
+    return open.ctx;
+  } finally {
+    await open.ctx.cleanup();
+  }
+};
+
+export const openBackofficeScenario = async <TVars extends ScenarioVars = ScenarioVars>(
+  scenario: BackofficeScenarioDefinition<TVars>,
+): Promise<OpenBackofficeScenario<TVars>> => {
   const orgIds = new Set<string>();
-  const files = createScenarioFileSystems(scenario.files ?? backofficeFiles.custom({}), orgIds);
+  const filePreset = scenario.files ?? backofficeFiles.custom({});
+  const files = createScenarioFileSystems(filePreset, orgIds, () => runtime);
   const fakes = scenario.fakes?.({ fake: createScenarioFakeFactory() }) ?? {};
   const kernelActions: BackofficeKernelAction[] = [];
   const kernelObserver: BackofficeKernelObserver = {
@@ -4988,14 +5050,19 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
         telemetry.push(signal);
       },
     },
-    readAutomationSource: async ({ execution, path }) =>
-      await (
-        execution.scope.kind === "project"
-          ? files.forProject(execution.scope.projectId)
-          : execution.scope.kind === "user"
-            ? files.forUser(execution.scope.userId)
-            : files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined)
-      ).readFile(path, "utf-8"),
+    // Workspace files are read as production reads them, by the runtime's own reader.
+    ...(filePreset.kind === "memory"
+      ? {
+          readAutomationSource: async ({ execution, path }) =>
+            await (
+              execution.scope.kind === "project"
+                ? files.forProject(execution.scope.projectId)
+                : execution.scope.kind === "user"
+                  ? files.forUser(execution.scope.userId)
+                  : files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined)
+            ).readFile(path, "utf-8"),
+        }
+      : {}),
     objects: { ...scenario.objects, ...(await createFakeObjectOverrides(fakes)) },
     piAvailableModels: scenario.piAvailableModels,
     workersAi: fakes.workersAi !== undefined,
@@ -5037,21 +5104,33 @@ export const runBackofficeScenario = async <TVars extends ScenarioVars = Scenari
   const builders = buildStepBuilders<TVars>();
   const scenarioDefaultDrain = scenario.options?.drain ?? true;
 
+  let steps: BackofficeScenarioStep[];
   try {
     for (const step of scenario.setup?.(builders) ?? []) {
       await runStep(ctx, "setup", step, scenarioDefaultDrain);
     }
-    for (const step of scenario.steps(builders)) {
-      await runStep(ctx, "steps", step, scenarioDefaultDrain);
-    }
-    if (!scenario.options?.allowErroredWorkflows) {
-      await runStep(ctx, "steps", builders.then.workflow.noErrored(), scenarioDefaultDrain);
-    }
-    if (!scenario.options?.allowFailedDurableHooks) {
-      await runStep(ctx, "steps", builders.then.hooks.noFailed(), scenarioDefaultDrain);
-    }
-    return ctx;
-  } finally {
+    // After setup, which scenarios' `steps` have always been built after.
+    steps = [
+      ...scenario.steps(builders),
+      ...(scenario.options?.allowErroredWorkflows ? [] : [builders.then.workflow.noErrored()]),
+      ...(scenario.options?.allowFailedDurableHooks ? [] : [builders.then.hooks.noFailed()]),
+    ];
+  } catch (error) {
     await ctx.cleanup();
+    throw error;
   }
+  let next = 0;
+  return {
+    ctx,
+    remaining: () => steps.slice(next),
+    runNext: async () => {
+      const step = steps[next];
+      if (!step) {
+        return false;
+      }
+      next += 1;
+      await runStep(ctx, "steps", step, scenarioDefaultDrain);
+      return true;
+    },
+  };
 };

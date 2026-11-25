@@ -8,6 +8,7 @@
     "workers/**/*",
     "replay/**/*",
     "scripts/node-server/**/*",
+    "scripts/scenario-server/**/*",
     "scripts/test-oauth-client.scenario.test.ts",
     "worker-configuration.d.ts",
     "optional-secrets.d.ts"
