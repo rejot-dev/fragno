@@ -43,7 +43,7 @@ export function BackofficeTopBar({
 
   return (
     // Phones get BackofficePhoneChrome instead.
-    <header className="sticky top-0 z-30 hidden border-b border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] pt-[env(safe-area-inset-top)] sm:block">
+    <header className="desktop:block sticky top-0 z-30 hidden border-b border-[color:var(--bo-border)] bg-[color:var(--bo-top-bar-bg)] pt-[env(safe-area-inset-top)]">
       <div className="flex h-16 items-stretch">
         {/* Tracks the sidebar's width below it, including its collapse transition. */}
         <div
