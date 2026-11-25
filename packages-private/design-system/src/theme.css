@@ -499,7 +499,10 @@
   [role="button"]:not(:disabled) {
     cursor: pointer;
   }
+  /* Solid, unlike the body's gradients, because Safari fills the space around the page with it: its
+     bars, overscroll, and the iPhone Duo's control strip, where pages cannot draw. */
   html {
+    background-color: var(--background);
     font-family: var(--font-sans);
     font-optical-sizing: auto;
   }
