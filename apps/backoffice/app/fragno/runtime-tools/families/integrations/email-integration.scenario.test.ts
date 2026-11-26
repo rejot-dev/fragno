@@ -639,7 +639,7 @@ test("a route set up as the receiving-email skill describes reads the email", as
             { kind: "system" },
             "https://example.com",
           );
-          await ctx.files.forUser(alice.userId).writeFile(
+          await ctx.files.forUser(alice).writeFile(
             "/workspace/automations/receipt-intake.workflow.js",
             `export default defineWorkflow({ name: "receipt-intake" }, async (event, step) => {
               const { connectionId, emailId } = event.payload;
@@ -960,7 +960,7 @@ test("a person sends from their address: to themselves, to verified senders, and
         }),
         then.assert("only a route granted email.send replies to the email", async (ctx) => {
           await ctx.files
-            .forUser(alice.userId)
+            .forUser(alice)
             .writeFile("/workspace/automations/auto-reply.workflow.js", replyWorkflow);
           await ctx.runCodemode({
             scope: alice,

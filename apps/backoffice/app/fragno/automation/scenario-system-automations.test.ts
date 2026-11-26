@@ -261,6 +261,45 @@ describe("system automation scenarios", () => {
     );
   });
 
+  test("a scenario's workspace files are the files a project's shell reads", async () => {
+    await runBackofficeScenario(
+      defineBackofficeScenario<{ projectId: string }>({
+        objects: scenarioObjects,
+        name: "workspace files reach a project's shell",
+        files: backofficeFiles.workspace(),
+        vars: () => ({ projectId: "" }),
+
+        setup: ({ given }) => [
+          given.organization.exists({ id: "org-1", name: "Ada Labs", ownerUserId: "user-1" }),
+        ],
+
+        steps: ({ when, then }) => [
+          when.project.create({
+            owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+            slug: "alpha-project",
+            name: "Alpha Project",
+            createdByUserId: "user-1",
+            captureIdAs: "projectId",
+          }),
+          then.assert("the project's shell reads what the scenario wrote", async (ctx) => {
+            const scope = {
+              kind: "project",
+              owner: { kind: "org", orgId: "org-1", jurisdiction: null },
+              projectId: ctx.vars.projectId,
+            } as const;
+            await ctx.files.forProject(scope).writeFile("/workspace/notes.txt", "project notes");
+
+            const { result } = await ctx.runCodemode({
+              scope,
+              code: `async () => await state.readFile({ path: "/workspace/notes.txt" })`,
+            });
+            expect(result).toBe("project notes");
+          }),
+        ],
+      }),
+    );
+  });
+
   test("auth organization.created reaches an organization with an empty workspace", async () => {
     await runBackofficeScenario(
       defineBackofficeScenario({
