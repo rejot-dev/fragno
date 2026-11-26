@@ -391,6 +391,25 @@
   }
 }
 
+/* Side drawer: while the reader types in it above an on-screen keyboard, it opens over the page
+   from its own edge. Clipped rather than widened, so what it holds reflows once, not every frame.
+   The clip ends with the animation, so the shadow that covers the page under the keyboard's
+   translucent bar shows. */
+@keyframes bo-drawer-typing-reveal {
+  from {
+    clip-path: inset(0 0 0 calc(100% - var(--side-drawer-width)));
+  }
+
+  to {
+    clip-path: inset(0);
+  }
+}
+
+.bo-drawer-typing-reveal {
+  animation: bo-drawer-typing-reveal 200ms cubic-bezier(0.2, 0, 0, 1) backwards;
+  box-shadow: 0 6rem 0 var(--bo-panel);
+}
+
 .bo-session-workspace-drawer {
   animation-name: bo-session-workspace-enter;
   animation-duration: 220ms;

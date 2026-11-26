@@ -29,7 +29,12 @@ export function ChatViewport(props: ElementProps) {
 
 /** The readable column the messages sit in. Its last child is a ChatTurnSpacer. */
 export function ChatColumn(props: ElementProps) {
-  return <div {...props} className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-5 sm:py-8" />;
+  return (
+    <div
+      {...props}
+      className="mx-auto flex w-full max-w-3xl flex-1 flex-col py-5 group-data-typing/drawer:pb-0! sm:py-8"
+    />
+  );
 }
 
 // Room left above the newest turn when it sits at the top of the viewport.
@@ -144,7 +149,7 @@ export function ChatViewportFooter({
   return (
     <div
       {...props}
-      className="sticky bottom-0 z-20 mx-auto w-full max-w-3xl bg-[linear-gradient(to_bottom,transparent,var(--bo-bg)_1.5rem)] pt-8 pb-3 sm:pb-5"
+      className="sticky bottom-0 z-20 mx-auto w-full max-w-3xl bg-[linear-gradient(to_bottom,transparent,var(--bo-bg)_1.5rem)] pt-8 pb-3 group-data-typing/drawer:pt-3 group-data-typing/drawer:pb-2! sm:pb-5"
     >
       {alert === null ? null : (
         <div className="mb-2">
