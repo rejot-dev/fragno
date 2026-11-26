@@ -13,6 +13,8 @@ import type {
 // Pages render after their data downloads, so targets get a while to show up.
 const FIND_TIMEOUT_MS = 15_000;
 const PLAY_PAUSE_MS = 1_500;
+// Names this view to the server, which has the view that asks for a step carry it out.
+const VIEW_ID = crypto.randomUUID();
 // Long enough to see what is about to be clicked.
 const CLICK_PREVIEW_MS = 600;
 
@@ -228,7 +230,11 @@ function item(step: ScenarioViewStep, status: string) {
 }
 
 async function runNext(): Promise<ScenarioViewState> {
-  const response = await fetch("/__scenario/next", { method: "POST" });
+  const response = await fetch("/__scenario/next", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ view: VIEW_ID }),
+  });
   // A step that fails answers 500 with the state too, whose `error` says why.
   return await response.json<ScenarioViewState>();
 }
@@ -440,7 +446,7 @@ frame.addEventListener("load", () => {
   keepMotion();
 });
 
-new EventSource("/__scenario/events").addEventListener("message", (event: MessageEvent<string>) => {
+new EventSource(`/__scenario/events?view=${VIEW_ID}`).addEventListener("message", (event: MessageEvent<string>) => {
   const message = JSON.parse(event.data) as ScenarioViewMessage;
   if (message.type === "state") {
     render(message.state);

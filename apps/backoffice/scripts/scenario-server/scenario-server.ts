@@ -166,12 +166,20 @@ export async function serveScenario(input: {
     }
     response.json(explanation);
   });
-  app.get("/__scenario/events", (_request, response) => {
-    views.open(response);
+  app.get("/__scenario/events", (request, response) => {
+    const viewId = request.query.view;
+    views.open(typeof viewId === "string" ? viewId : crypto.randomUUID(), response);
   });
-  app.post("/__scenario/next", (_request, response) => {
+  app.post("/__scenario/next", express.json(), (request, response) => {
+    // The view whose button asked, which carries out the step's commands; none from curl.
+    const body: unknown = request.body;
+    const viewId =
+      typeof body === "object" && body !== null && "view" in body && typeof body.view === "string"
+        ? body.view
+        : null;
     void exclusively(async () => {
       error = null;
+      views.drivenBy(viewId);
       // `runNext` marks the step running before its first await, which the views show.
       const running = current.scenario.runNext();
       views.publish(state());

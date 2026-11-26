@@ -51,20 +51,28 @@ type PendingCommand = {
  * send, which run once a view acknowledges them.
  */
 export function createScenarioViews() {
-  const views = new Set<Response>();
+  // By the ID each view picked, in the order they opened.
+  const views = new Map<string, Response>();
   const pending = new Map<string, PendingCommand>();
   let state: ScenarioViewState | null = null;
+  // The view that asked for the step running, if one did.
+  let driver: string | null = null;
 
   function send(view: Response, message: ScenarioViewMessage) {
     view.write(`data: ${JSON.stringify(message)}\n\n`);
   }
 
   /**
-   * Hands the command to one view, as a click carried out in two would act twice. The view opened
-   * last goes first: it is likeliest the one in front of the reviewer.
+   * Hands the command to one view, as a click carried out in two would act twice. The view that
+   * asked for the step goes first, as the reviewer is in front of it; then the view opened last.
+   * Another may sit in a hidden tab whose page the browser froze, which never answers.
    */
   function assign(command: PendingCommand) {
-    const view = [...views].reverse().find((candidate) => !command.failedIn.has(candidate));
+    const asking = driver === null ? undefined : views.get(driver);
+    const candidates = asking
+      ? [asking, ...[...views.values()].reverse()]
+      : [...views.values()].reverse();
+    const view = candidates.find((candidate) => !command.failedIn.has(candidate));
     command.view = view ?? null;
     if (view) {
       send(view, command.message);
@@ -138,15 +146,21 @@ export function createScenarioViews() {
 
   return {
     steps,
-    open(view: Response) {
+    /** The view, by its ID, that asked for the steps that run next; none for other callers. */
+    drivenBy(viewId: string | null) {
+      driver = viewId;
+    },
+    open(viewId: string, view: Response) {
       view.writeHead(200, {
         "content-type": "text/event-stream",
         "cache-control": "no-store",
         connection: "keep-alive",
       });
-      views.add(view);
+      views.set(viewId, view);
       view.on("close", () => {
-        views.delete(view);
+        if (views.get(viewId) === view) {
+          views.delete(viewId);
+        }
         // The commands it was carrying out go to another view, or wait for one to open. A click
         // may have happened before the view closed, and another view clicking again would act
         // twice, so its step fails instead.
@@ -175,7 +189,7 @@ export function createScenarioViews() {
     },
     publish(next: ScenarioViewState) {
       state = next;
-      for (const view of views) {
+      for (const view of views.values()) {
         send(view, { type: "state", state: next });
       }
     },
