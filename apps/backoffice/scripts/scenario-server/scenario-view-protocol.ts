@@ -31,8 +31,15 @@ export type ScenarioViewState = {
   /** How often the scenario was reset; a new one runs from a new runtime. */
   generation: number;
   name: string;
-  /** By their place in the journal, which /__scenario/ran/:index explains. */
-  ran: readonly (ScenarioViewStep & { status: "completed" | "failed"; explained: boolean })[];
+  /**
+   * By their place in the journal, which /__scenario/ran/:index explains. Setup runs before the
+   * view can step through the scenario; the tour is its other steps.
+   */
+  ran: readonly (ScenarioViewStep & {
+    phase: "setup" | "steps";
+    status: "completed" | "failed";
+    explained: boolean;
+  })[];
   /** The step running, if one is. */
   running: ScenarioViewStep | null;
   remaining: readonly ScenarioViewStep[];

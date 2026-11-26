@@ -113,6 +113,7 @@ export async function serveScenario(input: {
       name: ctx.name,
       ran: ctx.journal.entries.map((entry, index) => ({
         ...scenarioViewStep(entry),
+        phase: entry.phase,
         status: entry.status,
         explained: current.explanations.explanation(index) !== null,
       })),
@@ -366,9 +367,41 @@ const VIEW_PAGE = `<!doctype html>
   .toggle { display: flex; align-items: center; gap: 0.4rem; color: #5c574e; }
   .error { white-space: pre-wrap; color: #b42318; font-size: 12px; }
   .sessions a { color: #b4541f; }
-  main { position: relative; overflow: hidden; }
+  main { display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+  .stage { position: relative; overflow: hidden; }
   iframe { width: 100%; height: 100%; border: 0; background: #fff; }
   #overlay { position: absolute; inset: 0; pointer-events: none; }
+  /* Covers the page while the view moves it elsewhere, saying where it goes and why. */
+  #curtain { position: absolute; inset: 0; display: grid; place-items: center; padding: 2rem;
+    background: rgb(246 244 239 / 0.94); opacity: 0; pointer-events: none;
+    transition: opacity 250ms ease-out; }
+  #curtain.shown { opacity: 1; pointer-events: auto; }
+  #curtain p { max-width: 32rem; margin: 0; text-align: center; font-size: 1.35rem; line-height: 1.35;
+    font-weight: 500; text-wrap: balance; }
+  /* What is happening now, in one place below the page. */
+  .bar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 1.25rem;
+    padding: 0.75rem 1rem; background: #1f1d1a; color: #f6f4ef; }
+  .viewer { display: flex; align-items: center; gap: 0.5rem; padding-right: 1.25rem;
+    border-right: 1px solid #3d3a35; font-size: 12px; color: #b9b2a5; white-space: nowrap; }
+  .viewer .avatar { display: grid; place-items: center; width: 1.9rem; height: 1.9rem;
+    border-radius: 50%; background: #d9622b; color: #fff; font-weight: 600; font-size: 13px; }
+  .viewer.signed-out .avatar { background: #3d3a35; }
+  .viewer b { display: block; color: #f6f4ef; font-size: 13px; font-weight: 500; }
+  .now { min-width: 0; }
+  .kicker { display: flex; align-items: center; gap: 0.4rem; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase; color: #b9b2a5; }
+  .kicker.operation { color: #f0a46e; } .kicker.view { color: #b7aef0; }
+  .kicker.failed { color: #f19a92; }
+  .kicker .pulse { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentColor;
+    animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+  .line { margin-top: 0.15rem; font-size: 15px; line-height: 1.35; }
+  .detail { margin-top: 0.15rem; font-size: 12px; color: #b9b2a5; }
+  .detail a { color: #f0a46e; cursor: pointer; }
+  .bar .controls { align-items: center; }
+  .bar .controls button { border-color: #3d3a35; background: #2b2824; color: #f6f4ef; }
+  .bar #speed { min-width: 3.25rem; font-variant-numeric: tabular-nums; }
+  .bar .controls button.primary { border-color: #d9622b; background: #d9622b; color: #fff; }
   .ring { position: absolute; border: 3px solid #d9622b; border-radius: 8px;
     box-shadow: 0 0 0 9999px rgb(31 29 26 / 0.25); transition: all 150ms ease-out; }
   .caption { position: absolute; max-width: 22rem; padding: 0.5rem 0.75rem; border-radius: 8px;
@@ -379,8 +412,6 @@ const VIEW_PAGE = `<!doctype html>
 <aside>
   <h1 id="name"></h1>
   <div class="controls">
-    <button id="next">Run the next step</button>
-    <button id="play">Play</button>
     <button id="reset">Reset</button>
   </div>
   <label class="toggle"><input type="checkbox" id="annotations" checked> Annotations</label>
@@ -390,8 +421,24 @@ const VIEW_PAGE = `<!doctype html>
   <div class="error" id="error"></div>
 </aside>
 <main>
-  <iframe id="app" name="app" src="/backoffice" title="Backoffice"></iframe>
-  <div id="overlay"></div>
+  <div class="stage">
+    <iframe id="app" name="app" src="/backoffice" title="Backoffice"></iframe>
+    <div id="overlay"></div>
+    <div id="curtain"><p id="curtain-text"></p></div>
+  </div>
+  <footer class="bar">
+    <div class="viewer signed-out" id="viewer"></div>
+    <div class="now">
+      <div class="kicker" id="kicker"></div>
+      <div class="line" id="line"></div>
+      <div class="detail" id="detail"></div>
+    </div>
+    <div class="controls">
+      <button id="speed" title="Playback speed">1×</button>
+      <button id="play">Play</button>
+      <button id="next" class="primary">Next</button>
+    </div>
+  </footer>
 </main>
 <script type="module" src="/scripts/scenario-server/control-view.ts"></script>
 </body>

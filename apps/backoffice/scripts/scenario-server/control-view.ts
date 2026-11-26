@@ -12,11 +12,16 @@ import type {
 
 // Pages render after their data downloads, so targets get a while to show up.
 const FIND_TIMEOUT_MS = 15_000;
+// Play holds each step long enough to read what the bar says about it.
 const PLAY_PAUSE_MS = 1_500;
+const READING_MS_PER_WORD = 280;
 // Names this view to the server, which has the view that asks for a step carry it out.
 const VIEW_ID = crypto.randomUUID();
 // Long enough to see what is about to be clicked.
 const CLICK_PREVIEW_MS = 600;
+// Long enough to read where the page goes before it goes.
+const CURTAIN_HOLD_MS = 1_200;
+const CURTAIN_FADE_MS = 250;
 
 type AppWindow = Window & {
   // React Router's own handle on the hydrated app, which navigates without reloading it.
@@ -40,9 +45,13 @@ const nextButton = byId("next", HTMLButtonElement);
 const playButton = byId("play", HTMLButtonElement);
 const resetButton = byId("reset", HTMLButtonElement);
 const annotationsToggle = byId("annotations", HTMLInputElement);
+const speedButton = byId("speed", HTMLButtonElement);
+const curtain = byId("curtain", HTMLElement);
+const viewer = byId("viewer", HTMLElement);
 
 // The view's own setting, kept across reloads; the app shares this origin's storage.
 const ANNOTATIONS_STORAGE_KEY = "scenario-view.annotations";
+const SPEED_STORAGE_KEY = "scenario-view.speed";
 // The app's appearance menu keeps its motion choice under this key, and marks the page's root with
 // it; see appearance-preferences.ts.
 const REDUCED_MOTION_STORAGE_KEY = "reduced-motion";
@@ -58,11 +67,21 @@ const explanations = new Map<number, ScenarioViewExplanation>();
 const openChanges = new Set<string>();
 let annotations = localStorage.getItem(ANNOTATIONS_STORAGE_KEY) !== "off";
 annotationsToggle.checked = annotations;
+// How fast the view's own pauses pass: Play's, and those before a click or a navigation. The
+// scenario's steps take the time they take. The speed button steps through these, in order.
+const SPEEDS = [1, 1.5, 2, 0.5];
+let speed = SPEEDS.find((known) => String(known) === localStorage.getItem(SPEED_STORAGE_KEY)) ?? 1;
+speedButton.textContent = `${speed}×`;
 
 function delay(ms: number) {
   return new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+/** A pause the view takes for whoever watches, at the speed they chose. */
+function pause(ms: number) {
+  return delay(ms / speed);
 }
 
 async function waitFor<T>(description: string, find: () => T | null): Promise<T> {
@@ -97,6 +116,10 @@ function render(next: ScenarioViewState) {
     explanations.clear();
     openChanges.clear();
   }
+  if (next.running && !state?.running) {
+    // The step starting moves on from what the last one pointed at, which may not stay true.
+    clearHighlight();
+  }
   state = next;
   document.title = next.name;
   byId("name", HTMLElement).textContent = next.name;
@@ -130,6 +153,7 @@ function render(next: ScenarioViewState) {
     ...next.remaining.map((step) => item(step, "upcoming")),
   );
   byId("error", HTMLElement).textContent = next.error ?? "";
+  renderBar(next);
   byId("sessions", HTMLElement).replaceChildren(
     ...next.sessions.map((variable) => {
       const link = document.createElement("a");
@@ -144,6 +168,118 @@ function render(next: ScenarioViewState) {
   resetButton.disabled = !idle;
   playButton.disabled = next.remaining.length === 0 && playback === null;
   playButton.textContent = playback === null ? "Play" : "Pause";
+}
+
+const KIND_KICKERS = { view: "In the app", operation: "Behind the scenes" } as const;
+
+/** The bar below the page: the tour step running, or the one that ran last. */
+function renderBar(next: ScenarioViewState) {
+  const kicker = byId("kicker", HTMLElement);
+  const line = byId("line", HTMLElement);
+  const detail = byId("detail", HTMLElement);
+  const tourRan = next.ran.filter((step) => step.phase === "steps");
+  const total = tourRan.length + (next.running ? 1 : 0) + next.remaining.length;
+  const lastIndex = next.ran.length - 1;
+  const last = next.ran[lastIndex];
+  kicker.className = "kicker";
+  detail.replaceChildren();
+
+  if (next.running) {
+    const number = tourRan.length + 1;
+    kicker.classList.add(next.running.kind);
+    kicker.replaceChildren(pulse(), `${KIND_KICKERS[next.running.kind]} · ${number} of ${total}`);
+    line.textContent = next.running.label;
+    detail.textContent = next.running.kind === "operation" ? "Running in the scenario…" : "";
+  } else if (!last || last.phase === "setup") {
+    kicker.replaceChildren(`Ready · ${total} steps`);
+    line.textContent = next.name;
+    detail.textContent = `Setup ran ${next.ran.length} steps first; the sidebar lists them.`;
+  } else {
+    kicker.classList.add(last.status === "failed" ? "failed" : last.kind);
+    kicker.replaceChildren(
+      `${last.status === "failed" ? "Failed" : KIND_KICKERS[last.kind]} · ${tourRan.length} of ${total}`,
+    );
+    line.textContent = last.label;
+    if (next.error) {
+      detail.textContent = next.error;
+    } else if (last.kind === "operation" && last.explained) {
+      detail.appendChild(changesSummary(lastIndex));
+    }
+  }
+}
+
+function pulse() {
+  const dot = document.createElement("span");
+  dot.className = "pulse";
+  return dot;
+}
+
+/** How many Automations rows a ran operation changed, which opens its explanation in the sidebar. */
+function changesSummary(index: number): Node {
+  const known = explanations.get(index);
+  if (!known) {
+    // Loading it renders again.
+    explanationOf(index);
+    return document.createTextNode("");
+  }
+  if (known.changes.length === 0) {
+    return document.createTextNode("");
+  }
+  const fragment = document.createDocumentFragment();
+  fragment.appendChild(
+    document.createTextNode(`Changed ${known.changes.length} Automations rows · `),
+  );
+  const show = document.createElement("a");
+  show.textContent = "Show";
+  show.addEventListener("click", () => {
+    expanded.add(index);
+    if (state) {
+      render(state);
+    }
+    byId("steps", HTMLElement).children[index]?.scrollIntoView({ block: "nearest" });
+  });
+  fragment.appendChild(show);
+  return fragment;
+}
+
+/** Who the app's page is signed in as, which the bar shows. */
+async function showViewer() {
+  const response = await fetch("/api/auth/get-session");
+  const session = response.ok
+    ? await response.json<{ user: { name: string; email: string } } | null>()
+    : null;
+  const avatar = document.createElement("span");
+  avatar.className = "avatar";
+  const who = document.createElement("span");
+  viewer.classList.toggle("signed-out", session === null);
+  if (session === null) {
+    avatar.textContent = "–";
+    who.textContent = "Signed out";
+  } else {
+    const name = document.createElement("b");
+    name.textContent = session.user.name || session.user.email;
+    avatar.textContent = name.textContent.slice(0, 1).toUpperCase();
+    who.appendChild(document.createTextNode("Viewing as"));
+    who.appendChild(name);
+  }
+  viewer.replaceChildren(avatar, who);
+}
+
+/** Covers the page while `move` takes it elsewhere, showing why it moves. */
+async function behindCurtain(caption: string, move: () => Promise<void>) {
+  if (!annotations) {
+    await move();
+    return;
+  }
+  byId("curtain-text", HTMLElement).textContent = caption;
+  curtain.classList.add("shown");
+  await delay(CURTAIN_FADE_MS);
+  await pause(CURTAIN_HOLD_MS);
+  try {
+    await move();
+  } finally {
+    curtain.classList.remove("shown");
+  }
 }
 
 /** What a ran step did, once loaded; the server keeps it until the scenario is reset. */
@@ -175,8 +311,8 @@ function explanationOf(index: number): HTMLElement {
   const heading = document.createElement("p");
   heading.className = "changes-heading";
   heading.textContent =
-    // Only the Automations of the scenario's organizations are read; other stores, such as
-    // auth's, change unseen.
+    // Only the Automations of the scenario's organizations and projects are read; other
+    // stores, such as auth's, change unseen.
     known.changes.length === 0
       ? "Changed no Automations rows"
       : `Changed ${known.changes.length} Automations rows`;
@@ -244,13 +380,15 @@ async function play() {
   playback = current;
   let remaining = state?.remaining.length ?? 0;
   while (playback === current && remaining > 0) {
+    const step = state?.remaining[0];
     const after = await runNext();
     if (after.error) {
       break;
     }
     remaining = after.remaining.length;
     if (remaining > 0) {
-      await delay(PLAY_PAUSE_MS);
+      const words = step ? step.label.split(/\s+/).length : 0;
+      await pause(Math.max(PLAY_PAUSE_MS, words * READING_MS_PER_WORD));
     }
   }
   if (playback === current) {
@@ -293,7 +431,7 @@ function clearHighlight() {
 }
 
 function highlight(element: HTMLElement, caption: string) {
-  element.scrollIntoView({ block: "center", inline: "center" });
+  element.scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
   if (!annotations) {
     return;
   }
@@ -342,19 +480,22 @@ function appRouter(): AppWindow["__reactRouterDataRouter"] | null {
 
 async function navigate(path: string) {
   clearHighlight();
-  const router = appRouter();
-  // Scenario routes, such as signing in, are not the app's, so they load the frame anew.
-  if (!router || path.startsWith("/__scenario/")) {
-    const loaded = new Promise((resolve) => {
-      frame.addEventListener("load", resolve, { once: true });
-    });
-    frame.src = path;
-    await loaded;
-    await waitFor("the app", appRouter);
-    return;
-  }
-  await router.navigate(path);
-  await waitFor("the page", () => (router.state.navigation.state === "idle" ? true : null));
+  // The step navigating, which the server marks running before it sends the command.
+  await behindCurtain(state?.running?.label ?? path, async () => {
+    const router = appRouter();
+    // Scenario routes, such as signing in, are not the app's, so they load the frame anew.
+    if (!router || path.startsWith("/__scenario/")) {
+      const loaded = new Promise((resolve) => {
+        frame.addEventListener("load", resolve, { once: true });
+      });
+      frame.src = path;
+      await loaded;
+      await waitFor("the app", appRouter);
+      return;
+    }
+    await router.navigate(path);
+    await waitFor("the page", () => (router.state.navigation.state === "idle" ? true : null));
+  });
 }
 
 async function perform(command: ScenarioViewCommand) {
@@ -369,7 +510,7 @@ async function perform(command: ScenarioViewCommand) {
       const element = await findTarget(command.target);
       highlight(element, "");
       if (annotations) {
-        await delay(CLICK_PREVIEW_MS);
+        await pause(CLICK_PREVIEW_MS);
       }
       clearHighlight();
       element.click();
@@ -410,6 +551,11 @@ resetButton.addEventListener("click", () => {
   playback = null;
   void fetch("/__scenario/reset", { method: "POST" });
 });
+speedButton.addEventListener("click", () => {
+  speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length] ?? 1;
+  speedButton.textContent = `${speed}×`;
+  localStorage.setItem(SPEED_STORAGE_KEY, String(speed));
+});
 annotationsToggle.addEventListener("change", () => {
   annotations = annotationsToggle.checked;
   localStorage.setItem(ANNOTATIONS_STORAGE_KEY, annotations ? "on" : "off");
@@ -444,13 +590,19 @@ frame.addEventListener("load", () => {
   // Someone clicking around the app moves the page from under a highlight.
   clearHighlight();
   keepMotion();
+  // Signing in and out load the frame anew.
+  void showViewer();
 });
+void showViewer();
 
-new EventSource(`/__scenario/events?view=${VIEW_ID}`).addEventListener("message", (event: MessageEvent<string>) => {
-  const message = JSON.parse(event.data) as ScenarioViewMessage;
-  if (message.type === "state") {
-    render(message.state);
-  } else {
-    void carryOut(message.id, message.command);
-  }
-});
+new EventSource(`/__scenario/events?view=${VIEW_ID}`).addEventListener(
+  "message",
+  (event: MessageEvent<string>) => {
+    const message = JSON.parse(event.data) as ScenarioViewMessage;
+    if (message.type === "state") {
+      render(message.state);
+    } else {
+      void carryOut(message.id, message.command);
+    }
+  },
+);
