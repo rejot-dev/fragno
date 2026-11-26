@@ -10,7 +10,9 @@ import { Icon } from "../icon";
 
 /**
  * The composer's frame: waiting messages, the input, then a toolbar. A disabled one holds a
- * notice instead of the input, saying why, and a toolbar only for stopping work.
+ * notice instead of the input, saying why, and a toolbar only for stopping work. While the reader
+ * types in a side drawer above an on-screen keyboard, the input and the toolbar's actions share
+ * one row, and the toolbar's context (attaching, the model, usage) waits for the keyboard to go.
  */
 export function ChatComposer({
   disabled,
@@ -22,14 +24,18 @@ export function ChatComposer({
       {...props}
       // Shares the selected navigation item's surface, like the other prompt fields. A container,
       // because the composer is narrow both on phones and in a drawer beside a wide page.
-      className="bo-input @container/composer p-2"
+      className="bo-input @container/composer p-2 group-data-typing/drawer:grid group-data-typing/drawer:grid-cols-[minmax(0,1fr)_auto] group-data-typing/drawer:items-end group-data-typing/drawer:gap-x-1 group-data-typing/drawer:p-1"
     />
   );
 }
 
 /** Why nobody writes here, in place of the input. */
 export function ChatComposerNotice({ children }: { children: string }) {
-  return <p className="px-3 py-3 text-sm text-pretty text-[var(--bo-muted)]">{children}</p>;
+  return (
+    <p className="px-3 py-3 text-sm text-pretty text-[var(--bo-muted)] group-data-typing/drawer:col-span-2">
+      {children}
+    </p>
+  );
 }
 
 /**
@@ -37,7 +43,7 @@ export function ChatComposerNotice({ children }: { children: string }) {
  * render their own auto-growing textarea.
  */
 export const chatComposerInputClassName =
-  "max-h-48 min-h-14 w-full resize-none bg-transparent px-3 py-3 text-[15px] leading-6 text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] disabled:cursor-not-allowed";
+  "max-h-48 min-h-14 w-full resize-none bg-transparent px-3 py-3 text-[15px] leading-6 text-[var(--bo-fg)] outline-none placeholder:text-[var(--bo-muted-2)] disabled:cursor-not-allowed group-data-typing/drawer:max-h-24 group-data-typing/drawer:min-h-10 group-data-typing/drawer:py-2";
 
 /** A message waiting to reach the agent, labelled with how it will arrive. */
 export function ChatComposerQueueItem({
@@ -48,7 +54,7 @@ export function ChatComposerQueueItem({
   children: ReactNode;
 }) {
   return (
-    <div className="mx-1 mb-1 flex items-baseline gap-2 border-l-2 border-[color:var(--bo-accent)] bg-[var(--bo-panel)] px-3 py-2 text-xs">
+    <div className="mx-1 mb-1 flex items-baseline gap-2 border-l-2 border-[color:var(--bo-accent)] bg-[var(--bo-panel)] px-3 py-2 text-xs group-data-typing/drawer:col-span-2">
       <span className="shrink-0 text-[9px] font-semibold tracking-[0.12em] text-[var(--bo-accent-fg)] uppercase">
         {label}
       </span>
@@ -63,7 +69,7 @@ export function ChatComposerQueueItem({
 export function ChatComposerToolbar({ start, end }: { start: ReactNode; end: ReactNode }) {
   return (
     <div className="flex min-h-10 items-center justify-between gap-2 px-1">
-      <div className="flex min-w-0 items-center gap-2">{start}</div>
+      <div className="flex min-w-0 items-center gap-2 group-data-typing/drawer:hidden">{start}</div>
       <div className="flex items-center gap-1">{end}</div>
     </div>
   );

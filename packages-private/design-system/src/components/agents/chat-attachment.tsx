@@ -314,7 +314,7 @@ export function ChatComposerAttachments({
     <>
       <ul
         aria-label="Attached files"
-        className="backoffice-scroll flex gap-2 overflow-x-auto px-1 pt-1 pb-2"
+        className="backoffice-scroll flex gap-2 overflow-x-auto px-1 pt-1 pb-2 group-data-typing/drawer:col-span-2"
       >
         {attachments.map((item) =>
           hasPreview(item) && isSettling(item) ? (
@@ -327,7 +327,7 @@ export function ChatComposerAttachments({
       {failures.length === 0 ? null : (
         <ul
           aria-label="Upload errors"
-          className="space-y-0.5 px-1 pb-2 text-xs text-pretty text-[var(--bo-failed)]"
+          className="space-y-0.5 px-1 pb-2 text-xs text-pretty text-[var(--bo-failed)] group-data-typing/drawer:col-span-2"
         >
           {failures.map(({ id, name, message }) => (
             <li key={id}>
