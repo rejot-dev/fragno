@@ -1,3 +1,4 @@
+import type { ProjectPage } from "@fragno-dev/backoffice-api/v0/projects";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import {
   FRAGNO_OUTBOX_PAGE_SIZE,
@@ -22,8 +23,8 @@ export type ScenarioLaterStep = (
 
 /**
  * Records what each step of a scenario does: the step it runs, and what it changes in the
- * Automations of the organizations the scenario knows, as their outboxes record it. Explanations
- * are by the step's place in the scenario's journal.
+ * Automations of the organizations the scenario knows and their projects, as their outboxes
+ * record it. Explanations are by the step's place in the scenario's journal.
  */
 export function createScenarioExplanations() {
   const explanations = new Map<number, ScenarioViewExplanation>();
@@ -90,11 +91,29 @@ export function createScenarioExplanations() {
   };
 }
 
-function organizationScopes(ctx: BackofficeScenarioContext): BackofficeContextScope[] {
-  return ctx.files.listOrgIds().map((orgId) => ({ kind: "org", orgId, jurisdiction: null }));
+/** The organizations the scenario knows, and their projects, however they were created. */
+async function automationScopes(ctx: BackofficeScenarioContext): Promise<BackofficeContextScope[]> {
+  const scopes: BackofficeContextScope[] = [];
+  for (const orgId of ctx.files.listOrgIds()) {
+    const organization = { kind: "org", orgId, jurisdiction: null } as const;
+    scopes.push(organization);
+    let cursor: string | null = null;
+    do {
+      const query = new URLSearchParams({ pageSize: "100" });
+      if (cursor !== null) {
+        query.set("cursor", cursor);
+      }
+      const page: ProjectPage = await readAutomations(ctx, organization, `/projects?${query}`);
+      for (const { projectId } of page.projects) {
+        scopes.push({ kind: "project", owner: organization, projectId });
+      }
+      cursor = page.nextCursor;
+    } while (cursor !== null);
+  }
+  return scopes;
 }
 
-async function readOutbox<T>(
+async function readAutomations<T>(
   ctx: BackofficeScenarioContext,
   scope: BackofficeContextScope,
   path: string,
@@ -112,8 +131,8 @@ async function readOutbox<T>(
 
 async function outboxCursors(ctx: BackofficeScenarioContext): Promise<Map<string, string | null>> {
   const cursors = new Map<string, string | null>();
-  for (const scope of organizationScopes(ctx)) {
-    const description = await readOutbox<{ currentVersionstamp: string | null }>(
+  for (const scope of await automationScopes(ctx)) {
+    const description = await readAutomations<{ currentVersionstamp: string | null }>(
       ctx,
       scope,
       "/_internal",
@@ -129,7 +148,7 @@ async function changesSince(
   cursors: Map<string, string | null>,
 ): Promise<ScenarioViewChange[]> {
   const changes: ScenarioViewChange[] = [];
-  for (const scope of organizationScopes(ctx)) {
+  for (const scope of await automationScopes(ctx)) {
     const routePath = backofficeContextScopeRoutePath(scope);
     let after = cursors.get(routePath) ?? null;
     for (;;) {
@@ -137,7 +156,11 @@ async function changesSince(
       if (after !== null) {
         query.set("afterVersionstamp", after);
       }
-      const entries = await readOutbox<OutboxEntry[]>(ctx, scope, `/_internal/outbox?${query}`);
+      const entries = await readAutomations<OutboxEntry[]>(
+        ctx,
+        scope,
+        `/_internal/outbox?${query}`,
+      );
       for (const entry of entries) {
         const { operations } = entry.payload.json as { operations: OutboxOperation[] };
         changes.push(...operations.map((operation) => change(routePath, operation)));
