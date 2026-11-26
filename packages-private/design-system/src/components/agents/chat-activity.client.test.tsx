@@ -23,15 +23,8 @@ const settled: ChatActivityStatus = {
 
 function renderTurn(status: ChatActivityStatus) {
   return (
-    <ChatActivity status={status} artifacts={null}>
-      <ChatActivityStep
-        icon="code"
-        state="done"
-        title="codemode"
-        detail={null}
-        durationMs={1_200}
-        actions={null}
-      >
+    <ChatActivity status={status}>
+      <ChatActivityStep icon="code" state="done" title="codemode" detail={null} durationMs={1_200}>
         <p>Result body</p>
       </ChatActivityStep>
     </ChatActivity>

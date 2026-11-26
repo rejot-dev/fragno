@@ -1,11 +1,7 @@
 import type { PiManagerAgent } from "@fragno-dev/backoffice-api/v0/pi";
-import {
-  createSessionWorkspaceState,
-  type SessionWorkspaceStateUpdate,
-} from "@fragno-private/backoffice-chat/workspace/workspace-model";
 import { ChatStartPanel } from "@fragno-private/design-system/agents/chat-start";
 import { PaneMessage } from "@fragno-private/design-system/feedback/pane-message";
-import { useCallback, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   Navigate,
   redirect,
@@ -178,21 +174,8 @@ function PiAgentDetailConversation({
   agent: PiManagerAgent;
   agentPath: string;
 }) {
-  const {
-    resolvedScope,
-    directory,
-    availableModelOptions,
-    basePath,
-    dictationMountRoute,
-    updateWorkspaceState,
-    workspaceStates,
-  } = useOutletContext<PiAgentsOutletContext>();
-  const updateAgentWorkspaceState = useCallback(
-    (update: SessionWorkspaceStateUpdate) => {
-      updateWorkspaceState(agent.agentName, update);
-    },
-    [agent.agentName, updateWorkspaceState],
-  );
+  const { resolvedScope, directory, availableModelOptions, basePath, dictationMountRoute } =
+    useOutletContext<PiAgentsOutletContext>();
   const header = (options: ReactNode | null) => (
     <AgentsHeader
       basePath={basePath}
@@ -211,11 +194,6 @@ function PiAgentDetailConversation({
       header={header}
       draft={null}
       resolvedScope={resolvedScope}
-      workspace={{
-        storageKey: `backoffice:pi-agent-workspace:${basePath}`,
-        state: workspaceStates[agent.agentName] ?? createSessionWorkspaceState(),
-        update: updateAgentWorkspaceState,
-      }}
     />
   );
 }

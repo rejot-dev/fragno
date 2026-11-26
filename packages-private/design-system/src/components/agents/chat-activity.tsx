@@ -131,12 +131,9 @@ function settledTitle(outcome: "done" | "stopped" | "failed", durationMs: number
  */
 export function ChatActivity({
   status,
-  artifacts,
   children,
 }: {
   status: ChatActivityStatus;
-  /** Always-visible controls for what the turn produced, such as side panel views. */
-  artifacts: ReactNode | null;
   /** ChatActivityStep rows, oldest first. */
   children: ReactNode;
 }) {
@@ -186,55 +183,11 @@ export function ChatActivity({
             <DisclosureChevron open={open} />
           </span>
         </Collapsible.Trigger>
-        {artifacts === null ? null : (
-          <div className="flex shrink-0 items-center gap-1 border-l border-[color:var(--bo-border)] px-2">
-            {artifacts}
-          </div>
-        )}
       </div>
       <Collapsible.Panel className={collapsiblePanelClassName}>
         <ol className="border-t border-[color:var(--bo-border)] px-3 py-2">{children}</ol>
       </Collapsible.Panel>
     </Collapsible.Root>
-  );
-}
-
-/**
- * Shows or hides something the agent produced, such as a generated interface, in a side panel. The
- * label hides on narrow screens and when `labelled` is false, as it is beside a single step.
- */
-export function ChatArtifactToggle({
-  icon,
-  label,
-  labelled,
-  pressed,
-  onClick,
-}: {
-  icon: IconName;
-  /** What the panel shows, such as "Interface"; the button names the action from it. */
-  label: string;
-  labelled: boolean;
-  pressed: boolean;
-  onClick: () => void;
-}) {
-  const actionLabel = `${pressed ? "Hide" : "Show"} ${label} in side panel`;
-  return (
-    <button
-      type="button"
-      aria-label={actionLabel}
-      aria-pressed={pressed}
-      title={actionLabel}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1.5 border px-1.5 text-[10px] font-medium transition-[scale,background-color,border-color,color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 active:scale-[0.96]",
-        pressed
-          ? "border-[color:var(--bo-accent)] bg-[var(--bo-accent-bg)] text-[var(--bo-accent-fg)]"
-          : "border-[color:var(--bo-border)] text-[var(--bo-muted)] hover:border-[color:var(--bo-border-strong)] hover:text-[var(--bo-fg)]",
-      )}
-    >
-      <Icon name={icon} className="size-3.5" />
-      {labelled ? <span className="hidden sm:inline">{label}</span> : null}
-    </button>
   );
 }
 
@@ -307,7 +260,6 @@ export function ChatActivityStep({
   title,
   detail,
   durationMs,
-  actions,
   children,
 }: {
   /** Null marks the step with a dot, as thoughts are. */
@@ -317,8 +269,6 @@ export function ChatActivityStep({
   /** A monospace identifier beside the title, such as a path; hidden on narrow screens. */
   detail: string | null;
   durationMs: number | null;
-  /** Controls beside the row, such as ChatArtifactToggles. */
-  actions: ReactNode | null;
   /** Null when there is nothing more to show. */
   children: ReactNode | null;
 }) {
@@ -352,17 +302,13 @@ export function ChatActivityStep({
   return (
     <ChatActivityItem icon={icon} state={state}>
       {children === null ? (
-        <div className="flex min-h-9 min-w-0 items-center gap-2 text-xs">
-          {row}
-          {actions}
-        </div>
+        <div className="flex min-h-9 min-w-0 items-center gap-2 text-xs">{row}</div>
       ) : (
         <Collapsible.Root open={open} onOpenChange={setOpen} className="min-w-0">
           <div className="flex min-w-0 items-center gap-1">
             <Collapsible.Trigger className="-ml-1.5 flex min-h-9 min-w-0 flex-1 items-center gap-2 px-1.5 text-left text-xs transition-colors duration-150 outline-none hover:bg-[var(--bo-panel-2)] focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset">
               {row}
             </Collapsible.Trigger>
-            {actions}
           </div>
           <Collapsible.Panel className={collapsiblePanelClassName}>
             <div className="space-y-3 pt-1 pb-3">{children}</div>

@@ -50,7 +50,6 @@ export function Working() {
       <ChatAssistantMessage author={{ name: "Pi", time: SAMPLE_TIME }} footer={null}>
         <ChatActivity
           status={{ kind: "running", headline: "Grouping invoices by week", startedAt }}
-          artifacts={null}
         >
           <ChatActivityStep
             icon={null}
@@ -58,7 +57,6 @@ export function Working() {
             title="Grouping invoices by week"
             detail={null}
             durationMs={null}
-            actions={null}
           >
             <p className="text-xs leading-6">Grouping invoices by the week they were issued.</p>
           </ChatActivityStep>
@@ -88,7 +86,6 @@ export function Interleaved() {
             note: "1 tool · 1 thought",
             failedSteps: 0,
           }}
-          artifacts={null}
         >
           <ChatActivityStep
             icon={null}
@@ -96,7 +93,6 @@ export function Interleaved() {
             title="Finding the unpaid invoices"
             detail={null}
             durationMs={null}
-            actions={null}
           >
             <p className="text-xs leading-6">Load the open invoices, then check which are due.</p>
           </ChatActivityStep>
@@ -106,7 +102,6 @@ export function Interleaved() {
             title="invoices.unpaid"
             detail={null}
             durationMs={1_180}
-            actions={null}
           >
             {null}
           </ChatActivityStep>
@@ -114,7 +109,6 @@ export function Interleaved() {
         <p>Three invoices are open. Drafting a reminder for each customer now.</p>
         <ChatActivity
           status={{ kind: "running", headline: "Drafting one reminder per customer", startedAt }}
-          artifacts={null}
         >
           <ChatActivityStep
             icon={null}
@@ -122,7 +116,6 @@ export function Interleaved() {
             title="Drafting one reminder per customer"
             detail={null}
             durationMs={null}
-            actions={null}
           >
             <p className="text-xs leading-6">
               Acme is 32 days overdue, so their reminder should be firmer than the others.
@@ -153,7 +146,6 @@ export function WorkingAfterSpeaking() {
             note: "1 tool · 1 thought",
             failedSteps: 0,
           }}
-          artifacts={null}
         >
           <ChatActivityStep
             icon="code"
@@ -161,7 +153,6 @@ export function WorkingAfterSpeaking() {
             title="invoices.unpaid"
             detail={null}
             durationMs={1_180}
-            actions={null}
           >
             {null}
           </ChatActivityStep>

@@ -122,8 +122,6 @@ export function AgentDrawerScope({
       dictationMountRoute={data.dictationMountRoute}
       header={header}
       draft={draft}
-      // The drawer is too narrow to open what the conversation produced beside it.
-      workspace={null}
       resolvedScope={resolvedScope}
     />
   );

@@ -101,7 +101,6 @@ export function LandingDemo() {
               note: "4 tools",
               failedSteps: 0,
             }}
-            artifacts={null}
           >
             <ChatActivityStep
               icon="file-text"
@@ -109,7 +108,6 @@ export function LandingDemo() {
               title="Wrote qualify-lead.workflow.js"
               detail={null}
               durationMs={3_100}
-              actions={null}
             >
               <ScrollablePre>{WORKFLOW_EXCERPT}</ScrollablePre>
             </ChatActivityStep>
@@ -119,7 +117,6 @@ export function LandingDemo() {
               title="Wrote sync-hubspot.workflow.js"
               detail={null}
               durationMs={1_800}
-              actions={null}
             >
               {null}
             </ChatActivityStep>
@@ -129,7 +126,6 @@ export function LandingDemo() {
               title="Wrote notify-sales.workflow.js"
               detail={null}
               durationMs={1_600}
-              actions={null}
             >
               {null}
             </ChatActivityStep>
@@ -139,7 +135,6 @@ export function LandingDemo() {
               title="Added 3 routes"
               detail={null}
               durationMs={900}
-              actions={null}
             >
               {null}
             </ChatActivityStep>

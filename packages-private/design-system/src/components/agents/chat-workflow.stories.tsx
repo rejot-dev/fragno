@@ -478,7 +478,6 @@ export function InConversation() {
                   note: "1 tool · 1 thought",
                   failedSteps: 0,
                 }}
-                artifacts={null}
               >
                 <ChatActivityStep
                   icon={null}
@@ -486,7 +485,6 @@ export function InConversation() {
                   title="Starting a reminder workflow"
                   detail={null}
                   durationMs={1_900}
-                  actions={null}
                 >
                   <p className="text-xs leading-6">
                     Acme needs a review before sending, so pause the workflow on their reminder.
@@ -498,7 +496,6 @@ export function InConversation() {
                   title="codemode"
                   detail="workflows.start(chaseUnpaidInvoices)"
                   durationMs={840}
-                  actions={null}
                 >
                   <ScrollablePre>
                     {"return await workflows.start(chaseUnpaidInvoices);"}

@@ -24,12 +24,6 @@ import { useState } from "react";
 
 import type { ChatToolCall } from "../extensions";
 import type { ToolCallPart } from "../messages/agent-turn";
-import {
-  ToolWorkspaceSelector,
-  type ToolWorkspaceSelectorOption,
-} from "../workspace/tool-workspace-selector";
-import type { SessionWorkspaceNavigation } from "../workspace/workspace-context";
-import { generatedUiWorkspaceId } from "../workspace/workspace-model";
 import { getCodeArgument, formatJson } from "./tool-arguments";
 import { ToolResultContent } from "./tool-result-content";
 import { ToolArgumentsBlock } from "./tool-result-details";
@@ -56,6 +50,7 @@ export function toolCallPresentation(part: ToolCallPart) {
     : ordinaryResultPresentation;
   const running =
     part.status.type === "running" || Boolean(draftTool && draftTool.status !== "done");
+  const failed = !running && Boolean(completedToolResult?.isError);
   // A running codemode call reports its run's calls so far; its result keeps the final ones.
   const callsDetail = codemode
     ? (codemodeDetails?.calls ?? getCodemodeCallsDetail(draftTool?.partialDetails))
@@ -77,8 +72,13 @@ export function toolCallPresentation(part: ToolCallPart) {
     // The model is still writing the program: the harness has not started the tool yet.
     writingCode: codemode && running && (draftTool === null || draftTool.status === "starting"),
     resultPresentation,
+    // The interface its program returned, which the conversation shows after the work.
+    generatedInterface:
+      resultPresentation.kind === "valid" && codemodeDetails !== null && !failed
+        ? { parsed: resultPresentation, value: codemodeDetails.result }
+        : null,
     running,
-    failed: !running && Boolean(completedToolResult?.isError),
+    failed,
     label: part.toolName,
   };
 }
@@ -108,20 +108,6 @@ export function toolHeadline({ codemode, calls, writingCode, label }: ToolCallPr
   }
   const headline = codemodeCallHeadline(newest.subject);
   return running.length === 1 ? headline : `${headline} and ${running.length - 1} more`;
-}
-
-export function toolWorkspaceOptions(
-  part: ToolCallPart,
-  { resultPresentation }: ToolCallPresentation,
-  navigation: SessionWorkspaceNavigation | null,
-): ToolWorkspaceSelectorOption[] {
-  if (!navigation) {
-    return [];
-  }
-  const generatedUiItemId = generatedUiWorkspaceId(part.toolCallId);
-  return resultPresentation.kind === "valid" && navigation.hasItem(generatedUiItemId)
-    ? [{ id: generatedUiItemId, label: "Interface" }]
-    : [];
 }
 
 const SUMMARY_ARGUMENTS = ["query", "pattern", "command", "url", "path", "name"];
@@ -215,19 +201,13 @@ function codemodeViews(
 export function ToolCallStep({
   part,
   presentation,
-  workspaceOptions,
 }: {
   part: ToolCallPart;
   presentation: ToolCallPresentation;
-  workspaceOptions: readonly ToolWorkspaceSelectorOption[];
 }) {
   const { draftTool, completedToolResult, codemodeDetails, calls, running, failed, label } =
     presentation;
   const durationMs = completedToolResult?.durationMs ?? null;
-  const actions =
-    workspaceOptions.length === 0 ? null : (
-      <ToolWorkspaceSelector options={workspaceOptions} toolLabel={label} labelled={false} />
-    );
 
   if (codemodeDetails !== null) {
     return (
@@ -243,7 +223,6 @@ export function ToolCallStep({
         calls={calls}
         durationMs={durationMs}
         views={codemodeViews(part, presentation, codemodeDetails)}
-        actions={actions}
       />
     );
   }
@@ -255,7 +234,6 @@ export function ToolCallStep({
       title={label}
       detail={argumentSummary(part.args)}
       durationMs={durationMs}
-      actions={actions}
     >
       <ToolArgumentsBlock rawText={part.argsText} value={part.args} />
       {draftTool?.partialResult !== undefined ? (

@@ -84,7 +84,6 @@ function Transcript({ status }: { status: ChatSubagentRunStatus }) {
                   failedSteps: 0,
                 }
           }
-          artifacts={null}
         >
           <ChatCodemodeStep
             state="done"
@@ -126,7 +125,6 @@ function Transcript({ status }: { status: ChatSubagentRunStatus }) {
                 content: <ScrollablePre>{"async () => documents.read({ id })"}</ScrollablePre>,
               },
             ]}
-            actions={null}
           />
           {running ? (
             <ChatActivityStep
@@ -135,7 +133,6 @@ function Transcript({ status }: { status: ChatSubagentRunStatus }) {
               title="bookkeeping.entries.propose"
               detail={null}
               durationMs={null}
-              actions={null}
             >
               {null}
             </ChatActivityStep>
@@ -259,7 +256,6 @@ function BatchTurn({
             }
           : { kind: "running", headline: `Waiting for ${statuses.length} subagents`, startedAt }
       }
-      artifacts={null}
     >
       <ChatCodemodeStep
         state="done"
@@ -290,7 +286,6 @@ function BatchTurn({
             ),
           },
         ]}
-        actions={null}
       />
       <ChatActivityStep
         icon="git-merge"
@@ -302,7 +297,6 @@ function BatchTurn({
         }
         detail={null}
         durationMs={settled ? 13_900 : null}
-        actions={null}
       >
         {null}
       </ChatActivityStep>

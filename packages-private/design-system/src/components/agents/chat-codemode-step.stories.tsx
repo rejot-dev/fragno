@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import { ScrollablePre } from "../data/scrollable-pre";
-import { ChatActivity, ChatActivityStep, ChatArtifactToggle } from "./chat-activity";
+import { ChatActivity, ChatActivityStep } from "./chat-activity";
 import {
   ChatCodemodeStep,
   codemodeCallHeadline,
@@ -248,31 +248,9 @@ const REMINDER_LOGS = "sent INV-4182\nskipped INV-4190: bounced\nsent INV-4203";
 
 function Thought({ title, children }: { title: string; children: string }) {
   return (
-    <ChatActivityStep
-      icon={null}
-      state="done"
-      title={title}
-      detail={null}
-      durationMs={null}
-      actions={null}
-    >
+    <ChatActivityStep icon={null} state="done" title={title} detail={null} durationMs={null}>
       <p className="text-xs leading-5 text-[var(--bo-muted)]">{children}</p>
     </ChatActivityStep>
-  );
-}
-
-function InterfaceToggle() {
-  const [pressed, setPressed] = useState(false);
-  return (
-    <ChatArtifactToggle
-      icon="layout"
-      label="Interface"
-      labelled={false}
-      pressed={pressed}
-      onClick={() => {
-        setPressed((current) => !current);
-      }}
-    />
   );
 }
 
@@ -286,7 +264,6 @@ export function Turn() {
     <Column>
       <ChatActivity
         status={{ kind: "running", headline: "Sending one reminder per invoice", startedAt }}
-        artifacts={null}
       >
         <Thought title="Finding the reminder skill">
           The user wants reminders for overdue invoices. There is probably a skill for this; list
@@ -302,7 +279,6 @@ export function Turn() {
             '{ "skills": ["…"], "skill": "# Payment reminders…" }',
             null,
           )}
-          actions={null}
         />
         <Thought title="Sending one reminder per invoice">
           The skill says to look up each contact before sending and to skip suppressed addresses.
@@ -313,7 +289,6 @@ export function Turn() {
           calls={settledCalls(REMINDERS, 0)}
           durationMs={REMINDERS_MS}
           views={views(REMINDER_CODE, REMINDER_RESULT, REMINDER_LOGS)}
-          actions={<InterfaceToggle />}
         />
       </ChatActivity>
     </Column>
@@ -362,17 +337,13 @@ export function TimeBetweenCalls() {
   const [startedAt] = useState(() => new Date(Date.now() - 18_000));
   return (
     <Column>
-      <ChatActivity
-        status={{ kind: "running", headline: "Writing the summary", startedAt }}
-        artifacts={null}
-      >
+      <ChatActivity status={{ kind: "running", headline: "Writing the summary", startedAt }}>
         <ChatCodemodeStep
           state="done"
           detail={null}
           calls={settledCalls(WAITING, 0)}
           durationMs={WAITING_MS}
           views={views(WAITING_CODE, '{ "iterations": [ … ] }', null)}
-          actions={null}
         />
       </ChatActivity>
     </Column>
@@ -411,7 +382,6 @@ export function Live() {
                 : codemodeCallHeadline(newest.subject),
           startedAt,
         }}
-        artifacts={null}
       >
         <ChatCodemodeStep
           state={settled ? "done" : "running"}
@@ -427,7 +397,6 @@ export function Live() {
           }
           durationMs={settled ? WAITING_MS : null}
           views={views(WAITING_CODE, settled ? '{ "iterations": [ … ] }' : null, null)}
-          actions={null}
         />
       </ChatActivity>
     </Column>
@@ -439,10 +408,7 @@ export function WithoutCalls() {
   const [startedAt] = useState(() => new Date(Date.now() - 4_000));
   return (
     <Column>
-      <ChatActivity
-        status={{ kind: "running", headline: "Writing the summary", startedAt }}
-        artifacts={null}
-      >
+      <ChatActivity status={{ kind: "running", headline: "Writing the summary", startedAt }}>
         <ChatCodemodeStep
           state="done"
           detail="async () => ({ scope: await context.getCurrentScope() })"
@@ -453,7 +419,6 @@ export function WithoutCalls() {
             '{ "scope": { "kind": "user" } }',
             null,
           )}
-          actions={null}
         />
         <ChatCodemodeStep
           state="failed"
@@ -465,7 +430,6 @@ export function WithoutCalls() {
             "Error: Payment provider unavailable",
             null,
           )}
-          actions={null}
         />
       </ChatActivity>
     </Column>
@@ -521,17 +485,13 @@ export function ManyCalls() {
   ];
   return (
     <Column>
-      <ChatActivity
-        status={{ kind: "running", headline: "Ranking accounts by risk", startedAt }}
-        artifacts={null}
-      >
+      <ChatActivity status={{ kind: "running", headline: "Ranking accounts by risk", startedAt }}>
         <ChatCodemodeStep
           state="done"
           detail={null}
           calls={{ startedAt: new Date(0), items: fanned, unrecorded: 12 }}
           durationMs={720}
           views={views("async () => { /* … */ }", '{ "ranked": 52 }', null)}
-          actions={null}
         />
       </ChatActivity>
     </Column>
@@ -648,7 +608,6 @@ export function LiveLongRun() {
                 : codemodeCallHeadline(newest.subject),
           startedAt,
         }}
-        artifacts={null}
       >
         <ChatCodemodeStep
           state={settled ? "done" : "running"}
@@ -664,7 +623,6 @@ export function LiveLongRun() {
           }
           durationMs={settled ? SWEEP_MS : null}
           views={views(SWEEP_CODE, settled ? '{ "reminded": 19 }' : null, null)}
-          actions={null}
         />
       </ChatActivity>
     </Column>

@@ -87,7 +87,6 @@ function BooksToolCall({ call }: { call: ChatToolCall }) {
       title={line.label}
       detail={line.detail}
       durationMs={null}
-      actions={null}
     >
       {null}
     </ChatActivityStep>
