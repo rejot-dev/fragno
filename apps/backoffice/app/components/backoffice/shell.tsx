@@ -3,6 +3,7 @@ import {
   type BackofficeContextScope,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
+import { onScreenKeyboardCoversPage } from "@fragno-private/design-system/overlays/on-screen-keyboard";
 import {
   lazy,
   Suspense,
@@ -12,6 +13,7 @@ import {
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import {
@@ -206,6 +208,41 @@ function useMediaQuery(query: string): boolean {
   );
 }
 
+/**
+ * Marks the shell with data-keyboard-closing from when a field loses the focus until the on-screen
+ * keyboard has gone, so the tab bar, which phones hide for the keyboard (app.css), returns after
+ * it. A tap on a button beside the field, such as Send, takes the focus before its click lands;
+ * the tab bar returning in between moves the button, and Safari drops the click.
+ */
+function useKeyboardClosingMark(shellRef: RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const shell = shellRef.current;
+    // Undefined rather than null where the browser lacks it, such as in happy-dom.
+    const viewport = window.visualViewport as VisualViewport | null | undefined;
+    if (shell === null || !viewport) {
+      return undefined;
+    }
+    // Set on the element rather than through state: a render would come after the click.
+    const markClosing = () => {
+      if (onScreenKeyboardCoversPage(viewport)) {
+        shell.setAttribute("data-keyboard-closing", "");
+      }
+    };
+    const unmarkOnceClosed = () => {
+      if (!onScreenKeyboardCoversPage(viewport)) {
+        shell.removeAttribute("data-keyboard-closing");
+      }
+    };
+    document.addEventListener("focusout", markClosing);
+    viewport.addEventListener("resize", unmarkOnceClosed);
+    return () => {
+      document.removeEventListener("focusout", markClosing);
+      viewport.removeEventListener("resize", unmarkOnceClosed);
+      shell.removeAttribute("data-keyboard-closing");
+    };
+  }, [shellRef]);
+}
+
 function BackofficeShellFrame({
   children,
   me,
@@ -245,6 +282,8 @@ function BackofficeShellFrame({
   const sidebarShownCollapsed = sidebarCollapsed || sidebarRail;
   const sidebarRestoredRef = useRef(false);
   const [sidebarRestoring, setSidebarRestoring] = useState(true);
+  const shellRef = useRef<HTMLDivElement>(null);
+  useKeyboardClosingMark(shellRef);
   const terminalScope = resolvedScope
     ? backofficeTerminalScopeSelection(resolvedScope, me, administeredMember)
     : null;
@@ -315,6 +354,7 @@ function BackofficeShellFrame({
 
   return (
     <div
+      ref={shellRef}
       data-backoffice-root
       data-backoffice-shell
       data-sidebar-restoring={sidebarRestoring || undefined}

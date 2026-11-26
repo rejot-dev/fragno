@@ -46,23 +46,27 @@ html:has([data-integrations-workspace]) {
 
 /* While the on-screen keyboard is up, phones hide the tab bar, as native apps do, so what is being
    typed keeps the little room the keyboard leaves. Fields that open a picker rather than the
-   keyboard keep it. */
+   keyboard keep it. The shell marks the keyboard closing (shell.tsx), so the tab bar returns once
+   the keyboard has gone rather than when the field loses the focus. */
 @media (pointer: coarse) {
-  [data-backoffice-shell]:has(
-    :is(
-      input:not(
-        [type="checkbox"],
-        [type="radio"],
-        [type="range"],
-        [type="file"],
-        [type="color"],
-        [type="button"],
-        [type="submit"],
-        [type="reset"]
-      ),
-      textarea,
-      [contenteditable="true"]
-    ):focus
+  [data-backoffice-shell]:is(
+    [data-keyboard-closing],
+    :has(
+      :is(
+        input:not(
+          [type="checkbox"],
+          [type="radio"],
+          [type="range"],
+          [type="file"],
+          [type="color"],
+          [type="button"],
+          [type="submit"],
+          [type="reset"]
+        ),
+        textarea,
+        [contenteditable="true"]
+      ):focus
+    )
   ) {
     --bo-shell-bottom: 0px;
 
