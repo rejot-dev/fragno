@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { onScreenKeyboardCoversPage } from "./on-screen-keyboard";
+
 export const SIDE_DRAWER_MIN_WIDTH = 360;
 const MAX_WIDTH = 900;
 const RESIZE_STEP = 24;
@@ -17,7 +19,7 @@ type VisibleArea = { top: number; height: number };
 /**
  * The part of the screen the page shows, while an on-screen keyboard covers the rest: Safari does not
  * shrink the page for it, and scrolls the page to keep the focused field in view instead. Null while
- * nothing covers the page, and while pinch-zoomed, where the visible area is the zoomed-in part.
+ * no keyboard covers the page.
  */
 function useKeyboardFreeArea(): VisibleArea | null {
   const [area, setArea] = useState<VisibleArea | null>(null);
@@ -27,8 +29,7 @@ function useKeyboardFreeArea(): VisibleArea | null {
       return undefined;
     }
     const update = () => {
-      const covered =
-        window.innerHeight - viewport.height > 1 && Math.abs(viewport.scale - 1) < 0.01;
+      const covered = onScreenKeyboardCoversPage(viewport);
       setArea((current) => {
         if (!covered) {
           return null;
