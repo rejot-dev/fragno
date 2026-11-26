@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -56,8 +57,8 @@ function useKeyboardFreeArea(): VisibleArea | null {
  * and is remembered under `storageKey`, so a consumer can size it apart per kind of screen. Its
  * children mount when it first opens, stay mounted while it is closed so what they hold (a live
  * connection, for example) survives reopening, and start with a `SideDrawerHeader`. While an
- * on-screen keyboard is up, it fits the screen above it, so its header and what it holds stay in
- * view.
+ * on-screen keyboard is up, it fits the screen above it, so its header and the field being typed
+ * in stay in view.
  */
 export function SideDrawer({
   id,
@@ -80,6 +81,25 @@ export function SideDrawer({
   const restoredKeyRef = useRef<string | null>(null);
   const [everOpened, setEverOpened] = useState(open);
   const keyboardFreeArea = useKeyboardFreeArea();
+  const asideRef = useRef<HTMLElement>(null);
+  // Where the page was scrolled when a field in the drawer was focused, before the keyboard rose.
+  const pageScrollBeforeKeyboardRef = useRef<number | null>(null);
+  // Safari brings a field into view when it is focused, before the keyboard rises and the drawer
+  // shrinks above it, which can leave the field below what the drawer still shows. Safari also
+  // scrolls the page for it, which the drawer does not need, so the page returns to where it was.
+  useLayoutEffect(() => {
+    const aside = asideRef.current;
+    const focused = document.activeElement;
+    if (keyboardFreeArea === null || aside === null || !(focused instanceof HTMLElement)) {
+      return;
+    }
+    revealWithin(focused, aside);
+    const pageScroll = pageScrollBeforeKeyboardRef.current;
+    pageScrollBeforeKeyboardRef.current = null;
+    if (pageScroll !== null && aside.contains(focused) && window.scrollY !== pageScroll) {
+      window.scrollTo({ top: pageScroll });
+    }
+  }, [keyboardFreeArea]);
   if (open && !everOpened) {
     setEverOpened(true);
   }
@@ -156,6 +176,12 @@ export function SideDrawer({
     // The panel is the page background for what the drawer holds, so content painting the page
     // background (a chat thread and its scroll fades, for example) matches the drawer.
     <aside
+      ref={asideRef}
+      onFocus={() => {
+        if (keyboardFreeArea === null) {
+          pageScrollBeforeKeyboardRef.current = window.scrollY;
+        }
+      }}
       id={id}
       aria-label={label}
       aria-hidden={!open}
@@ -223,6 +249,36 @@ export function SideDrawerHeader({ children }: { children: ReactNode }) {
       {children}
     </header>
   );
+}
+
+/**
+ * Scrolls the scroll areas between `element` and `boundary` until `element` shows in them, without
+ * scrolling the page, which Safari already scrolled for the keyboard. Prefers the top of an element
+ * taller than the area.
+ */
+function revealWithin(element: HTMLElement, boundary: HTMLElement) {
+  if (!boundary.contains(element)) {
+    return;
+  }
+  for (
+    let scroller = element.parentElement;
+    scroller !== null && scroller !== boundary;
+    scroller = scroller.parentElement
+  ) {
+    const { overflowY } = getComputedStyle(scroller);
+    if (overflowY !== "auto" && overflowY !== "scroll") {
+      continue;
+    }
+    const area = scroller.getBoundingClientRect();
+    const target = element.getBoundingClientRect();
+    if (target.bottom > area.bottom) {
+      scroller.scrollTop += target.bottom - area.bottom;
+    }
+    const shifted = element.getBoundingClientRect();
+    if (shifted.top < area.top) {
+      scroller.scrollTop -= area.top - shifted.top;
+    }
+  }
 }
 
 function readStoredWidth(storageKey: string): number | null {
