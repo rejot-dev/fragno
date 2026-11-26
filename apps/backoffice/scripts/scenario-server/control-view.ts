@@ -372,6 +372,9 @@ async function runNext(): Promise<ScenarioViewState> {
     body: JSON.stringify({ view: VIEW_ID }),
   });
   // A step that fails answers 500 with the state too, whose `error` says why.
+  if (!response.ok && response.status !== 500) {
+    throw new Error(`Running the next step returned ${response.status}: ${await response.text()}`);
+  }
   return await response.json<ScenarioViewState>();
 }
 
@@ -379,24 +382,32 @@ async function play() {
   const current = Symbol("playback");
   playback = current;
   let remaining = state?.remaining.length ?? 0;
-  while (playback === current && remaining > 0) {
-    const step = state?.remaining[0];
-    const after = await runNext();
-    if (after.error) {
-      break;
+  try {
+    while (playback === current && remaining > 0) {
+      const step = state?.remaining[0];
+      const after = await runNext();
+      if (after.error) {
+        break;
+      }
+      remaining = after.remaining.length;
+      if (remaining > 0) {
+        const words = step ? step.label.split(/\s+/).length : 0;
+        await pause(Math.max(PLAY_PAUSE_MS, words * READING_MS_PER_WORD));
+      }
     }
-    remaining = after.remaining.length;
-    if (remaining > 0) {
-      const words = step ? step.label.split(/\s+/).length : 0;
-      await pause(Math.max(PLAY_PAUSE_MS, words * READING_MS_PER_WORD));
+  } finally {
+    if (playback === current) {
+      playback = null;
+    }
+    if (state) {
+      render(state);
     }
   }
-  if (playback === current) {
-    playback = null;
-  }
-  if (state) {
-    render(state);
-  }
+}
+
+/** Shows why the view could not ask for a step, which the scenario's state does not say. */
+function showFailure(cause: unknown) {
+  byId("error", HTMLElement).textContent = cause instanceof Error ? cause.message : String(cause);
 }
 
 /** The innermost element showing the target, once the page shows it. */
@@ -535,13 +546,13 @@ async function carryOut(id: string, command: ScenarioViewCommand) {
 }
 
 nextButton.addEventListener("click", () => {
-  void runNext();
+  runNext().catch(showFailure);
 });
 playButton.addEventListener("click", () => {
   if (playback !== null) {
     playback = null;
   } else {
-    void play();
+    play().catch(showFailure);
   }
   if (state) {
     render(state);
