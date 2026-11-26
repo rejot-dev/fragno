@@ -15,6 +15,9 @@ export const SIDE_DRAWER_MIN_WIDTH = 360;
 const MAX_WIDTH = 900;
 const RESIZE_STEP = 24;
 
+/** A width in pixels, or half the screen, which holds as the screen changes size. */
+type DrawerWidth = number | "half";
+
 type VisibleArea = { top: number; height: number };
 
 /**
@@ -54,7 +57,8 @@ function useKeyboardFreeArea(): VisibleArea | null {
 /**
  * A full-height panel on the right edge of the shell that pushes the page aside. The reader
  * resizes it from its left edge, with a grip on touch screens. The width starts at `defaultWidth`
- * and is remembered under `storageKey`, so a consumer can size it apart per kind of screen. Its
+ * and is remembered under `storageKey`, so a consumer can size it apart per kind of screen; each
+ * new `halfScreenRequest` sets it to half the screen, until the reader resizes it. Its
  * children mount when it first opens, stay mounted while it is closed so what they hold (a live
  * connection, for example) survives reopening, and start with a `SideDrawerHeader`. While an
  * on-screen keyboard is up, it fits the screen above it, so the field being typed in stays in view;
@@ -67,6 +71,7 @@ export function SideDrawer({
   open,
   defaultWidth,
   storageKey,
+  halfScreenRequest,
   children,
 }: {
   id: string;
@@ -74,11 +79,18 @@ export function SideDrawer({
   open: boolean;
   defaultWidth: number;
   storageKey: string;
+  /** Changes with each request for half the screen; null until the first. */
+  halfScreenRequest: number | null;
   children: ReactNode;
 }) {
   // The server renders the default; the stored width is restored once mounted, and again when the
   // key changes.
-  const [width, setWidth] = useState(defaultWidth);
+  const [width, setWidth] = useState<DrawerWidth>(defaultWidth);
+  const [seenHalfScreenRequest, setSeenHalfScreenRequest] = useState(halfScreenRequest);
+  if (halfScreenRequest !== seenHalfScreenRequest) {
+    setSeenHalfScreenRequest(halfScreenRequest);
+    setWidth("half");
+  }
   const restoredKeyRef = useRef<string | null>(null);
   const [everOpened, setEverOpened] = useState(open);
   const keyboardFreeArea = useKeyboardFreeArea();
@@ -149,11 +161,11 @@ export function SideDrawer({
     if (restoredKeyRef.current !== storageKey) {
       restoredKeyRef.current = storageKey;
       const stored = readStoredWidth(storageKey);
-      setWidth(stored === null ? defaultWidth : clampWidth(stored));
+      setWidth(stored === null ? defaultWidth : stored === "half" ? stored : clampWidth(stored));
       return;
     }
     try {
-      window.localStorage.setItem(storageKey, String(Math.round(width)));
+      window.localStorage.setItem(storageKey, width === "half" ? width : String(Math.round(width)));
     } catch {
       // Drawer sizing persistence is optional when storage is unavailable.
     }
@@ -203,7 +215,7 @@ export function SideDrawer({
     } else if (event.key === "End") {
       setWidth(clampWidth(MAX_WIDTH));
     } else {
-      setWidth((current) => clampWidth(current + direction * RESIZE_STEP));
+      setWidth((current) => clampWidth(widthInPixels(current) + direction * RESIZE_STEP));
     }
   };
 
@@ -229,7 +241,9 @@ export function SideDrawer({
       inert={!open}
       style={
         {
-          "--side-drawer-width": `${width}px`,
+          // Half as a viewport unit, so it stays exact while the screen resizes, as Safari does in
+          // steps when a phone unfolds.
+          "--side-drawer-width": width === "half" ? "50vw" : `${width}px`,
           ...(keyboardFreeArea === null
             ? {}
             : { top: keyboardFreeArea.top, height: keyboardFreeArea.height }),
@@ -244,7 +258,8 @@ export function SideDrawer({
         aria-orientation="vertical"
         aria-valuemin={SIDE_DRAWER_MIN_WIDTH}
         aria-valuemax={MAX_WIDTH}
-        aria-valuenow={Math.round(width)}
+        aria-valuenow={width === "half" ? undefined : Math.round(width)}
+        aria-valuetext={width === "half" ? "Half the screen" : undefined}
         tabIndex={open ? 0 : -1}
         onDoubleClick={() => {
           setWidth(defaultWidth);
@@ -343,9 +358,17 @@ function isScrolledToEnd(scroller: HTMLElement): boolean {
   return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= 1;
 }
 
-function readStoredWidth(storageKey: string): number | null {
+function widthInPixels(width: DrawerWidth): number {
+  return width === "half" ? window.innerWidth / 2 : width;
+}
+
+function readStoredWidth(storageKey: string): DrawerWidth | null {
   try {
-    const stored = Number(window.localStorage.getItem(storageKey));
+    const item = window.localStorage.getItem(storageKey);
+    if (item === "half") {
+      return item;
+    }
+    const stored = Number(item);
     return Number.isFinite(stored) && stored > 0 ? stored : null;
   } catch {
     return null;

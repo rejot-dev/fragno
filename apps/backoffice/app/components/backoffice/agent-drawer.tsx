@@ -43,6 +43,7 @@ export function AgentDrawer({
   open,
   screen,
   request,
+  halfScreenRequest,
   resolvedScope,
   onClose,
 }: {
@@ -50,6 +51,8 @@ export function AgentDrawer({
   screen: "desktop" | "phone";
   /** What a page last asked of the drawer, which it opens on. */
   request: AgentRequest | null;
+  /** Changes with each request to open over half the screen; null until the first. */
+  halfScreenRequest: number | null;
   /** Null where the page has no scope to hold agents. */
   resolvedScope: BackofficeResolvedScope | null;
   onClose: () => void;
@@ -79,6 +82,7 @@ export function AgentDrawer({
       open={open}
       defaultWidth={AGENT_DRAWER_SIZES[screen].defaultWidth}
       storageKey={AGENT_DRAWER_SIZES[screen].storageKey}
+      halfScreenRequest={halfScreenRequest}
     >
       {resolvedScope && agentsPath ? (
         <Suspense
