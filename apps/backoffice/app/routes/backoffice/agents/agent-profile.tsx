@@ -6,6 +6,7 @@ import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback
 import { useEffect, useRef } from "react";
 import { useOutletContext, useRevalidator } from "react-router";
 
+import { useShowAgentBeside } from "@/components/backoffice/ask-agent";
 import { backofficePageBodyClassName } from "@/components/backoffice/page-body";
 import { piDefinedAgentModel } from "@/fragno/pi/agent/agent-definitions";
 import type { PiAvailableModel } from "@/fragno/pi/agent/pi-agent-contract";
@@ -40,6 +41,12 @@ export default function BackofficePiAgentProfile({ loaderData, params }: Route.C
         null)
       : null;
   useRelistSkills(params.agentName, directory.status === "ready" ? { agent } : null);
+  // On phones that keep the agent beside the page, the agent's conversation shows there, beside
+  // its profile.
+  const showAgentBeside = useShowAgentBeside();
+  useEffect(() => {
+    showAgentBeside?.(params.agentName);
+  }, [showAgentBeside, params.agentName]);
   const header = (
     <AgentsHeader
       basePath={basePath}

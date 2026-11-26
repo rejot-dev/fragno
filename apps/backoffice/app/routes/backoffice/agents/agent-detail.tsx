@@ -6,8 +6,14 @@ import {
 import { ChatStartPanel } from "@fragno-private/design-system/agents/chat-start";
 import { PaneMessage } from "@fragno-private/design-system/feedback/pane-message";
 import { useCallback, type ReactNode } from "react";
-import { useOutletContext, type ShouldRevalidateFunctionArgs } from "react-router";
+import {
+  Navigate,
+  redirect,
+  useOutletContext,
+  type ShouldRevalidateFunctionArgs,
+} from "react-router";
 
+import { AGENT_BESIDE_PHONE_QUERY, useShowAgentBeside } from "@/components/backoffice/ask-agent";
 import { isPiAssistant } from "@/fragno/pi/agent/agent-definitions";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
@@ -74,6 +80,17 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   );
 }
 
+/**
+ * Phones that keep the agent drawer beside the page show a conversation only there, so the agent's
+ * page there is its profile, which hands the conversation to the drawer.
+ */
+export async function clientLoader({ request, serverLoader }: Route.ClientLoaderArgs) {
+  if (window.matchMedia(AGENT_BESIDE_PHONE_QUERY).matches) {
+    throw redirect(`${new URL(request.url).pathname}/profile`);
+  }
+  return await serverLoader();
+}
+
 export function shouldRevalidate({
   formData,
   defaultShouldRevalidate,
@@ -87,6 +104,12 @@ export default function BackofficeOrganizationPiAgentDetail({
 }: Route.ComponentProps) {
   const { resolvedScope, directory, basePath, usageLabel, availableModelOptions } =
     useOutletContext<PiAgentsOutletContext>();
+  const showAgentBeside = useShowAgentBeside();
+  // The client loader redirects such phones, except where the screen was not known yet (a page
+  // load) or the phone turned or unfolded into one on this page.
+  if (showAgentBeside !== null) {
+    return <Navigate replace to={`${basePath}/${encodeURIComponent(params.agentName)}/profile`} />;
+  }
   if (!loaderData.found) {
     return (
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">

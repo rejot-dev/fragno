@@ -13,7 +13,7 @@ import { MAIN_PI_AGENT_NAME } from "@/fragno/pi/agent/pi-agent-name";
 import { piAgentsPath } from "@/routes/backoffice/agents/path";
 
 import { AgentDrawerHeader } from "./agent-drawer-header";
-import type { AgentDraft } from "./ask-agent";
+import type { AgentRequest } from "./ask-agent";
 
 export const AGENT_DRAWER_ID = "agent-drawer";
 
@@ -42,35 +42,35 @@ const AGENT_DRAWER_SIZES = {
 export function AgentDrawer({
   open,
   screen,
-  draft,
+  request,
   resolvedScope,
   onClose,
 }: {
   open: boolean;
   screen: "desktop" | "phone";
-  /** What a page last asked an agent, which the drawer opens on. */
-  draft: AgentDraft | null;
+  /** What a page last asked of the drawer, which it opens on. */
+  request: AgentRequest | null;
   /** Null where the page has no scope to hold agents. */
   resolvedScope: BackofficeResolvedScope | null;
   onClose: () => void;
 }) {
-  // The choice belongs to the scope it was made in, until a page asks an agent something; another
-  // scope starts with its main agent.
+  // The choice belongs to the scope it was made in, until a page asks for an agent; another scope
+  // starts with its main agent.
   const [selection, setSelection] = useState<{
     agentsPath: string;
-    draftId: number | null;
+    requestId: number | null;
     agentName: string;
   } | null>(null);
   const agentsPath = resolvedScope
     ? piAgentsPath(backofficeRouteScopeFromResolvedScope(resolvedScope))
     : null;
   const [filledDraftId, setFilledDraftId] = useState<number | null>(null);
-  const scopeDraft = draft?.agentsPath === agentsPath ? draft : null;
-  const draftId = scopeDraft?.id ?? null;
+  const scopeRequest = request?.agentsPath === agentsPath ? request : null;
+  const requestId = scopeRequest?.id ?? null;
   const agentName =
-    selection?.agentsPath === agentsPath && selection.draftId === draftId
+    selection?.agentsPath === agentsPath && selection.requestId === requestId
       ? selection.agentName
-      : (scopeDraft?.agentName ?? MAIN_PI_AGENT_NAME);
+      : (scopeRequest?.agentName ?? MAIN_PI_AGENT_NAME);
 
   return (
     <SideDrawer
@@ -95,20 +95,22 @@ export function AgentDrawer({
             resolvedScope={resolvedScope}
             agentsPath={agentsPath}
             agentName={agentName}
+            screen={screen}
             draft={
-              scopeDraft !== null &&
-              scopeDraft.agentName === agentName &&
-              scopeDraft.id !== filledDraftId
+              scopeRequest !== null &&
+              scopeRequest.text !== null &&
+              scopeRequest.agentName === agentName &&
+              scopeRequest.id !== filledDraftId
                 ? {
-                    text: scopeDraft.text,
+                    text: scopeRequest.text,
                     onFilled: () => {
-                      setFilledDraftId(scopeDraft.id);
+                      setFilledDraftId(scopeRequest.id);
                     },
                   }
                 : null
             }
             onAgentChange={(nextAgentName) => {
-              setSelection({ agentsPath, draftId, agentName: nextAgentName });
+              setSelection({ agentsPath, requestId, agentName: nextAgentName });
             }}
             onClose={onClose}
           />

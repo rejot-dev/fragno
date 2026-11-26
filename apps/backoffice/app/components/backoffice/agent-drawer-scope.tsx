@@ -26,6 +26,7 @@ export function AgentDrawerScope({
   resolvedScope,
   agentsPath,
   agentName,
+  screen,
   draft,
   onAgentChange,
   onClose,
@@ -34,6 +35,7 @@ export function AgentDrawerScope({
   resolvedScope: BackofficeResolvedScope;
   agentsPath: string;
   agentName: string;
+  screen: "desktop" | "phone";
   /** A message a page asked this agent, for its composer. */
   draft: ComposerDraft | null;
   onAgentChange: (agentName: string) => void;
@@ -48,9 +50,12 @@ export function AgentDrawerScope({
       options={
         <>
           <AgentSelect directory={directory} agentName={agentName} onChange={onAgentChange} />
-          <IconButtonLink to={agentPath} label={`Open ${formatPiAgentName(agentName)}`}>
-            <Icon name="maximize-2" className="size-4" />
-          </IconButtonLink>
+          {/* On phones the agent's page shows only its profile; its conversation stays here. */}
+          {screen === "desktop" ? (
+            <IconButtonLink to={agentPath} label={`Open ${formatPiAgentName(agentName)}`}>
+              <Icon name="maximize-2" className="size-4" />
+            </IconButtonLink>
+          ) : null}
           {options}
         </>
       }

@@ -29,7 +29,12 @@ import type { AutomationProjectList } from "@/fragno/automation/project-list";
 import { piAgentsPath } from "@/routes/backoffice/agents/path";
 
 import { AgentDrawer } from "./agent-drawer";
-import { AskAgentContext, type AgentDraft } from "./ask-agent";
+import {
+  AGENT_BESIDE_PHONE_QUERY,
+  AskAgentContext,
+  ShowAgentBesideContext,
+  type AgentRequest,
+} from "./ask-agent";
 import { BackofficeClsDebugger } from "./cls-debugger";
 import { CurrentBackofficeProvider } from "./current-context";
 import type { CurrentBackofficeContext } from "./current-context-state";
@@ -166,10 +171,6 @@ function readStoredSidebarCollapsed(): boolean {
 // Below this the sidebar is a rail of icons whatever was saved, so pages keep their room.
 const SIDEBAR_RAIL_QUERY = "(width < 960px)";
 
-// Phones wide enough to keep the agent beside the page, such as an unfolded iPhone Duo on its side:
-// the phone chrome (the opposite of the `desktop` variant in app.css) from 768px wide.
-const AGENT_BESIDE_PHONE_QUERY = "(pointer: coarse) and (width >= 768px) and (height < 660px)";
-
 // Such phones open the agent until it is closed there; desktops start with it closed.
 const PHONE_AGENT_CLOSED_STORAGE_KEY = "backoffice:phone-agent-closed";
 
@@ -255,19 +256,31 @@ function BackofficeShellFrame({
   isLoading,
 }: BackofficeShellProps) {
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
-  const [agentDraft, setAgentDraft] = useState<AgentDraft | null>(null);
+  const [agentRequest, setAgentRequest] = useState<AgentRequest | null>(null);
   const agentsPath = resolvedScope
     ? piAgentsPath(backofficeRouteScopeFromResolvedScope(resolvedScope))
     : null;
-  const askAgent = useCallback(
-    ({ agentName, text }: { agentName: string; text: string }) => {
+  const requestAgent = useCallback(
+    (agentName: string, text: string | null) => {
       if (agentsPath === null) {
         return;
       }
-      setAgentDraft((current) => ({ id: (current?.id ?? 0) + 1, agentsPath, agentName, text }));
+      setAgentRequest((current) => ({ id: (current?.id ?? 0) + 1, agentsPath, agentName, text }));
       setAgentDrawerOpen(true);
     },
     [agentsPath],
+  );
+  const askAgent = useCallback(
+    ({ agentName, text }: { agentName: string; text: string }) => {
+      requestAgent(agentName, text);
+    },
+    [requestAgent],
+  );
+  const showAgent = useCallback(
+    (agentName: string) => {
+      requestAgent(agentName, null);
+    },
+    [requestAgent],
   );
   const sections = useBackofficeSections(resolvedScope, me);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -399,7 +412,11 @@ function BackofficeShellFrame({
               administeredMember={administeredMember}
             />
             <div className="flex min-w-0 flex-1 flex-col">
-              <AskAgentContext.Provider value={askAgent}>{children}</AskAgentContext.Provider>
+              <AskAgentContext.Provider value={askAgent}>
+                <ShowAgentBesideContext.Provider value={agentBesidePhone ? showAgent : null}>
+                  {children}
+                </ShowAgentBesideContext.Provider>
+              </AskAgentContext.Provider>
             </div>
           </main>
         </div>
@@ -417,7 +434,7 @@ function BackofficeShellFrame({
         <AgentDrawer
           open={agentDrawerOpen}
           screen={agentBesidePhone ? "phone" : "desktop"}
-          draft={agentDraft}
+          request={agentRequest}
           // Agents read their directory from the scope's Automations replica.
           resolvedScope={automationReplicaSource ? resolvedScope : null}
           onClose={() => {

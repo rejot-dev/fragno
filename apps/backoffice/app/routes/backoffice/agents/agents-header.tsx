@@ -3,6 +3,7 @@ import { underlineTabClassName } from "@fragno-private/design-system/navigation/
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
+import { useShowAgentBeside } from "@/components/backoffice/ask-agent";
 import { isPiAssistant } from "@/fragno/pi/agent/agent-definitions";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 
@@ -32,6 +33,9 @@ export function AgentsHeader({
   options: ReactNode | null;
 }) {
   const agentPath = (agentName: string) => `${basePath}/${encodeURIComponent(agentName)}`;
+  // Phones that keep the agent beside the page show its conversation there, so its page has only
+  // its profile.
+  const pages = useShowAgentBeside() === null ? selected : null;
   const items = [
     {
       id: OVERVIEW_TAB_ID,
@@ -60,24 +64,24 @@ export function AgentsHeader({
       ariaLabel="Agents"
       trailing={null}
       options={
-        selected === null && options === null ? null : (
+        pages === null && options === null ? null : (
           <>
             {options}
             {/* The page's own controls sit apart from the pages, which keep their place. */}
-            {options === null || selected === null ? null : (
+            {options === null || pages === null ? null : (
               <span aria-hidden className="h-5 w-px bg-[var(--bo-border)]" />
             )}
-            {selected === null ? null : (
+            {pages === null ? null : (
               <nav aria-label="Agent pages" className="flex items-center gap-1">
                 <AgentPageLink
-                  to={agentPath(selected.agentName)}
-                  current={selected.page === "conversation"}
+                  to={agentPath(pages.agentName)}
+                  current={pages.page === "conversation"}
                 >
                   Conversation
                 </AgentPageLink>
                 <AgentPageLink
-                  to={`${agentPath(selected.agentName)}/profile`}
-                  current={selected.page === "profile"}
+                  to={`${agentPath(pages.agentName)}/profile`}
+                  current={pages.page === "profile"}
                 >
                   Profile
                 </AgentPageLink>
