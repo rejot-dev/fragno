@@ -3,6 +3,7 @@ import type {
   BackofficeAppLookupInput,
   AppInstallationExternalAccount,
   AppInstallationResourceScope,
+  AppMemberReach,
   BackofficeAppInstallation,
   BackofficeAppInstallationAccessInput,
   BackofficeAppInstallationActionsApprovalInput,
@@ -22,6 +23,9 @@ import { appPermissionsEqual } from "@/fragno/apps/permissions";
 import type {
   AppApprovedActions,
   AppInstallationOwner,
+  AppMemberReachConsent,
+  AppMemberReachConsentPage,
+  AppMemberReachConsentPageInput,
   BackofficeAppInstallationClaimInput,
   BackofficeAppInstallationClaimResult,
   BackofficeAppInstallationInput,
@@ -85,6 +89,32 @@ function assertAppGrantsWereRequested(
   }
 }
 
+/**
+ * Only an organization's installation reaches members' workspaces, and only when the app asks it
+ * to: owners approve what the app requests, as with permissions.
+ */
+function assertMemberReachAllowed(
+  owner: AppInstallationOwner,
+  app: BackofficeApp,
+  memberReach: AppMemberReach,
+): void {
+  if (memberReach.kind === "none") {
+    return;
+  }
+  if (owner.kind !== "org") {
+    throw new BackofficeAppDomainError(
+      "APP_MEMBER_REACH_NOT_ORGANIZATION",
+      "Only an organization's installation can reach its members' personal workspaces.",
+    );
+  }
+  if (app.requestedMemberReach.kind !== memberReach.kind) {
+    throw new BackofficeAppDomainError(
+      "APP_MEMBER_REACH_NOT_REQUESTED",
+      "Backoffice app does not ask for members' personal workspaces.",
+    );
+  }
+}
+
 /** Approval names the revision its approver reviewed; anything else was not what they approved. */
 function approveCurrentActions(app: BackofficeApp, reviewedRevision: number): AppApprovedActions {
   if (reviewedRevision !== app.actionsRevision) {
@@ -125,6 +155,7 @@ type AppInstallationRow = {
   appId: string;
   grantedPermissions: BackofficePermissionRequirement[];
   resourceProjectIds: string[] | null;
+  memberReach: AppMemberReach["kind"];
   externalAccount: AppInstallationExternalAccount | null;
   installedByUserId: string;
   status: BackofficeAppInstallationStatus;
@@ -145,6 +176,7 @@ function toBackofficeAppInstallation(
     owner,
     grantedPermissions: knownBackofficePermissions(installation.grantedPermissions),
     resourceScope: toResourceScope(installation.resourceProjectIds),
+    memberReach: { kind: installation.memberReach },
     externalAccount: installation.externalAccount,
     installedByUserId: installation.installedByUserId,
     status: installation.status,
@@ -163,6 +195,46 @@ function toStoredAppInstallation(
     installation: toBackofficeAppInstallation(owner, installation),
     grantsFollowApp: installation.grantsFollowApp,
   };
+}
+
+type MemberReachConsentRow = {
+  appId: string;
+  orgId: string;
+  activation: number;
+  updatedAt: Date;
+};
+
+function toMemberReachConsent(row: MemberReachConsentRow): AppMemberReachConsent {
+  return {
+    appId: row.appId,
+    orgId: row.orgId,
+    activation: row.activation,
+    allowedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function decodeMemberReachConsentCursor(input: AppMemberReachConsentPageInput) {
+  if (input.cursor === null) {
+    return undefined;
+  }
+  try {
+    const cursor = decodeCursor(input.cursor);
+    if (
+      cursor.indexName !== "idx_member_reach_consent_appId_orgId" ||
+      cursor.orderDirection !== "asc" ||
+      cursor.pageSize !== input.pageSize ||
+      typeof cursor.indexValues.appId !== "string" ||
+      typeof cursor.indexValues.orgId !== "string"
+    ) {
+      throw new Error("Cursor does not match the member reach consent query.");
+    }
+    return cursor;
+  } catch {
+    throw new BackofficeAppDomainError(
+      "APP_MEMBER_REACH_CURSOR_INVALID",
+      "Member reach consent cursor is invalid.",
+    );
+  }
 }
 
 function decodeAppInstallationCursor(input: BackofficeAppInstallationPageInput, ownerId: string) {
@@ -212,6 +284,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
           .mutate(
             ({ uow, retrieveResult: [installation] }): BackofficeAppInstallationMutationResult => {
               assertAppGrantsWereRequested(app.requestedPermissions, input.grantedPermissions);
+              assertMemberReachAllowed(config.owner, app, input.memberReach);
               const approvedActions = approveCurrentActions(app, input.actionsRevision);
               if (installation?.status === "active") {
                 if (
@@ -219,7 +292,8 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   !resourceScopesEqual(
                     toResourceScope(installation.resourceProjectIds),
                     input.resourceScope,
-                  )
+                  ) ||
+                  installation.memberReach !== input.memberReach.kind
                 ) {
                   throw new BackofficeAppDomainError(
                     "APP_INSTALLATION_CONFLICT",
@@ -240,6 +314,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                     .set({
                       grantedPermissions: input.grantedPermissions,
                       resourceProjectIds: toResourceProjectIds(input.resourceScope),
+                      memberReach: input.memberReach.kind,
                       installedByUserId: input.installedByUserId,
                       status: "active",
                       activation: installation.activation + 1,
@@ -267,6 +342,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   appId: input.appId,
                   grantedPermissions: input.grantedPermissions,
                   resourceProjectIds: toResourceProjectIds(input.resourceScope),
+                  memberReach: input.memberReach.kind,
                   installedByUserId: input.installedByUserId,
                   ownerId,
                   externalAccount: null,
@@ -415,6 +491,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                 );
               }
               assertAppGrantsWereRequested(app.requestedPermissions, input.grantedPermissions);
+              assertMemberReachAllowed(config.owner, app, input.memberReach);
               const grantsFollowApp = app.trust.kind === "first-party";
               if (
                 appPermissionsEqual(installation.grantedPermissions, input.grantedPermissions) &&
@@ -422,6 +499,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   toResourceScope(installation.resourceProjectIds),
                   input.resourceScope,
                 ) &&
+                installation.memberReach === input.memberReach.kind &&
                 installation.grantsFollowApp === grantsFollowApp
               ) {
                 return { installationId: installation.id.externalId, changed: false };
@@ -431,6 +509,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   .set({
                     grantedPermissions: input.grantedPermissions,
                     resourceProjectIds: toResourceProjectIds(input.resourceScope),
+                    memberReach: input.memberReach.kind,
                     grantsFollowApp,
                     updatedAt: uow.now(),
                   })
@@ -533,6 +612,7 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
                   .set({
                     status: "uninstalled",
                     grantedPermissions: [],
+                    memberReach: "none",
                     externalAccount: null,
                     approvedActions: null,
                     updatedAt: uow.now(),
@@ -545,6 +625,101 @@ export const appInstallationsFragmentDefinition = defineFragment<AppInstallation
               });
               return { installationId: installation.id.externalId, changed: true };
             },
+          )
+          .build();
+      },
+
+      /**
+       * Lets the app into the person's workspace when it acts for them in one organization, for
+       * its installation there now; only a person's own object has these.
+       */
+      allowMemberReach: function (input: { appId: string; orgId: string; activation: number }) {
+        if (config.owner.kind !== "user") {
+          throw new BackofficeAppDomainError(
+            "APP_MEMBER_REACH_NOT_ORGANIZATION",
+            "Only a person can let an app into their personal workspace.",
+          );
+        }
+        return this.serviceTx(appInstallationsFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("member_reach_consent", (b) =>
+              b.whereIndex("idx_member_reach_consent_appId_orgId", (eb) =>
+                eb.and(eb("appId", "=", input.appId), eb("orgId", "=", input.orgId)),
+              ),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [consent] }) => {
+            if (!consent) {
+              uow.create(
+                "member_reach_consent",
+                { appId: input.appId, orgId: input.orgId, activation: input.activation },
+                {
+                  retryOnUniqueConflict: ({ error }) =>
+                    error.columns?.includes("appId") === true && error.columns.includes("orgId"),
+                },
+              );
+              return { changed: true };
+            }
+            if (consent.activation === input.activation) {
+              return { changed: false };
+            }
+            uow.update("member_reach_consent", consent.id, (b) =>
+              b.set({ activation: input.activation, updatedAt: uow.now() }).check(),
+            );
+            return { changed: true };
+          })
+          .build();
+      },
+
+      stopMemberReach: function (input: { appId: string; orgId: string }) {
+        return this.serviceTx(appInstallationsFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("member_reach_consent", (b) =>
+              b.whereIndex("idx_member_reach_consent_appId_orgId", (eb) =>
+                eb.and(eb("appId", "=", input.appId), eb("orgId", "=", input.orgId)),
+              ),
+            ),
+          )
+          .mutate(({ uow, retrieveResult: [consent] }) => {
+            if (!consent) {
+              return { changed: false };
+            }
+            uow.delete("member_reach_consent", consent.id, (b) => b.check());
+            return { changed: true };
+          })
+          .build();
+      },
+
+      getMemberReachConsent: function (input: { appId: string; orgId: string }) {
+        return this.serviceTx(appInstallationsFragmentSchema)
+          .retrieve((uow) =>
+            uow.findFirst("member_reach_consent", (b) =>
+              b.whereIndex("idx_member_reach_consent_appId_orgId", (eb) =>
+                eb.and(eb("appId", "=", input.appId), eb("orgId", "=", input.orgId)),
+              ),
+            ),
+          )
+          .transformRetrieve(([consent]) => (consent ? toMemberReachConsent(consent) : null))
+          .build();
+      },
+
+      listMemberReachConsents: function (input: AppMemberReachConsentPageInput) {
+        const cursor = decodeMemberReachConsentCursor(input);
+        return this.serviceTx(appInstallationsFragmentSchema)
+          .retrieve((uow) =>
+            uow.findWithCursor("member_reach_consent", (b) => {
+              const query = b
+                .whereIndex("idx_member_reach_consent_appId_orgId")
+                .orderByIndex("idx_member_reach_consent_appId_orgId", "asc")
+                .pageSize(input.pageSize);
+              return cursor ? query.after(cursor) : query;
+            }),
+          )
+          .transformRetrieve(
+            ([page]): AppMemberReachConsentPage => ({
+              consents: page.items.map(toMemberReachConsent),
+              nextCursor: page.hasNextPage ? (page.cursor?.encode() ?? null) : null,
+            }),
           )
           .build();
       },

@@ -89,6 +89,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 slug: "accounting",
                 oauthClientId: "accounting-client",
                 requestedPermissions,
+                requestedMemberReach: { kind: "none" } as const,
                 actions: { kind: "none" } as const,
                 trust: { kind: "third-party" } as const,
               };
@@ -162,6 +163,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 actionsRevision: 1,
                 installedByUserId: "installer",
                 resourceScope: wholeOrganization,
+                memberReach: { kind: "none" } as const,
                 grantedPermissions: [BACKOFFICE_PERMISSION.events.emit],
               };
               const installed = appOperationValue(await first.installApp(input));
@@ -177,6 +179,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               expect(await second.getInstallation({ appId })).toBeNull();
               appOperationValue(
                 await second.installApp({
+                  memberReach: { kind: "none" },
                   actionsRevision: 1,
                   appId,
                   installedByUserId: "customer-two-owner",
@@ -193,6 +196,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               });
               appOperationValue(
                 await first.updateInstallationAccess({
+                  memberReach: { kind: "none" },
                   appId,
                   grantedPermissions: requestedPermissions,
                   resourceScope: wholeOrganization,
@@ -280,6 +284,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
             const registry = runtime.objects.apps.singleton().commands;
             await expect(
               registry.registerApp({
+                requestedMemberReach: { kind: "none" },
                 actions: { kind: "none" },
                 trust: { kind: "third-party" },
                 slug: "accounting",
@@ -292,6 +297,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
             ).rejects.toThrow("must not contain duplicates");
             const registered = appOperationValue(
               await registry.registerApp({
+                requestedMemberReach: { kind: "none" },
                 actions: { kind: "none" },
                 trust: { kind: "third-party" },
                 slug: "accounting",
@@ -317,6 +323,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 installedByUserId: "installer",
                 grantedPermissions: [],
                 resourceScope: wholeOrganization,
+                memberReach: { kind: "none" } as const,
               };
               const forgedOwner = { kind: "org", orgId: "other-customer", jurisdiction: null };
               const forgedOwnership = { ...input, owner: forgedOwner };
@@ -342,6 +349,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               });
               expect(
                 await installations.updateInstallationAccess({
+                  memberReach: { kind: "none" },
                   appId,
                   grantedPermissions: [],
                   resourceScope: wholeOrganization,
@@ -358,6 +366,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               ).installationId;
               expect(
                 await installations.updateInstallationAccess({
+                  memberReach: { kind: "none" },
                   appId,
                   grantedPermissions: [BACKOFFICE_PERMISSION.events.read],
                   resourceScope: wholeOrganization,
@@ -398,6 +407,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               });
               expect(
                 await installations.updateInstallationAccess({
+                  memberReach: { kind: "none" },
                   appId,
                   grantedPermissions: requestedPermissions,
                   resourceScope: wholeOrganization,
@@ -411,6 +421,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               expect(
                 appOperationValue(
                   await installations.installApp({
+                    memberReach: { kind: "none" },
                     actionsRevision: 1,
                     appId,
                     installedByUserId: "new-installer",
@@ -466,6 +477,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
             ]) {
               const { appId } = appOperationValue(
                 await registry.registerApp({
+                  requestedMemberReach: { kind: "none" },
                   actions: { kind: "none" },
                   trust: { kind: "third-party" },
                   slug: oauthClientId.replace(/-client$/, ""),
@@ -476,6 +488,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               registeredAppIds.push(appId);
               appOperationValue(
                 await installations.installApp({
+                  memberReach: { kind: "none" },
                   actionsRevision: 1,
                   appId,
                   installedByUserId: "installer",
@@ -488,6 +501,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               await runtime.objects.appInstallations
                 .for({ kind: "org", orgId: "customer-two", jurisdiction: null })
                 .commands.installApp({
+                  memberReach: { kind: "none" },
                   actionsRevision: 1,
                   appId: registeredAppIds[0],
                   installedByUserId: "other-installer",
@@ -604,6 +618,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
             appsCommandStep("register and install", async ({ runtime }) => {
               appId = appOperationValue(
                 await runtime.objects.apps.singleton().commands.registerApp({
+                  requestedMemberReach: { kind: "none" },
                   actions: { kind: "none" },
                   trust: { kind: "third-party" },
                   slug: "accounting",
@@ -616,6 +631,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                   await runtime.objects.appInstallations
                     .for({ kind: "org", orgId: organizationId, jurisdiction: null })
                     .commands.installApp({
+                      memberReach: { kind: "none" },
                       actionsRevision: 1,
                       appId,
                       installedByUserId: "installer",
@@ -659,6 +675,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
                 expect(
                   appOperationValue(
                     await registry.registerApp({
+                      requestedMemberReach: { kind: "none" },
                       actions: { kind: "none" },
                       trust: { kind: "third-party" },
                       slug: "accounting",
@@ -696,6 +713,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
           appsCommandStep("register and install before registry failure", async ({ runtime }) => {
             appId = appOperationValue(
               await runtime.objects.apps.singleton().commands.registerApp({
+                requestedMemberReach: { kind: "none" },
                 actions: { kind: "none" },
                 trust: { kind: "third-party" },
                 slug: "accounting",
@@ -707,6 +725,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               await runtime.objects.appInstallations
                 .for({ kind: "org", orgId: "customer", jurisdiction: null })
                 .commands.installApp({
+                  memberReach: { kind: "none" },
                   actionsRevision: 1,
                   appId,
                   installedByUserId: "installer",
@@ -747,6 +766,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               ]);
               await expect(
                 installations.updateInstallationAccess({
+                  memberReach: { kind: "none" },
                   appId,
                   grantedPermissions: [BACKOFFICE_PERMISSION.events.emit],
                   resourceScope: wholeOrganization,
@@ -754,6 +774,7 @@ describe("App registry and organization installation SQLite scenarios", () => {
               ).rejects.toThrow();
               await expect(
                 installations.installApp({
+                  memberReach: { kind: "none" },
                   actionsRevision: 1,
                   appId,
                   installedByUserId: "new-installer",

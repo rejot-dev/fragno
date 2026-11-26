@@ -401,6 +401,7 @@ async function updateGrants(ctx: Ctx, grantedPermissions: BackofficePermissionRe
   const updated = await ctx.runtime.objects.appInstallations
     .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
     .commands.updateInstallationAccess({
+      memberReach: { kind: "none" },
       appId: ctx.vars.appId,
       grantedPermissions,
       resourceScope: wholeOrganization,
@@ -507,6 +508,7 @@ async function runInstalledAppScenario(
               ctx.vars.clientId = client.clientId;
               ctx.vars.clientSecret = client.clientSecret;
               const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+                requestedMemberReach: { kind: "none" },
                 actions: { kind: "none" },
                 trust: { kind: "third-party" },
                 slug: "accounting",
@@ -518,6 +520,7 @@ async function runInstalledAppScenario(
               const installed = await ctx.runtime.objects.appInstallations
                 .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
                 .commands.installApp({
+                  memberReach: { kind: "none" },
                   actionsRevision: 1,
                   appId: ctx.vars.appId,
                   grantedPermissions: [emit],
@@ -697,6 +700,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             const installed = await ctx.runtime.objects.appInstallations
               .for({ kind: "org", orgId: ctx.vars.memberOrgId, jurisdiction: null })
               .commands.installApp({
+                memberReach: { kind: "none" },
                 actionsRevision: 1,
                 appId: ctx.vars.appId,
                 grantedPermissions: [emit],
@@ -808,6 +812,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             "scope_unavailable",
           );
           const reinstalled = await installations.installApp({
+            memberReach: { kind: "none" },
             actionsRevision: 1,
             appId: ctx.vars.appId,
             grantedPermissions: [emit],
@@ -850,7 +855,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
       then(
         "Bookkeeping stops requesting emission, and the owner's emission grant stays until they change access",
         async (ctx) => {
-          const update = `admin.apps.update-permissions --app-id ${ctx.vars.appId} --requested-permissions-json '[{"namespace":"events","permission":"read"}]'`;
+          const update = `admin.apps.update-permissions --app-id ${ctx.vars.appId} --requested-permissions-json '[{"namespace":"events","permission":"read"}]' --requested-member-reach-json '{"kind":"none"}'`;
           assert.equal(await execAsAdministrator(ctx, update), "Updated app permissions.\n");
           assert.equal(await execAsAdministrator(ctx, update), "App permissions unchanged.\n");
           expect(
@@ -867,6 +872,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
           }).commands;
           expect(
             await installations.updateInstallationAccess({
+              memberReach: { kind: "none" },
               appId: ctx.vars.appId,
               grantedPermissions: [emit],
               resourceScope: wholeOrganization,
@@ -1127,6 +1133,7 @@ describe("installed-app event delivery SQLite scenarios", () => {
             const narrowed = await ctx.runtime.objects.appInstallations
               .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
               .commands.updateInstallationAccess({
+                memberReach: { kind: "none" },
                 appId: ctx.vars.appId,
                 grantedPermissions: [emit],
                 resourceScope: { kind: "projects", projectIds: [ctx.vars.payrollProjectId] },

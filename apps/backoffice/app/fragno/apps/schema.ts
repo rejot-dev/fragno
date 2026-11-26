@@ -1,6 +1,7 @@
 import type {
   AppActionsDeclaration,
   AppBranding,
+  AppMemberReach,
   AppTrust,
 } from "@fragno-dev/backoffice-api/v0/apps";
 import type { BackofficeProvisioningPermission } from "@fragno-dev/backoffice-api/v0/provisioning";
@@ -76,6 +77,17 @@ export const appsFragmentSchema = schema("apps", (s) =>
       t.addColumn(
         "branding",
         column("json").nullable() as Column<"json", AppBranding | null, AppBranding | null>,
+      ),
+    )
+    .alterTable("app", (t) =>
+      // Apps registered before member reach requested none.
+      t.addColumn(
+        "requestedMemberReach",
+        column("string").defaultTo("none") as Column<
+          "string",
+          AppMemberReach["kind"],
+          AppMemberReach["kind"]
+        >,
       ),
     ),
 );

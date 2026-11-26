@@ -161,6 +161,21 @@ export const appTrustSchema = z
   .meta({ id: "AppTrust" });
 export type AppTrust = z.infer<typeof appTrustSchema>;
 
+/**
+ * Whether an organization's installation also reaches its members' personal workspaces: none, or
+ * the workspace of each member who lets it in. There the installation has its granted permissions,
+ * and acts only for that member.
+ */
+export const appMemberReachSchema = z
+  .lazy(() =>
+    z.discriminatedUnion("kind", [
+      z.strictObject({ kind: z.literal("none") }),
+      z.strictObject({ kind: z.literal("consenting") }),
+    ]),
+  )
+  .meta({ id: "AppMemberReach" });
+export type AppMemberReach = z.infer<typeof appMemberReachSchema>;
+
 /** Backoffice-specific registration data; OAuth metadata remains authoritative in Auth. */
 export const backofficeAppSchema = z
   .lazy(() =>
@@ -169,6 +184,8 @@ export const backofficeAppSchema = z
       slug: appSlugSchema,
       oauthClientId: z.string().min(1),
       requestedPermissions: appPermissionsSchema,
+      /** What organizations installing the app may approve; a person's own installation never reaches. */
+      requestedMemberReach: appMemberReachSchema,
       actions: appActionsDeclarationSchema,
       actionsRevision: appActionsRevisionSchema,
       trust: appTrustSchema,
@@ -202,11 +219,15 @@ const appInstallationResourceScopeSchema = z
   .meta({ id: "AppInstallationResourceScope" });
 export type AppInstallationResourceScope = z.infer<typeof appInstallationResourceScopeSchema>;
 
-/** What an owner approves: permissions, and the resources they apply to. */
+/**
+ * What an owner approves: permissions, and the resources they apply to, including, for an
+ * organization, its members' personal workspaces when the app requests them.
+ */
 export const appInstallationAccessSchema = z.lazy(() =>
   z.strictObject({
     grantedPermissions: appPermissionsSchema,
     resourceScope: appInstallationResourceScopeSchema,
+    memberReach: appMemberReachSchema,
   }),
 );
 
@@ -233,6 +254,7 @@ export type BackofficeAppInstallationAccessInput = z.infer<
 export const backofficeAppInstallInputSchema = z.lazy(() =>
   backofficeAppInstallationAccessInputSchema._zod.innerType.extend({
     resourceScope: appInstallationResourceScopeSchema.default({ kind: "owner" }),
+    memberReach: appMemberReachSchema.default({ kind: "none" }),
     actionsRevision: appActionsRevisionSchema.describe(
       "The actionsRevision reviewed with apps.get; installation fails if the declaration changed since.",
     ),
@@ -275,6 +297,7 @@ export const backofficeAppInstallationSchema = z
       owner: backofficeRootOwnerSchema,
       grantedPermissions: appPermissionsSchema,
       resourceScope: appInstallationResourceScopeSchema,
+      memberReach: appMemberReachSchema,
       /** Null until the app's server claims the installation for one of its own tenants. */
       externalAccount: appInstallationExternalAccountSchema.nullable(),
       installedByUserId: z.string().min(1),

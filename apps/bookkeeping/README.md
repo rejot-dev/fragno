@@ -89,6 +89,8 @@ values in `.dev.vars` (never commit credentials):
 - `BACKOFFICE_OAUTH_CLIENT_ID`: a dedicated client ID returned by Backoffice.
 - `BACKOFFICE_OAUTH_CLIENT_SECRET`: the initial secret returned when creating that confidential
   client.
+- `BACKOFFICE_APP_ID`: Bookkeeping's app ID in Backoffice's registry, which links people to
+  Backoffice's pages about Bookkeeping.
 - `BOOKKEEPING_BASE_URL`: the Bookkeeping origin, e.g. `http://127.0.0.1:4173`.
 - `BOOKKEEPING_OPERATOR_ORGANIZATION_ID`: the Backoffice organization whose members are the
   operators.
@@ -291,14 +293,15 @@ After changing the actions, run `pnpm backoffice:connect` to register them.
 
 ## Agent packages
 
-Bookkeeping's two agents, the firm's [bookkeeping agent](#the-bookkeeping-agent) and each
-administration's [assistant](#asking-about-the-books), come from Marketplace packages it publishes
-in its own Marketplace in Backoffice, which only Bookkeeping's installations install from (see
-Backoffice's `app/fragno/apps/README.md`, "App packages"). `workers/backoffice/agents.ts` defines
-them: `bookkeeper-agent` for the firm's agent project and `books-agent` for each administration's
-project, each a version, a declaration defining one agent, and the files installed beside it in
-`/workspace/bookkeeping`. `pnpm backoffice:connect` publishes them as
-`app:bookkeeping#bookkeeper-agent` and `app:bookkeeping#books-agent`.
+Bookkeeping's agents, the firm's [bookkeeping agent](#the-bookkeeping-agent) and each
+administration's [assistant](#asking-about-the-books) and [company-details agent](#company-details),
+come from Marketplace packages it publishes in its own Marketplace in Backoffice, which only
+Bookkeeping's installations install from (see Backoffice's `app/fragno/apps/README.md`, "App
+packages"). `workers/backoffice/agents.ts` defines them: `bookkeeper-agent` for the firm's agent
+project and `books-agent` for each administration's project, each a version, a declaration defining
+its agents, and the files installed beside them in `/workspace/bookkeeping`.
+`pnpm backoffice:connect` publishes them as `app:bookkeeping#bookkeeper-agent` and
+`app:bookkeeping#books-agent`.
 
 Among `bookkeeper-agent`'s files is `work-queue.page.js` (`workers/backoffice/work-queue-page.ts`),
 a Backoffice page the firm opens from its agent project's dashboard: what Bookkeeping asked the
@@ -373,7 +376,7 @@ refusals as form errors:
 | `/bank/transactions/:transactionId`    | One bank transaction, booking it as a payment that settles open items, and the entries booking it |
 | `/accounts`, `/accounts/:accountId`    | The chart of accounts and adding to it; an account's lines, and renaming or deactivating it       |
 | `/trial-balance`                       | Each account's totals for the fiscal year through a period; `?period=` picks it                   |
-| `/parties`, `/parties/:partyAccountId` | Customers and suppliers; one's open items, settling them against each other, and undoing that     |
+| `/parties`, `/parties/:partyAccountId` | Customers and suppliers; one's company details, open items, settling them, and undoing that       |
 | `/settings`                            | Fiscal years, and closing, reopening, or locking their periods; journals, dimensions, currencies  |
 | `/ask`                                 | Asking the books' assistant about them                                                            |
 
@@ -622,6 +625,42 @@ fail, the dashboard shows the kept answer with "Send again"; a later answer, fro
 earlier, sends the kept one too, so the conversation and the Directory hold the same answer, and it
 arrives once.
 
+### Company details
+
+A customer's or supplier's page keeps its company details beside the ledger's name: its registration
+number, such as a KvK number, VAT number, IBAN, and address (`workers/books/party-details`, one row
+per ledger party). Anyone keeping the books edits them.
+
+**Fill in from your connections** looks them up in the person's own connections, such as a company
+register or accounting package they connected in their personal workspace in Leyway, and fills in
+the form with what it found for them to check and save; nothing is saved until they do. Bookkeeping
+prompts the `company-details` agent of the administration's project, from the `books-agent` package,
+as the person, each lookup in a subagent of its own, and the page follows it with `pi.prompt.get`
+under `?lookup=<request ID>`. Bookkeeping asks organizations for their members' personal workspaces
+(`requestedMemberReach`), so the agent reaches the person's connections once they let Bookkeeping
+into their personal workspace for this client (Backoffice's `app/fragno/apps/README.md`, "Members'
+personal workspaces"), and answers with JSON, which `app/books/company-details.server.ts` validates.
+Until they let it in, the agent passes on Backoffice's refusal, and the page links to where they do,
+Backoffice's page for this client's organization only. The lookup's conversation stays in the
+administration's project, so whoever can read the project's agents reads what it found. When the
+project has no `company-details` agent, a lookup installs the package again, as the chat does. A
+lookup whose submission failed is retried with its request ID, as it may have started though
+Backoffice's answer was lost, so a retry never starts a second lookup.
+
+To try it locally against Backoffice:
+
+1. Run `pnpm backoffice:connect` to register what Bookkeeping requests and publish the package with
+   the agent.
+2. Run `pnpm company-register:serve --token dev`: a made-up company register as an MCP server on
+   `http://127.0.0.1:5899/mcp` (`scripts/company-register-mcp.ts`), with `search_companies` and
+   `get_company`. It logs each call, so you see when a lookup reached it. Leave out `--token` to
+   connect it without credentials.
+3. In your personal workspace in Leyway, connect it as an MCP server with bearer token `dev`, as
+   `mcp#company-register`.
+4. Add a supplier named after one of its companies, such as Babbage Works or Acme Supplies, and use
+   **Fill in from your connections** on its page. Bookkeeping links where you let it into your
+   personal workspace in Leyway; allow it, then fill in again.
+
 Bookkeeping is not live, so its storage keeps no compatibility: books are set up only when their
 administration is created, and administrations from before a storage change do not open. Delete
 `.wrangler/state` to start over locally.
@@ -696,6 +735,7 @@ pnpm exec wrangler secret put BOOKKEEPING_BASE_URL
 pnpm exec wrangler secret put BACKOFFICE_BASE_URL
 pnpm exec wrangler secret put BACKOFFICE_OAUTH_CLIENT_ID
 pnpm exec wrangler secret put BACKOFFICE_OAUTH_CLIENT_SECRET
+pnpm exec wrangler secret put BACKOFFICE_APP_ID
 pnpm exec wrangler secret put BOOKKEEPING_OPERATOR_ORGANIZATION_ID
 pnpm deploy
 ```

@@ -586,7 +586,7 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     // workspace; the document's folder is shared with it while it is asked.
     expect(
       scenario.backoffice.agents(CLIENT, ADMINISTRATION).map(({ agentName }) => agentName),
-    ).toEqual(["books"]);
+    ).toEqual(["books", "company-details"]);
     expect(scenario.backoffice.agents(FIRM, FIRM_AGENT)).toMatchObject([
       {
         agentName: "bookkeeper",

@@ -38,7 +38,7 @@ import { apiError } from "./api-error";
 
 type ProvisioningApp = Pick<
   BackofficeApp,
-  "id" | "oauthClientId" | "requestedPermissions" | "actionsRevision"
+  "id" | "oauthClientId" | "requestedPermissions" | "requestedMemberReach" | "actionsRevision"
 > & { branding: AppBranding };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -76,6 +76,7 @@ async function installProvisioned(
         appId: app.id,
         grantedPermissions: app.requestedPermissions,
         resourceScope: { kind: "owner" },
+        memberReach: app.requestedMemberReach,
         installedByUserId: input.installedByUserId,
         actionsRevision: app.actionsRevision,
       }),

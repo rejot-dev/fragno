@@ -17,6 +17,11 @@ import type {
   BackofficeAppConnection,
   AppEndpointCallInput,
   AppEndpointResponse,
+  AppMemberReachConsent,
+  AppMemberReachConsentInput,
+  AppMemberReachConsentPage,
+  AppMemberReachConsentPageInput,
+  AppMemberReachLookup,
 } from "@/fragno/app-installations/contracts";
 import type { BackofficeAppOperationResult } from "@/fragno/apps/errors";
 
@@ -77,6 +82,28 @@ export class AppInstallations
     input: BackofficeAppInstallationActionsApprovalInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppInstallationMutationResult>> {
     return this.#object.approveActions(input);
+  }
+
+  allowMemberReach(
+    input: AppMemberReachConsentInput,
+  ): Promise<BackofficeAppOperationResult<{ changed: boolean }>> {
+    return this.#object.allowMemberReach(input);
+  }
+
+  stopMemberReach(
+    input: AppMemberReachLookup,
+  ): Promise<BackofficeAppOperationResult<{ changed: boolean }>> {
+    return this.#object.stopMemberReach(input);
+  }
+
+  getMemberReachConsent(input: AppMemberReachLookup): Promise<AppMemberReachConsent | null> {
+    return this.#object.getMemberReachConsent(input);
+  }
+
+  listMemberReachConsents(
+    input: AppMemberReachConsentPageInput,
+  ): Promise<BackofficeAppOperationResult<AppMemberReachConsentPage>> {
+    return this.#object.listMemberReachConsents(input);
   }
 
   getAppConnection(input: BackofficeAppLookupInput): Promise<BackofficeAppConnection> {

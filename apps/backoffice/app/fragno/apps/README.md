@@ -283,9 +283,11 @@ Creation registers an **existing** Better Auth OAuth client. It does not create 
 install the app. Repeating the same declaration returns the same app ID with `created: false`;
 changing a declaration through repeated creation fails explicitly. The slug never changes; actions
 change only through `admin.apps.update-actions` (see [App actions](#app-actions)), requested
-permissions only through `admin.apps.update-permissions`, and trust only through
-`admin.apps.update-trust` (see [First-party apps](#first-party-apps)). `--trust-json` defaults to
-`{"kind":"third-party"}`.
+permissions and whether the app asks for
+[members' personal workspaces](#members-personal-workspaces) (`--requested-member-reach-json`) only
+through `admin.apps.update-permissions`, and trust only through `admin.apps.update-trust` (see
+[First-party apps](#first-party-apps)). `--trust-json` defaults to `{"kind":"third-party"}`, and
+`--requested-member-reach-json` to `{"kind":"none"}`.
 
 Apps cannot request `account.manage`, `apps.read`, `apps.manage`, or `org.manage`. Those change a
 person's account, an organization's apps, or its membership, and only the person acting directly
@@ -603,18 +605,19 @@ apps.install --app-id APP_ID --actions-revision 1 \
 apps.installations.get --app-id APP_ID --format json
 apps.installations.list --page-size 25
 apps.installations.update --app-id APP_ID --granted-permissions-json '[]' \
-  --resource-scope-json '{"kind":"owner"}'
+  --resource-scope-json '{"kind":"owner"}' --member-reach-json '{"kind":"none"}'
 apps.uninstall --app-id APP_ID
 ```
 
 Install and update inputs require an explicit permission array; `[]` approves no capabilities.
 Resources are `{ "kind": "owner" }`, everything the owner has, or
 `{ "kind": "projects", "projectIds": [...] }` for current, unarchived projects the owner owns
-directly; install defaults to everything, while update requires both so access is never widened
-implicitly. Installer attribution comes from the authenticated principal. Neither
-`installedByUserId` nor an owner is accepted from callers. Duplicate install cannot change access or
-replace the installer; use the explicit update command. Reinstallation retains installation
-identity, records the newly approving user, and increments `activation`.
+directly; install defaults to everything, while update requires them so access is never widened
+implicitly. Member reach (`--member-reach-json`, [below](#members-personal-workspaces)) defaults to
+none on install and is required on update. Installer attribution comes from the authenticated
+principal. Neither `installedByUserId` nor an owner is accepted from callers. Duplicate install
+cannot change access or replace the installer; use the explicit update command. Reinstallation
+retains installation identity, records the newly approving user, and increments `activation`.
 
 Lists default to 25 records, accept 1–100, and return `{ installations, nextCursor, hasNextPage }`.
 Resume with the same owner and page size. Bash commands produce readable text by default;
@@ -655,6 +658,44 @@ grants. Either way the target must be inside the approved resources. Narrowing a
 member, banning the user, or uninstalling affects already-issued credentials immediately. Each
 reinstall increments `activation`; credentials and app-started work from an earlier activation never
 revive. Installation management is never available to an app.
+
+### Members' personal workspaces
+
+An organization's installation may also reach its members' personal workspaces, `user:<memberId>`,
+when the app acts for that member: for example `context.user(<memberId>).integrations` from work in
+the organization, or an API call on the member's scope with the member's org-bound credential. It
+reaches the workspace itself only, never the member's projects or another person's workspace, and
+never as the installation acting on its own. There the app has the installation's granted
+permissions, as everywhere it reaches; the member's own permissions apply too, as always when an app
+acts for someone. Two decisions are needed, and both are resolved on every call:
+
+- **The organization** lets the app ask its members, with the installation's `memberReach`
+  (`{ "kind": "consenting" }`, or `{ "kind": "none" }`). Only an app that requests it
+  (`requestedMemberReach`) may be given it, and only by an organization; installs default to none. A
+  first-party app's organization installations follow its request, as its permissions do.
+- **The member** lets the app in for that organization, at
+  `/backoffice/apps/<appId>/member-reach/<orgId>`, and sees and stops it under **Settings →
+  Authorized applications**. The member decides only whether the app may enter, not what it may do;
+  the organization decides that. Letting it in holds for the installation the page showed them, and
+  is refused if the organization reinstalled the app since; after a reinstall the member decides
+  again. Stopping needs only their own consent, so it works after the app stops asking, the
+  installation is gone, or they left the organization. Only the member themselves decides; an
+  impersonating administrator is refused. The page tells the member that the work stays in the
+  organization: people there who can see it read what it finds in their workspace, and people who
+  can change it can make it act there.
+
+A member who leaves the organization is no longer reached. The kernel admits a member's workspace
+beyond the credential's scope only for calls whose permissions it checks there, so nothing that
+checks none runs in it. Agent watch sockets are refused there: a socket is authorized only when it
+opens, so it could not stop when the member does. Denials tell the member where to decide.
+
+Workflows and agents in the organization, which its members can change, run as the member: what runs
+for them there can act in their personal workspace. The consent page says so.
+
+The member stopping it, the organization turning `memberReach` off, or uninstalling stops running
+work at its next call; letting it in again lets it continue. What members allow lives in their own
+`APP_INSTALLATIONS` object, keyed by app and organization.
+`app/backoffice-api/installed-app-member-reach.scenario.test.ts` covers the flow.
 
 ### App workspaces
 

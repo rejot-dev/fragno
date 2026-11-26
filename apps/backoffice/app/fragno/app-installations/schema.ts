@@ -1,4 +1,7 @@
-import type { AppInstallationExternalAccount } from "@fragno-dev/backoffice-api/v0/apps";
+import type {
+  AppInstallationExternalAccount,
+  AppMemberReach,
+} from "@fragno-dev/backoffice-api/v0/apps";
 import type { BackofficePermissionRequirement } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { column, idColumn, schema, type Column } from "@fragno-dev/db/schema";
 
@@ -85,5 +88,34 @@ export const appInstallationsFragmentSchema = schema("app-installations", (s) =>
       // Set when a first-party app is installed: no owner reviewed its grants, so it has what the
       // app requests now. Earlier and third-party installations have their stored grants.
       t.addColumn("grantsFollowApp", column("bool").defaultTo(false)),
+    )
+    // Only a person's own object holds these: that they let an app into their personal workspace
+    // when it acts for them in an organization. Stopping deletes the row.
+    .addTable("member_reach_consent", (t) =>
+      t
+        .addColumn("id", idColumn())
+        .addColumn("appId", column("string"))
+        .addColumn("orgId", column("string"))
+        // The organization's installation the person let in; a reinstall asks again.
+        .addColumn("activation", column("integer"))
+        .addColumn(
+          "updatedAt",
+          column("timestamp").defaultTo((b) => b.now()),
+        )
+        .createIndex("idx_member_reach_consent_appId_orgId", ["appId", "orgId"], {
+          unique: true,
+        }),
+    )
+    .alterTable("app_installation", (t) =>
+      // Whether an organization's installation reaches its members' personal workspaces, those of
+      // members who let it in. A person's own installation reaches none.
+      t.addColumn(
+        "memberReach",
+        column("string").defaultTo("none") as Column<
+          "string",
+          AppMemberReach["kind"],
+          AppMemberReach["kind"]
+        >,
+      ),
     ),
 );

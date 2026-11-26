@@ -689,6 +689,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
 
       const requestedPermissions = [{ namespace: "events" as const, permission: "emit" as const }];
       const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+        requestedMemberReach: { kind: "none" },
         actions: { kind: "none" },
         trust: { kind: "third-party" },
         slug: "accounting",
@@ -702,6 +703,7 @@ describe("Backoffice execution token SQLite scenarios", () => {
       const installed = await ctx.runtime.objects.appInstallations
         .for({ kind: "org", orgId: organization.id, jurisdiction: null })
         .commands.installApp({
+          memberReach: { kind: "none" },
           actionsRevision: 1,
           appId: registered.value.appId,
           grantedPermissions: requestedPermissions,

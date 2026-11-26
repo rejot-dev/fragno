@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { Link, redirect } from "react-router";
 
 import { requireSessionUser } from "../auth/session.server";
+import { SignOutButton } from "../auth/sign-out-button";
 import { invitedTo } from "../invitations/invited-to";
 import { MODE_GROUP_LABELS, MODES } from "../shell/modes";
 import { listPlaces } from "../shell/shell.server";
@@ -53,6 +54,8 @@ export default function Start({ loaderData }: Route.ComponentProps) {
           You're signed in as {email}, but no one has added you to a firm or a client yet. Ask the
           firm that keeps your books to invite you.
         </p>
+        {/* Signed in with the wrong account, the way out is to sign in with another. */}
+        <SignOutButton then="/login" />
       </section>
     );
   }

@@ -5,7 +5,11 @@ import type { z } from "zod";
 import type { Outcome } from "../../workers/books/books";
 import { canManage } from "../../workers/directory/membership";
 import { assertSameOrigin } from "../auth/session.server";
-import { requireOrganization } from "../organizations/access.server";
+import {
+  connectAsUser,
+  organizationNotFound,
+  requireOrganization,
+} from "../organizations/access.server";
 
 type BooksParams = { slug: string; administration: string };
 
@@ -98,4 +102,24 @@ export function dimensionRules(
     }
   }
   return rules;
+}
+
+/**
+ * Backoffice as the signed-in person, in the administration's project. Backoffice refusing means
+ * they were removed or Bookkeeping was uninstalled since their membership was last confirmed.
+ */
+export async function connectToAdministrationAsUser(
+  request: Request,
+  context: Awaited<ReturnType<typeof requireBooks>>,
+) {
+  const scope = {
+    kind: "project" as const,
+    owner: { kind: "org" as const, orgId: context.organization.id, jurisdiction: null },
+    projectId: context.administration.id,
+  };
+  const backoffice = await connectAsUser(request, scope);
+  if (!backoffice) {
+    throw organizationNotFound();
+  }
+  return { backoffice, scope };
 }

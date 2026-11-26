@@ -18,17 +18,15 @@ import {
 } from "react-router";
 
 import { requireBackofficeBrowserSession } from "@/fragno/auth/browser-session.server";
-import type { BackofficeMeData } from "@/fragno/auth/contracts";
-import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
 import type { Route } from "./+types/app-install";
 import {
   decideAppInstallation,
   describeAppPermissions,
   loadAppInstallChoices,
+  requireOnboardedAppUser,
   resolveAppInstallRequest,
 } from "./app-install.server";
-import { buildBackofficeOnboardingPath } from "./onboarding-path";
 
 const noStoreHeaders = { "cache-control": "no-store", "referrer-policy": "no-referrer" };
 
@@ -43,34 +41,10 @@ async function requireInstallRequest(context: Route.LoaderArgs["context"], url: 
   }
 }
 
-/**
- * The installing person, once onboarded: their personal scope does not exist before onboarding
- * fixes its jurisdiction, so onboarding comes first and returns here.
- */
-async function requireOnboardedInstaller(
-  context: Route.LoaderArgs["context"],
-  url: URL,
-  userId: string,
-): Promise<BackofficeMeData> {
-  const me = await context
-    .get(BackofficeWorkerContext)
-    .runtime.objects.auth.singleton()
-    .commands.getBackofficeMe({ userId, activeOrganizationId: null });
-  if (!me) {
-    throw new Error("The signed-in user does not exist.");
-  }
-  if (me.user.onboardedAt === null) {
-    throw redirect(buildBackofficeOnboardingPath(`${url.pathname}${url.search}`), {
-      headers: noStoreHeaders,
-    });
-  }
-  return me;
-}
-
 export async function loader({ request, context, url }: Route.LoaderArgs) {
   const user = await requireBackofficeBrowserSession({ request, context, url });
   const installRequest = await requireInstallRequest(context, url);
-  const me = await requireOnboardedInstaller(context, url, user.id);
+  const me = await requireOnboardedAppUser(context, url, user.id);
   const choices = await loadAppInstallChoices(context, {
     me,
     appId: installRequest.app.id,
@@ -81,6 +55,7 @@ export async function loader({ request, context, url }: Route.LoaderArgs) {
       userEmail: user.email,
       clientName: installRequest.client.name,
       requestedPermissions: describeAppPermissions(installRequest.app.requestedPermissions),
+      requestsMemberReach: installRequest.app.requestedMemberReach.kind === "consenting",
       actions: installRequest.app.actions,
       actionsRevision: installRequest.app.actionsRevision,
       firstParty: installRequest.app.trust.kind === "first-party",
@@ -100,7 +75,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
   const user = await requireBackofficeBrowserSession({ request, context, url });
   const installRequest = await requireInstallRequest(context, url);
   const result = await decideAppInstallation(context, {
-    me: await requireOnboardedInstaller(context, url, user.id),
+    me: await requireOnboardedAppUser(context, url, user.id),
     request: installRequest,
     formData: await request.formData(),
   });
@@ -241,6 +216,13 @@ export default function BackofficeAppInstall({
               personal={personal}
             />
           )}
+          {install.requestsMemberReach && !personal ? (
+            <MemberReachField
+              appName={install.clientName}
+              firstParty={install.firstParty}
+              current={current ? current.memberReach.kind === "consenting" : false}
+            />
+          ) : null}
           <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
             {personal
               ? `${install.clientName} can then act for you within the access above: as itself, and on your behalf when you authorize it.`
@@ -274,6 +256,37 @@ export default function BackofficeAppInstall({
         </Form>
       </div>
     </AuthorizationScreen>
+  );
+}
+
+/**
+ * Members' personal workspaces are an escalation the installer chooses explicitly; each member
+ * still decides for their own.
+ */
+function MemberReachField({
+  appName,
+  firstParty,
+  current,
+}: {
+  appName: string;
+  firstParty: boolean;
+  current: boolean;
+}) {
+  const explanation = `${appName} can then ask members to let it into their personal workspaces, where it may do what it may do here, only when acting for that member. Each member decides for themselves.`;
+  return (
+    <fieldset className="space-y-2 border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] p-4">
+      <legend className="px-1 text-[11px] tracking-[0.22em] text-[var(--bo-muted-2)] uppercase">
+        Members' personal workspaces
+      </legend>
+      {firstParty ? (
+        <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">{explanation}</p>
+      ) : (
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" name="memberReach" defaultChecked={current} className="mt-1" />
+          <span className="leading-6 text-pretty">{explanation}</span>
+        </label>
+      )}
+    </fieldset>
   );
 }
 

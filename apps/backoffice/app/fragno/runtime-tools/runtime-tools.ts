@@ -317,6 +317,12 @@ const authorizeBackofficeRuntimeTool = async (
     );
   }
 
+  // A tool that requires no permission is still held to the execution's scope ceiling.
+  if (tool.requiredPermissions.length === 0) {
+    await context.kernel.assertAuthorizedAll({ execution: context.execution, requirements: [] });
+    return;
+  }
+
   // TODO: Express this ordered authorization chain without triggering async-await-in-loop.
   for (const operation of tool.requiredPermissions) {
     try {

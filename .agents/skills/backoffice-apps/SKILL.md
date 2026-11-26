@@ -142,6 +142,15 @@ restrictions, and refusal, reauthorization, and unknown outcomes take distinct p
   [agent packages](../../../apps/bookkeeping/README.md#agent-packages) install where a project is
   created, upgrade after a deploy from a Durable Object's start, and reinstall when an agent is
   missing.
+- **Work in an organization that reaches the signed-in person's personal workspace,** such as their
+  own connections: register with `requestedMemberReach: { kind: "consenting" }` (third-party apps
+  also need the organization to approve it), call `context.user(<personId>)` from work the app
+  starts for that person, or the API on `user:<personId>` with their org-bound credential, and send
+  the person to `/backoffice/apps/<appId>/member-reach/<orgId>` to let the app in. There it has the
+  installation's permissions, so request what its calls need, e.g. `connections.read` beside
+  `integrations.*` for connections. Until they let it in, those calls fail with a message to pass on
+  to them. Read
+  [members' personal workspaces](../../../apps/backoffice/app/fragno/apps/README.md#members-personal-workspaces).
 - **Durable onboarding:** also read [Fragno Workflows](../fragno-workflows/SKILL.md) before
   implementing replayable steps. Bootstrap belongs in the app: the Backoffice tenant it would run in
   may not exist yet.

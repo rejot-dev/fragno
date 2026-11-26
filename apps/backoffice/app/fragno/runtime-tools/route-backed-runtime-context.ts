@@ -427,7 +427,7 @@ const createRuntimeContext = ({
     resolveRootOwner: async (owner) =>
       await runtime.objects.auth.singleton().commands.findRootOwnerScope(owner),
     createBackofficeScopedContext: (scope) => {
-      kernel.assertScopedContextAccess(execution, scope);
+      kernel.assertScopedContextHandle(execution, scope);
       return createRuntimeContext({
         runtime,
         kernel,

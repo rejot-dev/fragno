@@ -278,6 +278,14 @@ export const createCloudflareBackofficeRuntimeServices = (
             installations: {
               getInstallation: async ({ owner, appId }) =>
                 await objects.appInstallations.for(owner).commands.getInstallation({ appId }),
+              getMemberReachConsent: async ({ owner, ...lookup }) =>
+                await objects.appInstallations.for(owner).commands.getMemberReachConsent(lookup),
+            },
+            organizations: {
+              hasAccess: async ({ orgId, userId }) =>
+                (await objects.auth
+                  .singleton()
+                  .commands.getOrganizationMembership({ organizationId: orgId, userId })) !== null,
             },
           }),
           lookupCapabilityGrants: async ({ ownerScope, ...input }) =>

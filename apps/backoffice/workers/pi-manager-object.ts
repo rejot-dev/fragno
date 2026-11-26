@@ -26,6 +26,7 @@ import {
   type WorkersAiModelDescription,
 } from "@/backoffice-runtime/object-registry";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
+import { memberReachUse } from "@/fragno/app-installations/authority";
 import type { PackageInstallationOutcome } from "@/fragno/automation/package-installations";
 import type { BillingMeasurementInput } from "@/fragno/billing/contracts";
 import {
@@ -272,6 +273,14 @@ export class PiManagerObject extends RpcTarget implements PiManagerCommands {
     // The same checks the manager's routes make of a GET, such as reading the conversation.
     if (!backofficeContextScopesEqual(execution.scope, scope)) {
       return { type: "refused", message: "Pi manager requires matching scope action context." };
+    }
+    // A socket is authorized once, when it opens, so it could not stop when the member stops
+    // letting the app into their workspace.
+    if (memberReachUse(execution) !== null) {
+      return {
+        type: "refused",
+        message: "An app cannot watch an agent in a member's personal workspace.",
+      };
     }
     try {
       await this.#kernel.assertAuthorized({

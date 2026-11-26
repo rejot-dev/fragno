@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import type {
   AppActionsDeclaration,
   AppBranding,
+  AppMemberReach,
   AppTrust,
   BackofficeApp,
   BackofficeAppLookupInput,
@@ -100,6 +101,7 @@ function toBackofficeApp(
     slug: string | null;
     oauthClientId: string;
     requestedPermissions: BackofficePermissionRequirement[];
+    requestedMemberReach: AppMemberReach["kind"];
     actions: AppActionsDeclaration | null;
     actionsRevision: number;
     createdAt: Date;
@@ -110,6 +112,7 @@ function toBackofficeApp(
     slug: app.slug ?? app.id.externalId,
     oauthClientId: app.oauthClientId,
     requestedPermissions: knownBackofficePermissions(app.requestedPermissions),
+    requestedMemberReach: { kind: app.requestedMemberReach },
     actions: app.actions ?? { kind: "none" },
     actionsRevision: app.actionsRevision,
     trust: toAppTrust(app),
@@ -211,6 +214,12 @@ export const appsFragmentDefinition = defineFragment("apps")
                     "Backoffice app OAuth client is already registered with different requested permissions; change them with admin.apps.update-permissions.",
                   );
                 }
+                if (existing.requestedMemberReach !== input.requestedMemberReach.kind) {
+                  throw new BackofficeAppDomainError(
+                    "APP_REGISTRATION_CONFLICT",
+                    "Backoffice app OAuth client is already registered with a different member reach; change it with admin.apps.update-permissions.",
+                  );
+                }
                 if (!isDeepStrictEqual(existing.actions ?? { kind: "none" }, input.actions)) {
                   throw new BackofficeAppDomainError(
                     "APP_REGISTRATION_CONFLICT",
@@ -236,10 +245,14 @@ export const appsFragmentDefinition = defineFragment("apps")
                 oauthClientId: input.oauthClientId,
               });
               uow.checkAbsent("app", "idx_app_slug", { slug: input.slug });
-              const { trust, ...registration } = input;
+              const { trust, requestedMemberReach, ...registration } = input;
               const id = uow.create(
                 "app",
-                { ...registration, ...toStoredAppTrust(trust) },
+                {
+                  ...registration,
+                  requestedMemberReach: requestedMemberReach.kind,
+                  ...toStoredAppTrust(trust),
+                },
                 {
                   // A retry reads the concurrent registration and reports it.
                   retryOnUniqueConflict: ({ error }) =>
@@ -276,7 +289,10 @@ export const appsFragmentDefinition = defineFragment("apps")
           .build();
       },
 
-      /** A third-party installation stores its own grants, so changing the request never widens one. */
+      /**
+       * A third-party installation stores its own grants and member reach, so changing the request
+       * never widens one.
+       */
       updateAppPermissions: function (input: BackofficeAppPermissionsUpdateInput) {
         return this.serviceTx(appsFragmentSchema)
           .retrieve((uow) =>
@@ -288,11 +304,19 @@ export const appsFragmentDefinition = defineFragment("apps")
             if (!app) {
               throw new BackofficeAppDomainError("APP_NOT_FOUND", "Backoffice app was not found.");
             }
-            if (appPermissionsEqual(app.requestedPermissions, input.requestedPermissions)) {
+            if (
+              appPermissionsEqual(app.requestedPermissions, input.requestedPermissions) &&
+              app.requestedMemberReach === input.requestedMemberReach.kind
+            ) {
               return { changed: false };
             }
             uow.update("app", app.id, (b) =>
-              b.set({ requestedPermissions: input.requestedPermissions }).check(),
+              b
+                .set({
+                  requestedPermissions: input.requestedPermissions,
+                  requestedMemberReach: input.requestedMemberReach.kind,
+                })
+                .check(),
             );
             return { changed: true };
           })

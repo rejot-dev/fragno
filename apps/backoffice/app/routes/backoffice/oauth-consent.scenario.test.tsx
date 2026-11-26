@@ -22,6 +22,7 @@ import {
 import { createBackofficeRouterContextProvider } from "@/worker-runtime/router-context-provider.server";
 
 import { ApiObject } from "../../../workers/api-object";
+import { AppInstallationsObject } from "../../../workers/app-installations-object";
 import { AppsObject } from "../../../workers/apps-object";
 import { AuthObject } from "../../../workers/auth-object";
 import { AutomationsObject } from "../../../workers/automations-object";
@@ -39,6 +40,7 @@ import ConsentScreen, { loader, action } from "./oauth-consent";
 const scenarioObjects = {
   API: (input) => new ApiObject(input),
   APPS: (input) => new AppsObject(input),
+  APP_INSTALLATIONS: (input) => new AppInstallationsObject(input),
   AUTH: (input) => new AuthObject({ ...input, database: input.getAuthDatabase() }),
   AUTOMATIONS: (input) => new AutomationsObject(input),
   OTP: (input) => new OtpObject(input),
@@ -373,6 +375,7 @@ test("first-party apps are authorized without a review, and their consent is nei
   await runConsentScenario(async (ctx) => {
     const client = await createClient(ctx);
     const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+      requestedMemberReach: { kind: "none" },
       slug: "ledger",
       oauthClientId: client.clientId,
       requestedPermissions: [],

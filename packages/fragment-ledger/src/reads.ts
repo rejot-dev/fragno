@@ -22,6 +22,30 @@ type LedgerServiceContext = DatabaseServiceContext<{}>;
 
 const PAGE_SIZE = 50;
 
+/** A party as `listParties` and `getParty` read it, with its accounts and their control accounts. */
+function partyView(party: {
+  id: { valueOf(): string };
+  name: string;
+  accounts: {
+    id: { valueOf(): string };
+    role: PartyView["accounts"][number]["role"];
+    code: string;
+    controlAccount: { id: { valueOf(): string } } | null;
+  }[];
+}): PartyView {
+  return {
+    id: party.id.valueOf(),
+    name: party.name,
+    accounts: party.accounts.map((account) => ({
+      id: account.id.valueOf(),
+      role: account.role,
+      code: account.code,
+      // References always resolve: every joined row is referenced by a foreign key.
+      controlAccountId: account.controlAccount!.id.valueOf(),
+    })),
+  };
+}
+
 export const readServices = {
   getLedger: function (this: LedgerServiceContext) {
     return this.serviceTx(ledgerSchema)
@@ -189,19 +213,31 @@ export const readServices = {
             ),
         ),
       )
-      .transformRetrieve(([parties]): PartyView[] =>
-        parties.map((party) => ({
-          id: party.id.valueOf(),
-          name: party.name,
-          accounts: party.accounts.map((account) => ({
-            id: account.id.valueOf(),
-            role: account.role,
-            code: account.code,
-            // References always resolve: every joined row is referenced by a foreign key.
-            controlAccountId: account.controlAccount!.id.valueOf(),
-          })),
-        })),
+      .transformRetrieve(([parties]): PartyView[] => parties.map(partyView))
+      .build();
+  },
+
+  /** The party `partyId`, with its accounts; null when there is none. */
+  getParty: function (this: LedgerServiceContext, partyId: string) {
+    return this.serviceTx(ledgerSchema)
+      .retrieve((uow) =>
+        uow.findFirst("party", (b) =>
+          b
+            .whereIndex("primary", (eb) => eb("id", "=", partyId))
+            .joinMany("accounts", "partyAccount", (account) =>
+              account
+                .onIndex("idx_party_account_party_role", (eb) =>
+                  eb("partyId", "=", eb.parent("id")),
+                )
+                .joinOne("controlAccount", "account", (control) =>
+                  control
+                    .onIndex("primary", (eb) => eb("id", "=", eb.parent("controlAccountId")))
+                    .select(["id"]),
+                ),
+            ),
+        ),
       )
+      .transformRetrieve(([party]): PartyView | null => (party ? partyView(party) : null))
       .build();
   },
 

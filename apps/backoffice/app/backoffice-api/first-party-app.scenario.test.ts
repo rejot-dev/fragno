@@ -349,6 +349,7 @@ async function runFirstPartyScenario(
               ctx.vars.clientId = client.clientId;
               ctx.vars.clientSecret = client.clientSecret;
               const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+                requestedMemberReach: { kind: "none" },
                 slug: "bookkeeping",
                 oauthClientId: client.clientId,
                 requestedPermissions: [emit],
@@ -775,7 +776,7 @@ test("a provisioned organization follows what Bookkeeping requests, within a min
       async (ctx) => {
         await execAsAdministrator(
           ctx,
-          `admin.apps.update-permissions --app-id ${ctx.vars.appId} --requested-permissions-json '[{"namespace":"events","permission":"emit"},{"namespace":"events","permission":"read"}]'`,
+          `admin.apps.update-permissions --app-id ${ctx.vars.appId} --requested-permissions-json '[{"namespace":"events","permission":"emit"},{"namespace":"events","permission":"read"}]' --requested-member-reach-json '{"kind":"none"}'`,
         );
         ctx.runtime.advanceTime(61_000);
         const { events } = await (await callAsInstallation(ctx)).list();
@@ -792,6 +793,7 @@ test("a provisioned organization follows what Bookkeeping requests, within a min
       async (ctx) => {
         await expect(
           ctx.runtime.objects.apps.singleton().commands.updateAppPermissions({
+            requestedMemberReach: { kind: "none" },
             appId: ctx.vars.appId,
             requestedPermissions: [
               BACKOFFICE_PERMISSION.events.read,
@@ -804,7 +806,7 @@ test("a provisioned organization follows what Bookkeeping requests, within a min
     then("Bookkeeping stops requesting emission, and loses it", async (ctx) => {
       await execAsAdministrator(
         ctx,
-        `admin.apps.update-permissions --app-id ${ctx.vars.appId} --requested-permissions-json '[{"namespace":"events","permission":"read"}]'`,
+        `admin.apps.update-permissions --app-id ${ctx.vars.appId} --requested-permissions-json '[{"namespace":"events","permission":"read"}]' --requested-member-reach-json '{"kind":"none"}'`,
       );
       ctx.runtime.advanceTime(61_000);
       const bookkeeping = await callAsInstallation(ctx);
@@ -1440,6 +1442,7 @@ test("Bookkeeping provisions a client managed by a firm, whose people work in it
             await ctx.runtime.objects.appInstallations
               .for({ kind: "org", orgId: euFirm.id, jurisdiction: "eu" })
               .commands.installApp({
+                memberReach: { kind: "none" },
                 appId: ctx.vars.appId,
                 grantedPermissions: [emit],
                 resourceScope: { kind: "owner" },
@@ -1524,6 +1527,7 @@ test("Bookkeeping installs its agent package from its own Marketplace into a pro
       "Bookkeeping provisions an administration's project, and may install packages",
       async (ctx) => {
         await ctx.runtime.objects.apps.singleton().commands.updateAppPermissions({
+          requestedMemberReach: { kind: "none" },
           appId: ctx.vars.appId,
           requestedPermissions: [
             emit,
@@ -1706,6 +1710,7 @@ test("Bookkeeping's agent package routes its events to its agent, which installi
       "Bookkeeping provisions a project, and may install packages and fire events",
       async (ctx) => {
         await ctx.runtime.objects.apps.singleton().commands.updateAppPermissions({
+          requestedMemberReach: { kind: "none" },
           appId: ctx.vars.appId,
           requestedPermissions: [
             emit,

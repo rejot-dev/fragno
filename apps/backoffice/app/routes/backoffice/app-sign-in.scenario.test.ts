@@ -70,6 +70,7 @@ async function registerApp(ctx: Ctx, slug: string, trust: "first-party" | "third
     clientCredentials: false,
   });
   const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+    requestedMemberReach: { kind: "none" },
     slug,
     oauthClientId: client.clientId,
     requestedPermissions: [],

@@ -16,6 +16,7 @@ export default [
   route("backoffice/device", "routes/backoffice/device.tsx"),
   route("backoffice/oauth/consent", "routes/backoffice/oauth-consent.tsx"),
   route("backoffice/apps/install", "routes/backoffice/app-install.tsx"),
+  route("backoffice/apps/:appId/member-reach/:orgId", "routes/backoffice/app-member-reach.tsx"),
   route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   route("backoffice/verify-email", "routes/backoffice/verify-email.tsx"),
   // Outside the Backoffice shell, which opens the person's own scope before they choose where it is
