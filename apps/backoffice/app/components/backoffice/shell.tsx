@@ -33,6 +33,7 @@ import {
   AGENT_BESIDE_PHONE_QUERY,
   AskAgentContext,
   ShowAgentBesideContext,
+  type AgentDraft,
   type AgentRequest,
 } from "./ask-agent";
 import { BackofficeClsDebugger } from "./cls-debugger";
@@ -257,30 +258,29 @@ function BackofficeShellFrame({
 }: BackofficeShellProps) {
   const [agentDrawerOpen, setAgentDrawerOpen] = useState(false);
   const [agentRequest, setAgentRequest] = useState<AgentRequest | null>(null);
+  const [agentDraft, setAgentDraft] = useState<AgentDraft | null>(null);
   const agentsPath = resolvedScope
     ? piAgentsPath(backofficeRouteScopeFromResolvedScope(resolvedScope))
     : null;
-  const requestAgent = useCallback(
-    (agentName: string, text: string | null) => {
+  const showAgent = useCallback(
+    (agentName: string) => {
       if (agentsPath === null) {
         return;
       }
-      setAgentRequest((current) => ({ id: (current?.id ?? 0) + 1, agentsPath, agentName, text }));
+      setAgentRequest((current) => ({ id: (current?.id ?? 0) + 1, agentsPath, agentName }));
       setAgentDrawerOpen(true);
     },
     [agentsPath],
   );
   const askAgent = useCallback(
     ({ agentName, text }: { agentName: string; text: string }) => {
-      requestAgent(agentName, text);
+      if (agentsPath === null) {
+        return;
+      }
+      showAgent(agentName);
+      setAgentDraft((current) => ({ id: (current?.id ?? 0) + 1, agentsPath, agentName, text }));
     },
-    [requestAgent],
-  );
-  const showAgent = useCallback(
-    (agentName: string) => {
-      requestAgent(agentName, null);
-    },
-    [requestAgent],
+    [agentsPath, showAgent],
   );
   const sections = useBackofficeSections(resolvedScope, me);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -453,6 +453,7 @@ function BackofficeShellFrame({
           open={agentDrawerOpen}
           screen={agentBesidePhone ? "phone" : "desktop"}
           request={agentRequest}
+          draft={agentDraft}
           halfScreenRequest={agentHalfScreenRequest}
           // Agents read their directory from the scope's Automations replica.
           resolvedScope={automationReplicaSource ? resolvedScope : null}

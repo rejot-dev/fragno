@@ -1,7 +1,7 @@
 import type { PiManagerAgent } from "@fragno-dev/backoffice-api/v0/pi";
 import { ChatStartPanel } from "@fragno-private/design-system/agents/chat-start";
 import { PaneMessage } from "@fragno-private/design-system/feedback/pane-message";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import {
   Navigate,
   redirect,
@@ -9,7 +9,11 @@ import {
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
 
-import { AGENT_BESIDE_PHONE_QUERY, useShowAgentBeside } from "@/components/backoffice/ask-agent";
+import {
+  AGENT_BESIDE_PHONE_QUERY,
+  useAskAgent,
+  useShowAgentBeside,
+} from "@/components/backoffice/ask-agent";
 import { isPiAssistant } from "@/fragno/pi/agent/agent-definitions";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 import { requireRouteScope } from "@/layouts/backoffice-shell-request.server";
@@ -102,6 +106,27 @@ export default function BackofficeOrganizationPiAgentDetail({
   const { resolvedScope, directory, basePath, usageLabel, availableModelOptions } =
     useOutletContext<PiAgentsOutletContext>();
   const showAgentBeside = useShowAgentBeside();
+  const askAgent = useAskAgent();
+  // The message being written here, which moves to the drawer when the phone turns or unfolds into
+  // one that keeps the conversation there, rather than leave with this page. Only its text moves:
+  // files picked for it are picked again in the drawer.
+  const unsentRef = useRef<{ agentName: string; text: string } | null>(null);
+  const noteUnsent = useCallback(
+    (text: string) => {
+      unsentRef.current = { agentName: params.agentName, text };
+    },
+    [params.agentName],
+  );
+  useEffect(() => {
+    const unsent = unsentRef.current;
+    if (showAgentBeside === null || askAgent === null || unsent === null) {
+      return;
+    }
+    unsentRef.current = null;
+    if (unsent.agentName === params.agentName && unsent.text.trim() !== "") {
+      askAgent({ agentName: unsent.agentName, text: unsent.text });
+    }
+  }, [askAgent, params.agentName, showAgentBeside]);
   // The client loader redirects such phones, except where the screen was not known yet (a page
   // load) or the phone turned or unfolded into one on this page.
   if (showAgentBeside !== null) {
@@ -144,6 +169,7 @@ export default function BackofficeOrganizationPiAgentDetail({
             usageLabel={usageLabel}
             resolvedScope={resolvedScope}
             draft={null}
+            onDraftChange={noteUnsent}
             // Starting revalidates this route, which then shows the conversation.
             onStarted={() => undefined}
           />
@@ -165,15 +191,24 @@ export default function BackofficeOrganizationPiAgentDetail({
     );
   }
   // Agent-owned client state survives same-agent revalidation and resets on agent navigation.
-  return <PiAgentDetailConversation key={agentPath} agent={agent} agentPath={agentPath} />;
+  return (
+    <PiAgentDetailConversation
+      key={agentPath}
+      agent={agent}
+      agentPath={agentPath}
+      onDraftChange={noteUnsent}
+    />
+  );
 }
 
 function PiAgentDetailConversation({
   agent,
   agentPath,
+  onDraftChange,
 }: {
   agent: PiManagerAgent;
   agentPath: string;
+  onDraftChange: (text: string) => void;
 }) {
   const { resolvedScope, directory, availableModelOptions, basePath, dictationMountRoute } =
     useOutletContext<PiAgentsOutletContext>();
@@ -194,6 +229,7 @@ function PiAgentDetailConversation({
       dictationMountRoute={dictationMountRoute}
       header={header}
       draft={null}
+      onDraftChange={onDraftChange}
       resolvedScope={resolvedScope}
     />
   );

@@ -1,16 +1,14 @@
 import { createContext, useContext } from "react";
 
+/** The agent a page last asked the drawer to show; `id` tells one request from the next. */
+export type AgentRequest = { id: number; agentsPath: string; agentName: string };
+
 /**
- * What a page last asked of the agent drawer: to show an agent and, when the page asks it
- * something, a message for its composer to hold unsent. `id` tells one request from the next, so
- * asking the same thing twice fills the composer again.
+ * A message waiting in an agent's composer for the person to edit and send. Apart from the request
+ * that shows the agent, so showing it again, as its profile does, keeps the message waiting. `id`
+ * tells one draft from the next, so asking the same thing twice fills the composer again.
  */
-export type AgentRequest = {
-  id: number;
-  agentsPath: string;
-  agentName: string;
-  text: string | null;
-};
+export type AgentDraft = { id: number; agentsPath: string; agentName: string; text: string };
 
 /**
  * A draft for a composer to fill once. The composer reports it filled, so a conversation that

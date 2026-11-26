@@ -40,6 +40,8 @@ type AgentStartComposerProps = {
   resolvedScope: BackofficeResolvedScope;
   /** A message a page asked the agent, which fills the first message unsent. */
   draft: ComposerDraft | null;
+  /** Told the unsent message as it changes, for a page that hands it on; null where none does. */
+  onDraftChange: ((text: string) => void) | null;
   /** Called once the first turn is accepted and the agent is provisioned. */
   onStarted: () => void;
 };
@@ -55,6 +57,7 @@ export function AgentStartComposer({
   usageLabel,
   resolvedScope,
   draft,
+  onDraftChange,
   onStarted,
 }: AgentStartComposerProps) {
   const fetcher = useFetcher<{ ok: boolean; error?: string }>();
@@ -145,6 +148,7 @@ export function AgentStartComposer({
             value={draftPrompt}
             onChange={(event) => {
               setDraftPrompt(event.target.value);
+              onDraftChange?.(event.target.value);
             }}
             onKeyDown={(event) => {
               if (
