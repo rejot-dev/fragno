@@ -10,15 +10,6 @@ import {
   type ComposerAction,
 } from "@fragno-private/backoffice-chat/thread/session-thread";
 import {
-  SessionWorkspaceNavigationProvider,
-  type SessionWorkspaceNavigation,
-} from "@fragno-private/backoffice-chat/workspace/workspace-context";
-import {
-  toggleSessionWorkspaceItem,
-  type SessionWorkspaceState,
-  type SessionWorkspaceStateUpdate,
-} from "@fragno-private/backoffice-chat/workspace/workspace-model";
-import {
   usePiAgentViewSocket,
   type PiAgentQueueState,
 } from "@fragno-private/backoffice-conversation/live/view-socket";
@@ -30,8 +21,6 @@ import {
   piConversationDraftAgentMessage,
   piConversationMessages,
   piConversationQueue,
-  type PiConversationMessage,
-  type PiDraftAgentMessage,
   type PiUserMessageMetadata,
 } from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
 import {
@@ -40,7 +29,6 @@ import {
 } from "@fragno-private/backoffice-conversation/projection/earlier-history";
 import { usePiPendingMessages } from "@fragno-private/backoffice-conversation/projection/pending-messages";
 import { ChatComposerModel } from "@fragno-private/design-system/agents/chat-composer";
-import { ChatWorkspaceSplit } from "@fragno-private/design-system/agents/chat-workspace-split";
 import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import { usePostHog } from "@posthog/react/slim";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -87,8 +75,6 @@ import type { PiManagerEntryPage } from "./data";
 import { backofficeChatExtensions } from "./session-detail/backoffice-chat-extensions";
 import { createReson8DictationAdapter } from "./session-detail/reson8-dictation";
 import { SessionWorkflowsProvider } from "./session-detail/session-workflow";
-import { SessionWorkspacePanel } from "./session-detail/workspace-panel";
-import { projectSessionWorkspaceItems } from "./session-detail/workspace-projection";
 
 const PI_ENTRY_HISTORY_PAGE_SIZE = 100;
 const PI_COMPACTION_POLL_MS = 250;
@@ -97,13 +83,6 @@ export type PiAgentActionData =
   | { ok: true; intent: "start"; receipt: PiPromptReceipt }
   | { ok: true; intent: "stop" | "resume" | "reset" }
   | { ok: false; intent: "start" | "stop" | "resume" | "reset"; error: string };
-
-/** What the conversation produced, opened beside it. */
-export type AgentConversationWorkspace = {
-  storageKey: string;
-  state: SessionWorkspaceState;
-  update: (update: SessionWorkspaceStateUpdate) => void;
-};
 
 type AgentConversationProps = {
   /** A provisioned agent. */
@@ -116,8 +95,6 @@ type AgentConversationProps = {
   header: (options: ReactNode | null) => ReactNode;
   /** A message a page asked the agent, which fills the composer unsent. */
   draft: ComposerDraft | null;
-  /** Null where there is no room beside the conversation. */
-  workspace: AgentConversationWorkspace | null;
   /** Where the conversation's workspace files, such as the files its messages carry, live. */
   resolvedScope: BackofficeResolvedScope;
 };
@@ -378,7 +355,6 @@ function AgentConversationThread({
   dictationMountRoute,
   header,
   draft,
-  workspace,
   resolvedScope,
   view,
   queue: agentQueue,
@@ -714,84 +690,11 @@ function AgentConversationThread({
                   onShowUsageChange={updateDisplayOption("showUsage")}
                 />,
               )}
-              {workspace ? (
-                <AgentConversationWithWorkspace
-                  workspace={workspace}
-                  messages={messages}
-                  draftAgentMessage={draftAgentMessage}
-                  conversation={conversation}
-                />
-              ) : (
-                conversation
-              )}
+              {conversation}
             </div>
           </ChatExtensionsProvider>
         </SessionWorkflowsProvider>
       </FileScopeProvider>
     </AssistantRuntimeProvider>
-  );
-}
-
-function AgentConversationWithWorkspace({
-  workspace,
-  messages,
-  draftAgentMessage,
-  conversation,
-}: {
-  workspace: AgentConversationWorkspace;
-  messages: readonly PiConversationMessage[];
-  draftAgentMessage: PiDraftAgentMessage | null;
-  conversation: ReactNode;
-}) {
-  const { state: workspaceState, update: updateWorkspaceState } = workspace;
-  const workspaceItems = useMemo(
-    () => projectSessionWorkspaceItems({ draftAgentMessage, messages }),
-    [draftAgentMessage, messages],
-  );
-  const workspaceItemIds = useMemo(
-    () => new Set(workspaceItems.map((item) => item.id)),
-    [workspaceItems],
-  );
-
-  const toggleWorkspaceItem = useCallback(
-    (itemId: string) => {
-      if (!workspaceItemIds.has(itemId)) {
-        return;
-      }
-      updateWorkspaceState((current) => toggleSessionWorkspaceItem(current, itemId));
-    },
-    [updateWorkspaceState, workspaceItemIds],
-  );
-  const closeWorkspace = useCallback(() => {
-    updateWorkspaceState((current) => ({ ...current, open: false }));
-  }, [updateWorkspaceState]);
-  const workspaceNavigation = useMemo<SessionWorkspaceNavigation>(
-    () => ({
-      hasItem: (itemId) => workspaceItemIds.has(itemId),
-      isItemSelected: (itemId) => workspaceState.open && workspaceState.selectedItemId === itemId,
-      toggleItem: toggleWorkspaceItem,
-    }),
-    [toggleWorkspaceItem, workspaceItemIds, workspaceState.open, workspaceState.selectedItemId],
-  );
-  const selectedWorkspaceItem = workspaceItems.find(
-    (item) => item.id === workspaceState.selectedItemId,
-  );
-
-  return (
-    <SessionWorkspaceNavigationProvider value={workspaceNavigation}>
-      <ChatWorkspaceSplit
-        storageKey={workspace.storageKey}
-        conversation={conversation}
-        workspace={
-          workspaceState.open && selectedWorkspaceItem ? (
-            <SessionWorkspacePanel
-              key={selectedWorkspaceItem.id}
-              item={selectedWorkspaceItem}
-              onClose={closeWorkspace}
-            />
-          ) : null
-        }
-      />
-    </SessionWorkspaceNavigationProvider>
   );
 }

@@ -21,6 +21,7 @@ import {
   ChatEventDivider,
   ChatEventLink,
 } from "@fragno-private/design-system/agents/chat-divider";
+import { ChatInterface } from "@fragno-private/design-system/agents/chat-interface";
 import {
   ChatAssistantMessage,
   ChatMessageActions,
@@ -36,19 +37,14 @@ import { Fragment } from "react";
 import { MessagePrimitive, useAuiState } from "@assistant-ui/react";
 
 import { useChatExtensions, type ChatSubagentReport } from "../extensions";
+import { ResultContent } from "../tools/result-content";
 import {
   chatToolCall,
   ToolCallStep,
   toolCallPresentation,
   toolHeadline,
-  toolWorkspaceOptions,
   type ToolCallPresentation,
 } from "../tools/tool-call";
-import {
-  ToolWorkspaceSelector,
-  type ToolWorkspaceSelectorOption,
-} from "../workspace/tool-workspace-selector";
-import { useSessionWorkspaceNavigation } from "../workspace/workspace-context";
 import { agentTurn, liveHeadline, type AgentTurnStep, type ToolCallPart } from "./agent-turn";
 import { MessageImage } from "./markdown";
 import { turnTranscript } from "./turn-transcript";
@@ -88,8 +84,9 @@ export function UserMessage() {
 
 /**
  * The agent's whole turn, in the order it happened: an activity card for each stretch of thoughts
- * and tool calls, followed by the workflows they started, and what the agent said between them.
- * The view options hide thoughts or tool calls from the cards.
+ * and tool calls, followed by the interfaces its programs returned and the workflows they started,
+ * and what the agent said between them. The view options hide thoughts or tool calls from the
+ * cards, not what they produced.
  */
 export function AssistantMessage({
   showThinking,
@@ -106,21 +103,18 @@ export function AssistantMessage({
   );
   const parts = useAuiState((state) => state.message.parts);
   const running = useAuiState((state) => state.message.status?.type === "running");
-  const navigation = useSessionWorkspaceNavigation();
   const { agentLabel, WorkflowRun, ToolCallFollowUps, toolCalls } = useChatExtensions();
   const MarkdownText = useMarkdownText();
 
   const segments = agentTurn(parts, running);
   const turn = segments.map((segment) =>
-    segment.kind === "work" ? { ...segment, tools: turnTools(segment.steps, navigation) } : segment,
+    segment.kind === "work" ? { ...segment, tools: turnTools(segment.steps) } : segment,
   );
   const tools = turn.flatMap((segment) => (segment.kind === "work" ? segment.tools : []));
   const works = segments.filter((segment) => segment.kind === "work").length;
   const lastWorkKey = segments.filter((segment) => segment.kind === "work").at(-1)?.key;
   const toolsById = new Map(tools.map((tool) => [tool.part.toolCallId, tool]));
   const lastShowing = runsLastShowing(tools);
-  // The turn's result is what its newest tool call that made something produced.
-  const artifactTool = tools.filter((tool) => tool.workspaceOptions.length > 0).at(-1) ?? null;
   const lastSegment = segments.at(-1);
   const answer = lastSegment?.kind === "said" ? lastSegment.parts : [];
   const answerText = answer
@@ -215,8 +209,11 @@ export function AssistantMessage({
       visibleSteps: segment.steps.filter((step) =>
         step.kind === "thought" ? showThinking : showToolCalls,
       ),
-      artifactTool:
-        artifactTool !== null && callIds.has(artifactTool.part.toolCallId) ? artifactTool : null,
+      interfaces: segment.tools.flatMap((tool) =>
+        tool.presentation.generatedInterface === null
+          ? []
+          : [{ toolCallId: tool.part.toolCallId, ...tool.presentation.generatedInterface }],
+      ),
       // A run shown more than once in a turn is one card, after the work that showed it last.
       workflowRuns: lastShownRuns(
         segment.tools.flatMap((tool) => tool.presentation.codemodeDetails?.runs ?? []),
@@ -231,7 +228,10 @@ export function AssistantMessage({
     (lastShown === undefined || lastShown.kind === "said" || lastShown.visibleSteps.length === 0);
   const shown = shownTurn.some(
     (segment) =>
-      segment.kind === "said" || segment.visibleSteps.length > 0 || segment.workflowRuns.length > 0,
+      segment.kind === "said" ||
+      segment.visibleSteps.length > 0 ||
+      segment.interfaces.length > 0 ||
+      segment.workflowRuns.length > 0,
   );
   const { notificationRequest, notifications } = metadata;
   // A turn can end without saying anything, such as one that acknowledged a finished workflow
@@ -279,23 +279,21 @@ export function AssistantMessage({
             return (
               <Fragment key={segment.key}>
                 {segment.visibleSteps.length === 0 ? null : (
-                  <ChatActivity
-                    status={segment.status}
-                    artifacts={
-                      segment.artifactTool === null ? null : (
-                        <ToolWorkspaceSelector
-                          options={segment.artifactTool.workspaceOptions}
-                          toolLabel={segment.artifactTool.presentation.label}
-                          labelled
-                        />
-                      )
-                    }
-                  >
+                  <ChatActivity status={segment.status}>
                     {segment.visibleSteps.map((step) => (
                       <TurnStep key={step.key} step={step} tools={toolsById} />
                     ))}
                   </ChatActivity>
                 )}
+                {segment.interfaces.map((generated) => (
+                  <ChatInterface key={generated.toolCallId}>
+                    <ResultContent
+                      parsedValue={generated.parsed}
+                      showRawValue={false}
+                      value={generated.value}
+                    />
+                  </ChatInterface>
+                ))}
                 {WorkflowRun === null
                   ? null
                   : segment.workflowRuns.map((run) => (
@@ -321,23 +319,12 @@ export function AssistantMessage({
   );
 }
 
-function turnTools(
-  steps: readonly AgentTurnStep[],
-  navigation: ReturnType<typeof useSessionWorkspaceNavigation>,
-) {
-  return steps.flatMap((step): TurnTool[] => {
-    if (step.kind !== "tool") {
-      return [];
-    }
-    const presentation = toolCallPresentation(step.part);
-    return [
-      {
-        part: step.part,
-        presentation,
-        workspaceOptions: toolWorkspaceOptions(step.part, presentation, navigation),
-      },
-    ];
-  });
+function turnTools(steps: readonly AgentTurnStep[]) {
+  return steps.flatMap((step): TurnTool[] =>
+    step.kind === "tool"
+      ? [{ part: step.part, presentation: toolCallPresentation(step.part) }]
+      : [],
+  );
 }
 
 /** The tool call that showed each run last, by run instance. */
@@ -368,7 +355,6 @@ function count(amount: number, noun: string) {
 type TurnTool = {
   part: ToolCallPart;
   presentation: ToolCallPresentation;
-  workspaceOptions: ToolWorkspaceSelectorOption[];
 };
 
 function TurnStep({ step, tools }: { step: AgentTurnStep; tools: ReadonlyMap<string, TurnTool> }) {
@@ -382,7 +368,6 @@ function TurnStep({ step, tools }: { step: AgentTurnStep; tools: ReadonlyMap<str
         title={step.headline}
         detail={null}
         durationMs={null}
-        actions={null}
       >
         {step.text.length === 0 ? null : (
           <MarkdownText
@@ -397,13 +382,7 @@ function TurnStep({ step, tools }: { step: AgentTurnStep; tools: ReadonlyMap<str
   if (tool && toolCalls !== null) {
     return <toolCalls.Step call={chatToolCall(tool.part, tool.presentation)} />;
   }
-  return tool ? (
-    <ToolCallStep
-      part={tool.part}
-      presentation={tool.presentation}
-      workspaceOptions={tool.workspaceOptions}
-    />
-  ) : null;
+  return tool ? <ToolCallStep part={tool.part} presentation={tool.presentation} /> : null;
 }
 
 const compactionReasonLabels: Record<PiCompactionMessageMetadata["reason"], string> = {

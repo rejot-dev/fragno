@@ -3,7 +3,7 @@ import { useState } from "react";
 import { CopyButton } from "../controls/copy-button";
 import { RadioMenu, type RadioMenuOption } from "../controls/radio-menu";
 import { ScrollablePre } from "../data/scrollable-pre";
-import { ChatActivity, ChatActivityStep, ChatArtifactToggle } from "./chat-activity";
+import { ChatActivity, ChatActivityStep } from "./chat-activity";
 import { ChatCodemodeStep } from "./chat-codemode-step";
 import {
   ChatComposer,
@@ -17,6 +17,7 @@ import {
   chatComposerInputClassName,
 } from "./chat-composer";
 import { ChatBoundaryDivider, ChatEventDisclosure, ChatEventDivider } from "./chat-divider";
+import { ChatInterface } from "./chat-interface";
 import {
   ChatAssistantMessage,
   ChatMessageActions,
@@ -78,13 +79,7 @@ const COMPOSER_ACTIONS: RadioMenuOption<ComposerAction>[] = [
   },
 ];
 
-export function SampleConversation({
-  interfaceShown,
-  onToggleInterface,
-}: {
-  interfaceShown: boolean;
-  onToggleInterface: () => void;
-}) {
+export function SampleConversation() {
   return (
     <>
       <ChatBoundaryDivider>{OUT_OF_CONTEXT}</ChatBoundaryDivider>
@@ -136,15 +131,6 @@ export function SampleConversation({
             note: "1 tool · 1 thought",
             failedSteps: 0,
           }}
-          artifacts={
-            <ChatArtifactToggle
-              icon="layout"
-              label="Interface"
-              labelled
-              pressed={interfaceShown}
-              onClick={onToggleInterface}
-            />
-          }
         >
           <ChatActivityStep
             icon={null}
@@ -152,7 +138,6 @@ export function SampleConversation({
             title="Loading the unpaid invoices"
             detail={null}
             durationMs={2_100}
-            actions={null}
           >
             <p className="text-xs leading-6">
               Load the unpaid invoices first, then draft one reminder per customer.
@@ -187,9 +172,11 @@ export function SampleConversation({
                 ),
               },
             ]}
-            actions={null}
           />
         </ChatActivity>
+        <ChatInterface>
+          <p className="text-xs text-[var(--bo-muted-2)]">The generated interface renders here.</p>
+        </ChatInterface>
         <p>
           Three invoices are still unpaid. The oldest, <strong>INV-4182</strong> from Acme, is 32
           days overdue. I drafted a reminder for each in <code>/workspace/drafts/</code>.

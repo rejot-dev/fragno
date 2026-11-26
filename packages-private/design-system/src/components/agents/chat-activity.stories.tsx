@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import { ScrollablePre } from "../data/scrollable-pre";
-import { ChatActivity, ChatActivityStep, ChatArtifactToggle } from "./chat-activity";
+import { ChatActivity, ChatActivityStep } from "./chat-activity";
 import {
   ChatCodemodeStep,
   codemodeCallHeadline,
@@ -119,7 +119,6 @@ function renderStep(step: SampleStep, index: number, running: boolean) {
         title={step.title}
         detail={null}
         durationMs={running ? null : step.durationMs}
-        actions={null}
       >
         <Thought>{step.body}</Thought>
       </ChatActivityStep>
@@ -154,7 +153,6 @@ function renderStep(step: SampleStep, index: number, running: boolean) {
               },
             ]),
       ]}
-      actions={null}
     />
   );
 }
@@ -165,10 +163,6 @@ function headlineOf(step: SampleStep) {
   }
   return codemodeCallHeadline(step.calls[0].subject);
 }
-
-const ARTIFACTS = (
-  <ChatArtifactToggle icon="layout" label="Interface" labelled pressed={false} onClick={() => {}} />
-);
 
 /** Steps arrive one by one, then the turn settles and the card folds to its summary. */
 export function Live() {
@@ -213,7 +207,6 @@ export function Live() {
               }
             : { kind: "running", headline: headlineOf(current), startedAt }
         }
-        artifacts={settled ? ARTIFACTS : null}
       >
         {steps.map((step, index) => renderStep(step, index, !settled && index === shown - 1))}
       </ChatActivity>
@@ -232,7 +225,6 @@ export function Settled() {
           note: "3 tools · 2 thoughts",
           failedSteps: 1,
         }}
-        artifacts={ARTIFACTS}
       >
         {STEPS.map((step, index) => renderStep(step, index, false))}
       </ChatActivity>
@@ -244,7 +236,6 @@ export function Settled() {
           note: "1 tool · 1 thought",
           failedSteps: 0,
         }}
-        artifacts={null}
       >
         {STEPS.slice(0, 2).map((step, index) => renderStep(step, index, false))}
       </ChatActivity>
@@ -256,7 +247,6 @@ export function Settled() {
           note: "1 thought",
           failedSteps: 0,
         }}
-        artifacts={null}
       >
         {STEPS.slice(0, 1).map((step, index) => renderStep(step, index, false))}
       </ChatActivity>
@@ -270,7 +260,6 @@ export function Running() {
     <Column>
       <ChatActivity
         status={{ kind: "running", headline: "Drafting one reminder per customer", startedAt }}
-        artifacts={null}
       >
         {STEPS.slice(0, 4).map((step, index) => renderStep(step, index, index === 3))}
       </ChatActivity>

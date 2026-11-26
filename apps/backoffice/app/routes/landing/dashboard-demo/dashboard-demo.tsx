@@ -532,7 +532,6 @@ function AgentWork({
               failedSteps: 0,
             }
       }
-      artifacts={null}
     >
       {shown.map((entry, index) => {
         const stepRunning = running && index === step;
@@ -544,7 +543,6 @@ function AgentWork({
             title={entry.title}
             detail={entry.detail}
             durationMs={stepRunning ? null : entry.durationMs}
-            actions={null}
           >
             {null}
           </ChatActivityStep>

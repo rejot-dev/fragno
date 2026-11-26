@@ -1,8 +1,3 @@
-import type {
-  SessionWorkspaceStateBySession,
-  SessionWorkspaceStateUpdate,
-} from "@fragno-private/backoffice-chat/workspace/workspace-model";
-
 import type { BackofficeResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import type { PiAvailableModel } from "@/fragno/pi/agent/pi-agent-contract";
 
@@ -21,6 +16,4 @@ export type PiAgentsOutletContext = {
   usageLabel: string;
   availableModelOptions: PiAvailableModel[];
   dictationMountRoute: string | null;
-  workspaceStates: SessionWorkspaceStateBySession;
-  updateWorkspaceState: (agentName: string, update: SessionWorkspaceStateUpdate) => void;
 };

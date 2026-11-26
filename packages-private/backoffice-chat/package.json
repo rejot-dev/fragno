@@ -17,9 +17,7 @@
     "./styles.css": "./src/styles.css",
     "./thread/display-options": "./src/thread/display-options.tsx",
     "./thread/session-thread": "./src/thread/session-thread.tsx",
-    "./tools/result-content": "./src/tools/result-content.tsx",
-    "./workspace/workspace-context": "./src/workspace/workspace-context.tsx",
-    "./workspace/workspace-model": "./src/workspace/workspace-model.ts"
+    "./tools/result-content": "./src/tools/result-content.tsx"
   },
   "scripts": {
     "types:check": "tsc --noEmit",

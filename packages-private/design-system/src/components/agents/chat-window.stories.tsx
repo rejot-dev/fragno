@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import { Button } from "../controls/button";
 import { OperationNotice } from "../feedback/operation-notice";
@@ -15,8 +15,6 @@ import {
   ChatViewport,
   ChatViewportFooter,
 } from "./chat-thread";
-import { ChatWorkspacePanel } from "./chat-workspace-panel";
-import { ChatWorkspaceSplit } from "./chat-workspace-split";
 
 export default { title: "Agents/Chat window" };
 
@@ -30,52 +28,26 @@ function Frame({ children }: { children: ReactNode }) {
 }
 
 export function Conversation() {
-  const [interfaceShown, setInterfaceShown] = useState(true);
-
   return (
     <Frame>
-      <ChatWorkspaceSplit
-        storageKey="storybook:chat-window"
-        conversation={
-          <ChatThread>
-            <ChatViewport>
-              <ChatColumn>
-                <ChatHistoryControls
-                  explanation={null}
-                  hasMore
-                  loading={false}
-                  error={null}
-                  onLoadMore={() => undefined}
-                />
-                <SampleConversation
-                  interfaceShown={interfaceShown}
-                  onToggleInterface={() => {
-                    setInterfaceShown((current) => !current);
-                  }}
-                />
-                <ChatTurnSpacer />
-              </ChatColumn>
-              <ChatViewportFooter alert={null}>
-                <SampleComposer running={false} disabled={null} queue={[]} />
-              </ChatViewportFooter>
-            </ChatViewport>
-          </ChatThread>
-        }
-        workspace={
-          interfaceShown ? (
-            <ChatWorkspacePanel
-              label="Interface"
-              onClose={() => {
-                setInterfaceShown(false);
-              }}
-            >
-              <div className="flex h-full items-center justify-center text-xs text-[var(--bo-muted-2)]">
-                The generated interface renders here.
-              </div>
-            </ChatWorkspacePanel>
-          ) : null
-        }
-      />
+      <ChatThread>
+        <ChatViewport>
+          <ChatColumn>
+            <ChatHistoryControls
+              explanation={null}
+              hasMore
+              loading={false}
+              error={null}
+              onLoadMore={() => undefined}
+            />
+            <SampleConversation />
+            <ChatTurnSpacer />
+          </ChatColumn>
+          <ChatViewportFooter alert={null}>
+            <SampleComposer running={false} disabled={null} queue={[]} />
+          </ChatViewportFooter>
+        </ChatViewport>
+      </ChatThread>
     </Frame>
   );
 }
@@ -86,7 +58,7 @@ export function Running() {
       <ChatThread>
         <ChatViewport>
           <ChatColumn>
-            <SampleConversation interfaceShown={false} onToggleInterface={() => undefined} />
+            <SampleConversation />
             <ChatThreadNotice>
               <OperationNotice
                 tone="progress"

@@ -421,7 +421,6 @@ export function ChatCodemodeStep({
   calls,
   durationMs,
   views,
-  actions,
 }: {
   state: StepState;
   /** A line beside the title, such as "writing code" before the program runs. */
@@ -431,8 +430,6 @@ export function ChatCodemodeStep({
   durationMs: number | null;
   /** The run's other tabs, such as its code, result, and logs. */
   views: readonly ChatCodemodeView[];
-  /** Controls beside the header, such as ChatArtifactToggles. */
-  actions: ReactNode | null;
 }) {
   // Null until the reader picks a tab, so a live run shows its calls as soon as the first arrives.
   const [picked, setPicked] = useState<{ label: string | null } | null>(null);
@@ -482,7 +479,6 @@ export function ChatCodemodeStep({
               />
             ))}
           </span>
-          {actions}
         </div>
         {shownTab === null ? null : (
           <div className={cn(shownTab.label === CALLS_VIEW ? null : "pt-1 pb-2")}>
