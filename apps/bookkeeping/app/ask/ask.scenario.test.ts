@@ -150,7 +150,7 @@ test("the chat follows the conversation over the agent's socket with a ticket as
   });
 });
 
-test("the chat loads what came before the newest compaction, a page at a time, as the person", async () => {
+test("the chat loads the agent's entries by ID range, a page at a time, as the person", async () => {
   await runBookkeepingScenario(async (scenario) => {
     const { ada, clientPath } = await scenario.practice();
     await scenario.openAdministration(ada, clientPath, ADMINISTRATION);
@@ -163,27 +163,34 @@ test("the chat loads what came before the newest compaction, a page at a time, a
       const response = await ada.download(`${BOOKS}/ask/history?${query}`);
       assert.equal(response.status, 200, await response.clone().text());
       assert.equal(response.headers.get("cache-control"), "private, no-store");
-      return (await response.json()) as { entries: { id: number }[]; cursor: string | null };
+      return (await response.json()) as { entries: { id: number }[]; more: boolean };
     };
-    // Newest first from where the active context begins, then on from each page's cursor.
-    const newest = await page("before=121");
-    expect(newest.entries.map(({ id }) => id)).toEqual(
-      Array.from({ length: 100 }, (_, index) => 120 - index),
-    );
-    assert(newest.cursor !== null);
-    const oldest = await page(`before=121&cursor=${newest.cursor}`);
+    // Newest first below the window, as the transcript loads earlier history, then on from there.
+    const newest = await page("maxEntryId=120&order=descending&pageSize=100");
+    expect(newest).toEqual({
+      entries: Array.from({ length: 100 }, (_, index) => ({ id: 120 - index })),
+      more: true,
+    });
+    const oldest = await page("maxEntryId=20&order=descending&pageSize=100");
     expect(oldest).toEqual({
       entries: Array.from({ length: 20 }, (_, index) => ({ id: 20 - index })),
-      cursor: null,
+      more: false,
+    });
+    // Oldest first within a range, as the transcript fills a gap a reconnect left.
+    const gap = await page("minEntryId=131&maxEntryId=140&order=ascending&pageSize=100");
+    expect(gap).toEqual({
+      entries: Array.from({ length: 10 }, (_, index) => ({ id: 131 + index })),
+      more: false,
     });
     // Backoffice checks the person may read the agent, as for its socket.
     expect(scenario.backoffice.historyReaders(CLIENT, ADMINISTRATION)).toEqual([
       { agentName: "books", reader: "ada@example.test" },
       { agentName: "books", reader: "ada@example.test" },
+      { agentName: "books", reader: "ada@example.test" },
     ]);
 
-    const unnamed = await ada.download(`${BOOKS}/ask/history`);
-    assert.equal(unnamed.status, 400);
+    const unordered = await ada.download(`${BOOKS}/ask/history?order=sideways`);
+    assert.equal(unordered.status, 400);
   });
 });
 

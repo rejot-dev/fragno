@@ -168,6 +168,7 @@ export function ChatHistoryControls({
   loading,
   error,
   onLoadMore,
+  onRetry,
 }: {
   /** Why earlier history is set apart, shown until a divider in the thread explains it. */
   explanation: string | null;
@@ -175,11 +176,20 @@ export function ChatHistoryControls({
   loading: boolean;
   error: string | null;
   onLoadMore: () => void;
+  /**
+   * Runs the load that failed again, such as messages a reconnect missed when no earlier history
+   * remains; it stands in for "Load older" until it succeeds. Null when nothing failed.
+   */
+  onRetry: (() => void) | null;
 }) {
   return (
     <section className="mb-7 flex flex-col items-center gap-2 text-center text-xs text-[var(--bo-muted)]">
       {explanation === null ? null : <p className="text-pretty">{explanation}</p>}
-      {hasMore ? (
+      {onRetry !== null ? (
+        <Button variant="ghost" disabled={loading} onClick={onRetry}>
+          {loading ? "Loading…" : "Retry"}
+        </Button>
+      ) : hasMore ? (
         <Button variant="ghost" disabled={loading} onClick={onLoadMore}>
           {loading ? "Loading…" : "Load older"}
         </Button>

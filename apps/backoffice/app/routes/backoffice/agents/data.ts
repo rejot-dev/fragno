@@ -48,11 +48,7 @@ export type PiManagerAgentDetailResult = {
   agentError: PiRouteError | null;
 };
 
-export type PiManagerEntryPage = {
-  entries: EntryRecord[];
-  cursor: string | null;
-  hasNextPage: boolean;
-};
+export type PiManagerEntryPage = { entries: EntryRecord[]; more: boolean };
 
 async function createPiManagerAuthorizedAccess(
   request: Request,
@@ -265,16 +261,17 @@ export async function fetchPiManagerEntryPage(
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
   agentName: string,
-  input: { before: string; cursor: string | null; pageSize: string },
+  range: URLSearchParams,
 ): Promise<PiManagerEntryPage> {
   const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("GET", "/agents/:agentName/entries", {
     pathParams: { agentName },
-    query: {
-      before: input.before,
-      pageSize: input.pageSize,
-      ...(input.cursor ? { cursor: input.cursor } : {}),
-    },
+    query: Object.fromEntries(
+      ["minEntryId", "maxEntryId", "order", "pageSize"].flatMap((name) => {
+        const value = range.get(name);
+        return value === null ? [] : [[name, value]];
+      }),
+    ),
   });
   if (response.type === "json") {
     return response.data as PiManagerEntryPage;

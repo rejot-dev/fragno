@@ -1356,22 +1356,27 @@ export class FakeBackoffice {
           return { ticket, expiresAt: new Date(Date.now() + 60_000).toISOString() };
         });
       case "pi.agent.history":
-        return respond("pi.agent.history", body, ({ agentName, before, cursor, pageSize }) => {
-          if (!this.#agents.has(key(agentName))) {
-            throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
-          }
-          this.#historyReads.push({ scope: key(""), agentName, reader: principal });
-          // Newest first, as Backoffice pages it; the cursor is where the next page starts.
-          const earlier = (this.#histories.get(key(agentName)) ?? [])
-            .filter((entry) => entry.id < before)
-            .reverse();
-          const start = cursor === null ? 0 : Number(cursor);
-          const next = start + pageSize;
-          return {
-            entries: earlier.slice(start, next),
-            cursor: next < earlier.length ? String(next) : null,
-          };
-        });
+        return respond(
+          "pi.agent.history",
+          body,
+          ({ agentName, minEntryId, maxEntryId, order, pageSize }) => {
+            if (!this.#agents.has(key(agentName))) {
+              throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
+            }
+            this.#historyReads.push({ scope: key(""), agentName, reader: principal });
+            // An inclusive ID range in the order asked for, as Backoffice pages it.
+            const inRange = (this.#histories.get(key(agentName)) ?? []).filter(
+              (entry) =>
+                (minEntryId === null || entry.id >= minEntryId) &&
+                (maxEntryId === null || entry.id <= maxEntryId),
+            );
+            const ordered = order === "descending" ? inRange.reverse() : inRange;
+            return {
+              entries: ordered.slice(0, pageSize),
+              more: ordered.length > pageSize,
+            };
+          },
+        );
       case "pi.prompt.get":
         return respond(
           "pi.prompt.get",

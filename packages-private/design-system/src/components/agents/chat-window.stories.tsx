@@ -39,6 +39,7 @@ export function Conversation() {
               loading={false}
               error={null}
               onLoadMore={() => undefined}
+              onRetry={null}
             />
             <SampleConversation />
             <ChatTurnSpacer />
@@ -97,6 +98,7 @@ export function Failed() {
               loading={false}
               error="Pi history request failed with status 502."
               onLoadMore={() => undefined}
+              onRetry={() => undefined}
             />
             <ChatThreadNotice>
               <OperationNotice

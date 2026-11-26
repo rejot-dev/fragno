@@ -432,39 +432,50 @@ export const piAgentMessagePageSchema = z.lazy(() =>
 );
 export type PiAgentMessagePage = z.infer<typeof piAgentMessagePageSchema>;
 
+/**
+ * Which entries a page of a conversation holds, as Pi Durable's `EntryQuery` scans them: IDs in
+ * an inclusive range, in one order, at most `pageSize` of them.
+ */
+export const piAgentEntryRangeSchema = z.object({
+  minEntryId: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .default(null)
+    .describe("The oldest entry ID the page may hold; null for none."),
+  maxEntryId: z
+    .number()
+    .int()
+    .positive()
+    .nullable()
+    .default(null)
+    .describe("The newest entry ID the page may hold; null for none."),
+  order: z
+    .enum(["descending", "ascending"])
+    .default("descending")
+    .describe("`descending` reads newest first, `ascending` oldest first."),
+  pageSize: z
+    .number()
+    .int()
+    .min(1)
+    .max(256)
+    .default(100)
+    .describe("How many entries the page holds at most."),
+});
+export type PiAgentEntryRange = z.output<typeof piAgentEntryRangeSchema>;
+
 const historyInputSchema = z.lazy(() =>
-  readAgentInputSchema._zod.innerType.extend({
-    before: z
-      .number()
-      .int()
-      .positive()
-      .describe(
-        "The entry where the active context begins, which `pi.agent.watch`'s view leads with as its first entry's `head`: the page reads the entries before it.",
-      ),
-    cursor: z
-      .string()
-      .min(1)
-      .nullable()
-      .default(null)
-      .describe("A previous page's `cursor`, to read further back; null for the newest page."),
-    pageSize: z
-      .number()
-      .int()
-      .min(1)
-      .max(256)
-      .default(100)
-      .describe("How many entries the page holds at most."),
-  }),
+  readAgentInputSchema._zod.innerType.extend(piAgentEntryRangeSchema.shape),
 );
 
-/** A page of a conversation from before its active context, newest entry first. */
+/** A page of a conversation's entries, in the order asked for. */
 export const piAgentHistoryPageSchema = z.lazy(() =>
   z.object({
-    entries: z.array(z.unknown()).describe("Pi Durable's `EntryRecord`s, newest first."),
-    cursor: z
-      .string()
-      .nullable()
-      .describe("The next page's cursor; null once the page reached the conversation's start."),
+    entries: z.array(z.unknown()).describe("Pi Durable's `EntryRecord`s, in the order asked for."),
+    more: z
+      .boolean()
+      .describe("Whether the range holds entries past the page: read on from the last entry's ID."),
   }),
 );
 export type PiAgentHistoryPage = z.infer<typeof piAgentHistoryPageSchema>;
@@ -656,7 +667,7 @@ export const piOperations = {
   },
   "pi.agent.history": {
     description:
-      "Read a page of a started agent's conversation from before its newest compaction or clear, newest entry first, as Pi Durable's entries with thinking, tool calls, and tool results: the history `pi.agent.watch`'s view leaves out, for a chat that shows it. Pass `before` where the view's active context begins, and each page's `cursor` to read further back. To read what was said since the newest compaction, use `pi.agent.messages`.",
+      "Read a page of a started agent's whole conversation, compactions and clears included, as Pi Durable's entries with thinking, tool calls, and tool results: an entry ID range in one order, newest first by default. `pi.agent.watch`'s view holds only the newest entries; a chat loads the rest with this, as Pi Durable's `ConversationTranscript` asks its loader. Read further from the last entry's ID while `more` is true. To read what was said since the newest compaction, use `pi.agent.messages`.",
     permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: historyInputSchema,
     output: piAgentHistoryPageSchema,

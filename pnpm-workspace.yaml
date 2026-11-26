@@ -69,6 +69,12 @@ minimumReleaseAgeExclude:
   - "@tanstack/db@0.15.1"
   - "@tanstack/node-db-sqlite-persistence@0.2.36"
   - "@tanstack/react-db@0.5.11"
+  - "@earendil-works/chord@1.6.1"
+  - "@earendil-works/pi-ai@1.6.1"
+  - "@earendil-works/pi-codemode@1.6.1"
+  - "@earendil-works/pi-durable@1.6.1"
+  - "@earendil-works/pi-schema@1.6.1"
+  - "@earendil-works/pi-telemetry@1.6.1"
 
 patchedDependencies:
   "@cloudflare/worker-bundler@0.2.2": patches/@cloudflare__worker-bundler@0.2.2.patch

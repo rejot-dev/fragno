@@ -206,7 +206,16 @@ test("generations are attributed to the scope that owned them and reconcile with
               }))
               .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
           );
-          assert(captured.every((event) => Number(event.properties?.$ai_input_tokens) > 0));
+          // The faux provider counts every prompt token as read from or written to its cache.
+          assert(
+            captured.every(
+              (event) =>
+                Number(event.properties?.$ai_input_tokens) +
+                  Number(event.properties?.$ai_cache_read_input_tokens) +
+                  Number(event.properties?.$ai_cache_creation_input_tokens) >
+                0,
+            ),
+          );
         }),
         then.assert("each owner's reported tokens equal its ledger", async ({ runtime }) => {
           for (const [owner, ownedBy] of [
@@ -311,6 +320,10 @@ test("a generation replayed after a restart keeps its ingestion identity and is 
               openStorage: async () => await openNodeSqliteStorage(snapshot),
             });
             try {
+              // The interrupted poll counts as a failed attempt; its retry, after the backoff, polls
+              // the same deferred response again.
+              await restored.alarm();
+              runtime.advanceTime(60_000);
               await restored.alarm();
               await runtime.drain();
             } finally {

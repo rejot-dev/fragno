@@ -12,8 +12,8 @@
   "exports": {
     "./live/view-socket": "./src/live/view-socket.ts",
     "./projection/assistant-runtime": "./src/projection/assistant-runtime.ts",
-    "./projection/earlier-history": "./src/projection/earlier-history.ts",
-    "./projection/pending-messages": "./src/projection/pending-messages.ts"
+    "./projection/pending-messages": "./src/projection/pending-messages.ts",
+    "./projection/transcript": "./src/projection/transcript.ts"
   },
   "scripts": {
     "types:check": "tsc --noEmit",
@@ -26,9 +26,9 @@
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.1",
-    "@earendil-works/chord": "1.4.0",
-    "@earendil-works/pi-ai": "1.4.0",
-    "@earendil-works/pi-durable": "1.4.0",
+    "@earendil-works/chord": "1.6.1",
+    "@earendil-works/pi-ai": "1.6.1",
+    "@earendil-works/pi-durable": "1.6.1",
     "@fragno-dev/backoffice-api": "workspace:*"
   },
   "devDependencies": {

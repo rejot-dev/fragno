@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@assistant-ui/react": "^0.15.1",
-    "@earendil-works/pi-durable": "1.4.0",
+    "@earendil-works/pi-durable": "1.6.1",
     "@fragno-dev/backoffice-api": "workspace:*",
     "@fragno-dev/core": "workspace:*",
     "@fragno-dev/db": "workspace:*",

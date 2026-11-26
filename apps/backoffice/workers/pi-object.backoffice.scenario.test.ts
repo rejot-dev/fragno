@@ -636,26 +636,25 @@ test("messages and exports start at the newest compaction or clear, as the chat 
           expect(active.kinds.slice(0, 2)).toEqual(["pi.assistant", "pi.compaction"]);
           expect(active.text).not.toContain("First question?");
 
-          // What the chat's view leaves out, pi.agent.history pages through, newest first.
+          // What came before the active context, pi.agent.history pages through, newest first.
           const viewed = await request(runtime, execution, "/agents/assistant/view", null);
           const view = await viewed.json<{ entries: { head?: number }[] }>();
-          const before = view.entries[0]?.head;
-          assert(before !== undefined, "the compacted view leads with its head marker");
+          const before = [...view.entries].reverse().find((entry) => entry.head)?.head;
+          assert(before !== undefined, "the compacted view holds its head marker");
           const bash = await bashIn(runtime);
           const history: { id: number }[] = [];
-          let cursor: string | null = null;
-          do {
+          let maxEntryId = before - 1;
+          let more = true;
+          while (more) {
             const printed = await bash.exec(
-              `pi.agent.history --agent assistant --before ${before} --page-size 2${cursor === null ? "" : ` --cursor '${cursor}'`}`,
+              `pi.agent.history --agent assistant --max-entry-id ${maxEntryId} --page-size 2`,
             );
             assert.equal(printed.exitCode, 0, printed.stderr);
-            const page = JSON.parse(printed.stdout) as {
-              entries: { id: number }[];
-              cursor: string | null;
-            };
+            const page = JSON.parse(printed.stdout) as { entries: { id: number }[]; more: boolean };
             history.push(...page.entries);
-            cursor = page.cursor;
-          } while (cursor !== null);
+            maxEntryId = page.entries[page.entries.length - 1].id - 1;
+            ({ more } = page);
+          }
           const ids = history.map(({ id }) => id);
           expect(ids).toEqual([...ids].sort((a, b) => b - a));
           expect(ids.filter((id) => id >= before)).toEqual([]);

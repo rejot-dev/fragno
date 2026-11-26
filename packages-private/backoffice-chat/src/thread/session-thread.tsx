@@ -326,10 +326,12 @@ export function SessionThread({
   compaction,
   context,
   activeContextStartMessageId,
+  earlierHistoryOutOfContext,
   hasMoreHistory,
   historyLoading,
   historyError,
   onLoadMoreHistory,
+  onRetryHistory,
   dictation,
   attachments,
 }: {
@@ -362,10 +364,14 @@ export function SessionThread({
   context: ContextControls | null;
   /** The message the context divider precedes; null while no earlier history is shown. */
   activeContextStartMessageId: string | null;
+  /** Whether the history not yet shown is known to be outside the agent's context. */
+  earlierHistoryOutOfContext: boolean;
   hasMoreHistory: boolean;
   historyLoading: boolean;
   historyError: string | null;
   onLoadMoreHistory: () => Promise<void>;
+  /** Runs the history load that failed again; null while none has. */
+  onRetryHistory: (() => Promise<void>) | null;
   /** Whether the runtime has a dictation adapter to drive the microphone button. */
   dictation: boolean;
   /** Null where the agent cannot read uploaded files. */
@@ -434,10 +440,11 @@ export function SessionThread({
     };
   }, []);
 
-  const loadOlderHistory = () => {
+  // Loaded history lands above the reader, so the place they are reading stays put.
+  const loadHistory = (load: () => Promise<void>) => {
     const viewport = viewportRef.current;
     historyScrollAnchorRef.current = viewport && readingPlace(viewport);
-    void onLoadMoreHistory();
+    void load();
   };
   return (
     <ChatAttachmentDropZone
@@ -454,13 +461,20 @@ export function SessionThread({
                 {hasMoreHistory || historyError ? (
                   <ChatHistoryControls
                     // Once history shows, the divider below it carries this explanation.
-                    explanation={
-                      activeContextStartMessageId === null ? OUT_OF_CONTEXT_HISTORY : null
-                    }
+                    explanation={earlierHistoryOutOfContext ? OUT_OF_CONTEXT_HISTORY : null}
                     hasMore={hasMoreHistory}
                     loading={historyLoading}
                     error={historyError}
-                    onLoadMore={loadOlderHistory}
+                    onLoadMore={() => {
+                      loadHistory(onLoadMoreHistory);
+                    }}
+                    onRetry={
+                      onRetryHistory === null
+                        ? null
+                        : () => {
+                            loadHistory(onRetryHistory);
+                          }
+                    }
                   />
                 ) : null}
 

@@ -99,13 +99,15 @@ const parseAgentMessages = defineCliArgsParser<{
 });
 const parseAgentHistory = defineCliArgsParser<{
   agentName: string;
-  before: number;
-  cursor?: string;
+  minEntryId?: number;
+  maxEntryId?: number;
+  order?: string;
   pageSize?: number;
 }>("pi.agent.history", {
   agentName: { option: "agent", required: true },
-  before: { kind: "positiveInteger", required: true },
-  cursor: {},
+  minEntryId: { option: "min-entry-id", kind: "positiveInteger" },
+  maxEntryId: { option: "max-entry-id", kind: "positiveInteger" },
+  order: {},
   pageSize: { option: "page-size", kind: "positiveInteger" },
 });
 const parseAgentActivity = defineCliArgsParser<{ agentName: string; subagent?: string }>(
@@ -662,7 +664,7 @@ const agentHistoryTool = defineBackofficeRuntimeTool({
       command: "pi.agent.history",
       help: {
         summary:
-          "pi.agent.history prints a page of an agent's conversation from before its newest compaction or clear, newest entry first, as Pi Durable's entries.",
+          "pi.agent.history prints a page of an agent's whole conversation, compactions and clears included, newest entry first, as Pi Durable's entries. Read further back from the last entry's ID while `more` is true.",
         options: [
           {
             name: "agent",
@@ -672,17 +674,22 @@ const agentHistoryTool = defineBackofficeRuntimeTool({
             description: "Agent name",
           },
           {
-            name: "before",
-            required: true,
+            name: "min-entry-id",
             valueRequired: true,
             valueName: "entry-id",
-            description: "The entry where the active context begins",
+            description: "The oldest entry ID to print",
           },
           {
-            name: "cursor",
+            name: "max-entry-id",
             valueRequired: true,
-            valueName: "cursor",
-            description: "A previous page's cursor, to read further back",
+            valueName: "entry-id",
+            description: "The newest entry ID to print",
+          },
+          {
+            name: "order",
+            valueRequired: true,
+            valueName: "descending|ascending",
+            description: "Newest first (descending, the default) or oldest first (ascending)",
           },
           {
             name: "page-size",
@@ -691,7 +698,10 @@ const agentHistoryTool = defineBackofficeRuntimeTool({
             description: "How many entries to print, up to 256; default 100",
           },
         ],
-        examples: ["pi.agent.history --agent assistant --before 42"],
+        examples: [
+          "pi.agent.history --agent assistant",
+          "pi.agent.history --agent assistant --max-entry-id 41",
+        ],
       },
       parse: parseAgentHistory,
       outputOptions: jsonByDefaultOutputOptions,

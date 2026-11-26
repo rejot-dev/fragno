@@ -1,6 +1,6 @@
+import type { Context } from "@earendil-works/chord/context";
 import { Type } from "typebox";
 
-import type { Context } from "@earendil-works/chord";
 import {
   defineTool,
   type ConversationId,
@@ -120,10 +120,15 @@ async function settledState(
       if (check(watch.value)) {
         return;
       }
-      watch.start(async (state) => void check(state));
+      watch.start(async (call) => {
+        // A failed call is one its source may recover from, so the wait goes on.
+        if (call.kind === "value") {
+          check(call.retired ? null : call.value);
+        }
+      });
       // A stop aborts the call, which cancels the watch.
       void watch.closed.then((end) => {
-        reject(new Error(`Waiting for subagent ${requestId} ended: ${end.reason}.`));
+        reject(new Error(`Waiting for subagent ${requestId} ended: ${end.kind}.`));
       });
     });
   } finally {

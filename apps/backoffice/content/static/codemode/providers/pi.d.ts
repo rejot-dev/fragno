@@ -16,7 +16,7 @@ type PiCodemodeProvider = {
    */
   listMessages(input: PiListMessagesInput): Promise<PiListMessagesOutput>;
   /**
-   * Read a page of a started agent's conversation from before its newest compaction or clear, newest entry first, as Pi Durable's entries with thinking, tool calls, and tool results: the history `pi.agent.watch`'s view leaves out, for a chat that shows it. Pass `before` where the view's active context begins, and each page's `cursor` to read further back. To read what was said since the newest compaction, use `pi.agent.messages`.
+   * Read a page of a started agent's whole conversation, compactions and clears included, as Pi Durable's entries with thinking, tool calls, and tool results: an entry ID range in one order, newest first by default. `pi.agent.watch`'s view holds only the newest entries; a chat loads the rest with this, as Pi Durable's `ConversationTranscript` asks its loader. Read further from the last entry's ID while `more` is true. To read what was said since the newest compaction, use `pi.agent.messages`.
    * Requires `pi.read`.
    */
   listHistory(input: PiListHistoryInput): Promise<PiListHistoryOutput>;
@@ -171,18 +171,20 @@ type PiListMessagesOutput = {
 type PiListHistoryInput = {
   /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */
   agentName: string;
-  /** The entry where the active context begins, which `pi.agent.watch`'s view leads with as its first entry's `head`: the page reads the entries before it. */
-  before: number;
-  /** A previous page's `cursor`, to read further back; null for the newest page. */
-  cursor?: string | null;
+  /** The oldest entry ID the page may hold; null for none. */
+  minEntryId?: number | null;
+  /** The newest entry ID the page may hold; null for none. */
+  maxEntryId?: number | null;
+  /** `descending` reads newest first, `ascending` oldest first. */
+  order?: "descending" | "ascending";
   /** How many entries the page holds at most. */
   pageSize?: number;
 };
 type PiListHistoryOutput = {
-  /** Pi Durable's `EntryRecord`s, newest first. */
+  /** Pi Durable's `EntryRecord`s, in the order asked for. */
   entries: unknown[];
-  /** The next page's cursor; null once the page reached the conversation's start. */
-  cursor: string | null;
+  /** Whether the range holds entries past the page: read on from the last entry's ID. */
+  more: boolean;
 };
 type PiGetActivityInput = {
   /** The agent whose conversation to read, by its name from `pi.listAgents`; it is yours only when you pass your own name. */

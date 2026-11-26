@@ -1,5 +1,7 @@
 import {
   piAgentActivitySchema,
+  piAgentEntryRangeSchema,
+  piAgentHistoryPageSchema,
   piAgentMessagePageSchema,
   piPromptStatusSchema,
 } from "@fragno-dev/backoffice-api/v0/pi";
@@ -11,7 +13,6 @@ import { piAgentActorName } from "@/fragno/pi/agent/pi-agent-actor";
 import {
   PiConversationViewDamagedError,
   piAgentCompactionStatusSchema,
-  piAgentEntryPageRequestSchema,
   piAgentMessagePageRequestSchema,
   piPromptStatusOf,
   type PiSubagentRun,
@@ -214,48 +215,25 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
     defineRoute({
       method: "GET",
       path: "/agents/:agentName/entries",
-      queryParameters: ["before", "cursor", "pageSize"],
-      outputSchema: z.object({
-        entries: z.array(z.unknown()),
-        cursor: z.string().nullable(),
-        hasNextPage: z.boolean(),
-      }),
-      errorCodes: ["AGENT_NOT_STARTED", "INVALID_BEFORE", "INVALID_CURSOR", "INVALID_PAGE_SIZE"],
+      queryParameters: ["minEntryId", "maxEntryId", "order", "pageSize"],
+      outputSchema: piAgentHistoryPageSchema,
+      errorCodes: ["AGENT_NOT_STARTED", "INVALID_ENTRY_RANGE"],
       handler: async function ({ pathParams, query }, { json, error }) {
-        const before = piAgentEntryPageRequestSchema.shape.before.safeParse(
-          Number(query.get("before")),
-        );
-        if (!before.success) {
-          return error(
-            { code: "INVALID_BEFORE", message: "Pi entry history requires a `before` entry ID." },
-            400,
-          );
-        }
-        const pageSize = z.coerce
-          .number()
-          .int()
-          .min(1)
-          .max(256)
-          .safeParse(query.get("pageSize") ?? 100);
-        if (!pageSize.success) {
+        const range = piAgentEntryRangeSchema.safeParse({
+          minEntryId: query.has("minEntryId") ? Number(query.get("minEntryId")) : undefined,
+          maxEntryId: query.has("maxEntryId") ? Number(query.get("maxEntryId")) : undefined,
+          order: query.get("order") ?? undefined,
+          pageSize: query.has("pageSize") ? Number(query.get("pageSize")) : undefined,
+        });
+        if (!range.success) {
           return error(
             {
-              code: "INVALID_PAGE_SIZE",
-              message: "Pi entry page size must be between 1 and 256.",
+              code: "INVALID_ENTRY_RANGE",
+              message:
+                "Pi entry pages take positive `minEntryId` and `maxEntryId`, `order` `descending` or `ascending`, and a `pageSize` from 1 to 256.",
             },
             400,
           );
-        }
-        let cursor: z.infer<typeof piAgentEntryPageRequestSchema>["cursor"] = null;
-        const encodedCursor = query.get("cursor");
-        if (encodedCursor) {
-          try {
-            cursor = piAgentEntryPageRequestSchema.shape.cursor.parse(
-              JSON.parse(encodedCursor) as unknown,
-            );
-          } catch {
-            return error({ code: "INVALID_CURSOR", message: "Invalid Pi entry cursor." }, 400);
-          }
         }
         const agent = await this.handlerTx()
           .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
@@ -264,16 +242,8 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
         if (!agent) {
           return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
         }
-        const page = await config.agent(agent).listEntries(agent, {
-          before: before.data,
-          pageSize: pageSize.data,
-          cursor,
-        });
-        return json({
-          entries: [...page.entries],
-          cursor: page.cursor === null ? null : JSON.stringify(page.cursor),
-          hasNextPage: page.cursor !== null,
-        });
+        const page = await config.agent(agent).listEntries(agent, range.data);
+        return json({ entries: [...page.entries], more: page.more });
       },
     }),
     defineRoute({

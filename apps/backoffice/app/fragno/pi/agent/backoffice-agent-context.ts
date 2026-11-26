@@ -1,3 +1,4 @@
+import type { Context } from "@earendil-works/chord/context";
 import type {
   PiAgentConfig,
   PiAgentDefinition,
@@ -7,7 +8,6 @@ import type {
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import type { Context } from "@earendil-works/chord";
 import { ROOT_CONVERSATION_ID, type ConversationId } from "@earendil-works/pi-durable";
 
 import { withBackofficeActorCapabilityGrants } from "@/backoffice-runtime/authority-resolver";

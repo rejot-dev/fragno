@@ -397,9 +397,10 @@ All paths below are mounted at `/api/pi-manager` inside the manager object:
   from Pi's submission of the turn that handled it, or the queue's record of an item Pi does not
   have; see Queue. A completed prompt's `answer` is read from the answer's entry, so a later
   compaction or clear leaves it readable.
-- `GET /agents/:agentName/view`: Pi's committed active structural conversation view.
-- `GET /agents/:agentName/entries?cursor=...&pageSize=...`: newest-first, fork-aware durable entry
-  history (maximum 256 entries per page).
+- `GET /agents/:agentName/view`: Pi's committed conversation view, a window over its newest entries.
+- `GET /agents/:agentName/entries?minEntryId=...&maxEntryId=...&order=...&pageSize=...`: fork-aware
+  durable entries in an inclusive ID range, newest first by default, with `more` while the range
+  holds entries past the page (maximum 256 entries per page).
 - `GET /agents/:agentName/messages?last=...&before=...`: the `last` (default 20, at most 100)
   messages said before entry `before`, or the latest ones, oldest first; see Reading conversations.
 - `GET /agents/:agentName/export?history=true`: streaming JSONL export of the durable entries,
@@ -510,8 +511,9 @@ response that a newer one in its task repeats is a recovery partial and is skipp
 skips it, unless the two fall on different pages. `pi.agent.messages --agent assistant --last 1`
 prints only the latest message; `--format json` prints the page.
 
-`pi.listHistory` (`pi.agent.history`) returns the entries route's pages to apps whose chats show
-earlier history, as Backoffice's own chat loads it.
+`pi.listHistory` (`pi.agent.history`) returns the entries route's pages: an entry ID range in one
+order, as Pi Durable's `ConversationTranscript` loads entries the view's window does not hold. Apps'
+chats load their history with it, as Backoffice's own chat loads it from the same route.
 
 `pi.exportConversation` (`pi.agent.export`) writes the export route's JSONL to a `.jsonl` file under
 `/workspace` and also needs `upload.modify`. It holds the whole export in memory to write it in one

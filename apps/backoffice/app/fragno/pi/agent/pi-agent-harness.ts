@@ -1,9 +1,8 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { Models } from "@earendil-works/pi-ai/models";
 import type { PiAgentConfig, PiAgentSkillReload } from "@fragno-dev/backoffice-api/v0/pi";
 import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import type { Context } from "@earendil-works/chord";
 import {
   createRegistry,
   DEFAULT_COMPACTION_POLICY,
@@ -262,7 +261,9 @@ export async function openPiAgentHarness(input: {
         stream: { maxRetries: 3, ...dependencies.settings.stream },
         compaction: withoutBackgroundCompaction(dependencies.settings),
       },
-      onReport: report,
+      onReport: (piReport) => {
+        report(piReport.error);
+      },
       // Sleep deadlines and the object's alarms must read one clock.
       now: input.nowEpochMs,
       onWake: input.onWake,

@@ -6,8 +6,8 @@ import {
   fauxToolCall,
 } from "@earendil-works/pi-ai/providers/faux";
 
-import { Type } from "@earendil-works/pi-ai";
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
+import { obj, str } from "@earendil-works/pi-schema";
 
 import type { PiAgentDependencies } from "@/fragno/pi/agent/pi-agent-harness";
 
@@ -42,7 +42,7 @@ export function createPiScenarioDependencies(): PiAgentDependencies {
       defineTool({
         name: "echo",
         description: "Echo the provided text.",
-        parameters: Type.Object({ text: Type.String() }),
+        parameters: obj({ text: str() }),
         replay: "safe",
         execute: async ({ text }) => ({ output: [{ type: "text", text }] }),
       }),

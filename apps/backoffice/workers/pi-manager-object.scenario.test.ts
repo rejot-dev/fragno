@@ -23,13 +23,13 @@ import {
 } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import { type BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
-import { Type } from "@earendil-works/pi-ai";
 import {
   defineExtension,
   defineTool,
   type ConversationView,
   type LiveState,
 } from "@earendil-works/pi-durable";
+import { obj, str } from "@earendil-works/pi-schema";
 
 import { allLocalObjects } from "@/backoffice-runtime/all-local-objects";
 import {
@@ -466,7 +466,7 @@ test("a busy agent queues other principals' prompts, lets its own turn be steere
               defineTool({
                 name: "echo",
                 description: "Echo the provided text.",
-                parameters: Type.Object({ text: Type.String() }),
+                parameters: obj({ text: str() }),
                 replay: "safe",
                 execute: async ({ text }) => ({ output: [{ type: "text", text }] }),
               }),
@@ -2322,16 +2322,16 @@ test("durable Pi paginates history, streams exports, and compacts without deleti
           const activeView = await readView(runtime, scope);
           expect(JSON.stringify(activeView.entries)).toContain("Compacted durable summary.");
 
-          // The view leads with the compaction's head marker; history is everything before it.
-          const before = activeView.entries[0]?.head;
-          assert(before !== undefined, "the compacted view leads with its head marker");
+          // The compaction's head marker names where the active context begins; history is
+          // everything before it.
+          const before = [...activeView.entries].reverse().find((entry) => entry.head)?.head;
+          assert(before !== undefined, "the compacted view holds its head marker");
           const history: ConversationView["entries"][number][] = [];
-          let cursor: string | null = null;
-          do {
-            const query = new URLSearchParams({ before: String(before), pageSize: "1" });
-            if (cursor) {
-              query.set("cursor", cursor);
-            }
+          // Newest first, each page reading on from below the last entry it held.
+          let maxEntryId = before - 1;
+          let more = true;
+          while (more) {
+            const query = new URLSearchParams({ maxEntryId: String(maxEntryId), pageSize: "1" });
             const response = await managerRequest(
               runtime,
               scope,
@@ -2340,18 +2340,21 @@ test("durable Pi paginates history, streams exports, and compacts without deleti
             assert.equal(response.status, 200, await response.clone().text());
             const page = await response.json<{
               entries: ConversationView["entries"];
-              cursor: string | null;
+              more: boolean;
             }>();
             expect(page.entries).toHaveLength(1);
             history.push(...page.entries);
-            cursor = page.cursor;
-          } while (cursor !== null);
+            maxEntryId = page.entries[0].id - 1;
+            ({ more } = page);
+          }
 
           const historyIds = history.map((entry) => entry.id);
           expect(historyIds.length).toBeGreaterThan(1);
           expect(historyIds).toEqual([...historyIds].sort((a, b) => b - a));
           expect(historyIds.filter((id) => id >= before)).toEqual([]);
-          const activeIds = new Set(activeView.entries.map((entry) => entry.id));
+          const activeIds = new Set(
+            activeView.entries.filter((entry) => entry.id >= before).map((entry) => entry.id),
+          );
           expect(historyIds.filter((id) => activeIds.has(id))).toEqual([]);
           expect(JSON.stringify(history)).toContain("Create history.");
         }),
@@ -2404,15 +2407,16 @@ test("clearing an agent's context starts its next turn fresh and keeps earlier e
           assert.equal(reset.status, 204, await reset.clone().text());
           await runtime.drain();
 
-          // The cleared view is only the reset's head marker; the old turn is in history before it.
+          // The reset's head marker starts the active context; the old turn is in history before it.
           const cleared = await readView(runtime, scope);
-          const before = cleared.entries[0]?.head;
-          assert(before !== undefined, "the cleared view leads with its head marker");
-          expect(userEntryTexts(cleared)).toEqual([]);
+          const before = [...cleared.entries].reverse().find((entry) => entry.head)?.head;
+          assert(before !== undefined, "the cleared view holds its head marker");
+          const active = cleared.entries.filter((entry) => entry.id >= before);
+          expect(userEntryTexts({ ...cleared, entries: active })).toEqual([]);
           const history = await managerRequest(
             runtime,
             scope,
-            `/agents/assistant/entries?${new URLSearchParams({ before: String(before), pageSize: "100" })}`,
+            `/agents/assistant/entries?${new URLSearchParams({ maxEntryId: String(before - 1) })}`,
           );
           assert.equal(history.status, 200, await history.clone().text());
           expect(JSON.stringify(await history.json())).toContain("Remember the old topic.");
@@ -2428,7 +2432,13 @@ test("clearing an agent's context starts its next turn fresh and keeps earlier e
           expect(modelContexts[1]).toContain("Start the new topic.");
           expect(modelContexts[1]).not.toContain("Remember the old topic.");
           expect(modelContexts[1]).not.toContain("First answer.");
-          expect(userEntryTexts(await readView(runtime, scope))).toEqual(["Start the new topic."]);
+          const after = await readView(runtime, scope);
+          expect(
+            userEntryTexts({
+              ...after,
+              entries: after.entries.filter((entry) => entry.id >= before),
+            }),
+          ).toEqual(["Start the new topic."]);
         }),
       ],
     }),
