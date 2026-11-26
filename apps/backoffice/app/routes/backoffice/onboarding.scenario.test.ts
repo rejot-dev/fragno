@@ -569,6 +569,7 @@ test("someone who signs up to install an app sets up Backoffice first, then inst
               clientCredentials: true,
             });
           const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+            requestedMemberReach: { kind: "none" },
             actions: { kind: "none" },
             trust: { kind: "third-party" },
             slug: "bookkeeping",

@@ -42,9 +42,13 @@ async function writeResponse(response: Response, target: ServerResponse) {
   Readable.fromWeb(response.body as import("node:stream/web").ReadableStream).pipe(target);
 }
 
-/** Serves the in-process test server over loopback HTTP for clients that need a real socket. */
+/**
+ * Serves the in-process test server over loopback HTTP for clients that need a real socket, on
+ * `port`, or on a free one when it is 0.
+ */
 export async function startStreamableHttpTestMcpServer(
   options: TestMcpServerOptions = { protocolVersion: "2026-07-28" },
+  port = 0,
 ): Promise<TestMcpServerHandle> {
   const mcpServer = createTestMcpServer(options);
   const httpServer: Server = createServer((request, response) => {
@@ -59,7 +63,7 @@ export async function startStreamableHttpTestMcpServer(
   });
 
   await new Promise<void>((resolve) => {
-    httpServer.listen(0, "127.0.0.1", resolve);
+    httpServer.listen(port, "127.0.0.1", resolve);
   });
   const address = httpServer.address();
   if (!address || typeof address === "string") {

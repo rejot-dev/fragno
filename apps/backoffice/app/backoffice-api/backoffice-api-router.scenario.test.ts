@@ -246,6 +246,7 @@ async function installBookkeeping(ctx: Ctx, permissions: BackofficePermissionReq
   ctx.vars.clientId = client.clientId;
   ctx.vars.clientSecret = client.clientSecret;
   const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+    requestedMemberReach: { kind: "none" },
     actions: { kind: "none" },
     trust: { kind: "third-party" },
     slug: "accounting",
@@ -257,6 +258,7 @@ async function installBookkeeping(ctx: Ctx, permissions: BackofficePermissionReq
   const installed = await ctx.runtime.objects.appInstallations
     .for({ kind: "org", orgId: ctx.vars.orgId, jurisdiction: null })
     .commands.installApp({
+      memberReach: { kind: "none" },
       actionsRevision: 1,
       appId: ctx.vars.appId,
       grantedPermissions: permissions,

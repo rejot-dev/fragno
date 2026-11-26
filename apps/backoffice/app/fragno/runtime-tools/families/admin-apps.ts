@@ -1,4 +1,8 @@
-import { appActionsDeclarationSchema, appTrustSchema } from "@fragno-dev/backoffice-api/v0/apps";
+import {
+  appActionsDeclarationSchema,
+  appMemberReachSchema,
+  appTrustSchema,
+} from "@fragno-dev/backoffice-api/v0/apps";
 import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 
 import {
@@ -39,6 +43,14 @@ const trustOption = {
     'Trust: {"kind":"third-party"}, or {"kind":"first-party","provisioningPermissions":["organizations.provision","organizations.provisionForInvitee","organizations.provisionManaged","organizations.listManaged","projects.provision","invitations.create","invitations.send","invitations.accept"],"branding":{"displayName","logoUrl","accentColor":"#rrggbb","homeUrl","supportUrl"}} for an app Backoffice operates',
 };
 
+const memberReachOption = {
+  name: "requested-member-reach-json",
+  valueRequired: true,
+  valueName: "json",
+  description:
+    'Whether organizations installing the app may let it into the personal workspaces of members who allow it, where it has its granted permissions and acts only for them: {"kind":"none"} or {"kind":"consenting"}',
+};
+
 const createAppTool = defineBackofficeRuntimeTool({
   id: "admin.apps.create",
   namespace: "admin",
@@ -48,6 +60,7 @@ const createAppTool = defineBackofficeRuntimeTool({
     "Register a Backoffice app for an existing Better Auth OAuth client. Does not provision OAuth credentials or install the app.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
   inputSchema: backofficeAppRegistrationInputSchema.extend({
+    requestedMemberReach: appMemberReachSchema.default({ kind: "none" }),
     actions: appActionsDeclarationSchema.default({ kind: "none" }),
     trust: appTrustSchema.default({ kind: "third-party" }),
   }),
@@ -82,6 +95,7 @@ const createAppTool = defineBackofficeRuntimeTool({
             description:
               "JSON array of canonical namespace/permission requirements; use [] for no capabilities",
           },
+          { ...memberReachOption, description: `${memberReachOption.description} (default: none)` },
           { ...actionsOption, description: `${actionsOption.description} (default: none)` },
           { ...trustOption, description: `${trustOption.description} (default: third-party)` },
         ],
@@ -98,6 +112,7 @@ const createAppTool = defineBackofficeRuntimeTool({
           option: "requested-permissions-json",
           required: true,
         },
+        requestedMemberReach: { kind: "json", option: "requested-member-reach-json" },
         actions: { kind: "json", option: "actions-json" },
         trust: { kind: "json", option: "trust-json" },
       }),
@@ -163,7 +178,7 @@ const updateAppPermissionsTool = defineBackofficeRuntimeTool({
   name: "appsUpdatePermissions",
   activity: { label: "Update app permissions", target: (input) => input.appId },
   description:
-    "Replace the permissions a registered app requests. A first-party app's installations follow the new request within a minute. A third-party app's installations keep the grants their owner approved: an added permission applies once an owner grants it (apps.installations.update or the install page), and a removed one stays granted until an owner changes the installation's access.",
+    "Replace the permissions a registered app requests, and whether it asks organizations for their members' personal workspaces. A first-party app's installations follow the new request within a minute. A third-party app's installations keep the access their owner approved: an added permission or member reach applies once an owner grants it (apps.installations.update or the install page), and a removed one stays granted until an owner changes the installation's access.",
   requiredPermissions: [BACKOFFICE_PERMISSION.admin.appsManage],
   inputSchema: backofficeAppPermissionsUpdateInputSchema,
   outputSchema: backofficeAppPermissionsUpdateResultSchema,
@@ -191,9 +206,10 @@ const updateAppPermissionsTool = defineBackofficeRuntimeTool({
             description:
               "JSON array of canonical namespace/permission requirements; use [] for no capabilities",
           },
+          { ...memberReachOption, required: true },
         ],
         examples: [
-          'admin.apps.update-permissions --app-id APP_ID --requested-permissions-json \'[{"namespace":"org","permission":"read"}]\'',
+          'admin.apps.update-permissions --app-id APP_ID --requested-permissions-json \'[{"namespace":"org","permission":"read"}]\' --requested-member-reach-json \'{"kind":"none"}\'',
         ],
       },
       parse: defineCliArgsParser("admin.apps.update-permissions", {
@@ -201,6 +217,11 @@ const updateAppPermissionsTool = defineBackofficeRuntimeTool({
         requestedPermissions: {
           kind: "json",
           option: "requested-permissions-json",
+          required: true,
+        },
+        requestedMemberReach: {
+          kind: "json",
+          option: "requested-member-reach-json",
           required: true,
         },
       }),
@@ -315,6 +336,7 @@ const listAppsTool = defineBackofficeRuntimeTool({
             `  Slug: ${app.slug}`,
             `  OAuth client ID: ${app.oauthClientId}`,
             `  Requested permissions: ${app.requestedPermissions.map(({ namespace, permission }) => `${namespace}.${permission}`).join(", ") || "none"}`,
+            `  Members' personal workspaces: ${app.requestedMemberReach.kind === "consenting" ? "asks organizations" : "no"}`,
             `  Actions: ${app.actions.kind === "none" ? "none" : `${app.actions.actions.map(({ id }) => id).join(", ")} at ${app.actions.endpointUrl}`} (revision ${app.actionsRevision})`,
             `  Trust: ${app.trust.kind === "third-party" ? "third-party" : `first-party as ${app.trust.branding.displayName}, provisioning ${app.trust.provisioningPermissions.join(", ") || "none"}`}`,
             `  Created at: ${app.createdAt}`,

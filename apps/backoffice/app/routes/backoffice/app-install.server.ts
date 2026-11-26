@@ -3,6 +3,7 @@ import { backofficeApiV0 } from "@fragno-dev/backoffice-api/v0";
 import type {
   AppActionsDeclaration,
   AppInstallationResourceScope,
+  AppMemberReach,
   AppTrust,
   BackofficeAppInstallation,
 } from "@fragno-dev/backoffice-api/v0/apps";
@@ -11,7 +12,7 @@ import {
   type BackofficePermissionRequirement,
 } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { backofficeScopePathSegment } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import type { RouterContextProvider } from "react-router";
+import { redirect, type RouterContextProvider } from "react-router";
 import { z } from "zod";
 
 import { createBackofficeUserExecution } from "@/backoffice-runtime/context";
@@ -25,6 +26,8 @@ import { BackofficeAppDomainError, requireBackofficeAppOperationValue } from "@/
 import type { BackofficeMeData } from "@/fragno/auth/contracts";
 import { createAutomationsRouteCaller } from "@/fragno/automation/route-callers";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
+
+import { buildBackofficeOnboardingPath } from "./onboarding-path";
 
 /** The app supplies these; each is validated against Auth and the registry before use. */
 const installRequestQuerySchema = z.object({
@@ -42,6 +45,7 @@ const installDecisionSchema = z.discriminatedUnion("intent", [
     permissions: z.array(z.string().min(1)),
     resources: z.enum(["owner", "projects"]),
     projectIds: z.array(z.string().min(1)),
+    memberReach: z.boolean(),
     // The revision the page showed, so actions changed since are not approved unseen.
     actionsRevision: z.coerce.number().int().positive(),
   }),
@@ -52,6 +56,7 @@ export type AppInstallRequest = {
   app: {
     id: string;
     requestedPermissions: BackofficePermissionRequirement[];
+    requestedMemberReach: AppMemberReach;
     actions: AppActionsDeclaration;
     actionsRevision: number;
     trust: AppTrust;
@@ -100,6 +105,7 @@ export async function resolveAppInstallRequest(
     app: {
       id: app.id,
       requestedPermissions: app.requestedPermissions,
+      requestedMemberReach: app.requestedMemberReach,
       actions: app.actions,
       actionsRevision: app.actionsRevision,
       trust: app.trust,
@@ -107,6 +113,30 @@ export async function resolveAppInstallRequest(
     redirectUri: query.data.redirect_uri,
     state: query.data.state,
   };
+}
+
+/**
+ * The person deciding about an app, once onboarded: their personal scope does not exist before
+ * onboarding fixes its jurisdiction, so onboarding comes first and returns here.
+ */
+export async function requireOnboardedAppUser(
+  context: Readonly<RouterContextProvider>,
+  url: URL,
+  userId: string,
+): Promise<BackofficeMeData> {
+  const me = await context
+    .get(BackofficeWorkerContext)
+    .runtime.objects.auth.singleton()
+    .commands.getBackofficeMe({ userId, activeOrganizationId: null });
+  if (!me) {
+    throw new Error("The signed-in user does not exist.");
+  }
+  if (me.user.onboardedAt === null) {
+    throw redirect(buildBackofficeOnboardingPath(`${url.pathname}${url.search}`), {
+      headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" },
+    });
+  }
+  return me;
 }
 
 /**
@@ -232,6 +262,7 @@ export async function decideAppInstallation(
     permissions: input.formData.getAll("permission"),
     resources: input.formData.get("resources") ?? undefined,
     projectIds: input.formData.getAll("projectId"),
+    memberReach: input.formData.get("memberReach") === "on",
     actionsRevision: input.formData.get("actionsRevision") ?? undefined,
   });
   if (!decision.success) {
@@ -258,13 +289,17 @@ export async function decideAppInstallation(
       ? { kind: "owner" }
       : { kind: "projects", projectIds: [...new Set(projectIds)].sort() };
   // Backoffice operates a first-party app, so linking it reviews nothing: it gets what it asks
-  // for, everywhere the owner has.
+  // for, everywhere the owner has, and an organization's members' workspaces when it asks for them.
   const access =
     input.request.app.trust.kind === "first-party"
       ? {
           appId: input.request.app.id,
           grantedPermissions: input.request.app.requestedPermissions,
           resourceScope: { kind: "owner" } as const,
+          memberReach:
+            owner.kind === "org"
+              ? input.request.app.requestedMemberReach
+              : { kind: "none" as const },
         }
       : {
           appId: input.request.app.id,
@@ -273,6 +308,9 @@ export async function decideAppInstallation(
             decision.data.permissions,
           ),
           resourceScope,
+          memberReach: decision.data.memberReach
+            ? { kind: "consenting" as const }
+            : { kind: "none" as const },
         };
 
   const { runtime, kernel } = context.get(BackofficeWorkerContext);

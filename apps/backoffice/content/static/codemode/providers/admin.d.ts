@@ -90,7 +90,7 @@ type AdminCodemodeProvider = {
    */
   appsUpdateActions(input: AdminAppsUpdateActionsInput): Promise<AdminAppsUpdateActionsOutput>;
   /**
-   * Replace the permissions a registered app requests. A first-party app's installations follow the new request within a minute. A third-party app's installations keep the grants their owner approved: an added permission applies once an owner grants it (apps.installations.update or the install page), and a removed one stays granted until an owner changes the installation's access.
+   * Replace the permissions a registered app requests, and whether it asks organizations for their members' personal workspaces. A first-party app's installations follow the new request within a minute. A third-party app's installations keep the access their owner approved: an added permission or member reach applies once an owner grants it (apps.installations.update or the install page), and a removed one stays granted until an owner changes the installation's access.
    * Requires `admin.apps.manage`.
    */
   appsUpdatePermissions(
@@ -361,6 +361,9 @@ type BackofficePermissionRequirement =
       namespace: "workflow";
       permission: "executeCode" | "modify" | "read";
     };
+type AppMemberReach = {
+  kind: "none" | "consenting";
+};
 type AppActionsDeclaration =
   | {
       kind: "none";
@@ -421,6 +424,7 @@ type BackofficeApp = {
   slug: string;
   oauthClientId: string;
   requestedPermissions: BackofficePermissionRequirement[];
+  requestedMemberReach: AppMemberReach;
   actions: AppActionsDeclaration;
   /** Increments whenever the app's action declaration changes. */
   actionsRevision: number;
@@ -650,6 +654,7 @@ type AdminAppsCreateInput = {
   slug: string;
   oauthClientId: string;
   requestedPermissions: BackofficePermissionRequirement[];
+  requestedMemberReach?: AppMemberReach;
   actions?: AppActionsDeclaration;
   trust?: AppTrust;
 };
@@ -677,6 +682,7 @@ type AdminAppsUpdateActionsOutput = {
 type AdminAppsUpdatePermissionsInput = {
   appId: string;
   requestedPermissions: BackofficePermissionRequirement[];
+  requestedMemberReach: AppMemberReach;
 };
 type AdminAppsUpdatePermissionsOutput = {
   changed: boolean;

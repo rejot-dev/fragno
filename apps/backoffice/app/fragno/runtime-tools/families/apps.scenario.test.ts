@@ -109,6 +109,7 @@ async function registerApp(ctx: BackofficeScenarioContext, name = "Accounting") 
     applicationType: "web",
   });
   const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+    requestedMemberReach: { kind: "none" },
     actions: { kind: "none" },
     trust: { kind: "third-party" },
     slug: name.toLowerCase(),
@@ -333,7 +334,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 ),
               ).rejects.toThrow("update it explicitly");
               const updated = await bash.exec(
-                `apps.installations.update --app-id ${appId} --granted-permissions-json '[]' --resource-scope-json '{"kind":"owner"}'`,
+                `apps.installations.update --app-id ${appId} --granted-permissions-json '[]' --resource-scope-json '{"kind":"owner"}' --member-reach-json '{"kind":"none"}'`,
               );
               assert.equal(updated.exitCode, 0, updated.stderr);
               expect(updated.stdout).toContain("Updated installation access.");
@@ -372,6 +373,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                     appId,
                     grantedPermissions: requestedPermissions,
                     resourceScope: wholeOrganization,
+                    memberReach: { kind: "none" },
                   },
                   adminTools,
                 ),
@@ -464,6 +466,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                       appId,
                       grantedPermissions: [],
                       resourceScope: wholeOrganization,
+                      memberReach: { kind: "none" },
                       ...(name === "install" ? { actionsRevision: 1 } : {}),
                     };
               await expect(
@@ -532,6 +535,18 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                 {
                   actionsRevision: 1,
                   appId,
+                  grantedPermissions: [],
+                  memberReach: { kind: "consenting" },
+                },
+                ownerTools,
+              ),
+            ).rejects.toThrow("does not ask for members' personal workspaces");
+            await expect(
+              executeBackofficeRuntimeTool(
+                appTool("install"),
+                {
+                  actionsRevision: 1,
+                  appId,
                   grantedPermissions: [{ namespace: "events", permission: "unknown" }],
                 },
                 ownerTools,
@@ -579,6 +594,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                   appId,
                   grantedPermissions: [BACKOFFICE_PERMISSION.store.modify],
                   resourceScope: wholeOrganization,
+                  memberReach: { kind: "none" },
                 },
                 ownerTools,
               ),
@@ -650,6 +666,7 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
                     appId,
                     grantedPermissions: requestedPermissions,
                     resourceScope: wholeOrganization,
+                    memberReach: { kind: "none" },
                   },
                   createBackofficeToolContext(administratorContext),
                 ),
@@ -679,7 +696,12 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               await expect(
                 executeBackofficeRuntimeTool(
                   appTool("updateInstallation"),
-                  { appId, grantedPermissions: [], resourceScope: wholeOrganization },
+                  {
+                    appId,
+                    grantedPermissions: [],
+                    resourceScope: wholeOrganization,
+                    memberReach: { kind: "none" },
+                  },
                   tools,
                 ),
               ).rejects.toThrow("Required permission: apps.manage.");
@@ -774,7 +796,12 @@ describe("organization app installation runtime tool SQLite scenarios", () => {
               await expect(
                 executeBackofficeRuntimeTool(
                   appTool("updateInstallation"),
-                  { appId, grantedPermissions: [], resourceScope: wholeOrganization },
+                  {
+                    appId,
+                    grantedPermissions: [],
+                    resourceScope: wholeOrganization,
+                    memberReach: { kind: "none" },
+                  },
                   tools,
                 ),
               ).rejects.toThrow();

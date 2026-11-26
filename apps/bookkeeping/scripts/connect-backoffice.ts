@@ -58,11 +58,17 @@ const REQUESTED_PERMISSIONS = [
   { namespace: "models", permission: "extract" },
   { namespace: "integrations", permission: "read" },
   { namespace: "integrations", permission: "execute" },
+  // Connection sources read the connections they run actions on with it.
+  { namespace: "connections", permission: "read" },
   // Bookkeeping tells firms of what their agents are asked with events, which its agent package's
   // route reads.
   { namespace: "events", permission: "emit" },
   { namespace: "events", permission: "read" },
 ];
+
+// The company-details agent looks details up in the connections of the person it acts for, in their
+// personal workspace, which each person lets Bookkeeping into for each client.
+const REQUESTED_MEMBER_REACH = { kind: "consenting" };
 
 function readDevVars(): Map<string, string> {
   const values = new Map<string, string>();
@@ -338,6 +344,7 @@ const app = execSystem(
       slug: BOOKKEEPING_APP_SLUG,
       oauthClientId: client.clientId,
       requestedPermissions: REQUESTED_PERMISSIONS,
+      requestedMemberReach: REQUESTED_MEMBER_REACH,
       actions,
       trust: TRUST,
     })};
@@ -360,7 +367,7 @@ const app = execSystem(
       created = true;
     } else {
       actionsChanged = (await admin.appsUpdateActions({ appId: app.id, actions: want.actions })).changed;
-      permissionsChanged = (await admin.appsUpdatePermissions({ appId: app.id, requestedPermissions: want.requestedPermissions })).changed;
+      permissionsChanged = (await admin.appsUpdatePermissions({ appId: app.id, requestedPermissions: want.requestedPermissions, requestedMemberReach: want.requestedMemberReach })).changed;
       await admin.appsUpdateTrust({ appId: app.id, trust: want.trust });
       // An app registered before slugs answers to its ID; registering it again names it.
       if (app.slug === app.id) await admin.appsCreate(want);
@@ -375,6 +382,7 @@ const app = execSystem(
       const requested = app.requestedPermissions.map((p) => p.namespace + "." + p.permission).sort();
       const wanted = want.requestedPermissions.map((p) => p.namespace + "." + p.permission).sort();
       if (JSON.stringify(requested) !== JSON.stringify(wanted)) problems.push("it requests " + requested.join(", ") + " instead of " + wanted.join(", "));
+      if (app.requestedMemberReach.kind !== want.requestedMemberReach.kind) problems.push("it does not ask organizations for their members' personal workspaces");
     }
     return { appId: app?.id ?? "", slug: app?.slug ?? "", created, actionsRevision: app?.actionsRevision ?? 0, actionsChanged, permissionsChanged, problems };
   }`,
@@ -494,6 +502,7 @@ writeDevVars({
   BOOKKEEPING_BASE_URL: bookkeepingUrl,
   BACKOFFICE_BASE_URL: backofficeUrl,
   BACKOFFICE_OAUTH_CLIENT_ID: client.clientId,
+  BACKOFFICE_APP_ID: app.appId,
   BOOKKEEPING_OPERATOR_ORGANIZATION_ID: operators.organizationId,
   ...(client.clientSecret ? { BACKOFFICE_OAUTH_CLIENT_SECRET: client.clientSecret } : {}),
 });

@@ -23,7 +23,10 @@ export type BackofficeAppErrorCode =
   | "APP_ACTION_NOT_FOUND"
   | "APP_ENDPOINT_NOT_DECLARED"
   | "APP_EVENTS_NOT_GRANTED"
-  | "APP_ENDPOINT_UNREACHABLE";
+  | "APP_ENDPOINT_UNREACHABLE"
+  | "APP_MEMBER_REACH_NOT_REQUESTED"
+  | "APP_MEMBER_REACH_NOT_ORGANIZATION"
+  | "APP_MEMBER_REACH_CURSOR_INVALID";
 
 const BACKOFFICE_APP_ERROR_KIND = {
   APP_NOT_FOUND: "not_found",
@@ -45,6 +48,9 @@ const BACKOFFICE_APP_ERROR_KIND = {
   APP_ENDPOINT_NOT_DECLARED: "not_found",
   APP_EVENTS_NOT_GRANTED: "forbidden",
   APP_ENDPOINT_UNREACHABLE: "operation_failed",
+  APP_MEMBER_REACH_NOT_REQUESTED: "invalid_request",
+  APP_MEMBER_REACH_NOT_ORGANIZATION: "invalid_request",
+  APP_MEMBER_REACH_CURSOR_INVALID: "invalid_request",
 } as const satisfies Record<BackofficeAppErrorCode, BackofficeOperationErrorKind>;
 
 /** Known app failures are serialized at RPC boundaries; unexpected failures still propagate. */

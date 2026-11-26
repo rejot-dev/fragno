@@ -5,6 +5,7 @@ import type {
 import {
   type AppActionsDeclaration,
   type AppInstallationResourceScope,
+  type AppMemberReach,
   type BackofficeApp,
   type BackofficeAppInstallation,
   type BackofficeAppInstallationAccessInput,
@@ -121,6 +122,20 @@ export function effectiveGrantedPermissions(
   return app.trust.kind === "first-party" ? app.requestedPermissions : granted;
 }
 
+/**
+ * Whether an active installation of a first-party app reaches members' personal workspaces: as the
+ * app requests now, as with its permissions, but only for an organization.
+ */
+export function effectiveMemberReach(
+  app: Pick<BackofficeApp, "trust" | "requestedMemberReach">,
+  owner: AppInstallationOwner,
+  granted: AppMemberReach,
+): AppMemberReach {
+  return app.trust.kind === "first-party" && owner.kind === "org"
+    ? app.requestedMemberReach
+    : granted;
+}
+
 /** An installation as stored, before a first-party app's current request replaces its grants. */
 export type StoredAppInstallation = {
   installation: BackofficeAppInstallation;
@@ -170,6 +185,48 @@ export type AppEndpointCallInput = {
 /** The app's own answer; a body that is not JSON is null. */
 export type AppEndpointResponse = { status: number; body: JsonValue | null };
 
+/** Where a person decides whether an app may enter their personal workspace for an organization. */
+export function appMemberReachPath(appId: string, orgId: string): string {
+  return `/backoffice/apps/${encodeURIComponent(appId)}/member-reach/${encodeURIComponent(orgId)}`;
+}
+
+/**
+ * That a person lets an app into their personal workspace when it acts for them in one
+ * organization, for the installation it had there when they allowed it: reinstalling asks again.
+ * Only the person's own object holds these.
+ */
+export type AppMemberReachConsent = {
+  appId: string;
+  orgId: string;
+  activation: number;
+  allowedAt: string;
+};
+
+export const appMemberReachLookupSchema = z.lazy(() =>
+  backofficeAppLookupInputSchema._zod.innerType.extend({
+    orgId: z.string().min(1).max(191),
+  }),
+);
+export type AppMemberReachLookup = z.infer<typeof appMemberReachLookupSchema>;
+
+export const appMemberReachConsentInputSchema = z.lazy(() =>
+  appMemberReachLookupSchema._zod.innerType.extend({
+    activation: z.number().int().positive(),
+  }),
+);
+export type AppMemberReachConsentInput = z.infer<typeof appMemberReachConsentInputSchema>;
+
+export const appMemberReachConsentPageInputSchema = z.strictObject({
+  pageSize: z.number().int().min(1).max(100),
+  cursor: z.string().min(1).nullable(),
+});
+export type AppMemberReachConsentPageInput = z.infer<typeof appMemberReachConsentPageInputSchema>;
+
+export type AppMemberReachConsentPage = {
+  consents: AppMemberReachConsent[];
+  nextCursor: string | null;
+};
+
 /** Internal owner-scoped commands; callers must establish Auth management authority. */
 export type BackofficeAppInstallationsCommands = {
   installApp(
@@ -196,4 +253,15 @@ export type BackofficeAppInstallationsCommands = {
   uninstallApp(
     input: BackofficeAppLookupInput,
   ): Promise<BackofficeAppOperationResult<BackofficeAppInstallationMutationResult>>;
+  /** Lets the app into the person's workspace for the organization; it must request member reach. */
+  allowMemberReach(
+    input: AppMemberReachConsentInput,
+  ): Promise<BackofficeAppOperationResult<{ changed: boolean }>>;
+  stopMemberReach(
+    input: AppMemberReachLookup,
+  ): Promise<BackofficeAppOperationResult<{ changed: boolean }>>;
+  getMemberReachConsent(input: AppMemberReachLookup): Promise<AppMemberReachConsent | null>;
+  listMemberReachConsents(
+    input: AppMemberReachConsentPageInput,
+  ): Promise<BackofficeAppOperationResult<AppMemberReachConsentPage>>;
 };

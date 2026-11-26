@@ -5,6 +5,7 @@ import {
 } from "@fragno-dev/backoffice-api/v0/apps";
 import {
   appActionsDeclarationSchema,
+  appMemberReachSchema,
   appPermissionsSchema,
   appSlugSchema,
   appTrustSchema,
@@ -32,6 +33,7 @@ export const backofficeAppRegistrationInputSchema = z.strictObject({
   slug: appSlugSchema,
   oauthClientId: z.string().min(1).max(191),
   requestedPermissions: requestedAppPermissionsSchema,
+  requestedMemberReach: appMemberReachSchema,
   actions: appActionsDeclarationSchema,
   trust: appTrustSchema,
 });
@@ -53,12 +55,14 @@ export type BackofficeAppActionsUpdateResult = z.infer<
 >;
 
 /**
- * Replaces what an app asks installations for. A first-party app's installations follow it; a
- * third-party app's keep the grants their owner approved.
+ * Replaces what an app asks installations for: permissions, and whether organizations' installations
+ * reach members' personal workspaces. A first-party app's installations follow it; a third-party
+ * app's keep the access their owner approved.
  */
 export const backofficeAppPermissionsUpdateInputSchema = z.lazy(() =>
   backofficeAppLookupInputSchema._zod.innerType.extend({
     requestedPermissions: requestedAppPermissionsSchema,
+    requestedMemberReach: appMemberReachSchema,
   }),
 );
 export type BackofficeAppPermissionsUpdateInput = z.infer<

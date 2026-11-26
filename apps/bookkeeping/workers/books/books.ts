@@ -35,6 +35,11 @@ import {
 } from "./documents/documents";
 import { periodEndDates, today } from "./fiscal-years";
 import {
+  createPartyDetailsFragment,
+  PartyDetailsError,
+  type PartyDetails,
+} from "./party-details/party-details";
+import {
   announcementHookId,
   createProposalsFragment,
   ProposalError,
@@ -47,6 +52,7 @@ type Input<TOperation extends keyof LedgerServices> = Parameters<LedgerServices[
 type Documents = ReturnType<typeof createDocumentsFragment>;
 type Banking = ReturnType<typeof createBankingFragment>;
 type Proposals = ReturnType<typeof createProposalsFragment>;
+type PartyDetailsFragment = ReturnType<typeof createPartyDetailsFragment>;
 type PostingLine = Input<"postEntry">["lines"][number];
 
 /**
@@ -58,7 +64,12 @@ export type Outcome<T> =
   | { ok: true; value: T }
   | {
       ok: false;
-      code: LedgerErrorCode | DocumentErrorCode | BankingErrorCode | ProposalErrorCode;
+      code:
+        | LedgerErrorCode
+        | DocumentErrorCode
+        | BankingErrorCode
+        | ProposalErrorCode
+        | PartyDetailsError["code"];
       message: string;
     };
 
@@ -82,6 +93,7 @@ export class Books extends DurableObject<CloudflareEnv> {
   private readonly proposals: Proposals;
   private readonly documents: Documents;
   private readonly banking: Banking;
+  private readonly partyDetails: PartyDetailsFragment;
   private readonly hooks: DurableHooksDispatcherDurableObjectHandler;
 
   constructor(ctx: DurableObjectState, env: CloudflareEnv) {
@@ -105,6 +117,10 @@ export class Books extends DurableObject<CloudflareEnv> {
       { databaseAdapter },
       { ledger: this.ledger.services, proposals: this.proposals.services },
     );
+    this.partyDetails = createPartyDetailsFragment(
+      { databaseAdapter },
+      { ledger: this.ledger.services },
+    );
     this.hooks = createDurableHooksProcessor<CloudflareEnv>([this.proposals], {
       onProcessError: (error) => {
         console.warn("The books could not tell a firm of a request yet.", error);
@@ -115,6 +131,7 @@ export class Books extends DurableObject<CloudflareEnv> {
       await migrate(this.proposals);
       await migrate(this.documents);
       await migrate(this.banking);
+      await migrate(this.partyDetails);
       await this.hooks.initialize?.();
     });
   }
@@ -191,6 +208,18 @@ export class Books extends DurableObject<CloudflareEnv> {
       described: { ...ledger, currencies, fiscalYears, accounts, journals, dimensions, parties },
       trialBalances: new Map(periodIds.map((periodId, position) => [periodId, balances[position]])),
     };
+  }
+
+  getPartyDetails(partyId: string) {
+    return this.partyDetails.callServices(() =>
+      this.partyDetails.services.getPartyDetails(partyId),
+    );
+  }
+
+  savePartyDetails(input: { partyId: string; details: PartyDetails; updatedBy: string }) {
+    return attempt(
+      this.partyDetails.callServices(() => this.partyDetails.services.savePartyDetails(input)),
+    );
   }
 
   listEntries(input: Input<"listEntries">) {
@@ -593,7 +622,8 @@ async function attempt<T>(operation: Promise<T>): Promise<Outcome<T>> {
       error instanceof LedgerError ||
       error instanceof DocumentError ||
       error instanceof BankingError ||
-      error instanceof ProposalError
+      error instanceof ProposalError ||
+      error instanceof PartyDetailsError
     ) {
       return { ok: false, code: error.code, message: error.message };
     }

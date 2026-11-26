@@ -492,7 +492,7 @@ test("a notify_app route tells an installed app about events, which it reads und
       then.assert("without events.read, Ledger is not told", async (ctx) => {
         await runJson(
           await owner(ctx),
-          `apps.installations.update --app-id ${appId} --granted-permissions-json ${quote(grants.filter((grant) => grant !== BACKOFFICE_PERMISSION.events.read))} --resource-scope-json '{"kind":"owner"}'`,
+          `apps.installations.update --app-id ${appId} --granted-permissions-json ${quote(grants.filter((grant) => grant !== BACKOFFICE_PERMISSION.events.read))} --resource-scope-json '{"kind":"owner"}' --member-reach-json '{"kind":"none"}'`,
         );
         await ctx.runtime.objects.automations
           .for(org)

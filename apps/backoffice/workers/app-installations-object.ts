@@ -37,8 +37,17 @@ import {
   backofficeAppInstallationInputSchema,
   effectiveAppActions,
   effectiveGrantedPermissions,
+  effectiveMemberReach,
   type AppEndpointCallInput,
   type AppEndpointResponse,
+  type AppMemberReachConsent,
+  type AppMemberReachConsentInput,
+  appMemberReachConsentInputSchema,
+  type AppMemberReachConsentPage,
+  type AppMemberReachConsentPageInput,
+  appMemberReachConsentPageInputSchema,
+  type AppMemberReachLookup,
+  appMemberReachLookupSchema,
   type BackofficeAppConnection,
   type BackofficeAppInstallationClaimInput,
   type BackofficeAppInstallationClaimResult,
@@ -206,10 +215,18 @@ export class AppInstallationsObject
     if (!grantsFollowApp || installation.status !== "active") {
       return installation;
     }
-    const app = await this.#getRecentlyRegisteredApp(installation.appId);
+    return this.#followApp(installation, await this.#getRecentlyRegisteredApp(installation.appId));
+  }
+
+  /** A first-party installation's access, as the app requests it now. */
+  #followApp(
+    installation: BackofficeAppInstallation,
+    app: BackofficeApp,
+  ): BackofficeAppInstallation {
     return {
       ...installation,
       grantedPermissions: effectiveGrantedPermissions(app, installation.grantedPermissions),
+      memberReach: effectiveMemberReach(app, this.#owner, installation.memberReach),
     };
   }
 
@@ -332,13 +349,7 @@ export class AppInstallationsObject
       status: "installed",
       app,
       installation: record.grantsFollowApp
-        ? {
-            ...record.installation,
-            grantedPermissions: effectiveGrantedPermissions(
-              app,
-              record.installation.grantedPermissions,
-            ),
-          }
+        ? this.#followApp(record.installation, app)
         : record.installation,
       ...effectiveAppActions(app, record.approvedActions),
     };
@@ -452,6 +463,50 @@ export class AppInstallationsObject
     return await runBackofficeAppOperation(async () => {
       const fragment = this.#getFragment();
       return await fragment.callServices(() => fragment.services.uninstallApp(lookup));
+    });
+  }
+
+  async allowMemberReach(
+    input: AppMemberReachConsentInput,
+  ): Promise<BackofficeAppOperationResult<{ changed: boolean }>> {
+    const consent = appMemberReachConsentInputSchema.parse(input);
+    return await runBackofficeAppOperation(async () => {
+      // A person is asked only by an app that asks organizations for their members' workspaces.
+      const app = await this.#getRegisteredApp(consent.appId);
+      if (app.requestedMemberReach.kind !== "consenting") {
+        throw new BackofficeAppDomainError(
+          "APP_MEMBER_REACH_NOT_REQUESTED",
+          "This app does not ask for your personal workspace.",
+        );
+      }
+      const fragment = this.#getFragment();
+      return await fragment.callServices(() => fragment.services.allowMemberReach(consent));
+    });
+  }
+
+  async stopMemberReach(
+    input: AppMemberReachLookup,
+  ): Promise<BackofficeAppOperationResult<{ changed: boolean }>> {
+    const lookup = appMemberReachLookupSchema.parse(input);
+    return await runBackofficeAppOperation(async () => {
+      const fragment = this.#getFragment();
+      return await fragment.callServices(() => fragment.services.stopMemberReach(lookup));
+    });
+  }
+
+  async getMemberReachConsent(input: AppMemberReachLookup): Promise<AppMemberReachConsent | null> {
+    const lookup = appMemberReachLookupSchema.parse(input);
+    const fragment = this.#getFragment();
+    return await fragment.callServices(() => fragment.services.getMemberReachConsent(lookup));
+  }
+
+  async listMemberReachConsents(
+    input: AppMemberReachConsentPageInput,
+  ): Promise<BackofficeAppOperationResult<AppMemberReachConsentPage>> {
+    const page = appMemberReachConsentPageInputSchema.parse(input);
+    return await runBackofficeAppOperation(async () => {
+      const fragment = this.#getFragment();
+      return await fragment.callServices(() => fragment.services.listMemberReachConsents(page));
     });
   }
 

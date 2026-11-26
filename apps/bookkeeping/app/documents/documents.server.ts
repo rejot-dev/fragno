@@ -9,13 +9,11 @@ import type { BackofficeContextScope } from "@fragno-dev/backoffice-api/v0/share
 
 import type { DocumentView } from "../../workers/books/documents/documents";
 import type { DocumentMediaType } from "../../workers/books/documents/schema";
-import type { requireBooks } from "../books/books.server";
+import { connectToAdministrationAsUser, type requireBooks } from "../books/books.server";
 import {
   backofficeUnavailable,
   callBackoffice,
-  connectAsUser,
   isOutcomeUnknown,
-  organizationNotFound,
 } from "../organizations/access.server";
 
 type BooksContext = Awaited<ReturnType<typeof requireBooks>>;
@@ -85,24 +83,6 @@ async function fetchFromStorage(url: string, init?: RequestInit): Promise<Respon
 }
 
 /**
- * Backoffice as the signed-in person, in the administration's project, whose workspace holds its
- * documents' files. Backoffice refusing means they were removed or Bookkeeping was uninstalled
- * since their membership was last confirmed.
- */
-async function connectToProject(request: Request, context: BooksContext) {
-  const scope: BackofficeContextScope = {
-    kind: "project",
-    owner: { kind: "org", orgId: context.organization.id, jurisdiction: null },
-    projectId: context.administration.id,
-  };
-  const backoffice = await connectAsUser(request, scope);
-  if (!backoffice) {
-    throw organizationNotFound();
-  }
-  return { backoffice, scope };
-}
-
-/**
  * Stores an uploaded file as a blob of the administration's Backoffice project and records it as a
  * document under `id`, which the upload form chose. The file is stored first, so a document always
  * has its file; uploading again after a failure finishes the job and records the document once.
@@ -138,7 +118,7 @@ export async function uploadDocument(
   // before it completes, so sends of this form at once, as a double click makes, would fail each
   // other. Another file sent with this form is stored beside this one, never over it.
   const storageKey = `documents/${id}/${crypto.randomUUID()}/${storedFilename(filename)}`;
-  const { backoffice, scope } = await connectToProject(request, context);
+  const { backoffice, scope } = await connectToAdministrationAsUser(request, context);
   try {
     const stored = await storeBlob(backoffice, scope, { key: storageKey, mediaType, bytes });
     if (!stored.ok) {
@@ -224,7 +204,7 @@ export async function readDocumentFile(
 ): Promise<
   { status: "ok"; bytes: Uint8Array<ArrayBuffer> } | { status: "changed" } | { status: "missing" }
 > {
-  const { backoffice, scope } = await connectToProject(request, context);
+  const { backoffice, scope } = await connectToAdministrationAsUser(request, context);
   const key = document.storageKey;
   const blob = await callBackoffice(() => backoffice.call(scope, "blobs.get", { key }));
   if (blob === null) {

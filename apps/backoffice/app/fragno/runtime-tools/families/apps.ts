@@ -54,6 +54,9 @@ const actionsRevisionOption = {
 const resourceScopeDescription =
   'Resources the grants apply to: {"kind":"owner"} for everything the owner has, or {"kind":"projects","projectIds":["..."]}';
 
+const memberReachDescription =
+  'Whether an organization\'s installation also reaches the personal workspaces of members who let it in, where it has its granted permissions and acts only for them: {"kind":"none"} or {"kind":"consenting"}, when the app requests it';
+
 const getAppTool = defineBackofficeRuntimeTool({
   ...backofficeApiOperationToolFields("apps.get"),
   namespace: "apps",
@@ -81,6 +84,7 @@ const getAppTool = defineBackofficeRuntimeTool({
                     `Slug: ${app.slug} (integration connection app#${app.slug})`,
                     `OAuth client ID: ${app.oauthClientId}`,
                     `Requested permissions: ${app.requestedPermissions.map(({ namespace, permission }) => `${namespace}.${permission}`).join(", ") || "none"}`,
+                    `Members' personal workspaces: ${app.requestedMemberReach.kind === "consenting" ? "requested" : "not requested"}`,
                     ...renderAppActions(app),
                     `Created at: ${app.createdAt}`,
                     "",
@@ -129,6 +133,12 @@ const installAppTool = defineBackofficeRuntimeTool({
             valueName: "json",
             description: `${resourceScopeDescription} (default: everything the owner has)`,
           },
+          {
+            name: "member-reach-json",
+            valueRequired: true,
+            valueName: "json",
+            description: `${memberReachDescription} (default: none)`,
+          },
         ],
         examples: [
           "apps.install --app-id APP_ID --granted-permissions-json '[]' --actions-revision 1",
@@ -140,6 +150,7 @@ const installAppTool = defineBackofficeRuntimeTool({
         grantedPermissions: { kind: "json", option: "granted-permissions-json", required: true },
         actionsRevision: { kind: "positiveInteger", required: true },
         resourceScope: { kind: "json", option: "resource-scope-json" },
+        memberReach: { kind: "json", option: "member-reach-json" },
       }),
       format: (result, options) =>
         options.format === "json" || options.print
@@ -193,6 +204,7 @@ function renderInstallation(installation: BackofficeAppInstallation) {
     `  Approved actions revision: ${installation.approvedActionsRevision}`,
     `  Granted permissions: ${installation.grantedPermissions.map(({ namespace, permission }) => `${namespace}.${permission}`).join(", ") || "none"}`,
     `  Resources: ${installation.resourceScope.kind === "owner" ? "everything the owner has" : `projects ${installation.resourceScope.projectIds.join(", ")}`}`,
+    `  Members' personal workspaces: ${installation.memberReach.kind === "consenting" ? "of members who let it in" : "none"}`,
     `  Linked account: ${installation.externalAccount ? `${installation.externalAccount.label} (${installation.externalAccount.id})` : "none"}`,
     `  Installed by user ID: ${installation.installedByUserId}`,
     `  Created at: ${installation.createdAt}`,
@@ -267,7 +279,7 @@ const updateInstallationTool = defineBackofficeRuntimeTool({
       command: "apps.installations.update",
       help: {
         summary:
-          "apps.installations.update replaces approved permissions and resources (organization owners/admins, or you in your user scope). Both are required so access is never widened implicitly.",
+          "apps.installations.update replaces approved permissions and resources (organization owners/admins, or you in your user scope). All are required so access is never widened implicitly.",
         options: [
           appIdOption,
           grantsOption,
@@ -278,15 +290,23 @@ const updateInstallationTool = defineBackofficeRuntimeTool({
             valueName: "json",
             description: resourceScopeDescription,
           },
+          {
+            name: "member-reach-json",
+            required: true,
+            valueRequired: true,
+            valueName: "json",
+            description: memberReachDescription,
+          },
         ],
         examples: [
-          "apps.installations.update --app-id APP_ID --granted-permissions-json '[]' --resource-scope-json '{\"kind\":\"owner\"}'",
+          'apps.installations.update --app-id APP_ID --granted-permissions-json \'[]\' --resource-scope-json \'{"kind":"owner"}\' --member-reach-json \'{"kind":"none"}\'',
         ],
       },
       parse: defineCliArgsParser("apps.installations.update", {
         appId: { kind: "string", required: true },
         grantedPermissions: { kind: "json", option: "granted-permissions-json", required: true },
         resourceScope: { kind: "json", option: "resource-scope-json", required: true },
+        memberReach: { kind: "json", option: "member-reach-json", required: true },
       }),
       format: (result, options) =>
         options.format === "json" || options.print

@@ -3242,6 +3242,7 @@ test("an agent an app's installation prompts calls the app's actions as the inst
             BACKOFFICE_PERMISSION.integrations.execute,
           ];
           const registered = await ctx.runtime.objects.apps.singleton().commands.registerApp({
+            requestedMemberReach: { kind: "none" },
             actions: {
               kind: "endpoint",
               endpointUrl,
@@ -3267,6 +3268,7 @@ test("an agent an app's installation prompts calls the app's actions as the inst
           assert(
             (
               await installations.installApp({
+                memberReach: { kind: "none" },
                 actionsRevision: 1,
                 appId,
                 grantedPermissions: permissions,

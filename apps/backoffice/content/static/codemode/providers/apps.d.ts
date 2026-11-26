@@ -46,6 +46,7 @@ type BackofficeApp = {
   slug: string;
   oauthClientId: string;
   requestedPermissions: BackofficePermissionRequirement[];
+  requestedMemberReach: AppMemberReach;
   actions: AppActionsDeclaration;
   /** Increments whenever the app's action declaration changes. */
   actionsRevision: number;
@@ -161,6 +162,9 @@ type BackofficePermissionRequirement =
       namespace: "workflow";
       permission: "executeCode" | "modify" | "read";
     };
+type AppMemberReach = {
+  kind: "none" | "consenting";
+};
 type AppActionsDeclaration =
   | {
       kind: "none";
@@ -243,6 +247,7 @@ type BackofficeAppInstallation = {
       };
   grantedPermissions: BackofficePermissionRequirement[];
   resourceScope: AppInstallationResourceScope;
+  memberReach: AppMemberReach;
   externalAccount: {
     id: string;
     label: string;
@@ -270,6 +275,7 @@ type AppsInstallInput = {
   appId: string;
   grantedPermissions: BackofficePermissionRequirement[];
   resourceScope?: AppInstallationResourceScope;
+  memberReach?: AppMemberReach;
   /** The actionsRevision reviewed with apps.get; installation fails if the declaration changed since. */
   actionsRevision: number;
 };
@@ -287,6 +293,7 @@ type AppsUpdateInstallationInput = {
   appId: string;
   grantedPermissions: BackofficePermissionRequirement[];
   resourceScope: AppInstallationResourceScope;
+  memberReach: AppMemberReach;
 };
 type AppsUpdateInstallationOutput = BackofficeAppInstallationMutationResult;
 type AppsApproveInstallationActionsInput = {

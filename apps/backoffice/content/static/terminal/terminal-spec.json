@@ -844,6 +844,12 @@
         "description": "JSON array of canonical namespace/permission requirements; use [] for no capabilities"
       },
       {
+        "name": "requested-member-reach-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Whether organizations installing the app may let it into the personal workspaces of members who allow it, where it has its granted permissions and acts only for them: {\"kind\":\"none\"} or {\"kind\":\"consenting\"} (default: none)"
+      },
+      {
         "name": "actions-json",
         "valueRequired": true,
         "valueName": "json",
@@ -969,6 +975,13 @@
         "valueRequired": true,
         "valueName": "json",
         "description": "JSON array of canonical namespace/permission requirements; use [] for no capabilities"
+      },
+      {
+        "name": "requested-member-reach-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Whether organizations installing the app may let it into the personal workspaces of members who allow it, where it has its granted permissions and acts only for them: {\"kind\":\"none\"} or {\"kind\":\"consenting\"}",
+        "required": true
       },
       {
         "name": "help",
@@ -2184,6 +2197,12 @@
         "description": "Resources the grants apply to: {\"kind\":\"owner\"} for everything the owner has, or {\"kind\":\"projects\",\"projectIds\":[\"...\"]} (default: everything the owner has)"
       },
       {
+        "name": "member-reach-json",
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Whether an organization's installation also reaches the personal workspaces of members who let it in, where it has its granted permissions and acts only for them: {\"kind\":\"none\"} or {\"kind\":\"consenting\"}, when the app requests it (default: none)"
+      },
+      {
         "name": "help",
         "description": "Show this help text",
         "valueRequired": false,
@@ -2275,7 +2294,7 @@
   },
   {
     "command": "apps.installations.update",
-    "summary": "apps.installations.update replaces approved permissions and resources (organization owners/admins, or you in your user scope). Both are required so access is never widened implicitly.",
+    "summary": "apps.installations.update replaces approved permissions and resources (organization owners/admins, or you in your user scope). All are required so access is never widened implicitly.",
     "options": [
       {
         "name": "app-id",
@@ -2297,6 +2316,13 @@
         "valueRequired": true,
         "valueName": "json",
         "description": "Resources the grants apply to: {\"kind\":\"owner\"} for everything the owner has, or {\"kind\":\"projects\",\"projectIds\":[\"...\"]}"
+      },
+      {
+        "name": "member-reach-json",
+        "required": true,
+        "valueRequired": true,
+        "valueName": "json",
+        "description": "Whether an organization's installation also reaches the personal workspaces of members who let it in, where it has its granted permissions and acts only for them: {\"kind\":\"none\"} or {\"kind\":\"consenting\"}, when the app requests it"
       },
       {
         "name": "help",

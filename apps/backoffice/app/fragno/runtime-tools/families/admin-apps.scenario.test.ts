@@ -205,7 +205,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             assert.equal(listed.exitCode, 0, listed.stderr);
             assert.equal(
               listed.stdout,
-              `Backoffice apps (1):\nApp ID: ${app.id}\n  Slug: accounting\n  OAuth client ID: ${config.clientId}\n  Requested permissions: none\n  Actions: none (revision 1)\n  Trust: third-party\n  Created at: ${app.createdAt}\nMore results: no\nNext cursor: none\n`,
+              `Backoffice apps (1):\nApp ID: ${app.id}\n  Slug: accounting\n  OAuth client ID: ${config.clientId}\n  Requested permissions: none\n  Members' personal workspaces: no\n  Actions: none (revision 1)\n  Trust: third-party\n  Created at: ${app.createdAt}\nMore results: no\nNext cursor: none\n`,
             );
             const printed = await bash.exec(`${command} --print appId`);
             assert.equal(printed.exitCode, 0, printed.stderr);
@@ -271,6 +271,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
                 slug: "accounting",
                 oauthClientId: client.clientId,
                 requestedPermissions: permissions,
+                requestedMemberReach: { kind: "none" },
                 actions: { kind: "none" },
                 actionsRevision: 1,
                 trust: { kind: "third-party" },
@@ -573,6 +574,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             const registry = ctx.runtime.objects.apps.singleton().commands;
             for (const oauthClientId of ["accounting", "reporting", "receipts"]) {
               const registered = await registry.registerApp({
+                requestedMemberReach: { kind: "none" },
                 actions: { kind: "none" },
                 trust: { kind: "third-party" },
                 slug: oauthClientId.replace(/-client$/, ""),
@@ -644,6 +646,7 @@ describe("admin app runtime tool SQLite scenarios", () => {
             }).commands;
             for (const appId of registeredIds) {
               const installed = await installations.installApp({
+                memberReach: { kind: "none" },
                 actionsRevision: 1,
                 appId,
                 installedByUserId: "admin-1",

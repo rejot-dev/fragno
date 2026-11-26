@@ -12,6 +12,7 @@
     "test": "vitest run",
     "backoffice:connect": "tsx scripts/connect-backoffice.ts",
     "fixtures:generate": "tsx scripts/generate-fixtures.ts",
+    "company-register:serve": "tsx scripts/company-register-mcp.ts",
     "format:package": "node ../../scripts/run-package-quality.mjs format",
     "format:check:package": "node ../../scripts/run-package-quality.mjs format:check",
     "lint:package": "node ../../scripts/run-package-quality.mjs lint",
@@ -41,6 +42,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "catalog:",
+    "@fragno-dev/mcp-fragment": "workspace:*",
     "@fragno-private/vitest-config": "workspace:*",
     "@react-router/dev": "^8.2.0",
     "@rejot-dev/backoffice-local": "workspace:*",

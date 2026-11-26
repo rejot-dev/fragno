@@ -1,3 +1,4 @@
+import { automationEntityRefsEqual } from "@fragno-dev/backoffice-api/v0/automation";
 import {
   allBackofficePermissionRequirements,
   BACKOFFICE_PERMISSION,
@@ -14,6 +15,8 @@ import {
   formatBackofficeScopeSegment,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
 
+import { mayReachMemberWorkspace, memberReachUse } from "@/fragno/app-installations/authority";
+import { appMemberReachPath } from "@/fragno/app-installations/contracts";
 import { piAgentActorName } from "@/fragno/pi/agent/pi-agent-actor";
 
 import type {
@@ -272,6 +275,23 @@ function connectionDenialReason(
 
 const DENIAL_LISTED_GRANTS = 8;
 
+/**
+ * Whether an execution's scope ceiling admits these requirements in its scope: anything inside it.
+ * Outside it, an installed app acting for a member of an organization reaches the member's own
+ * personal workspace, but only for calls whose permissions are checked there: the resolver decides
+ * whether the app may act in it, so nothing that checks no permission runs.
+ */
+function ceilingAdmits(
+  execution: BackofficeExecutionContext,
+  requirements: readonly BackofficeKernelAuthorizationRequirement[] | null,
+): boolean {
+  const restriction = backofficeExecutionScopeRestriction(execution);
+  if (restriction === null || backofficeScopeContains(restriction, execution.scope)) {
+    return true;
+  }
+  return requirements !== null && requirements.length > 0 && memberReachUse(execution) !== null;
+}
+
 /** What a principal or delegate holds when it narrows nothing a person may do. */
 const UNNARROWED_PERMISSIONS = allBackofficePermissionRequirements.filter(
   (operation) => !isPrincipalOnlyPermission(operation),
@@ -285,12 +305,26 @@ function delegatedActorLabel(
     : `Delegated ${actor.type} '${actor.id}'`;
 }
 
+/**
+ * In a member's personal workspace, an app acting for them may do anything only once they let it
+ * in for the organization the work comes from, so the denial is for the member, whom an agent
+ * tells.
+ */
+function memberReachDenialMessage(appId: string, orgId: string): string {
+  return `This app may not act in your personal workspace for this organization. You can let it in at ${appMemberReachPath(appId, orgId)} in Leyway, once the organization lets the app ask its members.`;
+}
+
 /** Names the delegate and what it holds, so a denial points at the grant to change. */
 function delegatedActorDenialMessage(
+  execution: BackofficeExecutionContext,
   actor: BackofficeExecutionContext["actors"]["delegation"][number],
   requirement: BackofficeKernelAuthorizationRequirement,
   grants: readonly BackofficeGrant[],
 ): string {
+  const use = memberReachUse(execution);
+  if (use && grants.length === 0 && automationEntityRefsEqual(actor, use.installationActor)) {
+    return memberReachDenialMessage(use.installation.appId, use.origin.orgId);
+  }
   const actorLabel = delegatedActorLabel(actor);
   const connectionReason = connectionDenialReason(grants, requirement);
   if (connectionReason) {
@@ -365,7 +399,7 @@ export class BackofficeKernel {
    * grants, would otherwise shed the narrowing it was set up under.
    */
   async assertUnnarrowed(execution: BackofficeExecutionContext): Promise<void> {
-    const trustedExecution = this.#parseExecutionContext(execution);
+    const trustedExecution = this.#parseExecutionContext(execution, null);
     const principal = trustedExecution.actors.principal;
     // A person's own permissions are what the work acts with, so they narrow nothing.
     const narrowingPrincipal =
@@ -495,6 +529,9 @@ export class BackofficeKernel {
     requirements: readonly BackofficeKernelAuthorizationRequirement[],
   ): Promise<readonly BackofficeKernelAction[]> {
     if (requirements.length === 0) {
+      // Checking no permission still checks the scope ceiling, which admits nothing unchecked
+      // beyond it.
+      this.#parseExecutionContext(execution, requirements);
       return [];
     }
 
@@ -512,7 +549,7 @@ export class BackofficeKernel {
     execution: BackofficeExecutionContext,
     requirements: readonly BackofficeKernelAuthorizationRequirement[],
   ): Promise<readonly BackofficeKernelAction[]> {
-    const trustedExecution = this.#parseExecutionContext(execution);
+    const trustedExecution = this.#parseExecutionContext(execution, requirements);
     const principal = trustedExecution.actors.principal;
 
     const resolvePrincipalAuthority = principal
@@ -577,6 +614,7 @@ export class BackofficeKernel {
         if (!actorResult.value.some((grant) => grantCovers(grant, requirement))) {
           throw new BackofficeForbiddenError(
             delegatedActorDenialMessage(
+              trustedExecution,
               trustedExecution.actors.delegation[index],
               requirement,
               actorResult.value,
@@ -607,7 +645,11 @@ export class BackofficeKernel {
     );
   }
 
-  #parseExecutionContext(execution: BackofficeExecutionContext): BackofficeExecutionContext {
+  /** `requirements` are what the execution is checked for, or null where that is not known. */
+  #parseExecutionContext(
+    execution: BackofficeExecutionContext,
+    requirements: readonly BackofficeKernelAuthorizationRequirement[] | null,
+  ): BackofficeExecutionContext {
     const parsed = backofficeExecutionContextSchema.safeParse(execution);
     if (!parsed.success) {
       throw new BackofficeForbiddenError(
@@ -617,13 +659,15 @@ export class BackofficeKernel {
     }
 
     const trustedExecution = parsed.data;
-    this.#assertExecutionContextAccess(trustedExecution);
+    this.#assertExecutionContextAccess(trustedExecution, requirements);
     return trustedExecution;
   }
 
-  #assertExecutionContextAccess(execution: BackofficeExecutionContext) {
-    const restriction = backofficeExecutionScopeRestriction(execution);
-    if (restriction && !backofficeScopeContains(restriction, execution.scope)) {
+  #assertExecutionContextAccess(
+    execution: BackofficeExecutionContext,
+    requirements: readonly BackofficeKernelAuthorizationRequirement[] | null,
+  ) {
+    if (!ceilingAdmits(execution, requirements)) {
       throw new BackofficeForbiddenError(
         "Execution scope exceeds its retained scope ceiling.",
         "context-access-denied",
@@ -715,6 +759,24 @@ export class BackofficeKernel {
         `${binding} is not available in ${scope.kind} context. Supported scopes: ${allowed.join(", ")}.`,
       );
     }
+  }
+
+  /**
+   * Checks that a context for `targetScope` may be made for `execution`, as `context.user(id)` and
+   * the like make one. Making it does nothing in the target; every call through it is authorized.
+   * So beyond the scopes `assertScopedContextAccess` admits, an installed app acting for a member
+   * gets a context for the member's personal workspace, where the kernel admits only calls whose
+   * permissions it checks. `assertScopedContextAccess` does not, as some of its callers write to the
+   * target without checking a permission there.
+   */
+  assertScopedContextHandle(
+    execution: BackofficeExecutionContext,
+    targetScope: BackofficeContextScope,
+  ) {
+    if (mayReachMemberWorkspace(execution, targetScope)) {
+      return;
+    }
+    this.assertScopedContextAccess(execution, targetScope);
   }
 
   assertScopedContextAccess(

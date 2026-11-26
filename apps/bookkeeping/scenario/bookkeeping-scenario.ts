@@ -334,6 +334,7 @@ export class BookkeepingScenario {
       BACKOFFICE_BASE_URL: BACKOFFICE_ORIGIN,
       BACKOFFICE_OAUTH_CLIENT_ID: this.backoffice.client.id,
       BACKOFFICE_OAUTH_CLIENT_SECRET: this.backoffice.client.secret,
+      BACKOFFICE_APP_ID: this.backoffice.appId,
       BOOKKEEPING_OPERATOR_ORGANIZATION_ID: "",
     };
     const env = { ...vars } as unknown as CloudflareEnv;

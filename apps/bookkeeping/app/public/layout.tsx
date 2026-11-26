@@ -26,9 +26,14 @@ export default function PublicLayout({ loaderData }: Route.ComponentProps) {
         </Link>
         <nav aria-label="Main navigation" className="flex items-center gap-2">
           {loaderData.user ? (
-            <ButtonLink variant="solid" to="/start">
-              Open Bookkeeping
-            </ButtonLink>
+            <>
+              <ButtonLink variant="ghost" to="/account">
+                Account
+              </ButtonLink>
+              <ButtonLink variant="solid" to="/start">
+                Open Bookkeeping
+              </ButtonLink>
+            </>
           ) : (
             <ButtonLink variant="solid" to="/login">
               Get started

@@ -44,7 +44,7 @@ type Subject = keyof typeof WORDING;
 const PROGRESS_POLL_INTERVAL_MS = 5_000;
 
 /** Reloads the page's data every few seconds while `working`, and the tab is in view. */
-function usePollWhile(working: boolean) {
+export function usePollWhile(working: boolean) {
   const revalidator = useRevalidator();
   const navigation = useNavigation();
   const idle = revalidator.state === "idle" && navigation.state === "idle";

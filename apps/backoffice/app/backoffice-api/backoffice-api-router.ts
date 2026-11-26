@@ -18,6 +18,7 @@ import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-ser
 import {
   createInstalledAppExecution,
   installedAppEventSource,
+  mayReachMemberWorkspace,
 } from "@/fragno/app-installations/authority";
 import { appInstallationTargetScope } from "@/fragno/app-installations/contracts";
 import { createBackofficeExecutionForPrincipal } from "@/fragno/auth/backoffice-principal.server";
@@ -112,7 +113,27 @@ async function authorizeApiRequest(
     }
   }
   const target = appInstallationTargetScope(scope);
-  if (!target || !backofficeScopeContains(credential.scopeRestriction, target)) {
+  if (!target) {
+    return {
+      ok: false,
+      response: apiError("forbidden", "The credential does not permit this scope."),
+    };
+  }
+  const actors = { actor: credential.actor, installation: credential.installation };
+  if (backofficeScopeContains(credential.scopeRestriction, target)) {
+    return {
+      ok: true,
+      execution: createInstalledAppExecution({ scope: target, ...actors }),
+      emittedEventSource: installedAppEventSource(credential.installation.appId),
+    };
+  }
+  // Beyond its credential's scope, an app acting for a member reaches only the member's personal
+  // workspace, still restricted to the credential's scope, so the kernel checks every call there.
+  const memberWorkspace = {
+    ...createInstalledAppExecution({ scope: credential.scopeRestriction, ...actors }),
+    scope: target,
+  };
+  if (!mayReachMemberWorkspace(memberWorkspace, target)) {
     return {
       ok: false,
       response: apiError("forbidden", "The credential does not permit this scope."),
@@ -120,11 +141,7 @@ async function authorizeApiRequest(
   }
   return {
     ok: true,
-    execution: createInstalledAppExecution({
-      scope: target,
-      actor: credential.actor,
-      installation: credential.installation,
-    }),
+    execution: memberWorkspace,
     emittedEventSource: installedAppEventSource(credential.installation.appId),
   };
 }
