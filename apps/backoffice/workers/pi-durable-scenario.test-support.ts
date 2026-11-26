@@ -8,6 +8,7 @@ import {
 
 import { defineExtension, defineTool } from "@earendil-works/pi-durable";
 import { obj, str } from "@earendil-works/pi-schema";
+import { NOOP_TELEMETRY_CONTEXT } from "@earendil-works/pi-telemetry";
 
 import type { PiAgentDependencies } from "@/fragno/pi/agent/pi-agent-harness";
 
@@ -19,6 +20,7 @@ export function createScriptedPiAgentDependencies(models: Models): PiAgentDepend
     models,
     extensions: () => [],
     settings: {},
+    telemetry: NOOP_TELEMETRY_CONTEXT,
     report: (error) => {
       console.error(error);
     },
