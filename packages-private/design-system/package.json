@@ -19,6 +19,7 @@
     "./feedback/status-tone": "./src/components/feedback/status-tone.ts",
     "./forms/units": "./src/components/forms/units.ts",
     "./navigation/underline-tab-class-name": "./src/components/navigation/underline-tab-class-name.ts",
+    "./overlays/on-screen-keyboard": "./src/components/overlays/on-screen-keyboard.ts",
     "./orchestration/orchestration-graph-model": "./src/components/orchestration/orchestration-graph-model.ts",
     "./orchestration/orchestration-graph-story-support": "./src/components/orchestration/orchestration-graph-story-support.ts",
     "./orchestration/orchestration-universe-model": "./src/components/orchestration/orchestration-universe-model.ts",
