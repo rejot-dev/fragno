@@ -13,7 +13,7 @@ import { MAIN_PI_AGENT_NAME } from "@/fragno/pi/agent/pi-agent-name";
 import { piAgentsPath } from "@/routes/backoffice/agents/path";
 
 import { AgentDrawerHeader } from "./agent-drawer-header";
-import type { AgentRequest } from "./ask-agent";
+import type { AgentDraft, AgentRequest } from "./ask-agent";
 
 export const AGENT_DRAWER_ID = "agent-drawer";
 
@@ -43,14 +43,17 @@ export function AgentDrawer({
   open,
   screen,
   request,
+  draft,
   halfScreenRequest,
   resolvedScope,
   onClose,
 }: {
   open: boolean;
   screen: "desktop" | "phone";
-  /** What a page last asked of the drawer, which it opens on. */
+  /** The agent a page last asked for, which the drawer opens on. */
   request: AgentRequest | null;
+  /** What a page last asked an agent, for its composer. */
+  draft: AgentDraft | null;
   /** Changes with each request to open over half the screen; null until the first. */
   halfScreenRequest: number | null;
   /** Null where the page has no scope to hold agents. */
@@ -68,6 +71,7 @@ export function AgentDrawer({
     ? piAgentsPath(backofficeRouteScopeFromResolvedScope(resolvedScope))
     : null;
   const [filledDraftId, setFilledDraftId] = useState<number | null>(null);
+  const scopeDraft = draft?.agentsPath === agentsPath ? draft : null;
   const scopeRequest = request?.agentsPath === agentsPath ? request : null;
   const requestId = scopeRequest?.id ?? null;
   const agentName =
@@ -101,14 +105,13 @@ export function AgentDrawer({
             agentName={agentName}
             screen={screen}
             draft={
-              scopeRequest !== null &&
-              scopeRequest.text !== null &&
-              scopeRequest.agentName === agentName &&
-              scopeRequest.id !== filledDraftId
+              scopeDraft !== null &&
+              scopeDraft.agentName === agentName &&
+              scopeDraft.id !== filledDraftId
                 ? {
-                    text: scopeRequest.text,
+                    text: scopeDraft.text,
                     onFilled: () => {
-                      setFilledDraftId(scopeRequest.id);
+                      setFilledDraftId(scopeDraft.id);
                     },
                   }
                 : null

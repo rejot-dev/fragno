@@ -95,6 +95,8 @@ type AgentConversationProps = {
   header: (options: ReactNode | null) => ReactNode;
   /** A message a page asked the agent, which fills the composer unsent. */
   draft: ComposerDraft | null;
+  /** Told the unsent message as it changes, for a page that hands it on; null where none does. */
+  onDraftChange: ((text: string) => void) | null;
   /** Where the conversation's workspace files, such as the files its messages carry, live. */
   resolvedScope: BackofficeResolvedScope;
 };
@@ -355,6 +357,7 @@ function AgentConversationThread({
   dictationMountRoute,
   header,
   draft,
+  onDraftChange,
   resolvedScope,
   view,
   queue: agentQueue,
@@ -577,6 +580,16 @@ function AgentConversationThread({
     runtime.thread.composer.setText(draft.text);
     draft.onFilled();
   }, [draft, runtime]);
+
+  useEffect(() => {
+    if (onDraftChange === null) {
+      return undefined;
+    }
+    const { composer } = runtime.thread;
+    return composer.subscribe(() => {
+      onDraftChange(composer.getState().text);
+    });
+  }, [onDraftChange, runtime]);
 
   const handleCompact = useCallback(() => {
     // One compaction at a time: another would summarize the same history again.

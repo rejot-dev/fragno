@@ -108,6 +108,7 @@ export function AgentDrawerScope({
             usageLabel={data.usageLabel}
             resolvedScope={resolvedScope}
             draft={draft}
+            onDraftChange={null}
             onStarted={reload}
           />
         </div>
@@ -122,6 +123,7 @@ export function AgentDrawerScope({
       dictationMountRoute={data.dictationMountRoute}
       header={header}
       draft={draft}
+      onDraftChange={null}
       resolvedScope={resolvedScope}
     />
   );
