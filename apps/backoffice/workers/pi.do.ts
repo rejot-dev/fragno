@@ -49,7 +49,9 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
         await import("@/backoffice-runtime/runtime-services");
       const { piAgentDurableObjectId } =
         await import("@/backoffice-runtime/cloudflare-durable-object-factory");
-      const dependencies = await loadDependencies();
+      const { cloudflarePiTelemetry } = await import("./lib/cloudflare-pi-telemetry");
+      // Every Pi in Workers, scripted scenario agents included, traces through Cloudflare.
+      const dependencies = { ...(await loadDependencies()), telemetry: cloudflarePiTelemetry };
       const analyticsEnabled =
         import.meta.env.BACKOFFICE_TARGET === "cloudflare" &&
         import.meta.env.PROD &&

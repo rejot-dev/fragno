@@ -17,6 +17,7 @@ import {
   type ToolRegistration,
   type Wake,
 } from "@earendil-works/pi-durable";
+import { NOOP_TELEMETRY_CONTEXT, type TelemetryContext } from "@earendil-works/pi-telemetry";
 
 import type { BackofficeRuntimeEnv } from "@/backoffice-runtime/backoffice-runtime-env";
 import type { BackofficeRuntimeServices } from "@/backoffice-runtime/runtime-services";
@@ -48,6 +49,8 @@ export type PiAgentDependencies = {
   /** Installed before Backoffice's own extensions, whose same-name tools therefore win. */
   extensions: (config: PiAgentConfig, agent: BackofficeAgentContext) => readonly Extension[];
   settings: HarnessSettings;
+  /** Records Pi's content-free task and model-request spans in the runtime's tracing. */
+  telemetry: TelemetryContext;
   report: (error: unknown, config: PiAgentConfig | null) => void;
 };
 
@@ -74,6 +77,7 @@ export function createPiAgentDependencies(
     models: createPiModels(env),
     extensions: () => [],
     settings: {},
+    telemetry: NOOP_TELEMETRY_CONTEXT,
     report: (error, config) => {
       // Workers captured bare Error objects as stack-only logs, hiding the callback path and cause.
       // Project diagnostic fields explicitly; never serialize arbitrary error/provider payloads.
@@ -261,6 +265,7 @@ export async function openPiAgentHarness(input: {
         stream: { maxRetries: 3, ...dependencies.settings.stream },
         compaction: withoutBackgroundCompaction(dependencies.settings),
       },
+      telemetry: dependencies.telemetry,
       onReport: (piReport) => {
         report(piReport.error);
       },
