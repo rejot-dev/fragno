@@ -324,13 +324,31 @@ function BackofficeShellFrame({
       // Remembering the sidebar is optional when storage is unavailable.
     }
   }, [sidebarCollapsed]);
-  // Phones with room for the agent open it until it is closed there: on load, and when one unfolds
-  // or turns to make the room.
+  // Phones with room for the agent open it on load until it is closed there.
   useEffect(() => {
     if (agentBesidePhone && !readStoredPhoneAgentClosed()) {
       setAgentDrawerOpen(true);
     }
   }, [agentBesidePhone]);
+  // A phone that unfolds, or turns, to make the room opens the agent over half the screen, whether
+  // or not it was closed, beside the page in the other half: on a foldable, either side of the fold.
+  // Only a change of the screen counts, so a page load keeps the width the reader left.
+  const [agentHalfScreenRequest, setAgentHalfScreenRequest] = useState<number | null>(null);
+  useEffect(() => {
+    const list = window.matchMedia(AGENT_BESIDE_PHONE_QUERY);
+    const openOverHalf = (event: MediaQueryListEvent) => {
+      if (!event.matches) {
+        return;
+      }
+      storePhoneAgentClosed(false);
+      setAgentDrawerOpen(true);
+      setAgentHalfScreenRequest((current) => (current ?? 0) + 1);
+    };
+    list.addEventListener("change", openOverHalf);
+    return () => {
+      list.removeEventListener("change", openOverHalf);
+    };
+  }, []);
   // Transitions stay off until a frame has painted the restored sidebar, so a saved collapse
   // snaps into place instead of replaying its animation on load.
   useEffect(() => {
@@ -435,6 +453,7 @@ function BackofficeShellFrame({
           open={agentDrawerOpen}
           screen={agentBesidePhone ? "phone" : "desktop"}
           request={agentRequest}
+          halfScreenRequest={agentHalfScreenRequest}
           // Agents read their directory from the scope's Automations replica.
           resolvedScope={automationReplicaSource ? resolvedScope : null}
           onClose={() => {
