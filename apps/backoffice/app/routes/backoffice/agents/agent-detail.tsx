@@ -82,7 +82,8 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
  */
 export async function clientLoader({ request, serverLoader }: Route.ClientLoaderArgs) {
   if (window.matchMedia(AGENT_BESIDE_PHONE_QUERY).matches) {
-    throw redirect(`${new URL(request.url).pathname}/profile`);
+    // A trailing slash would double before the profile's segment, which no route matches.
+    throw redirect(`${new URL(request.url).pathname.replace(/\/+$/, "")}/profile`);
   }
   return await serverLoader();
 }
