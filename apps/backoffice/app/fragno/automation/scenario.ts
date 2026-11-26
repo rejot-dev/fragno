@@ -18,6 +18,7 @@ import {
   type BackofficeOrganizationContextScope,
   type BackofficeProjectOwner,
   type BackofficeScopeIdNames,
+  type BackofficeUserContextScope,
   backofficeScopeOrganization,
   backofficeScopePathSegment,
   backofficeScopeRootOwner,
@@ -428,10 +429,13 @@ type BackofficeScenarioFilePreset =
   | { kind: "memory"; createFileSystem(): IFileSystem; snapshot: Record<string, string> }
   | { kind: "workspace" };
 
+type ProjectContextScope = Extract<BackofficeContextScope, { kind: "project" }>;
+
 export type BackofficeScenarioFileSystems = {
   forOrg(orgId?: string): IFileSystem;
-  forProject(projectId: string): IFileSystem;
-  forUser(userId: string): IFileSystem;
+  // By scope, as a project's or user's workspace is kept with its owner and jurisdiction.
+  forProject(scope: ProjectContextScope): IFileSystem;
+  forUser(scope: BackofficeUserContextScope): IFileSystem;
   listOrgIds(): string[];
   rememberOrgPaths(orgId: string, paths: readonly string[]): void;
   diff(
@@ -1924,23 +1928,16 @@ const createScenarioFileSystems = (
   // do not write and the empty baseline does not hold.
   const snapshotRoot = preset.kind === "memory" ? "/" : "/workspace";
 
-  const openFileSystem = (key: { orgId: string } | { projectId: string } | { userId: string }) => {
+  const openFileSystem = (scope: BackofficeContextScope) => {
     if (preset.kind === "memory") {
       return preset.createFileSystem();
-    }
-    if (!("orgId" in key)) {
-      throw new Error("Scenario workspace files are kept for organizations only.");
     }
     const services = runtime().services;
     return createStateShellFileSystem(
       createRuntimeStateBackend({
         runtime: services,
         kernel: new BackofficeKernel(services),
-        execution: createBackofficeSystemExecution({
-          kind: "org",
-          orgId: key.orgId,
-          jurisdiction: null,
-        }),
+        execution: createBackofficeSystemExecution(scope),
       }),
     );
   };
@@ -1956,14 +1953,17 @@ const createScenarioFileSystems = (
 
   const forOrg = (orgId = "__default__") => {
     orgIds.add(orgId);
-    return getScopedFs(byOrg, orgId, () => openFileSystem({ orgId }));
+    return getScopedFs(byOrg, orgId, () =>
+      openFileSystem({ kind: "org", orgId, jurisdiction: null }),
+    );
   };
 
   return {
     forOrg,
-    forProject: (projectId) =>
-      getScopedFs(byProject, projectId, () => openFileSystem({ projectId })),
-    forUser: (userId) => getScopedFs(byUser, userId, () => openFileSystem({ userId })),
+    forProject: (scope) =>
+      getScopedFs(byProject, backofficeScopePathSegment(scope), () => openFileSystem(scope)),
+    forUser: (scope) =>
+      getScopedFs(byUser, backofficeScopePathSegment(scope), () => openFileSystem(scope)),
     listOrgIds: () => Array.from(orgIds),
     rememberOrgPaths: (orgId, paths) => {
       const rememberedPaths = rememberedOrgPaths.get(orgId) ?? new Set<string>();
@@ -3230,7 +3230,7 @@ const buildStepBuilders = <
             }
             const scenarioFileSystem =
               input.targetScope.kind === "project"
-                ? ctx.files.forProject(input.targetScope.projectId)
+                ? ctx.files.forProject(input.targetScope)
                 : ctx.files.forOrg(targetOrgId);
 
             // Scenario workflow execution uses a session filesystem, while Marketplace ingestion
@@ -5056,9 +5056,9 @@ export const openBackofficeScenario = async <TVars extends ScenarioVars = Scenar
           readAutomationSource: async ({ execution, path }) =>
             await (
               execution.scope.kind === "project"
-                ? files.forProject(execution.scope.projectId)
+                ? files.forProject(execution.scope)
                 : execution.scope.kind === "user"
-                  ? files.forUser(execution.scope.userId)
+                  ? files.forUser(execution.scope)
                   : files.forOrg(execution.scope.kind === "org" ? execution.scope.orgId : undefined)
             ).readFile(path, "utf-8"),
         }
