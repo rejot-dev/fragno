@@ -76,11 +76,11 @@ const DashboardDemo = lazy(async () => {
 function DashboardDemoLoading() {
   return (
     <div className="relative">
-      <ScreenFrame label="The Leyway dashboard demo" bar={<div className="min-h-11" />}>
+      <ScreenFrame label="The Leyway dashboard demo" bar={<div className="min-h-14" />}>
         {null}
       </ScreenFrame>
       {/* Above the timeline bar, which is as tall as its sections. */}
-      <div className="absolute inset-x-0 top-0 bottom-11 flex items-center justify-center">
+      <div className="absolute inset-x-0 top-0 bottom-14 flex items-center justify-center">
         <div className="w-48">
           <LoadingBar label="Loading the Leyway dashboard demo" />
         </div>
@@ -124,14 +124,10 @@ export default function LandingPage() {
             <div className="landing-hero-copy relative z-10 text-center lg:text-left">
               {/* Set open rather than tight: near-natural spacing and a little air between the
                   lines, in one white, so the heading reads calm over the photo. */}
-              {/* From lg up, where the copy sits left and the header's column lines run down the
-                  hero, "Auto" fills the logo's column exactly, its ink touching both lines. The
-                  logo's column is 151.77px wide there at every width, 149.77px between its 1px
-                  lines, and "Auto" in this font, weight and tracking is 1.9575em of ink, starting
-                  0.037em right of its origin: 149.77 / 1.9575 is 76.5px. The margin pulls that ink
-                  back from the content edge, the header's outset inside the column, to the left
-                  line's inside. */}
-              <h1 className="font-heading mx-auto max-w-[1040px] text-[clamp(2.5rem,5.75vw,5rem)] leading-[1.05] font-light tracking-[-0.02em] text-balance lg:mr-0 lg:-ml-[calc(var(--spacing)*4-1px+0.037em)] lg:text-[76.5px]">
+              {/* From lg up, where the copy sits left, the "A"'s ink starts 0.037em right of its
+                  origin in this font, weight and tracking; the margin pulls it back so the
+                  heading's ink lines up with the paragraph below. */}
+              <h1 className="font-heading mx-auto max-w-[1040px] text-[clamp(2.5rem,5.75vw,5rem)] leading-[1.05] font-light tracking-[-0.02em] text-balance lg:mr-0 lg:-ml-[0.037em] lg:text-[76.5px]">
                 Automate your
                 <br />
                 business with AI
@@ -219,15 +215,23 @@ export default function LandingPage() {
       {/* The dashboard overlaps the hero's lower edge, so the product is the first thing under the
           pitch. It stops at 960px across, narrower than the page's column, so it stays a preview
           rather than filling wide screens; on ultra-wide screens, where the column widens too, it
-          stops at 1100px. It is shown in black and white, so the hero photo and the brand carry
-          the page's color, and fades into the app's real colors while the pointer is over it. */}
-      <div className="relative z-20 mx-auto -mt-36 w-full max-w-[calc(960px+var(--spacing)*24)] px-5 min-[1920px]:max-w-[calc(1100px+var(--spacing)*24)] sm:px-8 lg:-mt-44 lg:px-12">
-        <div className="grayscale transition-[filter] duration-500 ease-out hover:grayscale-0">
-          <ClientOnly fallback={<DashboardDemoLoading />}>
-            <Suspense fallback={<DashboardDemoLoading />}>
-              <DashboardDemo />
-            </Suspense>
-          </ClientOnly>
+          stops at 1100px. It is shown in a light black and white, its darks lifted toward gray, so the
+          hero photo and the brand carry the page's color, and fades into the app's real colors while the pointer is over it. */}
+      <div className="relative z-20 -mt-36 lg:-mt-44">
+        {/* Shade on the page below the hero's lower edge, where the dashboard's overlap ends,
+            behind the dashboard. It fades in once the page scrolls, with the hero's column lines. */}
+        <div
+          aria-hidden="true"
+          className={`landing-hero-crease top-36 transition-opacity duration-300 ease-out lg:top-44 ${scrolled ? "opacity-100" : "opacity-0"}`}
+        />
+        <div className="relative mx-auto w-full max-w-[calc(960px+var(--spacing)*24)] px-5 min-[1920px]:max-w-[calc(1100px+var(--spacing)*24)] sm:px-8 lg:px-12">
+          <div className="brightness-[1.08] contrast-[0.8] grayscale transition-[filter] duration-500 ease-out hover:brightness-100 hover:contrast-100 hover:grayscale-0">
+            <ClientOnly fallback={<DashboardDemoLoading />}>
+              <Suspense fallback={<DashboardDemoLoading />}>
+                <DashboardDemo />
+              </Suspense>
+            </ClientOnly>
+          </div>
         </div>
       </div>
       <LandingHomeSections />

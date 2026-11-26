@@ -416,7 +416,11 @@ export function LandingHeroPhoto({ photo }: { photo: keyof typeof HERO_PHOTOS })
           </g>
         </svg>
       </div>
-      <div className="landing-hero-photo-sunlight" />
+      {/* A day's light passing over the photo (components.css). */}
+      <div className="landing-hero-light landing-hero-light-golden" />
+      <div className="landing-hero-light landing-hero-light-dusk" />
+      <div className="landing-hero-light landing-hero-light-dawn" />
+      <div className="landing-hero-light landing-hero-light-day" />
     </>
   );
 }

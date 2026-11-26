@@ -407,8 +407,11 @@ function AgentDrawer({ scene, shaded }: { scene: DashboardDemoScene; shaded: boo
       aria-label="Agent conversation"
       className={`relative flex shrink-0 flex-col overflow-hidden bg-[var(--bo-panel)] transition-[width] duration-300 ease-out [--bo-bg:var(--bo-panel)] ${scene.drawerOpen ? "w-[400px] border-l border-[color:var(--bo-border)]" : "w-0"}`}
     >
-      {/* Laid out at the open width, so opening reveals the content instead of reflowing it. */}
-      <div className="flex min-h-0 w-[400px] flex-1 flex-col self-end">
+      {/* Laid out at the open width, so opening reveals the content instead of reflowing it.
+          The composer's footer is not sticky here: the screen is scaled, and Safari places a sticky
+          element by the scaled size, lifting it off the drawer's bottom. The thread already keeps
+          its end in view, and the column above the footer grows to push it down. */}
+      <div className="absolute inset-y-0 right-0 flex w-[400px] flex-col [&_.sticky]:static">
         <SideDrawerHeader>
           <span className="flex min-w-0 flex-1 items-center gap-1.5 px-2 text-sm font-semibold">
             Assistant
