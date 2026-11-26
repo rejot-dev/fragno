@@ -5,6 +5,7 @@ import express from "express";
 import type { ServerBuild } from "react-router";
 import type { ViteDevServer } from "vite";
 
+import type { BackofficeRuntimeEnv } from "../../app/backoffice-runtime/backoffice-runtime-env";
 import {
   openBackofficeScenario,
   type BackofficeScenarioDefinition,
@@ -53,7 +54,12 @@ export async function serveScenario(input: {
       // Resetting starts the scenario over, which rows a fixed directory kept would not.
       throw new Error("Served scenarios keep their database in memory; drop sqliteDataDirectory.");
     }
-    const scenario = await openBackofficeScenario(explanations.explain(definition));
+    const scenario = await openBackofficeScenario(
+      explanations.explain({
+        ...definition,
+        env: { ...UNCONFIGURED_SERVICES, ...definition.env },
+      }),
+    );
     const app = express();
     mountBackofficeHandler(app, {
       runtime: scenario.ctx.runtime,
@@ -256,6 +262,26 @@ export async function serveScenario(input: {
     },
   };
 }
+
+/**
+ * The test runtime's placeholder credentials for services no fake stands in for. With them, the
+ * app offers those services, such as signing in with GitHub, and fails once someone uses them;
+ * without them, it shows them unconfigured, as a deployment without them does. A scenario that
+ * fakes one sets its credentials in its `env`.
+ */
+const UNCONFIGURED_SERVICES = {
+  GITHUB_CLIENT_ID: undefined,
+  GITHUB_CLIENT_SECRET: undefined,
+  GITHUB_APP_ID: undefined,
+  GITHUB_APP_SLUG: undefined,
+  GITHUB_APP_CLIENT_ID: undefined,
+  GITHUB_APP_CLIENT_SECRET: undefined,
+  GITHUB_APP_WEBHOOK_SECRET: undefined,
+  GITHUB_APP_PRIVATE_KEY: undefined,
+  CLOUDFLARE_WORKERS_ACCOUNT_ID: undefined,
+  CLOUDFLARE_WORKERS_API_TOKEN: undefined,
+  OPENAI_API_KEY: undefined,
+} satisfies Partial<BackofficeRuntimeEnv>;
 
 type Pump = { kind: "on" } | { kind: "off" } | { kind: "failed"; error: string };
 
