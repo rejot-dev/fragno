@@ -734,10 +734,14 @@ type AuthInviteMemberInput<TVars extends ScenarioVars> = AuthOrganizationSession
   email: string;
   role?: "member" | "admin" | "owner";
   captureInvitationIdAs?: string;
+  // The origin the cookie was issued at; see `AuthSignUpInput`.
+  origin?: string;
 };
 type AuthAcceptInvitationInput<TVars extends ScenarioVars> = {
   cookie: ScenarioValue<TVars, string>;
   invitationId: ScenarioValue<TVars, string>;
+  // The origin the cookie was issued at; see `AuthSignUpInput`.
+  origin?: string;
 };
 type AuthSessionInput<TVars extends ScenarioVars> = {
   cookie: ScenarioValue<TVars, string>;
@@ -3060,14 +3064,19 @@ const buildStepBuilders = <
           "auth.inviteMember",
           `invite ${input.email} to auth organization`,
           async (ctx) => {
-            const response = await scenarioAuthRequest(ctx, "/organization/invite-member", {
-              cookie: await resolveScenarioValue(ctx, input.cookie),
-              body: {
-                organizationId: await resolveScenarioValue(ctx, input.organizationId),
-                email: input.email,
-                role: input.role ?? "member",
+            const response = await scenarioAuthRequest(
+              ctx,
+              "/organization/invite-member",
+              {
+                cookie: await resolveScenarioValue(ctx, input.cookie),
+                body: {
+                  organizationId: await resolveScenarioValue(ctx, input.organizationId),
+                  email: input.email,
+                  role: input.role ?? "member",
+                },
               },
-            });
+              input.origin,
+            );
             if (!response.ok) {
               throw new Error(
                 `Auth member invitation failed (${response.status}): ${await response.text()}`,
@@ -3088,10 +3097,15 @@ const buildStepBuilders = <
           "auth.acceptInvitation",
           "accept auth organization invitation",
           async (ctx) => {
-            const response = await scenarioAuthRequest(ctx, "/organization/accept-invitation", {
-              cookie: await resolveScenarioValue(ctx, input.cookie),
-              body: { invitationId: await resolveScenarioValue(ctx, input.invitationId) },
-            });
+            const response = await scenarioAuthRequest(
+              ctx,
+              "/organization/accept-invitation",
+              {
+                cookie: await resolveScenarioValue(ctx, input.cookie),
+                body: { invitationId: await resolveScenarioValue(ctx, input.invitationId) },
+              },
+              input.origin,
+            );
             if (!response.ok) {
               throw new Error(
                 `Accepting Auth invitation failed (${response.status}): ${await response.text()}`,
