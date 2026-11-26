@@ -83,7 +83,7 @@ const createPiRuntime = (): PiManagerRuntime => {
     resumeAgent: async () => undefined,
     backfillAgentEvents: async () => ({ agents: [] }),
     listMessages: async () => ({ messages: [], before: null }),
-    listHistory: async () => ({ entries: [], cursor: null }),
+    listHistory: async () => ({ entries: [], more: false }),
     getActivity: async () => ({ tools: [], omitted: 0 }),
     exportConversation: async () => "",
     issueWatchTicket: async () => ({ ticket: "ticket", expiresAt: new Date(0).toISOString() }),

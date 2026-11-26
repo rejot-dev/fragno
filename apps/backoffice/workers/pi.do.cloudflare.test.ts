@@ -212,11 +212,11 @@ describe("Pi durable agent scenarios", () => {
     const history = await (
       await managerRequest(
         organizationId,
-        `/agents/assistant/entries?before=${view.entries.at(-1)?.id}&pageSize=2`,
+        `/agents/assistant/entries?maxEntryId=${(view.entries.at(-1)?.id ?? 1) - 1}&pageSize=2`,
       )
-    ).json<{ entries: unknown[]; hasNextPage: boolean }>();
+    ).json<{ entries: unknown[]; more: boolean }>();
     expect(history.entries).toHaveLength(2);
-    assert(history.hasNextPage);
+    assert(history.more);
     const exported = await managerRequest(organizationId, "/agents/assistant/export");
     assert(exported.status === 200);
     expect(new TextDecoder().decode(await exported.arrayBuffer())).toContain(

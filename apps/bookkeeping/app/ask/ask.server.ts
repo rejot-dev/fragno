@@ -1,5 +1,5 @@
 import { BackofficeApiRequestError } from "@fragno-dev/backoffice-api/v0/client";
-import type { PiAgentHistoryPage } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentEntryRange, PiAgentHistoryPage } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   renderPiAgentPrompt,
   type PiAgentAttachment,
@@ -186,13 +186,13 @@ export async function booksAgentSocketUrl(
 }
 
 /**
- * A page of the conversation from before its newest compaction, read as the person, as the socket
- * is; null when Backoffice refused the person.
+ * A page of the conversation's entries in an ID range, read as the person, as the socket is; null
+ * when Backoffice refused the person.
  */
 export async function booksAgentHistory(
   request: Request,
   context: BooksContext,
-  page: { before: number; cursor: string | null },
+  range: PiAgentEntryRange,
 ): Promise<PiAgentHistoryPage | null> {
   const scope = administrationScope(context);
   const backoffice = await connectAsUser(request, scope);
@@ -201,7 +201,7 @@ export async function booksAgentHistory(
   }
   return await backoffice.call(scope, "pi.agent.history", {
     agentName: BOOKS_AGENT_NAME,
-    ...page,
+    ...range,
   });
 }
 

@@ -1,5 +1,5 @@
 import { boundOutput } from "@earendil-works/chord/output";
-import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
+import type { PiAgentConfig, PiAgentEntryRange } from "@fragno-dev/backoffice-api/v0/pi";
 import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import { DurableObject } from "cloudflare:workers";
 import type { PostHog } from "posthog-node";
@@ -11,7 +11,6 @@ import type {
   PiAgentPrompt,
   PiAgentSteer,
   PiAgentWork,
-  piAgentEntryPageRequestSchema,
   piAgentMessagePageRequestSchema,
   PiAgentCompactionStatus,
   PiAgentCompactionWork,
@@ -133,8 +132,8 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   async getSubagentRuns(config: PiAgentConfig, requestIds: string[]): Promise<PiSubagentRun[]> {
     return await this.#object.getSubagentRuns(config, requestIds);
   }
-  async listEntries(config: PiAgentConfig, request: z.infer<typeof piAgentEntryPageRequestSchema>) {
-    return await this.#object.listEntries(config, request);
+  async listEntries(config: PiAgentConfig, range: PiAgentEntryRange) {
+    return await this.#object.listEntries(config, range);
   }
   async listMessages(
     config: PiAgentConfig,

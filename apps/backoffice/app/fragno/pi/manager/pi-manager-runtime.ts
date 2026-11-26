@@ -1,4 +1,4 @@
-import { awaitWithContext } from "@earendil-works/chord/context";
+import { awaitWithContext, type Context } from "@earendil-works/chord/context";
 import {
   type PiAgentActivity,
   type PiAgentWatchTicket,
@@ -6,6 +6,7 @@ import {
   type PiAgentDefinition,
   type PiAgentDefinitionCreate,
   type PiManagerAgent,
+  type PiAgentEntryRange,
   type PiAgentHistoryPage,
   type PiAgentMessagePage,
   type PiAgentSkillListing,
@@ -21,8 +22,6 @@ import { BACKOFFICE_PERMISSION } from "@fragno-dev/backoffice-api/v0/shared/perm
 import { piAgentNameSchema } from "@fragno-dev/backoffice-api/v0/shared/pi-agent-name";
 import { backofficeContextScopesEqual } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import type { z } from "zod";
-
-import type { Context } from "@earendil-works/chord";
 
 import {
   backofficeExecutionScopeRestriction,
@@ -70,12 +69,7 @@ export type PiManagerListMessagesInput = {
   /** The request ID of the subagent whose conversation to read; null reads the agent's. */
   subagent: string | null;
 };
-export type PiManagerHistoryInput = {
-  agentName: string;
-  before: number;
-  cursor: string | null;
-  pageSize: number;
-};
+export type PiManagerHistoryInput = PiAgentEntryRange & { agentName: string };
 export type PiManagerExportInput = { agentName: string; history: boolean };
 export type PiManagerActivityInput = {
   agentName: string;
@@ -371,16 +365,15 @@ export function createPiManagerRuntime(input: {
       }
       return await request<PiAgentMessagePage>(`${agentRoute(agentName)}/messages?${query}`, null);
     },
-    async listHistory({ agentName, before, cursor, pageSize }) {
-      const query = new URLSearchParams({ before: String(before), pageSize: String(pageSize) });
-      if (cursor !== null) {
-        query.set("cursor", cursor);
+    async listHistory({ agentName, minEntryId, maxEntryId, order, pageSize }) {
+      const query = new URLSearchParams({ order, pageSize: String(pageSize) });
+      if (minEntryId !== null) {
+        query.set("minEntryId", String(minEntryId));
       }
-      const page = await request<PiAgentHistoryPage>(
-        `${agentRoute(agentName)}/entries?${query}`,
-        null,
-      );
-      return { entries: page.entries, cursor: page.cursor };
+      if (maxEntryId !== null) {
+        query.set("maxEntryId", String(maxEntryId));
+      }
+      return await request<PiAgentHistoryPage>(`${agentRoute(agentName)}/entries?${query}`, null);
     },
     async getActivity({ agentName, subagent }) {
       const query = subagent === null ? "" : `?${new URLSearchParams({ subagent })}`;

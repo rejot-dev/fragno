@@ -4,6 +4,7 @@ import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type {
   PiAgentActivity,
   PiAgentConfig,
+  PiAgentEntryRange,
   PiAgentMessagePage,
   PiAgentQueueEntry,
   PiAgentWatchFrame,
@@ -14,17 +15,11 @@ import {
   piAgentNotificationSchema,
   type PiAgentNotification,
 } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
-import { jsonValueSchema } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { backofficePermissionRequirementSchema } from "@fragno-dev/backoffice-api/v0/shared/permissions";
 import { backofficeContextScopeSchema } from "@fragno-dev/backoffice-api/v0/shared/scope";
 import { z } from "zod";
 
-import type {
-  ConversationView,
-  Cursor,
-  EntryRecord,
-  SubmissionRecord,
-} from "@earendil-works/pi-durable";
+import type { ConversationView, EntryRecord, SubmissionRecord } from "@earendil-works/pi-durable";
 
 import { backofficeContextScopeRoutePath } from "@/backoffice-runtime/scope-codec";
 
@@ -241,19 +236,11 @@ export const piAgentCompactionStatusSchema = z.object({
 });
 export type PiAgentCompactionStatus = z.infer<typeof piAgentCompactionStatusSchema>;
 
-/**
- * Pages newest-first through the history older than entry `before`, which callers set to where the
- * active context begins; the conversation view already carries everything from there on. Entry
- * pagination state is backend-owned JSON round-tripped only to the same Pi agent and `before`.
- */
-export const piAgentEntryPageRequestSchema = z.object({
-  before: z.number().int().positive(),
-  pageSize: z.number().int().min(1).max(256),
-  cursor: z.record(z.string(), jsonValueSchema).nullable(),
-});
+/** A page of the conversation's entries in an ID range, in the order asked for (`pi.agent.history`). */
 export type PiAgentEntryPage = {
   entries: readonly EntryRecord[];
-  cursor: Cursor | null;
+  /** Whether the range holds entries past the page. */
+  more: boolean;
 };
 
 /**
@@ -335,8 +322,8 @@ export type PiAgent = {
     subagent: PiQueuedSubagent,
   ): Promise<void>;
   /**
-   * The conversation's view, or by the request ID that started it a subagent's; null when no
-   * subagent has that request ID.
+   * The conversation's view over its active context, or by the request ID that started it a
+   * subagent's; null when no subagent has that request ID.
    */
   getView(config: PiAgentConfig, subagent: string | null): Promise<unknown>;
   /**
@@ -353,10 +340,7 @@ export type PiAgent = {
   getSubmission(config: PiAgentConfig, requestId: string): Promise<PiAgentSubmission | null>;
   /** Where each of the subagents `requestIds` asked for stands, in the same order. */
   getSubagentRuns(config: PiAgentConfig, requestIds: string[]): Promise<PiSubagentRun[]>;
-  listEntries(
-    config: PiAgentConfig,
-    request: z.infer<typeof piAgentEntryPageRequestSchema>,
-  ): Promise<PiAgentEntryPage>;
+  listEntries(config: PiAgentConfig, range: PiAgentEntryRange): Promise<PiAgentEntryPage>;
   listMessages(
     config: PiAgentConfig,
     request: z.infer<typeof piAgentMessagePageRequestSchema>,

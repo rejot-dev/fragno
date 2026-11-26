@@ -1,10 +1,12 @@
 import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
 import { PathError } from "@earendil-works/chord/delta";
+import { copyJson } from "@earendil-works/chord/json";
 import { openDurableObjectSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/cloudflare";
 import {
   PI_AGENT_WATCH_REFUSED,
   piAgentConfigSchema,
   type PiAgentConfig,
+  type PiAgentEntryRange,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   piAgentNotificationSchema,
@@ -20,7 +22,6 @@ import {
 import { RpcTarget } from "cloudflare:workers";
 import { z } from "zod";
 
-import { copyJson } from "@earendil-works/chord";
 import {
   type Conversation,
   type ConversationId,
@@ -43,7 +44,6 @@ import { listPiConversationMessages } from "@/fragno/pi/agent/conversation-messa
 import { createPiConversationExportStream } from "@/fragno/pi/agent/conversation-streams";
 import {
   piAgentCompactionWorkSchema,
-  piAgentEntryPageRequestSchema,
   piAgentMessagePageRequestSchema,
   piAgentPromptSchema,
   piAgentSteerSchema,
@@ -54,6 +54,7 @@ import {
   type PiAgent,
   type PiAgentCompactionStatus,
   type PiAgentCompactionWork,
+  type PiAgentEntryPage,
   type PiAgentPrompt,
   type PiAgentSteer,
   type PiAgentSubmission,
@@ -772,21 +773,20 @@ export class PiObject extends RpcTarget implements PiAgent {
     );
   }
 
-  async listEntries(
-    config: PiAgentConfig,
-    rawRequest: z.infer<typeof piAgentEntryPageRequestSchema>,
-  ) {
-    const request = piAgentEntryPageRequestSchema.parse(rawRequest);
+  async listEntries(config: PiAgentConfig, range: PiAgentEntryRange): Promise<PiAgentEntryPage> {
     const { harness } = await this.#requireAgent(config);
     const root = await harness.root(BACKGROUND_CONTEXT);
     const page = await root.entries(
-      // Pi's entry bounds are inclusive.
-      { maxEntryId: (request.before - 1) as EntryId },
-      request.pageSize,
-      request.cursor ?? undefined,
+      {
+        ...(range.minEntryId === null ? {} : { minEntryId: range.minEntryId as EntryId }),
+        ...(range.maxEntryId === null ? {} : { maxEntryId: range.maxEntryId as EntryId }),
+        order: range.order,
+      },
+      range.pageSize,
+      undefined,
       BACKGROUND_CONTEXT,
     );
-    return { entries: page.items, cursor: page.next ?? null };
+    return { entries: page.items, more: page.next !== undefined };
   }
 
   async listMessages(
@@ -848,19 +848,7 @@ export class PiObject extends RpcTarget implements PiAgent {
     if (!conversation) {
       return { tools: [], omitted: 0 };
     }
-    try {
-      const view = await conversation.viewState(BACKGROUND_CONTEXT);
-      try {
-        return piConversationActivity(view.value);
-      } finally {
-        view.dispose();
-      }
-    } catch (cause) {
-      if (!(cause instanceof PathError)) {
-        throw cause;
-      }
-      throw new PiConversationViewDamagedError(config.agentName, cause);
-    }
+    return piConversationActivity(await this.#activeView(config, conversation));
   }
 
   async getView(config: PiAgentConfig, subagent: string | null): Promise<unknown> {
@@ -869,12 +857,23 @@ export class PiObject extends RpcTarget implements PiAgent {
     if (!conversation) {
       return null;
     }
+    return await this.#activeView(config, conversation);
+  }
+
+  /**
+   * The conversation's view over its active context, the newest head marker first, as the model
+   * sees it: a watch's view holds a window over the newest entries, from before a compaction or
+   * clear too.
+   */
+  async #activeView(config: PiAgentConfig, conversation: Conversation): Promise<ConversationView> {
     try {
-      const view = await conversation.viewState(BACKGROUND_CONTEXT);
+      const watch = await conversation.watch(BACKGROUND_CONTEXT);
       try {
-        return view.value;
+        const { entries } = await conversation.context(BACKGROUND_CONTEXT);
+        const { before: _before, ...view } = watch.value;
+        return { ...view, entries };
       } finally {
-        view.dispose();
+        await watch.stop();
       }
     } catch (cause) {
       if (!(cause instanceof PathError)) {
@@ -917,8 +916,11 @@ export class PiObject extends RpcTarget implements PiAgent {
       const watch = await (await harness.root(BACKGROUND_CONTEXT)).watch(BACKGROUND_CONTEXT);
       // Each frame's ops turn the previous frame's view into this one's, so viewers that start
       // from any delivered view stay exact.
-      watch.start(async (_view, ops) => {
-        this.#broadcast({ type: "ops", ops }, this.#viewers);
+      watch.start(async (call) => {
+        // A failed call carries no ops; the next value's ops still build on the last view sent.
+        if (call.kind === "value") {
+          this.#broadcast({ type: "ops", ops: call.ops }, this.#viewers);
+        }
       });
       // The watch ends with the agent's session, as when the object closes; viewers reconnect.
       void watch.closed.then(() => {
@@ -1164,7 +1166,7 @@ export class PiObject extends RpcTarget implements PiAgent {
             }
           },
           closed: (end) => {
-            if (end.reason === "closed") {
+            if (end.kind === "closed") {
               reject(new Error("The Pi agent closed while its alarm waited."));
             } else {
               reject(

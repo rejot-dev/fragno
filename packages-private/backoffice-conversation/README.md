@@ -8,8 +8,10 @@ React and assistant-ui.
 - `projection/`: the conversation as chat messages. `assistant-runtime` turns Pi's
   `ConversationView` into assistant-ui messages: turns with their tool calls, notifications,
   compactions, and the queue; `usePiPendingMessages` keeps prompts the agent has not picked up yet;
-  `usePiEarlierHistory` adds the history before the view's newest compaction, which the host reads a
-  page at a time, from `pi.agent.history` or Backoffice's own entries route.
+  `usePiTranscript` keeps every entry the view's window brought in Pi's `ConversationTranscript`,
+  and loads what the window does not hold from `pi.agent.history` or Backoffice's own entries route:
+  entries a reconnect skipped at once, earlier history a page at a time. It finds where the active
+  context begins from the newest compaction or clear it has.
 - `live/`: `usePiAgentViewSocket` follows an agent's `pi.agent.watch` socket. It asks for the
   socket's URL on every connection, so an app passes a function that fetches a new
   `pi.agent.watchTicket` each time; Backoffice passes its agent page's own `view-socket` route.

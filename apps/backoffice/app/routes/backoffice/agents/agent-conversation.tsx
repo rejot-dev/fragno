@@ -23,11 +23,11 @@ import {
   piConversationQueue,
   type PiUserMessageMetadata,
 } from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
-import {
-  usePiEarlierHistory,
-  type PiHistoryPageReader,
-} from "@fragno-private/backoffice-conversation/projection/earlier-history";
 import { usePiPendingMessages } from "@fragno-private/backoffice-conversation/projection/pending-messages";
+import {
+  usePiTranscript,
+  type PiEntryPageReader,
+} from "@fragno-private/backoffice-conversation/projection/transcript";
 import { ChatComposerModel } from "@fragno-private/design-system/agents/chat-composer";
 import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import { usePostHog } from "@posthog/react/slim";
@@ -76,7 +76,6 @@ import { backofficeChatExtensions } from "./session-detail/backoffice-chat-exten
 import { createReson8DictationAdapter } from "./session-detail/reson8-dictation";
 import { SessionWorkflowsProvider } from "./session-detail/session-workflow";
 
-const PI_ENTRY_HISTORY_PAGE_SIZE = 100;
 const PI_COMPACTION_POLL_MS = 250;
 
 export type PiAgentActionData =
@@ -113,16 +112,16 @@ function useSessionDisplayOptions() {
   return { displayOptions, updateDisplayOption };
 }
 
-/** Reads earlier history through the agent's entries route, which pages the manager's entries. */
-function useEntryPageReader(pageUrl: string): PiHistoryPageReader {
+/** Reads entry pages through the agent's entries route, which pages the manager's entries. */
+function useEntryPageReader(pageUrl: string): PiEntryPageReader {
   return useCallback(
-    async ({ before, cursor }) => {
-      const query = new URLSearchParams({
-        before: String(before),
-        pageSize: String(PI_ENTRY_HISTORY_PAGE_SIZE),
-      });
-      if (cursor) {
-        query.set("cursor", cursor);
+    async ({ minEntryId, maxEntryId, order, pageSize }) => {
+      const query = new URLSearchParams({ order, pageSize: String(pageSize) });
+      if (minEntryId !== null) {
+        query.set("minEntryId", String(minEntryId));
+      }
+      if (maxEntryId !== null) {
+        query.set("maxEntryId", String(maxEntryId));
       }
       const response = await fetch(`${pageUrl}?${query}`, {
         headers: { accept: "application/json" },
@@ -260,7 +259,10 @@ function usePiCompaction(agentPath: string, onFailed: (instructions: string) => 
   return { request, compact, dismiss };
 }
 
-/** The conversation renders from the view socket; its first view is the whole conversation. */
+/**
+ * The conversation renders from the view socket, a window over its newest entries; earlier history
+ * loads a page at a time.
+ */
 export function AgentConversation(props: AgentConversationProps) {
   const stream = usePiAgentViewSocket({
     key: props.agentPath,
@@ -378,7 +380,7 @@ function AgentConversationThread({
   const requestingCompaction = compaction.request.status === "compacting";
   const dismissCompaction = compaction.dismiss;
   const { displayOptions, updateDisplayOption } = useSessionDisplayOptions();
-  const history = usePiEarlierHistory(view, useEntryPageReader(`${agentPath}/entries`));
+  const history = usePiTranscript(view, useEntryPageReader(`${agentPath}/entries`));
   const { activeContextStart, transcript } = history;
   const running = isPiConversationRunning(view) || requestingCompaction;
   // The manager dispatches a requested compaction alone, between turns.
@@ -676,10 +678,12 @@ function AgentConversationThread({
           usage: { tokens: contextTokens, window: model.contextWindow },
         }}
         activeContextStartMessageId={activeContextStartMessageId}
+        earlierHistoryOutOfContext={history.earlierHistoryOutOfContext}
         hasMoreHistory={history.hasMore}
         historyLoading={history.loading}
         historyError={history.error}
         onLoadMoreHistory={history.loadMore}
+        onRetryHistory={history.retry}
       />
     </AgentSubagentsProvider>
   );

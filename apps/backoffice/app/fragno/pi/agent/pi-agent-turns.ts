@@ -1,4 +1,6 @@
-import { copyJson, type Context } from "@earendil-works/chord";
+import type { Context } from "@earendil-works/chord/context";
+import { copyJson } from "@earendil-works/chord/json";
+
 import {
   defineDoc,
   type JsonObject,

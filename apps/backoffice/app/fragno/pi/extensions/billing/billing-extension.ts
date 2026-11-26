@@ -1,6 +1,6 @@
+import type { Context } from "@earendil-works/chord/context";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 
-import type { Context } from "@earendil-works/chord";
 import {
   defineDoc,
   defineExtension,

@@ -19,11 +19,11 @@ import {
   piConversationQueue,
   type PiUserMessageMetadata,
 } from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
-import {
-  usePiEarlierHistory,
-  type PiHistoryPageReader,
-} from "@fragno-private/backoffice-conversation/projection/earlier-history";
 import { usePiPendingMessages } from "@fragno-private/backoffice-conversation/projection/pending-messages";
+import {
+  usePiTranscript,
+  type PiEntryPageReader,
+} from "@fragno-private/backoffice-conversation/projection/transcript";
 import { MarkdownTextProvider } from "@fragno-private/backoffice-ui/markdown-text";
 import { ChatActivityStep } from "@fragno-private/design-system/agents/chat-activity";
 import { ChatMessageAttachments } from "@fragno-private/design-system/agents/chat-attachment";
@@ -302,13 +302,16 @@ export function BooksChat({
   );
 }
 
-/** Reads earlier history through `historyPath`, as the person reading the chat. */
-function useHistoryPageReader(historyPath: string): PiHistoryPageReader {
+/** Reads entry pages through `historyPath`, as the person reading the chat. */
+function useHistoryPageReader(historyPath: string): PiEntryPageReader {
   return useCallback(
-    async ({ before, cursor }) => {
-      const query = new URLSearchParams({ before: String(before) });
-      if (cursor !== null) {
-        query.set("cursor", cursor);
+    async ({ minEntryId, maxEntryId, order, pageSize }) => {
+      const query = new URLSearchParams({ order, pageSize: String(pageSize) });
+      if (minEntryId !== null) {
+        query.set("minEntryId", String(minEntryId));
+      }
+      if (maxEntryId !== null) {
+        query.set("maxEntryId", String(maxEntryId));
       }
       const response = await fetch(`${historyPath}?${query}`, {
         headers: { accept: "application/json" },
@@ -325,7 +328,7 @@ function useHistoryPageReader(historyPath: string): PiHistoryPageReader {
 // Entries pass as Pi Durable wrote them: Backoffice answered them, and the projection reads them.
 const historyPageSchema = z.object({
   entries: z.array(z.custom<EntryRecord>()),
-  cursor: z.string().nullable(),
+  more: z.boolean(),
 });
 
 /**
@@ -344,7 +347,7 @@ function BooksChatThread({
   const runtimeRef = useRef<AssistantRuntime | null>(null);
   const documents = useChatDocuments(documentsPath);
   const takeDocuments = documents.take;
-  const history = usePiEarlierHistory(view, useHistoryPageReader(historyPath));
+  const history = usePiTranscript(view, useHistoryPageReader(historyPath));
   const { activeContextStart, transcript } = history;
   const running = isPiConversationRunning(view);
   const compaction = piConversationCompaction(view);
@@ -513,10 +516,12 @@ function BooksChatThread({
         compaction={compaction}
         context={null}
         activeContextStartMessageId={activeContextStartMessageId}
+        earlierHistoryOutOfContext={history.earlierHistoryOutOfContext}
         hasMoreHistory={history.hasMore}
         historyLoading={history.loading}
         historyError={history.error}
         onLoadMoreHistory={history.loadMore}
+        onRetryHistory={history.retry}
       />
     </AssistantRuntimeProvider>
   );

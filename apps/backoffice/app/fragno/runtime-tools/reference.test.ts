@@ -344,7 +344,7 @@ describe("runtime tool reference generation", () => {
           inputType: "PiListHistoryInput",
           outputType: "PiListHistoryOutput",
           bashCommand: "pi.agent.history",
-          bashOptions: ["agent", "before", "cursor", "page-size"],
+          bashOptions: ["agent", "min-entry-id", "max-entry-id", "order", "page-size"],
         },
         {
           id: "pi.agent.activity",

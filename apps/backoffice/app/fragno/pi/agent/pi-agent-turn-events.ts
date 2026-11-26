@@ -1,8 +1,7 @@
-import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import { BACKGROUND_CONTEXT, type Context } from "@earendil-works/chord/context";
 import type { AutomationEvent } from "@fragno-dev/backoffice-api/v0/events";
 import type { PiAgentConfig } from "@fragno-dev/backoffice-api/v0/pi";
 
-import type { Context } from "@earendil-works/chord";
 import {
   ROOT_CONVERSATION_ID,
   type CommitPublication,
@@ -223,10 +222,14 @@ export function startReportingPiAgentTurns(input: {
     return reported;
   }
 
-  harness.subscribeCommits((publication) => {
-    if (changesSubmission(publication)) {
-      report(BACKGROUND_CONTEXT).catch(input.report);
-    }
+  harness.observeCommits({
+    advance(publication) {
+      if (changesSubmission(publication)) {
+        report(BACKGROUND_CONTEXT).catch(input.report);
+      }
+    },
+    // The observer ends with the agent's session, which a later open reports again.
+    end() {},
   });
   return report;
 }

@@ -1375,7 +1375,7 @@ const createFakePiManagerApi = (
     async listEntries(config) {
       requireAgent(config);
       // The fake never compacts, so no history precedes its active context.
-      return { entries: [], cursor: null };
+      return { entries: [], more: false };
     },
     async listMessages(config, { last, before }) {
       requireAgent(config);
