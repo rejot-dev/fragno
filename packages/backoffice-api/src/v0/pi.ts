@@ -311,22 +311,80 @@ export const piPromptStatusSchema = z.lazy(() =>
 );
 export type PiPromptStatus = z.infer<typeof piPromptStatusSchema>;
 
-/** An item waiting in an agent's queue, as its viewers see it. */
+/**
+ * Who asked for a subagent: its agent's own turn, by the tool call that asked; another agent's
+ * turn; an installed app, with its slug when it asked, null for one gone by then; or a person.
+ */
+export type PiSubagentAsker =
+  | { kind: "turn"; toolCallId: string }
+  | { kind: "agent"; agentName: string }
+  | { kind: "app"; appId: string; appSlug: string | null }
+  | { kind: "person" };
+
+/** An item waiting in an agent's queue for its conversation, as its viewers see it. */
 export type PiAgentQueueEntry =
   | { type: "prompt"; requestId: string; content: string }
   | { type: "notification"; requestId: string; source: string; eventType: string };
 
+/** What a subagent was asked to do, when, and by whom. */
+export type PiSubagentAsk = {
+  requestId: string;
+  task: string;
+  askedAt: string;
+  askedBy: PiSubagentAsker;
+};
+
 /**
- * What the `pi.agent.watch` WebSocket sends, one JSON frame per message: the whole conversation view
- * once, on connecting, then each commit's ops, which turn the view the socket has into the
- * committed one; and the items waiting in the agent's queue whenever they change. The view is Pi
- * Durable's `ConversationView` and the ops are Chord's `Op`, which `applyImmutable` from
- * `@earendil-works/chord/delta` applies.
+ * A subagent of the agent and where it stands: waiting for a slot, dropped from the queue before
+ * it started, running since it started, or how it ended.
+ */
+export type PiSubagentSummary = PiSubagentAsk & {
+  state:
+    | { status: "waiting" }
+    | { status: "dropped"; reason: string }
+    | { status: "running"; startedAt: string }
+    | { status: "answered"; startedAt: string; answeredAt: string }
+    | { status: "stopped"; startedAt: string }
+    | { status: "failed"; startedAt: string; reason: string };
+};
+
+/**
+ * The subagents a list of them leaves out, which are older: those whose conversations have Pi IDs
+ * up to `through`. `cursor` continues the list there; it is opaque.
+ */
+export type PiOlderSubagents = { through: number; cursor: string };
+
+/**
+ * What the `pi.agent.watch` WebSocket sends, one JSON frame per message:
+ *
+ * - `view` and `ops`: a conversation's whole view once, then each commit's ops, which turn the view
+ *   the socket has into the committed one. `subagent` names the conversation: null for the agent's
+ *   own, which every socket follows, or the request ID of a subagent the socket subscribed to.
+ * - `queue`: the items waiting in the agent's queue for its conversation, and how many subagents
+ *   wait for a slot, whenever they change.
+ * - `subagents`: on connecting, the oldest subagents that wait, up to 50, those that run, and the
+ *   newest of the others; `older` says which of those it leaves out, null when none.
+ * - `subagent`: a subagent that changed since, which replaces the one with its request ID.
+ * - `unsubscribed`: the socket follows the subagent no longer, as when it never started.
+ *
+ * The view is Pi Durable's `ConversationView` and the ops are Chord's `Op`, which `applyImmutable`
+ * from `@earendil-works/chord/delta` applies.
  */
 export type PiAgentWatchFrame<TView = unknown, TOp = unknown> =
-  | { type: "view"; view: TView }
-  | { type: "ops"; ops: readonly TOp[] }
-  | { type: "queue"; paused: boolean; items: PiAgentQueueEntry[] };
+  | { type: "view"; subagent: string | null; view: TView }
+  | { type: "ops"; subagent: string | null; ops: readonly TOp[] }
+  | { type: "queue"; paused: boolean; items: PiAgentQueueEntry[]; waitingSubagents: number }
+  | { type: "subagents"; subagents: PiSubagentSummary[]; older: PiOlderSubagents | null }
+  | { type: "subagent"; subagent: PiSubagentSummary }
+  | { type: "unsubscribed"; subagent: string; message: string };
+
+/**
+ * What a `pi.agent.watch` client sends, one JSON message each: to follow a started subagent's
+ * conversation, by the request ID that asked for it, as `view` and `ops` frames, or to stop.
+ */
+export type PiAgentWatchMessage =
+  | { type: "subscribe"; subagent: string }
+  | { type: "unsubscribe"; subagent: string };
 
 /**
  * `pi.agent.watch` closes with a code from 4000 up, and says why, when reconnecting cannot help,
@@ -336,6 +394,19 @@ export type PiAgentWatchFrame<TView = unknown, TOp = unknown> =
 export const PI_AGENT_WATCH_REFUSED = 4000;
 
 const agentInputSchema = z.lazy(() => z.strictObject({ agentName: piAgentNameSchema }));
+
+/** Names one of the agent's subagents, by the request ID that started it; null names the agent. */
+function subagentInputSchema(read: "conversation" | "work") {
+  return z
+    .string()
+    .trim()
+    .min(1)
+    .nullable()
+    .default(null)
+    .describe(
+      `The request ID that started a subagent of the agent, to read that subagent's ${read} instead of the agent's.`,
+    );
+}
 
 const promptSubmitInputSchema = z.lazy(() =>
   agentInputSchema._zod.innerType.extend({
@@ -387,15 +458,7 @@ const messagesListInputSchema = z.lazy(() =>
       .nullable()
       .default(null)
       .describe("A previous page's `before`, to read the messages preceding it."),
-    subagent: z
-      .string()
-      .trim()
-      .min(1)
-      .nullable()
-      .default(null)
-      .describe(
-        "The request ID that started a subagent of the agent, to read that subagent's conversation instead of the agent's.",
-      ),
+    subagent: subagentInputSchema("conversation"),
   }),
 );
 
@@ -466,7 +529,10 @@ export const piAgentEntryRangeSchema = z.object({
 export type PiAgentEntryRange = z.output<typeof piAgentEntryRangeSchema>;
 
 const historyInputSchema = z.lazy(() =>
-  readAgentInputSchema._zod.innerType.extend(piAgentEntryRangeSchema.shape),
+  readAgentInputSchema._zod.innerType.extend({
+    ...piAgentEntryRangeSchema.shape,
+    subagent: subagentInputSchema("conversation"),
+  }),
 );
 
 /** A page of a conversation's entries, in the order asked for. */
@@ -557,17 +623,7 @@ export const codemodeCallsSchema = z.lazy(() =>
 export type CodemodeCalls = z.infer<typeof codemodeCallsSchema>;
 
 const activityInputSchema = z.lazy(() =>
-  readAgentInputSchema._zod.innerType.extend({
-    subagent: z
-      .string()
-      .trim()
-      .min(1)
-      .nullable()
-      .default(null)
-      .describe(
-        "The request ID that started a subagent of the agent, to read that subagent's work instead of the agent's.",
-      ),
-  }),
+  readAgentInputSchema._zod.innerType.extend({ subagent: subagentInputSchema("work") }),
 );
 
 /**
@@ -667,7 +723,7 @@ export const piOperations = {
   },
   "pi.agent.history": {
     description:
-      "Read a page of a started agent's whole conversation, compactions and clears included, as Pi Durable's entries with thinking, tool calls, and tool results: an entry ID range in one order, newest first by default. `pi.agent.watch`'s view holds only the newest entries; a chat loads the rest with this, as Pi Durable's `ConversationTranscript` asks its loader. Read further from the last entry's ID while `more` is true. To read what was said since the newest compaction, use `pi.agent.messages`.",
+      "Read a page of a started agent's whole conversation, compactions and clears included, as Pi Durable's entries with thinking, tool calls, and tool results: an entry ID range in one order, newest first by default. `pi.agent.watch`'s view holds only the newest entries; a chat loads the rest with this, as Pi Durable's `ConversationTranscript` asks its loader. Read further from the last entry's ID while `more` is true. To read what was said since the newest compaction, use `pi.agent.messages`. Pass `subagent` to read one of the agent's subagents instead.",
     permissions: [BACKOFFICE_PERMISSION.pi.read],
     input: historyInputSchema,
     output: piAgentHistoryPageSchema,

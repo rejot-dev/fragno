@@ -20,9 +20,9 @@ import {
   type PiAgentCompactionStatus,
   type PiAgentModelChoice,
   type PiAvailableModel,
+  type PiSubagentPage,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
-import type { piAgentSubagentListSchema } from "@/fragno/pi/manager/pi-manager-conversation-routes";
 import type { createPiManagerFragment } from "@/fragno/pi/manager/pi-manager-fragment";
 import { captureBackofficeServerEvent } from "@/posthog.server";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
@@ -256,22 +256,27 @@ export async function submitPiManagerPrompt(
   return { receipt: null, error: `Failed to send message (${response.status}).` };
 }
 
+/** A page of the agent's entries, or of the subagent's the request ID `subagent` started. */
 export async function fetchPiManagerEntryPage(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
   agentName: string,
+  subagent: string | null,
   range: URLSearchParams,
 ): Promise<PiManagerEntryPage> {
   const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("GET", "/agents/:agentName/entries", {
     pathParams: { agentName },
-    query: Object.fromEntries(
-      ["minEntryId", "maxEntryId", "order", "pageSize"].flatMap((name) => {
-        const value = range.get(name);
-        return value === null ? [] : [[name, value]];
-      }),
-    ),
+    query: {
+      ...Object.fromEntries(
+        ["minEntryId", "maxEntryId", "order", "pageSize"].flatMap((name) => {
+          const value = range.get(name);
+          return value === null ? [] : [[name, value]];
+        }),
+      ),
+      ...(subagent === null ? {} : { subagent }),
+    },
   });
   if (response.type === "json") {
     return response.data as PiManagerEntryPage;
@@ -285,18 +290,18 @@ export async function fetchPiManagerEntryPage(
   });
 }
 
-/** The agent's latest subagents, newest first, with where each stands. */
-export type PiManagerSubagentList = z.infer<typeof piAgentSubagentListSchema>;
-
+/** A page of the agent's subagents older than a page it listed, from that page's cursor. */
 export async function fetchPiManagerSubagents(
   request: Request,
   context: Readonly<RouterContextProvider>,
   scope: BackofficeContextScope,
   agentName: string,
-): Promise<PiManagerSubagentList> {
+  cursor: string,
+): Promise<PiSubagentPage> {
   const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
   const response = await callRoute("GET", "/agents/:agentName/subagents", {
     pathParams: { agentName },
+    query: { cursor },
   });
   if (response.type === "json") {
     return response.data;
@@ -306,34 +311,6 @@ export async function fetchPiManagerSubagents(
     throw Response.json(response.error, { status: response.status });
   }
   throw new Response(`Failed to list Pi subagents (${response.status}).`, {
-    status: response.status,
-  });
-}
-
-/** A subagent's conversation view; null while it waits for a conversation, or for none. */
-export async function fetchPiManagerSubagentView(
-  request: Request,
-  context: Readonly<RouterContextProvider>,
-  scope: BackofficeContextScope,
-  agentName: string,
-  requestId: string,
-): Promise<ConversationView | null> {
-  const { callRoute } = await createPiManagerRouteCaller(request, context, scope);
-  const response = await callRoute("GET", "/agents/:agentName/subagents/:requestId/view", {
-    pathParams: { agentName, requestId },
-  });
-  if (response.type === "json") {
-    // The manager forwards Pi's view unchanged.
-    return response.data as ConversationView;
-  }
-  if (response.type === "error") {
-    throwPiManagerAuthorizationFailure(response);
-    if (response.error.code === "SUBAGENT_NOT_FOUND") {
-      return null;
-    }
-    throw Response.json(response.error, { status: response.status });
-  }
-  throw new Response(`Failed to read the Pi subagent (${response.status}).`, {
     status: response.status,
   });
 }

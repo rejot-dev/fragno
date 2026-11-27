@@ -8,26 +8,27 @@ import type { z } from "zod";
 import type {
   PiAgent,
   PiAgentTurn,
-  PiAgentPrompt,
   PiAgentSteer,
   PiAgentWork,
   piAgentMessagePageRequestSchema,
   PiAgentCompactionStatus,
   PiAgentCompactionWork,
   PiAgentWaitingQueue,
+  PiQueuedAsk,
   PiQueuedSubagent,
-  PiSubagentRun,
+  PiSubagentPage,
   PiAgentSubmission,
 } from "@/fragno/pi/agent/pi-agent-contract";
 import type { PiAgentDependencies } from "@/fragno/pi/agent/pi-agent-harness";
 
-import type { PiObject, PiAgentViewer, PiAgentViewing } from "./pi-object";
+import type { PiAgentViewer } from "./pi-agent-viewers";
+import type { PiObject, PiAgentViewerSession, PiAgentViewing } from "./pi-object";
 
 /** One durable agent per object; scoped managers own agent discovery. */
 export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   #object!: PiObject;
   // View sockets hibernate with the object, so they outlive this map, which `ctx` restores.
-  readonly #disconnects = new Map<WebSocket, Promise<() => void>>();
+  readonly #viewers = new Map<WebSocket, PiAgentViewerSession>();
 
   constructor(
     state: DurableObjectState,
@@ -89,14 +90,10 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
         idFromConfig: (config) => piAgentDurableObjectId(env, config),
         nowEpochMs: Date.now,
       });
-      // An object woken from hibernation still has the view sockets it accepted; each had its view.
-      // Only sockets with their view stay accepted while the object can hibernate: one that has none
-      // yet is still connecting, which keeps the object awake, or was closed instead.
+      // An object woken from hibernation still has the view sockets it accepted, but not what they
+      // watched, which went with its memory; they reconnect once the agent opens.
       for (const socket of state.getWebSockets()) {
-        this.#disconnects.set(
-          socket,
-          Promise.resolve(this.#object.restoreViewer(piAgentSocketViewer(socket))),
-        );
+        this.#viewers.set(socket, this.#object.restoreViewer(piAgentSocketViewer(socket)));
       }
     });
   }
@@ -121,9 +118,9 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
     config: PiAgentConfig,
     revision: number,
     turn: PiAgentTurn,
-    prompt: PiAgentPrompt,
+    ask: PiQueuedAsk,
   ) {
-    await this.#object.startSubagent(config, revision, turn, prompt);
+    await this.#object.startSubagent(config, revision, turn, ask);
   }
   async recordSubagent(config: PiAgentConfig, requestId: string, subagent: PiQueuedSubagent) {
     await this.#object.recordSubagent(config, requestId, subagent);
@@ -131,11 +128,14 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   async getSubmission(config: PiAgentConfig, requestId: string): Promise<PiAgentSubmission | null> {
     return await this.#object.getSubmission(config, requestId);
   }
-  async getSubagentRuns(config: PiAgentConfig, requestIds: string[]): Promise<PiSubagentRun[]> {
-    return await this.#object.getSubagentRuns(config, requestIds);
+  async listSubagents(
+    config: PiAgentConfig,
+    cursor: string | null,
+  ): Promise<PiSubagentPage | null> {
+    return await this.#object.listSubagents(config, cursor);
   }
-  async listEntries(config: PiAgentConfig, range: PiAgentEntryRange) {
-    return await this.#object.listEntries(config, range);
+  async listEntries(config: PiAgentConfig, range: PiAgentEntryRange, subagent: string | null) {
+    return await this.#object.listEntries(config, range, subagent);
   }
   async listMessages(
     config: PiAgentConfig,
@@ -166,8 +166,8 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
   async getActivity(config: PiAgentConfig, subagent: string | null) {
     return await this.#object.getActivity(config, subagent);
   }
-  async getView(config: PiAgentConfig, subagent: string | null): Promise<unknown> {
-    return await this.#object.getView(config, subagent);
+  async getView(config: PiAgentConfig): Promise<unknown> {
+    return await this.#object.getView(config);
   }
   async publishQueue(queue: PiAgentWaitingQueue): Promise<void> {
     await this.#object.publishQueue(queue);
@@ -184,9 +184,8 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
     let viewing: PiAgentViewing;
     try {
       // The request names the agent, so its signature can be checked before the agent is read.
-      const agent = piAgentConfigSchema.parse(
-        JSON.parse(new URL(request.url).searchParams.get("agent") ?? "null"),
-      );
+      const { searchParams } = new URL(request.url);
+      const agent = piAgentConfigSchema.parse(JSON.parse(searchParams.get("agent") ?? "null"));
       const verified = await verifyAuthorizedBackofficeObjectRequest({
         request,
         address: { binding: "PI", agent },
@@ -205,11 +204,15 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
     const { 0: client, 1: server } = new WebSocketPair();
     // Hibernatable: an idle agent's open sockets do not keep the object in memory.
     this.ctx.acceptWebSocket(server);
-    this.#disconnects.set(server, this.#object.connectViewer(piAgentSocketViewer(server), viewing));
+    this.#viewers.set(server, this.#object.connectViewer(piAgentSocketViewer(server), viewing));
     return new Response(null, { status: 101, webSocket: client });
   }
-  // Viewers send nothing; the socket carries only the agent's frames.
-  async webSocketMessage(): Promise<void> {}
+  // Viewers subscribe to subagents, and unsubscribe, in JSON messages.
+  async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    this.#viewers
+      .get(socket)
+      ?.receive(typeof message === "string" ? message : new TextDecoder().decode(message));
+  }
   async webSocketClose(socket: WebSocket, code: number, reason: string): Promise<void> {
     this.#disconnect(socket);
     try {
@@ -222,11 +225,9 @@ export class Pi extends DurableObject<CloudflareEnv> implements PiAgent {
     this.#disconnect(socket);
   }
   #disconnect(socket: WebSocket) {
-    const disconnecting = this.#disconnects.get(socket);
-    this.#disconnects.delete(socket);
-    void disconnecting?.then((disconnect) => {
-      disconnect();
-    });
+    const viewer = this.#viewers.get(socket);
+    this.#viewers.delete(socket);
+    viewer?.disconnect();
   }
   async reset(config: PiAgentConfig, turn: PiAgentTurn | null): Promise<void> {
     await this.#object.reset(config, turn);

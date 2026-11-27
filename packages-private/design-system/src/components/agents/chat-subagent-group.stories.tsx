@@ -60,7 +60,7 @@ function task(document: Document) {
 const HEADLINES = ["Reading the document", "Matching the supplier", "Checking the books"];
 
 /** A subagent's conversation as the row opens it: its work, then its answer. */
-function Transcript({ status }: { status: ChatSubagentRunStatus }) {
+function Transcript({ status, answer }: { status: ChatSubagentRunStatus; answer: string }) {
   const running = status.kind === "running";
   return (
     <div className="space-y-3 text-sm leading-7 text-[var(--bo-muted)]">
@@ -139,7 +139,7 @@ function Transcript({ status }: { status: ChatSubagentRunStatus }) {
           ) : null}
         </ChatActivity>
       )}
-      {status.kind === "completed" ? <p>{status.answer}</p> : null}
+      {status.kind === "completed" ? <p>{answer}</p> : null}
       {status.kind === "failed" ? (
         <p className="text-xs text-[var(--bo-failed)]">{status.reason}</p>
       ) : null}
@@ -157,7 +157,7 @@ function runs(
       id: `document:${document.id}:upload:${index}`,
       task: task(document),
       status,
-      transcript: <Transcript status={status} />,
+      transcript: <Transcript status={status} answer={document.entry} />,
     };
   });
 }
@@ -167,8 +167,8 @@ const FAILED: ChatSubagentRunStatus = {
   reason: "The scan is unreadable: no amounts or supplier found.",
 };
 
-function completed(index: number, durationMs: number): ChatSubagentRunStatus {
-  return { kind: "completed", durationMs, answer: DOCUMENTS[index].entry };
+function completed(durationMs: number): ChatSubagentRunStatus {
+  return { kind: "completed", durationMs };
 }
 
 /**
@@ -196,7 +196,7 @@ function statusesAt(tick: number, startedAt: Date): ChatSubagentRunStatus[] {
         startedAt: new Date(startedAt.getTime() + start * 1000),
       };
     }
-    return index === 4 ? FAILED : completed(index, durations[index] * 2_300);
+    return index === 4 ? FAILED : completed(durations[index] * 2_300);
   });
 }
 
@@ -366,7 +366,7 @@ export function InTurn() {
 }
 
 const BOOKKEEPING: ChatSubagentRunStatus[] = [
-  completed(0, 9_800),
+  completed(9_800),
   { kind: "running", headline: "Matching the supplier", startedAt: new Date(Date.now() - 12_000) },
   { kind: "queued" },
 ];
@@ -412,7 +412,7 @@ export function StartedElsewhere() {
 }
 
 const EVERY_STATUS: ChatSubagentRunStatus[] = [
-  completed(0, 9_800),
+  completed(9_800),
   { kind: "running", headline: "Checking the books", startedAt: new Date(Date.now() - 4_000) },
   { kind: "queued" },
   FAILED,
@@ -423,7 +423,7 @@ const LARGE_BATCH: ChatSubagentRunStatus[] = Array.from(
   { length: 14 },
   (_, index): ChatSubagentRunStatus =>
     index < 6
-      ? completed(index % 4, 6_000 + index * 700)
+      ? completed(6_000 + index * 700)
       : index < 10
         ? {
             kind: "running",
@@ -468,7 +468,7 @@ function scheduleAt(
   const frees: number[] = [];
   return subagents
     .filter(({ askedAt }) => askedAt <= tick)
-    .map(({ askedAt, duration, fails }, index): ChatSubagentRunStatus => {
+    .map(({ askedAt, duration, fails }): ChatSubagentRunStatus => {
       let start = askedAt;
       if (frees.length >= slots) {
         const earliest = Math.min(...frees);
@@ -487,9 +487,7 @@ function scheduleAt(
           startedAt: new Date(startedAt.getTime() + start * 1000),
         };
       }
-      return fails
-        ? FAILED
-        : { kind: "completed", durationMs: duration * 2_300, answer: MANY_DOCUMENTS[index].entry };
+      return fails ? FAILED : completed(duration * 2_300);
     });
 }
 

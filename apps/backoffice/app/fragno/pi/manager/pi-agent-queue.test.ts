@@ -16,10 +16,10 @@ import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
 import type {
   PiAgent,
   PiAgentAddress,
-  PiAgentPrompt,
   PiAgentSteer,
   PiAgentTurn,
   PiAgentWaitingQueue,
+  PiQueuedAsk,
   PiQueuedSubagent,
   PiAgentWork,
 } from "@/fragno/pi/agent/pi-agent-contract";
@@ -138,15 +138,15 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       _config: PiAgentConfig,
       _revision: number,
       turn: PiAgentTurn,
-      prompt: PiAgentPrompt,
+      ask: PiQueuedAsk,
     ) {
       receive({
         via: "subagent",
-        requestId: prompt.requestId,
+        requestId: ask.requestId,
         instructions: turn.agent.instructions,
         events: [],
       });
-      subagents.set(prompt.requestId, "started");
+      subagents.set(ask.requestId, "started");
     },
     async recordSubagent(_config: PiAgentConfig, requestId: string, subagent: PiQueuedSubagent) {
       if (failing.handovers > 0) {
@@ -156,7 +156,9 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       if (subagents.get(requestId) !== "started") {
         subagents.set(
           requestId,
-          subagent.status === "dropped" ? `dropped: ${subagent.reason}` : subagent.status,
+          subagent.status === "dropped"
+            ? `dropped: ${subagent.reason}`
+            : `waiting ${subagent.ask.requestId}`,
         );
       }
     },
@@ -186,14 +188,7 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
       const record = submissions.get(requestId);
       return record ? { record, answer: null } : null;
     },
-    getSubagentRuns: async (_config, requestIds) =>
-      requestIds.map((requestId) => ({
-        requestId,
-        submission: submissions.get(requestId) ?? null,
-        startedAt: null,
-        answeredAt: null,
-        answer: null,
-      })),
+    listSubagents: unused,
     getView: unused,
     fetch: unused,
     listEntries: unused,
@@ -344,13 +339,17 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
             });
       assert(response.type === "empty", JSON.stringify(response));
     },
-    /** What the agent was last shown of its queue, as `<type> <requestId>` lines, led by `paused`. */
+    /**
+     * What the agent was last shown of its queue, as `<type> <requestId>` lines, led by `paused`
+     * and ended by how many subagents wait.
+     */
     publishedQueue(agentName = "assistant") {
       const queue = published.get(agentName);
       assert(queue, `Nothing was published to ${agentName}.`);
       return [
         ...(queue.paused ? ["paused"] : []),
         ...queue.items.map(({ type, requestId }) => `${type} ${requestId}`),
+        ...(queue.waitingSubagents > 0 ? [`subagents waiting: ${queue.waitingSubagents}`] : []),
       ];
     },
     async settle(requestId: string, agentName = "assistant", endedAt = "2026-01-01T00:00:00.000Z") {
@@ -394,16 +393,6 @@ async function piManagerQueue(scope: BackofficeContextScope = ORG_SCOPE) {
         pathParams: { agentName, requestId },
       });
       return response.type === "json" ? response.data : response.type;
-    },
-    /** The agent's subagents as its page lists them, as `<status> <requestId>` lines. */
-    async listedSubagents(agentName = "assistant") {
-      const response = await fragment.callRoute("GET", "/agents/:agentName/subagents", {
-        pathParams: { agentName },
-      });
-      assert(response.type === "json", JSON.stringify(response));
-      return response.data.subagents.map(
-        ({ requestId, status }) => `${status.status} ${requestId}`,
-      );
     },
     /** Handovers that run turns, leaving out the cards written as notifications arrive. */
     turns() {
@@ -695,8 +684,8 @@ test("subagents run beside the agent's own turns, a few at a time, and wait whil
     "subagent doc-3",
     "subagent doc-4",
   ]);
-  // A waiting subagent waits for a slot, not in the agent's conversation.
-  expect(queue.publishedQueue()).toEqual([]);
+  // A waiting subagent waits for a slot, not in the agent's conversation; the queue counts it.
+  expect(queue.publishedQueue()).toEqual(["subagents waiting: 1"]);
   expect(await queue.submission("doc-5")).toEqual({ requestId: "doc-5", status: "queued" });
   // A subagent's conversation is new, so it never steers or is refused as busy.
   const steering = await queue.prompt({
@@ -709,6 +698,7 @@ test("subagents run beside the agent's own turns, a few at a time, and wait whil
   // A subagent that ends frees its slot for the oldest waiting one; the agent's queue stays.
   await queue.settle("doc-2");
   assert(queue.turns().at(-1) === "subagent doc-5");
+  expect(queue.publishedQueue()).toEqual([]);
   await queue.settle("own");
   // Running subagents leave the agent itself idle.
   await queue.receipt({ requestId: "idle", whenBusy: "reject" });
@@ -719,8 +709,11 @@ test("subagents run beside the agent's own turns, a few at a time, and wait whil
   await queue.receipt({ requestId: "doc-6", subagent: true });
   await queue.settle("doc-1");
   assert(queue.turns().at(-1) === "dispatch idle");
+  // A stopped queue with only subagents waiting still says so, so its page offers to resume it.
+  expect(queue.publishedQueue()).toEqual(["paused", "subagents waiting: 1"]);
   await queue.control("resume");
   assert(queue.turns().at(-1) === "subagent doc-6");
+  expect(queue.publishedQueue()).toEqual([]);
 
   // Handovers that failed, telling the agent of a subagent and starting it, are made again by
   // the queue's hooks.
@@ -780,16 +773,20 @@ test("an agent knows of each subagent from when it is queued until it starts or 
     "doc-2": "started",
     "doc-3": "started",
     "doc-4": "started",
-    "doc-5": "waiting",
+    "doc-5": "waiting doc-5",
   });
 
-  // Its request ID is returned only once its agent knows of it; the same ID retried tells it.
+  // Its request ID is returned only once its agent knows of it; the same ID retried tells it, as
+  // the queue's hook does, with what the queue's item says it was asked.
   queue.failing.handovers = 1;
   const unheard = await queue.prompt({ requestId: "doc-6", agentName: "clerk", subagent: true });
   assert(unheard.type === "error" && unheard.error.code === "AGENT_UNAVAILABLE");
   assert(!queue.subagents.has("doc-6"));
+  await drainDurableHooks(queue.fragment);
+  assert(queue.subagents.get("doc-6") === "waiting doc-6");
+  queue.subagents.delete("doc-6");
   await queue.receipt({ requestId: "doc-6", agentName: "clerk", subagent: true });
-  assert(queue.subagents.get("doc-6") === "waiting");
+  assert(queue.subagents.get("doc-6") === "waiting doc-6");
 
   // One that waited for a slot is dropped once its definition is gone, and its agent hears so.
   const deleted = await queue.fragment.callRoute("DELETE", "/agents/:agentName", {
@@ -926,24 +923,6 @@ test("the queue's hook hands over again what a failed request did not", async ()
   expect(new Set(queue.requestIds())).toEqual(
     new Set(["dispatch first", "steer steered", "steer route:orders:ada-1 (ada-1)"]),
   );
-});
-
-test("an agent's subagents list those running however many newer ones wait", async () => {
-  const queue = await piManagerQueue();
-
-  for (let index = 1; index <= 54; index += 1) {
-    await queue.receipt({ requestId: `task-${index}`, subagent: true });
-  }
-
-  // The latest are the 50 that wait; the four that run, older than them, are listed after them.
-  const listed = await queue.listedSubagents();
-  assert(listed.slice(0, 50).every((line) => line.startsWith("queued ")));
-  expect(listed.slice(50)).toEqual([
-    "running task-4",
-    "running task-3",
-    "running task-2",
-    "running task-1",
-  ]);
 });
 
 test("concurrent prompts to an idle agent dispatch exactly one of them", async () => {

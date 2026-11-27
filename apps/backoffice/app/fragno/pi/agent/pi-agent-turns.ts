@@ -15,7 +15,7 @@ import {
 } from "@earendil-works/pi-durable";
 
 import type { PiAgentTurn } from "./pi-agent-contract";
-import { forgetRunningPiSubagent, piSubagentConversation } from "./pi-agent-subagents";
+import { piSubagentConversation } from "./pi-agent-subagents";
 
 // Turns are stored as JSON; this module writes every value, so reads cast them back.
 type PiAgentTurnsState = {
@@ -106,10 +106,7 @@ export async function readReportablePiAgentTurns(
   return reportable;
 }
 
-/**
- * Forgets a settled turn once its turn event is recorded, and that its subagent may run; running
- * turns keep their authority.
- */
+/** Forgets a settled turn once its turn event is recorded; running turns keep their authority. */
 export async function forgetReportedPiAgentTurn(
   harness: Harness,
   requestId: string,
@@ -117,7 +114,6 @@ export async function forgetReportedPiAgentTurn(
 ): Promise<void> {
   await harness.commit(async (tx) => {
     delete (await tx.doc(PiAgentTurnsDoc)).pending[requestId];
-    await forgetRunningPiSubagent(tx, requestId);
   }, context);
 }
 

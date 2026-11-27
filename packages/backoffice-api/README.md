@@ -84,12 +84,29 @@ socket.addEventListener("close", ({ code, reason }) => {
 
 The socket sends a `queue` frame, then a `view` frame with the whole conversation view, then an
 `ops` frame with each commit's changes, including partial answers while the agent generates, and a
-`queue` frame whenever the queue changes (`PiAgentWatchFrame`). A request that cannot upgrade, such
-as one with an invalid credential, answers with an error like an operation's. A missing permission,
-an agent that has had no turns, and a name no agent has close the socket with
-`PI_AGENT_WATCH_REFUSED` and the reason; `pi.agent.get` says whether an agent's first prompt
-provisioned its conversation yet (`provisioned`). The credential is only checked on connecting, so
-an open socket outlives it.
+`queue` frame whenever the queue changes (`PiAgentWatchFrame`). The `queue` frame also says how many
+subagents wait for a slot (`waitingSubagents`). After the view, a `subagents` frame lists the
+agent's oldest 50 subagents that wait, those that run, and the newest of the others, with `older`
+naming those it leaves out (null when none); a `subagent` frame then replaces one by its request ID
+whenever it changes. A request that cannot upgrade, such as one with an invalid credential, answers
+with an error like an operation's. A missing permission, an agent that has had no turns, and a name
+no agent has close the socket with `PI_AGENT_WATCH_REFUSED` and the reason; `pi.agent.get` says
+whether an agent's first prompt provisioned its conversation yet (`provisioned`). The credential is
+only checked on connecting, so an open socket outlives it, until the agent closes it as worth
+reconnecting after, as when it restarts: reconnecting checks the credential again.
+
+The same socket follows a subagent's conversation once the client sends `subscribe` with the request
+ID that asked for it (`PiAgentWatchMessage`), and stops on `unsubscribe`:
+
+```ts
+socket.send(JSON.stringify({ type: "subscribe", subagent: "document-42" }));
+// { type: "view", subagent: "document-42", view }, then its ops, as for the agent's own
+```
+
+A subagent that has not started, a request ID that asked for none, or a subagent whose conversation
+cannot be sent is answered with an `unsubscribed` frame, and the socket goes on; subscribe again
+once a `subagent` frame shows it running. A socket follows at most 16 subagents at once. After
+reconnecting, subscribe again.
 
 What Backoffice writes into a conversation, beside Pi Durable's own entries, reads with
 `@fragno-dev/backoffice-api/v0/pi-conversation/*`, the same modules Backoffice writes it with:
@@ -105,9 +122,9 @@ What Backoffice writes into a conversation, beside Pi Durable's own entries, rea
 
 A change to these formats is a change to the API, with its changeset.
 
-The view holds the conversation from its newest compaction or clear on; it leads with that entry's
-`head`. A chat that shows earlier history pages back from there with `pi.agent.history`, passing
-`before: view.entries[0].head` and each page's `cursor`, newest entry first.
+The view holds a window over the newest entries, compactions and clears where they happened. A chat
+that shows more keeps what it has in Pi Durable's `ConversationTranscript` and loads the pages it
+asks for with `pi.agent.history`, with `subagent` for a subagent's.
 
 Browsers cannot send a WebSocket's headers, so an app's server asks `pi.agent.watchTicket` for a
 ticket, and its page connects with `ticket=<ticket>` instead of the bearer token:

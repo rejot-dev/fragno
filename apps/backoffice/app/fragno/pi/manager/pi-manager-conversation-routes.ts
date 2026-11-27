@@ -3,95 +3,25 @@ import {
   piAgentEntryRangeSchema,
   piAgentHistoryPageSchema,
   piAgentMessagePageSchema,
-  piPromptStatusSchema,
+  type PiSubagentSummary,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { z } from "zod";
 
 import { defineRoutes } from "@fragno-dev/core";
 
-import { piAgentActorName } from "@/fragno/pi/agent/pi-agent-actor";
 import {
   PiConversationViewDamagedError,
   piAgentCompactionStatusSchema,
   piAgentMessagePageRequestSchema,
-  piPromptStatusOf,
-  type PiSubagentRun,
 } from "@/fragno/pi/agent/pi-agent-contract";
 
-import type { PiAgentSubagentItem } from "./pi-agent-queue";
 import { piManagerDefinition } from "./pi-manager-definition";
 
-/** How many of an agent's latest subagents its list shows. */
-const PI_AGENT_SUBAGENT_LIST_LIMIT = 50;
-
-/**
- * Who asked for a subagent: its agent's own turn, from a tool call its page shows it under;
- * another agent's turn; an installed app; or a person.
- */
-const piSubagentAskerSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("turn"), toolCallId: z.string() }),
-  z.object({ kind: z.literal("agent"), agentName: z.string() }),
-  z.object({ kind: z.literal("app"), appId: z.string() }),
-  z.object({ kind: z.literal("person") }),
-]);
-
-/**
- * An agent's latest subagents, newest first, and any running before them, so what runs is always
- * listed, as the agent's page lists them. `startedAt` and `answeredAt` are null until it starts
- * and answers; a completed `status` holds the answer.
- */
-export const piAgentSubagentListSchema = z.object({
-  subagents: z.array(
-    z.object({
-      requestId: z.string(),
-      task: z.string(),
-      askedAt: z.string(),
-      askedBy: piSubagentAskerSchema,
-      status: piPromptStatusSchema,
-      startedAt: z.string().nullable(),
-      answeredAt: z.string().nullable(),
-    }),
-  ),
+/** A page of an agent's subagents, as `PiSubagentPage` says; Backoffice's own types check it. */
+const piSubagentPageSchema = z.object({
+  subagents: z.array(z.custom<PiSubagentSummary>()),
+  older: z.object({ through: z.number(), cursor: z.string() }).nullable(),
 });
-
-function subagentAsker(item: PiAgentSubagentItem): z.infer<typeof piSubagentAskerSchema> {
-  if (item.askingToolCall !== null) {
-    return { kind: "turn", toolCallId: item.askingToolCall };
-  }
-  const { actors } = item.provenance;
-  // The newest agent in the delegation is the one whose turn asked.
-  const agent = actors.delegation
-    .filter((actor) => actor.scope === "internal" && actor.type === "pi-agent")
-    .at(-1);
-  if (agent) {
-    return { kind: "agent", agentName: piAgentActorName(agent) };
-  }
-  return actors.initiator.scope === "internal" && actors.initiator.type === "app"
-    ? { kind: "app", appId: actors.initiator.id }
-    : { kind: "person" };
-}
-
-/** Where a subagent stands: its queue state while it waits or once dropped, else Pi's submission. */
-function subagentStatus(item: PiAgentSubagentItem, run: PiSubagentRun) {
-  const { requestId, state } = item;
-  if (state.status === "queued" || state.status === "dropped") {
-    return piPromptStatusOf(
-      requestId,
-      { type: "input", requestId, ...(state.status === "queued" ? { status: "queued" } : state) },
-      null,
-    );
-  }
-  // A dispatched subagent reads as queued until Pi has its submission.
-  return piPromptStatusOf(
-    requestId,
-    run.submission ?? { type: "input", status: "queued", requestId },
-    run.answer,
-  );
-}
-
-function isoTime(epochMs: number | null) {
-  return epochMs === null ? null : new Date(epochMs).toISOString();
-}
 
 /** Unlike an unstarted agent, a name no agent has is most likely a typo. */
 function agentNotFoundMessage(agentName: string) {
@@ -132,7 +62,7 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
           return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
         }
         try {
-          return json(await config.agent(agent).getView(agent, null));
+          return json(await config.agent(agent).getView(agent));
         } catch (cause) {
           return damagedViewResponse(cause, error);
         }
@@ -141,81 +71,35 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
     defineRoute({
       method: "GET",
       path: "/agents/:agentName/subagents",
-      outputSchema: piAgentSubagentListSchema,
-      handler: async function ({ pathParams }, { json }) {
-        const { agent, subagents } = await this.handlerTx()
-          .withServiceCalls(
-            () =>
-              [
-                services.getAgents([pathParams.agentName]),
-                services.listSubagents(pathParams.agentName, PI_AGENT_SUBAGENT_LIST_LIMIT),
-              ] as const,
-          )
-          .transform(({ serviceResult: [agents, items] }) => ({
-            agent: agents.get(pathParams.agentName),
-            subagents: items,
-          }))
-          .execute();
-        // An agent that never started has run no subagents.
-        if (!agent) {
-          return json({ subagents: [] });
-        }
-        const runs = await config.agent(agent).getSubagentRuns(
-          agent,
-          subagents.map(({ requestId }) => requestId),
-        );
-        return json({
-          subagents: subagents.map((item, index) => {
-            const run = runs[index];
-            return {
-              requestId: item.requestId,
-              task: item.task,
-              askedAt: item.submittedAt,
-              askedBy: subagentAsker(item),
-              status: subagentStatus(item, run),
-              startedAt: isoTime(run.startedAt),
-              answeredAt: isoTime(run.answeredAt),
-            };
-          }),
-        });
-      },
-    }),
-    defineRoute({
-      method: "GET",
-      path: "/agents/:agentName/subagents/:requestId/view",
-      // Pi owns this experimental structural view; the manager deliberately keeps it opaque.
-      outputSchema: z.unknown(),
-      errorCodes: ["AGENT_NOT_STARTED", "SUBAGENT_NOT_FOUND", PiConversationViewDamagedError.code],
-      handler: async function ({ pathParams }, { json, error }) {
+      queryParameters: ["cursor"],
+      outputSchema: piSubagentPageSchema,
+      errorCodes: ["INVALID_SUBAGENT_CURSOR"],
+      handler: async function ({ pathParams, query }, { json, error }) {
+        const invalid = () =>
+          error(
+            {
+              code: "INVALID_SUBAGENT_CURSOR",
+              message: "`cursor` must be the `older.cursor` of a page of this agent's subagents.",
+            },
+            400,
+          );
+        const cursor = query.get("cursor");
         const agent = await this.handlerTx()
           .withServiceCalls(() => [services.getAgents([pathParams.agentName])])
           .transform(({ serviceResult: [agents] }) => agents.get(pathParams.agentName))
           .execute();
+        // An agent that never started has run no subagents, and listed no page of them.
         if (!agent) {
-          return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
+          return cursor === null ? json({ subagents: [], older: null }) : invalid();
         }
-        let view: unknown;
-        try {
-          view = await config.agent(agent).getView(agent, pathParams.requestId);
-        } catch (cause) {
-          return damagedViewResponse(cause, error);
-        }
-        // A subagent that waits has no conversation yet.
-        return view === null
-          ? error(
-              {
-                code: "SUBAGENT_NOT_FOUND",
-                message: "No subagent of this agent runs that request.",
-              },
-              404,
-            )
-          : json(view);
+        const page = await config.agent(agent).listSubagents(agent, cursor);
+        return page ? json(page) : invalid();
       },
     }),
     defineRoute({
       method: "GET",
       path: "/agents/:agentName/entries",
-      queryParameters: ["minEntryId", "maxEntryId", "order", "pageSize"],
+      queryParameters: ["minEntryId", "maxEntryId", "order", "pageSize", "subagent"],
       outputSchema: piAgentHistoryPageSchema,
       errorCodes: ["AGENT_NOT_STARTED", "INVALID_ENTRY_RANGE"],
       handler: async function ({ pathParams, query }, { json, error }) {
@@ -242,7 +126,9 @@ export const piManagerConversationRoutes = defineRoutes(piManagerDefinition).cre
         if (!agent) {
           return error({ code: "AGENT_NOT_STARTED", message: "Pi agent has no turns yet." }, 404);
         }
-        const page = await config.agent(agent).listEntries(agent, range.data);
+        const page = await config
+          .agent(agent)
+          .listEntries(agent, range.data, query.get("subagent"));
         return json({ entries: [...page.entries], more: page.more });
       },
     }),

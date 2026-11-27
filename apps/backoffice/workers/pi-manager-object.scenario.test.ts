@@ -16,7 +16,11 @@ import {
 import { getCurrentSystemPrompt } from "@earendil-works/pi-ai/utils/transcript";
 import type { AutomationRouteCreateInput } from "@fragno-dev/backoffice-api/v0/automation";
 import { automationEventListResultSchema } from "@fragno-dev/backoffice-api/v0/events";
-import type { PiManagerAgent, PiManagerAgentDirectory } from "@fragno-dev/backoffice-api/v0/pi";
+import type {
+  PiManagerAgent,
+  PiManagerAgentDirectory,
+  PiSubagentSummary,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import {
   PI_NOTIFICATION_ENTRY_KIND,
   renderPiNotificationRequest,
@@ -53,7 +57,7 @@ import {
 } from "@/fragno/automation/scenario";
 import { BUILT_IN_PI_AGENT_DEFINITIONS } from "@/fragno/pi/agent/agent-definitions";
 import { piAgentActor } from "@/fragno/pi/agent/pi-agent-actor";
-import type { PiAgentViewFrame } from "@/fragno/pi/agent/pi-agent-contract";
+import type { PiAgentViewFrame, PiSubagentPage } from "@/fragno/pi/agent/pi-agent-contract";
 import { createCodemodeRouteBackedRuntimeContext } from "@/fragno/runtime-tools/route-backed-runtime-context";
 
 import {
@@ -910,9 +914,7 @@ async function listedSubagent(
 ) {
   const response = await managerRequest(runtime, scope, "/agents/assistant/subagents");
   assert.equal(response.status, 200, await response.clone().text());
-  const { subagents } = await response.json<{
-    subagents: { requestId: string; status: { status: string } }[];
-  }>();
+  const { subagents } = await response.json<{ subagents: PiSubagentSummary[] }>();
   return subagents.find((subagent) => subagent.requestId === requestId);
 }
 
@@ -963,18 +965,18 @@ test("a subagent whose start failed before a stop starts only once the agent res
 
           // The queue's hook retries the failed start, which the stop holds back.
           await runtime.drain();
-          const view = await managerRequest(
+          const entries = await managerRequest(
             runtime,
             scope,
-            "/agents/assistant/subagents/late/view",
+            "/agents/assistant/entries?subagent=late",
           );
-          assert.equal(view.status, 404, await view.clone().text());
+          expect(await entries.json()).toEqual({ entries: [], more: false });
 
           const resumed = await managerRequest(runtime, scope, "/agents/assistant/resume", {});
           assert.equal(resumed.status, 204, await resumed.clone().text());
           await runtime.drain();
           expect(await listedSubagent(runtime, scope, "late")).toMatchObject({
-            status: { status: "completed", answer: "durable answer" },
+            state: { status: "answered" },
           });
         }),
       ],
@@ -1040,18 +1042,18 @@ test("a subagent start still on its way when the agent stops starts only once it
           assert.equal(response.status, 202, await response.clone().text());
 
           await runtime.drain();
-          const view = await managerRequest(
+          const entries = await managerRequest(
             runtime,
             scope,
-            "/agents/assistant/subagents/racing/view",
+            "/agents/assistant/entries?subagent=racing",
           );
-          assert.equal(view.status, 404, await view.clone().text());
+          expect(await entries.json()).toEqual({ entries: [], more: false });
 
           const resumed = await managerRequest(runtime, scope, "/agents/assistant/resume", {});
           assert.equal(resumed.status, 204, await resumed.clone().text());
           await runtime.drain();
           expect(await listedSubagent(runtime, scope, "racing")).toMatchObject({
-            status: { status: "completed", answer: "durable answer" },
+            state: { status: "answered" },
           });
         }),
       ],
@@ -2205,7 +2207,7 @@ test("the Pi agent shows its viewers durable generation partials before completi
           assert(agent);
           const frames: PiAgentViewFrame[] = [];
           const closes: string[] = [];
-          const disconnect = await agent.connectViewer(
+          const viewer = agent.connectViewer(
             {
               send: (message) => frames.push(JSON.parse(message) as PiAgentViewFrame),
               close: (code, reason) => closes.push(`${code} ${reason}`),
@@ -2219,12 +2221,14 @@ test("the Pi agent shows its viewers durable generation partials before completi
             },
           );
           // The prompt is dispatched, so nothing waits in the agent's queue.
-          expect(frames).toMatchObject([
-            { type: "queue", paused: false, items: [] },
-            { type: "view" },
-          ]);
+          await vi.waitFor(() => {
+            expect(frames.slice(0, 2)).toMatchObject([
+              { type: "queue", paused: false, items: [], waitingSubagents: 0 },
+              { type: "view", subagent: null },
+            ]);
+          });
           await runtime.drain();
-          disconnect();
+          viewer.disconnect();
 
           // After the whole view, the agent sends only what each commit changed.
           expect(frames.filter((frame) => frame.type === "view")).toHaveLength(1);
@@ -2248,6 +2252,321 @@ test("the Pi agent shows its viewers durable generation partials before completi
           expect(views.at(-1)).toEqual(await readView(runtime, scope));
           expect(closes).toEqual([]);
         }),
+      ],
+    }),
+  );
+});
+
+/**
+ * The view a viewer's frames build of a conversation, the agent's or a subagent's: the last whole
+ * view, with the ops after it applied.
+ */
+function viewOf(frames: readonly PiAgentViewFrame[], subagent: string | null) {
+  let view: ConversationView | undefined;
+  for (const frame of frames) {
+    if ((frame.type === "view" || frame.type === "ops") && frame.subagent !== subagent) {
+      continue;
+    }
+    if (frame.type === "view") {
+      view = frame.view;
+    } else if (frame.type === "ops") {
+      view = applyImmutable<ConversationView>(view, frame.ops);
+    }
+  }
+  return view;
+}
+
+/** Each subagent as a viewer's frames last showed it, as `<request ID> <status>`. */
+function subagentsOf(frames: readonly PiAgentViewFrame[]) {
+  const subagents = new Map<string, string>();
+  for (const frame of frames) {
+    const changed =
+      frame.type === "subagents"
+        ? frame.subagents
+        : frame.type === "subagent"
+          ? [frame.subagent]
+          : [];
+    for (const { requestId, state } of changed) {
+      subagents.set(requestId, state.status);
+    }
+  }
+  return [...subagents].map(([requestId, status]) => `${requestId} ${status}`);
+}
+
+test("an agent's viewer sees its subagents wait, run, and end, and follows their conversations", async () => {
+  const scope: BackofficeContextScope = {
+    kind: "org",
+    orgId: "subagent-viewer-org",
+    jurisdiction: null,
+  };
+  // Node serves no view sockets, so the scenario connects to the agent object as Cloudflare does.
+  let agent: PiObject | null = null;
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi subagent viewers",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          const faux = fauxProvider();
+          faux.setResponses([
+            fauxAssistantMessage([fauxText("Started.")]),
+            fauxAssistantMessage([fauxText("Document 1 read.")]),
+          ]);
+          const models = createModels();
+          models.setProvider(faux.provider);
+          agent = new PiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+          return agent;
+        },
+      },
+      steps: ({ then }) => [
+        then.assert(
+          "a viewer follows a subagent from the queue to its answer",
+          async ({ runtime }) => {
+            const started = await prompt(runtime, scope, { requestId: "start", content: "Start." });
+            assert.equal(started.status, 202, await started.clone().text());
+            await runtime.drain();
+            // The stop holds back the subagent asked for next.
+            const stopped = await managerRequest(runtime, scope, "/agents/assistant/stop", {});
+            assert.equal(stopped.status, 204, await stopped.clone().text());
+            const queued = await prompt(runtime, scope, {
+              requestId: "doc-1",
+              content: "Read document 1.",
+              subagent: true,
+            });
+            assert.equal(queued.status, 202, await queued.clone().text());
+            await runtime.drain();
+
+            assert(agent);
+            const frames: PiAgentViewFrame[] = [];
+            const closes: string[] = [];
+            const viewer = agent.connectViewer(
+              {
+                send: (message) => frames.push(JSON.parse(message) as PiAgentViewFrame),
+                close: (code, reason) => closes.push(`${code} ${reason}`),
+              },
+              {
+                agent: { scope, agentName: "assistant" },
+                execution: scopeExecution(scope, "viewer"),
+              },
+            );
+            await vi.waitFor(() => {
+              expect(subagentsOf(frames)).toEqual(["doc-1 waiting"]);
+            });
+            // A subagent that has not started has no conversation to follow, and a request that
+            // asked for none names no subagent.
+            viewer.receive(JSON.stringify({ type: "subscribe", subagent: "doc-1" }));
+            viewer.receive(JSON.stringify({ type: "subscribe", subagent: "start" }));
+            await vi.waitFor(() => {
+              expect(
+                frames.flatMap((frame) => (frame.type === "unsubscribed" ? [frame.subagent] : [])),
+              ).toEqual(["doc-1", "start"]);
+            });
+
+            const resumed = await managerRequest(runtime, scope, "/agents/assistant/resume", {});
+            assert.equal(resumed.status, 204, await resumed.clone().text());
+            await vi.waitFor(() => {
+              expect(subagentsOf(frames)).toEqual(["doc-1 running"]);
+            });
+            viewer.receive(JSON.stringify({ type: "subscribe", subagent: "doc-1" }));
+            await runtime.drain();
+            await vi.waitFor(() => {
+              expect(subagentsOf(frames)).toEqual(["doc-1 answered"]);
+              expect(JSON.stringify(viewOf(frames, "doc-1")?.entries)).toContain(
+                "Document 1 read.",
+              );
+            });
+            const entries = await managerRequest(
+              runtime,
+              scope,
+              "/agents/assistant/entries?subagent=doc-1&order=ascending",
+            );
+            expect(viewOf(frames, "doc-1")?.entries).toEqual(
+              (await entries.json<{ entries: unknown[] }>()).entries,
+            );
+            // The subagent's conversation is its own, apart from the agent's.
+            expect(JSON.stringify(viewOf(frames, null)?.entries)).not.toContain("Document 1 read.");
+
+            // A viewer that connects now gets the subagent among those of the turns its view holds.
+            const later: PiAgentViewFrame[] = [];
+            const laterViewer = agent.connectViewer(
+              {
+                send: (message) => later.push(JSON.parse(message) as PiAgentViewFrame),
+                close: () => {},
+              },
+              {
+                agent: { scope, agentName: "assistant" },
+                execution: scopeExecution(scope, "viewer"),
+              },
+            );
+            await vi.waitFor(() => {
+              expect(subagentsOf(later)).toEqual(["doc-1 answered"]);
+            });
+            laterViewer.disconnect();
+            viewer.disconnect();
+            expect(closes).toEqual([]);
+
+            // Messages wait for the viewer's view, so one that sends many meanwhile is refused.
+            const floodCloses: string[] = [];
+            const flooding = agent.connectViewer(
+              { send: () => {}, close: (code, reason) => floodCloses.push(`${code} ${reason}`) },
+              {
+                agent: { scope, agentName: "assistant" },
+                execution: scopeExecution(scope, "viewer"),
+              },
+            );
+            for (let index = 0; index < 33; index += 1) {
+              flooding.receive(JSON.stringify({ type: "subscribe", subagent: `doc-${index}` }));
+            }
+            expect(floodCloses).toEqual([
+              "4000 The viewer sent more messages than the agent can take at once.",
+            ]);
+            flooding.disconnect();
+          },
+        ),
+      ],
+    }),
+  );
+});
+
+test("an agent's viewer starts with its newest subagents and reads the older ones a page at a time", async () => {
+  const scope: BackofficeContextScope = {
+    kind: "org",
+    orgId: "subagent-pages-org",
+    jurisdiction: null,
+  };
+  // One more than the newest page holds, and one besides.
+  const asked = Array.from({ length: 52 }, (_, index) => `doc-${index + 1}`);
+  let agent: PiObject | null = null;
+  await runBackofficeScenario(
+    defineBackofficeScenario({
+      name: "Pi subagent pages",
+      piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
+      options: { drain: false },
+      objects: {
+        ...scenarioObjects,
+        PI: ({ state, runtime, openPiSessionStore, piAgentIdFromConfig, nowEpochMs }) => {
+          const faux = fauxProvider();
+          faux.setResponses(
+            ["Started.", ...asked].map((text) => fauxAssistantMessage([fauxText(text)])),
+          );
+          const models = createModels();
+          models.setProvider(faux.provider);
+          agent = new PiObject({
+            state,
+            dependencies: createScriptedPiAgentDependencies(models),
+            runtime,
+            openStorage: openPiSessionStore,
+            idFromConfig: piAgentIdFromConfig,
+            nowEpochMs,
+          });
+          return agent;
+        },
+      },
+      steps: ({ then }) => [
+        then.assert(
+          "the older subagents continue where the newest page ends",
+          async ({ runtime }) => {
+            const started = await prompt(runtime, scope, { requestId: "start", content: "Start." });
+            assert.equal(started.status, 202, await started.clone().text());
+            await runtime.drain();
+            for (const requestId of asked) {
+              const submitted = await prompt(runtime, scope, {
+                requestId,
+                content: `Read ${requestId}.`,
+                subagent: true,
+              });
+              assert.equal(submitted.status, 202, await submitted.clone().text());
+            }
+            await runtime.drain();
+
+            assert(agent);
+            const frames: PiAgentViewFrame[] = [];
+            const viewer = agent.connectViewer(
+              {
+                send: (message) => frames.push(JSON.parse(message) as PiAgentViewFrame),
+                close: () => {},
+              },
+              {
+                agent: { scope, agentName: "assistant" },
+                execution: scopeExecution(scope, "viewer"),
+              },
+            );
+            const first = await vi.waitFor(() => {
+              const frame = frames.find((sent) => sent.type === "subagents");
+              assert(frame?.type === "subagents");
+              return frame;
+            });
+            viewer.disconnect();
+            expect(first.subagents.map(({ requestId }) => requestId)).toEqual(
+              [...asked].reverse().slice(0, 50),
+            );
+            assert(first.older);
+
+            const rest = await managerRequest(
+              runtime,
+              scope,
+              `/agents/assistant/subagents?${new URLSearchParams({ cursor: first.older.cursor })}`,
+            );
+            assert.equal(rest.status, 200, await rest.clone().text());
+            const page = await rest.json<PiSubagentPage>();
+            expect(page.subagents.map(({ requestId }) => requestId)).toEqual(["doc-2", "doc-1"]);
+            expect(page.older).toBeNull();
+            expect(
+              new Set([...first.subagents, ...page.subagents].map(({ state }) => state.status)),
+            ).toEqual(new Set(["answered"]));
+          },
+        ),
+        then.assert(
+          "a viewer of a stopped agent gets the oldest waiting subagents and how many wait",
+          async ({ runtime }) => {
+            const stopped = await managerRequest(runtime, scope, "/agents/assistant/stop", {});
+            assert.equal(stopped.status, 204, await stopped.clone().text());
+            const held = asked.map((requestId) => `held-${requestId}`);
+            for (const requestId of held) {
+              const submitted = await prompt(runtime, scope, {
+                requestId,
+                content: `Hold ${requestId}.`,
+                subagent: true,
+              });
+              assert.equal(submitted.status, 202, await submitted.clone().text());
+            }
+            await runtime.drain();
+
+            assert(agent);
+            const frames: PiAgentViewFrame[] = [];
+            const viewer = agent.connectViewer(
+              {
+                send: (message) => frames.push(JSON.parse(message) as PiAgentViewFrame),
+                close: () => {},
+              },
+              {
+                agent: { scope, agentName: "assistant" },
+                execution: scopeExecution(scope, "viewer"),
+              },
+            );
+            const first = await vi.waitFor(() => {
+              const frame = frames.find((sent) => sent.type === "subagents");
+              assert(frame?.type === "subagents");
+              return frame;
+            });
+            viewer.disconnect();
+            expect(frames.find((frame) => frame.type === "queue")).toMatchObject({
+              paused: true,
+              waitingSubagents: 52,
+            });
+            const waiting = first.subagents.filter(({ state }) => state.status === "waiting");
+            expect(waiting.map(({ requestId }) => requestId)).toEqual(held.slice(0, 50));
+          },
+        ),
       ],
     }),
   );

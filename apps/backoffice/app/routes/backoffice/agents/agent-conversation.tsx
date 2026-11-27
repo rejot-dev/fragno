@@ -11,7 +11,7 @@ import {
 } from "@fragno-private/backoffice-chat/thread/session-thread";
 import {
   usePiAgentViewSocket,
-  type PiAgentQueueState,
+  type PiAgentViewSocket,
 } from "@fragno-private/backoffice-conversation/live/view-socket";
 import {
   createAssistantUiMessages,
@@ -24,10 +24,7 @@ import {
   type PiUserMessageMetadata,
 } from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
 import { usePiPendingMessages } from "@fragno-private/backoffice-conversation/projection/pending-messages";
-import {
-  usePiTranscript,
-  type PiEntryPageReader,
-} from "@fragno-private/backoffice-conversation/projection/transcript";
+import { usePiTranscript } from "@fragno-private/backoffice-conversation/projection/transcript";
 import { ChatComposerModel } from "@fragno-private/design-system/agents/chat-composer";
 import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import { usePostHog } from "@posthog/react/slim";
@@ -57,6 +54,7 @@ import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 
 import { agentAttachmentTarget, useAgentAttachments } from "./agent-attachments";
 import type { action as compactionsAction } from "./agent-compactions";
+import { useEntryPageReader } from "./agent-entry-pages";
 import { describePiAgentWithCategory } from "./agent-labels";
 import type { action as messagesAction } from "./agent-messages";
 import {
@@ -71,7 +69,6 @@ import {
   useAgentSubagentsState,
   withSubagentBatches,
 } from "./agent-subagent-batches";
-import type { PiManagerEntryPage } from "./data";
 import { backofficeChatExtensions } from "./session-detail/backoffice-chat-extensions";
 import { createReson8DictationAdapter } from "./session-detail/reson8-dictation";
 import { SessionWorkflowsProvider } from "./session-detail/session-workflow";
@@ -110,31 +107,6 @@ function useSessionDisplayOptions() {
     setDisplayOptions((current) => ({ ...current, [key]: value }));
   };
   return { displayOptions, updateDisplayOption };
-}
-
-/** Reads entry pages through the agent's entries route, which pages the manager's entries. */
-function useEntryPageReader(pageUrl: string): PiEntryPageReader {
-  return useCallback(
-    async ({ minEntryId, maxEntryId, order, pageSize }) => {
-      const query = new URLSearchParams({ order, pageSize: String(pageSize) });
-      if (minEntryId !== null) {
-        query.set("minEntryId", String(minEntryId));
-      }
-      if (maxEntryId !== null) {
-        query.set("maxEntryId", String(maxEntryId));
-      }
-      const response = await fetch(`${pageUrl}?${query}`, {
-        headers: { accept: "application/json" },
-      });
-      if (!response.ok) {
-        throw new Error(`Pi history request failed with status ${response.status}.`);
-      }
-      // This application-owned resource route returns the manager's typed entry page unchanged.
-      const page: PiManagerEntryPage = await response.json();
-      return page;
-    },
-    [pageUrl],
-  );
 }
 
 async function waitForPiCompaction(url: string, signal: AbortSignal) {
@@ -282,7 +254,7 @@ export function AgentConversation(props: AgentConversationProps) {
       </AgentConversationStatus>
     );
   }
-  return <AgentConversationThread {...props} view={stream.view} queue={stream.queue} />;
+  return <AgentConversationThread {...props} socket={stream} />;
 }
 
 function AgentConversationStatus({
@@ -361,9 +333,9 @@ function AgentConversationThread({
   draft,
   onDraftChange,
   resolvedScope,
-  view,
-  queue: agentQueue,
-}: AgentConversationProps & { view: ConversationView; queue: PiAgentQueueState }) {
+  socket,
+}: AgentConversationProps & { socket: Extract<PiAgentViewSocket, { status: "ready" }> }) {
+  const { view, queue: agentQueue } = socket;
   const posthog = usePostHog();
   const fetcher = useFetcher<PiAgentActionData>();
   const [composerAction, setComposerAction] = useState<ComposerAction>("message");
@@ -412,7 +384,12 @@ function AgentConversationThread({
   }, [view, agentQueue.items, running, pendingMessages]);
   const contextTokens = useMemo(() => estimatePiContextTokens(view.entries), [view.entries]);
   const statusText = compacting ? "Compacting…" : running ? "Working…" : null;
-  const subagents = useAgentSubagentsState(agentPath, view.entries.length);
+  // The subagents of the history shown: since the entry before it, or all once it is all shown.
+  const subagents = useAgentSubagentsState(
+    agentPath,
+    socket,
+    history.hasMore ? (transcript[0]?.id ?? 1) - 1 : 0,
+  );
   const { assistantMessages, activeContextStartMessageId, subagentBatches } = useMemo(() => {
     const converted = createAssistantUiMessages({
       draftAgentMessage,
@@ -637,6 +614,7 @@ function AgentConversationThread({
     <AgentSubagentsProvider
       agentName={agent.agentName}
       agentPath={agentPath}
+      socket={socket}
       listed={subagents.listed}
       outside={subagentBatches}
     >
@@ -656,7 +634,9 @@ function AgentConversationThread({
         error={attachments?.refusal ?? attachmentError ?? messageError ?? actionError}
         queueLabels={conversationQueue.labels}
         // Stopping and resuming the agent concern its subagents too.
-        paused={agentQueue.paused && (agentQueue.items.length > 0 || subagents.summary.waiting)}
+        paused={
+          agentQueue.paused && (agentQueue.items.length > 0 || agentQueue.waitingSubagents > 0)
+        }
         onResume={handleResume}
         model={model.control}
         needsNudge={false}
@@ -685,9 +665,10 @@ function AgentConversationThread({
         earlierHistoryOutOfContext={history.earlierHistoryOutOfContext}
         hasMoreHistory={history.hasMore}
         historyLoading={history.loading}
-        historyError={history.error}
+        // Subagents of earlier turns load with them, so a page of them that failed shows there.
+        historyError={history.error ?? subagents.failure?.message ?? null}
         onLoadMoreHistory={history.loadMore}
-        onRetryHistory={history.retry}
+        onRetryHistory={history.retry ?? subagents.failure?.retry ?? null}
       />
     </AgentSubagentsProvider>
   );

@@ -95,12 +95,28 @@ export const piManagerDefinition = defineFragment<PiManagerConfig>("pi-manager")
       await handOverPiAgentWork(config.agent, { type: "write", agent, notifications });
     }),
     recordSubagent: defineHook(async function ({ agent, requestId, subagent }): Promise<void> {
-      await handOverPiAgentWork(config.agent, {
-        type: "recordSubagent",
-        agent,
-        requestId,
-        subagent,
-      });
+      if (subagent.status === "dropped") {
+        await handOverPiAgentWork(config.agent, {
+          type: "recordSubagent",
+          agent,
+          requestId,
+          subagent,
+        });
+        return;
+      }
+      // Deliveries carry no ask, so those queued before subagents had one land too.
+      const ask = await this.handlerTx()
+        .withServiceCalls(() => [services.getSubagentAsk(agent.agentName, requestId)] as const)
+        .transform(({ serviceResult: [found] }) => found)
+        .execute();
+      if (ask) {
+        await handOverPiAgentWork(config.agent, {
+          type: "recordSubagent",
+          agent,
+          requestId,
+          subagent: { status: "waiting", ask },
+        });
+      }
     }),
     replyToAgent: defineHook(async function ({ replyTo, provenance, ending }): Promise<void> {
       // The reply's ID is the receiving queue's deduplication key. Request IDs are unique only per

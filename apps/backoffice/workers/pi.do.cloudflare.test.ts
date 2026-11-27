@@ -285,13 +285,15 @@ describe("Pi durable agent scenarios", () => {
       content: "Please echo and answer.",
     });
     expect(submitted.status, await submitted.clone().text()).toBe(202);
-    const { socket, frames } = await openViewSocket(organizationId);
+    const { socket, frames, closes } = await openViewSocket(organizationId);
 
-    // The manager's answer carries the queue, empty since the prompt was dispatched; the view follows.
+    // The manager's answer carries the queue, empty since the prompt was dispatched; the view and
+    // the agent's subagents, of which it has none, follow.
     await vi.waitFor(() => {
-      expect(frames.slice(0, 2)).toMatchObject([
-        { type: "queue", paused: false, items: [] },
-        { type: "view" },
+      expect(frames.slice(0, 3)).toMatchObject([
+        { type: "queue", paused: false, items: [], waitingSubagents: 0 },
+        { type: "view", subagent: null },
+        { type: "subagents", subagents: [], older: null },
       ]);
     });
     // Commits arrive as ops on top of that view.
@@ -300,7 +302,7 @@ describe("Pi durable agent scenarios", () => {
       for (const frame of frames) {
         if (frame.type === "view") {
           view = frame.view;
-        } else if (frame.type === "ops") {
+        } else if (frame.type === "ops" && frame.subagent === null) {
           view = applyImmutable<ConversationView>(view, frame.ops);
         }
       }
@@ -312,20 +314,40 @@ describe("Pi durable agent scenarios", () => {
     expect(frames.filter((frame) => frame.type === "view")).toHaveLength(1);
     const piAgent = (env as CloudflareEnv).PI.getByName(piAgentObjectName(agent));
     await expectAlarmCleared(piAgent);
+    // The socket follows the subagents it subscribes to; a request that asked for none has none.
+    socket.send(JSON.stringify({ type: "subscribe", subagent: "socket-1" }));
+    await vi.waitFor(() => {
+      expect(frames.at(-1)).toEqual({
+        type: "unsubscribed",
+        subagent: "socket-1",
+        message: "No subagent of this agent started for that request.",
+      });
+    });
 
     // The idle agent hibernates with its socket open. Waking it, here to show a stopped queue,
-    // sends the whole view again, since reopening the agent may commit what the socket never saw.
+    // asks the socket to reconnect: it lost what it watched, and reopening the agent may commit
+    // what it never saw.
     await evictDurableObject(piAgent);
     const stopped = await managerRequest(organizationId, "/agents/assistant/stop", {});
     expect(stopped.status, await stopped.clone().text()).toBe(204);
     await vi.waitFor(() => {
-      expect(frames.filter((frame) => frame.type === "view")).toHaveLength(2);
-      expect(frames).toContainEqual({ type: "queue", paused: true, items: [] });
+      expect(closes).toEqual(["1012 The agent restarted."]);
     });
-    expect(viewed()).toEqual(
+    // Reconnecting authorizes the viewer again, and starts from the whole view.
+    const reconnected = await openViewSocket(organizationId);
+    await vi.waitFor(() => {
+      expect(reconnected.frames).toMatchObject([
+        { type: "queue", paused: true, items: [], waitingSubagents: 0 },
+        { type: "view" },
+        { type: "subagents", subagents: [], older: null },
+      ]);
+    });
+    const [, restored] = reconnected.frames;
+    assert(restored?.type === "view");
+    expect(restored.view).toEqual(
       await (await managerRequest(organizationId, "/agents/assistant/view")).json(),
     );
-    socket.close();
+    reconnected.socket.close();
   });
 
   test("singleton, user, and project managers preserve scope through handoff and cold restore", async () => {
@@ -501,7 +523,7 @@ describe("Pi durable agent scenarios", () => {
           if (retryThrough === "alarm") {
             await object.alarm();
           }
-          await expect(object.getView(config, null)).resolves.toMatchObject({ entries: [] });
+          await expect(object.getView(config)).resolves.toMatchObject({ entries: [] });
           expect(reports).toEqual([startupError]);
           await expect(state.storage.get("pi-agent-config")).resolves.toEqual(config);
           await expect(state.storage.get("pi-legacy-billing-scope")).resolves.toEqual({
@@ -518,7 +540,7 @@ describe("Pi durable agent scenarios", () => {
           // The real object's alarm may already have consumed the one this submission scheduled;
           // running this object's alarm performs the turn either way.
           await object.alarm();
-          expect(JSON.stringify(await object.getView(config, null))).toContain(
+          expect(JSON.stringify(await object.getView(config))).toContain(
             "Recovered after startup.",
           );
           await expect(object.getSubmission(config, "startup-recovered")).resolves.toMatchObject({
@@ -636,7 +658,7 @@ describe("Pi durable agent scenarios", () => {
         await expect(alarm).rejects.toBe(storageError);
         // The next call opens the agent again, on storage that works.
         storageFails = false;
-        await expect(object.getView(config, null)).resolves.toMatchObject({ entries: [] });
+        await expect(object.getView(config)).resolves.toMatchObject({ entries: [] });
       } finally {
         await object.close();
       }

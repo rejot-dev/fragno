@@ -96,21 +96,39 @@ queues a `subagent` item (see Queue).
 
 The agent object records each subagent under the request ID that asked for it, in the
 `backoffice.pi.subagent` document family (`agent/pi-agent-subagents.ts`), from when the queue takes
-it: `waiting`, `starting` once its conversation exists, `started` once its prompt is submitted
-there, or `dropped` if the queue dropped it before it started. The queue tells the agent object that
-a subagent waits or was dropped by a handover its `recordSubagent` hook repeats until it lands. The
-submit route returns a subagent's request ID only once that handover landed, since a turn may wait
-for the subagent as soon as it has the ID; if it failed, the route answers `AGENT_UNAVAILABLE`
-(503), the subagent stays queued, and submitting the same request ID again tells the agent object
-once more, while a new one would start a second subagent. Its submission, transcript, and messages
-read by that request ID; `backoffice.pi.subagents.running` lists those whose work may still run.
+it: `waiting`, `starting` once its anchor task exists, `opened` once its conversation does,
+`started` once its prompt is submitted there, or `dropped` if the queue dropped it before it
+started. The queue tells the agent object that a subagent waits, with what it was asked, or was
+dropped, by a handover its `recordSubagent` hook repeats until it lands; the hook's delivery reads
+what it was asked from the queue's item. The agent object looks up the slug of an app that asked,
+which viewers show it by, and `backoffice.pi.subagents.waiting` keeps what the waiting ones were
+asked, for the agent's viewers. The submit route returns a subagent's request ID only once that
+handover landed, since a turn may wait for the subagent as soon as it has the ID; if it failed, the
+route answers `AGENT_UNAVAILABLE` (503), the subagent stays queued, and submitting the same request
+ID again tells the agent object once more, while a new one would start a second subagent. Its
+submission, transcript, and messages read by that request ID.
 
-`startSubagent` creates an ownerless conversation without the `awaitSubagents` tool, records the
-item's turn under its request ID like a root turn's, and submits the prompt; a handover repeated
-after a crash finds the conversation and submission again. A subagent reports its `turn.*` events,
-settles, and replies like any prompt, so `pi.prompt.get`, `notifyWhenDone`, and workflows waiting
-for its events work unchanged. A stop aborts it by name, since no task owns it. An agent may start
-subagents of itself with `notifyWhenDone`: the reply comes from another conversation, once.
+A subagent's conversation is owned by an **anchor task**, as Pi Durable's background subagents are:
+a background task in the agent's own conversation (`backoffice.pi.subagent`) whose input is what the
+subagent was asked, by whom, and when it started. `startSubagent` takes three steps, each one commit
+that a handover repeated after a crash finds done: it creates the anchor, then the conversation,
+owned by the anchor and without the `awaitSubagents` tool, then records the item's turn under its
+request ID like a root turn's and submits the prompt, asking Pi to signal the anchor once it
+settles. The anchor sleeps until then and completes with how the subagent ended. A stop ends an
+anchor before its prompt was submitted; the next handover starts the subagent again under a new
+anchor. A subagent reports its `turn.*` events, settles, and replies like any prompt, so
+`pi.prompt.get`, `notifyWhenDone`, and workflows waiting for its events work unchanged. An agent may
+start subagents of itself with `notifyWhenDone`: the reply comes from another conversation, once.
+
+Ownership gives the rest:
+
+- The root's background abort, which stopping the agent runs, aborts the anchors and their
+  conversations' work, and the agent's turns never wait for them.
+- Pi's ownership index lists the conversations the root's tasks own (`scanConversations` by
+  `ownerConversationId`), finished ones included, so the anchors are the agent's subagents:
+  `listPiSubagents` reads a page of them, newest first, and the cursor Pi's scan continues at.
+- The task graph shows the live anchors and their conversations: `observePiSubagents` follows it,
+  for the running subagents' conversations and to tell viewers of subagents that start or end.
 
 **Joining.** A turn waits for subagents of its agent with `awaitSubagents`
 (`extensions/backoffice/await-subagents-tool.ts`), which returns each one's answer, failure, or drop
@@ -124,21 +142,30 @@ subagent should not also ask to be notified of it, or hears its end twice.
 A subagent's work runs as its own turn. `readActivePiAgentTurn` reads the turn of the conversation's
 run; outside any run only the root's work has an authority, the latest admitted turn. The model
 boundary has no conversation, so it finds one by the provider session ID Pi sends with each request:
-the root's, or a running subagent's, and fails closed for any other. Deferred fetches carry no
-session and are checked as the root's. Billing counts subagents, as it bills the session's usage. Pi
-cannot delete conversations, so a finished subagent's stays in the agent's storage.
+the root's, or that of a subagent whose anchor the task graph shows live, and fails closed for any
+other. Deferred fetches carry no session and are checked as the root's. Billing counts subagents, as
+it bills the session's usage. Pi cannot delete conversations, so a finished subagent's stays in the
+agent's storage.
+
+Subagents started before anchor tasks have conversations no task owns: Pi's index does not list
+them, the model boundary refuses their requests, and a stop does not reach them. One whose start was
+cut off before its prompt was submitted is `interrupted`, and its next handover starts it again
+under an anchor. Deploy anchors while no subagent runs.
 
 **On the agent's page.** Subagents show in the agent's thread, one card per batch
 (`routes/backoffice/agents/agent-subagent-batches.tsx`). A subagent started from a tool call of the
 agent's own turn is listed under that call: `pi.submitPrompt` sends the call's ID as
 `askingToolCall`, which the prompt route accepts only from the agent's own turn and only for a
 subagent. Those anyone else asks for, another agent, an app, or a person, show where they were
-asked, after the turn then running, one card per asker. The list route returns the latest 50 and any
-still running before them, since Stop and the thread follow what runs, with each one's start and
-answer times and its answer, which the agent object reads in one call (`getSubagentRuns`); the page
-reads the transcripts of running ones, a few at a time, for what they do now, and a row opens its
-subagent's transcript. Stop shows while subagents run, also beside an idle conversation, and Resume
-while a stopped agent's subagents wait.
+asked, after the turn then running, one card per asker. The page reads the subagents from the
+agent's view socket (see View socket): those that wait or run, and the newest page of the others.
+Loading earlier history reads on through its `subagents` route, a page at a time from the socket's
+cursor, until it has those of the turns shown; a socket that connects again starts over from its
+own. A page that fails shows with the history's Retry. The page follows the conversations of running
+subagents on the same socket, for what they do now, and of each open row, for its transcript. Stop
+shows while subagents run, also beside an idle conversation, and Resume while a stopped agent's
+subagents wait, as its queue counts them: a waiting subagent past the first 50, or one queued before
+anchors, has no row until it starts.
 
 ## Queue
 
@@ -215,8 +242,7 @@ for a slot: up to `PI_AGENT_SUBAGENT_LIMIT`, four, run at once per agent, each d
 turn under its own request ID, and the oldest waiting one starts when one settles. A paused queue
 holds them too, and resuming starts them. `whenBusy` concerns only the agent's conversation, so a
 subagent prompt that asks to steer or reject is refused with `SUBAGENT_NOT_BUSY`, and the waiting
-queue the conversation's viewers see lists only its own items. The agent's subagent items are
-indexed by agent and position, for their list.
+queue the conversation's viewers see lists only its own items.
 
 Each change is one retrieve and one mutation, then the queue's publication to the agent object (see
 below) and at most one other call to it. The mutation decides: it admits the item against the
@@ -240,12 +266,12 @@ and `{ type: "input", status: "dropped", requestId, reason }` once dropped. Once
 dispatched, a request's submission is its turn's, so every notification a turn handled answers with
 that turn's submission.
 
-Once a change commits, the manager publishes the agent's waiting items and whether its queue is
-paused to the agent object, with the agent row's version as their revision; the agent ignores an
-older revision published late. The change stands if publishing fails, and the next change publishes
-again. The agent keeps the latest in memory only, so the manager's answer when a viewer connects
-carries it too (see View socket). The socket leads with them and sends them again as a `queue` frame
-whenever they change.
+Once a change commits, the manager publishes the agent's waiting items, how many subagents wait for
+a slot, and whether its queue is paused to the agent object, with the agent row's version as their
+revision; the agent ignores an older revision published late. The change stands if publishing fails,
+and the next change publishes again. The agent keeps the latest in memory only, so the manager's
+answer when a viewer connects carries it too (see View socket). The socket leads with them and sends
+them again as a `queue` frame whenever they change.
 
 Work that waits is also recorded as `pi` events, attributed to its sender, so views show the queue
 the agent page shows. `queue.added` records an item that starts waiting, with its type: `prompt` or
@@ -434,32 +460,49 @@ agents use Pi Durable's Node SQLite adapter: in-memory SQLite for transient scen
 
 ## View socket
 
-Viewers watch an agent's conversation over a WebSocket that the agent object serves, with no manager
-in between: the browser through the agent page's `view-socket` route, and API callers through
-`pi.agent.watch` (see `@fragno-dev/backoffice-api`'s README), with a bearer credential or, from an
-app's browser, a ticket from `pi.agent.watchTicket`. The ticket is a one-minute JWT with its own
-audience, signed by Auth, that carries the deferred execution that asked for it, the agent's name,
-and the origins of the app's OAuth redirect URIs; its route refuses another agent, scope, or origin.
-The worker signs the upgrade with the viewer's execution for the agent
+Viewers watch an agent over a WebSocket that the agent object serves, with no manager in between:
+the browser through the agent page's `view-socket` route, and API callers through `pi.agent.watch`
+(see `@fragno-dev/backoffice-api`'s README), with a bearer credential or, from an app's browser, a
+ticket from `pi.agent.watchTicket`. The ticket is a one-minute JWT with its own audience, signed by
+Auth, that carries the deferred execution that asked for it, the agent's name, and the origins of
+the app's OAuth redirect URIs; its route refuses another agent, scope, or origin. The worker signs
+the upgrade with the viewer's execution for the agent
 (`runtime.objects.piAgent(agent).fetchAuthorized`, with `piAgentViewSocketRequest`), and the request
 names the agent, so its object checks the signature, and that the name is its own, before reading
 anything. It then asks its manager over RPC whether the viewer may watch (`authorizeViewer`): the
 manager makes the checks of its routes' GETs, scope and `pi.read`, refuses an agent without turns or
-a name no agent has, and answers with what waits in the queue.
+a name no agent has, and answers with what waits in the queue. The agent's subagents are part of the
+agent, so the socket needs no other authorization for them.
 
 The socket's JSON frames are `queue`, then `view` with the whole view, then `ops` with each commit's
 Chord ops, including partial answers while the agent generates, which the browser applies with
-`applyImmutable`. One watch serves all of an agent's sockets, so each commit is encoded once, and
-its frame is the size of the change, not of the conversation. A refusal or a damaged view closes the
-socket with a code from 4000 up (`PI_AGENT_WATCH_REFUSED`) and the reason; any other close is worth
-reconnecting after, which starts again from a whole view. Only Cloudflare serves view sockets; the
-Node runtime throws.
+`applyImmutable`. The view is Pi's window over the newest entries; the chat keeps more in Pi's
+`ConversationTranscript`, which pages the rest through the entries routes. After the view comes
+`subagents`: the oldest 50 that wait, which start first, those that run, and a page of the newest
+others, with the cursor to read on from (`older`); the queue says how many wait, then a `subagent`
+frame for each that changes. A socket follows a started subagent's conversation once it sends
+`subscribe` with its request ID, as `view` and `ops` frames naming the subagent, until it sends
+`unsubscribe`; a subagent that has not started, or whose conversation cannot be sent, is answered
+with `unsubscribed`, and the socket goes on. A socket may follow 16 subagents at once, and send at
+most 32 messages while its view is still on its way; one that sends more, or a message the agent
+cannot read, is refused. A refusal or a damaged view closes the socket with a code from 4000 up
+(`PI_AGENT_WATCH_REFUSED`) and the reason; any other close is worth reconnecting after, which starts
+again from a whole view. Only Cloudflare serves view sockets; the Node runtime throws.
+
+`PiAgentViewers` (`workers/pi-agent-viewers.ts`) keeps the sockets: each watched conversation has
+one watch that all its sockets share, so each commit is encoded once and its frame is the size of
+the change, not of the conversation, and the watch stops when its last socket leaves. The agent
+reads its subagents' changes one at a time, so each socket gets them in order, after those it
+connected with; a change it cannot read closes the sockets as worth reconnecting after, since none
+may follow it.
 
 The sockets are hibernatable (`ctx.acceptWebSocket`), so open tabs do not keep an idle agent in
-memory. Hibernation drops the watch, so an agent woken with sockets attached opens a new one before
-anything else uses the agent and sends each socket a whole `view` again: reopening may commit what
-the sockets never saw. Queue frames reach them meanwhile. The queue the agent last had is forgotten
-too, so the first publication after waking is taken whatever its revision.
+memory. Hibernation drops what each socket watched, so an agent woken with sockets attached closes
+them as worth reconnecting after before anything else uses the agent: reopening may commit what the
+sockets never saw, and their subscriptions went with its memory. A socket is authorized when it
+connects, so one kept across hibernation is authorized again as it reconnects; one on an agent that
+stays awake is not. The queue the agent last had is forgotten too, so the first publication after
+waking is taken whatever its revision.
 
 ## Backoffice execution
 
