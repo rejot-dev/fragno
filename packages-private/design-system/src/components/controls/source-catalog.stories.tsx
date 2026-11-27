@@ -9,6 +9,8 @@ const productivity = { id: "productivity", label: "Productivity" };
 const storage = { id: "storage", label: "Storage" };
 const documents = { id: "documents", label: "Documents & Content" };
 const popular = { id: "popular", label: "Popular" };
+const connected = { id: "connected", label: "Connected" };
+const LEADING_CATEGORY_IDS = [connected.id, popular.id];
 
 function oomolLogo(name: string) {
   return { kind: "image" as const, url: `https://static.oomol.com/logo/third-party/${name}.svg` };
@@ -20,8 +22,8 @@ const ITEMS: SourceCatalogItem[] = [
     label: "Gmail",
     description: "Email conversations, labels, drafts, and mailbox management",
     icon: oomolLogo("Gmail"),
-    categories: [popular, communication, productivity],
-    badge: "Connected",
+    categories: [connected, popular, communication, productivity],
+    status: "Connected",
     to: "#gmail",
   },
   {
@@ -30,7 +32,7 @@ const ITEMS: SourceCatalogItem[] = [
     description: "Cloud file storage, organization, and document sharing",
     icon: oomolLogo("Google%20Drive"),
     categories: [storage, productivity, documents],
-    badge: null,
+    status: null,
     to: "#googledrive",
   },
   {
@@ -39,7 +41,7 @@ const ITEMS: SourceCatalogItem[] = [
     description: "Product and engineering issue, project, and cycle management",
     icon: oomolLogo("Linear"),
     categories: [popular, productivity, developerTools],
-    badge: null,
+    status: null,
     to: "#linear",
   },
   {
@@ -48,7 +50,7 @@ const ITEMS: SourceCatalogItem[] = [
     description: "Shared workspace for documents, pages, and databases",
     icon: oomolLogo("Notion"),
     categories: [productivity, documents],
-    badge: null,
+    status: null,
     to: "#notion",
   },
   {
@@ -57,7 +59,7 @@ const ITEMS: SourceCatalogItem[] = [
     description: "A Telegram bot that receives chat messages and replies to them.",
     icon: { kind: "symbol", name: "send" },
     categories: [communication],
-    badge: null,
+    status: null,
     to: "#telegram",
   },
   {
@@ -66,7 +68,7 @@ const ITEMS: SourceCatalogItem[] = [
     description: "Repositories, issues, and pull requests through a GitHub App installation.",
     icon: { kind: "symbol", name: "github" },
     categories: [developerTools],
-    badge: null,
+    status: null,
     to: "#github",
   },
   {
@@ -75,7 +77,7 @@ const ITEMS: SourceCatalogItem[] = [
     description: "A public URL that accepts a provider's webhook deliveries.",
     icon: { kind: "symbol", name: "zap" },
     categories: [developerTools],
-    badge: null,
+    status: null,
     to: "#webhook",
   },
   {
@@ -84,7 +86,7 @@ const ITEMS: SourceCatalogItem[] = [
     description: "A source without categories is listed under Other.",
     icon: { kind: "symbol", name: "box" },
     categories: [],
-    badge: null,
+    status: null,
     to: "#custom",
   },
 ];
@@ -95,7 +97,7 @@ export function Sources() {
       <SourceCatalog
         label="Sources to connect"
         items={ITEMS}
-        leadingCategoryId="popular"
+        leadingCategoryIds={LEADING_CATEGORY_IDS}
         expanded={null}
       />
     </div>
@@ -108,7 +110,7 @@ export function ExpandedSource() {
       <SourceCatalog
         label="Sources to connect"
         items={ITEMS}
-        leadingCategoryId="popular"
+        leadingCategoryIds={LEADING_CATEGORY_IDS}
         expanded={{
           id: "gmail",
           content: (

@@ -243,13 +243,14 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
           });
           const page = await openConnect(ctx, "");
           // Gmail is configured, so it stays a source to connect rather than an unavailable one.
-          expect(page.unavailable).toEqual([
+          expect(page.providers).toEqual([
             {
               id: "airtable",
               label: "Airtable",
               description: "Spreadsheet databases.",
               iconUrl: "https://static.example/logo/Airtable.svg",
               categories: [{ id: "productivity", label: "Productivity" }],
+              connectionId: null,
             },
           ]);
           expect(page.services.map((service) => service.id)).not.toContain("jira");
@@ -264,8 +265,60 @@ test("Connect signs a person in to a Connector app and hands a scheduled workflo
             await submitConnect(ctx, { intent: "ask-agent", source: "jira" }),
           ).not.toHaveProperty("redirectsTo");
           expect(await userMessages(ctx)).toEqual([
-            "Help me connect Airtable in this scope. Follow the configuring-integrations skill to set it up as an API integration (integration api): find in Airtable's API documentation how it authenticates, its base URL, and where I create its key or token, then ask me for the key with a setup form that says where to find it.",
+            "Help me connect Airtable in this scope. Follow the configuring-integrations skill to set it up as an API integration (integration api) at api#airtable: find in Airtable's API documentation how it authenticates, its base URL, and where I create its key or token, then ask me for the key with a setup form that says where to find it.",
           ]);
+        },
+      ),
+      then.assert(
+        "once the agent sets Airtable up at the address it was given, the catalog lists it as connected",
+        async (ctx) => {
+          await ctx.runCodemode({
+            scope: { kind: "user", userId: ctx.vars.userId, jurisdiction: null },
+            code: `async () => await integrations.setup({
+              kind: "input",
+              connectionId: "api#airtable",
+              input: { type: "bearer", name: "Airtable", baseUrl: "https://api.airtable.com", token: "pat-airtable" },
+            })`,
+          });
+          const catalog = await openConnect(ctx, "");
+          expect(catalog.providers.find((provider) => provider.id === "airtable")).toMatchObject({
+            connectionId: "api#airtable",
+          });
+          // Airtable's connection is an API connection, which does not connect Custom HTTP API.
+          expect(catalog.services.find((service) => service.id === "api")).toMatchObject({
+            connected: false,
+          });
+
+          // Airtable opens on its connection, and its first workflow goes to the agent from there.
+          const search = new URLSearchParams({ target: "api#airtable" });
+          const opened = await openSource(ctx, `${connectPage(ctx)}/airtable?${search}`);
+          expect(opened.method).toEqual({ kind: "connected", connectionId: "api#airtable" });
+          expect(
+            await submitConnect(ctx, {
+              intent: "create-workflow",
+              connectionId: "api#airtable",
+              timeZone: "Europe/Amsterdam",
+            }),
+          ).toEqual({ redirectsTo: `${connectPage(ctx)}/airtable?agent=opened&${search}` });
+          expect((await userMessages(ctx)).at(-1)).toContain(
+            "I just connected Airtable (connection api#airtable) and want to build a workflow with it.",
+          );
+        },
+      ),
+      then.assert(
+        "a connected source is investigated rather than connected again, and only once connected",
+        async (ctx) => {
+          expect(await submitConnect(ctx, { intent: "investigate", source: "airtable" })).toEqual({
+            redirectsTo: `${connectPage(ctx)}/airtable?agent=opened`,
+          });
+          assert(
+            (await userMessages(ctx)).at(-1) ===
+              "Investigate my Airtable connection (api#airtable) in this scope. Follow the configuring-integrations skill: inspect its configuration and authorization with integrations.get, prove it still has access with integrations.verify or one read-only request, and tell me what works and what I should fix. Change nothing without asking me.",
+          );
+          // Gmail has no account yet, so there is nothing to investigate.
+          expect(
+            await submitConnect(ctx, { intent: "investigate", source: "gmail" }),
+          ).not.toHaveProperty("redirectsTo");
         },
       ),
       then.assert(
@@ -401,13 +454,14 @@ test("Connect in an organization offers only the catalog providers its agent set
           const page = await openConnect(ctx, "");
           // Provider accounts are user-owned, so Gmail, configured in the Connector, is not offered.
           expect(page.services.map((service) => service.id)).not.toContain("gmail");
-          expect(page.unavailable).toEqual([
+          expect(page.providers).toEqual([
             {
               id: "airtable",
               label: "Airtable",
               description: "Spreadsheet databases.",
               iconUrl: "https://static.example/logo/Airtable.svg",
               categories: [{ id: "productivity", label: "Productivity" }],
+              connectionId: null,
             },
           ]);
         },
@@ -422,7 +476,7 @@ test("Connect in an organization offers only the catalog providers its agent set
             await submitConnect(ctx, { intent: "ask-agent", source: "jira" }),
           ).not.toHaveProperty("redirectsTo");
           expect(await userMessages(ctx)).toEqual([
-            "Help me connect Airtable in this scope. Follow the configuring-integrations skill to set it up as an API integration (integration api): find in Airtable's API documentation how it authenticates, its base URL, and where I create its key or token, then ask me for the key with a setup form that says where to find it.",
+            "Help me connect Airtable in this scope. Follow the configuring-integrations skill to set it up as an API integration (integration api) at api#airtable: find in Airtable's API documentation how it authenticates, its base URL, and where I create its key or token, then ask me for the key with a setup form that says where to find it.",
           ]);
         },
       ),
