@@ -148,7 +148,7 @@ export function DashboardDemoPlayer({ state }: { state: DashboardDemoState }) {
         {/* The screen alone, not the timeline below it, shows in a light black and white, its darks
             lifted toward gray, so the hero photo and the brand carry the page's color; it fades into
             the app's real colors while the pointer is over the preview. */}
-        <div className="brightness-[1.08] contrast-[0.8] grayscale transition-[filter] duration-500 ease-out group-hover/preview:brightness-100 group-hover/preview:contrast-100 group-hover/preview:grayscale-0">
+        <div className="h-full brightness-[1.08] contrast-[0.8] grayscale transition-[filter] duration-500 ease-out group-hover/preview:brightness-100 group-hover/preview:contrast-100 group-hover/preview:grayscale-0">
           <StillDashboardDemo state={state} scene={scene} />
         </div>
       </ScreenFrame>
