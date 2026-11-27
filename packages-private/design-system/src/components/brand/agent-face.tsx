@@ -44,11 +44,12 @@ export function AgentFace({ size, motion }: { size: keyof typeof SIZES; motion: 
       window.addEventListener("pointermove", onPointerMove, { passive: true });
     }
     livelyFaces.add(face);
-    nearViewObserver().observe(face);
+    const observer = nearViewObserver();
+    observer.observe(face);
     return () => {
       livelyFaces.delete(face);
       nearViewFaces.delete(face);
-      nearViewObserver().unobserve(face);
+      observer.unobserve(face);
       // A face that stops following the pointer looks ahead again.
       writtenLooks.delete(face);
       face.style.removeProperty("--bo-agent-face-look-x");
@@ -56,6 +57,8 @@ export function AgentFace({ size, motion }: { size: keyof typeof SIZES; motion: 
       if (livelyFaces.size === 0) {
         window.removeEventListener("pointermove", onPointerMove);
         cancelAnimationFrame(frame);
+        observer.disconnect();
+        nearView = null;
       }
     };
   }, [motion]);
