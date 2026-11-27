@@ -15,6 +15,7 @@ import {
   requirePiStateBackend,
   type BackofficeAgentContext,
 } from "@/fragno/pi/agent/backoffice-agent-context";
+import { PI_SUBAGENT_TASKS } from "@/fragno/pi/agent/pi-agent-subagents";
 
 import { createCodemodeTool } from "./codemode-tool";
 import { isUploadNotConfiguredError } from "./skills";
@@ -30,8 +31,8 @@ type PromptParts = {
 };
 
 /**
- * Backoffice guidance, the agent's own instructions, and the tools every agent runs with, among
- * them `awaitSubagentsTool`, which subagents run without.
+ * Backoffice guidance, the agent's own instructions, the tools every agent runs with, among them
+ * `awaitSubagentsTool`, which subagents run without, and the tasks that own its subagents.
  */
 export function createBackofficeExtension(
   agent: BackofficeAgentContext,
@@ -53,6 +54,7 @@ export function createBackofficeExtension(
     name: "backoffice",
     // Discovery runs inside codemode through `state`, so it shares a turn with other reads.
     tools: [createCodemodeTool(agent), awaitSubagentsTool],
+    tasks: [...PI_SUBAGENT_TASKS],
     sections: [
       section("system-md", (input) => partsFor(input).systemMd, { tag: false }),
       section("agents-md", (input) => partsFor(input).agentsMd, { tag: false }),

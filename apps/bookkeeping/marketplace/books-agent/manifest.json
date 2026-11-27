@@ -1,0 +1,11 @@
+{
+  "slug": "books-agent",
+  "metadata": {
+    "name": "Books assistant",
+    "summary": "Answers questions about the books Bookkeeping keeps for an administration.",
+    "description": "Defines the agents in each administration's project that answer the questions people ask about its books in Bookkeeping, and look up customers' and suppliers' company details in the connections of the person asking.",
+    "category": "operations",
+    "tags": []
+  },
+  "version": "1.2.2"
+}

@@ -11,6 +11,7 @@ import {
   type ScenarioBrowser,
   type ScenarioPage,
 } from "../../scenario/bookkeeping-scenario";
+import { workflowInstanceId } from "../../scenario/fake-backoffice";
 import { INVOICE } from "../../scenario/fixtures/invoice";
 import { AGENT_PACKAGES } from "../../workers/backoffice/agents";
 import type { DocumentView } from "../../workers/books/documents/documents";
@@ -596,8 +597,8 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     const [prompt, ...more] = scenario.backoffice.subagentPrompts(FIRM, FIRM_AGENT);
     expect(more).toEqual([]);
     const agent = await firmAgent(scenario, ada);
-    // The books tell the firm of the request, which its agent's package routes to the agent, and
-    // the agent hands it to a subagent of its own, so documents are read side by side. The firm's
+    // The books tell the firm of the request, which starts a run of the agent's package's workflow,
+    // asking the agent in a subagent of its own, so documents are read side by side. The firm's
     // agent answers all its clients' administrations, so the request names the administration.
     const subject = `document:${agent.administration.id}:${id}`;
     expect(prompt).toMatchObject({
@@ -644,8 +645,9 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       steps: [],
     });
     scenario.backoffice.settlePrompt(prompt.requestId, { status: "running" });
-    // The page shows the agent's work on the books as Bookkeeping's own actions and reads of the
-    // file; what the firm's skills and instructions have it do stays the firm's.
+    // The page shows the agent's work on the books as Bookkeeping's own actions, reads of the file,
+    // and the kinds of its other work; what the firm's skills and instructions have it do stays the
+    // firm's.
     const call = (
       subject: CodemodeCallSubject,
       status: "running" | "succeeded" | "failed",
@@ -673,6 +675,20 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
             items: [
               call({ kind: "skill", name: "secret-skill" }, "succeeded"),
               call({ kind: "read", path: "/workspace/secret-notes.md" }, "succeeded"),
+              call(
+                {
+                  kind: "tool",
+                  name: "integrations.actions",
+                  scope: null,
+                  label: "List connection actions",
+                  target: "secret-connection",
+                },
+                "succeeded",
+              ),
+              call(
+                { kind: "call", name: "integrations.list", scope: null, input: "secret-input" },
+                "failed",
+              ),
               call(action("app#bookkeeping", "documents.get"), "succeeded"),
               call(action("app#bookkeeping", "books.describe"), "failed"),
               call(action("app#bookkeeping", "books.describe"), "succeeded"),
@@ -694,13 +710,28 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
         {
           toolCallId: "3",
           name: "codemode",
+          status: "failed",
+          calls: {
+            startedAt: 0,
+            items: [call(action("secret-connection", "secret-action"), "succeeded")],
+            omitted: 0,
+          },
+        },
+        {
+          toolCallId: "4",
+          name: "codemode",
           status: "running",
           calls: {
             startedAt: 0,
             items: [
-              call(action("secret-connection", "secret-action"), "succeeded"),
               call(
-                { kind: "call", name: "models.extract", scope: null, input: "secret-prompt" },
+                {
+                  kind: "tool",
+                  name: "models.extract",
+                  scope: null,
+                  label: "Extract from files",
+                  target: "/shared/secret-file.pdf",
+                },
                 "running",
               ),
             ],
@@ -715,13 +746,18 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       requestId: prompt.requestId,
       status: "running",
       steps: [
-        { kind: "work", running: false },
+        { kind: "instructions", status: "succeeded" },
+        { kind: "tools", status: "succeeded" },
+        // A failure stands on its own, though the agent went on.
+        { kind: "tools", status: "failed" },
         { kind: "action", actionId: "documents.get", detail: null, status: "succeeded" },
         { kind: "action", actionId: "books.describe", detail: null, status: "failed" },
         { kind: "action", actionId: "books.describe", detail: null, status: "succeeded" },
         // What an action was about, its input names; the input itself stays the agent's.
         { kind: "action", actionId: "entries.list", detail: "PUR", status: "succeeded" },
-        { kind: "work", running: false },
+        { kind: "work", status: "succeeded" },
+        // A run that failed outside its calls failed all the same.
+        { kind: "work", status: "failed" },
         { kind: "read", status: "running" },
       ],
     });
@@ -790,11 +826,19 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       document: { proposal: { status: "proposed" } },
       progress: null,
     });
-    // The firm is told the request ended, so it no longer awaits the agent.
+    // The firm is told the request ended, so it no longer awaits the agent, and the request's run
+    // recorded how the agent's turn ended.
     expect(requests().get(subject)).toMatchObject({
       requestId: prompt.requestId,
       status: "proposed",
       prompt: null,
+    });
+    expect(
+      await scenario.backoffice.workflowRun(FIRM, FIRM_AGENT, workflowInstanceId(prompt.requestId)),
+    ).toEqual({
+      status: "complete",
+      output: { turn: "turn.completed", reason: null },
+      error: null,
     });
     // Having answered, the agent no longer reads the document's file.
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
@@ -1533,6 +1577,13 @@ test("a request the agent never received, or failed, is asked again from the doc
       status: "failed",
       reason: "The model is unavailable.",
       steps: [],
+    });
+    expect(
+      await scenario.backoffice.workflowRun(FIRM, FIRM_AGENT, workflowInstanceId(first.requestId)),
+    ).toEqual({
+      status: "complete",
+      output: { turn: "turn.failed", reason: "The model is unavailable." },
+      error: null,
     });
 
     await ada.submit(`${BOOKS}/documents/${id}`, ask);

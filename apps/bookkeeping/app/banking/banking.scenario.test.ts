@@ -5,6 +5,7 @@ import {
   type BookkeepingScenario,
   type ScenarioBrowser,
 } from "../../scenario/bookkeeping-scenario";
+import { workflowInstanceId } from "../../scenario/fake-backoffice";
 import { INVOICE } from "../../scenario/fixtures/invoice";
 import {
   ACCOUNT_IBAN,
@@ -635,7 +636,8 @@ test("importing asks the bookkeeping agent how to book what the books cannot mat
     const agent = await firmAgent(scenario, ada);
     const prefix = (transactionId: string) =>
       `transaction:${agent.administration.id}:${transactionId}:`;
-    // The books tell the firm of both requests, which the agent's own conversation hands out.
+    // The books tell the firm of both requests, each of which starts a run of the agent's package's
+    // workflow, asking the agent in a subagent of its own.
     const prompts = scenario.backoffice.subagentPrompts(FIRM, FIRM_AGENT);
     const handedOut = {
       agentName: "bookkeeper",
@@ -647,13 +649,18 @@ test("importing asks the bookkeeping agent how to book what the books cannot mat
       { ...handedOut, requestId: `${prefix(costs.id)}import` },
     ]);
     expect(prompts[0].content).toContain("bank.transactions.get");
-    // Backoffice notifies only an agent whose conversation started, so Bookkeeping started it.
+    // Nothing prompts the agent's own conversation: the runs ask it, and wait for its answers.
     expect(
       scenario.backoffice.prompts(FIRM, FIRM_AGENT).filter((prompt) => !prompt.subagent),
-    ).toMatchObject([
-      { agentName: "bookkeeper", requestId: "bookkeeping:start", prompter: "installation" },
-    ]);
+    ).toEqual([]);
     const [babbageRequest, costsRequest] = prompts.map((prompt) => prompt.requestId);
+    for (const requestId of [babbageRequest, costsRequest]) {
+      expect(
+        await scenario.backoffice.workflowRun(FIRM, FIRM_AGENT, workflowInstanceId(requestId)),
+      ).toMatchObject({
+        status: "waiting",
+      });
+    }
     // The firm keeps what its agent is asked as each subject's latest request event.
     const requested = () =>
       [...scenario.backoffice.eventStates(FIRM, FIRM_AGENT, "proposal.changed").values()].map(

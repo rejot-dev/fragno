@@ -69,7 +69,11 @@ export type PiManagerListMessagesInput = {
   /** The request ID of the subagent whose conversation to read; null reads the agent's. */
   subagent: string | null;
 };
-export type PiManagerHistoryInput = PiAgentEntryRange & { agentName: string };
+export type PiManagerHistoryInput = PiAgentEntryRange & {
+  agentName: string;
+  /** The request ID of the subagent whose conversation to read; null reads the agent's. */
+  subagent: string | null;
+};
 export type PiManagerExportInput = { agentName: string; history: boolean };
 export type PiManagerActivityInput = {
   agentName: string;
@@ -365,8 +369,11 @@ export function createPiManagerRuntime(input: {
       }
       return await request<PiAgentMessagePage>(`${agentRoute(agentName)}/messages?${query}`, null);
     },
-    async listHistory({ agentName, minEntryId, maxEntryId, order, pageSize }) {
+    async listHistory({ agentName, minEntryId, maxEntryId, order, pageSize, subagent }) {
       const query = new URLSearchParams({ order, pageSize: String(pageSize) });
+      if (subagent !== null) {
+        query.set("subagent", subagent);
+      }
       if (minEntryId !== null) {
         query.set("minEntryId", String(minEntryId));
       }

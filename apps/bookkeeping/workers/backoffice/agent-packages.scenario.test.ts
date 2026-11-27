@@ -1,5 +1,7 @@
 import { expect, test, assert } from "vitest";
 
+import type { PiAgentDefinitionCreate } from "@fragno-dev/backoffice-api/v0/pi";
+
 import { runBookkeepingScenario } from "../../scenario/bookkeeping-scenario";
 import { AGENT_PACKAGES } from "./agents";
 
@@ -27,14 +29,17 @@ test("a deploy shipping a new version of an agent's package upgrades every proje
 
     const books = AGENT_PACKAGES.books;
     const instructions = "Answer from the books, briefly.";
-    const declare: typeof books.declare = (eventSource) => {
-      const declared = books.declare(eventSource);
-      return {
-        ...declared,
-        agents: declared.agents.map((agent) => ({ ...agent, instructions })),
-      };
+    const declaration = JSON.parse(books.files[".marketplace/installation.json"]) as {
+      agents: object[];
     };
-    scenario.deploy({ books: { ...books, version: "2.0.0", declare } });
+    const files = {
+      ...books.files,
+      ".marketplace/installation.json": JSON.stringify({
+        ...declaration,
+        agents: declaration.agents.map((agent) => ({ ...agent, instructions })),
+      }),
+    };
+    scenario.deploy({ books: { ...books, version: "2.0.0", files } });
     await scenario.runDueAlarms();
     for (const administration of ["Engines", "Looms"]) {
       expect(scenario.backoffice.installedPackages(CLIENT, administration)).toEqual(
@@ -240,8 +245,10 @@ test("a client secret Backoffice no longer accepts fails the alarm instead of be
   });
 });
 
-/** The agent the books' package defines, which declares no events, so no source shapes it. */
+/** The first agent the books' package defines, as its declaration does. */
 function booksAgent() {
-  const [agent] = AGENT_PACKAGES.books.declare("app:bookkeeping-app").agents;
-  return agent;
+  const declaration = JSON.parse(AGENT_PACKAGES.books.files[".marketplace/installation.json"]) as {
+    agents: PiAgentDefinitionCreate[];
+  };
+  return declaration.agents[0];
 }

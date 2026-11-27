@@ -44,16 +44,18 @@ test("another agent's socket shows nothing of the agent before it", async () => 
   );
   await waitFor(() => assert.lengthOf(FakeSocket.opened, 1));
   act(() => {
-    FakeSocket.opened[0]!.send({ type: "view", view: viewOf("a") });
+    FakeSocket.opened[0]!.send({ type: "view", subagent: null, view: viewOf("a") });
+    FakeSocket.opened[0]!.send({ type: "subagents", subagents: [], older: null });
   });
   assert.equal(result.current.status, "ready");
 
   rerender({ key: "b" });
-  assert.deepEqual(result.current, { status: "connecting" });
+  assert.equal(result.current.status, "connecting");
   await waitFor(() => assert.lengthOf(FakeSocket.opened, 2));
   assert.equal(FakeSocket.opened[1]!.url, "/b");
   act(() => {
-    FakeSocket.opened[1]!.send({ type: "view", view: viewOf("b") });
+    FakeSocket.opened[1]!.send({ type: "view", subagent: null, view: viewOf("b") });
+    FakeSocket.opened[1]!.send({ type: "subagents", subagents: [], older: null });
   });
   const state = result.current;
   assert.deepEqual(state.status === "ready" ? Object.keys(state.view.docs) : null, ["b"]);

@@ -16,7 +16,7 @@ type PiCodemodeProvider = {
    */
   listMessages(input: PiListMessagesInput): Promise<PiListMessagesOutput>;
   /**
-   * Read a page of a started agent's whole conversation, compactions and clears included, as Pi Durable's entries with thinking, tool calls, and tool results: an entry ID range in one order, newest first by default. `pi.agent.watch`'s view holds only the newest entries; a chat loads the rest with this, as Pi Durable's `ConversationTranscript` asks its loader. Read further from the last entry's ID while `more` is true. To read what was said since the newest compaction, use `pi.agent.messages`.
+   * Read a page of a started agent's whole conversation, compactions and clears included, as Pi Durable's entries with thinking, tool calls, and tool results: an entry ID range in one order, newest first by default. `pi.agent.watch`'s view holds only the newest entries; a chat loads the rest with this, as Pi Durable's `ConversationTranscript` asks its loader. Read further from the last entry's ID while `more` is true. To read what was said since the newest compaction, use `pi.agent.messages`. Pass `subagent` to read one of the agent's subagents instead.
    * Requires `pi.read`.
    */
   listHistory(input: PiListHistoryInput): Promise<PiListHistoryOutput>;
@@ -179,6 +179,8 @@ type PiListHistoryInput = {
   order?: "descending" | "ascending";
   /** How many entries the page holds at most. */
   pageSize?: number;
+  /** The request ID that started a subagent of the agent, to read that subagent's conversation instead of the agent's. */
+  subagent?: string | null;
 };
 type PiListHistoryOutput = {
   /** Pi Durable's `EntryRecord`s, in the order asked for. */

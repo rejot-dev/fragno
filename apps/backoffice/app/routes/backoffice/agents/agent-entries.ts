@@ -11,6 +11,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     context,
     requireRouteScope(context).execution.scope,
     params.agentName,
+    null,
     new URL(request.url).searchParams,
   );
 }

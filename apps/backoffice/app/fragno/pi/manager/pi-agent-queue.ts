@@ -11,6 +11,7 @@ import type { FragnoId } from "@fragno-dev/db/schema";
 
 import type { DatabaseServiceContext, HookFn, TypedUnitOfWork } from "@fragno-dev/db";
 
+import { installedAppIdOfActors } from "@/fragno/app-installations/authority";
 import type { PiAgentQueueCounts } from "@/fragno/backoffice-capabilities/capabilities/pi";
 import type { UsageLimitCheck } from "@/fragno/billing/usage-billing";
 import {
@@ -20,6 +21,7 @@ import {
   type PiAgentAdmission,
   type PiAgentAdmissionDefinition,
 } from "@/fragno/pi/agent/agent-definitions";
+import { piAgentActorName } from "@/fragno/pi/agent/pi-agent-actor";
 import {
   PI_INTERNAL_REQUEST_ID_PREFIX,
   piAgentNotificationEvent,
@@ -31,6 +33,7 @@ import {
   type PiAgentQueueSubmission,
   type PiAgentTurn,
   type PiAgentWaitingQueue,
+  type PiQueuedAsk,
   type PiQueuedSubagent,
   type PiAgentWork,
   type PiAvailableModel,
@@ -41,7 +44,6 @@ import { mayJoinPiAgentTurn, nextPiAgentQueueTurn } from "@/fragno/pi/agent/pi-a
 import {
   AGENT_QUEUE_REQUEST_INDEX,
   AGENT_QUEUE_STATUS_INDEX,
-  AGENT_QUEUE_SUBAGENT_INDEX,
   definitionFromRow,
   piAgentDirectorySchema,
   type PiAgentQueueInput,
@@ -98,8 +100,11 @@ export type PiManagerHooks = {
   redispatchAgentQueue: HookFn<{ agentName: string }>;
   /** Writes notifications that arrived into the conversation again, as above. */
   writeNotificationCards: HookFn<{ agent: PiAgentConfig; notifications: PiAgentNotification[] }>;
-  /** Tells the agent again that a subagent waits or was dropped, as above. */
-  recordSubagent: HookFn<{ agent: PiAgentConfig; requestId: string; subagent: PiQueuedSubagent }>;
+  /**
+   * Tells the agent again that a subagent waits or was dropped, as above, with what it was asked
+   * read from its item then.
+   */
+  recordSubagent: HookFn<{ agent: PiAgentConfig; requestId: string; subagent: PiSubagentNotice }>;
   /** Notifies the agent a prompt replies to of how it ended, possibly in another scope. */
   replyToAgent: HookFn<PiAgentReply>;
   /** Bills a model call; the event's id makes repeated deliveries idempotent. */
@@ -134,10 +139,13 @@ export type PiAgentHandover =
       agent: PiAgentConfig;
       revision: number;
       turn: PiAgentTurn;
-      prompt: PiAgentPrompt;
+      ask: PiQueuedAsk;
     }
   | { type: "recordSubagent"; agent: PiAgentConfig; requestId: string; subagent: PiQueuedSubagent }
   | { type: "write"; agent: PiAgentConfig; notifications: PiAgentNotification[] };
+
+/** That a subagent waits or was dropped, as its queue's `recordSubagent` hook carries it. */
+export type PiSubagentNotice = { status: "waiting" } | { status: "dropped"; reason: string };
 
 /**
  * How many subagents of one agent run at once; more wait, oldest first. Each runs a conversation of
@@ -158,7 +166,7 @@ export async function handOverPiAgentWork(
       await agent.dispatch(handover.agent, handover.revision, handover.turn, handover.work);
       return;
     case "subagent":
-      await agent.startSubagent(handover.agent, handover.revision, handover.turn, handover.prompt);
+      await agent.startSubagent(handover.agent, handover.revision, handover.turn, handover.ask);
       return;
     case "recordSubagent":
       await agent.recordSubagent(handover.agent, handover.requestId, handover.subagent);
@@ -229,12 +237,50 @@ function queueEntry({
       };
 }
 
+/**
+ * Who asked for a subagent: the agent's own turn, by its tool call; else the newest agent in the
+ * delegation, whose turn asked; else the installed app it acts through, or a person.
+ */
+function subagentAsker(
+  item: PiAgentQueueItem & PiAgentQueueSender & { input: PiAgentSubagentInput },
+): PiQueuedAsk["askedBy"] {
+  if (item.input.askingToolCall !== null) {
+    return { kind: "turn", toolCallId: item.input.askingToolCall };
+  }
+  const { actors } = item.provenance;
+  const agent = actors.delegation
+    .filter((actor) => actor.scope === "internal" && actor.type === "pi-agent")
+    .at(-1);
+  if (agent) {
+    return { kind: "agent", agentName: piAgentActorName(agent) };
+  }
+  const appId = installedAppIdOfActors(actors);
+  return appId === null ? { kind: "person" } : { kind: "app", appId };
+}
+
+function subagentAsk(
+  item: PiAgentQueueItem & PiAgentQueueSender & { input: PiAgentSubagentInput },
+): PiQueuedAsk {
+  return {
+    requestId: item.requestId,
+    task: item.input.content,
+    askedAt: item.input.submittedAt,
+    askedBy: subagentAsker(item),
+  };
+}
+
 /** What waits for the agent's conversation; subagents wait for conversations of their own. */
-function waitingQueue(revision: number, paused: boolean, queued: readonly PiAgentQueueItem[]) {
+function waitingQueue(
+  revision: number,
+  paused: boolean,
+  queued: readonly PiAgentQueueItem[],
+  waitingSubagents: number,
+) {
   return {
     revision,
     paused,
     items: queued.filter(isTurnItem).map(queueEntry),
+    waitingSubagents,
   } satisfies PiAgentWaitingQueue;
 }
 
@@ -416,6 +462,19 @@ function writeAgentQueue(
           : change),
       });
     },
+    /**
+     * What waits once the change is done: `queued`, the agent's own items that wait, and how many
+     * subagents wait for a slot.
+     */
+    waitingQueue(paused: boolean, queued: readonly PiAgentQueueItem[]) {
+      let waitingSubagents = 0;
+      for (const { input, status } of items.values()) {
+        if (status === "queued" && input.type === "subagent") {
+          waitingSubagents += 1;
+        }
+      }
+      return waitingQueue(revision, paused, queued, waitingSubagents);
+    },
     /** Records how a turn ended, as its agent reported it. */
     recordTurnEnd(event: AutomationEvent) {
       turnEnds.push(event);
@@ -555,13 +614,13 @@ function placeQueueItem(
     return {
       status: "steered",
       handovers: [{ type: "steer", agent, revision, turn, steer: input.steering }],
-      queue: waitingQueue(revision, paused, queued),
+      queue: queue.waitingQueue(paused, queued),
     };
   }
   if (paused || input.busy) {
     queue.create(arriving, { status: "queued" });
     queue.record(arriving, { kind: "added", steer: false });
-    const waiting = waitingQueue(revision, paused, [...queued, arriving]);
+    const waiting = queue.waitingQueue(paused, [...queued, arriving]);
     if (arriving.input.type === "prompt") {
       return { status: "queued", handovers: [], queue: waiting };
     }
@@ -584,7 +643,7 @@ function placeQueueItem(
   return {
     status: "queued",
     handovers: started.handover ? [started.handover] : [],
-    queue: waitingQueue(revision, paused, started.waiting),
+    queue: queue.waitingQueue(paused, started.waiting),
   };
 }
 
@@ -610,11 +669,15 @@ function startSubagents(
   const handovers: PiAgentHandover[] = [];
   // Its agent knows of every subagent from when it arrives, so a turn can wait for it by its ID.
   function tell(requestId: string, subagent: PiQueuedSubagent) {
-    uow.triggerHook("recordSubagent", { agent, requestId, subagent });
+    uow.triggerHook("recordSubagent", {
+      agent,
+      requestId,
+      subagent: subagent.status === "waiting" ? { status: "waiting" } : subagent,
+    });
     handovers.push({ type: "recordSubagent", agent, requestId, subagent });
   }
   if (arriving && isSubagentItem(arriving)) {
-    tell(arriving.requestId, { status: "waiting" });
+    tell(arriving.requestId, { status: "waiting", ask: subagentAsk(arriving) });
   }
   let started = 0;
   let running = input.running;
@@ -666,7 +729,7 @@ function startSubagents(
       agent,
       revision: queue.revision,
       turn: admitted.turn,
-      prompt: { requestId: candidate.requestId, content: candidate.input.content },
+      ask: subagentAsk(candidate),
     });
     running += 1;
     started += 1;
@@ -720,16 +783,6 @@ function startResumedQueue(
     waiting: started.waiting,
   };
 }
-
-/** A subagent the agent ran or will run, newest first in its list. */
-export type PiAgentSubagentItem = {
-  requestId: string;
-  task: string;
-  submittedAt: string;
-  askingToolCall: string | null;
-  provenance: PiAgentTurnProvenance;
-  state: PiAgentQueueItemState;
-};
 
 /**
  * What the queue knows of a request: its own record while it waits or once dropped, or the Pi
@@ -825,11 +878,16 @@ export function piAgentQueueServices(
                         subagent:
                           submitted.state.status === "dropped"
                             ? { status: "dropped", reason: submitted.state.reason }
-                            : { status: "waiting" },
+                            : { status: "waiting", ask: subagentAsk(submitted) },
                       },
                     ]
                   : [],
-                queue: waitingQueue(agent?.id.version ?? 0, agent?.paused ?? false, queued),
+                queue: waitingQueue(
+                  agent?.id.version ?? 0,
+                  agent?.paused ?? false,
+                  queued,
+                  queued.filter(isSubagentItem).length,
+                ),
               };
             }
             if (input.allowance.kind === "exhausted") {
@@ -928,7 +986,7 @@ export function piAgentQueueServices(
                   type: "placed",
                   status: "queued",
                   handovers: started.handovers,
-                  queue: waitingQueue(revision, false, started.waiting),
+                  queue: queue.waitingQueue(false, started.waiting),
                 };
               }
               const handovers = subagents(arriving);
@@ -937,7 +995,7 @@ export function piAgentQueueServices(
                 type: "placed",
                 status: "queued",
                 handovers,
-                queue: waitingQueue(revision, paused, queued),
+                queue: queue.waitingQueue(paused, queued),
               };
             }
             const placement = placeQueueItem(queue, {
@@ -1014,7 +1072,12 @@ export function piAgentQueueServices(
                 type: "placed",
                 status: "queued",
                 handovers: [],
-                queue: waitingQueue(agent.id.version, agent.paused, queued),
+                queue: waitingQueue(
+                  agent.id.version,
+                  agent.paused,
+                  queued,
+                  queued.filter(isSubagentItem).length,
+                ),
               };
             }
             const definition = definitionOf(agentName, definitionRow, skillsRow);
@@ -1127,7 +1190,7 @@ export function piAgentQueueServices(
                     queued,
                     arriving: null,
                   }),
-                  queue: waitingQueue(revision, agent.paused, queued),
+                  queue: queue.waitingQueue(agent.paused, queued),
                 };
               }
               if (settled.state.status === "steered") {
@@ -1148,10 +1211,10 @@ export function piAgentQueueServices(
                     )
                   : steered.length > 0;
               if (busy) {
-                return { handovers: [], queue: waitingQueue(revision, agent.paused, queued) };
+                return { handovers: [], queue: queue.waitingQueue(agent.paused, queued) };
               }
               if (agent.paused) {
-                return { handovers: [], queue: waitingQueue(revision, true, queued) };
+                return { handovers: [], queue: queue.waitingQueue(true, queued) };
               }
               if (input.compact) {
                 const { turn } = settled.state;
@@ -1181,7 +1244,7 @@ export function piAgentQueueServices(
                       },
                     } satisfies PiAgentHandover,
                   ],
-                  queue: waitingQueue(revision, false, queued),
+                  queue: queue.waitingQueue(false, queued),
                 };
               }
               const started = startNextTurn(queue, {
@@ -1193,7 +1256,7 @@ export function piAgentQueueServices(
               });
               return {
                 handovers: started.handover ? [started.handover] : [],
-                queue: waitingQueue(revision, false, started.waiting),
+                queue: queue.waitingQueue(false, started.waiting),
               };
             })();
             queue.commit();
@@ -1288,7 +1351,12 @@ export function piAgentQueueServices(
             return null;
           }
           uow.triggerHook("recordAgentChange", { kind: "stopped", agentName, provenance });
-          return waitingQueue(changeAgentQueue(uow, agent, true), true, queued);
+          return waitingQueue(
+            changeAgentQueue(uow, agent, true),
+            true,
+            queued,
+            queued.filter(isSubagentItem).length,
+          );
         })
         .build();
     },
@@ -1314,7 +1382,15 @@ export function piAgentQueueServices(
               return null;
             }
             if (!agent.paused) {
-              return { handovers: [], queue: waitingQueue(agent.id.version, false, queued) };
+              return {
+                handovers: [],
+                queue: waitingQueue(
+                  agent.id.version,
+                  false,
+                  queued,
+                  queued.filter(isSubagentItem).length,
+                ),
+              };
             }
             const revision = changeAgentQueue(uow, agent, false);
             uow.triggerHook("recordAgentChange", {
@@ -1339,7 +1415,7 @@ export function piAgentQueueServices(
             queue.commit();
             return {
               handovers: started.handovers,
-              queue: waitingQueue(revision, false, started.waiting),
+              queue: queue.waitingQueue(false, started.waiting),
             };
           },
         )
@@ -1391,7 +1467,7 @@ export function piAgentQueueServices(
                     agent: config,
                     revision,
                     turn: item.state.turn,
-                    prompt: { requestId: item.requestId, content: item.input.content },
+                    ask: subagentAsk(item),
                   },
                 ]
               : [],
@@ -1418,49 +1494,28 @@ export function piAgentQueueServices(
       return this.serviceTx(piAgentDirectorySchema)
         .retrieve((uow) => findAgentQueue(uow, agentName))
         .transformRetrieve(([, , agent, , queued]) =>
-          waitingQueue(agent?.id.version ?? 0, agent?.paused ?? false, queued),
+          waitingQueue(
+            agent?.id.version ?? 0,
+            agent?.paused ?? false,
+            queued,
+            queued.filter(isSubagentItem).length,
+          ),
         )
         .build();
     },
-    /**
-     * The agent's latest subagents, newest first, whether they wait, run, or ended, and those still
-     * running before them. Subagents start oldest first, so anything newer than one that waits waits
-     * too; only running ones can fall behind the latest.
-     */
-    listSubagents: function (agentName: string, limit: number) {
+    /** What the subagent `requestId` was asked; null when the queue has no such subagent. */
+    getSubagentAsk: function (agentName: string, requestId: string) {
       return this.serviceTx(piAgentDirectorySchema)
         .retrieve((uow) =>
-          uow
-            .find("agent_queue_item", (b) =>
-              b
-                .whereIndex(AGENT_QUEUE_SUBAGENT_INDEX, (eb) =>
-                  eb.and(eb("agentName", "=", agentName), eb("subagent", "=", true)),
-                )
-                .orderByIndex(AGENT_QUEUE_SUBAGENT_INDEX, "desc")
-                .pageSize(limit),
-            )
-            .find("agent_queue_item", (b) =>
-              b
-                .whereIndex(AGENT_QUEUE_STATUS_INDEX, (eb) =>
-                  eb.and(eb("agentName", "=", agentName), eb("status", "=", "dispatched")),
-                )
-                .orderByIndex(AGENT_QUEUE_STATUS_INDEX, "desc"),
+          uow.findFirst("agent_queue_item", (b) =>
+            b.whereIndex(AGENT_QUEUE_REQUEST_INDEX, (eb) =>
+              eb.and(eb("agentName", "=", agentName), eb("requestId", "=", requestId)),
             ),
+          ),
         )
-        .transformRetrieve(([latest, dispatched]) => {
-          const listed = new Set(latest.map(({ requestId }) => requestId));
-          const earlier = dispatched.filter(({ requestId }) => !listed.has(requestId));
-          return [...latest, ...earlier].filter(isSubagentItem).map(
-            (item): PiAgentSubagentItem => ({
-              requestId: item.requestId,
-              task: item.input.content,
-              submittedAt: item.input.submittedAt,
-              askingToolCall: item.input.askingToolCall,
-              provenance: item.provenance,
-              state: item.state,
-            }),
-          );
-        })
+        .transformRetrieve(([item]): PiQueuedAsk | null =>
+          item && isSubagentItem(item) ? subagentAsk(item) : null,
+        )
         .build();
     },
     /** What the queue knows of a request; null when it never saw the request. */

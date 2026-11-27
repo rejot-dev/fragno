@@ -4559,6 +4559,12 @@
         "description": "How many entries to print, up to 256; default 100"
       },
       {
+        "name": "subagent",
+        "valueRequired": true,
+        "valueName": "request-id",
+        "description": "Print the conversation of the agent's subagent this request started"
+      },
+      {
         "name": "help",
         "description": "Show this help text",
         "valueRequired": false,

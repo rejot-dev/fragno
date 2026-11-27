@@ -9,6 +9,9 @@ import type {
   PiAgentQueueEntry,
   PiAgentWatchFrame,
   PiPromptStatus,
+  PiOlderSubagents,
+  PiSubagentAsk,
+  PiSubagentSummary,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import { piAgentSkillSchema, piThinkingLevelSchema } from "@fragno-dev/backoffice-api/v0/pi";
 import {
@@ -87,20 +90,31 @@ export const piAgentPromptSchema = z.object({
 export type PiAgentPrompt = z.infer<typeof piAgentPromptSchema>;
 
 /**
- * Where a subagent stands in its agent: Pi's submission of its prompt, null before it starts; when
- * its prompt was placed and when it was answered, as epoch milliseconds; and its answer's text.
+ * What a subagent was asked, as its queue knows it: an app asker by its ID only, which the agent
+ * looks up (see `PiSubagentAsk`).
  */
-export type PiSubagentRun = {
-  requestId: string;
-  submission: SubmissionRecord | null;
-  startedAt: number | null;
-  answeredAt: number | null;
-  answer: string | null;
+export type PiQueuedAsk = Omit<PiSubagentAsk, "askedBy"> & {
+  askedBy: Exclude<PiSubagentAsk["askedBy"], { kind: "app" }> | { kind: "app"; appId: string };
 };
 
-/** What the queue knows of a subagent before its agent starts it: it waits, or it was dropped. */
+export const piQueuedAskSchema = z.object({
+  requestId: z.string().min(1),
+  task: z.string().min(1),
+  askedAt: z.iso.datetime(),
+  askedBy: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("turn"), toolCallId: z.string() }),
+    z.object({ kind: z.literal("agent"), agentName: z.string() }),
+    z.object({ kind: z.literal("app"), appId: z.string() }),
+    z.object({ kind: z.literal("person") }),
+  ]),
+}) satisfies z.ZodType<PiQueuedAsk>;
+
+/**
+ * What the queue knows of a subagent before its agent starts it: it waits, with what it was asked,
+ * or it was dropped.
+ */
 export const piQueuedSubagentSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("waiting") }),
+  z.object({ status: z.literal("waiting"), ask: z.lazy(() => piQueuedAskSchema) }),
   z.object({ status: z.literal("dropped"), reason: z.string() }),
 ]);
 export type PiQueuedSubagent = z.infer<typeof piQueuedSubagentSchema>;
@@ -255,10 +269,18 @@ export const piAgentMessagePageRequestSchema = z.object({
 });
 
 /**
- * An agent's waiting items in queue order, and whether its queue is paused, as of a revision of
- * its queue.
+ * An agent's waiting items in queue order, how many subagents wait for a slot, and whether its
+ * queue is paused, as of a revision of its queue.
  */
-export type PiAgentWaitingQueue = { revision: number; paused: boolean; items: PiAgentQueueEntry[] };
+export type PiAgentWaitingQueue = {
+  revision: number;
+  paused: boolean;
+  items: PiAgentQueueEntry[];
+  waitingSubagents: number;
+};
+
+/** A page of the agent's subagents, newest first, and the older ones it leaves out. */
+export type PiSubagentPage = { subagents: PiSubagentSummary[]; older: PiOlderSubagents | null };
 
 /** What an agent sends its view socket, which `pi.agent.watch` exposes. */
 export type PiAgentViewFrame = PiAgentWatchFrame<ConversationView, Op>;
@@ -303,14 +325,14 @@ export type PiAgent = {
    */
   writeNotifications(config: PiAgentConfig, notifications: PiAgentNotification[]): Promise<void>;
   /**
-   * Starts a subagent: a new conversation of the agent that answers `prompt` under `turn`,
-   * alongside the agent's other work. A request ID that started one finds it again.
+   * Starts a subagent: a new conversation of the agent that answers the task it was asked under
+   * `turn`, alongside the agent's other work. A request ID that started one finds it again.
    */
   startSubagent(
     config: PiAgentConfig,
     revision: number,
     turn: PiAgentTurn,
-    prompt: PiAgentPrompt,
+    ask: PiQueuedAsk,
   ): Promise<void>;
   /**
    * Records what the queue knows of a subagent before it starts, so a turn waiting for it learns
@@ -321,14 +343,12 @@ export type PiAgent = {
     requestId: string,
     subagent: PiQueuedSubagent,
   ): Promise<void>;
-  /**
-   * The conversation's view over its active context, or by the request ID that started it a
-   * subagent's; null when no subagent has that request ID.
-   */
-  getView(config: PiAgentConfig, subagent: string | null): Promise<unknown>;
+  /** The agent's conversation's view over its active context. */
+  getView(config: PiAgentConfig): Promise<unknown>;
   /**
    * Accepts a view socket upgrade (see `PiAgentViewFrame`) signed for this agent with the viewer's
-   * execution, which the agent's manager authorizes before the agent sends anything.
+   * execution, which the agent's manager authorizes before the agent sends anything. The socket
+   * follows the agent's conversation, and those of the subagents it subscribes to.
    */
   fetch(request: Request): Promise<Response>;
   /**
@@ -338,9 +358,20 @@ export type PiAgent = {
   publishQueue(queue: PiAgentWaitingQueue): Promise<void>;
   /** A request's submission, in the agent's conversation or the subagent it started. */
   getSubmission(config: PiAgentConfig, requestId: string): Promise<PiAgentSubmission | null>;
-  /** Where each of the subagents `requestIds` asked for stands, in the same order. */
-  getSubagentRuns(config: PiAgentConfig, requestIds: string[]): Promise<PiSubagentRun[]>;
-  listEntries(config: PiAgentConfig, range: PiAgentEntryRange): Promise<PiAgentEntryPage>;
+  /**
+   * A page of the agent's subagents: the newest, or those older than a page it listed, from that
+   * page's `older.cursor`; null for a cursor none of its pages had.
+   */
+  listSubagents(config: PiAgentConfig, cursor: string | null): Promise<PiSubagentPage | null>;
+  /**
+   * A page of the agent's conversation, or of the subagent's `subagent` names, which has none
+   * before it starts.
+   */
+  listEntries(
+    config: PiAgentConfig,
+    range: PiAgentEntryRange,
+    subagent: string | null,
+  ): Promise<PiAgentEntryPage>;
   listMessages(
     config: PiAgentConfig,
     request: z.infer<typeof piAgentMessagePageRequestSchema>,

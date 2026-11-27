@@ -115,8 +115,8 @@ export default [
           }),
           route(":agentName/subagents", "routes/backoffice/agents/agent-subagents.ts"),
           route(
-            ":agentName/subagents/:requestId",
-            "routes/backoffice/agents/agent-subagent-view.ts",
+            ":agentName/subagents/:requestId/entries",
+            "routes/backoffice/agents/agent-subagent-entries.ts",
           ),
           route(":agentName/messages", "routes/backoffice/agents/agent-messages.ts"),
           route(":agentName/compactions", "routes/backoffice/agents/agent-compactions.ts"),

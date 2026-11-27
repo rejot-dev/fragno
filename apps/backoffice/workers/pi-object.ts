@@ -7,6 +7,8 @@ import {
   piAgentConfigSchema,
   type PiAgentConfig,
   type PiAgentEntryRange,
+  type PiSubagentAsk,
+  type PiSubagentSummary,
 } from "@fragno-dev/backoffice-api/v0/pi";
 import {
   piAgentNotificationSchema,
@@ -23,17 +25,20 @@ import { RpcTarget } from "cloudflare:workers";
 import { z } from "zod";
 
 import {
+  configure,
+  StorageRequestError,
   type Conversation,
   type ConversationId,
   type ConversationView,
+  type Cursor,
   type EntryId,
   type JsonObject,
   type Harness,
   type SessionEnd,
   type Storage,
   type SubmissionRecord,
+  type TaskId,
   type Wake,
-  type WatchHandle,
 } from "@earendil-works/pi-durable";
 
 import type { BackofficeExecutionContext } from "@/backoffice-runtime/context";
@@ -45,11 +50,11 @@ import { createPiConversationExportStream } from "@/fragno/pi/agent/conversation
 import {
   piAgentCompactionWorkSchema,
   piAgentMessagePageRequestSchema,
-  piAgentPromptSchema,
   piAgentSteerSchema,
   piQueuedSubagentSchema,
   piAgentTurnSchema,
   piAgentWorkSchema,
+  piQueuedAskSchema,
   PiConversationViewDamagedError,
   type PiAgent,
   type PiAgentCompactionStatus,
@@ -58,8 +63,9 @@ import {
   type PiAgentPrompt,
   type PiAgentSteer,
   type PiAgentSubmission,
+  type PiQueuedAsk,
   type PiQueuedSubagent,
-  type PiSubagentRun,
+  type PiSubagentPage,
   type PiAgentTurn,
   type PiAgentViewFrame,
   type PiAgentWaitingQueue,
@@ -76,13 +82,17 @@ import {
 } from "@/fragno/pi/agent/pi-agent-notification-entry";
 import { mayJoinPiAgentTurn } from "@/fragno/pi/agent/pi-agent-queue-rules";
 import {
-  PiSubagentStartedError,
+  listPiSubagents,
+  openPiSubagentConversation,
+  piSubagentAnchorNotify,
   piSubagentConversation,
+  readPiSubagentSummary,
+  readWaitingPiSubagents,
   recordDroppedPiSubagent,
-  recordPiSubagent,
   recordStartedPiSubagent,
   recordWaitingPiSubagent,
-  runningPiSubagentConversations,
+  startPiSubagentAnchor,
+  type PiAnchoredSubagent,
 } from "@/fragno/pi/agent/pi-agent-subagents";
 import {
   readPiAgentRun,
@@ -95,6 +105,7 @@ import {
 } from "@/fragno/pi/agent/pi-agent-turns";
 
 import type { BackofficeObjectState } from "./lib/backoffice-fragment-durable-object";
+import { PiAgentViewerConnection, PiAgentViewers, type PiAgentViewer } from "./pi-agent-viewers";
 
 const AGENT_CONFIG_KEY = "pi-agent-config";
 const LEGACY_BILLING_SCOPE_KEY = "pi-legacy-billing-scope";
@@ -114,12 +125,36 @@ export function openPiAgentStorage(storage: DurableObjectStorage) {
 /** Who connects to watch which agent, as the viewer's signed request says. */
 export type PiAgentViewing = { agent: PiAgentConfig; execution: BackofficeExecutionContext };
 
-/** A view socket, as either runtime's WebSocket offers it to `connectViewer`. */
-export type PiAgentViewer = {
-  /** Sends one JSON-encoded `PiAgentViewFrame`. */
-  send(message: string): void;
-  close(code: number, reason: string): void;
+/** A connected viewer: what it sends the agent, and how it disconnects. */
+export type PiAgentViewerSession = {
+  /** Takes one message the viewer sent, a JSON `PiAgentWatchMessage`. */
+  receive(message: string): void;
+  disconnect(): void;
 };
+
+/** How many subagents one viewer follows at most, besides the agent. */
+const VIEWER_SUBAGENT_LIMIT = 16;
+/** How many subagents' conversations a page of them reads at most. */
+const SUBAGENT_PAGE_SIZE = 50;
+/**
+ * How many messages of a viewer wait at most while its view is sent; one following every subagent
+ * it may sends two each, as it opens and closes them.
+ */
+const VIEWER_PENDING_LIMIT = 2 * VIEWER_SUBAGENT_LIMIT;
+
+const piAgentWatchMessageSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("subscribe"), subagent: z.string().min(1) }),
+  z.object({ type: z.literal("unsubscribe"), subagent: z.string().min(1) }),
+]);
+
+/** A message a viewer sent, as `PiAgentWatchMessage`; null for one that is not. */
+function piAgentWatchMessage(message: string): z.infer<typeof piAgentWatchMessageSchema> | null {
+  try {
+    return piAgentWatchMessageSchema.parse(JSON.parse(message));
+  } catch {
+    return null;
+  }
+}
 
 /** An alarm waiting for the agent's work to stop. */
 type PiAgentWaiter = {
@@ -168,6 +203,21 @@ function answerText(responses: Awaited<ReturnType<typeof answerResponses>>) {
   return text === "" ? null : text;
 }
 
+/**
+ * The cursor a page of subagents gave, as `PiOlderSubagents.cursor` encodes it; null for text no
+ * page gave. Pi checks the cursor itself.
+ */
+function subagentCursor(text: string): Cursor | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const cursor = z.record(z.string(), z.json()).safeParse(parsed);
+  return cursor.success ? cursor.data : null;
+}
+
 /** Shared durable agent lifecycle; both runtimes persist an alarm before admitting work. */
 export class PiObject extends RpcTarget implements PiAgent {
   readonly #state: BackofficeObjectState;
@@ -187,14 +237,10 @@ export class PiObject extends RpcTarget implements PiAgent {
   #startingCompaction: Promise<unknown> = Promise.resolve();
   // An alarm waiting for the agent's work to stop follows its wakeups and its session's end.
   readonly #waiters = new Set<PiAgentWaiter>();
-  // Only the manager knows the queue; it publishes every change, and before each viewer connects.
-  // Hibernation forgets it, so the first publication after waking is taken whatever its revision.
-  #queue: PiAgentWaitingQueue | null = null;
-  readonly #viewers = new Set<PiAgentViewer>();
-  // Viewers a hibernated object kept, which lost their watch with its memory, until it opens again.
-  readonly #restoredViewers = new Set<PiAgentViewer>();
-  // One watch serves every viewer, so each commit is encoded once. It stays open until it ends.
-  #viewWatch: Promise<WatchHandle<ConversationView>> | null = null;
+  readonly #viewers = new PiAgentViewers();
+  // The agent's viewers get its subagents one change at a time, so each gets them in the order
+  // they changed, and after the ones it connected with.
+  #publishingSubagents: Promise<void> = Promise.resolve();
 
   constructor({
     state,
@@ -293,6 +339,9 @@ export class PiObject extends RpcTarget implements PiAgent {
             waiter.wake(wake);
           }
         },
+        onSubagentsChange: (subagents) => {
+          this.#publishSubagents(subagents);
+        },
       });
       // A failed session stays failed, so the next call opens the agent again.
       void opened.harness.closed.then((end) => {
@@ -303,8 +352,8 @@ export class PiObject extends RpcTarget implements PiAgent {
           waiter.closed(end);
         }
       });
-      // Before anything else uses the agent, so no commit can reach the viewers as ops they miss.
-      await this.#serveRestoredViewers(opened.harness);
+      // Before anything else uses the agent, so no commit can reach them as ops they miss.
+      this.#viewers.closeHibernated();
       return opened;
     })();
     this.#opening = opening;
@@ -448,50 +497,77 @@ export class PiObject extends RpcTarget implements PiAgent {
     config: PiAgentConfig,
     revision: number,
     rawTurn: PiAgentTurn,
-    rawPrompt: PiAgentPrompt,
+    rawAsk: PiQueuedAsk,
   ) {
-    const prompt = piAgentPromptSchema.parse(rawPrompt);
+    const queued = piQueuedAskSchema.parse(rawAsk);
     const admitted = piAgentTurnSchema.parse(rawTurn);
     if (await this.#fenced(revision)) {
       return;
     }
     const opened = await this.#requireAgent(config);
-    const { harness, storage } = opened;
+    const { harness, storage, awaitSubagentsTool } = opened;
+    const { requestId } = queued;
+    const ask = await this.#namedAsk(queued);
     this.#admitting += 1;
     try {
       // The wake must be durable before Pi admits work, not after the HTTP request returns.
       await this.#state.storage.setAlarm(this.#nowEpochMs());
-      const conversation = await this.#subagentConversation(opened, prompt.requestId);
+      // Each step is one commit that a handover of the subagent again finds done.
+      const anchored = await startPiSubagentAnchor(
+        harness,
+        ask,
+        this.#nowEpochMs(),
+        BACKGROUND_CONTEXT,
+      );
+      const chosen = admitted.agent.model;
+      const subagent =
+        anchored.status === "starting"
+          ? await openPiSubagentConversation(
+              harness,
+              requestId,
+              anchored.taskId,
+              async (tx, conversationId) => {
+                await configure(tx, conversationId, {
+                  ...(chosen && {
+                    model: { provider: chosen.provider, modelId: chosen.modelId },
+                    thinkingLevel: chosen.thinkingLevel,
+                  }),
+                  // A subagent waiting for subagents would hold a slot they need.
+                  tools: { remove: [awaitSubagentsTool] },
+                });
+              },
+              BACKGROUND_CONTEXT,
+            )
+          : anchored;
       // A subagent handed over again keeps the submission and turn Pi already has for it.
-      if (
-        await storage.submissionByRequest(conversation.id, prompt.requestId, BACKGROUND_CONTEXT)
-      ) {
-        await this.#markSubagentStarted(harness, prompt.requestId);
+      if (subagent.status !== "opened") {
         return;
       }
-      const turn = await this.#withSkills(opened, admitted);
-      await recordPiAgentTurn(harness, conversation.id, prompt.requestId, turn, BACKGROUND_CONTEXT);
-      try {
-        const chosen = turn.agent.model;
-        if (chosen) {
-          await conversation.configure(
+      const conversation = await this.#requireConversation(
+        harness,
+        subagent.conversationId as ConversationId,
+      );
+      if (!(await storage.submissionByRequest(conversation.id, requestId, BACKGROUND_CONTEXT))) {
+        const turn = await this.#withSkills(opened, admitted);
+        await recordPiAgentTurn(harness, conversation.id, requestId, turn, BACKGROUND_CONTEXT);
+        try {
+          await conversation.submit(
             {
-              model: { provider: chosen.provider, modelId: chosen.modelId },
-              thinkingLevel: chosen.thinkingLevel,
+              type: "input",
+              requestId,
+              content: ask.task,
+              notify: piSubagentAnchorNotify(subagent.taskId),
             },
             BACKGROUND_CONTEXT,
           );
+        } catch (error) {
+          await withdrawPiAgentTurn(harness, conversation.id, requestId, BACKGROUND_CONTEXT);
+          throw error;
         }
-        await conversation.submit(
-          { type: "input", requestId: prompt.requestId, content: prompt.content },
-          BACKGROUND_CONTEXT,
-        );
-      } catch (error) {
-        await withdrawPiAgentTurn(harness, conversation.id, prompt.requestId, BACKGROUND_CONTEXT);
-        throw error;
       }
-      await this.#markSubagentStarted(harness, prompt.requestId);
-      // A stop that landed while it started did not find it running.
+      // Only once its prompt is submitted, so a turn waiting for it finds the submission.
+      await recordStartedPiSubagent(harness, requestId, BACKGROUND_CONTEXT);
+      // A stop that landed while it started may have ended its anchor before its prompt existed.
       if (await this.#fenced(revision)) {
         await conversation.abort(BACKGROUND_CONTEXT, { background: true });
       }
@@ -500,52 +576,40 @@ export class PiObject extends RpcTarget implements PiAgent {
     }
   }
 
-  // Only once its prompt is submitted, so a turn waiting for it finds the submission.
-  async #markSubagentStarted(harness: Harness, requestId: string) {
-    await harness.commit(async (tx) => {
-      await recordStartedPiSubagent(tx, requestId);
-    }, BACKGROUND_CONTEXT);
-  }
-
   async recordSubagent(config: PiAgentConfig, requestId: string, rawSubagent: PiQueuedSubagent) {
     const subagent = piQueuedSubagentSchema.parse(rawSubagent);
     const { harness } = await this.#requireAgent(config);
-    await harness.commit(async (tx) => {
-      if (subagent.status === "waiting") {
-        await recordWaitingPiSubagent(tx, requestId);
-      } else {
-        await recordDroppedPiSubagent(tx, requestId, subagent.reason);
+    const asked = subagent.status === "waiting" ? await this.#namedAsk(subagent.ask) : null;
+    const changed = await harness.commit(async (tx): Promise<PiSubagentSummary | null> => {
+      if (asked) {
+        return (await recordWaitingPiSubagent(tx, asked))
+          ? { ...asked, state: { status: "waiting" } }
+          : null;
       }
+      if (subagent.status !== "dropped") {
+        throw new Error("A waiting subagent has what it was asked.");
+      }
+      const ask = await recordDroppedPiSubagent(tx, requestId, subagent.reason);
+      return ask && { ...ask, state: { status: "dropped", reason: subagent.reason } };
     }, BACKGROUND_CONTEXT);
+    if (changed) {
+      this.#publishSubagent(async () => changed);
+    }
   }
 
-  /** The subagent's conversation `requestId` started, created on its first start. */
-  async #subagentConversation(opened: OpenPiAgent, requestId: string): Promise<Conversation> {
-    const { harness, awaitSubagentsTool } = opened;
-    const recorded = await piSubagentConversation(harness, requestId, BACKGROUND_CONTEXT);
-    if (recorded !== null) {
-      return await this.#requireConversation(harness, recorded);
+  /**
+   * What a subagent was asked, as its viewers see it: an app asker with the slug it has now, which
+   * the viewers know it by later too, even once the app is gone.
+   */
+  async #namedAsk(ask: PiQueuedAsk): Promise<PiSubagentAsk> {
+    const { askedBy } = ask;
+    if (askedBy.kind !== "app") {
+      return { ...ask, askedBy };
     }
-    try {
-      return await harness.createConversation(
-        {
-          // Its manager tracks it, and a stop aborts it by name, so no task owns it.
-          ownership: { kind: "ownerless" },
-          // A subagent waiting for subagents would hold a slot they need.
-          agent: { tools: { remove: [awaitSubagentsTool] } },
-          init: async (tx, conversationId) => {
-            await recordPiSubagent(tx, requestId, conversationId);
-          },
-        },
-        BACKGROUND_CONTEXT,
-      );
-    } catch (error) {
-      // A concurrent handover of the same request created it first.
-      if (!(error instanceof PiSubagentStartedError)) {
-        throw error;
-      }
-      return await this.#subagentConversation(opened, requestId);
-    }
+    const app = await this.#runtime.objects.apps.singleton().commands.getApp({
+      appId: askedBy.appId,
+    });
+    return { ...ask, askedBy: { ...askedBy, appSlug: app?.slug ?? null } };
   }
 
   async #requireConversation(harness: Harness, conversationId: Conversation["id"]) {
@@ -746,37 +810,46 @@ export class PiObject extends RpcTarget implements PiAgent {
     return { record, answer: answerText(await answerResponses(storage, conversationId, record)) };
   }
 
-  async getSubagentRuns(config: PiAgentConfig, requestIds: string[]): Promise<PiSubagentRun[]> {
-    const { storage, harness } = await this.#requireAgent(config);
-    return await Promise.all(
-      requestIds.map(async (requestId): Promise<PiSubagentRun> => {
-        const conversationId = await piSubagentConversation(harness, requestId, BACKGROUND_CONTEXT);
-        if (conversationId === null) {
-          return { requestId, submission: null, startedAt: null, answeredAt: null, answer: null };
-        }
-        const submission =
-          (await storage.submissionByRequest(conversationId, requestId, BACKGROUND_CONTEXT)) ??
-          null;
-        const prompt = await entryMessages(storage, conversationId, submission?.entry);
-        const responses = await answerResponses(storage, conversationId, submission);
-        const answered = responses.at(-1);
-        return {
-          requestId,
-          submission,
-          startedAt: prompt[0]?.timestamp ?? null,
-          // An assistant message is stamped when its generation starts.
-          answeredAt:
-            answered === undefined ? null : answered.timestamp + (answered.durationMs ?? 0),
-          answer: answerText(responses),
-        };
-      }),
-    );
+  async listSubagents(
+    config: PiAgentConfig,
+    rawCursor: string | null,
+  ): Promise<PiSubagentPage | null> {
+    const text = z.string().nullable().parse(rawCursor);
+    const cursor = text === null ? null : subagentCursor(text);
+    if (text !== null && cursor === null) {
+      return null;
+    }
+    const { harness, storage } = await this.#requireAgent(config);
+    try {
+      return await listPiSubagents(
+        storage,
+        cursor,
+        SUBAGENT_PAGE_SIZE,
+        async (taskId, conversationId) =>
+          await this.#listedSubagent(harness, storage, taskId, conversationId),
+        BACKGROUND_CONTEXT,
+      );
+    } catch (error) {
+      // Pi refuses a cursor its scans never gave.
+      if (error instanceof StorageRequestError) {
+        return null;
+      }
+      throw error;
+    }
   }
 
-  async listEntries(config: PiAgentConfig, range: PiAgentEntryRange): Promise<PiAgentEntryPage> {
+  async listEntries(
+    config: PiAgentConfig,
+    range: PiAgentEntryRange,
+    subagent: string | null,
+  ): Promise<PiAgentEntryPage> {
     const { harness } = await this.#requireAgent(config);
-    const root = await harness.root(BACKGROUND_CONTEXT);
-    const page = await root.entries(
+    const conversation = await this.#conversation(harness, z.string().nullable().parse(subagent));
+    // A request that started no subagent has no entries yet.
+    if (!conversation) {
+      return { entries: [], more: false };
+    }
+    const page = await conversation.entries(
       {
         ...(range.minEntryId === null ? {} : { minEntryId: range.minEntryId as EntryId }),
         ...(range.maxEntryId === null ? {} : { maxEntryId: range.maxEntryId as EntryId }),
@@ -851,13 +924,9 @@ export class PiObject extends RpcTarget implements PiAgent {
     return piConversationActivity(await this.#activeView(config, conversation));
   }
 
-  async getView(config: PiAgentConfig, subagent: string | null): Promise<unknown> {
+  async getView(config: PiAgentConfig): Promise<unknown> {
     const { harness } = await this.#requireAgent(config);
-    const conversation = await this.#conversation(harness, subagent);
-    if (!conversation) {
-      return null;
-    }
-    return await this.#activeView(config, conversation);
+    return await this.#activeView(config, await harness.root(BACKGROUND_CONTEXT));
   }
 
   /**
@@ -888,73 +957,125 @@ export class PiObject extends RpcTarget implements PiAgent {
   }
 
   async publishQueue(queue: PiAgentWaitingQueue): Promise<void> {
-    if (this.#queue && this.#queue.revision >= queue.revision) {
-      return;
-    }
-    this.#queue = queue;
-    // Queue frames do not build on the view, so viewers still waiting for theirs get them too.
-    this.#broadcast({ type: "queue", paused: queue.paused, items: queue.items }, [
-      ...this.#viewers,
-      ...this.#restoredViewers,
-    ]);
+    this.#viewers.publishQueue(queue);
   }
 
-  #broadcast(frame: PiAgentViewFrame, viewers: Iterable<PiAgentViewer>) {
-    let message: string | null = null;
-    for (const viewer of viewers) {
-      message ??= JSON.stringify(frame);
-      viewer.send(message);
+  /** Sends the agent's viewers each of `subagents`, which started or ended. */
+  #publishSubagents(subagents: readonly PiAnchoredSubagent[]) {
+    for (const { taskId, conversationId } of subagents) {
+      this.#publishSubagent(async ({ harness, storage }) =>
+        readPiSubagentSummary(harness, storage, taskId, conversationId, BACKGROUND_CONTEXT),
+      );
     }
-  }
-
-  // Concurrent connections share the opening watch; a watch that failed or ended is opened again.
-  #watchView(harness: Harness) {
-    if (this.#viewWatch) {
-      return this.#viewWatch;
-    }
-    const watching = (async () => {
-      const watch = await (await harness.root(BACKGROUND_CONTEXT)).watch(BACKGROUND_CONTEXT);
-      // Each frame's ops turn the previous frame's view into this one's, so viewers that start
-      // from any delivered view stay exact.
-      watch.start(async (call) => {
-        // A failed call carries no ops; the next value's ops still build on the last view sent.
-        if (call.kind === "value") {
-          this.#broadcast({ type: "ops", ops: call.ops }, this.#viewers);
-        }
-      });
-      // The watch ends with the agent's session, as when the object closes; viewers reconnect.
-      void watch.closed.then(() => {
-        if (this.#viewWatch === watching) {
-          this.#viewWatch = null;
-        }
-        const viewers = [...this.#viewers];
-        this.#viewers.clear();
-        for (const viewer of viewers) {
-          viewer.close(1012, "The conversation closed.");
-        }
-      });
-      return watch;
-    })();
-    this.#viewWatch = watching;
-    watching.catch(() => {
-      if (this.#viewWatch === watching) {
-        this.#viewWatch = null;
-      }
-    });
-    return watching;
   }
 
   /**
-   * Sends the viewer the queue and the whole conversation view, then every change to either, until
-   * the returned function disconnects it. The manager decides whether the viewer may watch; a
-   * viewer it refuses, or that the agent cannot serve, is closed instead.
+   * Sends the agent's viewers a subagent that changed, as `read` reads it once those before it
+   * were sent; null sends nothing. A change that cannot be sent reconnects them instead, since
+   * nothing may change it again.
    */
-  async connectViewer(
+  #publishSubagent(read: (opened: OpenPiAgent) => Promise<PiSubagentSummary | null>) {
+    this.#publishingSubagents = this.#publishingSubagents
+      .then(async () => {
+        const opened = this.#opened;
+        if (!opened || !this.#viewers.watched) {
+          return;
+        }
+        const summary = await read(opened);
+        if (summary) {
+          this.#viewers.publishSubagent(summary);
+        }
+      })
+      .catch((error: unknown) => {
+        this.#dependencies.report(error, this.#provisioned?.config ?? null);
+        this.#viewers.resynchronize();
+      });
+  }
+
+  /**
+   * Sends the viewer the agent's queue, conversation, and subagents (see `PiAgentViewFrame`), then
+   * every change, and the conversations of the subagents it subscribes to, until it disconnects.
+   * The manager decides whether the viewer may watch; a viewer it refuses, or that the agent cannot
+   * serve, is closed instead.
+   */
+  connectViewer(viewer: PiAgentViewer, viewing: PiAgentViewing): PiAgentViewerSession {
+    const connection = new PiAgentViewerConnection();
+    // The subagents the viewer follows, each until it unsubscribes or disconnects.
+    const subscriptions = new Map<string, PiAgentViewerConnection>();
+    // Subscriptions wait for the agent's conversation, so the agent decides on the viewer first.
+    const served = this.#serveViewer(viewer, viewing, connection);
+    // Messages wait for that, each holding its place, so a viewer may send only so many meanwhile.
+    let pending = 0;
+    const refuse = (reason: string) => {
+      viewer.close(PI_AGENT_WATCH_REFUSED, reason);
+      connection.close();
+    };
+    return {
+      receive: (message) => {
+        if (connection.closed) {
+          return;
+        }
+        const parsed = piAgentWatchMessage(message);
+        if (parsed === null) {
+          refuse("The viewer sent a message the agent cannot read.");
+          return;
+        }
+        if (pending === VIEWER_PENDING_LIMIT) {
+          refuse("The viewer sent more messages than the agent can take at once.");
+          return;
+        }
+        pending += 1;
+        void served.then(async (harness) => {
+          pending -= 1;
+          if (harness === null || connection.closed) {
+            return;
+          }
+          const { subagent } = parsed;
+          if (parsed.type === "unsubscribe") {
+            subscriptions.get(subagent)?.close();
+            subscriptions.delete(subagent);
+            return;
+          }
+          if (subscriptions.has(subagent)) {
+            return;
+          }
+          if (subscriptions.size === VIEWER_SUBAGENT_LIMIT) {
+            unsubscribed(
+              viewer,
+              subagent,
+              `A viewer follows at most ${VIEWER_SUBAGENT_LIMIT} subagents at once.`,
+            );
+            return;
+          }
+          const subscription = new PiAgentViewerConnection();
+          subscriptions.set(subagent, subscription);
+          const release = connection.hold(() => {
+            subscription.close();
+          });
+          subscription.hold(() => {
+            release();
+            if (subscriptions.get(subagent) === subscription) {
+              subscriptions.delete(subagent);
+            }
+          });
+          await this.#serveSubscription(viewer, harness, subagent, subscription);
+        });
+      },
+      disconnect: () => {
+        connection.close();
+      },
+    };
+  }
+
+  /**
+   * Sends the viewer the agent's queue, conversation, and subagents; resolves with the agent's
+   * harness once it did, or null when the viewer was refused, closed, or disconnected.
+   */
+  async #serveViewer(
     viewer: PiAgentViewer,
     { agent, execution }: PiAgentViewing,
-  ): Promise<() => void> {
-    let watching: Promise<WatchHandle<ConversationView>>;
-    let watch: WatchHandle<ConversationView>;
+    connection: PiAgentViewerConnection,
+  ): Promise<Harness | null> {
     try {
       this.#assertObjectIdentity(agent);
       const authorization = await this.#runtime.objects.piManager
@@ -962,81 +1083,135 @@ export class PiObject extends RpcTarget implements PiAgent {
         .commands.authorizeViewer({ agentName: agent.agentName, execution });
       if (authorization.type === "refused") {
         viewer.close(PI_AGENT_WATCH_REFUSED, authorization.message);
-        return () => {};
+        return null;
       }
       // The agent holds only the queues published to it, which a restart forgets.
-      await this.publishQueue(authorization.queue);
+      this.#viewers.publishQueue(authorization.queue);
       await this.#ready;
       if (!this.#provisioned) {
         viewer.close(PI_AGENT_WATCH_REFUSED, "Pi agent has no turns yet.");
-        return () => {};
+        return null;
       }
-      const { harness } = await this.#open(this.#provisioned);
-      watching = this.#watchView(harness);
-      watch = await watching;
+      const opened = await this.#open(this.#provisioned);
+      const view = await this.#viewers.watch(
+        viewer,
+        await opened.harness.root(BACKGROUND_CONTEXT),
+        null,
+        connection,
+      );
+      if (view === null) {
+        return null;
+      }
+      // Changes the viewer gets from now on are read after these.
+      const sending = this.#publishingSubagents.then(async () => {
+        const frame = await this.#subagentsFrame(opened);
+        if (!connection.closed) {
+          viewer.send(JSON.stringify(frame));
+        }
+      });
+      this.#publishingSubagents = sending.catch(() => {});
+      await sending;
+      return opened.harness;
     } catch (cause) {
       this.#closeUnservedViewer(viewer, cause);
-      return () => {};
+      return null;
     }
-    if (this.#viewWatch !== watching) {
-      viewer.close(1012, "The conversation closed.");
-      return () => {};
-    }
-    if (this.#queue) {
-      viewer.send(
-        JSON.stringify({
-          type: "queue",
-          paused: this.#queue.paused,
-          items: this.#queue.items,
-        } satisfies PiAgentViewFrame),
-      );
-    }
-    // `value` is the latest view the watch delivered, and every delivery is broadcast at once, so
-    // the first ops this viewer receives start from this view.
-    viewer.send(JSON.stringify({ type: "view", view: watch.value } satisfies PiAgentViewFrame));
-    this.#viewers.add(viewer);
-    return () => {
-      this.#viewers.delete(viewer);
-    };
   }
 
   /**
-   * Takes back a viewer that had its view when the object hibernated. Once the agent opens, the
-   * viewer gets the whole view again, then every change, until the returned function disconnects it.
+   * The subagents a viewer starts with: the oldest page of those that wait, the newest page of the
+   * others, and those that run, however old. The queue says how many wait.
    */
-  restoreViewer(viewer: PiAgentViewer): () => void {
-    this.#restoredViewers.add(viewer);
-    // An agent opened before the viewer came back serves it now; an opening one serves it once open.
-    if (this.#opened) {
-      void this.#serveRestoredViewers(this.#opened.harness);
+  async #subagentsFrame({ harness, storage, subagents }: OpenPiAgent): Promise<PiAgentViewFrame> {
+    const listed = await readWaitingPiSubagents(harness, SUBAGENT_PAGE_SIZE, BACKGROUND_CONTEXT);
+    const read = async (taskId: TaskId, conversationId: ConversationId) =>
+      await this.#listedSubagent(harness, storage, taskId, conversationId);
+    const page = await listPiSubagents(storage, null, SUBAGENT_PAGE_SIZE, read, BACKGROUND_CONTEXT);
+    listed.push(...page.subagents);
+    for (const { taskId, conversationId } of subagents.running()) {
+      if (page.older === null || conversationId > page.older.through) {
+        continue;
+      }
+      const summary = await read(taskId, conversationId);
+      if (summary) {
+        listed.push(summary);
+      }
     }
-    return () => {
-      this.#restoredViewers.delete(viewer);
-      this.#viewers.delete(viewer);
-    };
+    return { type: "subagents", subagents: listed, older: page.older };
   }
 
-  // Recovery on opening may commit what the viewers never saw, so each starts again from a whole view.
-  async #serveRestoredViewers(harness: Harness): Promise<void> {
-    if (this.#restoredViewers.size === 0) {
-      return;
-    }
-    let watch: WatchHandle<ConversationView>;
+  /**
+   * A subagent as a list of them shows it; null for one it cannot read, which is reported, so the
+   * others still show.
+   */
+  async #listedSubagent(
+    harness: Harness,
+    storage: Storage,
+    taskId: TaskId,
+    conversationId: ConversationId,
+  ): Promise<PiSubagentSummary | null> {
     try {
-      watch = await this.#watchView(harness);
-    } catch (cause) {
-      for (const viewer of this.#restoredViewers) {
-        this.#closeUnservedViewer(viewer, cause);
+      return await readPiSubagentSummary(
+        harness,
+        storage,
+        taskId,
+        conversationId,
+        BACKGROUND_CONTEXT,
+      );
+    } catch (error) {
+      this.#dependencies.report(error, this.#provisioned?.config ?? null);
+      return null;
+    }
+  }
+
+  /**
+   * Sends the viewer the conversation of the subagent `requestId`, then every change. A subagent
+   * it cannot send ends only that subscription.
+   */
+  async #serveSubscription(
+    viewer: PiAgentViewer,
+    harness: Harness,
+    requestId: string,
+    subscription: PiAgentViewerConnection,
+  ): Promise<void> {
+    try {
+      const conversationId = await piSubagentConversation(harness, requestId, BACKGROUND_CONTEXT);
+      if (subscription.closed) {
+        return;
       }
-      this.#restoredViewers.clear();
-      return;
+      if (conversationId === null) {
+        subscription.close();
+        unsubscribed(viewer, requestId, "No subagent of this agent started for that request.");
+        return;
+      }
+      await this.#viewers.watch(
+        viewer,
+        await this.#requireConversation(harness, conversationId),
+        requestId,
+        subscription,
+      );
+    } catch (cause) {
+      subscription.close();
+      if (cause instanceof PathError) {
+        unsubscribed(viewer, requestId, PiConversationViewDamagedError.publicMessage);
+      } else {
+        this.#dependencies.report(cause, this.#provisioned?.config ?? null);
+        unsubscribed(viewer, requestId, "The subagent's conversation is unavailable.");
+      }
     }
-    const message = JSON.stringify({ type: "view", view: watch.value } satisfies PiAgentViewFrame);
-    for (const viewer of this.#restoredViewers) {
-      viewer.send(message);
-      this.#viewers.add(viewer);
+  }
+
+  /**
+   * Takes back a viewer the object kept while it hibernated. It lost its view, so it is closed as
+   * worth reconnecting after once the agent opens, or at once if it is open, until it disconnects.
+   * What it sends meanwhile is dropped.
+   */
+  restoreViewer(viewer: PiAgentViewer): PiAgentViewerSession {
+    const disconnect = this.#viewers.restore(viewer);
+    if (this.#opened) {
+      this.#viewers.closeHibernated();
     }
-    this.#restoredViewers.clear();
+    return { receive: () => {}, disconnect };
   }
 
   #closeUnservedViewer(viewer: PiAgentViewer, cause: unknown) {
@@ -1068,15 +1243,8 @@ export class PiObject extends RpcTarget implements PiAgent {
       await this.#state.storage.put(STOP_FENCE_KEY, revision);
     }
     await this.#state.storage.setAlarm(this.#nowEpochMs());
+    // Subagents' anchors are the root's background tasks, so this stops them too.
     await (await harness.root(BACKGROUND_CONTEXT)).abort(BACKGROUND_CONTEXT, { background: true });
-    // No task owns the subagents prompts started, so the root's abort does not reach them.
-    for (const conversationId of await runningPiSubagentConversations(
-      harness,
-      BACKGROUND_CONTEXT,
-    )) {
-      const conversation = await harness.conversation(conversationId, BACKGROUND_CONTEXT);
-      await conversation?.abort(BACKGROUND_CONTEXT, { background: true });
-    }
   }
 
   async alarm(): Promise<void> {
@@ -1211,4 +1379,13 @@ export class PiObject extends RpcTarget implements PiAgent {
   }
 }
 
-/** A view socket as the agent sends to it; a socket that closes meanwhile drops what it is sent. */
+/** Tells the viewer it follows the subagent `requestId` no longer, and why. */
+function unsubscribed(viewer: PiAgentViewer, requestId: string, message: string) {
+  viewer.send(
+    JSON.stringify({
+      type: "unsubscribed",
+      subagent: requestId,
+      message,
+    } satisfies PiAgentViewFrame),
+  );
+}

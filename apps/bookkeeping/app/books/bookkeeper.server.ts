@@ -344,7 +344,7 @@ async function readBookkeeperProgress(
     });
     const steps = agentSteps(
       activity.tools.map((tool) => ({
-        running: tool.status === "running",
+        status: tool.status,
         calls: tool.calls?.items ?? null,
       })),
     );

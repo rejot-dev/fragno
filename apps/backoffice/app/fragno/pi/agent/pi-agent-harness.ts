@@ -38,7 +38,12 @@ import {
 } from "./backoffice-agent-context";
 import { estimatePiContextTokens } from "./context-usage";
 import type { PiAgentTurn } from "./pi-agent-contract";
-import { piConversationOfSession } from "./pi-agent-subagents";
+import {
+  observePiSubagents,
+  piConversationOfSession,
+  type PiLiveSubagents,
+  type PiAnchoredSubagent,
+} from "./pi-agent-subagents";
 import { startReportingPiAgentTurns } from "./pi-agent-turn-events";
 import { readActivePiAgentTurn } from "./pi-agent-turns";
 import { createPiModels } from "./pi-models";
@@ -63,6 +68,8 @@ export type OpenPiAgent = {
    * subagents that need one.
    */
   awaitSubagentsTool: ToolRegistration;
+  /** The subagents that run. */
+  subagents: PiLiveSubagents;
   /** Reports the turns started and settled since the last report to Automations and the manager. */
   reportTurns: (context: Context) => Promise<void>;
   /** Reloads the agent's skills as `turn`'s submitter; see `pi.agent.reload`. */
@@ -174,12 +181,14 @@ export async function openPiAgentHarness(input: {
   nowEpochMs: () => number;
   /** Told whenever the agent's next wakeup changes; Pi keeps no timers of its own for sleeps. */
   onWake: (wake: Wake) => void;
+  /** Told of subagents that start or end, as `observePiSubagents` tells them. */
+  onSubagentsChange: (subagents: PiAnchoredSubagent[]) => void;
 }): Promise<OpenPiAgent> {
   const { config, runtime, dependencies } = input;
   function report(error: unknown) {
     dependencies.report(error, config);
   }
-  let opened: { harness: Harness; storage: Storage } | null = null;
+  let opened: { harness: Harness; storage: Storage; subagents: PiLiveSubagents } | null = null;
   const agent = createBackofficeAgentContext({
     config,
     runtime,
@@ -195,7 +204,12 @@ export async function openPiAgentHarness(input: {
       return ROOT_CONVERSATION_ID;
     }
     const conversationId = opened
-      ? await piConversationOfSession(opened.harness, sessionId, BACKGROUND_CONTEXT)
+      ? await piConversationOfSession(
+          opened.harness,
+          opened.subagents,
+          sessionId,
+          BACKGROUND_CONTEXT,
+        )
       : null;
     if (conversationId === null) {
       throw new Error(
@@ -275,7 +289,14 @@ export async function openPiAgentHarness(input: {
     },
     BACKGROUND_CONTEXT,
   );
-  opened = { harness, storage };
+  let subagents: PiLiveSubagents;
+  try {
+    subagents = await observePiSubagents(harness, input.onSubagentsChange, BACKGROUND_CONTEXT);
+  } catch (cause) {
+    await harness.close(BACKGROUND_CONTEXT);
+    throw cause;
+  }
+  opened = { harness, storage, subagents };
   const reportTurns = startReportingPiAgentTurns({
     config,
     agent,
@@ -302,6 +323,7 @@ export async function openPiAgentHarness(input: {
     storage,
     billing,
     awaitSubagentsTool,
+    subagents,
     reportTurns,
     reloadSkills: (turn, context) => agent.turn(turn).reloadSkills(context),
   };

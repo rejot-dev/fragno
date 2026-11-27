@@ -23,12 +23,8 @@ export type ChatSubagentRunStatus =
       headline: string;
       startedAt: Date;
     }
-  | {
-      kind: "completed";
-      durationMs: number | null;
-      /** Its answer as plain text; the row shows its start. */
-      answer: string;
-    }
+  /** Answered; its transcript holds the answer. */
+  | { kind: "completed"; durationMs: number }
   /** Stopped with its agent before it answered. */
   | { kind: "stopped" }
   | { kind: "failed"; reason: string };
@@ -145,7 +141,7 @@ function RowMarker({ status }: { status: ChatSubagentRunStatus }) {
   throw new Error("Unsupported subagent status.", { cause: status satisfies never });
 }
 
-/** Where a subagent stands, under its task: what it does now, what it answered, or why not. */
+/** Where a subagent stands, under its task: what it does now, that it answered, or why not. */
 function RowStatus({ status }: { status: ChatSubagentRunStatus }) {
   switch (status.kind) {
     case "running":
@@ -155,7 +151,7 @@ function RowStatus({ status }: { status: ChatSubagentRunStatus }) {
         </span>
       );
     case "completed":
-      return <span className="block truncate">{status.answer}</span>;
+      return <span className="block truncate">Answered</span>;
     case "failed":
       return <span className="block truncate text-[var(--bo-failed)]">{status.reason}</span>;
     case "queued":
@@ -171,7 +167,7 @@ function RowTiming({ status }: { status: ChatSubagentRunStatus }) {
     case "running":
       return <Elapsed since={status.startedAt} />;
     case "completed":
-      return status.durationMs === null ? null : <>{formatActivityDuration(status.durationMs)}</>;
+      return <>{formatActivityDuration(status.durationMs)}</>;
     case "failed":
       return <span className="font-medium text-[var(--bo-failed)]">Failed</span>;
     case "queued":

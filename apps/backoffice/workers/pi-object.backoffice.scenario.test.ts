@@ -1825,42 +1825,52 @@ test("subagents an app starts each answer one task in a conversation of their ow
                 task: "Read document 2.",
                 askedAt: expect.any(String),
                 askedBy: { kind: "person" },
-                status: { requestId: "doc-2", status: "completed", answer: "Document 2 read." },
-                startedAt: expect.any(String),
-                answeredAt: expect.any(String),
+                state: {
+                  status: "answered",
+                  startedAt: expect.any(String),
+                  answeredAt: expect.any(String),
+                },
               },
               {
                 requestId: "doc-1",
                 task: "Write the store.",
                 askedAt: expect.any(String),
                 askedBy: { kind: "person" },
-                status: {
-                  requestId: "doc-1",
-                  status: "completed",
-                  answer: "I may not write the store.",
+                state: {
+                  status: "answered",
+                  startedAt: expect.any(String),
+                  answeredAt: expect.any(String),
                 },
-                startedAt: expect.any(String),
-                answeredAt: expect.any(String),
               },
             ],
+            older: null,
           });
-        }),
-        then.assert("a subagent's conversation reads by its request ID", async ({ runtime }) => {
-          const subagentView = await request(
+          // A cursor continues only a page the agent listed.
+          const forged = await request(
             runtime,
             execution,
-            "/agents/reader/subagents/doc-1/view",
+            `/agents/reader/subagents?cursor=${encodeURIComponent('{"after":"x"}')}`,
             null,
           );
-          assert.equal(subagentView.status, 200, await subagentView.clone().text());
-          expect(JSON.stringify(await subagentView.json())).toContain("I may not write the store.");
+          assert.equal(forged.status, 400, await forged.clone().text());
+        }),
+        then.assert("a subagent's conversation reads by its request ID", async ({ runtime }) => {
+          const entries = await request(
+            runtime,
+            execution,
+            "/agents/reader/entries?subagent=doc-1",
+            null,
+          );
+          assert.equal(entries.status, 200, await entries.clone().text());
+          expect(JSON.stringify(await entries.json())).toContain("I may not write the store.");
+          // A request that started no subagent has no entries.
           const missing = await request(
             runtime,
             execution,
-            "/agents/reader/subagents/own/view",
+            "/agents/reader/entries?subagent=own",
             null,
           );
-          assert(missing.status === 404);
+          expect(await missing.json()).toEqual({ entries: [], more: false });
           const messages = await request(
             runtime,
             execution,
@@ -3070,7 +3080,7 @@ test("durable Pi restores scoped tools and reports interrupted codemode without 
               try {
                 // The restored turn record is the only authority the recovered tools can use.
                 await restored.alarm();
-                const transcript = (await restored.getView(config, null)) as ConversationView;
+                const transcript = (await restored.getView(config)) as ConversationView;
                 expect(JSON.stringify(transcript.entries)).toContain(
                   "Recovered with exactly one mutation.",
                 );
@@ -3216,6 +3226,7 @@ test("an agent an app's installation prompts calls the app's actions as the inst
             assert.equal(result?.isError, false, JSON.stringify(result));
             return fauxAssistantMessage("Counted the invoices.");
           },
+          fauxAssistantMessage("Summed the invoices."),
         ]),
       },
       piAvailableModels: PI_SCENARIO_AVAILABLE_MODELS,
@@ -3309,6 +3320,31 @@ test("an agent an app's installation prompts calls the app's actions as the inst
             ).toMatchObject([{ actor: { kind: "installation" }, scopeRestriction: org }]);
           },
         ),
+        then.assert("a subagent Ledger asks for shows Ledger as its asker", async ({ runtime }) => {
+          const asked = await request(runtime, asInstallation(), "/agents/counter/prompts", {
+            requestId: "sum",
+            content: "Sum the invoices.",
+            subagent: true,
+          });
+          assert.equal(asked.status, 202, await asked.clone().text());
+          await runtime.drain();
+          const listed = await request(
+            runtime,
+            asInstallation(),
+            "/agents/counter/subagents",
+            null,
+          );
+          expect(await listed.json()).toMatchObject({
+            subagents: [
+              {
+                requestId: "sum",
+                askedBy: { kind: "app", appId, appSlug: "ledger" },
+                state: { status: "answered" },
+              },
+            ],
+            older: null,
+          });
+        }),
       ],
     }),
   );

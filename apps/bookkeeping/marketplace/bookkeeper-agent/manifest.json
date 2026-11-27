@@ -1,0 +1,11 @@
+{
+  "slug": "bookkeeper-agent",
+  "metadata": {
+    "name": "Bookkeeping agent",
+    "summary": "Proposes how to book the documents and bank transactions of a firm's clients in Bookkeeping.",
+    "description": "Defines the agent in each firm's agent project that Bookkeeping asks to propose how to book its clients' invoices, receipts, and bank transactions, and a work queue page showing what it was asked and how far it got.",
+    "category": "operations",
+    "tags": []
+  },
+  "version": "1.7.1"
+}

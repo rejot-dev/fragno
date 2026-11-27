@@ -1,20 +1,27 @@
-import type { PiPromptStatus } from "@fragno-dev/backoffice-api/v0/pi";
+import type {
+  PiOlderSubagents,
+  PiSubagentAsker,
+  PiSubagentSummary,
+} from "@fragno-dev/backoffice-api/v0/pi";
 import type { PiAgentNotification } from "@fragno-dev/backoffice-api/v0/pi-conversation/notification-entry";
 import {
   backofficeContextScopeSchema,
   backofficeContextScopesEqual,
 } from "@fragno-dev/backoffice-api/v0/shared/scope";
-import {
-  liveThoughtHeadline,
-  plainText,
-} from "@fragno-private/backoffice-chat/messages/agent-turn";
+import { liveThoughtHeadline } from "@fragno-private/backoffice-chat/messages/agent-turn";
 import { AssistantMessage } from "@fragno-private/backoffice-chat/messages/messages";
+import type {
+  PiAgentSubagentsState,
+  PiAgentViewSocket,
+  PiSubagentConversationState,
+} from "@fragno-private/backoffice-conversation/live/view-socket";
 import {
   createAssistantUiMessages,
   isPiConversationRunning,
   piConversationDraftAgentMessage,
   piConversationMessages,
 } from "@fragno-private/backoffice-conversation/projection/assistant-runtime";
+import { usePiTranscript } from "@fragno-private/backoffice-conversation/projection/transcript";
 import { ChatEventDivider } from "@fragno-private/design-system/agents/chat-divider";
 import {
   ChatSubagentGroup,
@@ -22,6 +29,7 @@ import {
   type ChatSubagentRun,
   type ChatSubagentRunStatus,
 } from "@fragno-private/design-system/agents/chat-subagent-group";
+import { ChatHistoryControls } from "@fragno-private/design-system/agents/chat-thread";
 import { PaneMessage, PaneSpinner } from "@fragno-private/design-system/feedback/pane-message";
 import {
   createContext,
@@ -46,149 +54,182 @@ import type { ConversationView } from "@earendil-works/pi-durable";
 import { backofficeRuntimeScopeFromResolvedScope } from "@/backoffice-runtime/resolved-scope";
 import { useCurrentBackofficeContext } from "@/components/backoffice/current-context";
 import { readPiAgentEvent } from "@/fragno/backoffice-capabilities/capabilities/pi";
+import { formatPiAgentName } from "@/fragno/pi/agent/pi-agent-name";
 
-import type { loader as subagentViewLoader } from "./agent-subagent-view";
-import type { AgentSubagent, loader as subagentsLoader } from "./agent-subagents";
+import { useEntryPageReader } from "./agent-entry-pages";
+import type { loader as subagentsLoader } from "./agent-subagents";
 
 // Subagents show in the agent's thread. Those its own turn starts sit in that turn, under the tool
 // call that asked for them; those anyone else asks for sit where they were asked, between turns.
 
-/** How often the list is read again while a subagent waits or runs, and otherwise. */
-const ACTIVE_POLL_MS = 2_000;
-const IDLE_POLL_MS = 15_000;
-/** How often a running subagent's transcript is read again. */
-const TRANSCRIPT_POLL_MS = 1_500;
-/** The longest wait between reads of a transcript that keeps failing transiently. */
-const TRANSCRIPT_RETRY_MAX_MS = 30_000;
+/**
+ * Who asked for a subagent, as the agent's page shows it: its agent's own turn, from a tool call it
+ * shows the subagent under, or someone else, by name; null names no one, such as a person.
+ */
+type AgentSubagentAsker =
+  | { kind: "turn"; toolCallId: string }
+  | { kind: "other"; name: string | null };
 
-/** Pi settles a subagent its agent's stop cut off as unanswered with this reason. */
-const ABORTED_REASON = "aborted";
+/** One of the agent's subagents as its page shows it. */
+type AgentSubagent = Omit<PiSubagentSummary, "askedBy"> & { askedBy: AgentSubagentAsker };
 
-type AgentSubagents =
-  | { status: "loading" }
-  | { status: "ready"; subagents: AgentSubagent[] }
-  | { status: "failed"; message: string };
-
-function isActive({ status }: AgentSubagent) {
-  return status.status === "queued" || status.status === "running";
+/** How far a subagent got: it waits, then runs, then ends, and never goes back. */
+function progress({ state }: PiSubagentSummary) {
+  return state.status === "waiting" ? 0 : state.status === "running" ? 1 : 2;
 }
 
 /**
- * The agent's latest subagents, read again often while any waits or runs and seldom otherwise.
- * `revision` reads them at once when it changes, such as when the agent's conversation grows, since
- * its turns start subagents.
+ * The pages of older subagents the page read since its socket connected, from the socket's
+ * `older` on, and which it would read next; null once none is left.
  */
-function useAgentSubagents(agentPath: string, revision: number): AgentSubagents {
-  const [state, setState] = useState<AgentSubagents>({ status: "loading" });
-  useEffect(() => {
-    const controller = new AbortController();
-    let timer: number | undefined;
-    async function read() {
-      let delay = IDLE_POLL_MS;
-      try {
-        const response = await fetch(`${agentPath}/subagents`, {
-          headers: { accept: "application/json" },
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          throw new Error(`Listing subagents failed with status ${response.status}.`);
-        }
-        // This application-owned resource route returns its loader data unchanged.
-        const { subagents } = await response.json<Awaited<ReturnType<typeof subagentsLoader>>>();
-        // A read that finished as its agent changed would show and poll the previous agent.
-        if (controller.signal.aborted) {
-          return;
-        }
-        setState({ status: "ready", subagents });
-        delay = subagents.some(isActive) ? ACTIVE_POLL_MS : IDLE_POLL_MS;
-      } catch (cause) {
-        if (controller.signal.aborted) {
-          return;
-        }
-        setState({
-          status: "failed",
-          message: cause instanceof Error ? cause.message : String(cause),
-        });
-      }
-      timer = window.setTimeout(() => void read(), delay);
-    }
-    void read();
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }, [agentPath, revision]);
-  return state;
-}
+type EarlierSubagents = {
+  agentPath: string;
+  from: PiOlderSubagents;
+  subagents: readonly PiSubagentSummary[];
+  older: PiOlderSubagents | null;
+};
 
-type SubagentView =
-  | { status: "loading" }
-  | { status: "ready"; view: ConversationView | null }
-  | { status: "failed"; message: string };
-
-/** A read failed in a way reading again cannot fix, such as a refusal or a malformed answer. */
-class PermanentReadError extends Error {}
+/** A page of older subagents that failed to load, and how to load it again. */
+export type SubagentsFailure = { message: string; retry: () => Promise<void> };
 
 /**
- * A subagent's conversation, read again while it runs, and while `startable` until it starts.
- * Failures the server or the network may recover from are read again with backoff, keeping what
- * was read; others end the reads.
+ * The agent's subagents since Pi ID `shownAfter`, where the thread's history starts, by request
+ * ID: those its view socket sent, and older ones, read a page at a time as the reader loads
+ * earlier history. A socket that connects again sends its own newest page, so reading starts over
+ * from there, leaving no gap.
  */
-function useSubagentView(agentPath: string, requestId: string, startable: boolean): SubagentView {
-  const [state, setState] = useState<SubagentView>({ status: "loading" });
+function useKnownSubagents(
+  agentPath: string,
+  live: PiAgentSubagentsState,
+  shownAfter: number,
+): { byRequestId: ReadonlyMap<string, PiSubagentSummary>; failure: SubagentsFailure | null } {
+  const [earlier, setEarlier] = useState<EarlierSubagents | null>(null);
+  // The page whose read failed, until the reader retries it.
+  const [failed, setFailed] = useState<PiOlderSubagents | null>(null);
+  const from = live.older;
+  const current = earlier?.agentPath === agentPath && earlier.from === from ? earlier : null;
+  const next = current === null ? from : current.older;
+  const reading = next !== null && next.through > shownAfter && failed !== next;
   useEffect(() => {
     const controller = new AbortController();
-    let timer: number | undefined;
-    let failures = 0;
-    async function read() {
-      let view: ConversationView | null;
-      try {
-        const response = await fetch(`${agentPath}/subagents/${encodeURIComponent(requestId)}`, {
-          headers: { accept: "application/json" },
-          signal: controller.signal,
-        });
-        if (response.status >= 400 && response.status < 500) {
-          throw new PermanentReadError(
-            `Reading the subagent failed with status ${response.status}.`,
-          );
-        }
-        if (!response.ok) {
-          throw new Error(`Reading the subagent failed with status ${response.status}.`);
-        }
-        // This application-owned resource route returns its loader data unchanged.
-        const data = (await response.json().catch((cause: unknown) => {
-          throw new PermanentReadError("The subagent's transcript could not be read.", { cause });
-        })) as Awaited<ReturnType<typeof subagentViewLoader>>;
-        view = data.view;
-      } catch (cause) {
-        if (controller.signal.aborted) {
-          return;
-        }
-        if (cause instanceof PermanentReadError) {
-          setState({ status: "failed", message: cause.message });
-          return;
-        }
-        failures += 1;
-        timer = window.setTimeout(
-          () => void read(),
-          Math.min(TRANSCRIPT_POLL_MS * 2 ** failures, TRANSCRIPT_RETRY_MAX_MS),
-        );
-        return;
+    async function read(page: PiOlderSubagents, start: PiOlderSubagents) {
+      const query = new URLSearchParams({ cursor: page.cursor });
+      const response = await fetch(`${agentPath}/subagents?${query}`, {
+        headers: { accept: "application/json" },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`Listing subagents failed with status ${response.status}.`);
       }
-      failures = 0;
-      setState({ status: "ready", view });
-      if (view === null ? startable : isPiConversationRunning(view)) {
-        timer = window.setTimeout(() => void read(), TRANSCRIPT_POLL_MS);
-      }
+      // This application-owned resource route returns the manager's page unchanged.
+      const read = await response.json<Awaited<ReturnType<typeof subagentsLoader>>>();
+      setEarlier((known) => {
+        const base =
+          known?.agentPath === agentPath && known.from === start
+            ? known
+            : { agentPath, from: start, subagents: [], older: start };
+        // Each page continues the one before it; another read already went on.
+        if (base.older !== page) {
+          return known;
+        }
+        return { ...base, subagents: [...base.subagents, ...read.subagents], older: read.older };
+      });
     }
-    void read();
+    if (reading && from !== null && next !== null) {
+      read(next, from).catch((cause: unknown) => {
+        if (!controller.signal.aborted) {
+          console.error("Reading the agent's earlier subagents failed.", cause);
+          setFailed(next);
+        }
+      });
+    }
     return () => {
       controller.abort();
-      window.clearTimeout(timer);
     };
-  }, [agentPath, requestId, startable]);
-  return state;
+  }, [agentPath, from, next, reading]);
+  const byRequestId = useMemo(() => {
+    const known = new Map<string, PiSubagentSummary>();
+    for (const subagent of [...(current?.subagents ?? []), ...live.byRequestId.values()]) {
+      const before = known.get(subagent.requestId);
+      if (before === undefined || progress(before) <= progress(subagent)) {
+        known.set(subagent.requestId, subagent);
+      }
+    }
+    return known;
+  }, [current, live]);
+  const failure = useMemo(
+    () =>
+      failed === null || failed !== next
+        ? null
+        : {
+            message: "Some of the agent's earlier subagents could not be loaded.",
+            retry: async () => {
+              setFailed(null);
+            },
+          },
+    [failed, next],
+  );
+  return { byRequestId, failure };
 }
+
+function shownAsker(asker: PiSubagentAsker) {
+  switch (asker.kind) {
+    case "turn":
+      return asker;
+    case "agent":
+      return { kind: "other", name: formatPiAgentName(asker.agentName) } as const;
+    case "app":
+      return { kind: "other", name: asker.appSlug && capitalize(asker.appSlug) } as const;
+    case "person":
+      return { kind: "other", name: null } as const;
+  }
+  throw new Error("Unsupported subagent asker.", { cause: asker satisfies never });
+}
+
+function capitalize(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * The agent's subagents for its thread, newest first: those that wait or run, and those that
+ * started since Pi ID `shownAfter`, where the thread's history starts; and a page of them that
+ * failed to load.
+ */
+function useAgentSubagents(
+  agentPath: string,
+  live: PiAgentSubagentsState,
+  shownAfter: number,
+): { listed: AgentSubagent[]; failure: SubagentsFailure | null } {
+  const { byRequestId, failure } = useKnownSubagents(agentPath, live, shownAfter);
+  const listed = useMemo(
+    () =>
+      [...byRequestId.values()]
+        .map((subagent) => ({ ...subagent, askedBy: shownAsker(subagent.askedBy) }))
+        .sort((left, right) => right.askedAt.localeCompare(left.askedAt)),
+    [byRequestId],
+  );
+  return { listed, failure };
+}
+
+function isActive({ state }: AgentSubagent) {
+  return state.status === "waiting" || state.status === "running";
+}
+
+/** Follows a subagent's conversation on the agent's socket while mounted. */
+function useSubagentConversation(
+  socket: SubagentSocket,
+  requestId: string,
+): PiSubagentConversationState {
+  const { follow } = socket;
+  useEffect(() => follow(requestId), [follow, requestId]);
+  return socket.conversations.get(requestId) ?? { status: "connecting" };
+}
+
+/** The agent's socket, as the subagents its page shows follow it. */
+type SubagentSocket = Pick<
+  Extract<PiAgentViewSocket, { status: "ready" }>,
+  "follow" | "conversations"
+>;
 
 /** What a running subagent does now, as a running turn's header would say it. */
 function subagentHeadline(view: ConversationView): string {
@@ -231,84 +272,84 @@ function subagentHeadline(view: ConversationView): string {
   throw new Error("Unsupported agent activity.", { cause: draft.activity satisfies never });
 }
 
-/**
- * What each running subagent does now, by request ID, read again while it runs. An agent runs a
- * few subagents at a time, so this reads a few transcripts.
- */
-function useRunningHeadlines(agentPath: string, running: readonly string[]) {
-  const [headlines, setHeadlines] = useState<ReadonlyMap<string, string>>(new Map());
-  const key = running.join("\n");
+/** Follows a running subagent's conversation, telling `onHeadline` what it does now. */
+function RunningSubagentHeadline({
+  socket,
+  requestId,
+  onHeadline,
+}: {
+  socket: SubagentSocket;
+  requestId: string;
+  onHeadline: (requestId: string, headline: string | null) => void;
+}) {
+  const conversation = useSubagentConversation(socket, requestId);
+  const headline = conversation.status === "ready" ? subagentHeadline(conversation.view) : null;
   useEffect(() => {
-    const requestIds = key === "" ? [] : key.split("\n");
-    const controller = new AbortController();
-    let timer: number | undefined;
-    async function read() {
-      const found = await Promise.all(
-        requestIds.map(async (requestId) => {
-          try {
-            const response = await fetch(
-              `${agentPath}/subagents/${encodeURIComponent(requestId)}`,
-              { headers: { accept: "application/json" }, signal: controller.signal },
-            );
-            if (!response.ok) {
-              return null;
-            }
-            const { view } = await response.json<Awaited<ReturnType<typeof subagentViewLoader>>>();
-            return view === null ? null : ([requestId, subagentHeadline(view)] as const);
-          } catch {
-            // A headline is a hint; the row says it runs without one.
-            return null;
-          }
-        }),
-      );
-      if (controller.signal.aborted) {
-        return;
-      }
-      setHeadlines(new Map(found.filter((entry) => entry !== null)));
-      timer = window.setTimeout(() => void read(), TRANSCRIPT_POLL_MS);
-    }
-    if (requestIds.length > 0) {
-      void read();
-    }
-    return () => {
-      controller.abort();
-      window.clearTimeout(timer);
-    };
-  }, [agentPath, key]);
-  return headlines;
+    onHeadline(requestId, headline);
+  }, [onHeadline, requestId, headline]);
+  useEffect(
+    () => () => {
+      onHeadline(requestId, null);
+    },
+    [onHeadline, requestId],
+  );
+  return null;
 }
 
-function epoch(iso: string | null) {
-  return iso === null ? null : new Date(iso).getTime();
+/**
+ * What each running subagent does now, by request ID, from its conversation, and the components
+ * that follow them. An agent runs a few subagents at a time, so this follows a few conversations.
+ */
+function useRunningHeadlines(socket: SubagentSocket, running: readonly string[]) {
+  const [headlines, setHeadlines] = useState<ReadonlyMap<string, string>>(new Map());
+  const report = useCallback((requestId: string, headline: string | null) => {
+    setHeadlines((current) => {
+      if ((current.get(requestId) ?? null) === headline) {
+        return current;
+      }
+      const next = new Map(current);
+      if (headline === null) {
+        next.delete(requestId);
+      } else {
+        next.set(requestId, headline);
+      }
+      return next;
+    });
+  }, []);
+  const followers = running.map((requestId) => (
+    <RunningSubagentHeadline
+      key={requestId}
+      socket={socket}
+      requestId={requestId}
+      onHeadline={report}
+    />
+  ));
+  return { headlines, followers };
 }
 
 function runStatus(subagent: AgentSubagent, headline: string | null): ChatSubagentRunStatus {
-  const status: PiPromptStatus = subagent.status;
-  switch (status.status) {
-    case "queued":
+  const { state } = subagent;
+  switch (state.status) {
+    case "waiting":
       return { kind: "queued" };
     case "running":
       return {
         kind: "running",
         headline: headline ?? "Working",
-        startedAt: new Date(subagent.startedAt ?? subagent.askedAt),
+        startedAt: new Date(state.startedAt),
       };
-    case "completed": {
-      const startedAt = epoch(subagent.startedAt);
-      const answeredAt = epoch(subagent.answeredAt);
+    case "answered":
       return {
         kind: "completed",
-        durationMs: startedAt === null || answeredAt === null ? null : answeredAt - startedAt,
-        // The row shows the answer's start, which reads as text, not markup.
-        answer: plainText(status.answer ?? ""),
+        durationMs: new Date(state.answeredAt).getTime() - new Date(state.startedAt).getTime(),
       };
-    }
+    case "stopped":
+      return { kind: "stopped" };
     case "failed":
-      return status.reason === ABORTED_REASON
-        ? { kind: "stopped" }
-        : { kind: "failed", reason: status.reason };
+    case "dropped":
+      return { kind: "failed", reason: state.reason };
   }
-  throw new Error("Unsupported subagent status.", { cause: status satisfies never });
+  throw new Error("Unsupported subagent state.", { cause: state satisfies never });
 }
 
 /** Subagents asked for together, shown as one card: by a tool call, or by someone else at once. */
@@ -413,6 +454,7 @@ function batchLabel(batch: SubagentBatch) {
 type AgentSubagentsContextValue = {
   agentName: string;
   agentPath: string;
+  socket: SubagentSocket;
   /** The batches the agent's own turns asked for, by the tool call that did. */
   byToolCall: ReadonlyMap<string, SubagentBatch>;
   /** The batches anyone else asked for, by ID. */
@@ -429,43 +471,49 @@ type AgentSubagentsContextValue = {
 
 const AgentSubagentsContext = createContext<AgentSubagentsContextValue | null>(null);
 
-/** What the agent's page reads of its subagents, for its controls. */
-export type AgentSubagentsSummary = { running: boolean; waiting: boolean };
+/**
+ * What the agent's page reads of its subagents, for its controls: stopping the agent concerns its
+ * subagents too. Its queue says whether any wait, for resuming it.
+ */
+export type AgentSubagentsSummary = { running: boolean };
 
 /**
- * Reads the agent's subagents for its thread, and summarizes them for the page's controls:
- * stopping and resuming the agent concern its subagents too.
+ * Reads the agent's subagents for its thread, from its view socket and as the thread's history
+ * loads, from Pi ID `shownAfter` on, and summarizes them for the page's controls.
  */
-export function useAgentSubagentsState(agentPath: string, revision: number) {
-  const subagents = useAgentSubagents(agentPath, revision);
-  const listed = subagents.status === "ready" ? subagents.subagents : [];
+export function useAgentSubagentsState(
+  agentPath: string,
+  socket: Extract<PiAgentViewSocket, { status: "ready" }>,
+  shownAfter: number,
+) {
+  const { listed, failure } = useAgentSubagents(agentPath, socket.subagents, shownAfter);
   const summary: AgentSubagentsSummary = {
-    running: listed.some(({ status }) => status.status === "running"),
-    waiting: listed.some(({ status }) => status.status === "queued"),
+    running: listed.some(({ state }) => state.status === "running"),
   };
-  return { agentPath, listed, summary };
+  return { socket, listed, summary, failure };
 }
 
 export function AgentSubagentsProvider({
   agentName,
   agentPath,
+  socket,
   listed,
   outside,
   children,
 }: {
   agentName: string;
   agentPath: string;
+  socket: SubagentSocket;
   listed: readonly AgentSubagent[];
   /** The batches `withSubagentBatches` placed in the thread. */
   outside: readonly SubagentBatch[];
   children: ReactNode;
 }) {
   const running = useMemo(
-    () =>
-      listed.flatMap(({ requestId, status }) => (status.status === "running" ? [requestId] : [])),
+    () => listed.flatMap(({ requestId, state }) => (state.status === "running" ? [requestId] : [])),
     [listed],
   );
-  const headlines = useRunningHeadlines(agentPath, running);
+  const { headlines, followers } = useRunningHeadlines(socket, running);
   const byToolCall = useMemo(() => {
     const batches = new Map<string, SubagentBatch>();
     // The list is newest first; cards list their subagents oldest first.
@@ -539,6 +587,7 @@ export function AgentSubagentsProvider({
     return {
       agentName,
       agentPath,
+      socket,
       byToolCall,
       outside: outsideById,
       headlines,
@@ -565,8 +614,23 @@ export function AgentSubagentsProvider({
         return null;
       },
     };
-  }, [agentName, agentPath, byToolCall, outsideById, headlines, observe, cardElements, inView]);
-  return <AgentSubagentsContext.Provider value={value}>{children}</AgentSubagentsContext.Provider>;
+  }, [
+    agentName,
+    agentPath,
+    socket,
+    byToolCall,
+    outsideById,
+    headlines,
+    observe,
+    cardElements,
+    inView,
+  ]);
+  return (
+    <AgentSubagentsContext.Provider value={value}>
+      {followers}
+      {children}
+    </AgentSubagentsContext.Provider>
+  );
 }
 
 function useAgentSubagentsContext() {
@@ -576,37 +640,63 @@ function useAgentSubagentsContext() {
 /** One subagent's transcript, as its row opens it: its work and its answer, not its task again. */
 function SubagentRowTranscript({
   agentPath,
+  socket,
   subagent,
 }: {
   agentPath: string;
+  socket: SubagentSocket;
   subagent: AgentSubagent;
 }) {
-  // Until the list says how it ended, a subagent without a conversation may still start.
-  const startable = isActive(subagent);
-  const transcript = useSubagentView(agentPath, subagent.requestId, startable);
-  if (transcript.status === "loading") {
-    return <PaneSpinner label="Loading the subagent" />;
+  if (subagent.state.status === "waiting") {
+    return <PaneMessage tone="muted">It starts once a slot is free.</PaneMessage>;
   }
-  if (transcript.status === "failed") {
-    return <PaneMessage tone="failed">{transcript.message}</PaneMessage>;
+  if (subagent.state.status === "dropped") {
+    return <PaneMessage tone="failed">It was dropped before it started.</PaneMessage>;
   }
-  if (transcript.view === null) {
-    return (
-      <PaneMessage tone="muted">
-        {startable ? "It starts once a slot is free." : "It ended before it started."}
-      </PaneMessage>
-    );
-  }
-  return <SubagentTranscript view={transcript.view} />;
+  return <StartedSubagentTranscript agentPath={agentPath} socket={socket} subagent={subagent} />;
 }
 
-function SubagentTranscript({ view }: { view: ConversationView }) {
+function StartedSubagentTranscript({
+  agentPath,
+  socket,
+  subagent,
+}: {
+  agentPath: string;
+  socket: SubagentSocket;
+  subagent: AgentSubagent;
+}) {
+  const conversation = useSubagentConversation(socket, subagent.requestId);
+  if (conversation.status === "failed") {
+    return <PaneMessage tone="failed">{conversation.message}</PaneMessage>;
+  }
+  if (conversation.status === "connecting") {
+    return <PaneSpinner label="Loading the subagent" />;
+  }
+  return (
+    <SubagentTranscript
+      path={`${agentPath}/subagents/${encodeURIComponent(subagent.requestId)}`}
+      view={conversation.view}
+    />
+  );
+}
+
+function SubagentTranscript({ path, view }: { path: string; view: ConversationView }) {
   const running = isPiConversationRunning(view);
+  const history = usePiTranscript(view, useEntryPageReader(`${path}/entries`));
+  const { activeContextStart, transcript, hasMore, loading, error, loadMore } = history;
+  // The row has no "load earlier", so it loads what the view's window leaves out: a subagent
+  // answers one task, so its conversation stays short.
+  useEffect(() => {
+    if (hasMore && !loading && error === null) {
+      void loadMore();
+    }
+  }, [hasMore, loading, error, loadMore]);
   const { messages, activeContextStartIndex } = useMemo(
-    () => piConversationMessages(view.entries, null),
-    [view.entries],
+    () => piConversationMessages(transcript, activeContextStart),
+    [activeContextStart, transcript],
   );
   const draftAgentMessage = useMemo(() => piConversationDraftAgentMessage(view), [view]);
+  const { retry } = history;
   const { messages: threadMessages } = useMemo(
     () =>
       createAssistantUiMessages({
@@ -629,6 +719,21 @@ function SubagentTranscript({ view }: { view: ConversationView }) {
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root asChild>
         <div className="space-y-3">
+          {error === null ? null : (
+            <ChatHistoryControls
+              explanation={null}
+              hasMore={false}
+              loading={loading}
+              error={error}
+              onLoadMore={() => {}}
+              onRetry={
+                retry &&
+                (() => {
+                  void retry();
+                })
+              }
+            />
+          )}
           <ThreadPrimitive.Messages>
             {({ message }) =>
               // The row above shows the task.
@@ -660,7 +765,13 @@ function BatchCard({ batch, title }: { batch: SubagentBatch; title: string }) {
       id: subagent.requestId,
       task: subagent.task,
       status: runStatus(subagent, context.headlines.get(subagent.requestId) ?? null),
-      transcript: <SubagentRowTranscript agentPath={context.agentPath} subagent={subagent} />,
+      transcript: (
+        <SubagentRowTranscript
+          agentPath={context.agentPath}
+          socket={context.socket}
+          subagent={subagent}
+        />
+      ),
     }),
   );
   return <ChatSubagentGroup ref={ref} title={title} subagents={runs} />;

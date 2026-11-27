@@ -115,7 +115,7 @@ type InstallRun = {
 };
 /**
  * Who a credential acts as: a user who authorized Bookkeeping, or Bookkeeping itself; or the
- * automation route whose work this is, such as an agent turn a route's notification started.
+ * automation route whose work this is, such as a run a route started.
  */
 type Principal =
   | { kind: "user"; userId: string }
@@ -127,8 +127,21 @@ type StoredEvent = {
   id: string;
   source: string;
   eventType: string;
+  /** What the event is about, as `pi` events name the agent and prompt; null for Bookkeeping's. */
+  subject: Record<string, unknown> | null;
   payload: Record<string, unknown>;
   occurredAt: string;
+};
+/**
+ * A run of a workflow an installed package's route started, running the package's own script. It
+ * waits for events a route sends it, which arrive in `inbox` until a step waits for their type.
+ */
+type WorkflowRun = {
+  status: "running" | "waiting" | "complete" | "errored";
+  output: unknown;
+  error: string | null;
+  inbox: { type: string; payload: unknown }[];
+  waiting: { type: string; resolve: (event: { type: string; payload: unknown }) => void } | null;
 };
 
 class ApiError extends Error {
@@ -210,8 +223,15 @@ export class FakeBackoffice {
    */
   readonly #installations = new Map<
     string,
-    { version: string; workflowInstanceId: string; declaration: MarketplacePackageDeclaration }
+    {
+      version: string;
+      workflowInstanceId: string;
+      declaration: MarketplacePackageDeclaration;
+      files: Record<string, string>;
+    }
   >();
+  /** Workflow runs routes started, by workspace and instance ID. */
+  readonly #runs = new Map<string, WorkflowRun>();
   /** Events fired into workspaces, in the order they arrived. */
   readonly #events: StoredEvent[] = [];
   /**
@@ -433,57 +453,184 @@ export class FakeBackoffice {
     }
   }
 
+  /** The packages installed in a workspace, by its key. */
+  #installedIn(scope: string) {
+    return [...this.#installations].flatMap(([key, installation]) =>
+      key.startsWith(scope) ? [installation] : [],
+    );
+  }
+
   /**
-   * Runs the installed packages' routes the event matches. The fake knows one action, notifying an
-   * agent whose conversation started, which Bookkeeping's agent answers as its instructions say: it
-   * starts a subagent, as the route, for each request its event type's state lists as awaiting an
-   * answer and that none was started for.
+   * Runs the installed packages' routes the event matches. The fake knows the actions Bookkeeping's
+   * packages declare: starting a run of a package's workflow, and sending a run an event.
    */
   #routeEvent(event: StoredEvent): void {
-    for (const route of this.#declarationsIn(event.scope).flatMap(({ routes }) => routes)) {
-      const { trigger, action } = route;
-      if (
-        trigger.kind !== "event" ||
-        trigger.source !== event.source ||
-        trigger.eventType !== event.eventType ||
-        action.kind !== "notify_agent" ||
-        (trigger.matcher !== null && !matches(trigger.matcher, event)) ||
-        // As in Backoffice, a notification reaches only an agent whose conversation started.
-        !this.#provisioned(event.scope, action.agentName)
-      ) {
-        continue;
-      }
-      const prefix = `${event.scope}|${event.source}|${event.eventType}|`;
-      for (const [id, state] of this.#eventStates) {
-        const { status, requestId, prompt } = state.payload;
+    for (const { declaration, files } of this.#installedIn(event.scope)) {
+      for (const route of declaration.routes) {
+        const { trigger, action } = route;
         if (
-          !id.startsWith(prefix) ||
-          status !== "requested" ||
-          typeof requestId !== "string" ||
-          typeof prompt !== "string" ||
-          this.#prompts.some(
-            (existing) =>
-              existing.scope === event.scope &&
-              existing.agentName === action.agentName &&
-              existing.requestId === requestId,
-          )
+          trigger.kind !== "event" ||
+          trigger.source !== event.source ||
+          trigger.eventType !== event.eventType ||
+          (trigger.matcher !== null && !matches(trigger.matcher, event))
         ) {
           continue;
         }
-        this.#prompts.push({
-          scope: event.scope,
-          agentName: action.agentName,
-          requestId,
-          content: prompt,
-          subagent: true,
-          whenBusy: null,
-          whenPaused: null,
-          prompter: { kind: "route", routeId: route.id },
-          status: { requestId, status: "queued" },
-          activity: { tools: [], omitted: 0 },
-        });
+        if (action.kind === "start_workflow") {
+          const instanceId = render(action.instanceIdTemplate, event);
+          const script = files[action.workflowScriptPath];
+          if (script === undefined) {
+            throw new Error(`The package has no workflow ${action.workflowScriptPath}.`);
+          }
+          this.#startRun(event, instanceId, script, { kind: "route", routeId: route.id });
+        } else if (action.kind === "send_workflow_event") {
+          if (action.target.kind !== "instance_id") {
+            throw new Error("The fake Backoffice sends events to runs by instance ID only.");
+          }
+          const run = this.#runs.get(`${event.scope}|${render(action.target.template, event)}`);
+          run?.inbox.push({ type: action.eventType, payload: event });
+          this.#deliver(run);
+        } else {
+          throw new Error(`The fake Backoffice runs no ${action.kind} routes.`);
+        }
       }
     }
+  }
+
+  /**
+   * Starts a run of a package's workflow script, unless the instance ID has one, as Backoffice's
+   * routes keep a run that exists. Its steps run at once; a wait holds the run until a route sends
+   * the event it waits for. The script calls `pi` as the route that started it.
+   */
+  #startRun(event: StoredEvent, instanceId: string, script: string, prompter: Principal): void {
+    const id = `${event.scope}|${instanceId}`;
+    if (this.#runs.has(id)) {
+      return;
+    }
+    const run: WorkflowRun = {
+      status: "running",
+      output: null,
+      error: null,
+      inbox: [],
+      waiting: null,
+    };
+    this.#runs.set(id, run);
+    const pi = {
+      submitPrompt: (input: {
+        agentName: string;
+        requestId: string;
+        content: string;
+        subagent: boolean;
+      }) =>
+        this.#submitPrompt(event.scope, {
+          ...input,
+          whenBusy: null,
+          whenPaused: null,
+          prompter,
+        }),
+      getPrompt: ({ agentName, requestId }: { agentName: string; requestId: string }) =>
+        this.#prompts.find(
+          (prompt) =>
+            prompt.scope === event.scope &&
+            prompt.agentName === agentName &&
+            prompt.requestId === requestId,
+        )?.status ?? null,
+    };
+    const step = {
+      do: async (_name: string, callback: () => Promise<unknown>) => await callback(),
+      waitForEvent: (_name: string, { type }: { type: string }) =>
+        new Promise((resolve) => {
+          run.status = "waiting";
+          run.waiting = { type, resolve };
+          this.#deliver(run);
+        }),
+    };
+    // The script is the package's module, whose default export is its definition, run as Backoffice
+    // runs it, with its globals.
+    // oxlint-disable-next-line typescript/no-implied-eval -- runs the package's own workflow script
+    const definition = new Function(
+      "defineWorkflow",
+      "pi",
+      script.replace("export default ", "return "),
+    )(
+      (_options: unknown, body: (event: unknown, step: unknown) => Promise<unknown>) => body,
+      pi,
+    ) as (event: unknown, step: unknown) => Promise<unknown>;
+    definition({ instanceId, payload: event.payload }, step).then(
+      (output) => {
+        run.status = "complete";
+        run.output = output;
+      },
+      (error: unknown) => {
+        run.status = "errored";
+        run.error = error instanceof Error ? error.message : String(error);
+      },
+    );
+  }
+
+  /** Hands a waiting run the first event of the type it waits for. */
+  #deliver(run: WorkflowRun | undefined): void {
+    const waiting = run?.waiting;
+    if (!run || !waiting) {
+      return;
+    }
+    const index = run.inbox.findIndex(({ type }) => type === waiting.type);
+    if (index === -1) {
+      return;
+    }
+    const [event] = run.inbox.splice(index, 1);
+    run.status = "running";
+    run.waiting = null;
+    waiting.resolve(event);
+  }
+
+  /** Queues a prompt for an agent, once per request ID. */
+  #submitPrompt(
+    scope: string,
+    input: Pick<
+      Prompt,
+      "agentName" | "requestId" | "content" | "subagent" | "whenBusy" | "whenPaused" | "prompter"
+    >,
+  ): { requestId: string; status: "queued" } {
+    if (!this.#agents.has(`${scope}${input.agentName}`)) {
+      throw new ApiError("not_found", `No agent in this scope is named '${input.agentName}'.`);
+    }
+    if (input.whenPaused === "resume") {
+      this.#stoppedAgents.delete(`${scope}${input.agentName}`);
+    }
+    // An agent queues a request ID once.
+    if (
+      !this.#prompts.some(
+        (prompt) =>
+          prompt.scope === scope &&
+          prompt.agentName === input.agentName &&
+          prompt.requestId === input.requestId,
+      )
+    ) {
+      this.#prompts.push({
+        scope,
+        ...input,
+        status: { requestId: input.requestId, status: "queued" },
+        activity: { tools: [], omitted: 0 },
+      });
+    }
+    return { requestId: input.requestId, status: "queued" };
+  }
+
+  /**
+   * A run a route started in one of the organization's projects, once its steps ran as far as they
+   * can: how it stands, and its output once complete.
+   */
+  async workflowRun(
+    slug: string,
+    project: string,
+    instanceId: string,
+  ): Promise<Pick<WorkflowRun, "status" | "output" | "error"> | null> {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    const run = this.#runs.get(`${this.#projectFileKey(slug, project, "")}|${instanceId}`);
+    return run ? { status: run.status, output: run.output, error: run.error } : null;
   }
 
   /**
@@ -609,6 +756,18 @@ export class FakeBackoffice {
       throw new Error(`No agent received prompt ${requestId}.`);
     }
     prompt.status = { requestId, ...status };
+    // As in Backoffice, a turn that ends is recorded as a pi event, which routes may send on.
+    if (status.status !== "running") {
+      this.#routeEvent({
+        scope: prompt.scope,
+        id: crypto.randomUUID(),
+        source: "pi",
+        eventType: status.status === "completed" ? "turn.completed" : "turn.failed",
+        subject: { agentName: prompt.agentName, requestId },
+        payload: status.status === "failed" ? { reason: status.reason } : {},
+        occurredAt: new Date().toISOString(),
+      });
+    }
   }
 
   /** The agent answering the prompt submitted as `requestId` has run `activity` so far. */
@@ -1209,6 +1368,7 @@ export class FakeBackoffice {
               version,
               workflowInstanceId,
               declaration,
+              files: this.#appPackageFiles.get(`${input.listingId}@${version}`)!,
             });
             run.outcome = { error: null };
           };
@@ -1272,6 +1432,7 @@ export class FakeBackoffice {
                 : `${source} ${input.idempotencyKey}`,
             source,
             eventType: input.eventType,
+            subject: null,
             payload: input.payload ?? {},
             occurredAt:
               input.occurredAt === undefined || new Date(input.occurredAt) > new Date()
@@ -1297,39 +1458,17 @@ export class FakeBackoffice {
           return receipt;
         });
       case "pi.prompt.submit":
-        return respond("pi.prompt.submit", body, (input) => {
-          const { agentName, requestId, content, subagent, whenBusy, whenPaused } = input;
-          if (!this.#agents.has(key(agentName))) {
-            throw new ApiError("not_found", `No agent in this scope is named '${agentName}'.`);
-          }
-          if (whenPaused === "resume") {
-            this.#stoppedAgents.delete(key(agentName));
-          }
-          const id = requestId ?? crypto.randomUUID();
-          // An agent queues a request ID once.
-          if (
-            !this.#prompts.some(
-              (prompt) =>
-                prompt.scope === key("") &&
-                prompt.agentName === agentName &&
-                prompt.requestId === id,
-            )
-          ) {
-            this.#prompts.push({
-              scope: key(""),
-              agentName,
-              requestId: id,
-              content,
-              subagent: subagent ?? false,
-              whenBusy: whenBusy ?? null,
-              whenPaused: whenPaused ?? null,
-              prompter: principal,
-              status: { requestId: id, status: "queued" },
-              activity: { tools: [], omitted: 0 },
-            });
-          }
-          return { requestId: id, status: "queued" as const };
-        });
+        return respond("pi.prompt.submit", body, (input) =>
+          this.#submitPrompt(key(""), {
+            agentName: input.agentName,
+            requestId: input.requestId ?? crypto.randomUUID(),
+            content: input.content,
+            subagent: input.subagent ?? false,
+            whenBusy: input.whenBusy ?? null,
+            whenPaused: input.whenPaused ?? null,
+            prompter: principal,
+          }),
+        );
       case "pi.agent.stop":
         return respond("pi.agent.stop", body, ({ agentName }) => {
           if (!this.#agents.has(key(agentName))) {
@@ -2064,13 +2203,45 @@ function readPath(value: unknown, path: string): unknown {
   return current;
 }
 
-/** Whether an event matches a route's matcher; the fake knows equality, which Bookkeeping's route uses. */
+/** What a route's matcher and templates read of an event: its ID, subject, and payload. */
+function envelope(event: StoredEvent) {
+  return { id: event.id, subject: event.subject, payload: event.payload };
+}
+
+/** Whether an event matches a route's matcher, of the operators Bookkeeping's routes use. */
 function matches(matcher: unknown, event: StoredEvent): boolean {
-  const { path, op, value } = matcher as { path: string; op: string; value: unknown };
-  if (op !== "eq") {
-    throw new Error(`The fake Backoffice matches only "eq", not ${op}.`);
+  const node = matcher as Record<string, unknown>;
+  if (Array.isArray(node.all)) {
+    return node.all.every((child) => matches(child, event));
   }
-  return readPath({ payload: event.payload }, path) === value;
+  if (Array.isArray(node.any)) {
+    return node.any.some((child) => matches(child, event));
+  }
+  const { path, op, value } = node as { path: string; op: string; value: unknown };
+  const actual = readPath(envelope(event), path);
+  switch (op) {
+    case "eq":
+      return actual === value;
+    case "startsWith":
+      return typeof actual === "string" && typeof value === "string" && actual.startsWith(value);
+    default:
+      throw new Error(`The fake Backoffice does not match with ${op}.`);
+  }
+}
+
+/**
+ * A route's workflow instance ID template, with each `${event.<path>}` replaced by what the event
+ * holds there, as `workflowInstanceId` makes it safe, as Backoffice does.
+ */
+function render(template: string, event: StoredEvent): string {
+  return template.replace(/\$\{event\.([\w.]+)\}/gu, (_match, path: string) =>
+    workflowInstanceId(String(readPath(envelope(event), `$.${path}`))),
+  );
+}
+
+/** A value as Backoffice puts it in a workflow instance ID: anything but letters, digits, - and _ as -. */
+export function workflowInstanceId(value: string): string {
+  return value.replace(/[^a-zA-Z0-9-_]/gu, "-");
 }
 
 function bearer(request: Request): string {

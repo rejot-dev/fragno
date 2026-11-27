@@ -1338,8 +1338,8 @@ const createFakePiManagerApi = (
     async writeNotifications(config) {
       requireAgent(config);
     },
-    async startSubagent(config, _revision, turn, prompt) {
-      await answer(config, turn, prompt);
+    async startSubagent(config, _revision, turn, ask) {
+      await answer(config, turn, { requestId: ask.requestId, content: ask.task });
     },
     async recordSubagent(config) {
       requireAgent(config);
@@ -1362,15 +1362,10 @@ const createFakePiManagerApi = (
     async getSubmission(config, requestId) {
       return requireAgent(config).submissions.get(requestId) ?? null;
     },
-    async getSubagentRuns(config, requestIds) {
-      const fake = requireAgent(config);
-      return requestIds.map((requestId) => ({
-        requestId,
-        submission: fake.submissions.get(requestId)?.record ?? null,
-        startedAt: null,
-        answeredAt: null,
-        answer: null,
-      }));
+    // The fake answers subagents at once, as turns of its own, and lists none.
+    async listSubagents(config, cursor) {
+      requireAgent(config);
+      return cursor === null ? { subagents: [], older: null } : null;
     },
     async listEntries(config) {
       requireAgent(config);

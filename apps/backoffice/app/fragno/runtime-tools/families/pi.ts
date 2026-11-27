@@ -103,12 +103,14 @@ const parseAgentHistory = defineCliArgsParser<{
   maxEntryId?: number;
   order?: string;
   pageSize?: number;
+  subagent?: string;
 }>("pi.agent.history", {
   agentName: { option: "agent", required: true },
   minEntryId: { option: "min-entry-id", kind: "positiveInteger" },
   maxEntryId: { option: "max-entry-id", kind: "positiveInteger" },
   order: {},
   pageSize: { option: "page-size", kind: "positiveInteger" },
+  subagent: {},
 });
 const parseAgentActivity = defineCliArgsParser<{ agentName: string; subagent?: string }>(
   "pi.agent.activity",
@@ -697,10 +699,17 @@ const agentHistoryTool = defineBackofficeRuntimeTool({
             valueName: "count",
             description: "How many entries to print, up to 256; default 100",
           },
+          {
+            name: "subagent",
+            valueRequired: true,
+            valueName: "request-id",
+            description: "Print the conversation of the agent's subagent this request started",
+          },
         ],
         examples: [
           "pi.agent.history --agent assistant",
           "pi.agent.history --agent assistant --max-entry-id 41",
+          "pi.agent.history --agent bookkeeper --subagent document-42",
         ],
       },
       parse: parseAgentHistory,
