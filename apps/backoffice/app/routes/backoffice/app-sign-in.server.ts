@@ -173,7 +173,7 @@ export async function appSignInAction(input: {
         error: await explainFailure(signedIn, path, input.page.branding),
       };
     }
-    return continueToApp(signedIn);
+    return continueToApp(input.request, signedIn);
   }
 
   if (parsed.data.intent !== "verify_code") {
@@ -216,11 +216,13 @@ export async function appSignInAction(input: {
       },
     };
   }
-  return continueToApp(signedIn);
+  return continueToApp(input.request, signedIn);
 }
 
 /** The OAuth Provider continues the app's authorization once the session exists. */
-async function continueToApp(signedIn: Response): Promise<Response> {
+async function continueToApp(request: Request, signedIn: Response): Promise<Response> {
   const continued = z.object({ url: z.string().min(1) }).parse(await signedIn.json());
-  return redirect(continued.url, { headers: createBackofficeIdentityChangeHeaders(signedIn) });
+  return redirect(continued.url, {
+    headers: createBackofficeIdentityChangeHeaders(request, signedIn),
+  });
 }

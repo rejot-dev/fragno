@@ -50,9 +50,12 @@ export const callBetterAuth = async (
   );
 };
 
-export function createBackofficeIdentityChangeHeaders(response: Response): Headers {
+export function createBackofficeIdentityChangeHeaders(
+  request: Request,
+  response: Response,
+): Headers {
   const headers = new Headers(response.headers);
-  for (const expiredCookie of expiredBackofficeAccessTokenCookieHeaders()) {
+  for (const expiredCookie of expiredBackofficeAccessTokenCookieHeaders(new URL(request.url))) {
     headers.append("Set-Cookie", expiredCookie);
   }
   return headers;
