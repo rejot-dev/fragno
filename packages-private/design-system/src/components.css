@@ -855,11 +855,14 @@
    passes behind them. They blink now and then, follow the pointer through
    --bo-agent-face-look-x/y, and smile while the link or button the face sits in is hovered or
    focused. A thinking face (data-motion) swirls fast and glances from side to side instead of
-   following the pointer. With reduced motion the swirl, the blink and the glance stop, and the
-   eyes stay ahead. Everything is drawn for a 28px face, the workspace tile's size
-   (selector-menu.tsx), and scales with --bo-agent-face-size. */
+   following the pointer. With reduced motion, as the appearance menu chooses or else as the system
+   prefers (appearance-preferences.ts), the face holds still and its eyes stay ahead. Everything is
+   drawn for a 28px face, the workspace tile's size (selector-menu.tsx), and scales with
+   --bo-agent-face-size. */
 .bo-agent-face {
   --bo-agent-face-unit: calc(var(--bo-agent-face-size) / 28);
+  /* How far the face tilts and its eyes look: 0 with reduced motion. */
+  --bo-agent-face-moves: 1;
   position: relative;
   display: block;
   flex-shrink: 0;
@@ -898,7 +901,8 @@
   border-radius: calc(3 * var(--bo-agent-face-unit));
   background: #fff;
   box-shadow: 0 0.5px 1.5px rgb(17 24 39 / 0.4);
-  translate: var(--bo-agent-face-look-x, 0px) var(--bo-agent-face-look-y, 0px);
+  translate: calc(var(--bo-agent-face-look-x, 0px) * var(--bo-agent-face-moves))
+    calc(var(--bo-agent-face-look-y, 0px) * var(--bo-agent-face-moves));
   animation: bo-agent-face-blink 4.5s infinite;
   transition:
     translate 150ms ease-out,
@@ -917,8 +921,8 @@
 
 :is(a, button):is(:hover, :focus-visible):not([aria-expanded="true"], [data-agent-drawer-open])
   > .bo-agent-face {
-  rotate: -6deg;
-  translate: 0 -1px;
+  rotate: calc(-6deg * var(--bo-agent-face-moves));
+  translate: 0 calc(-1px * var(--bo-agent-face-moves));
 }
 
 :is(a, button):is(:hover, :focus-visible):not([aria-expanded="true"], [data-agent-drawer-open])
@@ -986,11 +990,47 @@
   }
 }
 
-/* As specific as the data-motion rules, so it overrides them. */
+/* More specific than the data-motion rules, so they override them. */
+:root[data-reduced-motion="reduce"] .bo-agent-face {
+  --bo-agent-face-moves: 0;
+  transition: none;
+}
+
+:root[data-reduced-motion="reduce"] .bo-agent-face::before,
+:root[data-reduced-motion="reduce"] .bo-agent-face .bo-agent-face-eye {
+  animation: none;
+  transition: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .bo-agent-face[data-motion]::before,
-  .bo-agent-face[data-motion] .bo-agent-face-eye {
+  :root:not([data-reduced-motion]) .bo-agent-face {
+    --bo-agent-face-moves: 0;
+    transition: none;
+  }
+
+  :root:not([data-reduced-motion]) .bo-agent-face::before,
+  :root:not([data-reduced-motion]) .bo-agent-face .bo-agent-face-eye {
     animation: none;
+    transition: none;
+  }
+}
+
+/* Forced colors drop the gradients and the eyes' shadow, which would leave the agent button
+   looking empty, so the face is drawn in the system's text and canvas colors instead. */
+@media (forced-colors: active) {
+  .bo-agent-face {
+    forced-color-adjust: none;
+    background: ButtonText;
+  }
+
+  .bo-agent-face::before,
+  .bo-agent-face::after {
+    display: none;
+  }
+
+  .bo-agent-face-eye {
+    background: ButtonFace;
+    box-shadow: none;
   }
 }
 
