@@ -30,7 +30,7 @@ const scenarioObjects = {
   UPLOAD: (input) => new UploadObject(input),
 } satisfies LocalBackofficeObjects;
 
-const origin = "https://backoffice.example";
+const deployedOrigin = "https://backoffice.example";
 
 type Vars = { session: string; browser: string; alphaId: string };
 type Ctx = BackofficeScenarioContext<Vars>;
@@ -54,7 +54,12 @@ function routerContext(ctx: Ctx, request: Request) {
 }
 
 /** Opens a dashboard page through both Backoffice middlewares, keeping the cookies it sets. */
-async function openDashboard(ctx: Ctx, path: string, navigation: Navigation): Promise<PageVisit> {
+async function openDashboard(
+  ctx: Ctx,
+  origin: string,
+  path: string,
+  navigation: Navigation,
+): Promise<PageVisit> {
   const url = new URL(path, origin);
   const requestUrl = navigation === "document" ? url : new URL(`${path}.data`, origin);
   const request = new Request(requestUrl, { headers: { cookie: ctx.vars.browser } });
@@ -79,7 +84,7 @@ async function openDashboard(ctx: Ctx, path: string, navigation: Navigation): Pr
 
 /** Opens the sign-in page: it sends a signed-in browser on, and shows others its form. */
 async function openLogin(ctx: Ctx, path: string): Promise<"form" | { redirect: string }> {
-  const url = new URL(path, origin);
+  const url = new URL(path, deployedOrigin);
   const request = new Request(url, { headers: { cookie: ctx.vars.browser } });
   const result = await loginLoader({
     request,
@@ -93,13 +98,14 @@ async function openLogin(ctx: Ctx, path: string): Promise<"form" | { redirect: s
 /** Opens a page and follows redirects the way a browser does. */
 async function browse(
   ctx: Ctx,
+  origin: string,
   path: string,
   navigation: Navigation = "document",
 ): Promise<PageVisit[]> {
   const visits: PageVisit[] = [];
   let location = path;
   while (visits.length < 3) {
-    const visit = await openDashboard(ctx, location, navigation);
+    const visit = await openDashboard(ctx, origin, location, navigation);
     visits.push(visit);
     // Only the dashboard is opened here; other destinations, such as sign-in, end the visit.
     if (!("redirect" in visit) || !visit.redirect.startsWith("/backoffice/dashboard")) {
@@ -128,6 +134,31 @@ function withResponseCookies(cookieHeader: string, response: Response): string {
   return [...cookies].map(([name, value]) => `${name}=${value}`).join("; ");
 }
 
+/**
+ * Keeps a session cookie in the browser, which holds one cookie per name for a host, whatever its
+ * port.
+ */
+function withSessionCookie(cookieHeader: string, sessionCookie: string): string {
+  const headers = new Headers();
+  for (const cookie of sessionCookie.split("; ")) {
+    headers.append("set-cookie", cookie);
+  }
+  return withResponseCookies(cookieHeader, new Response(null, { headers }));
+}
+
+/** Signs out the way the shell's menu does, keeping the cookies the response clears. */
+async function signOut(ctx: Ctx, origin: string): Promise<void> {
+  const response = await ctx.runtime.objects.auth.singleton().http.fetch(
+    new Request(`${origin}/api/auth/backoffice-sign-out`, {
+      method: "POST",
+      headers: { origin, cookie: ctx.vars.browser, "content-type": "application/json" },
+      body: JSON.stringify({}),
+    }),
+  );
+  assert(response.ok, await response.text());
+  ctx.vars.browser = withResponseCookies(ctx.vars.browser, response);
+}
+
 test("pages mint the browser's access token in the organization it last opened", async () => {
   await runBackofficeScenario(
     defineBackofficeScenario<Vars>({
@@ -149,7 +180,7 @@ test("pages mint the browser's access token in the organization it last opened",
           slug: "beta",
         }),
         then.assert("a browser without a session signs in first", async (ctx) => {
-          expect(await browse(ctx, "/backoffice/dashboard")).toEqual([
+          expect(await browse(ctx, deployedOrigin, "/backoffice/dashboard")).toEqual([
             { redirect: "/backoffice/login?returnTo=%2Fbackoffice%2Fdashboard" },
           ]);
         }),
@@ -157,7 +188,7 @@ test("pages mint the browser's access token in the organization it last opened",
           "a signed-in browser reopens the page with a token for its newest organization",
           async (ctx) => {
             ctx.vars.browser = ctx.vars.session;
-            expect(await browse(ctx, "/backoffice/dashboard")).toEqual([
+            expect(await browse(ctx, deployedOrigin, "/backoffice/dashboard")).toEqual([
               { redirect: "/backoffice/dashboard" },
               { page: { tokenOrganization: "beta" } },
             ]);
@@ -167,18 +198,18 @@ test("pages mint the browser's access token in the organization it last opened",
           "a client navigation, such as the one after signing in, reopens the page and not its data",
           async (ctx) => {
             ctx.vars.browser = ctx.vars.session;
-            expect(await browse(ctx, "/backoffice/dashboard", "client")).toEqual([
+            expect(await browse(ctx, deployedOrigin, "/backoffice/dashboard", "client")).toEqual([
               { redirect: "/backoffice/dashboard" },
               { page: { tokenOrganization: "beta" } },
             ]);
           },
         ),
         then.assert("opening another organization's page switches the token there", async (ctx) => {
-          expect(await browse(ctx, "/backoffice/dashboard/org/alpha")).toEqual([
+          expect(await browse(ctx, deployedOrigin, "/backoffice/dashboard/org/alpha")).toEqual([
             { redirect: "/backoffice/dashboard/org/alpha" },
             { page: { tokenOrganization: "alpha" } },
           ]);
-          expect(await browse(ctx, "/backoffice/dashboard/org/alpha")).toEqual([
+          expect(await browse(ctx, deployedOrigin, "/backoffice/dashboard/org/alpha")).toEqual([
             { page: { tokenOrganization: "alpha" } },
           ]);
         }),
@@ -191,7 +222,7 @@ test("pages mint the browser's access token in the organization it last opened",
               .filter((cookie) => !cookie.includes("session_token="))
               .join("; ");
             const signIn = "/backoffice/login?returnTo=%2Fbackoffice%2Fdashboard%2Forg%2Fbeta";
-            expect(await browse(ctx, "/backoffice/dashboard/org/beta")).toEqual([
+            expect(await browse(ctx, deployedOrigin, "/backoffice/dashboard/org/beta")).toEqual([
               { redirect: signIn },
             ]);
             assert.equal(await openLogin(ctx, signIn), "form");
@@ -199,7 +230,7 @@ test("pages mint the browser's access token in the organization it last opened",
         ),
         then.assert("an expired token is replaced in the organization last opened", async (ctx) => {
           ctx.vars.browser = ctx.vars.session;
-          expect(await browse(ctx, "/backoffice/dashboard")).toEqual([
+          expect(await browse(ctx, deployedOrigin, "/backoffice/dashboard")).toEqual([
             { redirect: "/backoffice/dashboard" },
             { page: { tokenOrganization: "alpha" } },
           ]);
@@ -211,12 +242,83 @@ test("pages mint the browser's access token in the organization it last opened",
         then.assert(
           "a token for an organization the user left is replaced with one they belong to",
           async (ctx) => {
-            expect(await browse(ctx, "/backoffice/dashboard")).toEqual([
+            expect(await browse(ctx, deployedOrigin, "/backoffice/dashboard")).toEqual([
               { redirect: "/backoffice/dashboard" },
               { page: { tokenOrganization: "beta" } },
             ]);
           },
         ),
+      ],
+    }),
+  );
+});
+
+test("worktrees on one host keep their own sign-in", async () => {
+  // Every local worktree serves Backoffice on its own port of 127.0.0.1, and browsers share a host's
+  // cookies between its ports. One runtime stands in for both worktrees' Auth.
+  const alphaWorktree = "http://127.0.0.1:5201";
+  const betaWorktree = "http://127.0.0.1:5302";
+  await runBackofficeScenario(
+    defineBackofficeScenario<Vars & { alphaSession: string; betaSession: string }>({
+      objects: scenarioObjects,
+      name: "Backoffice worktrees on one host keep their own sign-in",
+      env: { AUTH_EMAIL_VERIFICATION_ENABLED: "false", SIGN_UP_ACCESS_CODES_REQUIRED: "false" },
+      vars: () => ({
+        session: "",
+        browser: "",
+        alphaId: "",
+        alphaSession: "",
+        betaSession: "",
+      }),
+      steps: ({ when, then }) => [
+        when.auth.signUp({
+          email: "ada@example.test",
+          origin: alphaWorktree,
+          captureSessionCookieAs: "alphaSession",
+        }),
+        when.auth.createOrganization({
+          cookie: ({ vars }) => vars.alphaSession,
+          origin: alphaWorktree,
+          name: "Alpha",
+          slug: "alpha",
+        }),
+        when.auth.signUp({
+          email: "grace@example.test",
+          origin: betaWorktree,
+          captureSessionCookieAs: "betaSession",
+        }),
+        when.auth.createOrganization({
+          cookie: ({ vars }) => vars.betaSession,
+          origin: betaWorktree,
+          name: "Beta",
+          slug: "beta",
+        }),
+        then.assert(
+          "signing in to the second worktree leaves the first one's session in place",
+          async (ctx) => {
+            ctx.vars.browser = withSessionCookie(
+              withSessionCookie(ctx.vars.browser, ctx.vars.alphaSession),
+              ctx.vars.betaSession,
+            );
+            expect(await browse(ctx, alphaWorktree, "/backoffice/dashboard")).toEqual([
+              { redirect: "/backoffice/dashboard" },
+              { page: { tokenOrganization: "alpha" } },
+            ]);
+            expect(await browse(ctx, betaWorktree, "/backoffice/dashboard")).toEqual([
+              { redirect: "/backoffice/dashboard" },
+              { page: { tokenOrganization: "beta" } },
+            ]);
+          },
+        ),
+        then.assert("signing out of one worktree keeps the other signed in", async (ctx) => {
+          await signOut(ctx, betaWorktree);
+          expect(await browse(ctx, betaWorktree, "/backoffice/dashboard")).toEqual([
+            { redirect: "/backoffice/login?returnTo=%2Fbackoffice%2Fdashboard" },
+          ]);
+          expect(await browse(ctx, alphaWorktree, "/backoffice/dashboard")).toEqual([
+            { page: { tokenOrganization: "alpha" } },
+          ]);
+        }),
       ],
     }),
   );

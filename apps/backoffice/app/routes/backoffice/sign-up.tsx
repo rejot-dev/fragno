@@ -167,7 +167,7 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     }
     if (response.headers.has("set-cookie")) {
       return redirect(returnTo, {
-        headers: createBackofficeIdentityChangeHeaders(response),
+        headers: createBackofficeIdentityChangeHeaders(request, response),
       });
     }
     return {

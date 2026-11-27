@@ -9,6 +9,7 @@ import {
   backofficeAccessTokenCookieAttributes,
   backofficeAccessTokenCookieName,
   issueBackofficeJwt,
+  otherBackofficeAccessTokenCookie,
 } from "@/fragno/auth/token-lifecycle";
 
 import {
@@ -25,7 +26,7 @@ const activeOrganizationSessionSchema = z.object({
 });
 
 export function createBackofficeTokenPlugin(input: {
-  secureCookies: boolean;
+  origin: URL;
   resolveBackofficeUserTokenGrant: ResolveBackofficeUserTokenGrant;
 }): BetterAuthPlugin {
   return {
@@ -44,9 +45,14 @@ export function createBackofficeTokenPlugin(input: {
           }
 
           deleteSessionCookie(context);
-          for (const secure of [false, true]) {
-            context.setCookie(backofficeAccessTokenCookieName(secure), "", {
-              ...backofficeAccessTokenCookieAttributes(secure),
+          const secure = input.origin.protocol === "https:";
+          const other = otherBackofficeAccessTokenCookie(input.origin);
+          for (const cookie of [
+            { name: backofficeAccessTokenCookieName(input.origin), secure },
+            other,
+          ]) {
+            context.setCookie(cookie.name, "", {
+              ...backofficeAccessTokenCookieAttributes(cookie.secure),
               maxAge: 0,
             });
           }
@@ -109,14 +115,16 @@ export function createBackofficeTokenPlugin(input: {
               activeOrganizationId: issuedOrganizationId,
             });
           }
-          context.setCookie(backofficeAccessTokenCookieName(!input.secureCookies), "", {
-            ...backofficeAccessTokenCookieAttributes(!input.secureCookies),
+          const secure = input.origin.protocol === "https:";
+          const other = otherBackofficeAccessTokenCookie(input.origin);
+          context.setCookie(other.name, "", {
+            ...backofficeAccessTokenCookieAttributes(other.secure),
             maxAge: 0,
           });
           context.setCookie(
-            backofficeAccessTokenCookieName(input.secureCookies),
+            backofficeAccessTokenCookieName(input.origin),
             issued.token,
-            backofficeAccessTokenCookieAttributes(input.secureCookies),
+            backofficeAccessTokenCookieAttributes(secure),
           );
 
           return context.json({

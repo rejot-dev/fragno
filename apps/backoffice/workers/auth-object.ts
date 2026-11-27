@@ -131,6 +131,7 @@ import {
   PASSWORD_RESET_TOKEN_LIFETIME_SECONDS,
 } from "@/fragno/auth/password-policy";
 import {
+  backofficeCookieNameSuffix,
   issueAppActionToken,
   issueAppInstallationCode,
   issuePiAgentWatchTicket,
@@ -1028,7 +1029,8 @@ export class AuthObject implements AuthCommands {
     const emailVerification = runtime.config.authEmailVerification;
     const secret = resolveLiveAccessTokenSecret(this.#env, import.meta.env.MODE === "development");
     // Follow the origin, not the build mode: `pnpm preview` serves a production build over HTTP.
-    const secureCookies = new URL(baseURL).protocol === "https:";
+    const origin = new URL(baseURL);
+    const secureCookies = origin.protocol === "https:";
     const objects = runtime.objects;
     const { webFetch } = runtime;
     const schemaPlugins = createBackofficeBetterAuthSchemaPlugins({
@@ -1069,7 +1071,7 @@ export class AuthObject implements AuthCommands {
     });
 
     const backofficeTokenPlugin = createBackofficeTokenPlugin({
-      secureCookies,
+      origin,
       resolveBackofficeUserTokenGrant: async (adapter, input) =>
         await resolveBackofficeUserTokenGrant(adapter, this.#database, input),
     });
@@ -1184,6 +1186,7 @@ export class AuthObject implements AuthCommands {
         // Better Auth otherwise skips origin validation under test, hiding callback mismatches.
         disableOriginCheck: false,
         useSecureCookies: secureCookies,
+        cookiePrefix: `better-auth${backofficeCookieNameSuffix(origin)}`,
         defaultCookieAttributes: { path: "/api/auth" },
         cookies: {
           session_token: { attributes: { path: "/" } },

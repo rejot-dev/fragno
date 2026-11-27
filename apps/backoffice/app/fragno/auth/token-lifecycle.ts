@@ -31,7 +31,6 @@ export const ACCESS_TOKEN_AUDIENCE = "fragno-backoffice";
 export const BACKOFFICE_JWT_LIFETIME_SECONDS = 15 * 60;
 
 // These are public cookie names, not credentials; the cookie values remain HTTP-only.
-const INSECURE_COOKIE_NAME = "fragno-backoffice.access_token";
 const HOST_COOKIE_NAME = "__Host-fragno-backoffice.access_token";
 
 export const backofficeJwtPayloadSchema = z.object({
@@ -137,9 +136,26 @@ const betterAuthJwksSchema = z.object({
   ),
 });
 
+/**
+ * Browsers share a host's cookies between its ports, and every local worktree serves Backoffice on
+ * its own port of 127.0.0.1, so signing in to one would replace the session of the others. Cookie
+ * names on plain-HTTP origins therefore carry the port.
+ */
+export function backofficeCookieNameSuffix(origin: URL): string {
+  return origin.protocol === "https:" || !origin.port ? "" : `-${origin.port}`;
+}
+
+function isSecureOrigin(origin: URL): boolean {
+  return origin.protocol === "https:";
+}
+
+function insecureAccessTokenCookieName(origin: URL): string {
+  return `fragno-backoffice${backofficeCookieNameSuffix(origin)}.access_token`;
+}
+
 // Plain-HTTP origins (local dev and preview) cannot keep `Secure` or `__Host-` cookies in Safari.
-export const backofficeAccessTokenCookieName = (secure: boolean): string =>
-  secure ? HOST_COOKIE_NAME : INSECURE_COOKIE_NAME;
+export const backofficeAccessTokenCookieName = (origin: URL): string =>
+  isSecureOrigin(origin) ? HOST_COOKIE_NAME : insecureAccessTokenCookieName(origin);
 
 export const backofficeAccessTokenCookieAttributes = (secure: boolean) => ({
   httpOnly: true,
@@ -149,11 +165,20 @@ export const backofficeAccessTokenCookieAttributes = (secure: boolean) => ({
   maxAge: BACKOFFICE_JWT_LIFETIME_SECONDS,
 });
 
-export const expiredBackofficeAccessTokenCookieHeaders = (): string[] =>
-  [false, true].map((secure) => {
+/** The cookie the origin does not use, cleared whenever the origin sets its own. */
+export const otherBackofficeAccessTokenCookie = (origin: URL) =>
+  isSecureOrigin(origin)
+    ? { name: insecureAccessTokenCookieName(origin), secure: false }
+    : { name: HOST_COOKIE_NAME, secure: true };
+
+export const expiredBackofficeAccessTokenCookieHeaders = (origin: URL): string[] =>
+  [
+    { name: insecureAccessTokenCookieName(origin), secure: false },
+    { name: HOST_COOKIE_NAME, secure: true },
+  ].map(({ name, secure }) => {
     const attributes = backofficeAccessTokenCookieAttributes(secure);
     return [
-      `${backofficeAccessTokenCookieName(secure)}=`,
+      `${name}=`,
       `Path=${attributes.path}`,
       "Max-Age=0",
       "HttpOnly",
@@ -164,12 +189,16 @@ export const expiredBackofficeAccessTokenCookieHeaders = (): string[] =>
       .join("; ");
   });
 
-export const readBackofficeAccessTokenCookie = (cookieHeader: string | null): string | null => {
+export const readBackofficeAccessTokenCookie = (request: Request): string | null => {
+  const cookieHeader = request.headers.get("cookie");
   if (!cookieHeader) {
     return null;
   }
 
-  const acceptedNames = new Set([INSECURE_COOKIE_NAME, HOST_COOKIE_NAME]);
+  const acceptedNames = new Set([
+    insecureAccessTokenCookieName(new URL(request.url)),
+    HOST_COOKIE_NAME,
+  ]);
   for (const cookie of cookieHeader.split(";")) {
     const separator = cookie.indexOf("=");
     if (separator === -1) {
@@ -624,8 +653,4 @@ export const verifyBackofficeJwtRequest = async (
   request: Request,
   authObject: JwksFetchObject,
 ): Promise<BackofficeJwtVerificationResult> =>
-  await verifyBackofficeJwt(
-    readBackofficeAccessTokenCookie(request.headers.get("cookie")),
-    request.url,
-    authObject,
-  );
+  await verifyBackofficeJwt(readBackofficeAccessTokenCookie(request), request.url, authObject);

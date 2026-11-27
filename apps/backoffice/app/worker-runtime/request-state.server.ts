@@ -75,12 +75,16 @@ export function principalFromBackofficeJwt(
 }
 
 function authenticationFailureHeaders(
+  request: Request,
   transport: ResolvedBackofficeJwtTransport,
 ): Array<[string, string]> {
   if (!transport.ok || transport.transport !== "cookie") {
     return [];
   }
-  return expiredBackofficeAccessTokenCookieHeaders().map((value) => ["Set-Cookie", value]);
+  return expiredBackofficeAccessTokenCookieHeaders(new URL(request.url)).map((value) => [
+    "Set-Cookie",
+    value,
+  ]);
 }
 
 /** Creates lazy authentication and membership operations shared for one HTTP request only. */
@@ -115,7 +119,7 @@ export function createBackofficeRequestState(
       return {
         ok: false,
         reason: verification.reason,
-        headers: authenticationFailureHeaders(transport),
+        headers: authenticationFailureHeaders(request, transport),
       };
     }
 
