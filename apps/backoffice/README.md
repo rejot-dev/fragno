@@ -19,9 +19,9 @@ egress; use the `web.*` tools for internet access.
 
 ## Preview
 
-`pnpm preview` from the repository root builds Backoffice and previews the build, rebuilding and
-restarting the preview whenever Backoffice or a package it depends on changes. Each git worktree
-previews on its own port.
+`pnpm preview` from the repository root builds Backoffice and previews the build, rebuilding
+whenever Backoffice or a package it depends on changes. The previous build keeps serving until the
+new one is up. Each git worktree previews on its own port.
 
 ## Tests
 

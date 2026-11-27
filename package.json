@@ -15,7 +15,7 @@
     "backoffice:context:check": "tsx scripts/generate-backoffice-context-graph.ts --check",
     "backoffice:context:check-staged": "tsx scripts/generate-backoffice-context-graph.ts --check-staged",
     "dev+": "turbo watch --ui tui --concurrency 20 dev types:check",
-    "preview": "turbo watch --concurrency 20 preview --filter=@fragno-apps/backoffice-rr",
+    "preview": "pnpm --filter @fragno-apps/backoffice-rr preview",
     "format": "turbo run format --output-logs=errors-only",
     "format:root": "node scripts/run-package-quality.mjs format --root",
     "format:check": "turbo run format:check --output-logs=errors-only",

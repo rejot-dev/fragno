@@ -1,7 +1,14 @@
 import { spawn } from "node:child_process";
-import { unwatchFile, watchFile } from "node:fs";
-import { copyFile, readFile, rm, writeFile } from "node:fs/promises";
+import { constants, unwatchFile, watchFile } from "node:fs";
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createConnection, createServer } from "node:net";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  backofficeDevServerPort,
+  backofficeInspectorPort,
+} from "@rejot-dev/backoffice-local/dev-server-port";
 
 const enableContainersFlag = "--containers";
 const enableSourceMapsFlag = "--sourcemap";
@@ -11,74 +18,53 @@ const enableSourceMaps = process.argv.includes(enableSourceMapsFlag);
 const enableWorkersAi = process.argv.includes(enableWorkersAiFlag);
 const wrapperFlags = [enableContainersFlag, enableSourceMapsFlag, enableWorkersAiFlag];
 const previewArgs = process.argv.slice(2).filter((argument) => !wrapperFlags.includes(argument));
-const previewCommand = ["vite", "preview", ...previewArgs];
+
+const appDirectory = fileURLToPath(new URL("..", import.meta.url));
+const viteConfigPath = path.join(appDirectory, "vite.config.ts");
+const snapshotsDirectory = path.join(appDirectory, ".wrangler/preview");
+// Vite listens on every interface inside a boxd VM, so its proxy can reach it (see vite.config.ts).
+const publicHost = process.env.BOXD_VM_HOST ? "0.0.0.0" : "127.0.0.1";
+const appPort = backofficeDevServerPort(appDirectory);
+const inspectorPort = backofficeInspectorPort(appDirectory);
+
+// vite.config.ts writes this marker once a build has finished, listing every file a preview serves.
+const buildCompleteMarkerPath = path.join(appDirectory, "build/.build-complete");
 // The bridge Worker hosts the Sandbox containers that the object Worker binds to.
-const containerWorkerConfigUrl = new URL(
-  "../dist/cf_sandbox_bridge/wrangler.json",
-  import.meta.url,
-);
+const containerWorkerConfigPath = "dist/cf_sandbox_bridge/wrangler.json";
 // Backoffice fails sandbox starts at once when told the bridge has no containers. Workers AI always
 // runs on Cloudflare, which needs wrangler signed in to an account with a workers.dev subdomain, so
 // its binding stays out unless `--ai` asks for it; Backoffice then reports Workers AI unavailable.
-const backofficeWorkerConfigUrls = [
-  new URL("../build/server/wrangler.json", import.meta.url),
-  new URL("../dist/rejot_backoffice/wrangler.json", import.meta.url),
+const backofficeWorkerConfigPaths = [
+  "build/server/wrangler.json",
+  "dist/rejot_backoffice/wrangler.json",
 ];
-
-let activeChild = null;
-let stopSignal = null;
-
-// Ctrl-C signals the whole process group. Without handlers Node exits at once and skips the
-// configuration restore below, so the wrapper stays up until Vite has shut down.
-function stopViteCommand(signal) {
-  stopSignal = signal;
-  activeChild?.kill(signal);
-}
-process.on("SIGINT", stopViteCommand);
-process.on("SIGTERM", stopViteCommand);
-
-function runViteCommand(args) {
-  if (stopSignal) {
-    return Promise.resolve({ code: 0, signal: stopSignal });
-  }
-  return new Promise((resolve, reject) => {
-    const child = spawn("pnpm", ["exec", ...args], {
-      stdio: "inherit",
-    });
-    activeChild = child;
-    child.once("error", reject);
-    child.once("exit", (code, signal) => {
-      activeChild = null;
-      if (signal && signal !== "SIGINT" && signal !== "SIGTERM") {
-        reject(new Error(`Backoffice Vite command terminated by ${signal}`));
-        return;
-      }
-      resolve({ code: code ?? (signal ? 0 : 1), signal });
-    });
-  });
-}
-
-if (enableSourceMaps) {
-  // Preview serves existing output, so source maps must be generated before it starts.
-  const buildResult = await runViteCommand([
-    "react-router",
-    "build",
-    "--sourcemapClient",
-    "--sourcemapServer",
-  ]);
-  if (buildResult.code !== 0 || buildResult.signal) {
-    process.exit(buildResult.code);
-  }
-}
-
-// Every run sets both sides, so output left patched by a killed run cannot leak into the next one.
 const configPatches = [
   {
-    url: containerWorkerConfigUrl,
-    patch: (config) => ({ ...config, dev: { ...config.dev, enable_containers: enableContainers } }),
+    path: containerWorkerConfigPath,
+    patch: (config) => ({
+      ...config,
+      dev: { ...config.dev, enable_containers: enableContainers },
+      // Image paths are relative to the build output, which the snapshot moves.
+      containers: config.containers.map((container) => ({
+        ...container,
+        images: Object.fromEntries(
+          Object.entries(container.images).map(([name, image]) => [
+            name,
+            {
+              ...image,
+              dockerfile: path.resolve(
+                appDirectory,
+                path.dirname(containerWorkerConfigPath),
+                image.dockerfile,
+              ),
+            },
+          ]),
+        ),
+      })),
+    }),
   },
-  ...backofficeWorkerConfigUrls.map((url) => ({
-    url,
+  ...backofficeWorkerConfigPaths.map((configPath) => ({
+    path: configPath,
     patch: (config) => ({
       ...config,
       vars: { ...config.vars, SANDBOX_CONTAINERS: String(enableContainers) },
@@ -86,23 +72,47 @@ const configPatches = [
     }),
   })),
 ];
-
 // Preview reads each Worker's secrets from a .dev.vars beside its output config. Builds carry none,
-// since Turbo shares them between machines, so the local files are copied in for each run. Every
+// since Turbo shares them between machines, so the local files are copied into each snapshot. Every
 // Backoffice Worker gets the whole file so local overrides apply uniformly.
 const devVarsCopies = [
-  ["../.dev.vars", "../build/server/.dev.vars"],
-  ["../.dev.vars", "../dist/rejot_backoffice/.dev.vars"],
-  ["../../cf-sandbox-bridge/.dev.vars", "../dist/cf_sandbox_bridge/.dev.vars"],
-].map(([source, target]) => ({
-  source: new URL(source, import.meta.url),
-  target: new URL(target, import.meta.url),
-}));
+  ["../.dev.vars", "build/server/.dev.vars"],
+  ["../.dev.vars", "dist/rejot_backoffice/.dev.vars"],
+  ["../../cf-sandbox-bridge/.dev.vars", "dist/cf_sandbox_bridge/.dev.vars"],
+].map(([source, target]) => ({ source: path.resolve(appDirectory, "scripts", source), target }));
 
-async function copyDevVars() {
+let stopSignal = null;
+const previews = new Set();
+
+/**
+ * Copies the current build output, so the next build cannot change what a running preview serves
+ * and the preview's patches never reach the output Turbo caches. Copies are clones where the file
+ * system supports them.
+ */
+async function snapshotBuild(snapshotDirectory) {
+  const files = JSON.parse(await readFile(buildCompleteMarkerPath, "utf8"));
+  const directories = new Set();
+  for (const [file, size] of Object.entries(files)) {
+    const snapshotFile = path.join(snapshotDirectory, file);
+    const directory = path.dirname(snapshotFile);
+    if (!directories.has(directory)) {
+      await mkdir(directory, { recursive: true });
+      directories.add(directory);
+    }
+    await copyFile(path.join(appDirectory, file), snapshotFile, constants.COPYFILE_FICLONE);
+    // Turbo restores a cached build in place, so a file can still hold the previous build.
+    if ((await stat(snapshotFile)).size !== size) {
+      throw new Error(`${file} does not match the finished build yet.`);
+    }
+  }
+  for (const { path: configPath, patch } of configPatches) {
+    const snapshotConfigPath = path.join(snapshotDirectory, configPath);
+    const config = JSON.parse(await readFile(snapshotConfigPath, "utf8"));
+    await writeFile(snapshotConfigPath, JSON.stringify(patch(config)));
+  }
   for (const { source, target } of devVarsCopies) {
     try {
-      await copyFile(source, target);
+      await copyFile(source, path.join(snapshotDirectory, target));
     } catch (error) {
       if (error.code !== "ENOENT") {
         throw error;
@@ -111,76 +121,281 @@ async function copyDevVars() {
   }
 }
 
-async function removeDevVars() {
-  for (const { target } of devVarsCopies) {
-    await rm(target, { force: true });
+/** Snapshots the build once its output holds every file the marker lists, for up to 10 seconds. */
+async function snapshotFinishedBuild(snapshotDirectory) {
+  for (let attempt = 0; attempt < 40 && !stopSignal; attempt += 1) {
+    try {
+      await snapshotBuild(snapshotDirectory);
+      return true;
+    } catch {
+      await rm(snapshotDirectory, { recursive: true, force: true });
+      await new Promise((resolve) => {
+        setTimeout(resolve, 250);
+      });
+    }
   }
+  return false;
 }
 
-// A build replaces the output the preview serves, but the running Workers keep requesting the old
-// asset chunks. vite.config.ts writes this marker once a build has finished, and the preview
-// restarts on the new output.
-const buildCompleteMarkerPath = fileURLToPath(new URL("../build/.build-complete", import.meta.url));
-let restartRequested = false;
-watchFile(buildCompleteMarkerPath, { interval: 500 }, (current, previous) => {
-  // A starting build deletes the marker; the preview keeps running until the build has finished.
-  if (current.mtimeMs === 0 || current.mtimeMs === previous.mtimeMs) {
+function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address();
+      server.close(() => {
+        resolve(port);
+      });
+    });
+  });
+}
+
+/** Runs `vite preview` on a snapshot, on ports of its own until the proxy points at it. */
+async function startPreview(snapshotDirectory) {
+  const preview = {
+    snapshotDirectory,
+    appPort: await findFreePort(),
+    inspectorPort: await findFreePort(),
+  };
+  const child = spawn(
+    "pnpm",
+    [
+      "exec",
+      "vite",
+      "preview",
+      snapshotDirectory,
+      "--config",
+      viteConfigPath,
+      "--host",
+      "127.0.0.1",
+      "--port",
+      String(preview.appPort),
+      "--strictPort",
+      ...previewArgs,
+    ],
+    {
+      cwd: appDirectory,
+      // Vite's CLI shortcuts would print the preview's own port, and previews overlap while one
+      // replaces another.
+      stdio: ["ignore", "inherit", "inherit"],
+      env: { ...process.env, BACKOFFICE_PREVIEW_INSPECTOR_PORT: String(preview.inspectorPort) },
+    },
+  );
+  preview.child = child;
+  preview.exited = new Promise((resolve) => {
+    child.once("exit", (code, signal) => {
+      resolve({ code, signal });
+    });
+  });
+  previews.add(preview);
+  return preview;
+}
+
+/** Resolves once the preview answers HTTP, or with its exit if it stops first. */
+async function waitUntilServing(preview) {
+  let exit = null;
+  preview.exited.then((result) => {
+    exit = result;
+  });
+  while (!exit && !stopSignal) {
+    try {
+      await fetch(`http://127.0.0.1:${preview.appPort}/`, { signal: AbortSignal.timeout(5_000) });
+      return null;
+    } catch {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 200);
+      });
+    }
+  }
+  return exit;
+}
+
+async function stopPreview(preview) {
+  preview.child.kill("SIGTERM");
+  await preview.exited;
+  previews.delete(preview);
+  await rm(preview.snapshotDirectory, { recursive: true, force: true });
+}
+
+let activePreview = null;
+
+/** Forwards connections on a fixed port to whichever preview is active. */
+function startProxy(host, port, targetPort) {
+  const server = createServer((client) => {
+    if (!activePreview) {
+      client.destroy();
+      return;
+    }
+    const upstream = createConnection(targetPort(activePreview), "127.0.0.1");
+    client.pipe(upstream).pipe(client);
+    client.on("error", () => {
+      upstream.destroy();
+    });
+    upstream.on("error", () => {
+      client.destroy();
+    });
+  });
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => {
+      resolve(server);
+    });
+  });
+}
+
+let snapshotCount = 0;
+
+/**
+ * Serves the current build: starts a preview of it and switches the proxy over once it answers. The
+ * previous preview keeps serving until then, so a restart costs no downtime.
+ */
+async function serveLatestBuild() {
+  snapshotCount += 1;
+  const snapshotDirectory = path.join(snapshotsDirectory, String(snapshotCount));
+  if (!(await snapshotFinishedBuild(snapshotDirectory))) {
+    // There is no build yet, or one that started meanwhile replaces the output. The marker of the
+    // next build starts another attempt.
+    console.log(
+      activePreview
+        ? "\nThe Backoffice build changed while copying it; the next build replaces the preview.\n"
+        : "\nWaiting for the Backoffice build.\n",
+    );
     return;
   }
-  restartRequested = true;
-  activeChild?.kill("SIGTERM");
-});
-
-// A build that started meanwhile may have removed the output, but any other failure to read it
-// must not skip restoring the configs.
-async function readConfigIfPresent(url) {
-  try {
-    return await readFile(url, "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") {
-      return null;
+  const preview = await startPreview(snapshotDirectory);
+  const exit = await waitUntilServing(preview);
+  if (stopSignal) {
+    return;
+  }
+  if (exit) {
+    previews.delete(preview);
+    await rm(snapshotDirectory, { recursive: true, force: true });
+    if (!activePreview) {
+      await shutDown(null, exit.code ?? 1);
     }
-    throw error;
+    console.error("\nThe new Backoffice preview failed to start, keeping the current one.\n");
+    return;
+  }
+  const previousPreview = activePreview;
+  activePreview = preview;
+  preview.exited.then(({ code, signal }) => {
+    // The active preview stopping on its own ends the run, as a plain `vite preview` would.
+    if (activePreview === preview && !stopSignal) {
+      console.error(`\nBackoffice preview exited (${signal ?? code}).`);
+      void shutDown(null, code ?? 1);
+    }
+  });
+  console.log(
+    `\nBackoffice preview serving the latest build at http://${publicHost}:${appPort}/\n`,
+  );
+  if (previousPreview) {
+    await stopPreview(previousPreview);
   }
 }
 
-async function readOriginalConfigs() {
-  try {
-    return await Promise.all(configPatches.map(({ url }) => readFile(url, "utf8")));
-  } catch (cause) {
-    throw new Error(
-      "Backoffice preview output is missing. Run `pnpm --filter @fragno-apps/backoffice-rr build` before previewing.",
-      { cause },
-    );
-  }
-}
+let proxies = [];
+let buildWatcher = null;
 
-try {
-  do {
-    if (restartRequested) {
-      console.log("\nBackoffice build finished, restarting preview on the new output.\n");
-      restartRequested = false;
-    }
-    const originalConfigs = await readOriginalConfigs();
-    const patchedConfigs = configPatches.map(({ patch }, index) =>
-      JSON.stringify(patch(JSON.parse(originalConfigs[index]))),
-    );
-    try {
-      for (const [index, { url }] of configPatches.entries()) {
-        await writeFile(url, patchedConfigs[index]);
-      }
-      await copyDevVars();
-      process.exitCode = (await runViteCommand(previewCommand)).code;
-    } finally {
-      // A build that ran meanwhile wrote its own configs, which must not be replaced by older ones.
-      for (const [index, { url }] of configPatches.entries()) {
-        if ((await readConfigIfPresent(url)) === patchedConfigs[index]) {
-          await writeFile(url, originalConfigs[index]);
-        }
-      }
-      await removeDevVars();
-    }
-  } while (restartRequested && !stopSignal);
-} finally {
+async function shutDown(signal, exitCode) {
+  if (stopSignal) {
+    return;
+  }
+  stopSignal = signal ?? "SIGTERM";
   unwatchFile(buildCompleteMarkerPath);
+  buildWatcher?.kill(stopSignal);
+  for (const proxy of proxies) {
+    proxy.close();
+  }
+  await Promise.all([...previews].map((preview) => stopPreview(preview)));
+  await rm(snapshotsDirectory, { recursive: true, force: true });
+  process.exit(exitCode);
+}
+
+// Ctrl-C signals the whole process group. Without handlers Node exits at once and leaves the
+// snapshots behind, so the wrapper stays up until every preview has shut down.
+process.on("SIGINT", () => void shutDown("SIGINT", 0));
+process.on("SIGTERM", () => void shutDown("SIGTERM", 0));
+
+if (enableSourceMaps) {
+  // Preview serves existing output, so source maps must be generated before it starts. The build
+  // watcher stays off, since its builds would replace them.
+  const build = spawn(
+    "pnpm",
+    ["exec", "react-router", "build", "--sourcemapClient", "--sourcemapServer"],
+    { cwd: appDirectory, stdio: "inherit" },
+  );
+  const code = await new Promise((resolve) => {
+    build.once("exit", resolve);
+  });
+  if (code !== 0 || stopSignal) {
+    process.exit(code ?? 0);
+  }
+}
+
+let serving = Promise.resolve();
+let servingQueued = false;
+
+function serveLatestBuildWhenIdle() {
+  // Builds that finish while a preview starts collapse into one more restart.
+  if (servingQueued) {
+    return;
+  }
+  servingQueued = true;
+  serving = serving.then(async () => {
+    servingQueued = false;
+    if (stopSignal) {
+      return;
+    }
+    try {
+      await serveLatestBuild();
+    } catch (error) {
+      console.error(error);
+      await shutDown(null, 1);
+    }
+  });
+}
+
+// Snapshots of runs that were killed outright.
+await rm(snapshotsDirectory, { recursive: true, force: true });
+proxies = await Promise.all([
+  startProxy(publicHost, appPort, (preview) => preview.appPort),
+  startProxy("127.0.0.1", inspectorPort, (preview) => preview.inspectorPort),
+]);
+watchFile(buildCompleteMarkerPath, { interval: 500 }, (current, previous) => {
+  if (current.mtimeMs === previous.mtimeMs) {
+    return;
+  }
+  // A starting build deletes the marker; the preview keeps serving until the build has finished.
+  if (current.mtimeMs === 0) {
+    console.log("\nBuilding Backoffice.\n");
+    return;
+  }
+  console.log("\nBackoffice build finished, starting a preview of it.\n");
+  serveLatestBuildWhenIdle();
+});
+serveLatestBuildWhenIdle();
+
+// The wrapper rebuilds rather than `turbo watch` running the preview: Turbo restarts a task whose
+// dependencies rebuilt, which would stop the preview serving until its replacement is up.
+if (!enableSourceMaps) {
+  buildWatcher = spawn(
+    "pnpm",
+    [
+      "exec",
+      "turbo",
+      "watch",
+      "build",
+      // Watch mode only reads the cache unless told otherwise, so every bench rebuilt the packages.
+      "--experimental-write-cache",
+      "--filter=@fragno-apps/backoffice-rr",
+      "--output-logs=errors-only",
+    ],
+    { cwd: path.resolve(appDirectory, "../.."), stdio: ["ignore", "inherit", "inherit"] },
+  );
+  buildWatcher.once("exit", (code) => {
+    if (!stopSignal) {
+      console.error("\nThe Backoffice build watcher exited.");
+      void shutDown(null, code ?? 1);
+    }
+  });
 }

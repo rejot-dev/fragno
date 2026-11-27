@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { readdir, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { parseEnv } from "node:util";
@@ -27,6 +27,13 @@ const viteHost = boxdVmHost ? "0.0.0.0" : "127.0.0.1";
 const boxdAllowedHosts = boxdVmHost ? [`.${boxdVmHost}`] : [];
 const localDevVarsPath = path.resolve(__dirname, ".dev.vars");
 const buildCompleteMarkerPath = path.resolve(__dirname, "build/.build-complete");
+// What `vite preview` serves: each Worker's output and the deploy config pointing at them.
+const previewOutputPaths = [
+  "build",
+  "dist/rejot_backoffice",
+  "dist/cf_sandbox_bridge",
+  ".wrangler/deploy/config.json",
+];
 
 /** DOCS_PUBLIC_BASE_URL from .dev.vars: the boxd proxy or tunnel serving the local server. */
 function localPublicBaseUrl(): string | null {
@@ -196,8 +203,29 @@ function localR2PublicOriginPlugin(): Plugin {
   };
 }
 
-// scripts/run-vite-preview.mjs restarts a running preview when this marker changes. A build replaces
-// the output the preview serves, and the preview's Workers keep requesting the old asset chunks.
+/** Size of every file `vite preview` serves, by path relative to the app. */
+async function previewOutputFiles(): Promise<Record<string, number>> {
+  const files: Record<string, number> = {};
+  for (const outputPath of previewOutputPaths) {
+    const absolutePath = path.resolve(__dirname, outputPath);
+    const entries = (await stat(absolutePath)).isDirectory()
+      ? (await readdir(absolutePath, { recursive: true, withFileTypes: true }))
+          .filter((entry) => entry.isFile())
+          .map((entry) => path.join(entry.parentPath, entry.name))
+      : [absolutePath];
+    for (const file of entries) {
+      // Turbo never caches local secrets, so a restored build lacks any left in the output.
+      if (file !== buildCompleteMarkerPath && path.basename(file) !== ".dev.vars") {
+        files[path.relative(__dirname, file)] = (await stat(file)).size;
+      }
+    }
+  }
+  return files;
+}
+
+// scripts/run-vite-preview.mjs starts a preview of each build once this marker changes. Turbo
+// restores cached builds file by file in no set order, so the marker lists every file the preview
+// needs, and the preview waits until the output holds all of them.
 function writeBuildCompleteMarkerPlugin(): Plugin {
   return {
     name: "write-build-complete-marker",
@@ -206,35 +234,23 @@ function writeBuildCompleteMarkerPlugin(): Plugin {
     buildApp: {
       order: "post",
       async handler() {
-        await writeFile(buildCompleteMarkerPath, new Date().toISOString());
+        await writeFile(buildCompleteMarkerPath, JSON.stringify(await previewOutputFiles()));
       },
     },
   };
 }
 
-// Vite's dev server has a `u` shortcut, but its preview server does not. Shortcuts bound here merge
-// with the ones Vite's CLI binds after startup.
-function previewServerUrlShortcutPlugin(): Plugin {
-  return {
-    name: "preview-server-url-shortcut",
-    configurePreviewServer(server) {
-      server.bindCLIShortcuts({
-        customShortcuts: [
-          {
-            key: "u",
-            description: "show server url",
-            action(previewServer) {
-              previewServer.config.logger.info("");
-              previewServer.printUrls();
-            },
-          },
-        ],
-      });
-    },
-  };
+// scripts/run-vite-preview.mjs proxies the worktree's ports to the preview serving the latest build,
+// so each preview it starts takes inspector and server ports of its own.
+function previewInspectorPort(): number {
+  const port = process.env.BACKOFFICE_PREVIEW_INSPECTOR_PORT;
+  if (!port) {
+    throw new Error("Preview Backoffice through scripts/run-vite-preview.mjs (`pnpm preview`).");
+  }
+  return Number(port);
 }
 
-export default defineConfig(({ command }) => {
+export default defineConfig(({ command, isPreview }) => {
   const isDevServer = command === "serve";
   // The dev server never runs containers. Builds are deployed, so they keep the configured value.
   const disableSandboxContainersOnDevServer = (workerConfig: { vars: Record<string, unknown> }) => {
@@ -257,7 +273,9 @@ export default defineConfig(({ command }) => {
   return {
     // Turbo shares builds between machines and hashes VITE_* settings from the process environment
     // (turbo.json `env`), so builds must not read them from a machine's .env file.
-    envDir: isDevServer ? undefined : false,
+    // A preview's root is a snapshot of the build (see scripts/run-vite-preview.mjs), so the .env
+    // file is looked up here rather than in the root.
+    envDir: isDevServer ? __dirname : false,
     define: {
       "import.meta.env.BACKOFFICE_TARGET": JSON.stringify("cloudflare"),
     },
@@ -292,17 +310,24 @@ export default defineConfig(({ command }) => {
           name: "ssr",
         },
         // Left unset, the plugin takes 9229, the Node debuggers' port, whenever it is free.
-        inspectorPort: isDevServer ? backofficeInspectorPort(__dirname) : false,
+        inspectorPort: isPreview
+          ? previewInspectorPort()
+          : isDevServer
+            ? backofficeInspectorPort(__dirname)
+            : false,
+        // Local state defaults to the root's .wrangler/state, and a preview's root is a snapshot.
+        persistState: { path: path.resolve(__dirname, ".wrangler/state") },
       }),
       tailwindcss(),
-      reactRouter(),
+      // React Router finds the app's routes under the root, which a preview's snapshot lacks. The
+      // preview serves every request through the Cloudflare plugin's Workers.
+      ...(isPreview ? [] : [reactRouter()]),
       devtoolsJson(),
       emitWaSqliteWasmAssetPlugin(),
       reactDomStreamingRendererOnlyPlugin(),
       lazyServerRouteModulesPlugin(),
       dropUnloadedServerModulesPlugin(),
       dropLocalDevVarsPlugin(),
-      previewServerUrlShortcutPlugin(),
       printPublicBaseUrlPlugin(),
       writeBuildCompleteMarkerPlugin(),
     ],
