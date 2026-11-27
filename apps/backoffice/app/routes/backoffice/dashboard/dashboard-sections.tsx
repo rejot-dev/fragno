@@ -178,7 +178,7 @@ function AttentionRow({
               <RowTime time={formatRelativeTime(item.latestRun.updatedAt, now)} />
             </>
           }
-          actions={<InvestigateButton item={item} />}
+          actions={<InvestigateButton request={failingWorkflowInvestigation(item)} />}
           expansion={null}
         />
       );
@@ -190,7 +190,7 @@ function AttentionRow({
           title={item.connection.displayName}
           detail={`${item.connection.kindLabel} connection is unavailable`}
           trailing={<RowTime time={formatRelativeTime(item.connection.changedAt, now)} />}
-          actions={null}
+          actions={<InvestigateButton request={unavailableConnectionInvestigation(item)} />}
           expansion={null}
         />
       );
@@ -222,31 +222,39 @@ function ConversationLink({
   );
 }
 
+function failingWorkflowInvestigation(
+  item: Extract<DashboardAttention, { kind: "failing-workflow" }>,
+) {
+  const runs = item.erroredRuns === 1 ? "once" : `${item.erroredRuns} times`;
+  const error = item.error === null ? "" : ` It failed with "${item.error}".`;
+  return `The workflow ${item.workflow} failed ${runs} since it last completed. Its latest failed run is ${item.latestRun.instanceId}.${error}
+
+Investigate why it fails: look at its failed runs, the steps they failed at, and the workflow's source. Tell me the cause and how to fix it.`;
+}
+
+function unavailableConnectionInvestigation(
+  item: Extract<DashboardAttention, { kind: "connection-unavailable" }>,
+) {
+  const { connection } = item;
+  return `The ${connection.kindLabel} connection ${connection.displayName} (${connection.connectionId}, service ${connection.service}) is unavailable.
+
+Investigate why: check the connection's state and recent events, and what fails when it is used. Tell me the cause and how to fix it.`;
+}
+
 /**
- * Opens the assistant with a request to find out why a workflow fails, ready for the person to
+ * Opens the assistant with a request to investigate an attention item, ready for the person to
  * add what they know and send.
  */
-function InvestigateButton({
-  item,
-}: {
-  item: Extract<DashboardAttention, { kind: "failing-workflow" }>;
-}) {
+function InvestigateButton({ request }: { request: string }) {
   const askAgent = useAskAgent();
   if (askAgent === null) {
     return null;
   }
-  const runs = item.erroredRuns === 1 ? "once" : `${item.erroredRuns} times`;
-  const error = item.error === null ? "" : ` It failed with "${item.error}".`;
   return (
     <Button
       variant="ghost"
       onClick={() => {
-        askAgent({
-          agentName: MAIN_PI_AGENT_NAME,
-          text: `The workflow ${item.workflow} failed ${runs} since it last completed. Its latest failed run is ${item.latestRun.instanceId}.${error}
-
-Investigate why it fails: look at its failed runs, the steps they failed at, and the workflow's source. Tell me the cause and how to fix it.`,
-        });
+        askAgent({ agentName: MAIN_PI_AGENT_NAME, text: request });
       }}
       // The agent drawer only opens from the sm breakpoint up.
       className="hidden min-h-8 px-2 text-xs text-[var(--bo-muted)] sm:inline-flex"
