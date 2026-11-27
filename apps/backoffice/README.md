@@ -17,6 +17,12 @@ and each workflow tick) goes through the scope's `CODEMODE` Durable Object, whic
 and keeps seven days of run history: outcome, error, and bounded logs. Guests have no network
 egress; use the `web.*` tools for internet access.
 
+## Preview
+
+`pnpm preview` from the repository root builds Backoffice and previews the build, rebuilding and
+restarting the preview whenever Backoffice or a package it depends on changes. Each git worktree
+previews on its own port.
+
 ## Tests
 
 While working, run only the tests your changes reach from the repository root:

@@ -12,6 +12,11 @@
       ],
       "env": ["VITE_POSTHOG_PROJECT_TOKEN", "VITE_POSTHOG_HOST", "VITE_POSTHOG_APP_ORIGIN"]
     },
+    "preview": {
+      "dependsOn": ["build"],
+      "persistent": true,
+      "cache": false
+    },
     "static:check": {
       "dependsOn": ["^build"],
       "outputs": []
