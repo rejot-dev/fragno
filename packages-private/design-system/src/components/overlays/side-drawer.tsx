@@ -99,6 +99,8 @@ export function SideDrawer({
   return (
     // The panel is the page background for what the drawer holds, so content painting the page
     // background (a chat thread and its scroll fades, for example) matches the drawer.
+    // Closed, it hides once it has slid shut: iOS colors the strip beside a home-screen web app,
+    // on an iPhone Duo on its side, after a panel at the screen's edge, and keeps a 0px-wide one's.
     <aside
       ref={asideRef}
       onFocus={(event) => {
@@ -119,7 +121,7 @@ export function SideDrawer({
             : { top: keyboardFreeArea.top, height: keyboardFreeArea.height }),
         } as CSSProperties
       }
-      className={`group/drawer sticky top-0 z-40 flex h-dvh shrink-0 flex-col bg-[var(--bo-panel)] transition-[width] duration-200 ease-out [--bo-bg:var(--bo-panel)] ${typing ? "overflow-visible" : "overflow-hidden"} ${open ? "w-[min(var(--side-drawer-width),calc(100vw-2rem))] border-l border-[color:var(--bo-border)]" : "pointer-events-none w-0"}`}
+      className={`group/drawer sticky top-0 z-40 flex h-dvh shrink-0 flex-col bg-[var(--bo-panel)] transition-[width,visibility] duration-200 ease-out [--bo-bg:var(--bo-panel)] ${typing ? "overflow-visible" : "overflow-hidden"} ${open ? "w-[min(var(--side-drawer-width),calc(100vw-2rem))] border-l border-[color:var(--bo-border)]" : "pointer-events-none invisible w-0"}`}
       data-typing={typing || undefined}
     >
       <div
