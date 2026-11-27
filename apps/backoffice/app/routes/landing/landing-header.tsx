@@ -37,6 +37,10 @@ const navCellClassName = `${navCellBaseClassName} font-light text-[color-mix(in_
  * topmost element rather than which surface spans it, so the dashboard rising over the hero counts
  * as light. Until it can look, which is not before hydration, it takes the page's word for what
  * the top of the page is, so the header renders legibly from the first paint.
+ *
+ * Over a dark surface the document takes the surface's color too. iOS paints the strip it keeps
+ * beside or above a home-screen web app, where the iPhone Duo shows the time, in the document's
+ * color, so the strip then reads as part of the hero rather than a light bar beside it.
  */
 function useOverDarkSurface(headerRef: RefObject<HTMLElement | null>, startsOverDark: boolean) {
   const [overDarkSurface, setOverDarkSurface] = useState(startsOverDark);
@@ -45,16 +49,19 @@ function useOverDarkSurface(headerRef: RefObject<HTMLElement | null>, startsOver
     if (!header) {
       return undefined;
     }
-    const isDarkAt = (x: number, y: number) =>
+    const darkSurfaceAt = (x: number, y: number) =>
       document
         .elementsFromPoint(x, y)
         .find((element) => !header.contains(element))
-        ?.closest("[data-landing-dark]") != null;
+        ?.closest("[data-landing-dark]") ?? null;
     const updateOverDarkSurface = () => {
       const { top, bottom, left, right } = header.getBoundingClientRect();
       const middle = (left + right) / 2;
       // Just inside each edge, so the header's own border is not what is asked about.
-      setOverDarkSurface(isDarkAt(middle, top + 1) && isDarkAt(middle, bottom - 2));
+      const surface = darkSurfaceAt(middle, top + 1);
+      const over = surface !== null && darkSurfaceAt(middle, bottom - 2) !== null;
+      setOverDarkSurface(over);
+      paintDocument(over ? getComputedStyle(surface).backgroundColor : "");
     };
     updateOverDarkSurface();
     window.addEventListener("scroll", updateOverDarkSurface, { passive: true });
@@ -62,9 +69,17 @@ function useOverDarkSurface(headerRef: RefObject<HTMLElement | null>, startsOver
     return () => {
       window.removeEventListener("scroll", updateOverDarkSurface);
       window.removeEventListener("resize", updateOverDarkSurface);
+      paintDocument("");
     };
   }, [headerRef]);
   return overDarkSurface;
+}
+
+/** Sets the document's background color, or with "" returns it to the theme's. */
+function paintDocument(color: string) {
+  // iOS takes the body's color, or the root's where the body has none; the page covers both.
+  document.documentElement.style.backgroundColor = color;
+  document.body.style.backgroundColor = color;
 }
 
 /** Publishes the widths of the header's logo and link cells, for the hero to line up with. */
