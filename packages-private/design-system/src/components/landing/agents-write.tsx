@@ -264,6 +264,7 @@ function ProcessPanel({ process }: { process: Process }) {
             <p>{process.prompt}</p>
           </ChatUserMessage>
           <ChatAssistantMessage
+            running={false}
             author={{ name: `${process.team} agent`, time: null }}
             footer={null}
           >
@@ -275,6 +276,7 @@ function ProcessPanel({ process }: { process: Process }) {
                 <p>{process.change.request}</p>
               </ChatUserMessage>
               <ChatAssistantMessage
+                running={false}
                 author={{ name: `${process.team} agent`, time: null }}
                 footer={null}
               >

@@ -849,6 +849,191 @@
   mask-image: linear-gradient(transparent, #000 45%);
 }
 
+/* The agent's face (AgentFace): the logo's three colors swirling in a rounded square, under a soft
+   highlight, with two white eyes. The swirl is a blurred conic gradient larger than the face,
+   turning, and clipped by it. The eyes carry a faint shadow, so they keep their shape as the yellow
+   passes behind them. They blink now and then, follow the pointer through
+   --bo-agent-face-look-x/y, and smile while the link or button the face sits in is hovered or
+   focused. A thinking face (data-motion) swirls fast and glances from side to side instead of
+   following the pointer. With reduced motion, as the appearance menu chooses or else as the system
+   prefers (appearance-preferences.ts), the face holds still and its eyes stay ahead. Everything is
+   drawn for a 28px face, the workspace tile's size (selector-menu.tsx), and scales with
+   --bo-agent-face-size. */
+.bo-agent-face {
+  --bo-agent-face-unit: calc(var(--bo-agent-face-size) / 28);
+  /* How far the face tilts and its eyes look: 0 with reduced motion. */
+  --bo-agent-face-moves: 1;
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  width: var(--bo-agent-face-size);
+  height: var(--bo-agent-face-size);
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: calc(6 * var(--bo-agent-face-unit));
+  transition:
+    rotate 300ms cubic-bezier(0.3, 1.5, 0.5, 1),
+    translate 300ms cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+
+.bo-agent-face::before {
+  position: absolute;
+  inset: -35%;
+  background: conic-gradient(#ff2d87, #ffd60a, #7a3cff, #ff2d87);
+  content: "";
+  filter: blur(calc(4 * var(--bo-agent-face-unit)));
+  animation: bo-agent-face-swirl 6s linear infinite;
+}
+
+.bo-agent-face::after {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 30% 22%, rgb(255 255 255 / 0.6), transparent 50%);
+  content: "";
+}
+
+.bo-agent-face-eye {
+  position: absolute;
+  z-index: 1;
+  top: calc(10 * var(--bo-agent-face-unit));
+  width: calc(4 * var(--bo-agent-face-unit));
+  height: calc(7 * var(--bo-agent-face-unit));
+  border-radius: calc(3 * var(--bo-agent-face-unit));
+  background: #fff;
+  box-shadow: 0 0.5px 1.5px rgb(17 24 39 / 0.4);
+  translate: calc(var(--bo-agent-face-look-x, 0px) * var(--bo-agent-face-moves))
+    calc(var(--bo-agent-face-look-y, 0px) * var(--bo-agent-face-moves));
+  animation: bo-agent-face-blink 4.5s infinite;
+  transition:
+    translate 150ms ease-out,
+    top 200ms ease-out,
+    height 200ms ease-out,
+    border-radius 200ms ease-out;
+}
+
+.bo-agent-face-eye:first-child {
+  left: calc(8 * var(--bo-agent-face-unit));
+}
+
+.bo-agent-face-eye:last-child {
+  right: calc(8 * var(--bo-agent-face-unit));
+}
+
+:is(a, button):is(:hover, :focus-visible):not([aria-expanded="true"], [data-agent-drawer-open])
+  > .bo-agent-face {
+  rotate: calc(-6deg * var(--bo-agent-face-moves));
+  translate: 0 calc(-1px * var(--bo-agent-face-moves));
+}
+
+:is(a, button):is(:hover, :focus-visible):not([aria-expanded="true"], [data-agent-drawer-open])
+  > .bo-agent-face
+  .bo-agent-face-eye {
+  top: calc(11 * var(--bo-agent-face-unit));
+  height: calc(4 * var(--bo-agent-face-unit));
+  border-radius: calc(4 * var(--bo-agent-face-unit)) calc(4 * var(--bo-agent-face-unit))
+    calc(1 * var(--bo-agent-face-unit)) calc(1 * var(--bo-agent-face-unit));
+}
+
+/* While the button's drawer is open the agent is there, in its messages, so the button's face holds
+   still, neither swirling, blinking, smiling nor looking around. A picture of the button, such as
+   the landing page's demo, says so with data-agent-drawer-open. */
+:is([aria-expanded="true"], [data-agent-drawer-open]) > .bo-agent-face::before {
+  animation-play-state: paused;
+}
+
+:is([aria-expanded="true"], [data-agent-drawer-open]) > .bo-agent-face .bo-agent-face-eye {
+  translate: none;
+  animation: none;
+}
+
+.bo-agent-face[data-motion="thinking"]::before {
+  animation-duration: 1.5s;
+}
+
+.bo-agent-face[data-motion="thinking"] .bo-agent-face-eye {
+  animation:
+    bo-agent-face-blink 4.5s infinite,
+    bo-agent-face-glance 2.4s ease-in-out infinite;
+}
+
+@keyframes bo-agent-face-swirl {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes bo-agent-face-blink {
+  0%,
+  94%,
+  100% {
+    scale: 1 1;
+  }
+  97% {
+    scale: 1 0.1;
+  }
+}
+
+@keyframes bo-agent-face-glance {
+  0%,
+  15%,
+  85%,
+  100% {
+    translate: 0 0;
+  }
+  30%,
+  45% {
+    translate: calc(-1.5 * var(--bo-agent-face-unit)) calc(-0.5 * var(--bo-agent-face-unit));
+  }
+  60%,
+  75% {
+    translate: calc(1.5 * var(--bo-agent-face-unit)) calc(-0.5 * var(--bo-agent-face-unit));
+  }
+}
+
+/* More specific than the data-motion rules, so they override them. */
+:root[data-reduced-motion="reduce"] .bo-agent-face {
+  --bo-agent-face-moves: 0;
+  transition: none;
+}
+
+:root[data-reduced-motion="reduce"] .bo-agent-face::before,
+:root[data-reduced-motion="reduce"] .bo-agent-face .bo-agent-face-eye {
+  animation: none;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-reduced-motion]) .bo-agent-face {
+    --bo-agent-face-moves: 0;
+    transition: none;
+  }
+
+  :root:not([data-reduced-motion]) .bo-agent-face::before,
+  :root:not([data-reduced-motion]) .bo-agent-face .bo-agent-face-eye {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Forced colors drop the gradients and the eyes' shadow, which would leave the agent button
+   looking empty, so the face is drawn in the system's text and canvas colors instead. */
+@media (forced-colors: active) {
+  .bo-agent-face {
+    forced-color-adjust: none;
+    background: ButtonText;
+  }
+
+  .bo-agent-face::before,
+  .bo-agent-face::after {
+    display: none;
+  }
+
+  .bo-agent-face-eye {
+    background: ButtonFace;
+    box-shadow: none;
+  }
+}
+
 /* A ring in the logo's three colors, pink, yellow and violet, turning around a pill (PillButton) while
    it is hovered or focused, in its link or as the link or button itself. It is drawn over the button's own
    border: a conic gradient whose middle is cut away, so only a 2px rim shows. It fades in and out

@@ -92,7 +92,11 @@ export function LandingDemo() {
             sales on Slack. Show me replies before they go out.
           </p>
         </ChatUserMessage>
-        <ChatAssistantMessage author={{ name: "Assistant", time: null }} footer={null}>
+        <ChatAssistantMessage
+          running={false}
+          author={{ name: "Assistant", time: null }}
+          footer={null}
+        >
           <ChatActivity
             status={{
               kind: "settled",

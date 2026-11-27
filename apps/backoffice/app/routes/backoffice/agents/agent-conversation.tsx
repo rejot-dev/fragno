@@ -536,6 +536,10 @@ function AgentConversationThread({
 
   // The agent's queue and Pi's `pi.inbox` own what waits; this adapter keeps the composer usable
   // during a run.
+  const chatExtensions = useMemo(
+    () => ({ ...backofficeChatExtensions, agentLabel: formatPiAgentName(agent.agentName) }),
+    [agent.agentName],
+  );
   const queue = useMemo<ExternalThreadQueueAdapter>(
     () => ({
       items: conversationQueue.items,
@@ -692,7 +696,7 @@ function AgentConversationThread({
     <AssistantRuntimeProvider runtime={runtime}>
       <FileScopeProvider scope={resolvedScope}>
         <SessionWorkflowsProvider>
-          <ChatExtensionsProvider value={backofficeChatExtensions}>
+          <ChatExtensionsProvider value={chatExtensions}>
             <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
               <h2 className="sr-only">{formatPiAgentName(agent.agentName)}</h2>
               {header(

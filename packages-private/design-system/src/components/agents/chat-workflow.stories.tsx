@@ -469,7 +469,11 @@ export function InConversation() {
             <ChatUserMessage time={SAMPLE_TIME} attachments={null}>
               <p>Chase the unpaid invoices. Let me check the Acme one before it goes out.</p>
             </ChatUserMessage>
-            <ChatAssistantMessage author={{ name: "Pi", time: SAMPLE_TIME }} footer={null}>
+            <ChatAssistantMessage
+              running={false}
+              author={{ name: "Assistant", time: SAMPLE_TIME }}
+              footer={null}
+            >
               <ChatActivity
                 status={{
                   kind: "settled",
@@ -526,7 +530,11 @@ export function InConversation() {
             <ChatUserMessage time={minutesAfterStart(2)} attachments={null}>
               <p>While that runs: how much is outstanding in total?</p>
             </ChatUserMessage>
-            <ChatAssistantMessage author={{ name: "Pi", time: minutesAfterStart(2) }} footer={null}>
+            <ChatAssistantMessage
+              running={false}
+              author={{ name: "Assistant", time: minutesAfterStart(2) }}
+              footer={null}
+            >
               <p>
                 <strong>$9,850</strong> across the three invoices: $4,200 from Acme, $3,400 from
                 Globex, and $2,250 from Initech.
@@ -550,7 +558,8 @@ export function InConversation() {
             ) : null}
             {reached(run, "answered") && !stopped ? (
               <ChatAssistantMessage
-                author={{ name: "Pi", time: minutesAfterStart(5) }}
+                running={false}
+                author={{ name: "Assistant", time: minutesAfterStart(5) }}
                 footer={null}
               >
                 <p>Done. If Acme hasn&apos;t paid by Monday, they get a second reminder.</p>

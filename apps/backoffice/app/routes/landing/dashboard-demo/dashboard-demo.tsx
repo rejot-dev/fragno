@@ -15,6 +15,7 @@ import {
   ChatViewport,
   ChatViewportFooter,
 } from "@fragno-private/design-system/agents/chat-thread";
+import { AgentFace } from "@fragno-private/design-system/brand/agent-face";
 import { IconButton } from "@fragno-private/design-system/controls/button";
 import {
   SelectorMenu,
@@ -46,7 +47,6 @@ import { TabPinMenu } from "@fragno-private/design-system/navigation/tab-pin-men
 import { SideDrawerHeader } from "@fragno-private/design-system/overlays/side-drawer";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
-import { AgentMark } from "@/components/backoffice/agent-mark";
 import { IntegrationConnectionStateLight } from "@/routes/backoffice/integrations/connection-display";
 
 import type {
@@ -358,9 +358,10 @@ function TopBar({ state, drawerOpen }: { state: DashboardDemoState; drawerOpen: 
       </div>
       {/* The agent button's face, pressed while the story has the drawer open. */}
       <div
+        data-agent-drawer-open={drawerOpen || undefined}
         className={`flex w-16 shrink-0 items-center justify-center border-l border-[color:var(--bo-border)] transition-colors duration-150 ${drawerOpen ? "bg-[color:var(--bo-sidebar-bg)]" : ""}`}
       >
-        <AgentMark />
+        <AgentFace size="bar" motion="lively" />
       </div>
     </header>
   );
@@ -505,7 +506,11 @@ function Turn({ demo, scene }: { demo: DashboardDemoId; scene: DashboardDemoScen
         </div>
       )}
       {replied ? (
-        <ChatAssistantMessage author={{ name: "Assistant", time: null }} footer={null}>
+        <ChatAssistantMessage
+          running={false}
+          author={{ name: "Assistant", time: null }}
+          footer={null}
+        >
           {AGENT_TURNS[demo].reply}
         </ChatAssistantMessage>
       ) : null}

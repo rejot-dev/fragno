@@ -420,7 +420,11 @@ export function InAConversation() {
               >
                 <p>Here&apos;s the receipt and Babbage&apos;s invoice. Do the totals match?</p>
               </ChatUserMessage>
-              <ChatAssistantMessage author={{ name: "Pi", time: SAMPLE_TIME }} footer={null}>
+              <ChatAssistantMessage
+                running={false}
+                author={{ name: "Assistant", time: SAMPLE_TIME }}
+                footer={null}
+              >
                 <p>
                   They do. The receipt in <code>IMG_4821.jpg</code> totals <strong>€121.00</strong>,
                   the same as invoice 2026-7 in <code>babbage-invoice-2026-7.pdf</code>. The invoice

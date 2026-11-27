@@ -49,6 +49,37 @@ export function Options() {
   );
 }
 
+export function Workspace() {
+  return (
+    <div className="flex h-16 w-72 items-stretch border border-[color:var(--bo-border)]">
+      <SelectorMenu>
+        <SelectorMenuTrigger
+          label="Personal"
+          value="niklas@rejot.dev"
+          ariaLabel="Switch scope. Current context: niklas@rejot.dev"
+          layout={{
+            kind: "workspace",
+            mark: { kind: "icon", icon: "user" },
+            color: { kind: "seeded", seed: "user:niklas" },
+            collapsed: false,
+          }}
+        />
+        <SelectorMenuPopup align="start" height="capped">
+          <SelectorMenuGroup label="Personal">
+            <SelectorMenuOption
+              to="/me"
+              label="niklas@rejot.dev"
+              description={null}
+              badge={null}
+              current
+            />
+          </SelectorMenuGroup>
+        </SelectorMenuPopup>
+      </SelectorMenu>
+    </div>
+  );
+}
+
 export function Collapsed() {
   return (
     <div className="flex h-16 w-16 items-stretch border border-[color:var(--bo-border)]">

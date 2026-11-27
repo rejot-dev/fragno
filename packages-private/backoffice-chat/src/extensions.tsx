@@ -63,7 +63,7 @@ const noSubagentReports: ChatExtensions["useSubagentReports"] = (notifications) 
   notifications.map(() => null);
 
 const ChatExtensionsContext = createContext<ChatExtensions>({
-  agentLabel: "Pi",
+  agentLabel: "Agent",
   toolCalls: null,
   UserAttachments: null,
   WorkflowRun: null,
@@ -79,7 +79,8 @@ export function ChatExtensionsProvider({
   value,
   children,
 }: {
-  value: Partial<ChatExtensions>;
+  // Only the host knows which agent the thread talks to.
+  value: Partial<ChatExtensions> & Pick<ChatExtensions, "agentLabel">;
   children: ReactNode;
 }) {
   const defaults = useContext(ChatExtensionsContext);

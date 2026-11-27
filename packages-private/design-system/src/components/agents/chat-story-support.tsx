@@ -112,7 +112,8 @@ export function SampleConversation() {
         <p>Which invoices are still unpaid? Draft reminders for them.</p>
       </ChatUserMessage>
       <ChatAssistantMessage
-        author={{ name: "Pi", time: SAMPLE_TIME }}
+        running={false}
+        author={{ name: "Assistant", time: SAMPLE_TIME }}
         footer={
           <>
             <ChatTokenUsage input={18_204} output={612} total={18_816} cost={0.0612} />
