@@ -32,7 +32,7 @@ export function useAskAgent(): AskAgent | null {
  * them, a conversation shows only in the drawer.
  */
 export const AGENT_BESIDE_PHONE_QUERY =
-  "(pointer: coarse) and (width >= 768px) and (height < 660px)";
+  "(pointer: coarse) and (width >= 768px) and (not ((min-device-width: 744px) and (min-device-height: 744px)))";
 
 /** Opens the agent drawer on `agentName`. */
 type ShowAgentBeside = (agentName: string) => void;

@@ -6,11 +6,15 @@
 @source "../node_modules/streamdown/dist/*.js";
 
 /* Where the shell drops its phone chrome for the top bar and sidebar: from sm wide with a mouse or
-   trackpad, and on touch screens from the size of the smallest iPad (744×1133). Touch screens below
-   that are phones, including one on its side and an unfolded iPhone Duo (669×867, 951×585 on its
-   side); an iPad mini on its side keeps about 680px of height under Safari's bars. */
+   trackpad, and on touch screens from 720px wide on a screen the size of the smallest iPad
+   (744×1133) or larger. Smaller touch screens are phones, including one on its side and an unfolded
+   iPhone Duo. The screen decides rather than the window's height, which changes with the browser's
+   bars: an unfolded Duo on its side opened from the home screen starts with its full 669px, then
+   has 587px once the reader returns from another app. The screen's sides are compared, as Android
+   reports them in the current orientation. ask-agent.tsx holds the opposite for wide phones. */
 @custom-variant desktop {
-  @media (width >= 40rem) and (not (pointer: coarse)), (width >= 720px) and (height >= 660px) {
+  @media (width >= 40rem) and (not (pointer: coarse)),
+    (width >= 720px) and (min-device-width: 744px) and (min-device-height: 744px) {
     @slot;
   }
 }
