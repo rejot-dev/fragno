@@ -65,32 +65,30 @@ import { sentDocumentItems, useChatDocuments } from "./chat-documents";
 
 /** The steps of one of the agent's tool calls, as Bookkeeping names them. */
 function toolCallSteps(call: ChatToolCall): AgentStep[] {
-  return agentSteps([{ running: call.state === "running", calls: call.calls?.items ?? null }]);
+  const status = call.state === "done" ? "succeeded" : call.state;
+  return agentSteps([{ status, calls: call.calls?.items ?? null }]);
 }
 
 /**
  * One of the agent's tool calls, as the steps of its work the books' people know: Bookkeeping's
- * actions and its reads of files, without the code that ran them. A call that failed outside its
- * steps says so after them.
+ * actions and its reads of files, without the code that ran them.
  */
 function BooksToolCall({ call }: { call: ChatToolCall }) {
-  const lines = toolCallSteps(call).map(agentStepLine);
-  if (call.state === "failed" && !lines.some((line) => line.state === "failed")) {
-    lines.push({ icon: "cpu", label: "Ran into a problem", detail: null, state: "failed" });
-  }
-  return lines.map((line, position) => (
-    <ChatActivityStep
-      // Steps have no IDs, and a step keeps its place as the work goes on.
-      key={position}
-      icon={line.state === "failed" ? "alert-triangle" : line.icon}
-      state={line.state}
-      title={line.label}
-      detail={line.detail}
-      durationMs={null}
-    >
-      {null}
-    </ChatActivityStep>
-  ));
+  return toolCallSteps(call)
+    .map(agentStepLine)
+    .map((line, position) => (
+      <ChatActivityStep
+        // Steps have no IDs, and a step keeps its place as the work goes on.
+        key={position}
+        icon={line.state === "failed" ? "alert-triangle" : line.icon}
+        state={line.state}
+        title={line.label}
+        detail={line.detail}
+        durationMs={null}
+      >
+        {null}
+      </ChatActivityStep>
+    ));
 }
 
 /**

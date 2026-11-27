@@ -40,10 +40,14 @@ const WORDING = {
 
 type Subject = keyof typeof WORDING;
 
-// Nothing tells Bookkeeping when the agent's turn ends, so the page asks again until it has.
-const PROGRESS_POLL_INTERVAL_MS = 5_000;
+// Nothing tells Bookkeeping when the agent's turn ends, and Backoffice has no socket following a
+// subagent, so the page asks again until it has, often enough to show each step as it comes.
+const PROGRESS_POLL_INTERVAL_MS = 2_000;
 
-/** Reloads the page's data every few seconds while `working`, and the tab is in view. */
+/**
+ * Reloads the page's data every few seconds while `working` and the tab is in view, and at once
+ * when the tab comes back into view.
+ */
 export function usePollWhile(working: boolean) {
   const revalidator = useRevalidator();
   const navigation = useNavigation();
@@ -52,13 +56,16 @@ export function usePollWhile(working: boolean) {
     if (!working || !idle) {
       return undefined;
     }
-    const timer = setInterval(() => {
+    const revalidate = () => {
       if (window.document.visibilityState === "visible") {
         void revalidator.revalidate();
       }
-    }, PROGRESS_POLL_INTERVAL_MS);
+    };
+    const timer = setInterval(revalidate, PROGRESS_POLL_INTERVAL_MS);
+    window.document.addEventListener("visibilitychange", revalidate);
     return () => {
       clearInterval(timer);
+      window.document.removeEventListener("visibilitychange", revalidate);
     };
   }, [working, idle, revalidator]);
 }
@@ -84,7 +91,13 @@ function requestState(
 } {
   switch (progress.status) {
     case "queued":
-      return { tone: "waiting", label: "Waiting for the agent", detail: null, askAgain: false };
+      return {
+        tone: "waiting",
+        label: "Waiting for its turn",
+        detail:
+          "The firm's bookkeeping agent works on a few requests at a time, and starts on this one once it can.",
+        askAgain: false,
+      };
     case "running":
       return { tone: "live", label: WORDING[subject].reading, detail: null, askAgain: false };
     case "completed":
@@ -113,11 +126,12 @@ function requestState(
         detail: `Backoffice did not take the request: ${progress.reason}`,
         askAgain: true,
       };
+    // The firm took the request, and its run of the agent's workflow has yet to hand it over.
     case "waiting":
       return {
         tone: "waiting",
-        label: "Waiting for the agent",
-        detail: "The firm's bookkeeping agent starts on the requests it is given in turn.",
+        label: "Handing the request to the agent",
+        detail: "The firm's bookkeeping agent takes it in a moment.",
         askAgain: true,
       };
     case "unknown":
@@ -231,9 +245,10 @@ export function BookkeeperProposal({
   result: FormResult | undefined;
 }) {
   const navigation = useNavigation();
+  // A read Backoffice failed is read again: it fails mostly while Backoffice is briefly away.
   usePollWhile(
     proposal?.status === "requested" &&
-      ["sending", "waiting", "queued", "running"].includes(progress?.status ?? ""),
+      ["sending", "waiting", "queued", "running", "unknown"].includes(progress?.status ?? ""),
   );
   const ask = (label: string) => (
     <Form method="post">

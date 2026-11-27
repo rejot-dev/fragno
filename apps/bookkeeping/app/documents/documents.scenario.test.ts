@@ -645,8 +645,9 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       steps: [],
     });
     scenario.backoffice.settlePrompt(prompt.requestId, { status: "running" });
-    // The page shows the agent's work on the books as Bookkeeping's own actions and reads of the
-    // file; what the firm's skills and instructions have it do stays the firm's.
+    // The page shows the agent's work on the books as Bookkeeping's own actions, reads of the file,
+    // and the kinds of its other work; what the firm's skills and instructions have it do stays the
+    // firm's.
     const call = (
       subject: CodemodeCallSubject,
       status: "running" | "succeeded" | "failed",
@@ -674,6 +675,20 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
             items: [
               call({ kind: "skill", name: "secret-skill" }, "succeeded"),
               call({ kind: "read", path: "/workspace/secret-notes.md" }, "succeeded"),
+              call(
+                {
+                  kind: "tool",
+                  name: "integrations.actions",
+                  scope: null,
+                  label: "List connection actions",
+                  target: "secret-connection",
+                },
+                "succeeded",
+              ),
+              call(
+                { kind: "call", name: "integrations.list", scope: null, input: "secret-input" },
+                "failed",
+              ),
               call(action("app#bookkeeping", "documents.get"), "succeeded"),
               call(action("app#bookkeeping", "books.describe"), "failed"),
               call(action("app#bookkeeping", "books.describe"), "succeeded"),
@@ -695,13 +710,28 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
         {
           toolCallId: "3",
           name: "codemode",
+          status: "failed",
+          calls: {
+            startedAt: 0,
+            items: [call(action("secret-connection", "secret-action"), "succeeded")],
+            omitted: 0,
+          },
+        },
+        {
+          toolCallId: "4",
+          name: "codemode",
           status: "running",
           calls: {
             startedAt: 0,
             items: [
-              call(action("secret-connection", "secret-action"), "succeeded"),
               call(
-                { kind: "call", name: "models.extract", scope: null, input: "secret-prompt" },
+                {
+                  kind: "tool",
+                  name: "models.extract",
+                  scope: null,
+                  label: "Extract from files",
+                  target: "/shared/secret-file.pdf",
+                },
                 "running",
               ),
             ],
@@ -716,13 +746,18 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       requestId: prompt.requestId,
       status: "running",
       steps: [
-        { kind: "work", running: false },
+        { kind: "instructions", status: "succeeded" },
+        { kind: "tools", status: "succeeded" },
+        // A failure stands on its own, though the agent went on.
+        { kind: "tools", status: "failed" },
         { kind: "action", actionId: "documents.get", detail: null, status: "succeeded" },
         { kind: "action", actionId: "books.describe", detail: null, status: "failed" },
         { kind: "action", actionId: "books.describe", detail: null, status: "succeeded" },
         // What an action was about, its input names; the input itself stays the agent's.
         { kind: "action", actionId: "entries.list", detail: "PUR", status: "succeeded" },
-        { kind: "work", running: false },
+        { kind: "work", status: "succeeded" },
+        // A run that failed outside its calls failed all the same.
+        { kind: "work", status: "failed" },
         { kind: "read", status: "running" },
       ],
     });

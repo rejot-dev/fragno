@@ -8,17 +8,26 @@ export type AgentStepStatus = "running" | "succeeded" | "failed";
 
 /**
  * A step of an agent's work, as the people whose books it reads see it: Bookkeeping's actions,
- * which they know, its reads of files, and its other work, without what that was. A firm's agent
- * works by the firm's skills and instructions, which stay the firm's.
+ * which they know, its reads of files, its reading of its instructions and looking up of its
+ * tools, and its other work, each without what that was. A firm's agent works by the firm's skills
+ * and instructions, which stay the firm's.
  */
 export type AgentStep =
   | { kind: "action"; actionId: string; detail: string | null; status: AgentStepStatus }
-  | { kind: "read"; status: AgentStepStatus }
-  | { kind: "work"; running: boolean };
+  | { kind: GroupedStepKind; status: AgentStepStatus };
 
-/** One of the agent's tool calls: a codemode run's calls so far, or null for any other tool. */
+/**
+ * Steps of calls that tell their reader little one by one, so consecutive ones that went well are
+ * one step: reading a file, reading its instructions, looking up its tools, and other work.
+ */
+type GroupedStepKind = "read" | "instructions" | "tools" | "work";
+
+/**
+ * One of the agent's tool calls, and how it went: a codemode run's calls so far, or null for any
+ * other tool.
+ */
 export type AgentToolCall = {
-  running: boolean;
+  status: AgentStepStatus;
   calls: readonly { subject: ChatCodemodeCallSubject; status: AgentStepStatus }[] | null;
 };
 
@@ -127,36 +136,95 @@ const ACTION_LINES: Partial<Record<string, ActionLine>> = {
   },
 };
 
-/** The steps of the agent's work so far, oldest first; consecutive other work is one step. */
+/** Where documents shared with the agent are, so reading one there reads a file. */
+const SHARED_FILES = "/shared/";
+
+/** The step a call is, short of a Bookkeeping action. */
+function groupedStepKind(subject: ChatCodemodeCallSubject): GroupedStepKind {
+  switch (subject.kind) {
+    case "read":
+      return subject.path.startsWith(SHARED_FILES) ? "read" : "instructions";
+    case "skill":
+    case "list":
+    case "search":
+      return "instructions";
+    case "tool":
+    case "call":
+      // A call its tool would refuse has no label, but its name still says what it is.
+      return subject.name === "models.extract"
+        ? "read"
+        : subject.name === "integrations.actions" || subject.name === "integrations.list"
+          ? "tools"
+          : "work";
+    case "action":
+      return "work";
+  }
+  throw new Error("Unsupported codemode call.", { cause: subject satisfies never });
+}
+
+/**
+ * The steps of the agent's work so far, oldest first. Consecutive grouped steps of a kind are one
+ * step, unless one failed: a failure stands on its own line, so a reader sees it even when the
+ * agent went on.
+ */
 export function agentSteps(tools: readonly AgentToolCall[]): AgentStep[] {
   const steps: AgentStep[] = [];
-  const work = (running: boolean) => {
+  const grouped = (kind: GroupedStepKind, status: AgentStepStatus) => {
     const last = steps.at(-1);
-    if (last?.kind === "work") {
-      last.running ||= running;
+    if (last?.kind === kind && last.status !== "failed" && status !== "failed") {
+      if (status === "running") {
+        last.status = "running";
+      }
     } else {
-      steps.push({ kind: "work", running });
+      steps.push({ kind, status });
     }
   };
   for (const tool of tools) {
-    // Other tools, and a codemode run before its first call, are work too.
-    if (tool.calls === null || tool.calls.length === 0) {
-      work(tool.running);
-      continue;
-    }
-    for (const { subject, status } of tool.calls) {
+    const calls = tool.calls ?? [];
+    for (const { subject, status } of calls) {
       if (subject.kind === "action" && subject.connectionId === BOOKKEEPING_CONNECTION_ID) {
         const detail = ACTION_LINES[subject.actionId]?.detail(inputOf(subject.input)) ?? null;
         steps.push({ kind: "action", actionId: subject.actionId, detail, status });
-      } else if (subject.kind === "call" && subject.name === "models.extract") {
-        steps.push({ kind: "read", status });
       } else {
-        work(status === "running");
+        grouped(groupedStepKind(subject), status);
       }
+    }
+    // Other tools, and a codemode run before its first call, are work too, as is a run that
+    // failed outside its calls, such as one whose code did not compile.
+    if (calls.length === 0) {
+      grouped("work", tool.status);
+    } else if (tool.status === "failed" && calls.every((call) => call.status !== "failed")) {
+      grouped("work", "failed");
     }
   }
   return steps;
 }
+
+/** What each grouped step says while it runs, once it did, and once it failed. */
+const GROUPED_LINES: Record<
+  GroupedStepKind,
+  { icon: IconName; running: string; done: string; failed: string }
+> = {
+  read: {
+    icon: "file-text",
+    running: "Reading the file",
+    done: "Read the file",
+    failed: "Reading the file failed",
+  },
+  instructions: {
+    icon: "book",
+    running: "Reading its instructions",
+    done: "Read its instructions",
+    failed: "Reading its instructions failed",
+  },
+  tools: {
+    icon: "tool",
+    running: "Looking up its tools",
+    done: "Looked up its tools",
+    failed: "Looking up its tools failed",
+  },
+  work: { icon: "cpu", running: "Working", done: "Worked", failed: "Ran into a problem" },
+};
 
 /** A step as one line: what it did, what about, and how it went. */
 export function agentStepLine(step: AgentStep): {
@@ -179,15 +247,16 @@ export function agentStepLine(step: AgentStep): {
           : { icon, label: line.done, detail: step.detail, state: "done" };
     }
     case "read":
+    case "instructions":
+    case "tools":
+    case "work": {
+      const { icon, running, done, failed } = GROUPED_LINES[step.kind];
       return step.status === "running"
-        ? { icon: "file-text", label: "Reading the file", detail: null, state: "running" }
+        ? { icon, label: running, detail: null, state: "running" }
         : step.status === "failed"
-          ? { icon: "file-text", label: "Reading the file failed", detail: null, state: "failed" }
-          : { icon: "file-text", label: "Read the file", detail: null, state: "done" };
-    case "work":
-      return step.running
-        ? { icon: "cpu", label: "Working", detail: null, state: "running" }
-        : { icon: "cpu", label: "Worked", detail: null, state: "done" };
+          ? { icon, label: failed, detail: null, state: "failed" }
+          : { icon, label: done, detail: null, state: "done" };
+    }
   }
   throw new Error("Unsupported agent step.", { cause: step satisfies never });
 }
