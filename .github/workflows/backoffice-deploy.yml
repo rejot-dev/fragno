@@ -1,0 +1,56 @@
+name: Backoffice deploy
+
+# Started by hand from the Actions tab. Both releases build and activate the object and web Workers
+# at once; see "Release" in apps/backoffice/README.md for when each one applies.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "bootstrap adds Durable Object classes; retire deletes them"
+        type: choice
+        options:
+          - bootstrap
+          - retire
+        default: bootstrap
+
+# Two releases would activate their Workers interleaved.
+concurrency:
+  group: backoffice-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy Backoffice (${{ inputs.release }})
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_API: ${{ vars.TURBO_API }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # setup-node caches the pnpm store, so it needs pnpm installed first.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".node-version"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Release
+        run: pnpm --dir apps/backoffice run deploy:${{ inputs.release }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BACKOFFICE_CLOUDFLARE_API_TOKEN }}
+          # The Workers' configs name no account, and an account-owned token cannot list its
+          # memberships for Wrangler to pick one.
+          CLOUDFLARE_ACCOUNT_ID: cda934461b3c3f24b4899fc8a100ffe6
+          # Embedded in the frontend at build time, so they stand in for the .env of a local deploy.
+          VITE_POSTHOG_PROJECT_TOKEN: ${{ secrets.VITE_POSTHOG_PROJECT_TOKEN }}
+          VITE_POSTHOG_HOST: https://e.leyway.com
+          VITE_POSTHOG_APP_ORIGIN: https://leyway.com

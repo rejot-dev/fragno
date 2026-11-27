@@ -452,6 +452,15 @@ Retirement builds and **activates** the web Worker first, without the binding, a
 Worker, which deletes the namespace and all its data. Split a release that both adds and deletes
 classes into a bootstrap and a retirement, since the two need opposite orders.
 
+The [Backoffice deploy workflow](../../.github/workflows/backoffice-deploy.yml) runs either release
+from `main` when started by hand from the Actions tab. It runs in the `production` environment,
+where required reviewers can gate it, and reads these secrets:
+
+- `BACKOFFICE_CLOUDFLARE_API_TOKEN`: an account-owned Cloudflare API token (**Manage Account →
+  Account API Tokens**) with every permission group at **Edit**, on all zones of the account, so a
+  release never fails on a permission a new binding or route needs.
+- `VITE_POSTHOG_PROJECT_TOKEN`: the public PostHog token a local deploy reads from `.env`.
+
 For releases without new or deleted Durable Object classes, upload an inactive version of all
 Workers with one shared tag:
 
