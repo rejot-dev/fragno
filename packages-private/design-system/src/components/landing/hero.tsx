@@ -43,7 +43,7 @@ export function LandingClosing() {
       >
         AI is a tool,
         <br />
-        <span className="text-[var(--bo-muted-2)]">not a co-worker.</span>
+        not a co-worker.
       </h2>
       <ul className="mt-14 grid gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-4">
         {PROMISES.map((promise) => (
