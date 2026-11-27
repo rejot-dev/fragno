@@ -69,7 +69,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       body: JSON.stringify({ token: input.data.token, newPassword: input.data.newPassword }),
     });
     if (response.ok) {
-      const responseHeaders = createBackofficeIdentityChangeHeaders(response);
+      const responseHeaders = createBackofficeIdentityChangeHeaders(request, response);
       responseHeaders.set("Cache-Control", "no-store");
       responseHeaders.set("Referrer-Policy", "no-referrer");
       return redirect("/backoffice/login?passwordReset=success", { headers: responseHeaders });
