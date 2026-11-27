@@ -3,12 +3,15 @@ import "@fragno-private/design-system/components.css";
 
 import { headingFontLatinUrl } from "@fragno-private/design-system/brand-font";
 import { ClientOnly } from "@fragno-private/design-system/client-only";
+import {
+  PillArrow,
+  PillButtonLink,
+  PillLabel,
+} from "@fragno-private/design-system/controls/pill-button";
 import { LoadingBar } from "@fragno-private/design-system/feedback/loading-bar";
-import { Icon } from "@fragno-private/design-system/icon";
 import { LandingHeroPhoto } from "@fragno-private/design-system/landing/hero-photo";
 import { LandingHomeSections } from "@fragno-private/design-system/landing/home";
 import { lazy, Suspense } from "react";
-import { Link } from "react-router";
 
 import { ScreenFrame } from "./dashboard-demo/screen-frame";
 import { LandingFooter } from "./landing-footer";
@@ -97,7 +100,7 @@ export default function LandingPage() {
       data-backoffice-root
       className="bo-grid-backdrop min-h-svh overflow-x-clip bg-[var(--bo-bg)] font-sans text-[var(--bo-fg)]"
     >
-      <LandingHeader />
+      <LandingHeader startsOverDark={true} nav="product" />
 
       {/* The hero's grainy black and gray stays fixed in both themes, so it reads the same for
           everyone. It runs up behind the header, the header's height and its border, and is padded
@@ -140,24 +143,28 @@ export default function LandingPage() {
                   header's outset from the line before it, and the first filling its column to the
                   same distance from the next line, so the two sit as close as they did side by side.
                   The first column's lines both lie inside it, a pixel further in. Until the header
-                  publishes its columns, the two sit side by side. */}
-              <div className="mt-10 flex flex-wrap justify-center gap-3 lg:-mx-4 lg:grid lg:grid-cols-[var(--landing-header-columns,auto_1fr)] lg:gap-0">
-                <Link
+                  publishes its columns, the two sit side by side. The pills draw in the hero's
+                  white ink. */}
+              <div className="mt-10 flex flex-wrap justify-center gap-3 [--bo-bg:#0b0b0a] [--bo-fg:#ffffff] lg:-mx-4 lg:grid lg:grid-cols-[var(--landing-header-columns,auto_1fr)] lg:gap-0">
+                <PillButtonLink
                   to="/backoffice"
-                  className="inline-flex min-h-12 items-center justify-center gap-2 justify-self-start rounded-full bg-white px-6 text-sm font-semibold text-[#0b0b0a] no-underline transition-opacity duration-150 hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white lg:mx-[calc(var(--spacing)*2+1px)] lg:justify-self-stretch"
+                  variant="filled"
+                  size="default"
+                  ring={false}
+                  className="justify-self-start lg:mx-[calc(var(--spacing)*2+1px)] lg:justify-self-stretch"
                 >
-                  {/* Trimmed to cap height and baseline, so the letters center on the arrow. */}
-                  <span className="[text-box:trim-both_cap_alphabetic]">Open app</span>
-                  <Icon name="arrow-right" className="size-4" />
-                </Link>
-                <Link
+                  <PillLabel>Open app</PillLabel>
+                  <PillArrow />
+                </PillButtonLink>
+                <PillButtonLink
                   to="/marketplace"
-                  className="inline-flex min-h-12 items-center justify-self-start rounded-full border border-white/30 px-6 text-sm font-semibold text-white no-underline transition-colors duration-150 hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white lg:ml-2"
+                  variant="outlined"
+                  size="default"
+                  ring={false}
+                  className="justify-self-start lg:ml-2"
                 >
-                  <span className="[text-box:trim-both_cap_alphabetic]">
-                    Browse the marketplace
-                  </span>
-                </Link>
+                  <PillLabel>Browse the marketplace</PillLabel>
+                </PillButtonLink>
               </div>
             </div>
             {/* Below the copy, centered on the page like the copy and the header's logo. The

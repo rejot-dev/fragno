@@ -6,6 +6,11 @@ import {
   type MarketplaceListing,
 } from "@fragno-dev/backoffice-api/v0/marketplace";
 import { ButtonLink } from "@fragno-private/design-system/controls/button";
+import {
+  PillArrow,
+  PillButton,
+  PillLabel,
+} from "@fragno-private/design-system/controls/pill-button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { LandingHeroPhotoPlaceholder } from "@fragno-private/design-system/landing/hero-photo";
 import {
@@ -94,7 +99,7 @@ export default function PublicMarketplace({ loaderData }: Route.ComponentProps) 
       data-backoffice-root
       className="bo-grid-backdrop flex min-h-svh flex-col overflow-x-clip bg-[var(--bo-bg)] font-sans text-[var(--bo-fg)]"
     >
-      <LandingHeader />
+      <LandingHeader startsOverDark={true} nav="product" />
 
       {/* The homepage's hero, shorter and without its mountains: the photo's colors, as the
           homepage shows them while the photo loads, under the same grainy film, running up behind
@@ -139,13 +144,17 @@ export default function PublicMarketplace({ loaderData }: Route.ComponentProps) 
               autoComplete="off"
               className="min-w-0 flex-1 bg-transparent py-2 text-base text-white outline-none placeholder:text-white/60"
             />
-            <button
+            {/* White on the film, in its own ink rather than the page's. */}
+            <PillButton
               type="submit"
-              className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full bg-white px-5 text-sm font-semibold text-[#0b0b0a] transition-opacity duration-150 hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              variant="filled"
+              size="compact"
+              ring={false}
+              className="shrink-0 [--bo-bg:#0b0b0a] [--bo-fg:#ffffff]"
             >
-              <span className="[text-box:trim-both_cap_alphabetic]">Search</span>
-              <Icon name="arrow-right" className="size-4" />
-            </button>
+              <PillLabel>Search</PillLabel>
+              <PillArrow />
+            </PillButton>
           </Form>
         </div>
         <LandingColumnLines />

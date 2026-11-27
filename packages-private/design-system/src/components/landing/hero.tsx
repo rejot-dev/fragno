@@ -1,7 +1,5 @@
-import { Link } from "react-router";
-
 import { cn } from "../../cn";
-import { Icon } from "../icon";
+import { PillArrow, PillButtonLink, PillLabel } from "../controls/pill-button";
 import { LandingDemo } from "./demo";
 
 /** The homepage's opening: what Backoffice does, the two ways in, and the product doing it. */
@@ -65,23 +63,13 @@ export function LandingClosing() {
 function LandingCallsToAction({ className }: { className: string }) {
   return (
     <div className={cn("flex flex-wrap items-center gap-3", className)}>
-      <Link
-        to="/backoffice/sign-up"
-        className="group inline-flex min-h-12 items-center gap-2 rounded-full bg-[var(--bo-fg)] px-6 text-sm font-semibold text-[var(--bo-bg)] no-underline transition-[opacity,scale] duration-150 ease-out hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--bo-fg)] active:scale-[0.98]"
-      >
-        {/* Trimmed to cap height and baseline, so the letters center in the button. */}
-        <span className="[text-box:trim-both_cap_alphabetic]">Get started</span>
-        <Icon
-          name="arrow-right"
-          className="size-4 transition-transform duration-150 ease-out group-hover:translate-x-0.5"
-        />
-      </Link>
-      <Link
-        to="/marketplace"
-        className="inline-flex min-h-12 items-center rounded-full border border-[color-mix(in_srgb,var(--bo-fg)_30%,transparent)] px-6 text-sm font-semibold text-[var(--bo-fg)] no-underline transition-colors duration-150 hover:bg-[color-mix(in_srgb,var(--bo-fg)_10%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--bo-fg)]"
-      >
-        <span className="[text-box:trim-both_cap_alphabetic]">Browse the marketplace</span>
-      </Link>
+      <PillButtonLink to="/backoffice/sign-up" variant="filled" size="default" ring={false}>
+        <PillLabel>Get started</PillLabel>
+        <PillArrow />
+      </PillButtonLink>
+      <PillButtonLink to="/marketplace" variant="outlined" size="default" ring={false}>
+        <PillLabel>Browse the marketplace</PillLabel>
+      </PillButtonLink>
     </div>
   );
 }

@@ -1,9 +1,12 @@
 import "@fragno-private/design-system/components.css";
 
-import { Button } from "@fragno-private/design-system/controls/button";
 import { Field } from "@fragno-private/design-system/controls/field";
 import { Input } from "@fragno-private/design-system/controls/input";
-import { FormContainer } from "@fragno-private/design-system/forms/form-container";
+import {
+  PillArrow,
+  PillButton,
+  PillLabel,
+} from "@fragno-private/design-system/controls/pill-button";
 import { useState } from "react";
 import {
   Form,
@@ -22,7 +25,6 @@ import {
   getBackofficeMe,
 } from "@/fragno/auth/auth-server";
 import { requestEmailVerificationResend } from "@/fragno/auth/email-verification.server";
-import { BackofficeStandaloneLayout, BackToHomeLink } from "@/layouts/backoffice-standalone-layout";
 
 import type { Route } from "./+types/login";
 import { ACCESS_CODE_ERROR_CONTENT } from "./access-code-errors";
@@ -34,6 +36,7 @@ import {
   type AppSignInPage,
 } from "./app-sign-in.server";
 import { buildBackofficeSignUpPath, readBackofficeReturnTo } from "./auth-navigation";
+import { AuthAlert, AuthPage, GitHubButton, INK_LINK_CLASS_NAME, OrDivider } from "./auth-page";
 import { startGitHubSignIn } from "./github-sign-in";
 
 type BackofficeLoginAuthError = {
@@ -359,136 +362,97 @@ function BackofficeLogin({
   };
 
   return (
-    <BackofficeStandaloneLayout headerEnd={<BackToHomeLink />}>
-      <div className="mx-auto grid w-full max-w-[1180px] flex-1 items-start gap-8 px-5 py-6 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,1fr)_28rem] lg:items-center lg:gap-12 lg:px-12 lg:py-12">
-        <section className="hidden lg:order-1 lg:block">
-          <h1 className="max-w-2xl text-[clamp(3rem,6vw,6rem)] leading-[0.92] font-[560] tracking-[-0.065em] text-balance">
-            AI is a tool,
-            <br />
-            <span className="text-[var(--bo-muted-2)]">not a co-worker.</span>
-          </h1>
-          <p className="mt-7 max-w-xl text-sm leading-7 text-pretty text-[var(--bo-muted)]">
-            Leyway uses models to translate intent, generate interfaces, and write workflows.
-            Execution remains deterministic, inspectable, and governed by your systems.
-          </p>
-        </section>
-
-        <div className="order-1 w-full lg:order-2">
-          <FormContainer
-            title="Sign in"
-            description="Continue with GitHub or use your email and password."
+    <AuthPage
+      title="Sign in"
+      description="Use your email and password, or continue with GitHub."
+      alternative={{
+        title: "New to Leyway?",
+        description: "Create an account to start building your workflows.",
+        label: "Create an account",
+        to: buildBackofficeSignUpPath(returnTo),
+      }}
+    >
+      {searchParams.get("passwordReset") === "success" ? (
+        <p role="status" className="text-sm leading-6 text-[var(--bo-fg)]">
+          Your password has been reset. Sign in with your new password.
+        </p>
+      ) : null}
+      <Form method="post" className="space-y-4">
+        <Field label="Email address">
+          <Input
+            type="email"
+            name="email"
+            autoComplete="username"
+            autoFocus
+            defaultValue={verificationRequired?.email ?? ""}
+            required
+            placeholder="you@example.com"
+            className="w-full"
+          />
+        </Field>
+        <Field label="Password">
+          <Input
+            type="password"
+            name="password"
+            autoComplete="current-password"
+            required
+            placeholder="••••••••"
+            className="w-full"
+          />
+        </Field>
+        <Link
+          to="/backoffice/forgot-password"
+          className={`inline-flex min-h-10 items-center text-xs ${INK_LINK_CLASS_NAME}`}
+        >
+          Forgot password?
+        </Link>
+        {passwordError ? (
+          <p
+            className={
+              verificationRequired ? "text-xs text-[var(--bo-fg)]" : "text-xs text-red-600"
+            }
           >
-            <div className="space-y-3">
-              {searchParams.get("passwordReset") === "success" ? (
-                <p role="status" className="text-sm leading-6 text-[var(--bo-accent-text)]">
-                  Your password has been reset. Sign in with your new password.
-                </p>
-              ) : null}
-              <Button
-                variant="accent"
-                onClick={() => void handleGithubSignIn()}
-                disabled={oauthPending}
-                className="w-full"
-              >
-                {oauthPending ? "Redirecting…" : "Continue with GitHub"}
-              </Button>
-              {authErrorNotice ? (
-                <div
-                  role="alert"
-                  className="border-l-2 border-red-500 bg-red-500/5 px-3 py-3 text-pretty"
-                >
-                  <p className="text-[10px] font-semibold tracking-[0.18em] text-red-600 uppercase dark:text-red-400">
-                    {authErrorNotice.title}
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-red-600/90 dark:text-red-400/90">
-                    {authErrorNotice.message}
-                  </p>
-                </div>
-              ) : null}
-              <Form method="post" className="space-y-3">
-                <div
-                  className="flex items-center gap-3 pt-2 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase"
-                  role="separator"
-                >
-                  <span className="h-px flex-1 bg-[var(--bo-border)]" aria-hidden="true" />
-                  <span>Or use a password</span>
-                  <span className="h-px flex-1 bg-[var(--bo-border)]" aria-hidden="true" />
-                </div>
-                <Field label="Email address">
-                  <Input
-                    type="email"
-                    name="email"
-                    autoComplete="username"
-                    defaultValue={verificationRequired?.email ?? ""}
-                    required
-                    placeholder="you@example.com"
-                    className="w-full"
-                  />
-                </Field>
-                <Field label="Password">
-                  <Input
-                    type="password"
-                    name="password"
-                    autoComplete="current-password"
-                    required
-                    placeholder="••••••••"
-                    className="w-full"
-                  />
-                </Field>
-                <Link
-                  to="/backoffice/forgot-password"
-                  className="inline-flex min-h-10 items-center text-xs font-semibold text-[var(--bo-accent-text)] hover:underline"
-                >
-                  Forgot password?
-                </Link>
-                {passwordError ? (
-                  <p
-                    className={
-                      verificationRequired
-                        ? "text-xs text-[var(--bo-accent-text)]"
-                        : "text-xs text-red-400"
-                    }
-                  >
-                    {passwordError}
-                  </p>
-                ) : null}
-                {verificationRequired?.email ? (
-                  <Button
-                    variant="secondary"
-                    type="submit"
-                    name="intent"
-                    value="resend"
-                    formNoValidate
-                    disabled={resendPending}
-                  >
-                    {resendPending ? "Requesting…" : "Resend verification email"}
-                  </Button>
-                ) : null}
-                <Button
-                  variant="accent"
-                  type="submit"
-                  name="intent"
-                  value="sign_in"
-                  disabled={passwordPending}
-                  className="w-full"
-                >
-                  {passwordPending ? "Signing in…" : "Sign in"}
-                </Button>
-              </Form>
-              <p className="border-t border-[color:var(--bo-border)] pt-4 text-xs text-[var(--bo-muted-2)]">
-                Need an account?{" "}
-                <Link
-                  to={buildBackofficeSignUpPath(returnTo)}
-                  className="font-semibold tracking-[0.22em] text-[var(--bo-accent-text)] uppercase transition-colors hover:text-[var(--bo-accent-strong)]"
-                >
-                  Create one
-                </Link>
-                .
-              </p>
-            </div>
-          </FormContainer>
-        </div>
-      </div>
-    </BackofficeStandaloneLayout>
+            {passwordError}
+          </p>
+        ) : null}
+        {verificationRequired?.email ? (
+          <PillButton
+            type="submit"
+            name="intent"
+            value="resend"
+            formNoValidate
+            disabled={resendPending}
+            variant="outlined"
+            size="default"
+            ring={false}
+            className="w-full"
+          >
+            <PillLabel>{resendPending ? "Requesting…" : "Resend verification email"}</PillLabel>
+          </PillButton>
+        ) : null}
+        <PillButton
+          type="submit"
+          name="intent"
+          value="sign_in"
+          disabled={passwordPending}
+          variant="outlined"
+          size="default"
+          ring={true}
+          className="w-full"
+        >
+          <PillLabel>{passwordPending ? "Signing in…" : "Sign in"}</PillLabel>
+          <PillArrow />
+        </PillButton>
+      </Form>
+      <OrDivider />
+      <GitHubButton
+        label={oauthPending ? "Redirecting…" : "Continue with GitHub"}
+        disabled={oauthPending}
+        onClick={() => void handleGithubSignIn()}
+      />
+      {authErrorNotice ? (
+        <AuthAlert title={authErrorNotice.title} message={authErrorNotice.message} />
+      ) : null}
+    </AuthPage>
   );
 }
