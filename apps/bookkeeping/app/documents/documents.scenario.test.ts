@@ -11,6 +11,7 @@ import {
   type ScenarioBrowser,
   type ScenarioPage,
 } from "../../scenario/bookkeeping-scenario";
+import { workflowInstanceId } from "../../scenario/fake-backoffice";
 import { INVOICE } from "../../scenario/fixtures/invoice";
 import { AGENT_PACKAGES } from "../../workers/backoffice/agents";
 import type { DocumentView } from "../../workers/books/documents/documents";
@@ -596,8 +597,8 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
     const [prompt, ...more] = scenario.backoffice.subagentPrompts(FIRM, FIRM_AGENT);
     expect(more).toEqual([]);
     const agent = await firmAgent(scenario, ada);
-    // The books tell the firm of the request, which its agent's package routes to the agent, and
-    // the agent hands it to a subagent of its own, so documents are read side by side. The firm's
+    // The books tell the firm of the request, which starts a run of the agent's package's workflow,
+    // asking the agent in a subagent of its own, so documents are read side by side. The firm's
     // agent answers all its clients' administrations, so the request names the administration.
     const subject = `document:${agent.administration.id}:${id}`;
     expect(prompt).toMatchObject({
@@ -790,11 +791,19 @@ test("uploading asks the bookkeeping agent, whose proposed entry a member review
       document: { proposal: { status: "proposed" } },
       progress: null,
     });
-    // The firm is told the request ended, so it no longer awaits the agent.
+    // The firm is told the request ended, so it no longer awaits the agent, and the request's run
+    // recorded how the agent's turn ended.
     expect(requests().get(subject)).toMatchObject({
       requestId: prompt.requestId,
       status: "proposed",
       prompt: null,
+    });
+    expect(
+      await scenario.backoffice.workflowRun(FIRM, FIRM_AGENT, workflowInstanceId(prompt.requestId)),
+    ).toEqual({
+      status: "complete",
+      output: { turn: "turn.completed", reason: null },
+      error: null,
     });
     // Having answered, the agent no longer reads the document's file.
     expect(scenario.backoffice.mountedShares(FIRM, FIRM_AGENT)).toEqual([]);
@@ -1533,6 +1542,13 @@ test("a request the agent never received, or failed, is asked again from the doc
       status: "failed",
       reason: "The model is unavailable.",
       steps: [],
+    });
+    expect(
+      await scenario.backoffice.workflowRun(FIRM, FIRM_AGENT, workflowInstanceId(first.requestId)),
+    ).toEqual({
+      status: "complete",
+      output: { turn: "turn.failed", reason: "The model is unavailable." },
+      error: null,
     });
 
     await ada.submit(`${BOOKS}/documents/${id}`, ask);

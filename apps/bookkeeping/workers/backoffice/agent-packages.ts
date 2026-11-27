@@ -5,10 +5,10 @@ import {
 
 import {
   AGENT_PACKAGE_ROOT,
-  AGENT_PACKAGES,
   agentPackageListingId,
   type AgentPackageName,
-} from "./agents";
+} from "./agent-package-releases";
+import { AGENT_PACKAGES } from "./agents";
 import { connectWithAppToken, isBackofficeUnavailable, requestAppToken } from "./client";
 
 /**

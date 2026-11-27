@@ -12,12 +12,12 @@ import routeConfig from "../app/routes";
 import { Auth } from "../workers/auth/auth";
 import { BACKOFFICE_ACTIONS_PATH, handleBackofficeAction } from "../workers/backoffice/actions";
 import {
-  AGENT_PACKAGES,
   agentPackageFiles,
   agentPackageListingId,
   type AgentPackage,
   type AgentPackageName,
-} from "../workers/backoffice/agents";
+} from "../workers/backoffice/agent-package-releases";
+import { AGENT_PACKAGES } from "../workers/backoffice/agents";
 import { Books } from "../workers/books/books";
 import { Directory } from "../workers/directory/directory";
 import { env as workerEnv } from "./cloudflare-workers";

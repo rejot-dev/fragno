@@ -8,8 +8,8 @@
  */
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
@@ -22,10 +22,10 @@ import {
   BOOKKEEPING_BACKOFFICE_ACTIONS,
 } from "../workers/backoffice/actions";
 import {
-  AGENT_PACKAGES,
   agentPackageFiles,
   agentPackageListingId,
-} from "../workers/backoffice/agents";
+  readAgentPackages,
+} from "../workers/backoffice/agent-package-releases";
 import { BOOKKEEPING_APP_SLUG } from "../workers/backoffice/connection";
 
 // Failures are user-facing messages, not crashes.
@@ -37,6 +37,18 @@ process.on("uncaughtException", (error) => {
 const bookkeepingDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(bookkeepingDir, "../..");
 const devVarsPath = resolve(bookkeepingDir, ".dev.vars");
+const marketplaceDir = resolve(bookkeepingDir, "marketplace");
+// The packages as the workers bundle them, read from disk: tsx has no import.meta.glob.
+const AGENT_PACKAGES = readAgentPackages(
+  Object.fromEntries(
+    readdirSync(marketplaceDir, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => {
+        const path = resolve(entry.parentPath, entry.name);
+        return [relative(marketplaceDir, path), readFileSync(path, "utf8")];
+      }),
+  ),
+);
 const cliEntry = resolve(repositoryRoot, "apps/leyway-cli/bin/run.js");
 
 const OAUTH_SCOPES = ["openid", "profile", "email", "offline_access", "backoffice"];

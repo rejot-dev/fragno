@@ -297,19 +297,24 @@ Bookkeeping's agents, the firm's [bookkeeping agent](#the-bookkeeping-agent) and
 administration's [assistant](#asking-about-the-books) and [company-details agent](#company-details),
 come from Marketplace packages it publishes in its own Marketplace in Backoffice, which only
 Bookkeeping's installations install from (see Backoffice's `app/fragno/apps/README.md`, "App
-packages"). `workers/backoffice/agents.ts` defines them: `bookkeeper-agent` for the firm's agent
-project and `books-agent` for each administration's project, each a version, a declaration defining
-its agents, and the files installed beside them in `/workspace/bookkeeping`.
-`pnpm backoffice:connect` publishes them as `app:bookkeeping#bookkeeper-agent` and
-`app:bookkeeping#books-agent`.
+packages"). They live in `marketplace/`: `bookkeeper-agent` for the firm's agent project and
+`books-agent` for each administration's project, each a `manifest.json` with its listing and the
+version Bookkeeping ships, and that version's files under `package/`:
+`.marketplace/installation.json`, the declaration defining its agents, routes, and events, and the
+files installed beside them in `/workspace/bookkeeping`. Bookkeeping keeps only the version it ships
+on disk; earlier ones stay published in Backoffice (`workers/backoffice/agent-package-releases.ts`);
+the workers bundle the files with `import.meta.glob`, and `backoffice:connect` reads them from disk.
+Bookkeeping's events come from `app:<its app ID>`, which each Backoffice gives it, so the files name
+the source as `{{eventSource}}`, which publishing fills in. `pnpm backoffice:connect` publishes them
+as `app:bookkeeping#bookkeeper-agent` and `app:bookkeeping#books-agent`.
 
-Among `bookkeeper-agent`'s files is `work-queue.page.js` (`workers/backoffice/work-queue-page.ts`),
-a Backoffice page the firm opens from its agent project's dashboard: what Bookkeeping asked the
-agent, across all the firm's clients, and how far the agent got with each request, waiting, queued,
-working on it, failed, or ended without an answer, with what it answered lately. It reads the state
-of Bookkeeping's request events, which name each request's document or transaction, client, and
-administration, and the agent's turn events, which name the request they work on. A request the
-books have not managed to tell the firm of yet is not in the queue; its page in Bookkeeping says so.
+Among `bookkeeper-agent`'s files is `work-queue.page.js`, a Backoffice page the firm opens from its
+agent project's dashboard: what Bookkeeping asked the agent, across all the firm's clients, and how
+far the agent got with each request, waiting, queued, working on it, failed, or ended without an
+answer, with what it answered lately. It reads the state of Bookkeeping's request events, which name
+each request's document or transaction, client, and administration, and the agent's turn events,
+which name the request they work on. A request the books have not managed to tell the firm of yet is
+not in the queue; its page in Bookkeeping says so.
 
 The Directory installs each package in its projects with `packages.install`, as Bookkeeping's
 installation, and follows the install with `packages.status`
@@ -334,10 +339,11 @@ the books tell the firm once more shortly after. An agent of the package's name 
 as Bookkeeping defined its agents before it shipped packages, becomes the package's when it is
 identical to the package's agent; one that differs blocks the install until they delete it.
 
-Published versions never change. After changing an agent, bump its package's version, deploy, and
-run `pnpm backoffice:connect` first, which publishes it: until a version is published, installing it
-fails and is retried. Between the deploy and the install, a project's agent runs the previous
-version's instructions, so the actions keep accepting what the previous version calls them with.
+Published versions never change. To change a package, change its files under `package/`, set a new
+version in its `manifest.json`, deploy, and run `pnpm backoffice:connect` first, which publishes it:
+until a version is published, installing it fails and is retried. Between the deploy and the
+install, a project's agent runs the previous version's instructions, so the actions keep accepting
+what the previous version calls them with.
 
 ## Administrations
 
@@ -440,38 +446,41 @@ shared for its request, before the share exists, so sharing records the file sha
 afterwards, and revokes it again, without asking the agent, when the request no longer awaits an
 answer.
 
-Bookkeeping does not prompt the agent about a request: it tells the firm what it asks, and the agent
-hands the requests out to subagents of its own. Recording a request triggers a durable hook in the
-books (`workers/books/proposals`), which the `Books` object's alarm runs once the request commits:
-it fires a `proposal.changed` event in the firm's agent project with `events.fire`, as Bookkeeping's
-installation (`workers/backoffice/request-events.ts`). Its payload names the request's `subject`
-(`document:<administration ID>:<document ID>`, or `transaction:…`), its `requestId`, its `status`,
-`requested`, and the `prompt` to answer it with, naming the administration and where the file is
-shared. A document's request is told once its file is shared; a bank transaction's at once. When the
-request ends, answered, withdrawn as the firm changed, or because a person booked or dismissed its
-subject first, the books tell the firm again, with the status it ended with and no prompt. Each
-event names its request and status as its idempotency key and occurred when the change did, so one
-told again after a failure is stored once and a late one does not overtake a later change. A failure
-is retried, ten attempts over up to an hour. The `bookkeeper-agent` [package](#agent-packages)
-defines the event type with the subject as its key path, so its state in the firm's project keeps
-each subject's latest: the agent's to-do list, which the firm can read too. Its route notifies the
-`bookkeeper` agent of each `requested` event, acting as an organization automation with the
-permissions the work takes: `pi.read`, `pi.modify`, `events.read`, `upload.read`, `models.extract`,
-`integrations.read` (to read the actions' input schemas), and `integrations.execute` on
-`app#bookkeeping` alone, which installing the package approves. Backoffice notifies only an agent
-whose conversation a prompt started, so when Bookkeeping finds the agent's conversation not started
-as it tells the firm, it starts it with a prompt asking for what an event would, under request ID
-`bookkeeping:start`, once. The agent's own conversation then runs one codemode program, which its
-instructions give with Bookkeeping's event source, as `backoffice:connect` publishes the package for
-the app's ID: it lists the state and starts a subagent with `pi.prompt.submit` for each request
-still `requested` that none was started for, under the request's ID with its prompt, and ends its
-turn: each document runs in a new conversation of the agent, beside the others, so documents
-uploaded together are read side by side and no document sees another's text, and an import of
-hundreds of transactions takes one program. The agent's calls to Bookkeeping arrive as the
-installation's, the route not being a person: they read the books and answer requests
-(`documents.propose`, `documents.decline`, and their `bank.transactions` counterparts), and every
-other change is refused, whatever a document or a bank transaction tells the agent. Backoffice bills
-the turns to the firm.
+Bookkeeping does not prompt the agent about a request: it tells the firm what it asks, and a
+workflow in the firm's agent project asks the agent. Recording a request triggers a durable hook in
+the books (`workers/books/proposals`), which the `Books` object's alarm runs once the request
+commits: it fires a `proposal.changed` event in the firm's agent project with `events.fire`, as
+Bookkeeping's installation (`workers/backoffice/request-events.ts`). Its payload names the request's
+`subject` (`document:<administration ID>:<document ID>`, or `transaction:…`), its `requestId`, its
+`status`, `requested`, and the `prompt` to answer it with, naming the administration and where the
+file is shared. A document's request is told once its file is shared; a bank transaction's at once.
+When the request ends, answered, withdrawn as the firm changed, or because a person booked or
+dismissed its subject first, the books tell the firm again, with the status it ended with and no
+prompt. Each event names its request and status as its idempotency key and occurred when the change
+did, so one told again after a failure is stored once and a late one does not overtake a later
+change. A failure is retried, ten attempts over up to an hour. The `bookkeeper-agent`
+[package](#agent-packages) defines the event type with the subject as its key path, so its state in
+the firm's project keeps each subject's latest, which the firm can read.
+
+The package's `bookkeeping-requests` route starts a run of its workflow,
+`automations/bookkeeping-request.workflow.js`, for each `requested` event, named for the request:
+its ID with every character but letters, digits, `-`, and `_` made a `-`, as Backoffice makes the
+values in an instance ID safe. Each request so runs once, and the firm sees each as a run of its
+own. The run asks the `bookkeeper` agent with `pi.submitPrompt`, in a subagent under the request's
+own ID, by which Bookkeeping follows the agent's work, with its prompt: each document runs in a new
+conversation of the agent, beside the others, so documents uploaded together are read side by side
+and no document sees another's text. The run then waits for the subagent's turn to end: the
+package's routes send each of the agent's `turn.completed`, `turn.failed`, `turn.aborted`, and
+`queue.dropped` events about a request to the run named for it, and the run records how the turn
+ended and why it failed. A turn that ended without an answer is Bookkeeping's to show, for people to
+ask again. The run acts as an organization automation with the permissions the work takes: `pi.read`
+and `pi.modify` to ask the agent, and for the agent's turns, which run with the run's permissions
+narrowed by the agent's, `upload.read`, `models.extract`, `integrations.read` (to read the actions'
+input schemas), and `integrations.execute` on `app#bookkeeping` alone, which installing the package
+approves. The agent's calls to Bookkeeping arrive as the installation's, the run not being a person:
+they read the books and answer requests (`documents.propose`, `documents.decline`, and their
+`bank.transactions` counterparts), and every other change is refused, whatever a document or a bank
+transaction tells the agent. Backoffice bills the turns to the firm.
 
 How the agent books a document is the `bookkeeping` skill its package installs at
 `/workspace/bookkeeping/skills/bookkeeping/SKILL.md`, which its instructions tell it to read and

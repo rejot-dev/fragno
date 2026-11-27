@@ -1,14 +1,4 @@
-import { BOOKKEEPER_AGENT_NAME } from "./connection";
-import { REQUEST_EVENT_TYPE } from "./request-events";
-
-/**
- * The source of the firm's work queue, a Backoffice page the bookkeeping agent's package installs in
- * its project: what Bookkeeping asked the agent, read from the state of Bookkeeping's request events
- * from `eventSource`, and how far the agent got, read from its turn events. Backoffice runs the
- * page's SQL in the browser, over the project's relations as the browser keeps them.
- */
-export function workQueuePage(eventSource: string): string {
-  return `// What Bookkeeping asked the firm's bookkeeping agent, and how far the agent got. Bookkeeping fires
+// What Bookkeeping asked the firm's bookkeeping agent, and how far the agent got. Bookkeeping fires
 // a proposal.changed event each time a request about a document or bank transaction changes, keyed
 // by its subject, so event_state holds each subject's latest request; the agent's turn events name
 // the request they work on.
@@ -16,29 +6,29 @@ export default page.define({ title: "Bookkeeping work queue" }, ({ sql, now }) =
   const day = now.minus("24 hours");
 
   // Each request's latest turn event, from being queued to how its turn ended.
-  const turns = sql\`
+  const turns = sql`
     SELECT subject ->> '$.requestId' AS requestId, eventType, occurredAt,
       row_number() OVER (
         PARTITION BY subject ->> '$.requestId' ORDER BY occurredAt DESC, position DESC
       ) AS recency
     FROM events
-    WHERE source = 'pi' AND subject ->> '$.agentName' = '${BOOKKEEPER_AGENT_NAME}'
+    WHERE source = 'pi' AND subject ->> '$.agentName' = 'bookkeeper'
       AND eventType IN (
         'queue.added', 'queue.dispatched', 'queue.dropped',
         'turn.started', 'turn.completed', 'turn.failed', 'turn.aborted'
       )
-  \`;
+  `;
 
   // Each request names the client and administration whose books it is in, the administration
   // once when it has the client's name. Requests Bookkeeping asked before it named them have
   // neither title nor names.
-  const requests = sql\`
+  const requests = sql`
     WITH request AS (
       SELECT key, payload, occurredAt,
         CASE WHEN key LIKE 'document:%' THEN 'Document' ELSE 'Bank transaction' END AS kind,
         payload ->> '$.client' AS client, payload ->> '$.administration' AS administration
       FROM event_state
-      WHERE source = '${eventSource}' AND eventType = '${REQUEST_EVENT_TYPE}'
+      WHERE source = '{{eventSource}}' AND eventType = 'proposal.changed'
     )
     SELECT key, payload ->> '$.requestId' AS requestId, payload ->> '$.status' AS status,
       coalesce(payload ->> '$.title', 'Untitled request') AS title,
@@ -49,30 +39,30 @@ export default page.define({ title: "Bookkeeping work queue" }, ({ sql, now }) =
       END AS detail,
       occurredAt AS at
     FROM request
-  \`;
+  `;
 
   // How far the agent got with each open request. A turn that ended a minute ago with its request
   // still open ended without an answer; within the minute, Bookkeeping may still be telling the
   // firm of the answer.
-  const staged = sql\`
-    WITH turn AS (SELECT * FROM (\${turns}) WHERE recency = 1)
+  const staged = sql`
+    WITH turn AS (SELECT * FROM (${turns}) WHERE recency = 1)
     SELECT request.title, request.detail, request.at,
       CASE
         WHEN turn.eventType IS NULL THEN 'waiting'
         WHEN turn.eventType IN ('queue.added', 'queue.dispatched') THEN 'queued'
         WHEN turn.eventType = 'turn.started' THEN 'working'
-        WHEN turn.eventType = 'turn.completed' AND turn.occurredAt >= \${now.minus("1 minute")}
+        WHEN turn.eventType = 'turn.completed' AND turn.occurredAt >= ${now.minus("1 minute")}
           THEN 'working'
         WHEN turn.eventType = 'turn.completed' THEN 'unanswered'
         ELSE 'failed'
       END AS stage
-    FROM (\${requests}) request
+    FROM (${requests}) request
     LEFT JOIN turn ON turn.requestId = request.requestId
     WHERE request.status = 'requested'
-  \`;
+  `;
 
   // The list shows the first of them, problems first; the counts count them all.
-  const open = sql\`
+  const open = sql`
     SELECT title, detail, at, stage,
       CASE stage
         WHEN 'waiting' THEN 'Not started'
@@ -85,10 +75,10 @@ export default page.define({ title: "Bookkeeping work queue" }, ({ sql, now }) =
         WHEN 'failed' THEN 'failed' ELSE 'waiting' END AS tone,
       CASE stage WHEN 'working' THEN 'activity' WHEN 'unanswered' THEN 'alert-triangle'
         WHEN 'failed' THEN 'x-circle' ELSE 'clock' END AS icon
-    FROM (\${staged})
+    FROM (${staged})
     ORDER BY stage IN ('unanswered', 'failed') DESC, stage = 'working' DESC, at ASC
     LIMIT 64
-  \`.columns({
+  `.columns({
     title: "string",
     detail: "string",
     at: "time",
@@ -98,31 +88,31 @@ export default page.define({ title: "Bookkeeping work queue" }, ({ sql, now }) =
     icon: ["activity", "alert-triangle", "x-circle", "clock"],
   });
 
-  const counts = sql\`
+  const counts = sql`
     SELECT count(*) AS open,
       coalesce(sum(stage IN ('unanswered', 'failed')), 0) AS stuck,
       coalesce(sum(stage = 'working'), 0) AS working
-    FROM (\${staged})
-  \`.columns({ open: "number", stuck: "number", working: "number" });
+    FROM (${staged})
+  `.columns({ open: "number", stuck: "number", working: "number" });
 
   // Answers are history, so they are counted from the events rather than the latest states.
-  const answered = sql\`
+  const answered = sql`
     SELECT count(*) AS total FROM events
-    WHERE source = '${eventSource}' AND eventType = '${REQUEST_EVENT_TYPE}'
-      AND payload ->> '$.status' IN ('proposed', 'declined') AND occurredAt >= \${day}
-  \`.columns({ total: "number" });
+    WHERE source = '{{eventSource}}' AND eventType = 'proposal.changed'
+      AND payload ->> '$.status' IN ('proposed', 'declined') AND occurredAt >= ${day}
+  `.columns({ total: "number" });
 
-  const finished = sql\`
+  const finished = sql`
     SELECT title, detail, at,
       CASE status WHEN 'proposed' THEN 'Proposed' WHEN 'declined' THEN 'Declined'
         ELSE 'Withdrawn' END AS label,
       CASE status WHEN 'proposed' THEN 'live' WHEN 'declined' THEN 'waiting'
         ELSE 'muted' END AS tone
-    FROM (\${requests})
+    FROM (${requests})
     WHERE status <> 'requested'
     ORDER BY at DESC
     LIMIT 12
-  \`.columns({
+  `.columns({
     title: "string",
     detail: "string",
     at: "time",
@@ -179,5 +169,3 @@ export default page.define({ title: "Bookkeeping work queue" }, ({ sql, now }) =
     ]),
   ]);
 });
-`;
-}
