@@ -1,11 +1,15 @@
 import "@fragno-private/design-system/components.css";
 
-import { Button, ButtonLink } from "@fragno-private/design-system/controls/button";
 import { Field } from "@fragno-private/design-system/controls/field";
 import { Input } from "@fragno-private/design-system/controls/input";
-import { FormContainer } from "@fragno-private/design-system/forms/form-container";
+import {
+  PillArrow,
+  PillButton,
+  PillButtonLink,
+  PillLabel,
+} from "@fragno-private/design-system/controls/pill-button";
 import { useState } from "react";
-import { Form, Link, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
+import { Form, redirect, useActionData, useLoaderData, useNavigation } from "react-router";
 import { z } from "zod";
 
 import { ACCESS_CODE_QUERY_PARAMETER } from "@/fragno/access-codes/access-code";
@@ -20,7 +24,6 @@ import {
   BACKOFFICE_PASSWORD_MIN_LENGTH,
   BACKOFFICE_PASSWORD_MAX_LENGTH,
 } from "@/fragno/auth/password-policy";
-import { BackofficeStandaloneLayout, BackToHomeLink } from "@/layouts/backoffice-standalone-layout";
 import { getBackofficeObjects } from "@/worker-runtime/durable-objects";
 import { BackofficeWorkerContext } from "@/worker-runtime/router-context";
 
@@ -31,6 +34,7 @@ import {
   buildBackofficeSignUpPath,
   readBackofficeReturnTo,
 } from "./auth-navigation";
+import { AuthAlert, AuthPage, GitHubButton, INK_LINK_CLASS_NAME, OrDivider } from "./auth-page";
 import { startGitHubSignIn } from "./github-sign-in";
 
 type BackofficeSignUpAccess =
@@ -197,7 +201,7 @@ export default function BackofficeSignUp() {
   const [githubPending, setGithubPending] = useState(false);
   const [githubError, setGithubError] = useState<string | null>(null);
   const verificationRequired = actionData?.state === "verification_required" ? actionData : null;
-  const signUpError = actionData?.state === "error" ? actionData.message : githubError;
+  const signUpError = actionData?.state === "error" ? actionData.message : null;
   const submittedIntent = navigation.formData?.get("intent");
   const signUpPending = navigation.state === "submitting" && submittedIntent !== "resend";
   const resendPending = navigation.state === "submitting" && submittedIntent === "resend";
@@ -209,6 +213,7 @@ export default function BackofficeSignUp() {
     access.kind === "access_code" && access.code !== ""
       ? buildBackofficeAccessCodeSignUpPath(returnTo, access.code)
       : buildBackofficeSignUpPath(returnTo);
+  const showsAccessCodeField = access.kind === "access_code" && !(invited && !changingCode);
 
   const signUpWithGitHub = async () => {
     setGithubPending(true);
@@ -226,214 +231,179 @@ export default function BackofficeSignUp() {
   };
 
   return (
-    <BackofficeStandaloneLayout headerEnd={<BackToHomeLink />}>
-      <div className="mx-auto grid w-full max-w-[1180px] flex-1 items-start gap-8 px-5 py-6 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,1fr)_28rem] lg:items-center lg:gap-12 lg:px-12 lg:py-12">
-        <section>
-          {invited ? (
-            <>
-              <p className="text-[10px] font-semibold tracking-[0.22em] text-[var(--bo-accent-text)] uppercase">
-                Invitation
-              </p>
-              <h1 className="mt-3 max-w-2xl text-[clamp(2.25rem,6vw,6rem)] leading-[0.92] font-[560] tracking-[-0.065em] text-balance">
-                You&rsquo;re invited.
-                <br />
-                <span className="text-[var(--bo-muted-2)]">Welcome to Leyway.</span>
-              </h1>
-              <p className="mt-5 max-w-xl text-sm leading-7 text-pretty text-[var(--bo-muted)] lg:mt-7">
-                Your invitation is ready. Create your account to get started.
-              </p>
-            </>
-          ) : (
-            <>
-              <h1 className="max-w-2xl text-[clamp(2.25rem,6vw,6rem)] leading-[0.92] font-[560] tracking-[-0.065em] text-balance">
-                Create your
-                <br />
-                <span className="text-[var(--bo-muted-2)]">Leyway account.</span>
-              </h1>
-              <p className="mt-5 max-w-xl text-sm leading-7 text-pretty text-[var(--bo-muted)] lg:mt-7">
-                {access.kind === "access_code"
-                  ? "Leyway is invitation-only for now. Sign up with the access code from your invitation."
-                  : "Register your email to access Leyway."}
-              </p>
-            </>
-          )}
-        </section>
-
-        <div className="w-full">
-          <FormContainer
-            title={
-              verificationRequired
-                ? "Check your email"
-                : invited
-                  ? "Accept your invitation"
-                  : "Create account"
+    <AuthPage
+      title={
+        verificationRequired
+          ? "Check your email"
+          : invited
+            ? "Accept your invitation"
+            : "Create an account"
+      }
+      description={
+        verificationRequired
+          ? `A verification link is being delivered to ${verificationRequired.email}.`
+          : invited
+            ? "Your invitation is ready. Choose an email and password, or continue with GitHub."
+            : access.kind === "access_code"
+              ? "Leyway is invitation-only for now. Use the access code from your invitation."
+              : "Choose an email and password, or continue with GitHub."
+      }
+      alternative={
+        verificationRequired
+          ? null
+          : {
+              title: "Already have an account?",
+              description: "Sign in to pick up where you left off.",
+              label: "Sign in",
+              to: buildBackofficeLoginPath(returnTo),
             }
-            description={
-              verificationRequired
-                ? `A verification link is being delivered to ${verificationRequired.email}.`
-                : "Continue with GitHub or choose an email and password."
-            }
-            eyebrow={verificationRequired ? "Verification required" : undefined}
+      }
+    >
+      {verificationRequired ? (
+        <>
+          <p className="text-sm leading-6 text-pretty text-[var(--bo-muted)]">
+            Open the link in the email before signing in. Delivery is retried automatically if the
+            email provider is temporarily unavailable.
+          </p>
+          {verificationRequired.resend === "accepted" ? (
+            <p role="status" className="text-xs text-[var(--bo-fg)]">
+              If this unverified account exists, a new email will be sent.
+            </p>
+          ) : null}
+          <PillButtonLink
+            to={buildBackofficeLoginPath(returnTo)}
+            variant="outlined"
+            size="default"
+            ring={true}
+            className="w-full"
           >
-            {verificationRequired ? (
-              <div className="space-y-4">
-                <p className="text-sm leading-6 text-[var(--bo-muted)]">
-                  Open the link in the email before signing in. Delivery is retried automatically if
-                  the email provider is temporarily unavailable.
-                </p>
-                {verificationRequired.resend === "accepted" ? (
-                  <p className="text-xs text-[var(--bo-accent-text)]">
-                    If this unverified account exists, a new email will be sent.
-                  </p>
-                ) : null}
-                <Form method="post" action={buildBackofficeSignUpPath(returnTo)}>
-                  <input type="hidden" name="intent" value="resend" />
-                  <input type="hidden" name="email" value={verificationRequired.email} />
-                  <Button variant="secondary" type="submit" disabled={resendPending}>
-                    {resendPending ? "Requesting…" : "Resend verification email"}
-                  </Button>
-                </Form>
-                <ButtonLink variant="accent" to={buildBackofficeLoginPath(returnTo)}>
-                  Continue to sign in
-                </ButtonLink>
-              </div>
-            ) : (
-              <Form method="post" action={signUpPath} className="space-y-3">
-                {linkRejection ? (
-                  <div
-                    role="alert"
-                    className="border-l-2 border-red-500 bg-red-500/5 px-3 py-3 text-pretty"
-                  >
-                    <p className="text-[10px] font-semibold tracking-[0.18em] text-red-600 uppercase dark:text-red-400">
-                      {linkRejection.title}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-red-600/90 dark:text-red-400/90">
-                      {linkRejection.message}
-                    </p>
-                  </div>
-                ) : null}
-                {access.kind === "access_code" && invited && !changingCode ? (
-                  <div className="flex items-center justify-between gap-3 rounded-[4px] border border-[color:var(--bo-border)] bg-[var(--bo-panel-2)] px-3 py-2">
-                    <input type="hidden" name="accessCode" value={accessCode} />
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase">
-                        Invitation code
-                      </p>
-                      <p className="truncate font-mono text-sm text-[var(--bo-fg)]">{accessCode}</p>
-                    </div>
-                    <Button
-                      variant="secondary"
-                      type="button"
-                      onClick={() => {
-                        setChangingCode(true);
-                      }}
-                    >
-                      Change
-                    </Button>
-                  </div>
-                ) : access.kind === "access_code" ? (
-                  <Field
-                    label="Access code"
-                    description="From your invitation link, or as an administrator gave it to you."
-                  >
-                    <Input
-                      name="accessCode"
-                      value={accessCode}
-                      onChange={(event) => {
-                        setAccessCode(event.target.value);
-                      }}
-                      required
-                      autoComplete="off"
-                      spellCheck={false}
-                      placeholder="ABCD2345EFGH6789"
-                      className="w-full font-mono uppercase"
-                    />
-                  </Field>
-                ) : null}
-                <Button
-                  variant="accent"
+            <PillLabel>Continue to sign in</PillLabel>
+            <PillArrow />
+          </PillButtonLink>
+          <Form method="post" action={buildBackofficeSignUpPath(returnTo)}>
+            <input type="hidden" name="intent" value="resend" />
+            <input type="hidden" name="email" value={verificationRequired.email} />
+            <PillButton
+              type="submit"
+              disabled={resendPending}
+              variant="outlined"
+              size="default"
+              ring={false}
+              className="w-full"
+            >
+              <PillLabel>{resendPending ? "Requesting…" : "Resend verification email"}</PillLabel>
+            </PillButton>
+          </Form>
+        </>
+      ) : (
+        <>
+          <Form method="post" action={signUpPath} className="space-y-4">
+            {linkRejection ? (
+              <AuthAlert title={linkRejection.title} message={linkRejection.message} />
+            ) : null}
+            {access.kind === "access_code" && !showsAccessCodeField ? (
+              <div className="flex items-center justify-between gap-3 rounded-[10px] border border-[color:var(--bo-border)] bg-[color-mix(in_srgb,var(--bo-fg)_4%,var(--bo-panel))] px-4 py-3">
+                <input type="hidden" name="accessCode" value={accessCode} />
+                <div className="min-w-0">
+                  <p className="text-xs text-[var(--bo-muted)]">Invitation code</p>
+                  <p className="truncate font-mono text-sm text-[var(--bo-fg)]">{accessCode}</p>
+                </div>
+                <button
                   type="button"
-                  onClick={() => void signUpWithGitHub()}
-                  disabled={
-                    githubPending || (access.kind === "access_code" && accessCode.trim() === "")
-                  }
-                  className="w-full"
+                  onClick={() => {
+                    setChangingCode(true);
+                  }}
+                  className={`text-xs ${INK_LINK_CLASS_NAME}`}
                 >
-                  {githubPending ? "Redirecting…" : "Sign up with GitHub"}
-                </Button>
-                <div
-                  className="flex items-center gap-3 pt-2 text-[10px] font-semibold tracking-[0.18em] text-[var(--bo-muted-2)] uppercase"
-                  role="separator"
-                >
-                  <span className="h-px flex-1 bg-[var(--bo-border)]" aria-hidden="true" />
-                  <span>Or use a password</span>
-                  <span className="h-px flex-1 bg-[var(--bo-border)]" aria-hidden="true" />
-                </div>
-                <Field label="Work email">
-                  <Input
-                    type="email"
-                    name="email"
-                    autoComplete="username"
-                    required
-                    placeholder="team@example.com"
-                    className="w-full"
-                  />
-                </Field>
-                <Field label="Create password" description="At least 8 characters.">
-                  <Input
-                    type="password"
-                    name="password"
-                    autoComplete="new-password"
-                    required
-                    placeholder="••••••••"
-                    className="w-full"
-                  />
-                </Field>
-                <Field label="Confirm password" description="Re-type to confirm.">
-                  <Input
-                    type="password"
-                    name="confirmPassword"
-                    autoComplete="new-password"
-                    required
-                    placeholder="••••••••"
-                    className="w-full"
-                  />
-                </Field>
-                {signUpError ? (
-                  <p role="alert" className="text-xs text-red-400">
-                    {signUpError}
-                  </p>
-                ) : (
-                  <p className="text-xs text-[var(--bo-muted-2)]">
-                    Email verification may be required before signing in.
-                  </p>
-                )}
-                <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
-                  <Button
-                    variant="accent"
-                    type="submit"
-                    name="intent"
-                    value="sign_up"
-                    disabled={signUpPending}
-                  >
-                    {signUpPending ? "Creating account…" : "Sign up"}
-                  </Button>
-                  <span className="text-xs text-[var(--bo-muted-2)]">
-                    Already registered?{" "}
-                    <Link
-                      to={buildBackofficeLoginPath(returnTo)}
-                      className="font-semibold tracking-[0.22em] text-[var(--bo-accent-text)] uppercase transition-colors hover:text-[var(--bo-accent-strong)]"
-                    >
-                      Sign in
-                    </Link>
-                    .
-                  </span>
-                </div>
-              </Form>
+                  Change
+                </button>
+              </div>
+            ) : null}
+            {showsAccessCodeField ? (
+              <Field
+                label="Access code"
+                description="From your invitation link, or as an administrator gave it to you."
+              >
+                <Input
+                  name="accessCode"
+                  value={accessCode}
+                  onChange={(event) => {
+                    setAccessCode(event.target.value);
+                  }}
+                  required
+                  autoComplete="off"
+                  autoFocus
+                  spellCheck={false}
+                  placeholder="ABCD2345EFGH6789"
+                  className="w-full font-mono uppercase"
+                />
+              </Field>
+            ) : null}
+            <Field label="Work email">
+              <Input
+                type="email"
+                name="email"
+                autoComplete="username"
+                autoFocus={!showsAccessCodeField}
+                required
+                placeholder="team@example.com"
+                className="w-full"
+              />
+            </Field>
+            <Field label="Create password" description="At least 8 characters.">
+              <Input
+                type="password"
+                name="password"
+                autoComplete="new-password"
+                required
+                placeholder="••••••••"
+                className="w-full"
+              />
+            </Field>
+            <Field label="Confirm password" description="Re-type to confirm.">
+              <Input
+                type="password"
+                name="confirmPassword"
+                autoComplete="new-password"
+                required
+                placeholder="••••••••"
+                className="w-full"
+              />
+            </Field>
+            {signUpError ? (
+              <p role="alert" className="text-xs text-red-600">
+                {signUpError}
+              </p>
+            ) : (
+              <p className="text-xs text-[var(--bo-muted-2)]">
+                Email verification may be required before signing in.
+              </p>
             )}
-          </FormContainer>
-        </div>
-      </div>
-    </BackofficeStandaloneLayout>
+            <PillButton
+              type="submit"
+              name="intent"
+              value="sign_up"
+              disabled={signUpPending}
+              variant="outlined"
+              size="default"
+              ring={true}
+              className="w-full"
+            >
+              <PillLabel>{signUpPending ? "Creating account…" : "Create account"}</PillLabel>
+              <PillArrow />
+            </PillButton>
+          </Form>
+          <OrDivider />
+          <GitHubButton
+            label={githubPending ? "Redirecting…" : "Sign up with GitHub"}
+            disabled={githubPending || (access.kind === "access_code" && accessCode.trim() === "")}
+            onClick={() => void signUpWithGitHub()}
+          />
+          {githubError ? (
+            <AuthAlert title="GitHub sign-up could not be started" message={githubError} />
+          ) : null}
+        </>
+      )}
+    </AuthPage>
   );
 }

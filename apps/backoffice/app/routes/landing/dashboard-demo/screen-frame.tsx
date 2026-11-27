@@ -76,7 +76,9 @@ export function ScreenFrame({
             />
           </div>
         </figure>
-        <div className="bg-black">{bar}</div>
+        {/* In the app's sidebar color, so the bar reads as part of the screen rather than a strip
+            under it. */}
+        <div className="border-t border-(--bo-border) bg-(--bo-sidebar-bg)">{bar}</div>
       </div>
     </div>
   );

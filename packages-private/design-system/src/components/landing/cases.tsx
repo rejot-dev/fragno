@@ -231,8 +231,8 @@ type CaseSlug = keyof typeof LANDING_CASES;
 const CASE_SLUGS = Object.keys(LANDING_CASES) as CaseSlug[];
 
 /**
- * The homepage's cases: one photo card per example business, each opening its own page, in a
- * rounded row inside the content column like a case page's other cases.
+ * The homepage's cases: one photo card per example business, each opening its own page, in a row
+ * across the window's full width.
  */
 export function LandingCases() {
   return (
@@ -247,13 +247,14 @@ export function LandingCases() {
             time, and people sign off where it matters.
           </p>
         </div>
-        {/* From xl the row reaches past the column by a fifth of the column on each side, short
-            of 1.5rem from the window's edges. The outer cards take that bleed on top of a third of
-            the column each and pad their text back by as much, so the photos grow while the text
-            keeps its place and width in the column. */}
+        {/* The row runs the window's full width: it reaches past the column on each side by the
+            column's margin plus its padding, which LandingColumn sets per breakpoint. From xl the
+            outer cards take that bleed on top of a third of the column each and pad their text
+            back by as much, so the photos reach the window's edges while the text keeps its place
+            and width in the column. */}
         <CaseCards
           slugs={CASE_SLUGS.slice(0, 3)}
-          className="mt-10 overflow-hidden rounded-[14px] [--case-bleed:0px] xl:-mx-[var(--case-bleed)] xl:grid-cols-[calc(var(--case-bleed)+(100%-var(--case-bleed)*2)/3)_calc((100%-var(--case-bleed)*2)/3)_calc(var(--case-bleed)+(100%-var(--case-bleed)*2)/3)] xl:[--case-bleed:min(calc((min(100vw,var(--container-landing))-var(--spacing)*24)*0.2),calc((100vw-min(100vw,var(--container-landing))+var(--spacing)*24)/2-1.5rem))]"
+          className="-mx-[var(--case-bleed)] mt-10 overflow-hidden [--case-bleed:calc((100vw-min(100vw,var(--container-landing)))/2+var(--spacing)*7)] sm:[--case-bleed:calc((100vw-min(100vw,var(--container-landing)))/2+var(--spacing)*8)] lg:[--case-bleed:calc((100vw-min(100vw,var(--container-landing)))/2+var(--spacing)*12)] xl:grid-cols-[calc(var(--case-bleed)+(100%-var(--case-bleed)*2)/3)_calc((100%-var(--case-bleed)*2)/3)_calc(var(--case-bleed)+(100%-var(--case-bleed)*2)/3)]"
         />
       </LandingColumn>
     </section>

@@ -3,21 +3,23 @@ import { type RouteConfig, index, layout, prefix, route } from "@react-router/de
 import { BACKOFFICE_LAYOUT_ROUTE_ID } from "./routes/backoffice/route-ids";
 
 export default [
-  index("routes/landing/index.tsx"),
-  route("marketplace", "routes/marketplace/index.tsx"),
-  route("marketplace/:publisher/:packageSlug", "routes/marketplace/listing.tsx"),
-  route("legal/:document", "routes/legal/legal-document.tsx"),
-  route("cases/:case", "routes/cases/case.tsx"),
-  route("about", "routes/about/about.tsx"),
+  layout("routes/landing/light-theme-layout.tsx", [
+    index("routes/landing/index.tsx"),
+    route("marketplace", "routes/marketplace/index.tsx"),
+    route("marketplace/:publisher/:packageSlug", "routes/marketplace/listing.tsx"),
+    route("legal/:document", "routes/legal/legal-document.tsx"),
+    route("cases/:case", "routes/cases/case.tsx"),
+    route("about", "routes/about/about.tsx"),
+    route("backoffice/login", "routes/backoffice/login.tsx"),
+    route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
+  ]),
 
-  route("backoffice/login", "routes/backoffice/login.tsx"),
   route("backoffice/forgot-password", "routes/backoffice/forgot-password.tsx"),
   route("backoffice/reset-password", "routes/backoffice/reset-password.tsx"),
   route("backoffice/device", "routes/backoffice/device.tsx"),
   route("backoffice/oauth/consent", "routes/backoffice/oauth-consent.tsx"),
   route("backoffice/apps/install", "routes/backoffice/app-install.tsx"),
   route("backoffice/apps/:appId/member-reach/:orgId", "routes/backoffice/app-member-reach.tsx"),
-  route("backoffice/sign-up", "routes/backoffice/sign-up.tsx"),
   route("backoffice/verify-email", "routes/backoffice/verify-email.tsx"),
   // Outside the Backoffice shell, which opens the person's own scope before they choose where it is
   // kept.

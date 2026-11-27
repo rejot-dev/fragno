@@ -272,6 +272,24 @@ function lineThrough(summits: HeroPhoto["summits"]) {
 }
 
 /**
+ * The photo's colors alone, as the hero shows them while the photo loads: for a hero that wants the
+ * photo's light without its picture.
+ */
+export function LandingHeroPhotoPlaceholder({ photo }: { photo: keyof typeof HERO_PHOTOS }) {
+  const { placeholder, look }: HeroPhoto = HERO_PHOTOS[photo];
+  return (
+    <div
+      className="landing-hero-photo-placeholder"
+      style={{
+        top: `-${look.overhang.above}%`,
+        bottom: `-${look.overhang.below}%`,
+        background: `linear-gradient(to bottom, ${placeholder.join(", ")})`,
+      }}
+    />
+  );
+}
+
+/**
  * The hero's photo, drifting slowly, with a faint line from summit to summit across it and a dot on
  * each summit. Every few seconds a single flash of light runs along the line. The line and dots ride
  * on the photo, so they stay on the peaks as it moves. Until the photo loads, its placeholder colors
@@ -279,7 +297,7 @@ function lineThrough(summits: HeroPhoto["summits"]) {
  * every side, so the parent clips it.
  */
 export function LandingHeroPhoto({ photo }: { photo: keyof typeof HERO_PHOTOS }) {
-  const { url, height, summits, placeholder, look }: HeroPhoto = HERO_PHOTOS[photo];
+  const { url, height, summits, look }: HeroPhoto = HERO_PHOTOS[photo];
   // Names the line's gradient and mask; the photo's name keeps them apart when several photos are
   // on one page, as in Storybook.
   const id = `landing-ley-${photo}`;
@@ -295,14 +313,7 @@ export function LandingHeroPhoto({ photo }: { photo: keyof typeof HERO_PHOTOS })
       {/* The placeholder colors lie still behind the drifting photo rather than on it: a browser can
           show the moving layer late when it scrolls back into view, and the hero then shows the
           photo's colors instead of its dark background. */}
-      <div
-        className="landing-hero-photo-placeholder"
-        style={{
-          top: `-${look.overhang.above}%`,
-          bottom: `-${look.overhang.below}%`,
-          background: `linear-gradient(to bottom, ${placeholder.join(", ")})`,
-        }}
-      />
+      <LandingHeroPhotoPlaceholder photo={photo} />
       <div
         className="landing-hero-photo"
         data-loaded={loaded || undefined}
@@ -416,7 +427,11 @@ export function LandingHeroPhoto({ photo }: { photo: keyof typeof HERO_PHOTOS })
           </g>
         </svg>
       </div>
-      <div className="landing-hero-photo-sunlight" />
+      {/* A day's light passing over the photo (components.css). */}
+      <div className="landing-hero-light landing-hero-light-golden" />
+      <div className="landing-hero-light landing-hero-light-dusk" />
+      <div className="landing-hero-light landing-hero-light-dawn" />
+      <div className="landing-hero-light landing-hero-light-day" />
     </>
   );
 }

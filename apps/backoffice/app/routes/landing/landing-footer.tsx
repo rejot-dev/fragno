@@ -2,17 +2,18 @@ import { LeywayMark } from "@fragno-private/design-system/brand/leyway-mark";
 import { LeywayWordmark } from "@fragno-private/design-system/brand/leyway-wordmark";
 import { Link } from "react-router";
 
+// Like the header's links, these rest a shade softer than the ink and brighten to it on hover.
 const footerLinkClassName =
-  "inline-flex min-h-9 items-center text-sm font-semibold text-[var(--bo-fg)] no-underline transition-colors duration-150 hover:text-[var(--bo-accent-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--bo-accent)]";
+  "inline-flex min-h-9 items-center text-sm font-semibold text-[color-mix(in_srgb,var(--bo-fg)_68%,transparent)] no-underline transition-colors duration-150 hover:text-[var(--bo-fg)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--bo-accent)]";
 
 /** Provides the Leyway product, community, legal, and Fragno reference links. */
 export function LandingFooter() {
   return (
-    // Black closes the warm page. It stays fixed in both themes, so the footer redefines
+    // The hero film's gray closes the page. It stays fixed in both themes, so the footer redefines
     // the theme colors its content reads instead of each element naming its own.
     <footer
       data-landing-dark
-      className="bg-black [--bo-accent:#f58a1f] [--bo-border:#262626] [--bo-fg:#f1f4f9] [--bo-muted-2:#7d899c] [--bo-muted:#a8b3c5]"
+      className="bg-[#232322] [--bo-accent:#f58a1f] [--bo-border:#3a3a38] [--bo-fg:#f1f4f9] [--bo-muted-2:#7d899c] [--bo-muted:#a8b3c5]"
     >
       <div className="max-w-landing mx-auto px-7 py-16 sm:px-8 lg:px-12">
         <div className="grid gap-10 md:grid-cols-[1.3fr_0.7fr_0.7fr]">

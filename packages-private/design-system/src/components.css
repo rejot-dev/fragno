@@ -28,8 +28,9 @@
   transition: border-color 150ms ease-out;
 }
 
+/* Lighter than any text, so example values recede behind labels and what people type. */
 .bo-input::placeholder {
-  color: var(--bo-muted-2);
+  color: color-mix(in srgb, var(--bo-muted-2) 60%, transparent);
 }
 
 .bo-input:hover:not(:disabled) {
@@ -671,16 +672,97 @@
     radial-gradient(ellipse at center, transparent 45%, rgb(0 0 0 / 0.28));
 }
 
-/* Golden-hour sunlight falling on the peaks from the right, and a pale glow in the sky above them.
-   Plain translucent color rather than a blend mode: Safari blends a still layer over the drifting,
-   separately composited photo against nothing, which hides the photo. */
-.landing-hero-photo-sunlight {
+/* The light of a day passing over the photo: one still layer per time of day, crossfading in a loop
+   that starts and, for reduced motion, stays on golden hour, the light the photos were graded for.
+   Each layer is plain translucent color rather than a blend mode: Safari blends a still layer over
+   the drifting, separately composited photo against nothing, which hides the photo. Only opacity is
+   animated, so the photo's filter is never recomputed. Every layer stays dark or faint over the
+   copy on the left, so the white heading reads at any hour. */
+.landing-hero-light {
   position: absolute;
   inset: 0;
   pointer-events: none;
+  opacity: 0;
+  animation: 90s ease-in-out infinite;
+}
+
+/* Sunlight falling on the peaks from the right, and a pale glow in the sky above them. */
+.landing-hero-light-golden {
+  opacity: 1;
+  animation-name: landing-hero-light-golden;
   background:
     radial-gradient(ellipse 45% 55% at 78% 62%, rgb(255 186 110 / 0.32), transparent 72%),
     radial-gradient(ellipse 70% 60% at 100% 0%, rgb(255 214 160 / 0.16), transparent 70%);
+}
+
+/* The sun gone below the right horizon: a last red glow there under a violet sky, dimming. */
+.landing-hero-light-dusk {
+  animation-name: landing-hero-light-dusk;
+  background:
+    radial-gradient(ellipse 60% 40% at 92% 78%, rgb(255 110 90 / 0.22), transparent 75%),
+    linear-gradient(to bottom, rgb(70 45 120 / 0.42), rgb(40 30 80 / 0.3));
+}
+
+/* Dawn from the left: a pink glow on the far peaks under a cool lavender sky. */
+.landing-hero-light-dawn {
+  animation-name: landing-hero-light-dawn;
+  background:
+    radial-gradient(ellipse 55% 50% at 18% 62%, rgb(255 160 180 / 0.24), transparent 72%),
+    linear-gradient(to bottom, rgb(150 140 210 / 0.22), rgb(40 50 90 / 0.18));
+}
+
+/* Midday: clear and cool, a faint pale haze in the sky only, above the copy. */
+.landing-hero-light-day {
+  animation-name: landing-hero-light-day;
+  background: linear-gradient(to bottom, rgb(225 238 255 / 0.14), transparent 40%);
+}
+
+/* Each time of day peaks where the next one starts rising: golden hour at 0%, dusk at 25%, dawn at
+   50% and midday at 75%, so two layers at most are ever crossfading. There is no night: dusk passes
+   straight into dawn, so the hero never goes dark. */
+@keyframes landing-hero-light-golden {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  25%,
+  75% {
+    opacity: 0;
+  }
+}
+
+@keyframes landing-hero-light-dusk {
+  0%,
+  50%,
+  100% {
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+}
+
+@keyframes landing-hero-light-dawn {
+  0%,
+  25%,
+  75%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes landing-hero-light-day {
+  0%,
+  50%,
+  100% {
+    opacity: 0;
+  }
+  75% {
+    opacity: 1;
+  }
 }
 
 /* A very faint line from summit to summit, a faint dot on each summit, and now and then a single
@@ -702,7 +784,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .landing-hero-photo {
+  .landing-hero-photo,
+  .landing-hero-light {
     animation: none;
   }
 
@@ -713,6 +796,40 @@
 
   .landing-ley-flash {
     display: none;
+  }
+}
+
+/* Shade in the crease below the hero, where it meets the page, as in the corner where a wall meets
+   a floor: darkest at the edge and gone a short way out. Black on the dark page needs more to show. */
+.landing-hero-crease {
+  position: absolute;
+  inset-inline: 0;
+  height: 6rem;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.12), rgb(0 0 0 / 0.04) 40%, transparent);
+}
+
+.dark .landing-hero-crease {
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.45), rgb(0 0 0 / 0.15) 40%, transparent);
+}
+
+/* Where the browser can tie an animation to scrolling, the shade deepens with the page's scroll
+   over its first 320px, rather than fading in at the first pixel. An animation outranks the page's
+   opacity classes, which remain for browsers without scroll timelines. */
+@supports (animation-timeline: scroll()) {
+  .landing-hero-crease {
+    animation: landing-hero-crease-in linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 320px;
+  }
+}
+
+@keyframes landing-hero-crease-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
@@ -730,4 +847,58 @@
   );
   background-size: 100% 56px;
   mask-image: linear-gradient(transparent, #000 45%);
+}
+
+/* A ring in the logo's three colors, pink, yellow and violet, turning around a pill (PillButton) while
+   it is hovered or focused, in its link or as the link or button itself. It is drawn over the button's own
+   border: a conic gradient whose middle is cut away, so only a 2px rim shows. It fades in and out
+   slowly. Its angle is a registered property, so it can be animated; with reduced motion the ring
+   shows but stays still. */
+@property --bo-pill-ring-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.bo-pill-ring {
+  position: relative;
+}
+
+.bo-pill-ring::before {
+  position: absolute;
+  inset: -1px;
+  padding: 2px;
+  border-radius: inherit;
+  background: conic-gradient(from var(--bo-pill-ring-angle), #ff2d87, #ffd60a, #7a3cff, #ff2d87);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 700ms cubic-bezier(0.4, 0, 0.2, 1);
+  /* Always turning, even while hidden, so it keeps turning as it fades in and out instead of
+     starting or stopping with a jolt. */
+  animation: bo-pill-ring-turn 2.4s linear infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+}
+
+:is(a:hover, a:focus-visible) > .bo-pill-ring::before,
+.bo-pill-ring:is(:hover, :focus-visible)::before {
+  opacity: 1;
+}
+
+@keyframes bo-pill-ring-turn {
+  to {
+    --bo-pill-ring-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bo-pill-ring::before {
+    animation: none;
+  }
 }

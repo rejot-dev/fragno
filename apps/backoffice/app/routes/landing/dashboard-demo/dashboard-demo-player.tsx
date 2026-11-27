@@ -84,62 +84,73 @@ export function DashboardDemoPlayer({ state }: { state: DashboardDemoState }) {
   }, []);
 
   return (
-    <div ref={containerRef} data-ignores-reduced-motion>
+    <div ref={containerRef} data-ignores-reduced-motion className="group/preview">
       <ScreenFrame
         label="The Leyway dashboard, in one story: someone asks the agent to connect Google Drive and Slack, then for a page of this week's signups, then to tell #sales on Slack about every Business signup."
         // One timeline for the one story, in a segment per part.
         bar={
-          <ol className="flex">
-            {DASHBOARD_DEMOS.map((demo, index) => {
-              const fill =
-                index < timeline.index ? 1 : index === timeline.index ? timeline.progress : 0;
-              const active = index === timeline.index;
-              // Sections interlock: each after the first slides back under its neighbor's slant,
-              // and the bar's ends stay square so the sections fill it from edge to edge.
-              const first = index === 0;
-              const last = index === DASHBOARD_DEMOS.length - 1;
-              const clipPath = `polygon(${first ? "0" : "0.625rem"} 0,100% 0,${last ? "100%" : "calc(100% - 0.625rem)"} 100%,0 100%)`;
-              return (
-                <li key={demo.id} className={`min-w-0 flex-1 ${first ? "" : "-ml-[0.625rem]"}`}>
-                  <button
-                    type="button"
-                    aria-current={active ? "step" : undefined}
-                    onClick={() => {
-                      playheadRef.current = { index, elapsed: 0 };
-                      show(index, 0);
-                    }}
-                    style={{ clipPath }}
-                    // Slanted sections like the header's call to action, in light ink for the dark
-                    // bar; the part playing is a shade brighter. The slant clips a ring, so focus
-                    // shows as the brightest fill instead. The padding leaves room for the slant.
-                    className={`group relative flex min-h-11 w-full items-center overflow-hidden pr-5 pl-4 text-left text-sm font-semibold transition-[background-color,color] duration-150 ease-out outline-none focus-visible:bg-white/25 ${active ? "bg-white/[0.16] text-white" : "bg-white/[0.06] text-white/60 hover:bg-white/10 hover:text-white/90"}`}
-                  >
-                    {/* The part's progress runs along the item's bottom edge. */}
-                    <span
-                      aria-hidden="true"
-                      className="absolute bottom-0 left-0 h-0.5 bg-white/70"
-                      style={{ width: `${fill * 100}%` }}
-                    />
-                    <span className="flex size-8 shrink-0 items-center justify-center">
-                      <Icon
-                        name={demo.icon}
-                        className={`size-4 transition-colors duration-150 ${active ? "text-white/80" : "text-white/50"}`}
-                        strokeWidth={1.75}
-                      />
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className="mr-[calc(--spacing(2.75)-0.5px)] ml-[calc(--spacing(0.75)-0.5px)] h-6 w-px shrink-0 bg-white/15"
-                    />
-                    <span className="min-w-0 py-1.5 leading-tight">{demo.title}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
+          <div className="px-5 py-3">
+            <ol className="flex gap-5">
+              {DASHBOARD_DEMOS.map((demo, index) => {
+                const fill =
+                  index < timeline.index ? 1 : index === timeline.index ? timeline.progress : 0;
+                const active = index === timeline.index;
+                return (
+                  // Every chapter keeps its size as the story plays, so the one under a finger stays
+                  // the one it taps.
+                  <li key={demo.id} className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      aria-current={active ? "step" : undefined}
+                      onClick={() => {
+                        playheadRef.current = { index, elapsed: 0 };
+                        show(index, 0);
+                      }}
+                      // A chapter of the story, like a video player's: its progress on a track above
+                      // its number and title. The part playing is the brightest; parts played stay
+                      // filled, dimmer, so the track reads as the story so far.
+                      className={`group font-heading flex w-full flex-col gap-2.5 rounded-sm text-left text-[15px] font-normal tracking-[-0.01em] transition-colors duration-150 ease-out outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-(--bo-fg)/40 ${active ? "text-(--bo-fg)" : "text-(--bo-muted) hover:text-(--bo-fg)"}`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="h-0.5 w-full overflow-hidden rounded-full bg-(--bo-fg)/10"
+                      >
+                        <span
+                          className={`block h-full rounded-full ${active ? "bg-(--bo-fg)" : "bg-(--bo-fg)/30"}`}
+                          style={{ width: `${fill * 100}%` }}
+                        />
+                      </span>
+                      <span className="flex min-w-0 items-center gap-2.5 leading-5">
+                        <Icon
+                          name={demo.icon}
+                          className={`size-4 shrink-0 transition-colors duration-150 ${active ? "text-(--bo-fg)/80" : "text-(--bo-muted) group-hover:text-(--bo-fg)/80"}`}
+                          strokeWidth={1.75}
+                        />
+                        {/* Truncating clips to the line box, which is tighter than Outfit's ascenders and
+                          descenders; the padding gives them room without moving the line. */}
+                        {/* On phones only icons fit; the playing chapter's title shows below. */}
+                        <span className="-my-1 truncate py-1 max-sm:sr-only">{demo.title}</span>
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+            <p
+              aria-hidden="true"
+              className="font-heading mt-2 truncate text-[15px] leading-5 tracking-[-0.01em] text-(--bo-fg) sm:hidden"
+            >
+              {DASHBOARD_DEMOS[timeline.index]?.title}
+            </p>
+          </div>
         }
       >
-        <StillDashboardDemo state={state} scene={scene} />
+        {/* The screen alone, not the timeline below it, shows in a light black and white, its darks
+            lifted toward gray, so the hero photo and the brand carry the page's color; it fades into
+            the app's real colors while the pointer is over the preview. */}
+        <div className="brightness-[1.08] contrast-[0.8] grayscale transition-[filter] duration-500 ease-out group-hover/preview:brightness-100 group-hover/preview:contrast-100 group-hover/preview:grayscale-0">
+          <StillDashboardDemo state={state} scene={scene} />
+        </div>
       </ScreenFrame>
     </div>
   );

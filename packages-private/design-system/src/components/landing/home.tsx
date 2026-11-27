@@ -50,17 +50,12 @@ export function LandingHomeSections() {
           <LandingPartners />
         </Column>
       </div>
-      {/* The page closes on the hero's black-and-gray film, in white, so it ends where it began. */}
-      <div
-        data-landing-dark
-        className="relative mt-24 overflow-hidden bg-[#232322] pt-24 pb-24 text-white [--bo-bg:#232322] [--bo-fg:#fff] [--bo-muted-2:rgb(255_255_255/0.75)] [--bo-muted:rgb(255_255_255/0.9)] sm:mt-32 sm:pt-32 sm:pb-32"
-      >
-        <div aria-hidden="true" className="landing-film-mono" />
-        <div className="relative">
-          <Column>
-            <LandingClosing />
-          </Column>
-        </div>
+      {/* The page closes on a plain light gray, with the light theme's ink in both themes, so the
+          footer's dark gray below reads as the page's end. */}
+      <div className="mt-24 bg-[#ececea] pt-24 pb-24 text-[#111827] [--bo-bg:#ececea] [--bo-fg:#111827] [--bo-muted:#56647a] sm:mt-32 sm:pt-32 sm:pb-32">
+        <Column>
+          <LandingClosing />
+        </Column>
       </div>
     </>
   );

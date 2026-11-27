@@ -1,5 +1,7 @@
 import { LeywayMark } from "@fragno-private/design-system/brand/leyway-mark";
 import { LeywayWordmark } from "@fragno-private/design-system/brand/leyway-wordmark";
+import { cn } from "@fragno-private/design-system/cn";
+import { PillLabel, pillClassName } from "@fragno-private/design-system/controls/pill-button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
@@ -27,30 +29,32 @@ const navCellBaseClassName = `group/link flex items-center gap-2 whitespace-nowr
 const navCellClassName = `${navCellBaseClassName} font-light text-[color-mix(in_srgb,var(--landing-header-ink)_68%,transparent)] hover:text-[var(--landing-header-ink)]`;
 
 /**
- * Whether what shows under the header belongs to one of the page's dark surfaces, the elements
- * marked `data-landing-dark`. It looks at the edge the page scrolls in under: the bottom one going
- * down, the top one going up, so the header turns as soon as a new surface reaches it. It asks for
- * the topmost element there rather than which surface spans it, so the dashboard rising over the
- * hero counts as light. It starts over the hero, which is dark.
+ * Whether the header lies wholly over one of the page's dark surfaces, the elements marked
+ * `data-landing-dark`. It asks about both its edges, and only when both are over a dark surface
+ * does it go clear with white ink; while it straddles a light and a dark surface it stays white
+ * with black ink, which reads over either. So it turns white as soon as a light surface reaches
+ * it, and clear only once the dark one has passed behind all of it. At each edge it asks for the
+ * topmost element rather than which surface spans it, so the dashboard rising over the hero counts
+ * as light. Until it can look, which is not before hydration, it takes the page's word for what
+ * the top of the page is, so the header renders legibly from the first paint.
  */
-function useOverDarkSurface(headerRef: RefObject<HTMLElement | null>) {
-  const [overDarkSurface, setOverDarkSurface] = useState(true);
+function useOverDarkSurface(headerRef: RefObject<HTMLElement | null>, startsOverDark: boolean) {
+  const [overDarkSurface, setOverDarkSurface] = useState(startsOverDark);
   useEffect(() => {
     const header = headerRef.current;
     if (!header) {
       return undefined;
     }
-    let lastScrollY = window.scrollY;
+    const isDarkAt = (x: number, y: number) =>
+      document
+        .elementsFromPoint(x, y)
+        .find((element) => !header.contains(element))
+        ?.closest("[data-landing-dark]") != null;
     const updateOverDarkSurface = () => {
       const { top, bottom, left, right } = header.getBoundingClientRect();
-      const scrollingUp = window.scrollY < lastScrollY;
-      lastScrollY = window.scrollY;
-      // Just inside the edge, so the header's own border is not what is asked about.
-      const edge = scrollingUp ? top + 1 : bottom - 2;
-      const below = document
-        .elementsFromPoint((left + right) / 2, edge)
-        .find((element) => !header.contains(element));
-      setOverDarkSurface(below?.closest("[data-landing-dark]") != null);
+      const middle = (left + right) / 2;
+      // Just inside each edge, so the header's own border is not what is asked about.
+      setOverDarkSurface(isDarkAt(middle, top + 1) && isDarkAt(middle, bottom - 2));
     };
     updateOverDarkSurface();
     window.addEventListener("scroll", updateOverDarkSurface, { passive: true });
@@ -94,12 +98,23 @@ function usePublishedColumns() {
   return gridRef;
 }
 
-/** Provides the public Leyway product header, Marketplace link, and app entry point. */
-export function LandingHeader() {
+/**
+ * Provides the public Leyway product header, Marketplace link, and app entry point.
+ * `startsOverDark` says whether the page opens on a dark surface marked `data-landing-dark`.
+ * `nav` is the product's links and entry point, or, on pages that are already the way into the
+ * app, only the way back home.
+ */
+export function LandingHeader({
+  startsOverDark,
+  nav,
+}: {
+  startsOverDark: boolean;
+  nav: "product" | "back-home";
+}) {
   const scrolled = useScrolled();
   const gridRef = usePublishedColumns();
   const headerRef = useRef<HTMLElement>(null);
-  const overDarkSurface = useOverDarkSurface(headerRef);
+  const overDarkSurface = useOverDarkSurface(headerRef, startsOverDark);
 
   return (
     // Clear with white ink over the page's dark surfaces, blurring what lies behind it so its
@@ -109,7 +124,7 @@ export function LandingHeader() {
       ref={headerRef}
       data-scrolled={scrolled || undefined}
       data-over-dark={overDarkSurface || undefined}
-      className="group/header sticky top-0 z-30 border-b border-transparent bg-white transition-[border-color,box-shadow,background-color] duration-400 ease-out [--landing-header-ink:#0b0b0a] data-[over-dark]:bg-transparent data-[over-dark]:backdrop-blur-md data-[over-dark]:[--landing-header-ink:#ffffff] data-[scrolled]:border-[color-mix(in_srgb,var(--landing-header-ink)_8%,transparent)] data-[scrolled]:not-data-[over-dark]:shadow-[0_10px_30px_-20px_rgba(11,11,10,0.15)]"
+      className="group/header sticky top-0 z-30 border-b border-transparent bg-white transition-[border-color,background-color] duration-400 ease-out [--landing-header-ink:#0b0b0a] data-[over-dark]:bg-transparent data-[over-dark]:backdrop-blur-md data-[over-dark]:[--landing-header-ink:#ffffff] data-[scrolled]:border-[color-mix(in_srgb,var(--landing-header-ink)_8%,transparent)]"
     >
       <div className={containerClassName}>
         <div
@@ -129,36 +144,54 @@ export function LandingHeader() {
           </Link>
           {/* Phones fit the logo and both links only with a smaller logo, and the narrowest only
               with tighter cells and no arrow too. */}
-          <nav aria-label="Product" className="col-span-2 col-start-3 grid grid-cols-subgrid">
-            <Link
-              to="/marketplace"
-              data-header-cell
-              className={`${navCellClassName} border-l px-4 max-[379px]:px-2.5`}
-            >
-              Marketplace
-            </Link>
-            <Link
-              to="/backoffice"
-              data-header-cell
-              // The header's one call to action: a cell like the others, framed on both sides from md
-              // up like the logo's, holding an outlined round button in the header's ink, like the
-              // hero's Browse the marketplace. On hover, a ring in the logo's colors runs around it
-              // (landing.css); over the hero it also lightens, while on the white header it stays
-              // white.
-              className={`${navCellBaseClassName} border-l px-4 max-[379px]:px-2.5 md:border-r`}
-            >
-              <span className="landing-rainbow-ring inline-flex h-12 items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--landing-header-ink)_30%,transparent)] px-6 text-sm font-semibold text-[var(--landing-header-ink)] transition-colors duration-150 group-data-[over-dark]/header:group-hover/link:bg-[color-mix(in_srgb,var(--landing-header-ink)_10%,transparent)] max-[379px]:px-3">
-                {/* The font's ascent is far taller than its caps, so an untrimmed line box centers
-                    the letters low. Trimmed to cap height and baseline, the letters center in the
-                    button and on the arrow, as in every round button on the page. */}
-                <span className="[text-box:trim-both_cap_alphabetic]">Open app</span>
+          {nav === "product" ? (
+            <nav aria-label="Product" className="col-span-2 col-start-3 grid grid-cols-subgrid">
+              <Link
+                to="/marketplace"
+                data-header-cell
+                className={`${navCellClassName} border-l px-4 max-[379px]:px-2.5`}
+              >
+                Marketplace
+              </Link>
+              <Link
+                to="/backoffice"
+                data-header-cell
+                // The header's one call to action: a cell like the others, framed on both sides from md
+                // up like the logo's, holding an outlined round button in the header's ink, like the
+                // hero's Browse the marketplace. On hover, a ring in the logo's colors runs around it;
+                // over the hero it also lightens, while on the white header it stays white.
+                className={`${navCellBaseClassName} border-l px-4 max-[379px]:px-2.5 md:border-r`}
+              >
+                <span
+                  className={cn(
+                    pillClassName({ variant: "outlined", size: "default", ring: true }),
+                    "[--bo-fg:var(--landing-header-ink)] group-data-[over-dark]/header:group-hover/link:bg-[color-mix(in_srgb,var(--landing-header-ink)_10%,transparent)] max-[379px]:px-3",
+                  )}
+                >
+                  <PillLabel>Open app</PillLabel>
+                  <Icon
+                    name="arrow-right"
+                    className="size-3.5 transition-transform duration-150 group-hover/link:translate-x-0.5 max-[379px]:hidden"
+                  />
+                </span>
+              </Link>
+            </nav>
+          ) : (
+            // A single cell in the last column, framed on both sides from md up like the logo's.
+            <nav aria-label="Back" className="col-start-4">
+              <Link
+                to="/"
+                data-header-cell
+                className={`${navCellClassName} h-full border-l px-4 max-[379px]:px-2.5 md:border-r`}
+              >
                 <Icon
-                  name="arrow-right"
-                  className="size-3.5 transition-transform duration-150 group-hover/link:translate-x-0.5 max-[379px]:hidden"
+                  name="arrow-left"
+                  className="size-3.5 transition-transform duration-150 group-hover/link:-translate-x-0.5"
                 />
-              </span>
-            </Link>
-          </nav>
+                Back to home
+              </Link>
+            </nav>
+          )}
         </div>
       </div>
     </header>

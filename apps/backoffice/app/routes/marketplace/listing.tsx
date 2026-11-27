@@ -72,7 +72,7 @@ export default function PublicMarketplaceListing({ loaderData }: Route.Component
       data-backoffice-root
       className="flex min-h-svh flex-col bg-[var(--bo-bg)] font-sans text-[var(--bo-fg)]"
     >
-      <LandingHeader />
+      <LandingHeader startsOverDark={false} nav="product" />
       <main className="max-w-landing mx-auto w-full flex-1 px-5 pt-10 pb-24 sm:px-8 lg:px-12 lg:pt-14">
         <Link
           to="/marketplace"
