@@ -299,10 +299,14 @@ export async function action({ request, context, url }: Route.ActionArgs) {
     }
     if (readOAuthLoginQuery(url) !== null) {
       const resumed = z.object({ url: z.string().min(1) }).parse(await response.json());
-      return redirect(resumed.url, { headers: createBackofficeIdentityChangeHeaders(response) });
+      return redirect(resumed.url, {
+        headers: createBackofficeIdentityChangeHeaders(request, response),
+      });
     }
     // The destination mints the access token from the new session.
-    return redirect(returnTo, { headers: createBackofficeIdentityChangeHeaders(response) });
+    return redirect(returnTo, {
+      headers: createBackofficeIdentityChangeHeaders(request, response),
+    });
   } catch (error) {
     return {
       state: "error",

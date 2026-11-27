@@ -32,7 +32,7 @@ export async function reopenWithBackofficeCredential(
     // A token outlives its session by up to its lifetime. Sign-in would send a browser still
     // holding one straight back here, so it is dropped with the session.
     const headers = new Headers();
-    for (const cookie of expiredBackofficeAccessTokenCookieHeaders()) {
+    for (const cookie of expiredBackofficeAccessTokenCookieHeaders(new URL(request.url))) {
       headers.append("Set-Cookie", cookie);
     }
     return redirect(buildBackofficeLoginPath(returnTo), { headers });

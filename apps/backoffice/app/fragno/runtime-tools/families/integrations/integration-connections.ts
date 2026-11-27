@@ -26,6 +26,15 @@ export const kindsByNamespace = {
 
 export type IntegrationConnectionNamespace = keyof typeof kindsByNamespace;
 
+/** The source that owns a connection address, or null for a namespace no source owns. */
+export function integrationConnectionKind(connectionId: string): IntegrationConnectionKind | null {
+  const namespace = connectionId.split("#", 1)[0];
+  // Any principal may fire `integrations` events, so an address's namespace may be any string.
+  return Object.hasOwn(kindsByNamespace, namespace)
+    ? kindsByNamespace[namespace as IntegrationConnectionNamespace]
+    : null;
+}
+
 type StoredEvent = {
   id: string;
   source: string;
@@ -50,17 +59,9 @@ export function readIntegrationConnectionStateChange(
   event: StoredEvent,
 ): IntegrationConnectionStateChange | null {
   const change = readIntegrationConnectionEvent(event);
-  const kind = change && kindOfConnectionId(change.connectionId);
+  const kind = change && integrationConnectionKind(change.connectionId);
   return change && kind
     ? { ...change, eventId: event.id, kind, occurredAt: event.occurredAt }
-    : null;
-}
-
-/** Any principal may fire `integrations` events, so an address's namespace may be any string. */
-function kindOfConnectionId(connectionId: string): IntegrationConnectionKind | null {
-  const namespace = connectionId.split("#", 1)[0];
-  return Object.hasOwn(kindsByNamespace, namespace)
-    ? kindsByNamespace[namespace as IntegrationConnectionNamespace]
     : null;
 }
 
@@ -113,7 +114,7 @@ function connectionChangeOfState({
   payload,
   occurredAt,
 }: IntegrationConnectionEventState): IntegrationConnectionStateChange | null {
-  const kind = kindOfConnectionId(payload.connectionId);
+  const kind = integrationConnectionKind(payload.connectionId);
   return kind
     ? {
         eventId,

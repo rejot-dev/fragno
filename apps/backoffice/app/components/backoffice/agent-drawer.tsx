@@ -3,14 +3,19 @@ import {
   SIDE_DRAWER_MIN_WIDTH,
   SideDrawer,
 } from "@fragno-private/design-system/overlays/side-drawer";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { useLocation } from "react-router";
 
 import {
   backofficeRouteScopeFromResolvedScope,
   type BackofficeResolvedScope,
 } from "@/backoffice-runtime/resolved-scope";
 import { MAIN_PI_AGENT_NAME } from "@/fragno/pi/agent/pi-agent-name";
-import { piAgentsPath } from "@/routes/backoffice/agents/path";
+import {
+  isPiAgentPagePath,
+  PI_AGENT_CONVERSATION_TRANSITION,
+  piAgentsPath,
+} from "@/routes/backoffice/agents/path";
 
 import { AgentDrawerHeader } from "./agent-drawer-header";
 import type { AgentDraft, AgentRequest } from "./ask-agent";
@@ -78,50 +83,67 @@ export function AgentDrawer({
     selection?.agentsPath === agentsPath && selection.requestId === requestId
       ? selection.agentName
       : (scopeRequest?.agentName ?? MAIN_PI_AGENT_NAME);
+  // Expanding opens the agent's page in a view transition. The drawer closes in the same render
+  // the page arrives in, so its conversation grows into the page's instead of staying beside it.
+  const location = useLocation();
+  const [expandingTo, setExpandingTo] = useState<string | null>(null);
+  const expanded = expandingTo !== null && isPiAgentPagePath(expandingTo, location.pathname);
+  useEffect(() => {
+    if (expanded) {
+      setExpandingTo(null);
+      onClose();
+    }
+  }, [expanded, onClose]);
 
   return (
     <SideDrawer
       id={AGENT_DRAWER_ID}
       label="Agent conversation"
-      open={open}
+      open={open && !expanded}
       defaultWidth={AGENT_DRAWER_SIZES[screen].defaultWidth}
       storageKey={AGENT_DRAWER_SIZES[screen].storageKey}
       halfScreenRequest={halfScreenRequest}
     >
       {resolvedScope && agentsPath ? (
-        <Suspense
-          fallback={
-            <>
-              <AgentDrawerHeader options={null} onClose={onClose} />
-              <PaneSpinner label="Loading agent" />
-            </>
-          }
+        <div
+          className="flex min-h-0 flex-1 flex-col"
+          style={{ viewTransitionName: PI_AGENT_CONVERSATION_TRANSITION }}
         >
-          <AgentDrawerScope
-            key={`${agentsPath}/${agentName}`}
-            open={open}
-            resolvedScope={resolvedScope}
-            agentsPath={agentsPath}
-            agentName={agentName}
-            screen={screen}
-            draft={
-              scopeDraft !== null &&
-              scopeDraft.agentName === agentName &&
-              scopeDraft.id !== filledDraftId
-                ? {
-                    text: scopeDraft.text,
-                    onFilled: () => {
-                      setFilledDraftId(scopeDraft.id);
-                    },
-                  }
-                : null
+          <Suspense
+            fallback={
+              <>
+                <AgentDrawerHeader options={null} onClose={onClose} />
+                <PaneSpinner label="Loading agent" />
+              </>
             }
-            onAgentChange={(nextAgentName) => {
-              setSelection({ agentsPath, requestId, agentName: nextAgentName });
-            }}
-            onClose={onClose}
-          />
-        </Suspense>
+          >
+            <AgentDrawerScope
+              key={`${agentsPath}/${agentName}`}
+              open={open}
+              resolvedScope={resolvedScope}
+              agentsPath={agentsPath}
+              agentName={agentName}
+              screen={screen}
+              draft={
+                scopeDraft !== null &&
+                scopeDraft.agentName === agentName &&
+                scopeDraft.id !== filledDraftId
+                  ? {
+                      text: scopeDraft.text,
+                      onFilled: () => {
+                        setFilledDraftId(scopeDraft.id);
+                      },
+                    }
+                  : null
+              }
+              onAgentChange={(nextAgentName) => {
+                setSelection({ agentsPath, requestId, agentName: nextAgentName });
+              }}
+              onExpand={setExpandingTo}
+              onClose={onClose}
+            />
+          </Suspense>
+        </div>
       ) : (
         <>
           <AgentDrawerHeader options={null} onClose={onClose} />

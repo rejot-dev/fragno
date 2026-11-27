@@ -509,6 +509,61 @@ describe("api-fragment", () => {
     await setup.test.cleanup();
   });
 
+  test("sends an API key in the header or query parameter the connection names", async () => {
+    const setup = await buildApiTest();
+    const fragment = setup.fragments.api.fragment;
+
+    for (const [slug, location, parameter] of [
+      ["anthropic", "header", "x-api-key"],
+      ["maps", "query", "key"],
+    ] as const) {
+      const created = await fragment.callRoute("PUT", "/connections/:slug", {
+        pathParams: { slug },
+        body: {
+          baseUrl: "https://api.test",
+          auth: { type: "apiKey", location, parameter, key: `${slug}-key` },
+        },
+      });
+      assert(created.type === "json");
+      expect(created.data).toMatchObject({ authMode: "apiKey" });
+      expect(created.data).not.toHaveProperty("key");
+    }
+
+    const status = await fragment.callRoute("GET", "/connections/:slug/auth/status", {
+      pathParams: { slug: "anthropic" },
+    });
+    assert(status.type === "json");
+    expect(status.data).toEqual({
+      mode: "apiKey",
+      credentials: "present",
+      location: "header",
+      parameter: "x-api-key",
+    });
+
+    // A caller's own value under the key's name never reaches the provider.
+    for (const slug of ["anthropic", "maps"]) {
+      const result = await fragment.callRoute("POST", "/connections/:slug/request", {
+        pathParams: { slug },
+        body: {
+          method: "GET",
+          path: "/v1/models",
+          query: { key: "caller-key", page: "2" },
+          headers: { "x-api-key": "caller-key" },
+          body: { type: "empty" },
+        },
+      });
+      assert(result.type === "json");
+      assert(result.data.ok);
+    }
+    const [headerCall, queryCall] = setup.fetchRecorder.calls;
+    assert(headerCall && queryCall);
+    assert(new Headers(headerCall.init?.headers).get("x-api-key") === "anthropic-key");
+    assert(new URL(queryCall.url).searchParams.get("key") === "maps-key");
+    assert(new URL(queryCall.url).searchParams.get("page") === "2");
+
+    await setup.test.cleanup();
+  });
+
   test("sends discriminated JSON and text request bodies", async () => {
     const setup = await buildApiTest();
     const fragment = setup.fragments.api.fragment;

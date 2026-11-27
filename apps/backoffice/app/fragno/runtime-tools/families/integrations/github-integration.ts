@@ -20,6 +20,7 @@ import type { GitHubFragment, GitHubInstallationOwner } from "@/fragno/github";
 import { startGitHubSignIn } from "@/fragno/github-access";
 
 import { isSuccessStatus, throwOnRouteRuntimeError } from "../../runtime-errors";
+import { INTEGRATION_CATEGORY } from "./integration-categories";
 import { connectionStateOfInspection } from "./integration-events";
 import {
   checkedIntegrationActionDefinition,
@@ -575,6 +576,8 @@ export function createGitHubIntegration({
           label: "GitHub",
           description:
             "GitHub repositories reached through this workspace's GitHub App installations. Each linked repository is one connection, addressed as github#owner/repo.",
+          iconUrl: null,
+          categories: [INTEGRATION_CATEGORY.developerTools],
           connectionCardinality: "multiple",
           availability:
             unavailable === null

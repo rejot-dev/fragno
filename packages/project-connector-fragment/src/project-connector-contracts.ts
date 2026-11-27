@@ -110,26 +110,66 @@ export const projectConnectorAccountsSchema = z.object({
   hasNextPage: z.boolean(),
 });
 
-/** Project-scoped OAuth provider overview excludes action IDs and credentials. */
-export const projectConnectorProviderConfigsSchema = z
-  .object({
-    projectId: z.string().min(1),
-    providerConfigs: z.array(
-      z.object({
-        id: z.string().min(1),
-        service: z.string().min(1),
-        displayName: z.string(),
-        callbackUrl: projectConnectorHttpUrlSchema,
-        effectiveScopes: z.array(z.string().min(1)),
-        proxyAvailable: z.boolean(),
-      }),
-    ),
-  })
-  .refine(
-    ({ providerConfigs }) =>
-      new Set(providerConfigs.map((config) => config.id)).size === providerConfigs.length,
-    "Provider configuration IDs must be unique",
+/**
+ * How the gateway's catalog presents a provider. Categories are ordered most specific first, so the
+ * first one is the provider's primary category.
+ */
+export const projectConnectorProviderCatalogSchema = z.object({
+  displayName: z.string(),
+  description: z.string().nullable(),
+  iconUrl: projectConnectorHttpUrlSchema.nullable(),
+  categories: z.array(z.object({ id: z.string().min(1), displayName: z.string() })),
+});
+
+/**
+ * Every provider the gateway's catalog lists, whether or not this project configured it. Only a
+ * configured provider can be connected; see `/provider-configs`.
+ */
+export const projectConnectorProvidersSchema = z.object({
+  providers: z.array(
+    projectConnectorProviderCatalogSchema.extend({
+      service: z.string().min(1),
+      /** How the provider authenticates, e.g. oauth2, api_key, or custom_credential. */
+      authTypes: z.array(z.string().min(1)),
+    }),
+  ),
+});
+
+/** One project OAuth configuration as the gateway describes it, without its action IDs. */
+const projectConnectorProviderConfigSchema = z.object({
+  id: z.string().min(1),
+  service: z.string().min(1),
+  displayName: z.string(),
+  callbackUrl: projectConnectorHttpUrlSchema,
+  effectiveScopes: z.array(z.string().min(1)),
+  proxyAvailable: z.boolean(),
+});
+
+function projectConnectorUniqueProviderConfigsSchema<
+  TConfig extends z.ZodObject<{ id: z.ZodString }>,
+>(config: TConfig) {
+  return z
+    .object({ projectId: z.string().min(1), providerConfigs: z.array(config) })
+    .refine(
+      ({ providerConfigs }) =>
+        new Set(providerConfigs.map((config) => config.id)).size === providerConfigs.length,
+      "Provider configuration IDs must be unique",
+    );
+}
+
+/** The gateway's discovery response, whose action IDs select catalog actions server-side. */
+export const projectConnectorGatewayProviderConfigsSchema =
+  projectConnectorUniqueProviderConfigsSchema(
+    projectConnectorProviderConfigSchema.extend({ actionIds: z.array(z.string().min(1)) }),
   );
+
+/** Project-scoped OAuth provider overview excludes action IDs and credentials. */
+export const projectConnectorProviderConfigsSchema = projectConnectorUniqueProviderConfigsSchema(
+  projectConnectorProviderConfigSchema.extend({
+    /** Null when no catalog credential is configured or the catalog does not list the service. */
+    catalog: projectConnectorProviderCatalogSchema.nullable(),
+  }),
+);
 
 /** Authoritative catalog contracts describe action values, not a provider's execution permissions. */
 export const projectConnectorActionSchema = z.object({

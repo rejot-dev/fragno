@@ -11,12 +11,14 @@ import {
   integrationListInputSchema,
   integrationListOutputSchema,
   integrationOverviewSchema,
+  integrationRequestInputSchema,
   integrationSetupInputSchema,
   integrationSetupProgressSchema,
 } from "@fragno-dev/backoffice-api/v0/integrations";
 import type { JsonValue } from "@fragno-dev/backoffice-api/v0/shared/json";
 import { z } from "zod";
 
+import { AUTOMATION_STATIC_ROOT } from "@/fragno/automation/automation-source";
 import type { BackofficeStateBackend } from "@/fragno/codemode/state-backend";
 import type { AutomationCommandOutputOptions } from "@/fragno/runtime-tools/automation-types";
 import {
@@ -33,6 +35,7 @@ import {
   defineBackofficeRuntimeToolFamily,
   type BackofficeToolContext,
 } from "../../runtime-tools";
+import type { AutomationWorkflowRuntime, WorkflowRunPresenter } from "../automations-workflow";
 import { writeIntegrationClientModule } from "./integration-client-module";
 import { type IntegrationSetupOperation } from "./integration-contracts";
 import type { IntegrationConnectionDetails } from "./integration-implementation";
@@ -74,7 +77,74 @@ export type IntegrationsRuntime = {
 type IntegrationsToolContext = BackofficeToolContext<{
   integrations: IntegrationsRuntime | undefined;
   state: BackofficeStateBackend | undefined;
+  workflow?: AutomationWorkflowRuntime;
+  workflowRunPresenter?: WorkflowRunPresenter;
 }>;
+
+/**
+ * Agents read a check's instructions just before they act, and took the setup form for a card the
+ * product shows by itself; the instructions name the call that shows it.
+ */
+function pointSecretsAtRequestInput(
+  progress: z.output<typeof integrationSetupProgressSchema>,
+  operation: "setup" | "reconfigure",
+): z.output<typeof integrationSetupProgressSchema> {
+  if (progress.status !== "needs-input" || progress.secretFields.length === 0) {
+    return progress;
+  }
+  return {
+    ...progress,
+    instructions: `${progress.instructions} Ask the user for ${progress.secretFields.join(", ")} with integrations.requestInput({ operation: "${operation}", ... }) in this turn: it shows the form card, and no card exists until you call it.`,
+  };
+}
+
+/** The form card integrations.requestInput starts; it submits the secrets once the user sends them. */
+const INTEGRATION_INPUT_WORKFLOW_PATH = `${AUTOMATION_STATIC_ROOT}/integration-input.workflow.js`;
+
+/**
+ * Starts the form that asks the user for a connection's secrets. Only the check's secret fields can
+ * be asked for, and input carries none of them, so secrets reach the connection only through the
+ * form.
+ */
+async function requestIntegrationInput(
+  request: z.output<typeof integrationRequestInputSchema>,
+  context: IntegrationsToolContext,
+) {
+  const integrations = requireIntegrationsRuntime(context);
+  const check = { kind: "check" as const, connectionId: request.connectionId };
+  const progress =
+    request.operation === "setup"
+      ? await integrations.setup(check)
+      : await integrations.reconfigure(check);
+  if (progress.status !== "needs-input") {
+    throw new Error(
+      `${request.connectionId} does not need input for ${request.operation}: its check is ${progress.status}.`,
+    );
+  }
+  const secretFields = new Set(progress.secretFields);
+  for (const { field } of request.secrets) {
+    if (!secretFields.has(field)) {
+      throw new Error(
+        `${field} is not a secret field of ${request.connectionId}; its secret fields are ${[...secretFields].join(", ")}.`,
+      );
+    }
+    if (field in request.input) {
+      throw new Error(`${field} is secret, so only the form collects it: leave it out of input.`);
+    }
+  }
+  const { workflow, workflowRunPresenter } = context.runtimes;
+  if (!workflow || !workflowRunPresenter) {
+    throw new Error("Only an agent's own turn can show a form to the user.");
+  }
+  const { instanceId } = await workflow.createInstance({
+    path: INTEGRATION_INPUT_WORKFLOW_PATH,
+    instanceId: crypto.randomUUID(),
+    payload: request,
+    notifyWhenDone: true,
+  });
+  workflowRunPresenter.show(instanceId);
+  return { instanceId };
+}
 
 function requireIntegrationsRuntime(context: IntegrationsToolContext): IntegrationsRuntime {
   if (!context.runtimes.integrations) {
@@ -239,7 +309,7 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       activity: { label: "Set up connection", target: (input) => input.connectionId },
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
-        await requireIntegrationsRuntime(context).setup(input),
+        pointSecretsAtRequestInput(await requireIntegrationsRuntime(context).setup(input), "setup"),
       adapters: {
         bash: {
           command: "integrations.setup",
@@ -272,7 +342,10 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
       activity: { label: "Reconfigure connection", target: (input) => input.connectionId },
       getResource: (input) => ({ connectionId: input.connectionId }),
       execute: async (input, context: IntegrationsToolContext) =>
-        await requireIntegrationsRuntime(context).reconfigure(input),
+        pointSecretsAtRequestInput(
+          await requireIntegrationsRuntime(context).reconfigure(input),
+          "reconfigure",
+        ),
       adapters: {
         bash: {
           command: "integrations.reconfigure",
@@ -446,6 +519,14 @@ export const integrationsToolFamily = defineBackofficeRuntimeToolFamily({
           format: formatIntegrationCommandOutput,
         },
       },
+    }),
+    defineBackofficeRuntimeTool({
+      ...backofficeApiOperationToolFields("integrations.requestInput"),
+      namespace: "integrations",
+      name: "requestInput",
+      activity: { label: "Ask for connection secrets", target: (input) => input.connectionId },
+      getResource: (input) => ({ connectionId: input.connectionId }),
+      execute: requestIntegrationInput,
     }),
     defineBackofficeRuntimeTool({
       ...backofficeApiOperationToolFields("integrations.generateClient"),

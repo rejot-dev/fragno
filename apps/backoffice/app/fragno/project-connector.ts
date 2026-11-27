@@ -10,19 +10,28 @@ import {
 import type { BackofficeFragmentRuntimeOptions } from "@/backoffice-runtime/fragment-runtime";
 import type { BackofficeKernel } from "@/backoffice-runtime/kernel";
 
-/** Mounts Connector on a user-owned scoped database adapter. */
+/**
+ * Mounts Connector on its owner's scoped database adapter. Provider accounts are user-owned, so an
+ * organization's Connector exposes only the catalog, which its API-key providers are set up from.
+ */
 export function createProjectConnectorServer(
   config: ProjectConnectorFragmentConfig,
   runtime: BackofficeFragmentRuntimeOptions,
   kernel: BackofficeKernel,
+  owner: "user" | "org",
 ) {
   return createProjectConnectorFragment(config, {
     databaseAdapter: runtime.adapters.createAdapter({ kind: "projectConnector" }),
     mountRoute: "/api/project-connector",
   }).withMiddleware(async function authorizeConnectorRoutes({ ifMatchesRoute, requestContext }) {
     let access: BackofficeFragmentHttpAccess = null;
+    let readsCatalog = false;
     await ifMatchesRoute("GET", "/provider-configs", () => {
       access = BACKOFFICE_PERMISSION.connections.read;
+    });
+    await ifMatchesRoute("GET", "/providers", () => {
+      access = BACKOFFICE_PERMISSION.connections.read;
+      readsCatalog = true;
     });
     await ifMatchesRoute("GET", "/provider-configs/:providerConfigId/actions", () => {
       access = BACKOFFICE_PERMISSION.connections.read;
@@ -57,6 +66,9 @@ export function createProjectConnectorServer(
     await ifMatchesRoute("POST", "/accounts/:accountId/actions/:actionId", () => {
       access = BACKOFFICE_PERMISSION.integrations.execute;
     });
+    if (owner === "org" && !readsCatalog) {
+      access = null;
+    }
     return await authorizeBackofficeFragmentRequest(kernel, requestContext, access, null);
   });
 }

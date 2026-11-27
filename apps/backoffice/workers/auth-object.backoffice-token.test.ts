@@ -134,7 +134,9 @@ describe("Backoffice token exchange", () => {
     });
 
     const setCookie = getSetCookieHeaders(tokenResponse.headers).find((header) =>
-      header.startsWith(`${backofficeAccessTokenCookieName(true)}=`),
+      header.startsWith(
+        `${backofficeAccessTokenCookieName(new URL("https://backoffice.example"))}=`,
+      ),
     );
     assert(setCookie);
     expect(setCookie).toContain("HttpOnly");
@@ -254,7 +256,11 @@ describe("Backoffice token exchange", () => {
       organization: null,
     });
     const accessTokenCookie = getSetCookieHeaders(response.headers)
-      .find((header) => header.startsWith(`${backofficeAccessTokenCookieName(true)}=`))
+      .find((header) =>
+        header.startsWith(
+          `${backofficeAccessTokenCookieName(new URL("https://backoffice.example"))}=`,
+        ),
+      )
       ?.split(";", 1)[0];
     assert(accessTokenCookie);
     const verification = await verifyBackofficeJwtRequest(

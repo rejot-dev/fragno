@@ -13,6 +13,6 @@ export const resolveBackofficeJwtTransport = (request: Request): ResolvedBackoff
       : { ok: false, reason: "invalid" };
   }
 
-  const token = readBackofficeAccessTokenCookie(request.headers.get("cookie"));
+  const token = readBackofficeAccessTokenCookie(request);
   return token ? { ok: true, transport: "cookie", token } : { ok: false, reason: "missing" };
 };
