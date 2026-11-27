@@ -22,8 +22,8 @@ export type SourceCatalogItem = {
   icon: SourceCatalogIcon;
   /** Most specific first: the item is listed under its first category and found by all of them. */
   categories: readonly { id: string; label: string }[];
-  /** A short state such as "Connected", or null. */
-  badge: string | null;
+  /** A short state shown beside the label, such as "Connected", or null. */
+  status: string | null;
   /** Where choosing the item goes; for the expanded item, where closing it goes. */
   to: string;
 };
@@ -52,12 +52,12 @@ function matchesQuery(item: SourceCatalogItem, query: string): boolean {
 }
 
 /**
- * Groups items by their primary category, alphabetically, with the leading category first and
- * uncategorized items last.
+ * Groups items by their primary category: the leading categories first, in their order, then the
+ * rest alphabetically, with uncategorized items last.
  */
 function groupByPrimaryCategory(
   items: readonly SourceCatalogItem[],
-  leadingCategoryId: string | null,
+  leadingCategoryIds: readonly string[],
 ): SourceCatalogGroup[] {
   const groups = new Map<string, SourceCatalogGroup>();
   for (const item of items) {
@@ -66,22 +66,19 @@ function groupByPrimaryCategory(
     group.items.push(item);
     groups.set(category.id, group);
   }
+  function rank(group: SourceCatalogGroup): number {
+    const leading = leadingCategoryIds.indexOf(group.id);
+    if (leading !== -1) {
+      return leading;
+    }
+    return group.id === OTHER_GROUP.id ? leadingCategoryIds.length + 1 : leadingCategoryIds.length;
+  }
   return [...groups.values()]
     .map((group) => ({
       ...group,
       items: [...group.items].sort((a, b) => a.label.localeCompare(b.label)),
     }))
-    .sort((a, b) =>
-      a.id === leadingCategoryId
-        ? -1
-        : b.id === leadingCategoryId
-          ? 1
-          : a.id === OTHER_GROUP.id
-            ? 1
-            : b.id === OTHER_GROUP.id
-              ? -1
-              : a.label.localeCompare(b.label),
-    );
+    .sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
 }
 
 function SourceIcon({ icon }: { icon: SourceCatalogIcon }) {
@@ -113,9 +110,10 @@ function SourceSummary({ item }: { item: SourceCatalogItem }) {
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="truncate text-sm font-semibold text-[var(--bo-fg)]">{item.label}</span>
-          {item.badge === null ? null : (
-            <span className="shrink-0 rounded-[3px] bg-[var(--bo-accent-bg)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--bo-accent-fg)]">
-              {item.badge}
+          {item.status === null ? null : (
+            // A tint of the Leyway mark's violet, lightened on dark surfaces to stay legible.
+            <span className="shrink-0 rounded-full bg-[#7a3cff]/10 px-2 py-0.5 text-[11px] leading-4 font-medium whitespace-nowrap text-[#7a3cff] dark:bg-[#7a3cff]/20 dark:text-[#b69aff]">
+              {item.status}
             </span>
           )}
         </span>
@@ -180,14 +178,14 @@ function ExpandedSourceCard({
 export function SourceCatalog({
   label,
   items,
-  leadingCategoryId,
+  leadingCategoryIds,
   expanded,
 }: {
   /** Names the catalog for screen readers, e.g. "Sources to connect". */
   label: string;
   items: readonly SourceCatalogItem[];
-  /** The category listed before all others, such as Popular, or null to keep them alphabetical. */
-  leadingCategoryId: string | null;
+  /** The categories listed before all others, in this order, such as Connected and Popular. */
+  leadingCategoryIds: readonly string[];
   expanded: SourceCatalogExpansion | null;
 }) {
   const [query, setQuery] = useState("");
@@ -203,9 +201,9 @@ export function SourceCatalog({
     () =>
       groupByPrimaryCategory(
         items.filter((item) => matchesQuery(item, normalizedQuery)),
-        leadingCategoryId,
+        leadingCategoryIds,
       ),
-    [items, normalizedQuery, leadingCategoryId],
+    [items, normalizedQuery, leadingCategoryIds],
   );
   // A search that leaves the chosen category empty hides its chip, so the filter lapses with it.
   const selectedGroup = groups.find((group) => group.id === selectedGroupId) ?? null;

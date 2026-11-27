@@ -1,6 +1,7 @@
 import type { IntegrationConnection } from "@fragno-dev/backoffice-api/v0/integrations";
 import type { RouterContextProvider } from "react-router";
 
+import { encodeApiConnectionId } from "@/fragno/runtime-tools/families/integrations/api-integration";
 import { listConnectorCatalog } from "@/fragno/runtime-tools/families/integrations/connector-integration";
 import { integrationConnectionKind } from "@/fragno/runtime-tools/families/integrations/integration-connections";
 import { createIntegrationsRuntime } from "@/fragno/runtime-tools/families/integrations/integrations-runtime";
@@ -21,6 +22,14 @@ export function listConnectorProviders(context: Readonly<RouterContextProvider>)
   const { execution } = requireRouteScope(context);
   const { runtime, kernel } = context.get(BackofficeWorkerContext);
   return listConnectorCatalog({ runtime, context: { kernel, execution } });
+}
+
+/**
+ * The address the agent sets up a catalog provider at, as Leyway's own API integration. Connect
+ * finds the provider connected by this address, so the prompt and the catalog must agree on it.
+ */
+export function catalogProviderAddress(service: string): string {
+  return encodeApiConnectionId(service);
 }
 
 export async function listConnections(

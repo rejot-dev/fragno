@@ -18,6 +18,7 @@ import { integrationConnectionKind } from "@/fragno/runtime-tools/families/integ
 
 import type { Route } from "./+types/connect-source";
 import {
+  catalogProviderAddress,
   connectIntegrations,
   isConnectedConnectorAccount,
   listConnections,
@@ -33,12 +34,16 @@ export type ConnectSourceContext = {
   actionError: string | null;
 };
 
-type ConnectSource = Pick<IntegrationOverview, "id" | "label">;
+type ConnectSource = Pick<IntegrationOverview, "id" | "label"> & {
+  /** Whether the source has a connection already, which the agent then investigates. */
+  connected: boolean;
+};
 
 /**
- * How a chosen service connects. A Connector service with an account already connected goes
- * straight to building on it; one without signs in with its provider here; every other service is
- * set up by the agent, which knows each one's configuration.
+ * How a chosen service connects. A Connector service with an account already connected, or a
+ * catalog provider the agent set up, goes straight to building on it; a Connector service without
+ * one signs in with its provider here; every other service is set up by the agent, which knows each
+ * one's configuration.
  */
 type ConnectMethod =
   | { kind: "connected"; connectionId: string }
@@ -51,11 +56,21 @@ type ConnectMethod =
  */
 export async function loader({ request, context, params }: Route.LoaderArgs) {
   const setupTarget = new URL(request.url).searchParams.get("target");
+  const integrations = connectIntegrations(context);
+  // A catalog provider opens on the API connection the agent set it up at, while it exists.
+  if (setupTarget !== null && setupTarget === catalogProviderAddress(params.source)) {
+    const connected = (await listConnections(integrations)).some(
+      (connection) => connection.connectionId === setupTarget,
+    );
+    const method: ConnectMethod = connected
+      ? { kind: "connected", connectionId: setupTarget }
+      : { kind: "agent" };
+    return { method };
+  }
   if (setupTarget === null || integrationConnectionKind(setupTarget) !== "connector") {
     const method: ConnectMethod = { kind: "agent" };
     return { method };
   }
-  const integrations = connectIntegrations(context);
   const account = (await listConnections(integrations)).find(
     (connection) =>
       connection.integrationId === params.source && isConnectedConnectorAccount(connection),
@@ -130,7 +145,24 @@ function ConnectStep({
 
   return (
     <>
-      {method.kind === "agent" ? (
+      {method.kind === "agent" && service.connected ? (
+        <Form method="post" action={connectPath} className="flex flex-col gap-3">
+          <p className="text-xs leading-5 text-pretty text-[var(--bo-muted)]">
+            Already connected. Your agent checks that it still works and tells you what to fix.
+          </p>
+          <input type="hidden" name="source" value={service.id} />
+          <ActionItem
+            type="submit"
+            name="intent"
+            value="investigate"
+            icon="search"
+            emphasis="primary"
+            disabled={busy}
+          >
+            Investigate connection
+          </ActionItem>
+        </Form>
+      ) : method.kind === "agent" ? (
         <Form method="post" action={connectPath} className="flex flex-col gap-3">
           <p className="text-xs leading-5 text-pretty text-[var(--bo-muted)]">
             Needs details only you have, like a token. Your agent sets it up with you.
