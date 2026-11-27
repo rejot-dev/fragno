@@ -331,7 +331,11 @@ export function InTurn() {
             <ChatUserMessage time={SAMPLE_TIME} attachments={null}>
               <p>I uploaded this month's receipts. Propose an entry for each.</p>
             </ChatUserMessage>
-            <ChatAssistantMessage author={{ name: "Bookkeeper", time: SAMPLE_TIME }} footer={null}>
+            <ChatAssistantMessage
+              running={false}
+              author={{ name: "Bookkeeper", time: SAMPLE_TIME }}
+              footer={null}
+            >
               <BatchTurn statuses={statuses} startedAt={startedAt} />
               <ChatSubagentGroup ref={card} title="Subagents" subagents={runs(statuses)} />
               {settled ? (
@@ -380,7 +384,11 @@ export function StartedElsewhere() {
             <ChatUserMessage time={SAMPLE_TIME} attachments={null}>
               <p>Which invoices are still unpaid?</p>
             </ChatUserMessage>
-            <ChatAssistantMessage author={{ name: "Bookkeeper", time: SAMPLE_TIME }} footer={null}>
+            <ChatAssistantMessage
+              running={false}
+              author={{ name: "Bookkeeper", time: SAMPLE_TIME }}
+              footer={null}
+            >
               <p>
                 Three invoices are still unpaid. The oldest, <strong>INV-4182</strong> from Acme, is
                 32 days overdue.

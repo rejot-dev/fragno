@@ -4,7 +4,7 @@ import { Link } from "react-router";
 
 import { cn } from "../../cn";
 import { Icon, type IconName } from "../icon";
-import { seededColor } from "../seeded-color";
+import { seededLogoColor } from "../seeded-color";
 
 // Top-bar dropdown for picking what the chrome is currently about (organization, project,
 // account) and jumping to related destinations. The trigger shows a small label over the current
@@ -31,8 +31,8 @@ type SelectorMenuTriggerLayout =
 // What the workspace tile shows: a single letter (e.g. an organization's initial) or an icon.
 type WorkspaceMark = { kind: "letter"; letter: string } | { kind: "icon"; icon: IconName };
 
-// The tile is either the app's primary colour or a hue derived from seed. Pass a stable identity
-// (not a display name) as the seed to keep the colour across renames.
+// The tile is either the app's primary colour or a hue derived from seed, within the logo's range.
+// Pass a stable identity (not a display name) as the seed to keep the colour across renames.
 type WorkspaceColor = { kind: "primary" } | { kind: "seeded"; seed: string };
 
 function WorkspaceTile({
@@ -44,14 +44,17 @@ function WorkspaceTile({
   color: WorkspaceColor;
   collapsed: boolean;
 }) {
+  // A faint tint of the colour with the mark drawn in it, so the tile stays quiet beside the agent
+  // face at the other end of the top bar.
+  const tint = color.kind === "primary" ? "var(--primary)" : seededLogoColor(color.seed);
   return (
     <span
-      style={color.kind === "seeded" ? { backgroundColor: seededColor(color.seed) } : undefined}
+      style={{
+        backgroundColor: `color-mix(in srgb, ${tint} 14%, transparent)`,
+        color: color.kind === "primary" ? "var(--bo-accent-text)" : tint,
+      }}
       className={cn(
-        "mr-1 flex size-8 shrink-0 items-center justify-center rounded-[6px]",
-        color.kind === "primary"
-          ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
-          : "text-white",
+        "mr-1 flex size-[28px] shrink-0 items-center justify-center rounded-[6px]",
         collapsed && "mr-0",
       )}
     >

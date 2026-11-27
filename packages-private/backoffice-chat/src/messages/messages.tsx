@@ -264,6 +264,7 @@ export function AssistantMessage({
       <MessagePrimitive.Root asChild>
         <ChatAssistantMessage
           author={{ name: agentLabel, time: createdAt ?? null }}
+          running={running}
           footer={footer}
         >
           {shownTurn.map((segment) => {

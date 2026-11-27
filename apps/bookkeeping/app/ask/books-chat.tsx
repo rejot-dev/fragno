@@ -97,7 +97,9 @@ function BooksToolCall({ call }: { call: ChatToolCall }) {
  * What the chat shows of Bookkeeping: what the agent is called, its work as steps, and the
  * documents messages carried, each opening its page under `base`.
  */
-function useBooksChatExtensions(base: string): Partial<ChatExtensions> {
+function useBooksChatExtensions(
+  base: string,
+): Partial<ChatExtensions> & Pick<ChatExtensions, "agentLabel"> {
   return useMemo(
     () => ({
       agentLabel: "Assistant",

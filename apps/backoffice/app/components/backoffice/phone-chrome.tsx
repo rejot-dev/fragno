@@ -1,4 +1,5 @@
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { AgentFace } from "@fragno-private/design-system/brand/agent-face";
 import { Button } from "@fragno-private/design-system/controls/button";
 import { Icon } from "@fragno-private/design-system/icon";
 import { BottomNavigation } from "@fragno-private/design-system/navigation/navigation";
@@ -22,7 +23,6 @@ import { useBackofficeSignOut } from "@/fragno/auth/use-backoffice-sign-out";
 import type { AutomationProjectList } from "@/fragno/automation/project-list";
 
 import { AGENT_DRAWER_ID, preloadAgentDrawer } from "./agent-drawer";
-import { AgentMark } from "./agent-mark";
 import { BackofficeAppearanceMenu } from "./appearance-menu";
 import { StreamedBackofficeProjectMenu } from "./project-menu";
 import { BackofficeScopeSheetSections, currentScopeLabel } from "./scope-menu";
@@ -174,7 +174,7 @@ export function BackofficePhoneTabBar({
                 onPointerDown={preloadAgentDrawer}
                 className={`flex w-16 shrink-0 cursor-pointer items-center justify-center border-l border-[color:var(--bo-border)] transition-[background-color] duration-150 ease-out outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--bo-accent)]/30 focus-visible:ring-inset ${agentBeside.open ? "bg-[color:var(--bo-sidebar-bg)]" : "hover:bg-[var(--bo-panel-2)]"}`}
               >
-                <AgentMark />
+                <AgentFace size="bar" motion="lively" />
               </button>
             ) : null
           }

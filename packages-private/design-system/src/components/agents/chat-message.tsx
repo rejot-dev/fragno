@@ -1,6 +1,7 @@
 import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "../../cn";
+import { AgentFace } from "../brand/agent-face";
 
 // Message roots spread their props so a chat runtime can render them as its own message
 // primitives; the content inside them is the runtime's rendered parts.
@@ -62,21 +63,25 @@ export function ChatUserMessage({
 
 /**
  * What the agent did and said in one turn: a ChatActivity card for its work, then its answer.
- * The footer's actions appear on hover where the reader has a pointer.
+ * The author's face thinks while the turn runs, and comes alive once it settles. The footer's
+ * actions appear on hover where the reader has a pointer.
  */
 export function ChatAssistantMessage({
   author,
+  running,
   footer,
   children,
   ...props
 }: ElementProps & {
   author: { name: string; time: Date | null };
+  running: boolean;
   footer: ReactNode | null;
   children: ReactNode;
 }) {
   return (
     <div {...props} className="bo-chat-enter group relative mb-9 min-w-0">
-      <div className="mb-2 flex items-center gap-2">
+      <div className="mb-3.5 flex items-center gap-2">
+        <AgentFace size="message" motion={running ? "thinking" : "lively"} />
         <span className="text-sm font-semibold text-[var(--bo-fg)]">{author.name}</span>
         {author.time === null ? null : (
           <MessageTime time={author.time} className="text-xs text-[var(--bo-muted-2)]" />

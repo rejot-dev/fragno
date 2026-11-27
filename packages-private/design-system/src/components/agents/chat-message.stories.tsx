@@ -27,7 +27,8 @@ export function UserAndAnswer() {
         <p>How much revenue did we book last week?</p>
       </ChatUserMessage>
       <ChatAssistantMessage
-        author={{ name: "Pi", time: SAMPLE_TIME }}
+        running={false}
+        author={{ name: "Assistant", time: SAMPLE_TIME }}
         footer={
           <>
             <ChatTokenUsage input={12_480} output={318} total={12_798} cost={0.0421} />
@@ -47,7 +48,7 @@ export function Working() {
   const [startedAt] = useState(() => new Date(Date.now() - 4_000));
   return (
     <Column>
-      <ChatAssistantMessage author={{ name: "Pi", time: SAMPLE_TIME }} footer={null}>
+      <ChatAssistantMessage running author={{ name: "Assistant", time: SAMPLE_TIME }} footer={null}>
         <ChatActivity
           status={{ kind: "running", headline: "Grouping invoices by week", startedAt }}
         >
@@ -77,7 +78,7 @@ export function Interleaved() {
       <ChatUserMessage time={SAMPLE_TIME} attachments={null}>
         <p>Send a reminder for every unpaid invoice.</p>
       </ChatUserMessage>
-      <ChatAssistantMessage author={{ name: "Pi", time: SAMPLE_TIME }} footer={null}>
+      <ChatAssistantMessage running author={{ name: "Assistant", time: SAMPLE_TIME }} footer={null}>
         <ChatActivity
           status={{
             kind: "settled",
@@ -137,7 +138,7 @@ export function WorkingAfterSpeaking() {
       <ChatUserMessage time={SAMPLE_TIME} attachments={null}>
         <p>Send a reminder for every unpaid invoice.</p>
       </ChatUserMessage>
-      <ChatAssistantMessage author={{ name: "Pi", time: SAMPLE_TIME }} footer={null}>
+      <ChatAssistantMessage running author={{ name: "Assistant", time: SAMPLE_TIME }} footer={null}>
         <ChatActivity
           status={{
             kind: "settled",
@@ -167,11 +168,16 @@ export function WorkingAfterSpeaking() {
 export function StoppedAndFailed() {
   return (
     <Column>
-      <ChatAssistantMessage author={{ name: "Pi", time: null }} footer={<ChatStoppedNotice />}>
+      <ChatAssistantMessage
+        running={false}
+        author={{ name: "Assistant", time: null }}
+        footer={<ChatStoppedNotice />}
+      >
         <p>Looking up the overdue invoices…</p>
       </ChatAssistantMessage>
       <ChatAssistantMessage
-        author={{ name: "Pi", time: null }}
+        running={false}
+        author={{ name: "Assistant", time: null }}
         footer={<InlineAlert>The model provider returned an overloaded error.</InlineAlert>}
       >
         <p>Drafting the reminders now.</p>

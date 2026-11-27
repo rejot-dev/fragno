@@ -1,4 +1,5 @@
 import { backofficeScopeProjectOwner } from "@fragno-dev/backoffice-api/v0/shared/scope";
+import { AgentFace } from "@fragno-private/design-system/brand/agent-face";
 
 import {
   type BackofficeNamedProject,
@@ -9,7 +10,6 @@ import type { AdministeredMember, BackofficeMeData, Organization } from "@/fragn
 import type { AutomationProjectList } from "@/fragno/automation/project-list";
 
 import { AGENT_DRAWER_ID, preloadAgentDrawer } from "./agent-drawer";
-import { AgentMark } from "./agent-mark";
 import { BackofficeAppearanceMenu } from "./appearance-menu";
 import { BackofficePresenceIndicator } from "./presence-indicator";
 import { StreamedBackofficeProjectMenu } from "./project-menu";
@@ -98,7 +98,7 @@ export function BackofficeTopBar({
             onFocus={preloadAgentDrawer}
             className={`flex w-16 shrink-0 cursor-pointer items-center justify-center border-l border-[color:var(--bo-border)] transition-[background-color,color] duration-150 ease-out outline-none ${agentDrawerOpen ? "bg-[color:var(--bo-sidebar-bg)]" : "hover:bg-[var(--bo-panel-2)]"}`}
           >
-            <AgentMark />
+            <AgentFace size="bar" motion="lively" />
           </button>
         ) : null}
       </div>
