@@ -29,12 +29,14 @@ const navCellBaseClassName = `group/link flex items-center gap-2 whitespace-nowr
 const navCellClassName = `${navCellBaseClassName} font-light text-[color-mix(in_srgb,var(--landing-header-ink)_68%,transparent)] hover:text-[var(--landing-header-ink)]`;
 
 /**
- * Whether what shows under the header belongs to one of the page's dark surfaces, the elements
- * marked `data-landing-dark`. It looks at the edge the page scrolls in under: the bottom one going
- * down, the top one going up, so the header turns as soon as a new surface reaches it. It asks for
- * the topmost element there rather than which surface spans it, so the dashboard rising over the
- * hero counts as light. Until it can look, which is not before hydration, it takes the page's word
- * for what the top of the page is, so the header renders legibly from the first paint.
+ * Whether the header lies wholly over one of the page's dark surfaces, the elements marked
+ * `data-landing-dark`. It asks about both its edges, and only when both are over a dark surface
+ * does it go clear with white ink; while it straddles a light and a dark surface it stays white
+ * with black ink, which reads over either. So it turns white as soon as a light surface reaches
+ * it, and clear only once the dark one has passed behind all of it. At each edge it asks for the
+ * topmost element rather than which surface spans it, so the dashboard rising over the hero counts
+ * as light. Until it can look, which is not before hydration, it takes the page's word for what
+ * the top of the page is, so the header renders legibly from the first paint.
  */
 function useOverDarkSurface(headerRef: RefObject<HTMLElement | null>, startsOverDark: boolean) {
   const [overDarkSurface, setOverDarkSurface] = useState(startsOverDark);
@@ -43,17 +45,16 @@ function useOverDarkSurface(headerRef: RefObject<HTMLElement | null>, startsOver
     if (!header) {
       return undefined;
     }
-    let lastScrollY = window.scrollY;
+    const isDarkAt = (x: number, y: number) =>
+      document
+        .elementsFromPoint(x, y)
+        .find((element) => !header.contains(element))
+        ?.closest("[data-landing-dark]") != null;
     const updateOverDarkSurface = () => {
       const { top, bottom, left, right } = header.getBoundingClientRect();
-      const scrollingUp = window.scrollY < lastScrollY;
-      lastScrollY = window.scrollY;
-      // Just inside the edge, so the header's own border is not what is asked about.
-      const edge = scrollingUp ? top + 1 : bottom - 2;
-      const below = document
-        .elementsFromPoint((left + right) / 2, edge)
-        .find((element) => !header.contains(element));
-      setOverDarkSurface(below?.closest("[data-landing-dark]") != null);
+      const middle = (left + right) / 2;
+      // Just inside each edge, so the header's own border is not what is asked about.
+      setOverDarkSurface(isDarkAt(middle, top + 1) && isDarkAt(middle, bottom - 2));
     };
     updateOverDarkSurface();
     window.addEventListener("scroll", updateOverDarkSurface, { passive: true });

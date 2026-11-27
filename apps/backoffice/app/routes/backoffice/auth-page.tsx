@@ -101,7 +101,7 @@ export function AuthPage({
       <LandingHeader startsOverDark={true} nav="back-home" />
       {/* The homepage's hero film over the hero photo's colors, as on the marketplace, filling the
           screen behind the header and padded back down by its height and border. */}
-      <section
+      <main
         data-landing-dark
         className="relative -mt-[calc(var(--spacing)*16+1px)] flex min-h-svh overflow-hidden bg-[#232322] pt-[calc(var(--spacing)*16+1px)] text-white"
       >
@@ -165,7 +165,7 @@ export function AuthPage({
             ) : null}
           </section>
         </div>
-      </section>
+      </main>
       <LandingFooter />
     </div>
   );
